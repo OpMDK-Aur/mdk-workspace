@@ -62,9 +62,11 @@ async function fetchGHLContacts(
       const params = new URLSearchParams({
         locationId,
         limit: '100',
-        startAfter: startAfter ?? String(startTs),
-        startAfterId: '',
       })
+      // Only add startAfter for pagination (after first request)
+      if (startAfter) {
+        params.set('startAfter', startAfter)
+      }
 
       const url = `https://services.leadconnectorhq.com/contacts/?${params}`
       const res = await fetch(url, {
