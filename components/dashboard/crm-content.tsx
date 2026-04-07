@@ -126,8 +126,6 @@ function getStatusBadge(status: string): { label: string; color: string } {
 }
 
 export function CRMContent({ clients, allClients }: CRMContentProps) {
-  console.log('[v0] CRMContent rendered, clients:', clients?.length, 'allClients:', allClients?.length)
-  
   // Filters state
   const [selectedClientId, setSelectedClientId] = useState<string>(clients?.[0]?.id ?? '')
   const [datePreset, setDatePreset] = useState<DatePreset>('last_30d')
