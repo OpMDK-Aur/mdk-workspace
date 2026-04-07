@@ -44,7 +44,6 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl
   const clientId = searchParams.get('client_id')
-  const startAfter = searchParams.get('startAfter') ?? undefined
   const maxContacts = parseInt(searchParams.get('limit') ?? '0') || 0
   const startDate = searchParams.get('startDate') ?? undefined
   const endDate = searchParams.get('endDate') ?? undefined
