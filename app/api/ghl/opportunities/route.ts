@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     const body = {
       locationId: client.ghl_location_id,
       limit: 500,
-      page: 20
+      page: 1
     }
 
     const url = 'https://services.leadconnectorhq.com/opportunities/search'
