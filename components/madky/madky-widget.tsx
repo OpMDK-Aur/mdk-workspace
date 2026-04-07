@@ -211,12 +211,12 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
   return (
     <div
       className={cn(
-        'fixed z-50 flex flex-col',
+        'fixed z-[9999] flex flex-col overflow-hidden',
         'bg-card border border-border/60 rounded-2xl shadow-2xl',
         'transition-all duration-300 ease-out',
         isExpanded
-          ? 'bottom-6 left-6 right-6 top-6 md:left-auto md:right-6 md:w-[700px] md:top-6'
-          : 'bottom-6 left-6 w-[380px] h-[560px] md:w-[420px]'
+          ? 'bottom-6 left-6 right-6 top-6 md:left-6 md:w-[600px] md:top-20 md:bottom-6'
+          : 'bottom-6 left-6 w-[380px] h-[500px] max-h-[80vh] md:w-[400px]'
       )}
     >
       {/* Header */}
