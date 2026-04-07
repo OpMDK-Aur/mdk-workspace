@@ -149,7 +149,18 @@ export async function GET(req: NextRequest) {
       if (!c.dateAdded) return false
       // Handle both ISO string and numeric ms timestamp
       const raw = c.dateAdded
-      const added = /^\d+$/.test(String(raw)) ? Number(raw) : new Date(raw).getTime()
+      let added: number
+      if (typeof raw === 'number') {
+        // If it's already a number, check if it's seconds or milliseconds
+        added = raw > 1e12 ? raw : raw * 1000
+      } else if (/^\d+$/.test(String(raw))) {
+        // String that looks like a number
+        const num = Number(raw)
+        added = num > 1e12 ? num : num * 1000
+      } else {
+        // ISO string
+        added = new Date(raw).getTime()
+      }
       if (isNaN(added)) return false
       if (startMs !== null && added < startMs) return false
       if (endMs !== null && added > endMs) return false
@@ -157,7 +168,10 @@ export async function GET(req: NextRequest) {
     })
   }
 
+  // Debug: log sample dateAdded values to understand the date format
+  const sampleDates = allContacts.slice(0, 5).map(c => ({ id: c.id, dateAdded: c.dateAdded }))
   console.log(`[v0] GHL contacts: fetched=${allContacts.length} filtered=${contacts.length} pages=${pageCount} startDate=${startDate} endDate=${endDate}`)
+  console.log(`[v0] GHL sample dateAdded values:`, JSON.stringify(sampleDates))
 
   return NextResponse.json({
     contacts,
