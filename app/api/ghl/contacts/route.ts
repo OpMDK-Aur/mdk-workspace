@@ -171,10 +171,32 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  // Debug: log sample dateAdded values to understand the date format
-  const sampleDates = allContacts.slice(0, 5).map(c => ({ id: c.id, dateAdded: c.dateAdded }))
-  console.log(`[v0] GHL contacts: fetched=${allContacts.length} filtered=${contacts.length} pages=${pageCount} startDate=${startDate} endDate=${endDate}`)
-  console.log(`[v0] GHL sample dateAdded values:`, JSON.stringify(sampleDates))
+  // Debug: log sample dateAdded values with parsed dates
+  const startMs = startDate ? new Date(startDate + 'T00:00:00Z').getTime() : null
+  const endMs = endDate ? new Date(endDate + 'T23:59:59Z').getTime() : null
+  const sampleDates = allContacts.slice(0, 5).map(c => {
+    const raw = c.dateAdded
+    let parsedMs: number | null = null
+    if (raw) {
+      if (typeof raw === 'number') {
+        parsedMs = raw > 1e12 ? raw : raw * 1000
+      } else if (/^\d+$/.test(String(raw))) {
+        const num = Number(raw)
+        parsedMs = num > 1e12 ? num : num * 1000
+      } else {
+        parsedMs = new Date(raw).getTime()
+      }
+    }
+    return { 
+      id: c.id, 
+      dateAdded: c.dateAdded, 
+      parsedDate: parsedMs ? new Date(parsedMs).toISOString() : null,
+      inRange: parsedMs ? ((!startMs || parsedMs >= startMs) && (!endMs || parsedMs <= endMs)) : false
+    }
+  })
+  console.log(`[v0] GHL contacts: fetched=${allContacts.length} filtered=${contacts.length} pages=${pageCount}`)
+  console.log(`[v0] GHL filter range: startDate=${startDate} (${startMs}) endDate=${endDate} (${endMs})`)
+  console.log(`[v0] GHL sample dateAdded values:`, JSON.stringify(sampleDates, null, 2))
 
   return NextResponse.json({
     contacts,
