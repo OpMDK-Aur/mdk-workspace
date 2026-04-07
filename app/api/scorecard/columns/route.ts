@@ -30,10 +30,12 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
+      console.log('[v0] Scorecard AI: Unauthorized - no user')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const { prompt, currentColumns } = await request.json()
+    console.log('[v0] Scorecard AI: Received prompt:', prompt)
 
     if (!prompt) {
       return NextResponse.json({ error: 'prompt is required' }, { status: 400 })
@@ -51,6 +53,7 @@ ${JSON.stringify(currentColumns, null, 2)}
 El usuario quiere modificar las columnas. Devuelve la configuracion completa de TODAS las columnas disponibles con visible: true o false segun lo que pidio el usuario.
 Incluye una breve explicacion en espanol de lo que cambiaste.`
 
+    console.log('[v0] Scorecard AI: Calling generateText...')
     const result = await generateText({
       model: 'openai/gpt-4o-mini',
       system: systemPrompt,
@@ -58,9 +61,10 @@ Incluye una breve explicacion en espanol de lo que cambiaste.`
       output: Output.object({ schema: ColumnSchema }),
     })
 
+    console.log('[v0] Scorecard AI: Result received:', JSON.stringify(result.object))
     return NextResponse.json(result.object)
   } catch (error) {
-    console.error('Scorecard AI Error:', error)
-    return NextResponse.json({ error: 'Failed to process AI request' }, { status: 500 })
+    console.error('[v0] Scorecard AI Error:', error)
+    return NextResponse.json({ error: 'Failed to process AI request', details: String(error) }, { status: 500 })
   }
 }
