@@ -120,6 +120,8 @@ export function UserManagementContent({
 
     // Prevent a user from changing their own role
     const roleToSave = editingProfile.id === currentUserId ? editingProfile.role : editRole
+    const previousRole = editingProfile.role
+    const previousClientIds = assignedClients[editingProfile.id] || []
 
     try {
       const { error: profileError } = await supabase
@@ -141,6 +143,50 @@ export function UserManagementContent({
             access_level: 'read' as const,
           }))
         )
+      }
+
+      // Update project_manager_id or account_manager_id on clients
+      const managerField = roleToSave === 'project_manager' 
+        ? 'project_manager_id' 
+        : roleToSave === 'account_manager' 
+          ? 'account_manager_id' 
+          : null
+
+      // If role changed, clear old manager assignments
+      if (previousRole !== roleToSave) {
+        const previousField = previousRole === 'project_manager'
+          ? 'project_manager_id'
+          : previousRole === 'account_manager'
+            ? 'account_manager_id'
+            : null
+
+        if (previousField && previousClientIds.length > 0) {
+          await supabase
+            .from('clients')
+            .update({ [previousField]: null })
+            .in('id', previousClientIds)
+            .eq(previousField, editingProfile.id)
+        }
+      }
+
+      // Set new manager assignments for assigned clients
+      if (managerField && editClientIds.length > 0) {
+        await supabase
+          .from('clients')
+          .update({ [managerField]: editingProfile.id })
+          .in('id', editClientIds)
+      }
+
+      // Clear manager field from clients that were unassigned
+      if (managerField) {
+        const removedClientIds = previousClientIds.filter(id => !editClientIds.includes(id))
+        if (removedClientIds.length > 0) {
+          await supabase
+            .from('clients')
+            .update({ [managerField]: null })
+            .in('id', removedClientIds)
+            .eq(managerField, editingProfile.id)
+        }
       }
 
       setLocalProfiles(prev =>
@@ -179,6 +225,20 @@ export function UserManagementContent({
         await supabase.from('user_client_access').insert(
           newClientIds.map(clientId => ({ user_id: newUserId, client_id: clientId, access_level: 'read' as const }))
         )
+
+        // Update project_manager_id or account_manager_id on assigned clients
+        const managerField = newRole === 'project_manager' 
+          ? 'project_manager_id' 
+          : newRole === 'account_manager' 
+            ? 'account_manager_id' 
+            : null
+
+        if (managerField) {
+          await supabase
+            .from('clients')
+            .update({ [managerField]: newUserId })
+            .in('id', newClientIds)
+        }
       }
 
       setCreateSuccess(true)
@@ -192,11 +252,39 @@ export function UserManagementContent({
   const handleClientAssignmentToggle = async (userId: string, clientId: string) => {
     const current = assignedClients[userId] || []
     const isAssigned = current.includes(clientId)
+    
+    // Find the user's role to determine which manager field to update
+    const userProfile = localProfiles.find(p => p.id === userId)
+    const managerField = userProfile?.role === 'project_manager' 
+      ? 'project_manager_id' 
+      : userProfile?.role === 'account_manager' 
+        ? 'account_manager_id' 
+        : null
+
     if (isAssigned) {
       await supabase.from('user_client_access').delete().eq('user_id', userId).eq('client_id', clientId)
+      
+      // Clear manager field when unassigning
+      if (managerField) {
+        await supabase
+          .from('clients')
+          .update({ [managerField]: null })
+          .eq('id', clientId)
+          .eq(managerField, userId)
+      }
+      
       setAssignedClients(prev => ({ ...prev, [userId]: (prev[userId] || []).filter(id => id !== clientId) }))
     } else {
       await supabase.from('user_client_access').insert({ user_id: userId, client_id: clientId, access_level: 'read' })
+      
+      // Set manager field when assigning
+      if (managerField) {
+        await supabase
+          .from('clients')
+          .update({ [managerField]: userId })
+          .eq('id', clientId)
+      }
+      
       setAssignedClients(prev => ({ ...prev, [userId]: [...(prev[userId] || []), clientId] }))
     }
   }
