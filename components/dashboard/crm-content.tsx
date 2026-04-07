@@ -29,12 +29,10 @@ import {
   Target,
   Mail,
   Phone,
-  Tag,
   X,
   Calendar,
   DollarSign,
   Filter,
-  Download,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { format, subDays } from 'date-fns'
@@ -128,8 +126,10 @@ function getStatusBadge(status: string): { label: string; color: string } {
 }
 
 export function CRMContent({ clients, allClients }: CRMContentProps) {
+  console.log('[v0] CRMContent rendered, clients:', clients?.length, 'allClients:', allClients?.length)
+  
   // Filters state
-  const [selectedClientId, setSelectedClientId] = useState<string>(clients[0]?.id ?? '')
+  const [selectedClientId, setSelectedClientId] = useState<string>(clients?.[0]?.id ?? '')
   const [datePreset, setDatePreset] = useState<DatePreset>('last_30d')
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
@@ -204,7 +204,8 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
       fetchOpportunities()
       fetchContacts()
     }
-  }, [selectedClientId, datePreset, customStartDate, customEndDate, fetchOpportunities, fetchContacts])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClientId, datePreset, customStartDate, customEndDate])
 
   // Extract unique values for filters
   const uniqueSources = useMemo(() => {
