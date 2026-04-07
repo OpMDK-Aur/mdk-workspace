@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useTheme } from 'next-themes'
 import type { User } from '@supabase/supabase-js'
 import type { Profile, Client } from '@/lib/types'
 import { Sidebar } from './sidebar'
+import { MadkyWidget } from '@/components/madky/madky-widget'
 
 interface DashboardShellProps {
   user: User
@@ -16,6 +17,12 @@ interface DashboardShellProps {
 export function DashboardShell({ user, profile, clients, children }: DashboardShellProps) {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
   const { setTheme } = useTheme()
+
+  // Find the selected client object
+  const selectedClient = useMemo(() => {
+    if (!selectedClientId) return null
+    return clients.find(c => c.id === selectedClientId) ?? null
+  }, [selectedClientId, clients])
 
   // Sync saved theme and accent color from DB on mount
   useEffect(() => {
@@ -43,6 +50,12 @@ export function DashboardShell({ user, profile, clients, children }: DashboardSh
       <main className="flex-1 overflow-auto relative">
         {children}
       </main>
+      
+      {/* Madky AI Assistant Widget */}
+      <MadkyWidget 
+        selectedClient={selectedClient}
+        allClients={clients}
+      />
     </div>
   )
 }
