@@ -91,6 +91,13 @@ function parsePresentation(content: string): Slide[] | null {
 }
 
 export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProps) {
+  console.log('[v0] MadkyWidget rendered with:', { 
+    selectedClientId: selectedClient?.id, 
+    selectedClientName: selectedClient?.business_name,
+    allClientsCount: allClients.length,
+    allClientsNames: allClients.slice(0, 3).map(c => c.business_name)
+  })
+  
   const [isOpen, setIsOpen] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('chat')
@@ -253,7 +260,7 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
           <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
             <Sparkles className="h-5 w-5 text-white" />
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1.5">
             <h3 className="font-semibold text-foreground text-sm">Madky</h3>
             {/* Client selector */}
             {allClients.length > 0 ? (
@@ -261,17 +268,17 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
                 value={internalClientId ?? ''} 
                 onValueChange={(val) => val && handleClientChange(val)}
               >
-                <SelectTrigger className="h-7 w-[180px] border border-border/50 bg-muted/30 px-2 text-xs text-foreground hover:bg-muted/50 focus:ring-1 focus:ring-violet-500/30 rounded-md">
-                  <div className="flex items-center gap-1.5 truncate">
-                    <span className="h-1.5 w-1.5 rounded-full bg-status-verde animate-pulse shrink-0" />
+                <SelectTrigger className="h-8 w-[200px] border border-violet-500/30 bg-violet-500/5 px-3 text-xs text-foreground hover:bg-violet-500/10 hover:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50 rounded-lg">
+                  <div className="flex items-center gap-2 truncate">
+                    <Building2 className="h-3.5 w-3.5 text-violet-400 shrink-0" />
                     <SelectValue placeholder="Seleccionar cliente" />
                   </div>
                 </SelectTrigger>
-                <SelectContent className="max-h-[300px]">
+                <SelectContent className="max-h-[300px] z-[10000]">
                   {allClients.map(client => (
                     <SelectItem key={client.id} value={client.id}>
                       <div className="flex items-center gap-2">
-                        <Building2 className="h-3 w-3 shrink-0" />
+                        <Building2 className="h-3 w-3 shrink-0 text-muted-foreground" />
                         <span className="truncate">{client.business_name}</span>
                       </div>
                     </SelectItem>
@@ -279,7 +286,7 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
                 </SelectContent>
               </Select>
             ) : (
-              <span className="text-xs text-muted-foreground">Sin clientes disponibles</span>
+              <span className="text-xs text-muted-foreground">Cargando clientes...</span>
             )}
           </div>
         </div>
@@ -338,13 +345,6 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
                   Tu analista de marketing. Preguntame sobre el rendimiento de tus clientes, 
                   pedime análisis o generá presentaciones.
                 </p>
-                {currentClient && (
-                  <div className="mt-4 px-3 py-1.5 bg-violet-500/10 rounded-full">
-                    <span className="text-xs text-violet-400">
-                      Analizando: {currentClient.business_name}
-                    </span>
-                  </div>
-                )}
                 <div className="mt-6 flex flex-col gap-2 w-full max-w-[280px]">
                   <button
                     onClick={() => setInput('Dame un resumen del rendimiento de este cliente')}
