@@ -198,6 +198,12 @@ export async function GET(req: NextRequest) {
   console.log(`[v0] GHL filter range: startDate=${startDate} (${startMs}) endDate=${endDate} (${endMs})`)
   console.log(`[v0] GHL sample dateAdded values:`, JSON.stringify(sampleDates, null, 2))
 
+  // Include sample dates in response for debugging
+  const debugSampleDates = allContacts.slice(0, 3).map(c => ({
+    dateAdded: c.dateAdded,
+    name: `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim()
+  }))
+
   return NextResponse.json({
     contacts,
     total: contacts.length,
@@ -205,6 +211,7 @@ export async function GET(req: NextRequest) {
     nextStartAfter: lastNextStartAfter,
     nextStartAfterId: lastNextStartAfterId,
     pages: pageCount,
+    debug: { sampleDates: debugSampleDates, filterStart: startDate, filterEnd: endDate }
   }, {
     headers: {
       'Cache-Control': 'no-store, no-cache, must-revalidate',
