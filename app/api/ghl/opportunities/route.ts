@@ -59,17 +59,11 @@ export async function GET(req: NextRequest) {
     }
 
     // Build request body for opportunities search
-    const body: Record<string, unknown> = {
+    // Note: GHL opportunities/search does NOT support startDate/endDate filters
+    // We fetch all and filter locally
+    const body = {
       locationId: client.ghl_location_id,
       limit: 500,
-    }
-
-    // Add date filter if provided
-    if (startDate) {
-      body.startDate = new Date(startDate + 'T00:00:00Z').toISOString()
-    }
-    if (endDate) {
-      body.endDate = new Date(endDate + 'T23:59:59Z').toISOString()
     }
 
     const url = 'https://services.leadconnectorhq.com/opportunities/search'
@@ -99,7 +93,7 @@ export async function GET(req: NextRequest) {
 
     const json: GHLOpportunitiesResponse = await res.json()
 
-    const opportunities: GHLOpportunity[] = (json.opportunities ?? []).map((o: GHLOpportunity) => ({
+    const allOpportunities: GHLOpportunity[] = (json.opportunities ?? []).map((o: GHLOpportunity) => ({
       id: o.id ?? '',
       name: o.name ?? '',
       monetaryValue: o.monetaryValue ?? null,
@@ -118,9 +112,25 @@ export async function GET(req: NextRequest) {
       updatedAt: o.updatedAt ?? '',
     }))
 
+    // Filter by createdAt locally
+    let opportunities = allOpportunities
+    if (startDate || endDate) {
+      const startMs = startDate ? new Date(startDate + 'T00:00:00Z').getTime() : null
+      const endMs = endDate ? new Date(endDate + 'T23:59:59Z').getTime() : null
+      opportunities = allOpportunities.filter(o => {
+        if (!o.createdAt) return false
+        const createdMs = new Date(o.createdAt).getTime()
+        if (isNaN(createdMs)) return false
+        if (startMs !== null && createdMs < startMs) return false
+        if (endMs !== null && createdMs > endMs) return false
+        return true
+      })
+    }
+
     return NextResponse.json({
       opportunities,
       total: opportunities.length,
+      totalUnfiltered: allOpportunities.length,
       meta: json.meta ?? null,
     }, {
       headers: {
