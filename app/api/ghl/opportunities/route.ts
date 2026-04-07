@@ -91,29 +91,24 @@ export async function GET(req: NextRequest) {
 
     const url = 'https://services.leadconnectorhq.com/opportunities/search'
     const allOpportunities: GHLOpportunity[] = []
-    let currentPage = 0
-    let searchAfter: string[] | undefined = undefined
+    let currentPage = 1 // GHL uses 1-indexed pages
     let hasMorePages = true
 
     console.log(`[v0] GHL Opportunities: Starting pagination for client ${client.business_name}`)
 
-    // Paginate through all opportunities using searchAfter
-    while (hasMorePages && currentPage < MAX_PAGES) {
-      // Build request body - GHL uses searchAfter for pagination, not page number
+    // Paginate through all opportunities using page number
+    while (hasMorePages && currentPage <= MAX_PAGES) {
+      // Build request body - GHL uses page number for pagination
       const body: Record<string, unknown> = {
         locationId: client.ghl_location_id,
         limit: PAGE_SIZE,
+        page: currentPage,
       }
 
-      // Add searchAfter for pagination (after first request)
-      if (searchAfter && searchAfter.length > 0) {
-        body.searchAfter = searchAfter
-      }
-
-      console.log(`[v0] GHL Opportunities: Fetching page ${currentPage + 1}, searchAfter=${searchAfter ? JSON.stringify(searchAfter) : 'none'}`)
+      console.log(`[v0] GHL Opportunities: Fetching page ${currentPage}`)
 
       // Add delay between requests to avoid rate limiting (except first request)
-      if (currentPage > 0) {
+      if (currentPage > 1) {
         await delay(DELAY_BETWEEN_REQUESTS)
       }
 
@@ -178,24 +173,17 @@ export async function GET(req: NextRequest) {
         })
       }
 
-      currentPage++
-
       // Check if there are more pages
       // Stop if: no results, less than PAGE_SIZE results
       if (pageOpportunities.length === 0 || pageOpportunities.length < PAGE_SIZE) {
         hasMorePages = false
-      } else {
-        // Get the last opportunity's ID for searchAfter pagination
-        const lastOpp = pageOpportunities[pageOpportunities.length - 1]
-        if (lastOpp?.id) {
-          searchAfter = [lastOpp.id]
-        } else {
-          hasMorePages = false
-        }
+        console.log(`[v0] GHL Opportunities: No more pages (received ${pageOpportunities.length} < ${PAGE_SIZE})`)
       }
+
+      currentPage++
     }
 
-    console.log(`[v0] GHL Opportunities: Pagination complete. Total pages: ${currentPage}, Total accumulated: ${allOpportunities.length}`)
+    console.log(`[v0] GHL Opportunities: Pagination complete. Total pages: ${currentPage - 1}, Total accumulated: ${allOpportunities.length}`)
 
     // Filter by createdAt locally AFTER getting all pages
     let opportunities = allOpportunities
