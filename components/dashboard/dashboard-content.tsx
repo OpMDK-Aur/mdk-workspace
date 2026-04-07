@@ -399,16 +399,6 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
           <KPICards
             kpis={kpis}
             loading={loading}
-            dateRange={filters.dateRange}
-            ghlClient={
-              // Priority: explicitly selected client → only client in view → first client with GHL config (excluding ADT)
-              (scorecardClientId
-                ? clients.find(c => c.id === scorecardClientId)
-                : targetClients.length === 1
-                  ? targetClients[0]
-                  : targetClients.find(c => c.crm_type === 'ghl' && c.ghl_location_id && c.ghl_token && c.business_name !== 'ADT')
-              ) ?? null
-            }
           />
         </section>
 
