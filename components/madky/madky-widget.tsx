@@ -117,23 +117,35 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
     }
   }, [selectedClient?.id, allClients, internalClientId])
   
-  // Sync with selectedClient when it changes externally
-  useEffect(() => {
-    if (selectedClient?.id && selectedClient.id !== internalClientId) {
-      setInternalClientId(selectedClient.id)
-    }
-  }, [selectedClient?.id, internalClientId])
-  
-  // Get the current client object
-  const currentClient = internalClientId 
-    ? allClients.find(c => c.id === internalClientId) ?? null
-    : null
-
   const { messages, sendMessage, status, setMessages } = useChat({
     transport: new DefaultChatTransport({ 
       api: '/api/madky/chat',
     }),
   })
+
+  // Sync with selectedClient when it changes externally
+  useEffect(() => {
+    if (selectedClient?.id && selectedClient.id !== internalClientId) {
+      setInternalClientId(selectedClient.id)
+      // Clear conversation when client changes from dashboard
+      setMessages([])
+    }
+  }, [selectedClient?.id, internalClientId, setMessages])
+  
+  // Handle client change from the widget selector
+  const handleClientChange = (newClientId: string) => {
+    if (newClientId !== internalClientId) {
+      setInternalClientId(newClientId)
+      setMessages([]) // Clear conversation for new client
+      setPresentationSlides(null)
+      setViewMode('chat')
+    }
+  }
+  
+  // Get the current client object
+  const currentClient = internalClientId 
+    ? allClients.find(c => c.id === internalClientId) ?? null
+    : null
 
   const isLoading = status === 'streaming' || status === 'submitted'
 
@@ -168,17 +180,21 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
     e.preventDefault()
     if (!input.trim() || isLoading) return
     
+    const clientContext = currentClient ? {
+      clientId: currentClient.id,
+      clientName: currentClient.business_name,
+      plan: currentClient.plan,
+      status: currentClient.status,
+    } : null
+    
+    console.log('[v0] Madky sending message with client context:', clientContext)
+    
     // Send message with current client context in the body
     sendMessage(
       { text: input },
       {
         body: {
-          clientContext: currentClient ? {
-            clientId: currentClient.id,
-            clientName: currentClient.business_name,
-            plan: currentClient.plan,
-            status: currentClient.status,
-          } : null
+          clientContext
         }
       }
     )
@@ -245,7 +261,7 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
             {allClients.length > 0 ? (
               <Select 
                 value={internalClientId ?? ''} 
-                onValueChange={(val) => setInternalClientId(val || null)}
+                onValueChange={(val) => val && handleClientChange(val)}
               >
                 <SelectTrigger className="h-6 w-[160px] border-0 bg-transparent p-0 text-xs text-muted-foreground hover:text-foreground focus:ring-0">
                   <div className="flex items-center gap-1.5">
