@@ -117,9 +117,32 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
     }
   }, [selectedClient?.id, allClients, internalClientId])
   
+  // Get the current client object - moved before useChat so we can use it in transport
+  const currentClient = internalClientId 
+    ? allClients.find(c => c.id === internalClientId) ?? null
+    : null
+  
+  // Use a ref to always have the latest client context for the transport
+  const clientContextRef = useRef<{ clientId: string; clientName: string; plan?: string | null; status?: string | null } | null>(null)
+  
+  useEffect(() => {
+    clientContextRef.current = currentClient ? {
+      clientId: currentClient.id,
+      clientName: currentClient.business_name,
+      plan: currentClient.plan,
+      status: currentClient.status,
+    } : null
+  }, [currentClient])
+  
   const { messages, sendMessage, status, setMessages } = useChat({
     transport: new DefaultChatTransport({ 
       api: '/api/madky/chat',
+      prepareSendMessagesRequest: ({ messages }) => ({
+        body: {
+          messages,
+          clientContext: clientContextRef.current,
+        },
+      }),
     }),
   })
 
@@ -141,11 +164,6 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
       setViewMode('chat')
     }
   }
-  
-  // Get the current client object
-  const currentClient = internalClientId 
-    ? allClients.find(c => c.id === internalClientId) ?? null
-    : null
 
   const isLoading = status === 'streaming' || status === 'submitted'
 
@@ -180,26 +198,12 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
     e.preventDefault()
     if (!input.trim() || isLoading) return
     
-    const clientContext = currentClient ? {
-      clientId: currentClient.id,
-      clientName: currentClient.business_name,
-      plan: currentClient.plan,
-      status: currentClient.status,
-    } : null
+    console.log('[v0] Madky sending message, clientContext from ref:', clientContextRef.current)
     
-    console.log('[v0] Madky sending message with client context:', clientContext)
-    
-    // Send message with current client context in the body
-    sendMessage(
-      { text: input },
-      {
-        body: {
-          clientContext
-        }
-      }
-    )
+    // Client context is automatically included via prepareSendMessagesRequest
+    sendMessage({ text: input })
     setInput('')
-  }, [input, isLoading, sendMessage, currentClient])
+  }, [input, isLoading, sendMessage])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
