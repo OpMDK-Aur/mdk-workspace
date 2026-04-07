@@ -1,16 +1,14 @@
 'use client'
 
-import type { DashboardKPIs, Client, DateRange } from '@/lib/types'
+import type { DashboardKPIs } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
-import { TrendingUp, TrendingDown, Minus, DollarSign, Target, Calculator } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus, DollarSign, Target, Calculator, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { GHLContactsCard, GHLComingSoonCard } from './ghl-contacts-card'
+import Link from 'next/link'
 
 interface KPICardsProps {
   kpis: DashboardKPIs
   loading?: boolean
-  ghlClient?: Client | null
-  dateRange: DateRange
 }
 
 function formatCurrency(value: number): string {
@@ -95,7 +93,7 @@ function KPICard({ label, value, trend, trendSuffix = '%', invertPositive = fals
   )
 }
 
-export function KPICards({ kpis, loading, ghlClient, dateRange }: KPICardsProps) {
+export function KPICards({ kpis, loading }: KPICardsProps) {
   if (loading) return <KPISkeleton />
 
   return (
@@ -125,10 +123,21 @@ export function KPICards({ kpis, loading, ghlClient, dateRange }: KPICardsProps)
         iconBg="bg-status-amarillo/10 dark:bg-status-amarillo/15"
         accentBar="bg-status-amarillo"
       />
-      {ghlClient?.crm_type === 'ghl' && ghlClient.ghl_location_id && ghlClient.ghl_token
-        ? <GHLContactsCard client={ghlClient} dateRange={dateRange} />
-        : <GHLComingSoonCard />
-      }
+      <Link href="/dashboard/crm" className="block">
+        <Card className="overflow-hidden relative border-border/60 hover:border-primary/50 transition-colors cursor-pointer group">
+          <div className="h-0.5 w-full absolute top-0 left-0 bg-violet-500" />
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between mb-4">
+              <p className="text-sm text-muted-foreground font-medium">CRM</p>
+              <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0 bg-violet-500/10 dark:bg-violet-500/15">
+                <Users className="h-4 w-4 text-violet-400" />
+              </div>
+            </div>
+            <p className="text-lg font-semibold text-foreground mb-2 group-hover:text-primary transition-colors">Ver oportunidades y contactos</p>
+            <span className="text-xs text-muted-foreground">Ir al panel de CRM</span>
+          </CardContent>
+        </Card>
+      </Link>
     </div>
   )
 }
