@@ -4,8 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 export const dynamic = 'force-dynamic'
 
 const MAX_PAGES = 50 // Safety limit to prevent infinite loops
-const PAGE_SIZE = 500
-const DELAY_BETWEEN_REQUESTS = 200 // ms delay between pagination requests
+const PAGE_SIZE = 100 // Use smaller page size to avoid issues
+const DELAY_BETWEEN_REQUESTS = 300 // ms delay between pagination requests
 const MAX_RETRIES = 3
 
 // Helper to delay execution
@@ -91,24 +91,29 @@ export async function GET(req: NextRequest) {
 
     const url = 'https://services.leadconnectorhq.com/opportunities/search'
     const allOpportunities: GHLOpportunity[] = []
-    let currentPage = 1
+    let currentPage = 0
+    let searchAfter: string[] | undefined = undefined
     let hasMorePages = true
-    let totalPages = 0
 
     console.log(`[v0] GHL Opportunities: Starting pagination for client ${client.business_name}`)
 
-    // Paginate through all opportunities
-    while (hasMorePages && currentPage <= MAX_PAGES) {
-      const body = {
+    // Paginate through all opportunities using searchAfter
+    while (hasMorePages && currentPage < MAX_PAGES) {
+      // Build request body - GHL uses searchAfter for pagination, not page number
+      const body: Record<string, unknown> = {
         locationId: client.ghl_location_id,
         limit: PAGE_SIZE,
-        page: currentPage,
       }
 
-      console.log(`[v0] GHL Opportunities: Fetching page ${currentPage}`)
+      // Add searchAfter for pagination (after first request)
+      if (searchAfter && searchAfter.length > 0) {
+        body.searchAfter = searchAfter
+      }
+
+      console.log(`[v0] GHL Opportunities: Fetching page ${currentPage + 1}, searchAfter=${searchAfter ? JSON.stringify(searchAfter) : 'none'}`)
 
       // Add delay between requests to avoid rate limiting (except first request)
-      if (currentPage > 1) {
+      if (currentPage > 0) {
         await delay(DELAY_BETWEEN_REQUESTS)
       }
 
@@ -126,21 +131,30 @@ export async function GET(req: NextRequest) {
           cache: 'no-store',
         })
       } catch (err) {
-        console.error(`[v0] GHL Opportunities: Network error on page ${currentPage}:`, err)
+        console.error(`[v0] GHL Opportunities: Network error on page ${currentPage + 1}:`, err)
         return NextResponse.json({ error: `Error de red al conectar con GHL: ${err}` }, { status: 502 })
       }
 
       if (!res.ok) {
         let msg = `GHL HTTP ${res.status}`
-        try { const errBody = await res.json(); msg = errBody?.message ?? errBody?.error ?? JSON.stringify(errBody) } catch { /* ignore */ }
-        console.error(`[v0] GHL Opportunities: HTTP error on page ${currentPage}: ${msg}`)
+        try { 
+          const errBody = await res.json()
+          msg = errBody?.message ?? errBody?.error ?? JSON.stringify(errBody) 
+        } catch { /* ignore */ }
+        console.error(`[v0] GHL Opportunities: HTTP error on page ${currentPage + 1}: ${msg}`)
+        
+        // If we already have some data, return what we have instead of failing completely
+        if (allOpportunities.length > 0) {
+          console.log(`[v0] GHL Opportunities: Returning partial data (${allOpportunities.length} opportunities)`)
+          break
+        }
         return NextResponse.json({ error: msg }, { status: res.status })
       }
 
       const json: GHLOpportunitiesResponse = await res.json()
       const pageOpportunities = json.opportunities ?? []
 
-      console.log(`[v0] GHL Opportunities: Page ${currentPage} returned ${pageOpportunities.length} opportunities`)
+      console.log(`[v0] GHL Opportunities: Page ${currentPage + 1} returned ${pageOpportunities.length} opportunities`)
 
       // Map and accumulate opportunities
       for (const o of pageOpportunities) {
@@ -164,20 +178,24 @@ export async function GET(req: NextRequest) {
         })
       }
 
-      totalPages = currentPage
+      currentPage++
 
       // Check if there are more pages
-      // Stop if: no results, less than PAGE_SIZE results, or no nextPage in meta
+      // Stop if: no results, less than PAGE_SIZE results
       if (pageOpportunities.length === 0 || pageOpportunities.length < PAGE_SIZE) {
         hasMorePages = false
-      } else if (json.meta?.nextPage === null || json.meta?.nextPage === undefined) {
-        hasMorePages = false
       } else {
-        currentPage++
+        // Get the last opportunity's ID for searchAfter pagination
+        const lastOpp = pageOpportunities[pageOpportunities.length - 1]
+        if (lastOpp?.id) {
+          searchAfter = [lastOpp.id]
+        } else {
+          hasMorePages = false
+        }
       }
     }
 
-    console.log(`[v0] GHL Opportunities: Pagination complete. Total pages: ${totalPages}, Total accumulated: ${allOpportunities.length}`)
+    console.log(`[v0] GHL Opportunities: Pagination complete. Total pages: ${currentPage}, Total accumulated: ${allOpportunities.length}`)
 
     // Filter by createdAt locally AFTER getting all pages
     let opportunities = allOpportunities
@@ -212,7 +230,7 @@ export async function GET(req: NextRequest) {
       opportunities,
       total: opportunities.length,
       totalUnfiltered: allOpportunities.length,
-      pages: totalPages,
+      pages: currentPage,
     }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate',
