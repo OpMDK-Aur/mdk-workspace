@@ -53,8 +53,8 @@ function getDateBoundsFromRange(dateRange: DateRange) {
   return { startDate: pad(start), endDate: pad(today) }
 }
 
-interface Filters { name: string; email: string; phone: string; source: string; tag: string; dateFrom: string; dateTo: string }
-const EMPTY: Filters = { name: '', email: '', phone: '', source: '', tag: '', dateFrom: '', dateTo: '' }
+interface Filters { name: string; email: string; phone: string; source: string; tag: string }
+const EMPTY: Filters = { name: '', email: '', phone: '', source: '', tag: '' }
 
 export function GHLContactsCard({ client, dateRange }: { client: Client; dateRange: DateRange }) {
   const [contacts, setContacts]       = useState<GHLContact[]>([])
@@ -132,12 +132,6 @@ export function GHLContactsCard({ client, dateRange }: { client: Client; dateRan
     if (filters.phone  && !(c.phone  ?? '').toLowerCase().includes(filters.phone.toLowerCase())) return false
     if (filters.source && (c.source ?? '') !== filters.source) return false
     if (filters.tag    && !c.tags.includes(filters.tag)) return false
-    if (filters.dateFrom && c.dateAdded) {
-      if (new Date(c.dateAdded) < new Date(filters.dateFrom + 'T00:00:00')) return false
-    }
-    if (filters.dateTo && c.dateAdded) {
-      if (new Date(c.dateAdded) > new Date(filters.dateTo + 'T23:59:59')) return false
-    }
     return true
   }), [contacts, filters])
 
@@ -198,17 +192,6 @@ export function GHLContactsCard({ client, dateRange }: { client: Client; dateRan
                 <Input placeholder="Telefono..." value={filters.phone}
                   onChange={e => setFilters(f => ({ ...f, phone: e.target.value }))}
                   className="h-7 text-xs" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Creado el</p>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <Input type="date" value={filters.dateFrom}
-                    onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
-                    className="h-7 text-xs" />
-                  <Input type="date" value={filters.dateTo}
-                    onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value }))}
-                    className="h-7 text-xs" />
-                </div>
               </div>
             </div>
 
