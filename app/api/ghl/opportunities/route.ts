@@ -5,6 +5,31 @@ export const dynamic = 'force-dynamic'
 
 const MAX_PAGES = 50 // Safety limit to prevent infinite loops
 const PAGE_SIZE = 500
+const DELAY_BETWEEN_REQUESTS = 200 // ms delay between pagination requests
+const MAX_RETRIES = 3
+
+// Helper to delay execution
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+// Helper to fetch with retry and backoff for rate limiting
+async function fetchWithRetry(url: string, options: RequestInit, retries = MAX_RETRIES): Promise<Response> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const res = await fetch(url, options)
+    
+    if (res.status === 429) {
+      // Rate limited - wait and retry with exponential backoff
+      const waitTime = Math.pow(2, attempt) * 1000 // 2s, 4s, 8s
+      console.log(`[v0] GHL rate limited, waiting ${waitTime}ms before retry ${attempt}/${retries}`)
+      await delay(waitTime)
+      continue
+    }
+    
+    return res
+  }
+  
+  // Final attempt after all retries
+  return fetch(url, options)
+}
 
 export interface GHLOpportunity {
   id: string
@@ -82,9 +107,14 @@ export async function GET(req: NextRequest) {
 
       console.log(`[v0] GHL Opportunities: Fetching page ${currentPage}`)
 
+      // Add delay between requests to avoid rate limiting (except first request)
+      if (currentPage > 1) {
+        await delay(DELAY_BETWEEN_REQUESTS)
+      }
+
       let res: Response
       try {
-        res = await fetch(url, {
+        res = await fetchWithRetry(url, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${client.ghl_token}`,
