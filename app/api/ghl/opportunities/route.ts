@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
     const body = {
       locationId: client.ghl_location_id,
       limit: 500,
+      page: 20
     }
 
     const url = 'https://services.leadconnectorhq.com/opportunities/search'
@@ -139,8 +140,8 @@ export async function GET(req: NextRequest) {
     })
   } catch (error) {
     console.error('[v0] GHL opportunities API error:', error)
-    return NextResponse.json({ 
-      error: error instanceof Error ? error.message : 'Error interno del servidor' 
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'Error interno del servidor'
     }, { status: 500 })
   }
 }
