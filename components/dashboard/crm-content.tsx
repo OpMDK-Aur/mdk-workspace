@@ -484,12 +484,12 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
               </div>
 
               {/* Source filter */}
-              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+              <Select value={sourceFilter || 'all'} onValueChange={v => setSourceFilter(v === 'all' ? '' : v)}>
                 <SelectTrigger className="w-[180px] h-9">
                   <SelectValue placeholder="Fuente" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todas las fuentes</SelectItem>
+                  <SelectItem value="all">Todas las fuentes</SelectItem>
                   {uniqueSources.map(src => (
                     <SelectItem key={src} value={src}>{src}</SelectItem>
                   ))}
@@ -497,12 +497,12 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
               </Select>
 
               {/* Status filter */}
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter || 'all'} onValueChange={v => setStatusFilter(v === 'all' ? '' : v)}>
                 <SelectTrigger className="w-[150px] h-9">
                   <SelectValue placeholder="Estado" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos los estados</SelectItem>
+                  <SelectItem value="all">Todos los estados</SelectItem>
                   {uniqueStatuses.map(st => {
                     const badge = getStatusBadge(st)
                     return <SelectItem key={st} value={st}>{badge.label}</SelectItem>
@@ -512,12 +512,12 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
 
               {/* Tag filter */}
               {uniqueTags.length > 0 && (
-                <Select value={tagFilter} onValueChange={setTagFilter}>
+                <Select value={tagFilter || 'all'} onValueChange={v => setTagFilter(v === 'all' ? '' : v)}>
                   <SelectTrigger className="w-[150px] h-9">
                     <SelectValue placeholder="Etiqueta" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todas las etiquetas</SelectItem>
+                    <SelectItem value="all">Todas las etiquetas</SelectItem>
                     {uniqueTags.map(tag => (
                       <SelectItem key={tag} value={tag}>{tag}</SelectItem>
                     ))}
