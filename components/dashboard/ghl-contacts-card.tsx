@@ -78,7 +78,13 @@ export function GHLContactsCard({ client, dateRange }: { client: Client; dateRan
 
     try {
       const res  = await fetch(`/api/ghl/contacts?${params}`)
-      const data: GHLResponse = await res.json()
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `HTTP ${res.status}`)
+      }
+      const text = await res.text()
+      if (!text) throw new Error('Respuesta vacía del servidor')
+      const data: GHLResponse = JSON.parse(text)
       if (data.error) throw new Error(data.error)
       setContacts(prev => append ? [...prev, ...data.contacts] : data.contacts)
       setTotal(data.total)

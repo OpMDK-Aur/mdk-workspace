@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
   const maxContacts = parseInt(searchParams.get('limit') ?? '0') || 0
   const startDate = searchParams.get('startDate') ?? undefined
   const endDate = searchParams.get('endDate') ?? undefined
+  const startAfter = searchParams.get('startAfter') ?? undefined
 
   if (!clientId) return NextResponse.json({ error: 'client_id requerido' }, { status: 400 })
 
