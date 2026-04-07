@@ -220,18 +220,18 @@ export function Sidebar({
                 Clientes
               </h3>
               <div className="space-y-1">
-                <button
-                  onClick={() => onSelectClient(null)}
+                <Link
+                  href="/dashboard/clients"
                   className={cn(
                     'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                    selectedClientId === null
+                    pathname === '/dashboard/clients'
                       ? 'bg-muted font-medium text-foreground'
                       : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                   )}
                 >
                   <Rocket className="h-3.5 w-3.5" />
                   <span>Todos los clientes</span>
-                </button>
+                </Link>
                 {clients.slice(0, 10).map((client) => {
                   const clientHref = `/dashboard/clients/${client.id}`
                   const isClientPage = pathname === clientHref
