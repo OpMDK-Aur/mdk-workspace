@@ -79,7 +79,10 @@ export async function GET(req: NextRequest) {
       locationId: client.ghl_location_id,
       limit: String(GHL_PAGE_SIZE),
     })
-    if (currentStartAfter) params.set('startAfter', currentStartAfter)
+    // Only add startAfter if it's a valid numeric timestamp
+    if (currentStartAfter && /^\d+$/.test(currentStartAfter)) {
+      params.set('startAfter', currentStartAfter)
+    }
 
     const url = `${GHL_BASE}/contacts/?${params}`
 
@@ -123,18 +126,15 @@ export async function GET(req: NextRequest) {
     totalUnfiltered = json.meta?.total ?? allContacts.length
     pageCount++
 
-    const nextCursor =
-      json.meta?.startAfterId ??
-      json.meta?.startAfter ??
-      null
+    // GHL pagination uses startAfter (numeric timestamp) - prefer this over startAfterId
+    const nextStartAfterNum = json.meta?.startAfter ?? null
+    lastNextStartAfter = nextStartAfterNum
+    lastNextStartAfterId = json.meta?.startAfterId ?? null
 
-    lastNextStartAfter    = typeof nextCursor === 'number' ? nextCursor : null
-    lastNextStartAfterId  = typeof nextCursor === 'string' ? nextCursor : null
-
-    if (!nextCursor || page.length < GHL_PAGE_SIZE) break
+    if (!nextStartAfterNum || page.length < GHL_PAGE_SIZE) break
     if (maxContacts > 0 && allContacts.length >= maxContacts) break
 
-    currentStartAfter = String(nextCursor)
+    currentStartAfter = String(nextStartAfterNum)
   }
 
   const totalFetched = allContacts.length
