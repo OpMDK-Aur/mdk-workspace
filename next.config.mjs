@@ -17,6 +17,14 @@ const nextConfig = {
   turbopack: {
     root: __dirname,
   },
+  webpack: (config, { isServer }) => {
+    // Suppress webpack cache serialization warning for big strings
+    config.infrastructureLogging = {
+      ...config.infrastructureLogging,
+      level: 'error',
+    }
+    return config
+  },
 }
 
 export default nextConfig
