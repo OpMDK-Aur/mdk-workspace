@@ -204,7 +204,7 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
       <button
         onClick={() => setIsOpen(true)}
         className={cn(
-          'fixed bottom-4 left-4 z-[9999]',
+          'fixed bottom-4 right-4 z-[9999]',
           'flex items-center gap-2.5 px-4 py-3',
           'bg-gradient-to-r from-violet-600 to-purple-600',
           'hover:from-violet-500 hover:to-purple-500',
@@ -229,8 +229,8 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
         'bg-card border border-border/60 rounded-2xl shadow-2xl',
         'transition-all duration-300 ease-out',
         isExpanded
-          ? 'bottom-4 left-4 w-[500px] h-[calc(100vh-100px)] max-h-[700px]'
-          : 'bottom-4 left-4 w-[360px] h-[480px]'
+          ? 'bottom-4 right-4 w-[500px] h-[calc(100vh-100px)] max-h-[700px]'
+          : 'bottom-4 right-4 w-[360px] h-[480px]'
       )}
     >
       {/* Header */}
