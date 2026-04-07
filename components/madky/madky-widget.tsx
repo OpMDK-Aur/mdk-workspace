@@ -103,17 +103,31 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
   // Internal client selection - defaults to selectedClient from props or first available client
   const [internalClientId, setInternalClientId] = useState<string | null>(null)
   
-  // Sync internal client with prop when it changes
+  // Initialize client on mount or when clients change
   useEffect(() => {
-    if (selectedClient?.id && !internalClientId) {
+    // If no internal client selected yet
+    if (!internalClientId) {
+      // First priority: selectedClient from props
+      if (selectedClient?.id) {
+        setInternalClientId(selectedClient.id)
+      // Second priority: first available client
+      } else if (allClients.length > 0) {
+        setInternalClientId(allClients[0].id)
+      }
+    }
+  }, [selectedClient?.id, allClients, internalClientId])
+  
+  // Sync with selectedClient when it changes externally
+  useEffect(() => {
+    if (selectedClient?.id && selectedClient.id !== internalClientId) {
       setInternalClientId(selectedClient.id)
     }
   }, [selectedClient?.id, internalClientId])
   
   // Get the current client object
   const currentClient = internalClientId 
-    ? allClients.find(c => c.id === internalClientId) ?? selectedClient
-    : selectedClient
+    ? allClients.find(c => c.id === internalClientId) ?? null
+    : null
 
   const { messages, sendMessage, status, setMessages } = useChat({
     transport: new DefaultChatTransport({ 
@@ -190,7 +204,7 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
       <button
         onClick={() => setIsOpen(true)}
         className={cn(
-          'fixed bottom-6 left-6 z-50',
+          'fixed bottom-4 left-4 z-[9999]',
           'flex items-center gap-2.5 px-4 py-3',
           'bg-gradient-to-r from-violet-600 to-purple-600',
           'hover:from-violet-500 hover:to-purple-500',
@@ -215,8 +229,8 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
         'bg-card border border-border/60 rounded-2xl shadow-2xl',
         'transition-all duration-300 ease-out',
         isExpanded
-          ? 'bottom-6 left-6 right-6 top-6 md:left-6 md:w-[600px] md:top-20 md:bottom-6'
-          : 'bottom-6 left-6 w-[380px] h-[500px] max-h-[80vh] md:w-[400px]'
+          ? 'bottom-4 left-4 w-[500px] h-[calc(100vh-100px)] max-h-[700px]'
+          : 'bottom-4 left-4 w-[360px] h-[480px]'
       )}
     >
       {/* Header */}
