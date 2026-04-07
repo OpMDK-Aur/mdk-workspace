@@ -1,0 +1,280 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* ─── LIGHT MODE ───────────────────────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --background:          oklch(0.975 0.004 60);   /* warm off-white, never pure white */
+  --foreground:          oklch(0.13 0.01 50);      /* very dark warm brown */
+  --card:                oklch(1 0 0);
+  --card-foreground:     oklch(0.13 0.01 50);
+  --popover:             oklch(1 0 0);
+  --popover-foreground:  oklch(0.13 0.01 50);
+
+  /* Brand primary — warm orange */
+  --primary:             oklch(0.68 0.19 48);
+  --primary-foreground:  oklch(1 0 0);
+
+  /* Secondary / subtle fills */
+  --secondary:           oklch(0.96 0.008 55);
+  --secondary-foreground:oklch(0.25 0.01 50);
+
+  /* Muted — warm light gray */
+  --muted:               oklch(0.95 0.006 55);
+  --muted-foreground:    oklch(0.48 0.01 50);
+
+  /* Accent = primary */
+  --accent:              oklch(0.68 0.19 48);
+  --accent-foreground:   oklch(1 0 0);
+
+  /* Semantic */
+  --destructive:         oklch(0.56 0.22 25);
+  --destructive-foreground: oklch(1 0 0);
+
+  /* Structure */
+  --border:              oklch(0.88 0.006 55);
+  --input:               oklch(0.91 0.005 55);
+  --ring:                oklch(0.68 0.19 48);
+  --radius:              0.625rem;
+
+  /* Charts */
+  --chart-1: oklch(0.68 0.19 48);
+  --chart-2: oklch(0.58 0.15 145);
+  --chart-3: oklch(0.55 0.13 250);
+  --chart-4: oklch(0.62 0.18 30);
+  --chart-5: oklch(0.52 0.12 310);
+
+  /* Sidebar */
+  --sidebar:                  oklch(0.99 0.003 55);
+  --sidebar-foreground:       oklch(0.13 0.01 50);
+  --sidebar-primary:          oklch(0.68 0.19 48);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent:           oklch(0.95 0.014 50);
+  --sidebar-accent-foreground: oklch(0.68 0.19 48);
+  --sidebar-border:           oklch(0.90 0.005 55);
+  --sidebar-ring:             oklch(0.68 0.19 48);
+
+  /* MDK Status */
+  --status-verde:    oklch(0.57 0.15 148);
+  --status-amarillo: oklch(0.72 0.17 88);
+  --status-naranja:  oklch(0.68 0.19 48);
+  --status-rojo:     oklch(0.54 0.21 24);
+
+  /* Surface elevation tokens */
+  --surface-1: oklch(0.975 0.004 60);
+  --surface-2: oklch(0.99 0.002 55);
+  --surface-3: oklch(1 0 0);
+}
+
+/* ─── DARK MODE ────────────────────────────────────────────────────────────── */
+.dark {
+  /* Surfaces — layered depth, not just grey soup */
+  --background:          oklch(0.12 0.008 250);   /* very dark navy-near-black */
+  --foreground:          oklch(0.94 0.006 55);    /* warm white */
+  --card:                oklch(0.17 0.008 250);   /* slight navy tint */
+  --card-foreground:     oklch(0.94 0.006 55);
+  --popover:             oklch(0.19 0.008 250);
+  --popover-foreground:  oklch(0.94 0.006 55);
+
+  /* Brand primary — slightly brighter in dark */
+  --primary:             oklch(0.73 0.18 50);
+  --primary-foreground:  oklch(0.10 0.01 50);
+
+  /* Secondary */
+  --secondary:           oklch(0.22 0.008 250);
+  --secondary-foreground:oklch(0.90 0.006 55);
+
+  /* Muted — enough contrast for labels, not washed out */
+  --muted:               oklch(0.22 0.008 250);
+  --muted-foreground:    oklch(0.62 0.006 50);
+
+  /* Accent */
+  --accent:              oklch(0.73 0.18 50);
+  --accent-foreground:   oklch(0.10 0.01 50);
+
+  /* Semantic */
+  --destructive:         oklch(0.60 0.22 24);
+  --destructive-foreground: oklch(0.97 0 0);
+
+  /* Structure */
+  --border:              oklch(0.27 0.010 250);
+  --input:               oklch(0.24 0.010 250);
+  --ring:                oklch(0.73 0.18 50);
+
+  /* Charts */
+  --chart-1: oklch(0.73 0.18 50);
+  --chart-2: oklch(0.62 0.16 145);
+  --chart-3: oklch(0.60 0.14 250);
+  --chart-4: oklch(0.68 0.19 30);
+  --chart-5: oklch(0.58 0.13 310);
+
+  /* Sidebar — slightly deeper than card */
+  --sidebar:                  oklch(0.15 0.008 250);
+  --sidebar-foreground:       oklch(0.90 0.006 55);
+  --sidebar-primary:          oklch(0.73 0.18 50);
+  --sidebar-primary-foreground: oklch(0.10 0.01 50);
+  --sidebar-accent:           oklch(0.22 0.015 50);
+  --sidebar-accent-foreground: oklch(0.73 0.18 50);
+  --sidebar-border:           oklch(0.24 0.009 250);
+  --sidebar-ring:             oklch(0.73 0.18 50);
+
+  /* MDK Status — vivid enough for dark bg */
+  --status-verde:    oklch(0.65 0.17 148);
+  --status-amarillo: oklch(0.78 0.16 88);
+  --status-naranja:  oklch(0.73 0.18 50);
+  --status-rojo:     oklch(0.64 0.20 24);
+
+  /* Surface elevation tokens */
+  --surface-1: oklch(0.12 0.008 250);
+  --surface-2: oklch(0.17 0.008 250);
+  --surface-3: oklch(0.22 0.008 250);
+}
+
+@theme inline {
+  --font-sans: 'Geist', 'Geist Fallback';
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* MDK Brand & Status */
+  --color-status-verde:    var(--status-verde);
+  --color-status-amarillo: var(--status-amarillo);
+  --color-status-naranja:  var(--status-naranja);
+  --color-status-rojo:     var(--status-rojo);
+
+  /* Surface elevation */
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  /* Improve heading hierarchy */
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight;
+  }
+  /* Smooth scrollbar in dark mode */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/30;
+  }
+}
+
+/* ─── STATUS BADGE STYLES ──────────────────────────────────────────────────── */
+.status-verde    { @apply bg-status-verde/10    text-status-verde    border-status-verde/25; }
+.status-amarillo { @apply bg-status-amarillo/10 text-status-amarillo border-status-amarillo/25; }
+.status-naranja  { @apply bg-status-naranja/10  text-status-naranja  border-status-naranja/25; }
+.status-rojo     { @apply bg-status-rojo/10     text-status-rojo     border-status-rojo/25; }
+
+/* ─── CARD HOVER ELEVATION ─────────────────────────────────────────────────── */
+.card-hover {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.card-hover:hover {
+  box-shadow: 0 4px 20px -4px oklch(0 0 0 / 0.12);
+  transform: translateY(-1px);
+}
+.dark .card-hover:hover {
+  box-shadow: 0 4px 24px -4px oklch(0 0 0 / 0.5);
+}
+
+/* ─── GLASS SURFACE (for modals, popovers) ─────────────────────────────────── */
+.glass {
+  backdrop-filter: blur(12px) saturate(1.5);
+  background: oklch(1 0 0 / 0.06);
+  border: 1px solid oklch(1 0 0 / 0.12);
+}
+.dark .glass {
+  background: oklch(1 0 0 / 0.04);
+  border: 1px solid oklch(1 0 0 / 0.08);
+}
+
+/* ─── ONBOARDING ANIMATIONS ────────────────────────────────────────────────── */
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0px) translateX(0px) rotate(-3deg); }
+  33%       { transform: translateY(-14px) translateX(8px) rotate(0deg); }
+  66%       { transform: translateY(-22px) translateX(-4px) rotate(4deg); }
+}
+@keyframes float-delayed {
+  0%, 100% { transform: translateY(0px) rotate(8deg); }
+  50%       { transform: translateY(-28px) rotate(-4deg); }
+}
+@keyframes float-reverse {
+  0%, 100% { transform: translateY(-8px) rotate(-8deg); }
+  50%       { transform: translateY(10px) rotate(8deg); }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.animate-float-slow    { animation: float-slow    8s ease-in-out infinite; }
+.animate-float-delayed { animation: float-delayed 6s ease-in-out infinite 2s; }
+.animate-float-reverse { animation: float-reverse 10s ease-in-out infinite; }
+.animate-fade-up       { animation: fade-up   0.5s ease-out both; }
+.animate-scale-in      { animation: scale-in  0.4s ease-out both; }
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, oklch(1 0 0 / 0.08) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
