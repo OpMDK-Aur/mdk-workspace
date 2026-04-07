@@ -38,18 +38,21 @@ interface GHLContactsResponse {
 }
 
 export async function GET(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
-  const { searchParams } = req.nextUrl
-  const clientId = searchParams.get('client_id')
-  const maxContacts = parseInt(searchParams.get('limit') ?? '0') || 0
-  const startDate = searchParams.get('startDate') ?? undefined
-  const endDate = searchParams.get('endDate') ?? undefined
-  const startAfter = searchParams.get('startAfter') ?? undefined
+    const { searchParams } = req.nextUrl
+    const clientId = searchParams.get('client_id')
+    const maxContacts = parseInt(searchParams.get('limit') ?? '0') || 0
+    const startDate = searchParams.get('startDate') ?? undefined
+    const endDate = searchParams.get('endDate') ?? undefined
+    const startAfter = searchParams.get('startAfter') ?? undefined
 
-  if (!clientId) return NextResponse.json({ error: 'client_id requerido' }, { status: 400 })
+    console.log(`[v0] GHL API called with client_id=${clientId}, startDate=${startDate}, endDate=${endDate}`)
+
+    if (!clientId) return NextResponse.json({ error: 'client_id requerido' }, { status: 400 })
 
   // Load client CRM credentials from Supabase
   const { data: client, error: clientErr } = await supabase
@@ -185,4 +188,10 @@ export async function GET(req: NextRequest) {
       'Cache-Control': 'no-store, no-cache, must-revalidate',
     },
   })
+  } catch (error) {
+    console.error('[v0] GHL contacts API error:', error)
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Error interno del servidor' 
+    }, { status: 500 })
+  }
 }
