@@ -100,26 +100,69 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   
-  // Internal client selection - defaults to selectedClient from props or first available client
-  const [internalClientId, setInternalClientId] = useState<string | null>(null)
+  // Internal client selection - syncs with dashboard selection
+  const [internalClientId, setInternalClientId] = useState<string | null>(
+    () => selectedClient?.id ?? (allClients.length > 0 ? allClients[0].id : null)
+  )
   
-  // Sync internal client with prop when it changes
+  // Update internalClientId when allClients loads and we don't have a selection yet
   useEffect(() => {
-    if (selectedClient?.id && !internalClientId) {
-      setInternalClientId(selectedClient.id)
+    if (!internalClientId && allClients.length > 0) {
+      setInternalClientId(allClients[0].id)
     }
-  }, [selectedClient?.id, internalClientId])
+  }, [allClients, internalClientId])
   
   // Get the current client object
   const currentClient = internalClientId 
-    ? allClients.find(c => c.id === internalClientId) ?? selectedClient
-    : selectedClient
-
+    ? allClients.find(c => c.id === internalClientId) ?? null
+    : null
+  
+  // Use a ref to always have the latest client context for the transport
+  const clientContextRef = useRef<{ clientId: string; clientName: string; plan?: string | null; status?: string | null } | null>(null)
+  
+  // Keep clientContextRef in sync with currentClient
+  useEffect(() => {
+    clientContextRef.current = currentClient ? {
+      clientId: currentClient.id,
+      clientName: currentClient.business_name,
+      plan: currentClient.plan,
+      status: currentClient.status,
+    } : null
+  }, [currentClient])
+  
   const { messages, sendMessage, status, setMessages } = useChat({
     transport: new DefaultChatTransport({ 
       api: '/api/madky/chat',
+      prepareSendMessagesRequest: ({ messages }) => ({
+        body: {
+          messages,
+          clientContext: clientContextRef.current,
+        },
+      }),
     }),
   })
+
+  // Sync with selectedClient when it changes externally from dashboard
+  const prevSelectedClientId = useRef<string | null>(selectedClient?.id ?? null)
+  useEffect(() => {
+    // Only sync if the dashboard selection actually changed (not on initial render)
+    if (selectedClient?.id && selectedClient.id !== prevSelectedClientId.current) {
+      prevSelectedClientId.current = selectedClient.id
+      setInternalClientId(selectedClient.id)
+      // Clear conversation when client changes from dashboard
+      setMessages([])
+    }
+  }, [selectedClient?.id, setMessages])
+  
+  // Handle client change from the widget selector
+  const handleClientChange = (newClientId: string) => {
+    if (newClientId !== internalClientId) {
+      setInternalClientId(newClientId)
+      setMessages([]) // Clear conversation for new client
+      setPresentationSlides(null)
+      setViewMode('chat')
+    }
+  }
 
   const isLoading = status === 'streaming' || status === 'submitted'
 
@@ -154,22 +197,10 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
     e.preventDefault()
     if (!input.trim() || isLoading) return
     
-    // Send message with current client context in the body
-    sendMessage(
-      { text: input },
-      {
-        body: {
-          clientContext: currentClient ? {
-            clientId: currentClient.id,
-            clientName: currentClient.business_name,
-            plan: currentClient.plan,
-            status: currentClient.status,
-          } : null
-        }
-      }
-    )
+    // Client context is automatically included via prepareSendMessagesRequest
+    sendMessage({ text: input })
     setInput('')
-  }, [input, isLoading, sendMessage, currentClient])
+  }, [input, isLoading, sendMessage])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -190,7 +221,7 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
       <button
         onClick={() => setIsOpen(true)}
         className={cn(
-          'fixed bottom-6 left-6 z-50',
+          'fixed bottom-4 right-4 z-[9999]',
           'flex items-center gap-2.5 px-4 py-3',
           'bg-gradient-to-r from-violet-600 to-purple-600',
           'hover:from-violet-500 hover:to-purple-500',
@@ -215,8 +246,8 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
         'bg-card border border-border/60 rounded-2xl shadow-2xl',
         'transition-all duration-300 ease-out',
         isExpanded
-          ? 'bottom-6 left-6 right-6 top-6 md:left-6 md:w-[600px] md:top-20 md:bottom-6'
-          : 'bottom-6 left-6 w-[380px] h-[500px] max-h-[80vh] md:w-[400px]'
+          ? 'bottom-4 right-4 w-[500px] h-[calc(100vh-100px)] max-h-[700px]'
+          : 'bottom-4 right-4 w-[360px] h-[480px]'
       )}
     >
       {/* Header */}
@@ -225,34 +256,30 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
           <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
             <Sparkles className="h-5 w-5 text-white" />
           </div>
-          <div className="flex flex-col gap-0.5">
+          <div className="flex flex-col gap-1">
             <h3 className="font-semibold text-foreground text-sm">Madky</h3>
             {/* Client selector */}
-            {allClients.length > 0 ? (
-              <Select 
-                value={internalClientId ?? ''} 
-                onValueChange={(val) => setInternalClientId(val || null)}
-              >
-                <SelectTrigger className="h-6 w-[160px] border-0 bg-transparent p-0 text-xs text-muted-foreground hover:text-foreground focus:ring-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-status-verde animate-pulse" />
-                    <SelectValue placeholder="Seleccionar cliente" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {allClients.map(client => (
-                    <SelectItem key={client.id} value={client.id}>
-                      <div className="flex items-center gap-2">
-                        <Building2 className="h-3 w-3" />
-                        {client.business_name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <span className="text-xs text-muted-foreground">Sin clientes disponibles</span>
-            )}
+            <Select 
+              value={internalClientId ?? ''} 
+              onValueChange={(val) => val && handleClientChange(val)}
+            >
+              <SelectTrigger className="h-7 w-[180px] border border-border bg-background px-2 text-xs hover:bg-muted focus:ring-1 focus:ring-violet-500/50 rounded-md">
+                <div className="flex items-center gap-2 truncate">
+                  <Building2 className="h-3 w-3 text-violet-500 shrink-0" />
+                  <SelectValue placeholder={allClients.length > 0 ? "Seleccionar cliente" : "Cargando..."} />
+                </div>
+              </SelectTrigger>
+              <SelectContent className="max-h-[300px] z-[10000]">
+                {allClients.map(client => (
+                  <SelectItem key={client.id} value={client.id}>
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{client.business_name}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -310,13 +337,6 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
                   Tu analista de marketing. Preguntame sobre el rendimiento de tus clientes, 
                   pedime análisis o generá presentaciones.
                 </p>
-                {currentClient && (
-                  <div className="mt-4 px-3 py-1.5 bg-violet-500/10 rounded-full">
-                    <span className="text-xs text-violet-400">
-                      Analizando: {currentClient.business_name}
-                    </span>
-                  </div>
-                )}
                 <div className="mt-6 flex flex-col gap-2 w-full max-w-[280px]">
                   <button
                     onClick={() => setInput('Dame un resumen del rendimiento de este cliente')}

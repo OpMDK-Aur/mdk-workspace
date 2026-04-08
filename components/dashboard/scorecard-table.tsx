@@ -277,24 +277,38 @@ export function ScorecardTable({
     )
   }, [selectedScorecardCampaignIds, onSelectScorecardCampaigns])
 
+  const [aiError, setAiError] = useState<string | null>(null)
+
   const handleAIRequest = useCallback(async () => {
     if (!aiPrompt.trim()) return
     setAiLoading(true)
     setAiExplanation(null)
+    setAiError(null)
     try {
+      console.log('[v0] Scorecard: Sending AI request with prompt:', aiPrompt)
       const res = await fetch('/api/scorecard/columns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: aiPrompt, currentColumns: columns }),
       })
       const data = await res.json()
+      console.log('[v0] Scorecard: AI response:', data)
+      
+      if (!res.ok) {
+        setAiError(data.error || 'Error al procesar la solicitud')
+        return
+      }
+      
       if (data.columns) {
         setColumns(data.columns)
         setAiExplanation(data.explanation)
         setAiPrompt('')
+      } else {
+        setAiError('Respuesta invalida de la IA')
       }
     } catch (err) {
-      console.error('AI column edit error:', err)
+      console.error('[v0] AI column edit error:', err)
+      setAiError('Error de conexion')
     } finally {
       setAiLoading(false)
     }
@@ -474,6 +488,11 @@ export function ScorecardTable({
                 {aiExplanation && (
                   <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
                     <p className="text-xs text-foreground">{aiExplanation}</p>
+                  </div>
+                )}
+                {aiError && (
+                  <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+                    <p className="text-xs text-destructive">{aiError}</p>
                   </div>
                 )}
                 <div className="flex gap-2">

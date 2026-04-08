@@ -89,15 +89,21 @@ async function fetchClientData(clientId: string) {
 }
 
 export async function POST(req: Request) {
+  const body = await req.json()
   const { messages, clientContext }: { 
     messages: UIMessage[]
     clientContext?: ClientContext
-  } = await req.json()
+  } = body
+
+  console.log('[v0] Madky API received clientContext:', JSON.stringify(clientContext))
 
   // Fetch real client data if clientId is provided
   let clientData = null
   if (clientContext?.clientId) {
     clientData = await fetchClientData(clientContext.clientId)
+    console.log('[v0] Madky API fetched client data:', clientData ? 'Found' : 'Not found', clientData?.client?.name)
+  } else {
+    console.log('[v0] Madky API: No clientId provided')
   }
 
   // Build context message with real data
