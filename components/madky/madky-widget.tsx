@@ -21,6 +21,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Building2,
+  Search,
+  Database,
+  BarChart3,
+  Users,
 } from 'lucide-react'
 import type { Client } from '@/lib/types'
 import ReactMarkdown from 'react-markdown'
@@ -44,6 +48,15 @@ interface Slide {
   content: string
 }
 
+// Tool name to human-readable label
+const TOOL_LABELS: Record<string, { label: string; icon: 'search' | 'database' | 'chart' | 'users' }> = {
+  getClientInfo: { label: 'Obteniendo info del cliente', icon: 'database' },
+  getMetaAdsMetrics: { label: 'Consultando Meta Ads', icon: 'chart' },
+  getGoogleAdsMetrics: { label: 'Consultando Google Ads', icon: 'chart' },
+  getCRMOpportunities: { label: 'Consultando oportunidades', icon: 'users' },
+  getCRMContacts: { label: 'Consultando contactos', icon: 'users' },
+}
+
 // Helper to extract text from UIMessage parts
 function getMessageText(message: UIMessage): string {
   if (!message.parts || !Array.isArray(message.parts)) return ''
@@ -51,6 +64,19 @@ function getMessageText(message: UIMessage): string {
     .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
     .map((p) => p.text)
     .join('')
+}
+
+// Helper to extract tool invocations from message parts
+function getToolInvocations(message: UIMessage): Array<{ toolName: string; state: string }> {
+  if (!message.parts || !Array.isArray(message.parts)) return []
+  return message.parts
+    .filter((p): p is { type: 'tool-invocation'; toolInvocation: { toolName: string; state: string } } => 
+      p.type === 'tool-invocation'
+    )
+    .map((p) => ({
+      toolName: p.toolInvocation.toolName,
+      state: p.toolInvocation.state,
+    }))
 }
 
 // Parse presentation from message content
@@ -118,7 +144,14 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
     : null
   
   // Use a ref to always have the latest client context for the transport
-  const clientContextRef = useRef<{ clientId: string; clientName: string; plan?: string | null; status?: string | null } | null>(null)
+  const clientContextRef = useRef<{ 
+    clientId: string
+    clientName: string
+    plan?: string | null
+    status?: string | null
+    metaAdsId?: string | null
+    googleAdsId?: string | null
+  } | null>(null)
   
   // Keep clientContextRef in sync with currentClient
   useEffect(() => {
@@ -127,6 +160,8 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
       clientName: currentClient.business_name,
       plan: currentClient.plan,
       status: currentClient.status,
+      metaAdsId: currentClient.meta_ads_id,
+      googleAdsId: currentClient.google_ads_id,
     } : null
   }, [currentClient])
   
@@ -362,7 +397,11 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
               <div className="flex flex-col gap-4">
                 {messages.map((message) => {
                   const text = getMessageText(message)
+                  const toolInvocations = getToolInvocations(message)
                   const isUser = message.role === 'user'
+                  
+                  // Get running tools (call or partial-call state)
+                  const runningTools = toolInvocations.filter(t => t.state === 'call' || t.state === 'partial-call')
                   
                   return (
                     <div
@@ -397,18 +436,51 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
                         {isUser ? (
                           <p className="whitespace-pre-wrap">{text}</p>
                         ) : (
-                          <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5 prose-headings:mb-2 prose-headings:mt-3 first:prose-headings:mt-0">
-                            <ReactMarkdown>
-                              {text.replace(/<!-- PRESENTATION_START -->[\s\S]*<!-- PRESENTATION_END -->/g, '').trim() || text}
-                            </ReactMarkdown>
-                            {parsePresentation(text) && (
-                              <button
-                                onClick={() => setViewMode('presentation')}
-                                className="mt-2 flex items-center gap-1.5 text-xs text-violet-400 hover:text-violet-300 transition-colors"
-                              >
-                                <Presentation className="h-3.5 w-3.5" />
-                                Ver presentación generada
-                              </button>
+                          <div className="flex flex-col gap-2">
+                            {/* Show running tool calls */}
+                            {runningTools.length > 0 && (
+                              <div className="flex flex-col gap-1.5">
+                                {runningTools.map((tool, idx) => {
+                                  const toolInfo = TOOL_LABELS[tool.toolName] || { label: tool.toolName, icon: 'search' }
+                                  const IconComponent = {
+                                    search: Search,
+                                    database: Database,
+                                    chart: BarChart3,
+                                    users: Users,
+                                  }[toolInfo.icon]
+                                  
+                                  return (
+                                    <div 
+                                      key={idx}
+                                      className="flex items-center gap-2 text-xs text-violet-400 bg-violet-500/10 px-2 py-1.5 rounded-md"
+                                    >
+                                      <IconComponent className="h-3 w-3 animate-pulse" />
+                                      <span>{toolInfo.label}...</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                            {/* Show text content */}
+                            {text && (
+                              <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5 prose-headings:mb-2 prose-headings:mt-3 first:prose-headings:mt-0">
+                                <ReactMarkdown>
+                                  {text.replace(/<!-- PRESENTATION_START -->[\s\S]*<!-- PRESENTATION_END -->/g, '').trim() || text}
+                                </ReactMarkdown>
+                                {parsePresentation(text) && (
+                                  <button
+                                    onClick={() => setViewMode('presentation')}
+                                    className="mt-2 flex items-center gap-1.5 text-xs text-violet-400 hover:text-violet-300 transition-colors"
+                                  >
+                                    <Presentation className="h-3.5 w-3.5" />
+                                    Ver presentación generada
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                            {/* Show loading if no text and no tools */}
+                            {!text && runningTools.length === 0 && (
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                             )}
                           </div>
                         )}
@@ -416,7 +488,7 @@ export function MadkyWidget({ selectedClient, allClients = [] }: MadkyWidgetProp
                     </div>
                   )
                 })}
-                {isLoading && (
+                {isLoading && messages.length > 0 && !getMessageText(messages[messages.length - 1]) && getToolInvocations(messages[messages.length - 1]).length === 0 && (
                   <div className="flex gap-3">
                     <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shrink-0">
                       <Bot className="h-3.5 w-3.5 text-white" />
