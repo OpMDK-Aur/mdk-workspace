@@ -82,7 +82,7 @@ export async function POST(req: Request) {
 
     // Use streamText with tools and maxSteps for multi-step tool execution
     const result = streamText({
-      model: 'anthropic/claude-sonnet-4-20250514',
+      model: 'openai/gpt-4o-mini',
       system: systemPrompt,
       messages: await convertToModelMessages(messages),
       tools: madkyTools,
