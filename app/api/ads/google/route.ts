@@ -135,14 +135,22 @@ function buildDateFilter(
 // ---------------------------------------------------------------------------
 // Access token — read from Supabase session provider_token (no manual refresh)
 // ---------------------------------------------------------------------------
+// Track if we've already logged the OAuth warning to avoid spam
+let oauthWarningLogged = false
+
 async function getAccessToken(): Promise<string | null> {
   try {
     const supabase = await createClient()
     const { data: { session } } = await supabase.auth.getSession()
     if (session?.provider_token) {
+      oauthWarningLogged = false // Reset when token is available
       return session.provider_token
     }
-    console.error('[google-ads] No provider_token in session — user must re-authorize Google OAuth')
+    // Only log once per session to avoid spam
+    if (!oauthWarningLogged) {
+      console.warn('[google-ads] No provider_token in session — user must re-authorize Google OAuth')
+      oauthWarningLogged = true
+    }
     return null
   } catch (e) {
     console.error('[google-ads] Error reading session:', e)
