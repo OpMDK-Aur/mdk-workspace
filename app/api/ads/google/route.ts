@@ -133,19 +133,82 @@ function buildDateFilter(
 }
 
 // ---------------------------------------------------------------------------
-// Access token — read from Supabase session provider_token (no manual refresh)
+// Access token — read from platform_tokens table and refresh if expired
 // ---------------------------------------------------------------------------
 async function getAccessToken(): Promise<string | null> {
   try {
     const supabase = await createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session?.provider_token) {
-      return session.provider_token
+    
+    // Read token from platform_tokens table
+    const { data: tokenData, error } = await supabase
+      .from('platform_tokens')
+      .select('access_token, refresh_token, token_expiry')
+      .eq('platform', 'google_ads')
+      .single()
+    
+    if (error || !tokenData) {
+      console.warn('[google-ads] No token found in platform_tokens — user must connect Google OAuth')
+      return null
     }
-    console.error('[google-ads] No provider_token in session — user must re-authorize Google OAuth')
-    return null
+    
+    // Check if token is expired or will expire in the next 5 minutes
+    const expiryTime = new Date(tokenData.token_expiry).getTime()
+    const now = Date.now()
+    const bufferMs = 5 * 60 * 1000 // 5 minutes buffer
+    
+    if (expiryTime > now + bufferMs) {
+      // Token is still valid
+      return tokenData.access_token
+    }
+    
+    // Token is expired or expiring soon, refresh it
+    if (!tokenData.refresh_token) {
+      console.warn('[google-ads] Token expired and no refresh_token — user must re-authorize')
+      return null
+    }
+    
+    const clientId = process.env.GOOGLE_CLIENT_ID
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+    
+    if (!clientId || !clientSecret) {
+      console.error('[google-ads] Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET')
+      return null
+    }
+    
+    // Refresh the token
+    const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: tokenData.refresh_token,
+        grant_type: 'refresh_token',
+      }),
+    })
+    
+    const refreshData = await refreshRes.json()
+    
+    if (!refreshRes.ok || !refreshData.access_token) {
+      console.error('[google-ads] Failed to refresh token:', refreshData)
+      return null
+    }
+    
+    // Update token in database
+    const newExpiry = new Date(Date.now() + (refreshData.expires_in ?? 3600) * 1000).toISOString()
+    
+    await supabase
+      .from('platform_tokens')
+      .update({
+        access_token: refreshData.access_token,
+        token_expiry: newExpiry,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('platform', 'google_ads')
+    
+    return refreshData.access_token
   } catch (e) {
-    console.error('[google-ads] Error reading session:', e)
+    console.error('[google-ads] Error getting access token:', e)
     return null
   }
 }

@@ -172,21 +172,127 @@ export const madkyTools = {
     }),
     execute: async ({ accountId, dateRange }): Promise<MetaAdsResponse> => {
       try {
-        const baseUrl = getBaseUrl()
-        const url = `${baseUrl}/api/ads/meta?account_id=${accountId}&date_range=${dateRange}`
-        
-        const res = await fetch(url, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          cache: 'no-store',
-        })
-        
-        if (!res.ok) {
-          const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
-          return { error: error.error || `Error ${res.status}` } as MetaAdsResponse
+        // Directly call Meta API instead of internal API to avoid auth issues
+        const accessToken = process.env.META_ADS_ACCESS_TOKEN
+        if (!accessToken) {
+          return { error: 'META_ADS_ACCESS_TOKEN no está configurado' } as MetaAdsResponse
         }
         
-        return await res.json()
+        const cleanAccountId = accountId.replace(/^act_/, '')
+        const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
+        const META_BASE_URL = `https://graph.facebook.com/${META_API_VERSION}`
+        
+        // Calculate date range
+        const now = new Date()
+        let since: string, until: string
+        const localDateString = (d: Date) => d.toISOString().split('T')[0]
+        
+        switch (dateRange) {
+          case 'last_7d': {
+            const start = new Date(now); start.setDate(now.getDate() - 7)
+            since = localDateString(start); until = localDateString(now)
+            break
+          }
+          case 'last_14d': {
+            const start = new Date(now); start.setDate(now.getDate() - 14)
+            since = localDateString(start); until = localDateString(now)
+            break
+          }
+          case 'monthly': {
+            const start = new Date(now.getFullYear(), now.getMonth(), 1)
+            const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+            since = localDateString(start); until = localDateString(end)
+            break
+          }
+          case 'yearly': {
+            const start = new Date(now.getFullYear(), 0, 1)
+            const end = new Date(now.getFullYear(), 11, 31)
+            since = localDateString(start); until = localDateString(end)
+            break
+          }
+          default: { // last_30d
+            const start = new Date(now); start.setDate(now.getDate() - 30)
+            since = localDateString(start); until = localDateString(now)
+          }
+        }
+        
+        const fields = 'campaign_id,campaign_name,objective,impressions,clicks,spend,ctr,cpc,actions'
+        const url = `${META_BASE_URL}/act_${cleanAccountId}/insights?${new URLSearchParams({
+          access_token: accessToken,
+          level: 'campaign',
+          fields,
+          time_range: JSON.stringify({ since, until }),
+          limit: '500',
+        })}`
+        
+        const res = await fetch(url)
+        
+        if (!res.ok) {
+          const text = await res.text()
+          return { error: `Meta API error: ${text.slice(0, 200)}` } as MetaAdsResponse
+        }
+        
+        const json = await res.json()
+        
+        if (json.error) {
+          // Check for OAuth/checkpoint errors
+          if (json.error.code === 190 || json.error.message?.includes('log in to')) {
+            return { error: 'El token de Meta Ads ha expirado. Es necesario renovar el META_ADS_ACCESS_TOKEN desde Meta Business Suite.' } as MetaAdsResponse
+          }
+          return { error: `Meta API: ${json.error.message}` } as MetaAdsResponse
+        }
+        
+        const rows = json.data || []
+        
+        // Process campaigns
+        const campaigns = rows.map((row: any) => {
+          const spend = parseFloat(row.spend || '0') || 0
+          const actions = row.actions || []
+          const leadTypes = ['lead', 'leadgen_grouped', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead']
+          const leadAction = actions.find((a: any) => leadTypes.includes(a.action_type))
+          const leads = leadAction ? Math.round(parseFloat(leadAction.value) || 0) : 0
+          const cpl = leads > 0 && spend > 0 ? spend / leads : 0
+          
+          return {
+            id: row.campaign_id,
+            name: row.campaign_name,
+            objective: row.objective || '',
+            impressions: Math.round(parseFloat(row.impressions || '0')) || 0,
+            clicks: Math.round(parseFloat(row.clicks || '0')) || 0,
+            spend,
+            leads,
+            cpl,
+            ctr: parseFloat(row.ctr || '0') || 0,
+            cpc: parseFloat(row.cpc || '0') || 0,
+            lead_type: leads > 0 ? 'Lead' : 'Resultado',
+          }
+        })
+        
+        // Calculate totals
+        const totals = campaigns.reduce(
+          (acc: any, c: any) => {
+            acc.impressions += c.impressions
+            acc.clicks += c.clicks
+            acc.spend += c.spend
+            acc.leads += c.leads
+            return acc
+          },
+          { impressions: 0, clicks: 0, spend: 0, leads: 0 }
+        )
+        
+        return {
+          platform: 'meta',
+          account_id: cleanAccountId,
+          date_range: { start: since, end: until },
+          campaigns,
+          campaign_types: [],
+          totals: {
+            ...totals,
+            ctr: totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0,
+            cpc: totals.clicks > 0 ? totals.spend / totals.clicks : 0,
+            cpl: totals.leads > 0 ? totals.spend / totals.leads : 0,
+          },
+        }
       } catch (error) {
         return { error: `Error al consultar Meta Ads: ${error}` } as MetaAdsResponse
       }

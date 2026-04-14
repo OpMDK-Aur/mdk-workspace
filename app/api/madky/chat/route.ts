@@ -1,7 +1,6 @@
 import {
   convertToModelMessages,
   streamText,
-  stepCountIs,
   UIMessage,
 } from 'ai'
 import { MADKY_SYSTEM_PROMPT } from '@/lib/madky-prompt'
@@ -66,26 +65,41 @@ ${platformInfo.join('\n')}
 }
 
 export async function POST(req: Request) {
-  const body = await req.json()
-  const { messages, clientContext }: { 
-    messages: UIMessage[]
-    clientContext?: ClientContext
-  } = body
+  console.log('[v0] Madky API: Request received')
+  
+  try {
+    const body = await req.json()
+    const { messages, clientContext }: { 
+      messages: UIMessage[]
+      clientContext?: ClientContext
+    } = body
 
-  // Build the enhanced system prompt
-  const systemPrompt = buildSystemPrompt(clientContext)
+    console.log('[v0] Madky API: clientContext:', JSON.stringify(clientContext))
+    console.log('[v0] Madky API: messages count:', messages?.length)
 
-  // Use streamText with tools and stopWhen for multi-step tool execution
-  const result = streamText({
-    model: 'anthropic/claude-sonnet-4-20250514',
-    system: systemPrompt,
-    messages: await convertToModelMessages(messages),
-    tools: madkyTools,
-    stopWhen: stepCountIs(10), // Maximum 10 tool calls per conversation turn
-    abortSignal: req.signal,
-  })
+    // Build the enhanced system prompt
+    const systemPrompt = buildSystemPrompt(clientContext)
 
-  return result.toUIMessageStreamResponse({
-    originalMessages: messages,
-  })
+    // Use streamText with tools and maxSteps for multi-step tool execution
+    const result = streamText({
+      model: 'openai/gpt-4o-mini',
+      system: systemPrompt,
+      messages: await convertToModelMessages(messages),
+      tools: madkyTools,
+      maxSteps: 10, // Maximum 10 tool calls per conversation turn
+      abortSignal: req.signal,
+    })
+
+    console.log('[v0] Madky API: Streaming started')
+    
+    return result.toUIMessageStreamResponse({
+      originalMessages: messages,
+    })
+  } catch (error) {
+    console.error('[v0] Madky API Error:', error)
+    return new Response(JSON.stringify({ error: String(error) }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
 }
