@@ -16,7 +16,14 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Loader2, Download, ChevronDown, Rows3 } from 'lucide-react'
+import { Loader2, Download, ChevronDown, Rows3, Building2 } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -47,6 +54,14 @@ interface ScorecardTimelineProps {
   selectedClientId: string | null
   selectedCampaignId: string | null
   scorecardRows: ScorecardRow[]
+}
+
+interface GoogleAccount {
+  id: string
+  name: string
+  currency: string
+  status: string
+  is_active: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +199,27 @@ export function ScorecardTimeline({
   const [data, setData] = useState<BreakdownRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Google account names
+  const [googleAccounts, setGoogleAccounts] = useState<GoogleAccount[]>([])
+  
+  // Load Google account names on mount
+  useEffect(() => {
+    fetch('/api/ads/google/accounts')
+      .then(r => r.ok ? r.json() : { accounts: [] })
+      .then((json: { accounts?: GoogleAccount[] }) => setGoogleAccounts(json.accounts ?? []))
+      .catch(() => {})
+  }, [])
 
+  // Helper to get account name
+  const getAccountName = (id: string): string => {
+    const account = googleAccounts.find(a => a.id === id)
+    return account?.name ?? `Cuenta ${id.slice(-4)}`
+  }
+  
+  // Selected account ID for timeline (when client has multiple accounts)
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
+  
   // Resolve active client
   const activeClient = useMemo(() => {
     if (selectedClientId) return clients.find(c => c.id === selectedClientId) ?? null
@@ -202,6 +237,29 @@ export function ScorecardTimeline({
     if (!activeClient) return []
     return scorecardRows.filter(r => r.clientId === activeClient.id && !!r.campaignId)
   }, [activeClient, scorecardRows])
+  
+  // Available account IDs for active client (based on platform)
+  const availableAccountIds = useMemo(() => {
+    if (!activeClient) return []
+    if (platform === 'meta') {
+      return activeClient.meta_ads_account_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
+    }
+    return activeClient.google_ads_customer_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
+  }, [activeClient, platform])
+  
+  // Sync selected account when client or platform changes
+  useEffect(() => {
+    if (availableAccountIds.length > 0) {
+      // If filters.adAccountId matches one of the available accounts, use it
+      if (filters.adAccountId && availableAccountIds.includes(filters.adAccountId)) {
+        setSelectedAccountId(filters.adAccountId)
+      } else if (!selectedAccountId || !availableAccountIds.includes(selectedAccountId)) {
+        setSelectedAccountId(availableAccountIds[0])
+      }
+    } else {
+      setSelectedAccountId(null)
+    }
+  }, [availableAccountIds, filters.adAccountId, selectedAccountId])
 
   // Sync with parent scorecard campaign selection
   useEffect(() => {
@@ -228,27 +286,16 @@ export function ScorecardTimeline({
     return 'google'
   }, [activeClient, filters.platform, filters.adAccountId])
 
-  // Fetch — merge results from ALL account IDs of the client for the given platform
+  // Fetch — use the selected account ID
   useEffect(() => {
-    if (!activeClient) return
+    if (!activeClient || !selectedAccountId) return
 
     const start = filters.dateRange.start || ''
     const end   = filters.dateRange.end   || ''
     if (!start || !end) return
 
-    const adAccountId = filters.adAccountId
-
-    // Collect IDs to fetch
-    let idsToFetch: string[] = []
-    if (platform === 'meta') {
-      const all = activeClient.meta_ads_account_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
-      idsToFetch = adAccountId && all.includes(adAccountId) ? [adAccountId] : all
-    } else {
-      const all = activeClient.google_ads_customer_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
-      idsToFetch = adAccountId && all.includes(adAccountId) ? [adAccountId] : all
-    }
-
-    if (idsToFetch.length === 0) return
+    // Use the selected account ID
+    const idsToFetch = [selectedAccountId]
 
     // Determine which campaign IDs to filter by
     const campaignIdsToFetch = selectedCampaignIds.size > 0 ? [...selectedCampaignIds] : [null]
@@ -294,7 +341,7 @@ export function ScorecardTimeline({
       .catch(e => { setError(e.message); setData([]) })
       .finally(() => setLoading(false))
 
-  }, [activeClient?.id, platform, granularity, filters.dateRange.start, filters.dateRange.end, filters.adAccountId, selectedCampaignIds])
+  }, [activeClient?.id, platform, granularity, filters.dateRange.start, filters.dateRange.end, selectedAccountId, selectedCampaignIds])
 
   const toggleMetric = (key: string) => {
     setVisibleMetricKeys(prev => {
@@ -425,6 +472,28 @@ export function ScorecardTimeline({
             </PopoverContent>
           </Popover>
 
+          {/* Account selector - show when there are accounts */}
+          {availableAccountIds.length > 0 && (
+            <Select 
+              value={selectedAccountId ?? ''} 
+              onValueChange={setSelectedAccountId}
+            >
+              <SelectTrigger className="h-8 w-[200px] text-xs">
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <SelectValue placeholder="Seleccionar cuenta" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {availableAccountIds.map((id) => (
+                  <SelectItem key={id} value={id}>
+                    {platform === 'google' ? getAccountName(id) : `Cuenta ${id.slice(-6)}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          
           {/* Platform badge */}
           <Badge variant="outline" className={cn(
             'text-[10px] h-6 px-2 shrink-0',

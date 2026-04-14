@@ -28,7 +28,16 @@ interface PivotData {
   dates: string[]
   pivot: Record<string, Record<string, number>>
   conversionNames: string[]
+  conversionTypes: Record<string, 'PRIMARY' | 'SECONDARY'> // Maps conversion name to type
   total: number
+}
+
+interface GoogleAccount {
+  id: string
+  name: string
+  currency: string
+  status: string
+  is_active: boolean
 }
 
 function formatDate(iso: string): string {
@@ -63,6 +72,29 @@ export function ConversionDailyTable({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
+  // Google account names map (id -> name)
+  const [googleAccounts, setGoogleAccounts] = useState<GoogleAccount[]>([])
+  const [loadingAccounts, setLoadingAccounts] = useState(false)
+  
+  // Load Google account names on mount
+  useEffect(() => {
+    async function loadAccounts() {
+      setLoadingAccounts(true)
+      try {
+        const res = await fetch('/api/ads/google/accounts')
+        if (res.ok) {
+          const json = await res.json()
+          setGoogleAccounts(json.accounts ?? [])
+        }
+      } catch {
+        // Silently fail - will show IDs instead of names
+      } finally {
+        setLoadingAccounts(false)
+      }
+    }
+    loadAccounts()
+  }, [])
+  
   // Filter clients that have Google Ads configured
   const googleAdsClients = clients.filter(c => c.google_ads_customer_id)
   
@@ -79,6 +111,12 @@ export function ConversionDailyTable({
     ?.split(',')
     .map(s => s.trim())
     .filter(Boolean) ?? []
+  
+  // Get account name by ID
+  const getAccountName = (id: string): string => {
+    const account = googleAccounts.find(a => a.id === id)
+    return account?.name ?? `Cuenta ${id.slice(-4)}`
+  }
   
   // Selected Google account ID (for clients with multiple accounts)
   const [selectedGoogleAccountId, setSelectedGoogleAccountId] = useState<string | null>(
@@ -194,8 +232,8 @@ export function ConversionDailyTable({
               </Badge>
             )}
             
-            {/* Google Account selector - only show if client has multiple accounts */}
-            {googleAccountIds.length > 1 && (
+            {/* Google Account selector - always show when there are accounts */}
+            {googleAccountIds.length > 0 && (
               <Select 
                 value={selectedGoogleAccountId ?? ''} 
                 onValueChange={(val) => {
@@ -203,13 +241,13 @@ export function ConversionDailyTable({
                   setData(null)
                 }}
               >
-                <SelectTrigger className="h-8 w-[160px] text-xs">
-                  <SelectValue placeholder="Cuenta Google" />
+                <SelectTrigger className="h-8 w-[220px] text-xs">
+                  <SelectValue placeholder={loadingAccounts ? "Cargando cuentas..." : "Seleccionar cuenta"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {googleAccountIds.map((id, idx) => (
+                  {googleAccountIds.map((id) => (
                     <SelectItem key={id} value={id}>
-                      Cuenta {idx + 1}: {id.slice(-4)}
+                      {getAccountName(id)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -305,6 +343,8 @@ export function ConversionDailyTable({
                     <tbody>
                       {data.conversionNames.map((name, i) => {
                         const rowTotal = data.dates.reduce((s, d) => s + (data.pivot[name]?.[d] ?? 0), 0)
+                        const convType = data.conversionTypes?.[name] ?? 'PRIMARY'
+                        const isPrimary = convType === 'PRIMARY'
                         return (
                           <tr
                             key={name}
@@ -313,8 +353,21 @@ export function ConversionDailyTable({
                               i % 2 === 0 ? 'bg-transparent' : 'bg-muted/10'
                             )}
                           >
-                            <td className="sticky left-0 z-10 bg-card px-6 py-2.5 font-medium text-foreground whitespace-nowrap">
-                              {name}
+                            <td className="sticky left-0 z-10 bg-card px-6 py-2.5 whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-foreground">{name}</span>
+                                <Badge 
+                                  variant="outline" 
+                                  className={cn(
+                                    "h-5 px-1.5 text-[10px] font-medium",
+                                    isPrimary 
+                                      ? "border-green-500/40 bg-green-500/10 text-green-600" 
+                                      : "border-muted-foreground/30 bg-muted/50 text-muted-foreground"
+                                  )}
+                                >
+                                  {isPrimary ? 'Principal' : 'Secundaria'}
+                                </Badge>
+                              </div>
                             </td>
                             {data.dates.map(date => {
                               const val = data.pivot[name]?.[date] ?? 0

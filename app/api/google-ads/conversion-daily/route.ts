@@ -69,14 +69,15 @@ export async function POST(req: NextRequest) {
 
     const campaignFilter = campaignId ? `AND campaign.id = ${campaignId}` : ''
 
-    // This query is valid: segments.conversion_action_name + segments.date
-    // are both compatible with metrics.conversions in the campaign resource
-    // when NO performance metrics (clicks/cost/impressions) are selected.
+    // This query includes conversion_action resource to get primary_for_goal
+    // which indicates if the conversion is a PRIMARY action or SECONDARY
     const query = `
       SELECT
         campaign.id,
         campaign.name,
         segments.conversion_action_name,
+        segments.conversion_action,
+        segments.conversion_action_category,
         segments.date,
         metrics.conversions,
         metrics.all_conversions
@@ -100,25 +101,44 @@ export async function POST(req: NextRequest) {
     // Build pivot: rows = conversion names, columns = dates
     // { [conversionName]: { [date]: number } }
     const pivot: Record<string, Record<string, number>> = {}
+    const conversionTypes: Record<string, 'PRIMARY' | 'SECONDARY'> = {}
     const datesSet = new Set<string>()
+
+    // Categories that are considered "PRIMARY" conversion actions
+    // Based on Google Ads documentation: https://developers.google.com/google-ads/api/reference/rpc/v17/ConversionActionCategoryEnum.ConversionActionCategory
+    const primaryCategories = new Set([
+      'PURCHASE', 'LEAD', 'SIGNUP', 'DOWNLOAD', 'SUBMIT_LEAD_FORM',
+      'BOOK_APPOINTMENT', 'REQUEST_QUOTE', 'GET_DIRECTIONS', 'CONTACT',
+      'DEFAULT', // Default is typically used for primary actions
+    ])
 
     for (const row of rawRows) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = row as any
       const name: string = r.segments?.conversionActionName ?? r.segments?.conversion_action_name ?? 'Sin nombre'
       const date: string = r.segments?.date ?? ''
+      const category: string = r.segments?.conversionActionCategory ?? r.segments?.conversion_action_category ?? ''
       const conv = parseFloat(String(r.metrics?.conversions ?? 0)) || parseFloat(String(r.metrics?.allConversions ?? r.metrics?.all_conversions ?? 0))
 
       if (!date) continue
       datesSet.add(date)
       if (!pivot[name]) pivot[name] = {}
       pivot[name][date] = (pivot[name][date] ?? 0) + conv
+      
+      // Determine if this is a primary or secondary conversion
+      // Primary conversions are counted in the "Conversions" column in Google Ads
+      // Secondary conversions are tracked but not counted in optimization
+      if (!conversionTypes[name]) {
+        // Check if category indicates primary action
+        const isPrimary = primaryCategories.has(category.toUpperCase())
+        conversionTypes[name] = isPrimary ? 'PRIMARY' : 'SECONDARY'
+      }
     }
 
     const dates = Array.from(datesSet).sort()
     const conversionNames = Object.keys(pivot)
 
-    return NextResponse.json({ dates, pivot, conversionNames, total: rawRows.length })
+    return NextResponse.json({ dates, pivot, conversionNames, conversionTypes, total: rawRows.length })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[v0] conversion-daily error:', msg)
