@@ -135,7 +135,7 @@ function buildDateFilter(
 // ---------------------------------------------------------------------------
 // Access token — read from platform_tokens table and refresh if expired
 // ---------------------------------------------------------------------------
-async function getAccessToken(): Promise<string | null> {
+async function getAccessToken(): Promise<{ token: string | null; error?: string }> {
   try {
     const supabase = await createClient()
     
@@ -147,8 +147,7 @@ async function getAccessToken(): Promise<string | null> {
       .single()
     
     if (error || !tokenData) {
-      console.warn('[google-ads] No token found in platform_tokens — user must connect Google OAuth')
-      return null
+      return { token: null, error: 'No se encontro token de Google Ads. El usuario debe re-autorizar desde Plataformas.' }
     }
     
     // Check if token is expired or will expire in the next 5 minutes
@@ -158,21 +157,19 @@ async function getAccessToken(): Promise<string | null> {
     
     if (expiryTime > now + bufferMs) {
       // Token is still valid
-      return tokenData.access_token
+      return { token: tokenData.access_token }
     }
     
     // Token is expired or expiring soon, refresh it
     if (!tokenData.refresh_token) {
-      console.warn('[google-ads] Token expired and no refresh_token — user must re-authorize')
-      return null
+      return { token: null, error: 'Token de Google Ads expirado y sin refresh_token. El usuario debe re-autorizar desde Plataformas.' }
     }
     
     const clientId = process.env.GOOGLE_CLIENT_ID
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET
     
     if (!clientId || !clientSecret) {
-      console.error('[google-ads] Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET')
-      return null
+      return { token: null, error: 'Faltan las credenciales GOOGLE_CLIENT_ID o GOOGLE_CLIENT_SECRET en el servidor.' }
     }
     
     // Refresh the token
@@ -190,8 +187,8 @@ async function getAccessToken(): Promise<string | null> {
     const refreshData = await refreshRes.json()
     
     if (!refreshRes.ok || !refreshData.access_token) {
-      console.error('[google-ads] Failed to refresh token:', refreshData)
-      return null
+      const errorMsg = refreshData.error_description || refreshData.error || 'Error desconocido'
+      return { token: null, error: `Error al refrescar token de Google: ${errorMsg}. El usuario debe re-autorizar desde Plataformas.` }
     }
     
     // Update token in database
@@ -206,10 +203,10 @@ async function getAccessToken(): Promise<string | null> {
       })
       .eq('platform', 'google_ads')
     
-    return refreshData.access_token
+    return { token: refreshData.access_token }
   } catch (e) {
     console.error('[google-ads] Error getting access token:', e)
-    return null
+    return { token: null, error: `Error interno al obtener token de Google: ${e}` }
   }
 }
 
@@ -290,12 +287,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Credentials
-    const accessToken = await getAccessToken()
+    const { token: accessToken, error: tokenError } = await getAccessToken()
     const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN
 
     if (!accessToken) {
       return NextResponse.json({
-        error: 'No se pudo obtener el access token de Google. El usuario debe re-autorizar Google OAuth desde Plataformas.',
+        error: tokenError || 'No se pudo obtener el access token de Google. El usuario debe re-autorizar Google OAuth desde Plataformas.',
       }, { status: 401 })
     }
     if (!developerToken) {
