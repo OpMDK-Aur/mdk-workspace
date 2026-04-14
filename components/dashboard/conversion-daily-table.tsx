@@ -5,9 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
-import { Download, Loader2, RefreshCw } from 'lucide-react'
+import { Download, Loader2, RefreshCw, Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Client, ScorecardRow } from '@/lib/types'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface ConversionDailyTableProps {
   clients: Client[]
@@ -55,11 +62,27 @@ export function ConversionDailyTable({
   const [data, setData] = useState<PivotData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  // Derive the active client from the scorecard filter
-  // If no client selected, try to find one from scorecardRows that has a google_ads_customer_id
-  const activeClient = clients.find(c => c.id === selectedClientId && c.google_ads_customer_id)
-    ?? (selectedClientId ? null : clients.find(c => c.google_ads_customer_id))
+  
+  // Filter clients that have Google Ads configured
+  const googleAdsClients = clients.filter(c => c.google_ads_customer_id)
+  
+  // Internal client selection - can be changed independently from scorecard
+  const [internalClientId, setInternalClientId] = useState<string | null>(
+    selectedClientId ?? (googleAdsClients.length > 0 ? googleAdsClients[0].id : null)
+  )
+  
+  // Sync with scorecard selection when it changes
+  useEffect(() => {
+    if (selectedClientId) {
+      const client = clients.find(c => c.id === selectedClientId && c.google_ads_customer_id)
+      if (client) {
+        setInternalClientId(selectedClientId)
+      }
+    }
+  }, [selectedClientId, clients])
+  
+  // Get the active client from internal selection
+  const activeClient = googleAdsClients.find(c => c.id === internalClientId) ?? null
 
   // Label for selected campaign
   const campaignLabel = selectedCampaignId
@@ -120,16 +143,33 @@ export function ConversionDailyTable({
         </div>
         <div className="flex items-center gap-2 flex-wrap">
 
-          {/* Context pills — reflect scorecard filters */}
-          <div className="flex items-center gap-1.5">
-            {activeClient ? (
-              <Badge variant="secondary" className="h-7 px-2 text-xs font-normal gap-1">
-                <span className="text-muted-foreground">Cliente:</span>
-                {activeClient.business_name}
-              </Badge>
+          {/* Client selector */}
+          <div className="flex items-center gap-2">
+            {googleAdsClients.length > 0 ? (
+              <Select 
+                value={internalClientId ?? ''} 
+                onValueChange={(val) => {
+                  setInternalClientId(val)
+                  setData(null) // Reset data when client changes
+                }}
+              >
+                <SelectTrigger className="h-8 w-[200px] text-xs">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    <SelectValue placeholder="Seleccionar cliente" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {googleAdsClients.map(client => (
+                    <SelectItem key={client.id} value={client.id}>
+                      {client.business_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : (
               <Badge variant="outline" className="h-7 px-2 text-xs font-normal text-muted-foreground">
-                Sin cliente Google Ads seleccionado
+                Sin clientes con Google Ads
               </Badge>
             )}
             <Badge variant="outline" className="h-7 px-2 text-xs font-normal gap-1">
