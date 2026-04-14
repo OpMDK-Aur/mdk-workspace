@@ -466,7 +466,13 @@ export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
       {accountsError && (
         <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-          <span><span className="font-semibold">Error Meta: </span>{accountsError}</span>
+          <div className="flex flex-col gap-1">
+            <span className="font-semibold">Error Meta Ads</span>
+            <span>{accountsError.includes('log in to') || accountsError.includes('OAuthException') 
+              ? 'El token de acceso ha expirado. Debes renovar el META_ADS_ACCESS_TOKEN desde Meta Business Suite.'
+              : accountsError
+            }</span>
+          </div>
         </div>
       )}
       {googleAccountsError && (

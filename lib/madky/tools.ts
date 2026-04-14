@@ -235,6 +235,10 @@ export const madkyTools = {
         const json = await res.json()
         
         if (json.error) {
+          // Check for OAuth/checkpoint errors
+          if (json.error.code === 190 || json.error.message?.includes('log in to')) {
+            return { error: 'El token de Meta Ads ha expirado. Es necesario renovar el META_ADS_ACCESS_TOKEN desde Meta Business Suite.' } as MetaAdsResponse
+          }
           return { error: `Meta API: ${json.error.message}` } as MetaAdsResponse
         }
         
