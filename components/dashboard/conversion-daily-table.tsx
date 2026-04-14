@@ -71,27 +71,48 @@ export function ConversionDailyTable({
     selectedClientId ?? (googleAdsClients.length > 0 ? googleAdsClients[0].id : null)
   )
   
+  // Get the active client from internal selection
+  const activeClient = googleAdsClients.find(c => c.id === internalClientId) ?? null
+  
+  // Parse Google Ads account IDs for the active client (can be comma-separated)
+  const googleAccountIds = activeClient?.google_ads_customer_id
+    ?.split(',')
+    .map(s => s.trim())
+    .filter(Boolean) ?? []
+  
+  // Selected Google account ID (for clients with multiple accounts)
+  const [selectedGoogleAccountId, setSelectedGoogleAccountId] = useState<string | null>(
+    googleAccountIds.length > 0 ? googleAccountIds[0] : null
+  )
+  
   // Sync with scorecard selection when it changes
   useEffect(() => {
     if (selectedClientId) {
       const client = clients.find(c => c.id === selectedClientId && c.google_ads_customer_id)
       if (client) {
         setInternalClientId(selectedClientId)
+        // Reset account selection when client changes
+        const ids = client.google_ads_customer_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
+        setSelectedGoogleAccountId(ids.length > 0 ? ids[0] : null)
       }
     }
   }, [selectedClientId, clients])
   
-  // Get the active client from internal selection
-  const activeClient = googleAdsClients.find(c => c.id === internalClientId) ?? null
+  // Update selected account when client changes internally
+  useEffect(() => {
+    if (googleAccountIds.length > 0 && !googleAccountIds.includes(selectedGoogleAccountId ?? '')) {
+      setSelectedGoogleAccountId(googleAccountIds[0])
+    }
+  }, [googleAccountIds, selectedGoogleAccountId])
 
   // Label for selected campaign
   const campaignLabel = selectedCampaignId
     ? (scorecardRows.find(r => r.campaignId === selectedCampaignId)?.campaignName ?? 'Campana seleccionada')
     : 'Todas las campanas'
 
-  const fetchData = useCallback(async (client: Client) => {
-    if (!client.google_ads_customer_id) {
-      setError('El cliente seleccionado no tiene Google Ads configurado')
+  const fetchData = useCallback(async (googleAccountId: string) => {
+    if (!googleAccountId) {
+      setError('No hay cuenta de Google Ads seleccionada')
       return
     }
     setLoading(true)
@@ -101,7 +122,7 @@ export function ConversionDailyTable({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customerId: client.google_ads_customer_id,
+          customerId: googleAccountId,
           campaignId: selectedCampaignId ?? undefined,
           dateRange: filters.dateRange.preset ?? 'last_30d',
           startDate: filters.dateRange.start,
@@ -123,11 +144,11 @@ export function ConversionDailyTable({
 
   // Auto-reload when filters or selection changes — only if we already had data loaded
   useEffect(() => {
-    if (data && activeClient) {
-      fetchData(activeClient)
+    if (data && selectedGoogleAccountId) {
+      fetchData(selectedGoogleAccountId)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClientId, selectedCampaignId, filters])
+  }, [selectedClientId, selectedCampaignId, filters, selectedGoogleAccountId])
 
   const totalConversions = data
     ? data.conversionNames.reduce((sum, name) =>
@@ -143,7 +164,7 @@ export function ConversionDailyTable({
         </div>
         <div className="flex items-center gap-2 flex-wrap">
 
-          {/* Client selector */}
+          {/* Client and account selectors */}
           <div className="flex items-center gap-2">
             {googleAdsClients.length > 0 ? (
               <Select 
@@ -153,7 +174,7 @@ export function ConversionDailyTable({
                   setData(null) // Reset data when client changes
                 }}
               >
-                <SelectTrigger className="h-8 w-[200px] text-xs">
+                <SelectTrigger className="h-8 w-[180px] text-xs">
                   <div className="flex items-center gap-2">
                     <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
                     <SelectValue placeholder="Seleccionar cliente" />
@@ -172,6 +193,29 @@ export function ConversionDailyTable({
                 Sin clientes con Google Ads
               </Badge>
             )}
+            
+            {/* Google Account selector - only show if client has multiple accounts */}
+            {googleAccountIds.length > 1 && (
+              <Select 
+                value={selectedGoogleAccountId ?? ''} 
+                onValueChange={(val) => {
+                  setSelectedGoogleAccountId(val)
+                  setData(null)
+                }}
+              >
+                <SelectTrigger className="h-8 w-[160px] text-xs">
+                  <SelectValue placeholder="Cuenta Google" />
+                </SelectTrigger>
+                <SelectContent>
+                  {googleAccountIds.map((id, idx) => (
+                    <SelectItem key={id} value={id}>
+                      Cuenta {idx + 1}: {id.slice(-4)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            
             <Badge variant="outline" className="h-7 px-2 text-xs font-normal gap-1">
               <span className="text-muted-foreground">Campana:</span>
               {campaignLabel}
@@ -182,8 +226,8 @@ export function ConversionDailyTable({
             variant="outline"
             size="sm"
             className="h-8 gap-1.5 text-xs"
-            onClick={() => activeClient && fetchData(activeClient)}
-            disabled={loading || !activeClient}
+            onClick={() => selectedGoogleAccountId && fetchData(selectedGoogleAccountId)}
+            disabled={loading || !selectedGoogleAccountId}
           >
             {loading
               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -210,9 +254,9 @@ export function ConversionDailyTable({
         {!data && !loading && !error && (
           <div className="px-6 py-8 text-center">
             <p className="text-sm text-muted-foreground">
-              {activeClient
-                ? `Presiona "Cargar datos" para ver las conversiones diarias de ${activeClient.business_name}.`
-                : 'Selecciona un cliente con Google Ads desde el filtro de arriba para ver conversiones.'}
+              {selectedGoogleAccountId
+                ? `Presiona "Cargar datos" para ver las conversiones diarias de ${activeClient?.business_name ?? 'la cuenta seleccionada'}.`
+                : 'Selecciona un cliente con Google Ads para ver conversiones.'}
             </p>
           </div>
         )}
