@@ -37,13 +37,26 @@ export async function GET(request: NextRequest) {
   })
 
   const tokenData = await tokenRes.json()
-  console.log('[google-oauth] Token response status:', tokenRes.status, JSON.stringify({ ...tokenData, access_token: tokenData.access_token ? '***set***' : 'MISSING', refresh_token: tokenData.refresh_token ? '***set***' : 'MISSING' }))
-
-  if (!tokenData.refresh_token || !tokenData.access_token) {
+  console.log('[google-oauth] Token response status:', tokenRes.status)
+  console.log('[google-oauth] Has access_token:', !!tokenData.access_token)
+  console.log('[google-oauth] Has refresh_token:', !!tokenData.refresh_token)
+  
+  if (tokenData.error) {
+    console.error('[google-oauth] Token error:', tokenData.error, tokenData.error_description)
     return NextResponse.redirect(
-      new URL(`/dashboard/platform?error=${encodeURIComponent(tokenData.error_description || tokenData.error || 'token_exchange_failed')}`, origin)
+      new URL(`/dashboard/platform?error=${encodeURIComponent(tokenData.error_description || tokenData.error)}`, origin)
     )
   }
+
+  if (!tokenData.access_token) {
+    console.error('[google-oauth] No access_token received')
+    return NextResponse.redirect(
+      new URL(`/dashboard/platform?error=no_access_token`, origin)
+    )
+  }
+  
+  // Note: refresh_token might not be present on re-authorization if already granted
+  // In that case, we should keep the existing refresh_token
 
   // Get the authenticated Google user's email
   const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -54,12 +67,32 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const expiresAt = new Date(Date.now() + (tokenData.expires_in ?? 3600) * 1000).toISOString()
 
+  // Check if we already have a refresh_token stored (Google only sends it on first auth)
+  let refreshToken = tokenData.refresh_token
+  if (!refreshToken) {
+    const { data: existing } = await supabase
+      .from('platform_tokens')
+      .select('refresh_token')
+      .eq('platform', 'google_ads')
+      .single()
+    
+    if (existing?.refresh_token) {
+      refreshToken = existing.refresh_token
+      console.log('[google-oauth] Using existing refresh_token from database')
+    } else {
+      console.error('[google-oauth] No refresh_token available - user needs to revoke and re-authorize')
+      return NextResponse.redirect(
+        new URL('/dashboard/platform?error=no_refresh_token_revoke_required', origin)
+      )
+    }
+  }
+
   const { error: dbError } = await supabase
     .from('platform_tokens')
     .upsert({
       platform: 'google_ads',
       access_token: tokenData.access_token,
-      refresh_token: tokenData.refresh_token,
+      refresh_token: refreshToken,
       token_expiry: expiresAt,
       scope: tokenData.scope,
       connected_email: userInfo.email ?? null,
