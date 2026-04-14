@@ -253,13 +253,18 @@ export function ScorecardTimeline({
       // If filters.adAccountId matches one of the available accounts, use it
       if (filters.adAccountId && availableAccountIds.includes(filters.adAccountId)) {
         setSelectedAccountId(filters.adAccountId)
-      } else if (!selectedAccountId || !availableAccountIds.includes(selectedAccountId)) {
-        setSelectedAccountId(availableAccountIds[0])
+      } else {
+        setSelectedAccountId(prev => {
+          if (!prev || !availableAccountIds.includes(prev)) {
+            return availableAccountIds[0]
+          }
+          return prev
+        })
       }
     } else {
       setSelectedAccountId(null)
     }
-  }, [availableAccountIds, filters.adAccountId, selectedAccountId])
+  }, [availableAccountIds, filters.adAccountId])
 
   // Sync with parent scorecard campaign selection
   useEffect(() => {

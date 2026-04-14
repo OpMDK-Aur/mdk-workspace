@@ -138,10 +138,13 @@ export function ConversionDailyTable({
   
   // Update selected account when client changes internally
   useEffect(() => {
-    if (googleAccountIds.length > 0 && !googleAccountIds.includes(selectedGoogleAccountId ?? '')) {
-      setSelectedGoogleAccountId(googleAccountIds[0])
-    }
-  }, [googleAccountIds, selectedGoogleAccountId])
+    setSelectedGoogleAccountId(prev => {
+      if (googleAccountIds.length > 0 && !googleAccountIds.includes(prev ?? '')) {
+        return googleAccountIds[0]
+      }
+      return prev
+    })
+  }, [googleAccountIds])
 
   // Label for selected campaign
   const campaignLabel = selectedCampaignId
