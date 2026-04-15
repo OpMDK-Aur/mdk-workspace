@@ -108,34 +108,17 @@ export function ConversionDailyTable({
     setAccountName(`Cuenta: ${googleAccountId}`)
     
     fetch('/api/ads/google/accounts')
-      .then(r => {
-        console.log('[v0] Google accounts API response status:', r.status)
-        return r.ok ? r.json() : { accounts: [] }
-      })
+      .then(r => r.ok ? r.json() : { accounts: [] })
       .then(json => {
         const accounts = json.accounts ?? []
-        console.log('[v0] Google accounts loaded:', accounts.length, 'accounts')
-        console.log('[v0] Looking for account ID:', googleAccountId)
-        
         const normalizeId = (id: string) => id.replace(/[-\s]/g, '').replace(/^0+/, '')
         const normalizedSearchId = normalizeId(googleAccountId)
-        
-        // Log all account IDs for debugging
-        accounts.forEach((a: { id: string; name: string }) => {
-          console.log('[v0] Account:', a.id, '->', a.name, '| normalized:', normalizeId(a.id))
-        })
-        
         const account = accounts.find((a: { id: string; name: string }) => normalizeId(a.id) === normalizedSearchId)
-        console.log('[v0] Found account:', account?.name ?? 'NOT FOUND')
-        
-        // Use account name if found, otherwise keep the ID-based name
         if (account?.name) {
           setAccountName(account.name)
         }
       })
-      .catch((err) => {
-        console.error('[v0] Error loading Google accounts:', err)
-      })
+      .catch(() => {})
   }, [googleAccountId])
 
   const fetchData = useCallback(async () => {

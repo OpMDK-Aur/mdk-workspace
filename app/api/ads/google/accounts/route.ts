@@ -8,32 +8,69 @@ const MCC_CUSTOMER_ID = '4435948073'
 async function getAccessToken(): Promise<string | null> {
   try {
     const supabase = await createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session?.provider_token) return session.provider_token
-
+    
+    // Read token from platform_tokens table
+    const { data: tokenData, error } = await supabase
+      .from('platform_tokens')
+      .select('access_token, refresh_token, token_expiry')
+      .eq('platform', 'google_ads')
+      .single()
+    
+    if (error || !tokenData) {
+      return null
+    }
+    
+    // Check if token is expired or will expire in the next 5 minutes
+    const expiryTime = new Date(tokenData.token_expiry).getTime()
+    const now = Date.now()
+    const bufferMs = 5 * 60 * 1000
+    
+    if (expiryTime > now + bufferMs) {
+      return tokenData.access_token
+    }
+    
+    // Token is expired, refresh it
+    if (!tokenData.refresh_token) {
+      return null
+    }
+    
     const clientId = process.env.GOOGLE_CLIENT_ID
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-    const { data: tokenRow } = await supabase
-      .from('platform_tokens')
-      .select('refresh_token')
-      .eq('platform', 'google_ads')
-      .maybeSingle()
-
-    const refreshToken = tokenRow?.refresh_token ?? process.env.GOOGLE_ADS_REFRESH_TOKEN ?? null
-    if (!refreshToken || !clientId || !clientSecret) return null
-
-    const res = await fetch('https://oauth2.googleapis.com/token', {
+    
+    if (!clientId || !clientSecret) {
+      return null
+    }
+    
+    const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         client_id: clientId,
         client_secret: clientSecret,
-        refresh_token: refreshToken,
+        refresh_token: tokenData.refresh_token,
         grant_type: 'refresh_token',
       }),
     })
-    const data = await res.json()
-    return data.access_token ?? null
+    
+    const refreshData = await refreshRes.json()
+    
+    if (!refreshRes.ok || !refreshData.access_token) {
+      return null
+    }
+    
+    // Update token in database
+    const newExpiry = new Date(Date.now() + (refreshData.expires_in ?? 3600) * 1000).toISOString()
+    
+    await supabase
+      .from('platform_tokens')
+      .update({
+        access_token: refreshData.access_token,
+        token_expiry: newExpiry,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('platform', 'google_ads')
+    
+    return refreshData.access_token
   } catch {
     return null
   }
