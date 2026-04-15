@@ -238,6 +238,20 @@ export function ScorecardTimeline({
     return scorecardRows.filter(r => r.clientId === activeClient.id && !!r.campaignId)
   }, [activeClient, scorecardRows])
   
+  // Derive platform (moved up so it can be used by availableAccountIds)
+  const platform = useMemo<'meta' | 'google'>(() => {
+    if (!activeClient) return 'meta'
+    const adAccountId = filters.adAccountId
+    if (adAccountId) {
+      if (activeClient.meta_ads_account_id?.split(',').map(s => s.trim()).includes(adAccountId)) return 'meta'
+      if (activeClient.google_ads_customer_id?.split(',').map(s => s.trim()).includes(adAccountId)) return 'google'
+    }
+    if (filters.platform === 'meta' && activeClient.meta_ads_account_id) return 'meta'
+    if (filters.platform === 'google' && activeClient.google_ads_customer_id) return 'google'
+    if (activeClient.meta_ads_account_id) return 'meta'
+    return 'google'
+  }, [activeClient, filters.platform, filters.adAccountId])
+  
   // Available account IDs for active client (based on platform)
   const availableAccountIds = useMemo(() => {
     if (!activeClient) return []
@@ -276,20 +290,6 @@ export function ScorecardTimeline({
   useEffect(() => {
     setSelectedCampaignIds(new Set())
   }, [activeClient?.id])
-
-  // Derive platform
-  const platform = useMemo<'meta' | 'google'>(() => {
-    if (!activeClient) return 'meta'
-    const adAccountId = filters.adAccountId
-    if (adAccountId) {
-      if (activeClient.meta_ads_account_id?.split(',').map(s => s.trim()).includes(adAccountId)) return 'meta'
-      if (activeClient.google_ads_customer_id?.split(',').map(s => s.trim()).includes(adAccountId)) return 'google'
-    }
-    if (filters.platform === 'meta' && activeClient.meta_ads_account_id) return 'meta'
-    if (filters.platform === 'google' && activeClient.google_ads_customer_id) return 'google'
-    if (activeClient.meta_ads_account_id) return 'meta'
-    return 'google'
-  }, [activeClient, filters.platform, filters.adAccountId])
 
   // Fetch — use the selected account ID
   useEffect(() => {
