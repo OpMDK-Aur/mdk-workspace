@@ -112,9 +112,11 @@ export function ConversionDailyTable({
     .map(s => s.trim())
     .filter(Boolean) ?? []
   
-  // Get account name by ID
+  // Get account name by ID - normalize both IDs for comparison (remove dashes, spaces, leading zeros)
   const getAccountName = (id: string): string => {
-    const account = googleAccounts.find(a => a.id === id)
+    const normalizeId = (accountId: string) => accountId.replace(/[-\s]/g, '').replace(/^0+/, '')
+    const normalizedSearchId = normalizeId(id)
+    const account = googleAccounts.find(a => normalizeId(a.id) === normalizedSearchId)
     return account?.name ?? `Cuenta ${id.slice(-4)}`
   }
   
