@@ -5,25 +5,10 @@ import type { Client, DashboardFilters, ScorecardRow } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-  DropdownMenuCheckboxItem,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Loader2, Download, ChevronDown, Rows3, Building2 } from 'lucide-react'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Loader2, Download, Rows3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -51,17 +36,7 @@ interface BreakdownResponse {
 interface ScorecardTimelineProps {
   clients: Client[]
   filters: DashboardFilters
-  selectedClientId: string | null
-  selectedCampaignId: string | null
   scorecardRows: ScorecardRow[]
-}
-
-interface GoogleAccount {
-  id: string
-  name: string
-  currency: string
-  status: string
-  is_active: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -186,151 +161,101 @@ function exportCSV(periods: string[], rows: BreakdownRow[], granularity: 'daily'
 export function ScorecardTimeline({
   clients,
   filters,
-  selectedClientId,
-  selectedCampaignId,
   scorecardRows,
 }: ScorecardTimelineProps) {
   const [granularity, setGranularity] = useState<'daily' | 'monthly'>('daily')
   const [visibleMetricKeys, setVisibleMetricKeys] = useState<Set<string>>(
     new Set(METRICS.filter(m => m.status === 'available').map(m => m.key as string))
   )
-  // Multi-select campaigns: 'all' means all, otherwise a Set of campaignIds
-  const [selectedCampaignIds, setSelectedCampaignIds] = useState<Set<string>>(new Set())
   const [data, setData] = useState<BreakdownRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
-  // Google account names
-  const [googleAccounts, setGoogleAccounts] = useState<GoogleAccount[]>([])
-  
-  // Load Google account names on mount
-  useEffect(() => {
-    fetch('/api/ads/google/accounts')
-      .then(r => r.ok ? r.json() : { accounts: [] })
-      .then((json: { accounts?: GoogleAccount[] }) => setGoogleAccounts(json.accounts ?? []))
-      .catch(() => {})
-  }, [])
+  const [accountName, setAccountName] = useState<string | null>(null)
 
-  // Helper to get account name
-  const getAccountName = (id: string): string => {
-    const account = googleAccounts.find(a => a.id === id)
-    return account?.name ?? `Cuenta ${id.slice(-4)}`
-  }
-  
-  // Selected account ID for timeline (when client has multiple accounts)
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
-  
-  // Resolve active client
-  const activeClient = useMemo(() => {
-    if (selectedClientId) return clients.find(c => c.id === selectedClientId) ?? null
+  // Derive active client and account from global filters
+  const { activeClient, platform, accountId } = useMemo(() => {
+    const targetClients = filters.clientIds.length > 0
+      ? clients.filter(c => filters.clientIds.includes(c.id))
+      : clients
+
+    // If specific ad account is selected
     if (filters.adAccountId) {
-      return clients.find(c =>
-        c.meta_ads_account_id?.split(',').map(s => s.trim()).includes(filters.adAccountId!) ||
-        c.google_ads_customer_id?.split(',').map(s => s.trim()).includes(filters.adAccountId!)
-      ) ?? null
-    }
-    return null
-  }, [selectedClientId, clients, filters.adAccountId])
-
-  // Campaigns available for active client
-  const availableCampaigns = useMemo(() => {
-    if (!activeClient) return []
-    return scorecardRows.filter(r => r.clientId === activeClient.id && !!r.campaignId)
-  }, [activeClient, scorecardRows])
-  
-  // Derive platform (moved up so it can be used by availableAccountIds)
-  const platform = useMemo<'meta' | 'google'>(() => {
-    if (!activeClient) return 'meta'
-    const adAccountId = filters.adAccountId
-    if (adAccountId) {
-      if (activeClient.meta_ads_account_id?.split(',').map(s => s.trim()).includes(adAccountId)) return 'meta'
-      if (activeClient.google_ads_customer_id?.split(',').map(s => s.trim()).includes(adAccountId)) return 'google'
-    }
-    if (filters.platform === 'meta' && activeClient.meta_ads_account_id) return 'meta'
-    if (filters.platform === 'google' && activeClient.google_ads_customer_id) return 'google'
-    if (activeClient.meta_ads_account_id) return 'meta'
-    return 'google'
-  }, [activeClient, filters.platform, filters.adAccountId])
-  
-  // Available account IDs for active client (based on platform)
-  const availableAccountIds = useMemo(() => {
-    if (!activeClient) return []
-    if (platform === 'meta') {
-      return activeClient.meta_ads_account_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
-    }
-    return activeClient.google_ads_customer_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
-  }, [activeClient, platform])
-  
-  // Sync selected account when client or platform changes
-  useEffect(() => {
-    if (availableAccountIds.length > 0) {
-      // If filters.adAccountId matches one of the available accounts, use it
-      if (filters.adAccountId && availableAccountIds.includes(filters.adAccountId)) {
-        setSelectedAccountId(filters.adAccountId)
-      } else {
-        setSelectedAccountId(prev => {
-          if (!prev || !availableAccountIds.includes(prev)) {
-            return availableAccountIds[0]
-          }
-          return prev
-        })
+      for (const client of targetClients) {
+        const metaIds = client.meta_ads_account_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
+        const googleIds = client.google_ads_customer_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
+        
+        if (metaIds.includes(filters.adAccountId)) {
+          return { activeClient: client, platform: 'meta' as const, accountId: filters.adAccountId }
+        }
+        if (googleIds.includes(filters.adAccountId)) {
+          return { activeClient: client, platform: 'google' as const, accountId: filters.adAccountId }
+        }
       }
-    } else {
-      setSelectedAccountId(null)
     }
-  }, [availableAccountIds, filters.adAccountId])
 
-  // Sync with parent scorecard campaign selection
-  useEffect(() => {
-    if (selectedCampaignId) setSelectedCampaignIds(new Set([selectedCampaignId]))
-    else setSelectedCampaignIds(new Set())
-  }, [selectedCampaignId])
+    // Use platform filter to determine which account to use
+    for (const client of targetClients) {
+      if (filters.platform !== 'google' && client.meta_ads_account_id) {
+        const ids = client.meta_ads_account_id.split(',').map(s => s.trim()).filter(Boolean)
+        if (ids.length > 0) {
+          return { activeClient: client, platform: 'meta' as const, accountId: ids[0] }
+        }
+      }
+      if (filters.platform !== 'meta' && client.google_ads_customer_id) {
+        const ids = client.google_ads_customer_id.split(',').map(s => s.trim()).filter(Boolean)
+        if (ids.length > 0) {
+          return { activeClient: client, platform: 'google' as const, accountId: ids[0] }
+        }
+      }
+    }
 
-  // Reset campaigns when client changes
-  useEffect(() => {
-    setSelectedCampaignIds(new Set())
-  }, [activeClient?.id])
+    return { activeClient: null, platform: 'meta' as const, accountId: null }
+  }, [clients, filters.clientIds, filters.adAccountId, filters.platform])
 
-  // Fetch — use the selected account ID
+  // Load account name
   useEffect(() => {
-    if (!activeClient || !selectedAccountId) return
+    if (!accountId) {
+      setAccountName(null)
+      return
+    }
+    
+    const endpoint = platform === 'google' ? '/api/ads/google/accounts' : '/api/ads/meta/accounts'
+    fetch(endpoint)
+      .then(r => r.ok ? r.json() : { accounts: [] })
+      .then(json => {
+        const accounts = json.accounts ?? []
+        const normalizeId = (id: string) => id.replace(/[-\s]/g, '').replace(/^0+/, '')
+        const normalizedSearchId = normalizeId(accountId)
+        const account = accounts.find((a: { id: string; name: string }) => normalizeId(a.id) === normalizedSearchId)
+        setAccountName(account?.name ?? null)
+      })
+      .catch(() => setAccountName(null))
+  }, [accountId, platform])
+
+  // Fetch data when filters change
+  useEffect(() => {
+    if (!activeClient || !accountId) {
+      setData([])
+      return
+    }
 
     const start = filters.dateRange.start || ''
     const end   = filters.dateRange.end   || ''
     if (!start || !end) return
 
-    // Use the selected account ID
-    const idsToFetch = [selectedAccountId]
-
-    // Determine which campaign IDs to filter by
-    const campaignIdsToFetch = selectedCampaignIds.size > 0 ? [...selectedCampaignIds] : [null]
-
     setLoading(true)
     setError(null)
 
-    const fetchOne = (id: string, campaignId: string | null): Promise<BreakdownRow[]> => {
-      const params = new URLSearchParams({ platform, start_date: start, end_date: end, granularity })
-      if (platform === 'meta') params.set('account_id', id)
-      else params.set('customer_id', id)
-      if (campaignId) params.set('campaign_id', campaignId)
+    const params = new URLSearchParams({ 
+      platform, 
+      start_date: start, 
+      end_date: end, 
+      granularity 
+    })
+    if (platform === 'meta') params.set('account_id', accountId)
+    else params.set('customer_id', accountId)
 
-      return fetch(`/api/ads/breakdown?${params}`)
-        .then(r => r.json())
-        .then((d: BreakdownResponse & { error?: string }) => {
-          if (d.error) throw new Error(d.error)
-          return d.rows ?? []
-        })
-    }
-
-    // Fetch all combinations of [ids × campaigns] and merge
-    const fetches: Promise<BreakdownRow[]>[] = []
-    for (const id of idsToFetch) {
-      for (const cid of campaignIdsToFetch) {
-        fetches.push(fetchOne(id, cid))
-      }
-    }
-
-    // Fetch CRM contacts by day in parallel (only if client has CRM configured)
+    // Fetch CRM contacts in parallel if client has CRM configured
     const crmFetch: Promise<Record<string, number>> = (activeClient.crm_type && (activeClient.ghl_location_id || activeClient.ghl_token))
       ? (() => {
           const p = new URLSearchParams({ client_id: activeClient.id, date_range: 'custom', start_date: start, end_date: end })
@@ -341,12 +266,20 @@ export function ScorecardTimeline({
         })()
       : Promise.resolve({})
 
-    Promise.all([Promise.all(fetches), crmFetch])
-      .then(([rowSets, crmByDay]) => setData(mergeRows(rowSets, crmByDay)))
+    Promise.all([
+      fetch(`/api/ads/breakdown?${params}`)
+        .then(r => r.json())
+        .then((d: BreakdownResponse & { error?: string }) => {
+          if (d.error) throw new Error(d.error)
+          return d.rows ?? []
+        }),
+      crmFetch
+    ])
+      .then(([rows, crmByDay]) => setData(mergeRows([rows], crmByDay)))
       .catch(e => { setError(e.message); setData([]) })
       .finally(() => setLoading(false))
 
-  }, [activeClient?.id, platform, granularity, filters.dateRange.start, filters.dateRange.end, selectedAccountId, selectedCampaignIds])
+  }, [activeClient?.id, accountId, platform, granularity, filters.dateRange.start, filters.dateRange.end])
 
   const toggleMetric = (key: string) => {
     setVisibleMetricKeys(prev => {
@@ -361,30 +294,11 @@ export function ScorecardTimeline({
   const totals  = data.length > 0 ? computeTotals(data) : null
   const exportLabel = activeClient?.business_name ?? 'cliente'
 
-  // Campaign selector label
-  const campaignSelectorLabel = useMemo(() => {
-    if (selectedCampaignIds.size === 0) return 'Todas las campanas'
-    if (selectedCampaignIds.size === 1) {
-      const id = [...selectedCampaignIds][0]
-      return availableCampaigns.find(c => c.campaignId === id)?.campaignName ?? 'Campana'
-    }
-    return `${selectedCampaignIds.size} campanas`
-  }, [selectedCampaignIds, availableCampaigns])
-
-  const toggleCampaign = (id: string) => {
-    setSelectedCampaignIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  if (!activeClient) return (
+  if (!activeClient || !accountId) return (
     <Card>
       <CardContent className="flex flex-col items-center justify-center py-14 text-center gap-2">
-        <p className="text-sm font-medium text-muted-foreground">Selecciona un cliente en el Scorecard</p>
-        <p className="text-xs text-muted-foreground/60">Hace click en una fila del scorecard para ver su evolucion temporal</p>
+        <p className="text-sm font-medium text-muted-foreground">Sin datos disponibles</p>
+        <p className="text-xs text-muted-foreground/60">Selecciona un cliente o cuenta en los filtros superiores</p>
       </CardContent>
     </Card>
   )
@@ -398,36 +312,12 @@ export function ScorecardTimeline({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Campaign multi-selector */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs max-w-[220px]">
-                <span className="truncate">{campaignSelectorLabel}</span>
-                {selectedCampaignIds.size > 0 && (
-                  <Badge variant="secondary" className="h-4 px-1 text-[10px] shrink-0">{selectedCampaignIds.size}</Badge>
-                )}
-                <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-72 max-h-72 overflow-y-auto">
-              <DropdownMenuItem
-                onClick={() => setSelectedCampaignIds(new Set())}
-                className={cn(!selectedCampaignIds.size && 'bg-muted')}
-              >
-                <span className="font-medium">Todas las campanas</span>
-              </DropdownMenuItem>
-              {availableCampaigns.length > 0 && <DropdownMenuSeparator />}
-              {availableCampaigns.map(c => (
-                <DropdownMenuCheckboxItem
-                  key={c.campaignId}
-                  checked={selectedCampaignIds.has(c.campaignId!)}
-                  onCheckedChange={() => toggleCampaign(c.campaignId!)}
-                >
-                  <span className="text-xs truncate max-w-[220px]">{c.campaignName}</span>
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Display context from global filters */}
+          {accountName && (
+            <Badge variant="outline" className="h-7 px-2 text-xs font-normal">
+              {accountName}
+            </Badge>
+          )}
 
           {/* Row selector (metric visibility) */}
           <Popover>
@@ -477,28 +367,6 @@ export function ScorecardTimeline({
             </PopoverContent>
           </Popover>
 
-          {/* Account selector - show when there are accounts */}
-          {availableAccountIds.length > 0 && (
-            <Select 
-              value={selectedAccountId ?? ''} 
-              onValueChange={setSelectedAccountId}
-            >
-              <SelectTrigger className="h-8 w-[200px] text-xs">
-                <div className="flex items-center gap-2">
-                  <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <SelectValue placeholder="Seleccionar cuenta" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                {availableAccountIds.map((id) => (
-                  <SelectItem key={id} value={id}>
-                    {platform === 'google' ? getAccountName(id) : `Cuenta ${id.slice(-6)}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          
           {/* Platform badge */}
           <Badge variant="outline" className={cn(
             'text-[10px] h-6 px-2 shrink-0',
@@ -508,107 +376,105 @@ export function ScorecardTimeline({
           </Badge>
 
           {/* Granularity toggle */}
-          <div className="flex rounded-lg border border-border overflow-hidden">
-            {(['daily', 'monthly'] as const).map(g => (
-              <button
-                key={g}
-                onClick={() => setGranularity(g)}
-                className={cn(
-                  'px-3 py-1.5 text-xs font-medium transition-colors',
-                  g === 'daily' && 'border-r border-border',
-                  granularity === g ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
-                )}
-              >
-                {g === 'daily' ? 'Diario' : 'Mensual'}
-              </button>
-            ))}
+          <div className="flex rounded-md border border-input">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn('h-8 rounded-r-none text-xs px-3', granularity === 'daily' && 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground')}
+              onClick={() => setGranularity('daily')}
+            >
+              Diario
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn('h-8 rounded-l-none text-xs px-3 border-l', granularity === 'monthly' && 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground')}
+              onClick={() => setGranularity('monthly')}
+            >
+              Mensual
+            </Button>
           </div>
 
-          {data.length > 0 && (
-            <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs"
-              onClick={() => exportCSV(periods, data, granularity, exportLabel)}>
-              <Download className="h-3.5 w-3.5" />
-              Exportar
-            </Button>
-          )}
+          {/* Export */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            onClick={() => exportCSV(periods, data, granularity, exportLabel)}
+            disabled={data.length === 0}
+          >
+            <Download className="h-3.5 w-3.5" />
+            Exportar
+          </Button>
         </div>
       </CardHeader>
 
       <CardContent className="px-0">
-        {loading ? (
-          <div className="flex items-center justify-center py-16 gap-3 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span className="text-sm">Cargando datos...</span>
+        {error && (
+          <div className="mx-6 mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            {error}
           </div>
-        ) : error ? (
-          <div className="px-6 py-6 text-center">
-            <p className="text-sm text-destructive">{error}</p>
+        )}
+
+        {loading && (
+          <div className="py-10 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Cargando datos...
           </div>
-        ) : data.length === 0 ? (
-          <div className="px-6 py-10 text-center">
-            <p className="text-sm text-muted-foreground">Sin datos para el periodo seleccionado</p>
+        )}
+
+        {!loading && data.length === 0 && !error && (
+          <div className="py-10 text-center text-sm text-muted-foreground">
+            Sin datos en el periodo seleccionado
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <th className="sticky left-0 z-10 bg-muted/40 text-left px-4 py-2.5 font-medium text-muted-foreground text-xs uppercase tracking-wider min-w-[200px]">
-                    Metrica
-                  </th>
-                  {periods.map(p => (
-                    <th key={p} className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs whitespace-nowrap min-w-[80px]">
-                      {formatPeriodLabel(p, granularity)}
+        )}
+
+        {!loading && data.length > 0 && (
+          <ScrollArea className="w-full">
+            <div className="min-w-max">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-y border-border">
+                    <th className="px-6 py-2 text-left text-xs font-medium text-muted-foreground sticky left-0 bg-card z-10 min-w-[180px]">
+                      METRICA
                     </th>
-                  ))}
-                  <th className="text-right px-4 py-2.5 font-semibold text-foreground text-xs uppercase tracking-wider min-w-[90px] border-l border-border">
-                    Total
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {METRICS.filter(m => visibleMetricKeys.has(m.key as string)).map((metric, mi) => {
-                  const isComingSoon = metric.status === 'coming_soon'
-                  const key = metric.key as keyof BreakdownRow
-                  return (
-                    <tr key={metric.key} className={cn(
-                      'border-b border-border/50 transition-colors',
-                      !isComingSoon && 'hover:bg-muted/30',
-                      isComingSoon && 'opacity-50',
-                      mi === 0 && 'font-medium'
-                    )}>
-                      <td className="sticky left-0 z-10 bg-background px-4 py-3">
-                        <div className="flex items-center gap-2">
+                    {periods.map(p => (
+                      <th key={p} className="px-3 py-2 text-right text-xs font-medium text-muted-foreground whitespace-nowrap min-w-[70px]">
+                        {formatPeriodLabel(p, granularity)}
+                      </th>
+                    ))}
+                    <th className="px-4 py-2 text-right text-xs font-semibold text-foreground whitespace-nowrap min-w-[80px] bg-muted/30">
+                      TOTAL
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {METRICS.filter(m => visibleMetricKeys.has(m.key as string)).map((metric, idx) => {
+                    const key = metric.key as keyof BreakdownRow
+                    const isComingSoon = metric.status === 'coming_soon'
+                    return (
+                      <tr key={metric.key as string} className={cn('border-b border-border/50', idx % 2 === 0 ? 'bg-transparent' : 'bg-muted/10')}>
+                        <td className="px-6 py-2.5 sticky left-0 bg-card z-10">
                           <div>
-                            <p className={cn('text-sm font-medium', isComingSoon && 'text-muted-foreground')}>{metric.label}</p>
-                            <p className="text-[11px] text-muted-foreground">{metric.sublabel}</p>
+                            <p className={cn('font-medium text-foreground', isComingSoon && 'text-muted-foreground')}>{metric.label}</p>
+                            <p className="text-[10px] text-muted-foreground">{metric.sublabel}</p>
                           </div>
-                          {isComingSoon && (
-                            <Badge variant="outline" className="text-[9px] h-4 px-1.5 shrink-0 border-muted-foreground/30 text-muted-foreground">
-                              Prox.
-                            </Badge>
-                          )}
-                        </div>
-                      </td>
-                      {isComingSoon ? (
-                        periods.map(p => <td key={p} className="text-right px-3 py-3 tabular-nums text-muted-foreground/40">-</td>)
-                      ) : (
-                        data.map(row => (
-                          <td key={row.period} className="text-right px-3 py-3 tabular-nums text-foreground">
-                            {fmt(row[key] as number, metric.format)}
+                        </td>
+                        {data.map(row => (
+                          <td key={row.period} className={cn('px-3 py-2.5 text-right tabular-nums', isComingSoon ? 'text-muted-foreground/40' : 'text-foreground')}>
+                            {isComingSoon ? '-' : fmt(row[key] as number, metric.format)}
                           </td>
-                        ))
-                      )}
-                      <td className="text-right px-4 py-3 tabular-nums font-semibold border-l border-border">
-                        {isComingSoon ? <span className="text-muted-foreground/40">-</span>
-                          : <span>{totals ? fmt(totals[key] as number, metric.format) : '-'}</span>}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                        ))}
+                        <td className={cn('px-4 py-2.5 text-right tabular-nums font-semibold bg-muted/30', isComingSoon ? 'text-muted-foreground/40' : 'text-foreground')}>
+                          {isComingSoon ? '-' : totals ? fmt(totals[key] as number, metric.format) : '-'}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </ScrollArea>
         )}
       </CardContent>
     </Card>

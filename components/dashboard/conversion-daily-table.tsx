@@ -5,39 +5,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
-import { Download, Loader2, RefreshCw, Building2 } from 'lucide-react'
+import { Download, Loader2, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { Client, ScorecardRow } from '@/lib/types'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import type { Client, DashboardFilters, ScorecardRow } from '@/lib/types'
 
 interface ConversionDailyTableProps {
   clients: Client[]
   scorecardRows: ScorecardRow[]
-  selectedClientId: string | null      // synced from scorecard client filter
-  selectedCampaignId: string | null    // synced from scorecard campaign filter
-  filters: { dateRange: { preset?: string; start?: string; end?: string } }
+  filters: DashboardFilters
 }
 
 interface PivotData {
   dates: string[]
   pivot: Record<string, Record<string, number>>
   conversionNames: string[]
-  conversionTypes: Record<string, 'PRIMARY' | 'SECONDARY'> // Maps conversion name to type
+  conversionTypes: Record<string, 'PRIMARY' | 'SECONDARY'>
   total: number
-}
-
-interface GoogleAccount {
-  id: string
-  name: string
-  currency: string
-  status: string
-  is_active: boolean
 }
 
 function formatDate(iso: string): string {
@@ -64,98 +47,78 @@ function exportCSV(data: PivotData) {
 export function ConversionDailyTable({
   clients,
   scorecardRows,
-  selectedClientId,
-  selectedCampaignId,
   filters,
 }: ConversionDailyTableProps) {
   const [data, setData] = useState<PivotData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
-  // Google account names map (id -> name)
-  const [googleAccounts, setGoogleAccounts] = useState<GoogleAccount[]>([])
-  const [loadingAccounts, setLoadingAccounts] = useState(false)
-  
-  // Load Google account names on mount
-  useEffect(() => {
-    async function loadAccounts() {
-      setLoadingAccounts(true)
-      try {
-        const res = await fetch('/api/ads/google/accounts')
-        if (res.ok) {
-          const json = await res.json()
-          setGoogleAccounts(json.accounts ?? [])
+  const [accountName, setAccountName] = useState<string | null>(null)
+
+  // Derive Google Ads account ID from global filters
+  const googleAccountId = (() => {
+    // If a specific ad account is selected in global filters
+    if (filters.adAccountId) {
+      // Check if it's a Google Ads account
+      for (const client of clients) {
+        const googleIds = client.google_ads_customer_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
+        if (googleIds.includes(filters.adAccountId)) {
+          return filters.adAccountId
         }
-      } catch {
-        // Silently fail - will show IDs instead of names
-      } finally {
-        setLoadingAccounts(false)
+      }
+      return null // Selected account is not Google Ads
+    }
+    
+    // If specific clients are selected, use the first client's first Google account
+    const targetClients = filters.clientIds.length > 0
+      ? clients.filter(c => filters.clientIds.includes(c.id))
+      : clients
+    
+    // Only proceed if Google platform is selected or all platforms
+    if (filters.platform === 'meta') return null
+    
+    for (const client of targetClients) {
+      const googleIds = client.google_ads_customer_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
+      if (googleIds.length > 0) {
+        return googleIds[0]
       }
     }
-    loadAccounts()
-  }, [])
-  
-  // Filter clients that have Google Ads configured
-  const googleAdsClients = clients.filter(c => c.google_ads_customer_id)
-  
-  // Internal client selection - can be changed independently from scorecard
-  const [internalClientId, setInternalClientId] = useState<string | null>(
-    selectedClientId ?? (googleAdsClients.length > 0 ? googleAdsClients[0].id : null)
-  )
-  
-  // Get the active client from internal selection
-  const activeClient = googleAdsClients.find(c => c.id === internalClientId) ?? null
-  
-  // Parse Google Ads account IDs for the active client (can be comma-separated)
-  const googleAccountIds = activeClient?.google_ads_customer_id
-    ?.split(',')
-    .map(s => s.trim())
-    .filter(Boolean) ?? []
-  
-  // Get account name by ID - normalize both IDs for comparison (remove dashes, spaces, leading zeros)
-  const getAccountName = (id: string): string => {
-    const normalizeId = (accountId: string) => accountId.replace(/[-\s]/g, '').replace(/^0+/, '')
-    const normalizedSearchId = normalizeId(id)
-    const account = googleAccounts.find(a => normalizeId(a.id) === normalizedSearchId)
-    return account?.name ?? `Cuenta ${id.slice(-4)}`
-  }
-  
-  // Selected Google account ID (for clients with multiple accounts)
-  const [selectedGoogleAccountId, setSelectedGoogleAccountId] = useState<string | null>(
-    googleAccountIds.length > 0 ? googleAccountIds[0] : null
-  )
-  
-  // Sync with scorecard selection when it changes
-  useEffect(() => {
-    if (selectedClientId) {
-      const client = clients.find(c => c.id === selectedClientId && c.google_ads_customer_id)
-      if (client) {
-        setInternalClientId(selectedClientId)
-        // Reset account selection when client changes
-        const ids = client.google_ads_customer_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
-        setSelectedGoogleAccountId(ids.length > 0 ? ids[0] : null)
+    return null
+  })()
+
+  // Get active client name for display
+  const activeClientName = (() => {
+    if (!googleAccountId) return null
+    for (const client of clients) {
+      const googleIds = client.google_ads_customer_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
+      if (googleIds.includes(googleAccountId)) {
+        return client.business_name
       }
     }
-  }, [selectedClientId, clients])
-  
-  // Update selected account when client changes internally
+    return null
+  })()
+
+  // Load account name from API
   useEffect(() => {
-    setSelectedGoogleAccountId(prev => {
-      if (googleAccountIds.length > 0 && !googleAccountIds.includes(prev ?? '')) {
-        return googleAccountIds[0]
-      }
-      return prev
-    })
-  }, [googleAccountIds])
-
-  // Label for selected campaign
-  const campaignLabel = selectedCampaignId
-    ? (scorecardRows.find(r => r.campaignId === selectedCampaignId)?.campaignName ?? 'Campana seleccionada')
-    : 'Todas las campanas'
-
-  const fetchData = useCallback(async (googleAccountId: string) => {
     if (!googleAccountId) {
-      setError('No hay cuenta de Google Ads seleccionada')
+      setAccountName(null)
+      return
+    }
+    
+    fetch('/api/ads/google/accounts')
+      .then(r => r.ok ? r.json() : { accounts: [] })
+      .then(json => {
+        const accounts = json.accounts ?? []
+        const normalizeId = (id: string) => id.replace(/[-\s]/g, '').replace(/^0+/, '')
+        const normalizedSearchId = normalizeId(googleAccountId)
+        const account = accounts.find((a: { id: string; name: string }) => normalizeId(a.id) === normalizedSearchId)
+        setAccountName(account?.name ?? null)
+      })
+      .catch(() => setAccountName(null))
+  }, [googleAccountId])
+
+  const fetchData = useCallback(async () => {
+    if (!googleAccountId) {
+      setError('No hay cuenta de Google Ads disponible con los filtros actuales')
       return
     }
     setLoading(true)
@@ -166,7 +129,6 @@ export function ConversionDailyTable({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customerId: googleAccountId,
-          campaignId: selectedCampaignId ?? undefined,
           dateRange: filters.dateRange.preset ?? 'last_30d',
           startDate: filters.dateRange.start,
           endDate: filters.dateRange.end,
@@ -183,20 +145,31 @@ export function ConversionDailyTable({
     } finally {
       setLoading(false)
     }
-  }, [selectedCampaignId, filters])
+  }, [googleAccountId, filters])
 
-  // Auto-reload when filters or selection changes — only if we already had data loaded
+  // Auto-reload when filters change
   useEffect(() => {
-    if (data && selectedGoogleAccountId) {
-      fetchData(selectedGoogleAccountId)
+    if (data && googleAccountId) {
+      fetchData()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClientId, selectedCampaignId, filters, selectedGoogleAccountId])
+  }, [googleAccountId, filters.dateRange.start, filters.dateRange.end, filters.dateRange.preset])
+
+  // Reset data when account changes
+  useEffect(() => {
+    setData(null)
+    setError(null)
+  }, [googleAccountId])
 
   const totalConversions = data
     ? data.conversionNames.reduce((sum, name) =>
         sum + data.dates.reduce((s, d) => s + (data.pivot[name]?.[d] ?? 0), 0), 0)
     : 0
+
+  // Don't render if no Google Ads available
+  if (!googleAccountId && filters.platform === 'meta') {
+    return null
+  }
 
   return (
     <Card>
@@ -206,71 +179,24 @@ export function ConversionDailyTable({
           <p className="text-xs text-muted-foreground mt-0.5">Nombre de conversion por dia — Google Ads</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-
-          {/* Client and account selectors */}
-          <div className="flex items-center gap-2">
-            {googleAdsClients.length > 0 ? (
-              <Select 
-                value={internalClientId ?? ''} 
-                onValueChange={(val) => {
-                  setInternalClientId(val)
-                  setData(null) // Reset data when client changes
-                }}
-              >
-                <SelectTrigger className="h-8 w-[180px] text-xs">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                    <SelectValue placeholder="Seleccionar cliente" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {googleAdsClients.map(client => (
-                    <SelectItem key={client.id} value={client.id}>
-                      {client.business_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Badge variant="outline" className="h-7 px-2 text-xs font-normal text-muted-foreground">
-                Sin clientes con Google Ads
-              </Badge>
-            )}
-            
-            {/* Google Account selector - always show when there are accounts */}
-            {googleAccountIds.length > 0 && (
-              <Select 
-                value={selectedGoogleAccountId ?? ''} 
-                onValueChange={(val) => {
-                  setSelectedGoogleAccountId(val)
-                  setData(null)
-                }}
-              >
-                <SelectTrigger className="h-8 w-[220px] text-xs">
-                  <SelectValue placeholder={loadingAccounts ? "Cargando cuentas..." : "Seleccionar cuenta"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {googleAccountIds.map((id) => (
-                    <SelectItem key={id} value={id}>
-                      {getAccountName(id)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            
-            <Badge variant="outline" className="h-7 px-2 text-xs font-normal gap-1">
-              <span className="text-muted-foreground">Campana:</span>
-              {campaignLabel}
+          {/* Display current context from global filters */}
+          {activeClientName && (
+            <Badge variant="secondary" className="h-7 px-2 text-xs font-normal">
+              {activeClientName}
             </Badge>
-          </div>
+          )}
+          {accountName && (
+            <Badge variant="outline" className="h-7 px-2 text-xs font-normal">
+              {accountName}
+            </Badge>
+          )}
 
           <Button
             variant="outline"
             size="sm"
             className="h-8 gap-1.5 text-xs"
-            onClick={() => selectedGoogleAccountId && fetchData(selectedGoogleAccountId)}
-            disabled={loading || !selectedGoogleAccountId}
+            onClick={fetchData}
+            disabled={loading || !googleAccountId}
           >
             {loading
               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -294,12 +220,18 @@ export function ConversionDailyTable({
           </div>
         )}
 
-        {!data && !loading && !error && (
+        {!googleAccountId && (
           <div className="px-6 py-8 text-center">
             <p className="text-sm text-muted-foreground">
-              {selectedGoogleAccountId
-                ? `Presiona "Cargar datos" para ver las conversiones diarias de ${activeClient?.business_name ?? 'la cuenta seleccionada'}.`
-                : 'Selecciona un cliente con Google Ads para ver conversiones.'}
+              Selecciona un cliente o cuenta de Google Ads en los filtros superiores para ver conversiones.
+            </p>
+          </div>
+        )}
+
+        {googleAccountId && !data && !loading && !error && (
+          <div className="px-6 py-8 text-center">
+            <p className="text-sm text-muted-foreground">
+              Presiona &quot;Cargar datos&quot; para ver las conversiones diarias.
             </p>
           </div>
         )}

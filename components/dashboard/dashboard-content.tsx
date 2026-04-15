@@ -435,8 +435,6 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
           <ScorecardTimeline
             clients={targetClients}
             filters={filters}
-            selectedClientId={scorecardClientId ?? (targetClients.length === 1 ? targetClients[0].id : null)}
-            selectedCampaignId={scorecardCampaignIds[0] ?? null}
             scorecardRows={scorecardRows}
           />
         </section>
@@ -444,10 +442,8 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
         {/* Detalle conversiones diario — Google Ads */}
         <section>
           <ConversionDailyTable
-            clients={clients}
+            clients={targetClients}
             scorecardRows={scorecardRows}
-            selectedClientId={scorecardClientId}
-            selectedCampaignId={scorecardCampaignIds[0] ?? null}
             filters={filters}
           />
         </section>
