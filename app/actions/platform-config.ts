@@ -10,6 +10,7 @@ export async function updateClientPlatformIds(
   crmType?: string | null,
   ghlLocationId?: string | null,
   ghlToken?: string | null,
+  googleSheetId?: string | null,
 ) {
   const supabase = await createClient()
 
@@ -32,6 +33,7 @@ export async function updateClientPlatformIds(
   if (crmType !== undefined) updates.crm_type = crmType || null
   if (ghlLocationId !== undefined) updates.ghl_location_id = ghlLocationId || null
   if (ghlToken !== undefined) updates.ghl_token = ghlToken || null
+  if (googleSheetId !== undefined) updates.google_sheet_id = googleSheetId || null
 
   const { error } = await supabase
     .from('clients')

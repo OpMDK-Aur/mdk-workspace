@@ -20,6 +20,7 @@ import {
   Unlink,
   ChevronDown,
   ChevronUp,
+  FileSpreadsheet,
 } from 'lucide-react'
 import {
   Select,
@@ -42,6 +43,7 @@ interface ClientItem {
   crm_type: string | null
   ghl_location_id: string | null
   ghl_token: string | null
+  google_sheet_id: string | null
 }
 
 interface MetaAccount {
@@ -260,8 +262,8 @@ export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
   const [googleAccountsError, setGoogleAccountsError] = useState<string | null>(null)
   const [googleMatchResults, setGoogleMatchResults] = useState<Record<string, ClientMatchResult>>({})
 
-  // configs: meta = single ID string, google = comma-separated IDs string, crm fields
-  const [configs, setConfigs] = useState<Record<string, { meta: string; google: string; crmType: string; ghlLocationId: string; ghlToken: string }>>(() =>
+  // configs: meta = single ID string, google = comma-separated IDs string, crm fields, google sheet
+  const [configs, setConfigs] = useState<Record<string, { meta: string; google: string; crmType: string; ghlLocationId: string; ghlToken: string; googleSheetId: string }>>(() =>
     Object.fromEntries(
       clients.map(c => [
         c.id,
@@ -271,10 +273,15 @@ export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
           crmType: c.crm_type ?? '',
           ghlLocationId: c.ghl_location_id ?? '',
           ghlToken: c.ghl_token ?? '',
+          googleSheetId: c.google_sheet_id ?? '',
         },
       ])
     )
   )
+  
+  // Google Sheets state
+  const [spreadsheets, setSpreadsheets] = useState<{ id: string; name: string }[]>([])
+  const [loadingSpreadsheets, setLoadingSpreadsheets] = useState(false)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [saved, setSaved] = useState<Record<string, boolean>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -283,7 +290,23 @@ export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
   useEffect(() => {
     fetchMetaAccounts()
     fetchGoogleAccounts()
+    fetchSpreadsheets()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function fetchSpreadsheets() {
+    setLoadingSpreadsheets(true)
+    try {
+      const res = await fetch('/api/google-sheets')
+      const data = await res.json()
+      if (data.spreadsheets) {
+        setSpreadsheets(data.spreadsheets)
+      }
+    } catch {
+      console.error('Error fetching spreadsheets')
+    } finally {
+      setLoadingSpreadsheets(false)
+    }
+  }
 
   async function fetchMetaAccounts() {
     setLoadingAccounts(true)
@@ -389,6 +412,7 @@ export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
       config.crmType.trim() || null,
       config.ghlLocationId.trim() || null,
       config.ghlToken.trim() || null,
+      config.googleSheetId.trim() || null,
     )
 
     setSaving(prev => ({ ...prev, [clientId]: false }))
@@ -402,7 +426,7 @@ export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
     }
   }
 
-  function updateField(clientId: string, field: 'meta' | 'google' | 'crmType' | 'ghlLocationId' | 'ghlToken', value: string) {
+  function updateField(clientId: string, field: 'meta' | 'google' | 'crmType' | 'ghlLocationId' | 'ghlToken' | 'googleSheetId', value: string) {
     setConfigs(prev => ({ ...prev, [clientId]: { ...prev[clientId], [field]: value } }))
     setSaved(prev => ({ ...prev, [clientId]: false }))
     if (field === 'meta') setMatchResults(prev => ({ ...prev, [clientId]: { status: 'manual', candidates: [] } }))
@@ -499,7 +523,8 @@ export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
           config.google !== (client.google_ads_customer_id ?? '') ||
           config.crmType !== (client.crm_type ?? '') ||
           config.ghlLocationId !== (client.ghl_location_id ?? '') ||
-          config.ghlToken !== (client.ghl_token ?? '')
+          config.ghlToken !== (client.ghl_token ?? '') ||
+          config.googleSheetId !== (client.google_sheet_id ?? '')
         const isConnected = Boolean(config.meta || config.google)
 
         const showAlert =
@@ -710,6 +735,64 @@ export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
                       className="h-9 font-mono text-sm"
                     />
                   </div>
+                )}
+              </div>
+
+              {/* ── Google Sheets ── */}
+              <div className="pt-2 border-t border-border space-y-2">
+                <Label className="text-sm flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-green-600 text-white shrink-0">
+                    <FileSpreadsheet className="h-3 w-3" />
+                  </span>
+                  Google Sheets
+                  {config.googleSheetId && (
+                    <Badge className="bg-green-500/10 text-green-600 border-green-500/20 text-[10px] px-1.5">
+                      Vinculado
+                    </Badge>
+                  )}
+                </Label>
+                {loadingSpreadsheets ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Cargando hojas de calculo...
+                  </div>
+                ) : spreadsheets.length > 0 ? (
+                  <Select
+                    value={config.googleSheetId || '__none__'}
+                    onValueChange={val => updateField(client.id, 'googleSheetId', val === '__none__' ? '' : val)}
+                  >
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Seleccionar hoja de calculo..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">
+                        <span className="text-muted-foreground">Sin hoja vinculada</span>
+                      </SelectItem>
+                      {spreadsheets.map(ss => (
+                        <SelectItem key={ss.id} value={ss.id}>
+                          <div className="flex items-center gap-2">
+                            <FileSpreadsheet className="h-4 w-4 text-green-600" />
+                            <span>{ss.name}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic py-1">
+                    Conecta Google Ads para acceder a las hojas de calculo.
+                  </p>
+                )}
+                {config.googleSheetId && (
+                  <a
+                    href={`https://docs.google.com/spreadsheets/d/${config.googleSheetId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Abrir en Google Sheets
+                  </a>
                 )}
               </div>
 
