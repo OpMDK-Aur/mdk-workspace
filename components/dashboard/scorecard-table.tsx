@@ -216,11 +216,21 @@ export function ScorecardTable({
       !campaignSearch || (r.campaignName ?? '').toLowerCase().includes(campaignSearch.toLowerCase())
     ), [campaignOptions, campaignSearch])
 
-  const filteredRows = rows.filter(row => {
-    if (selectedScorecardClientId && row.clientId !== selectedScorecardClientId) return false
-    if (selectedScorecardCampaignIds.length > 0 && !selectedScorecardCampaignIds.includes(row.campaignId ?? '')) return false
-    return true
-  })
+  // Check if a specific account is selected in global filters
+  const hasAccountSelected = !!filters.adAccountId
+
+  const filteredRows = useMemo(() => {
+    let result = rows.filter(row => {
+      if (selectedScorecardClientId && row.clientId !== selectedScorecardClientId) return false
+      if (selectedScorecardCampaignIds.length > 0 && !selectedScorecardCampaignIds.includes(row.campaignId ?? '')) return false
+      return true
+    })
+    // If no account is selected, limit to first 5 results
+    if (!hasAccountSelected) {
+      result = result.slice(0, 5)
+    }
+    return result
+  }, [rows, selectedScorecardClientId, selectedScorecardCampaignIds, hasAccountSelected])
 
   const toggleCampaign = useCallback((id: string) => {
     onSelectScorecardCampaigns(

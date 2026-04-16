@@ -23,7 +23,40 @@ interface PivotData {
   total: number
 }
 
-function formatDate(iso: string): string {
+type ViewMode = 'daily' | 'monthly'
+
+// Group daily data by month
+function groupByMonth(data: PivotData): PivotData {
+  const monthlyPivot: Record<string, Record<string, number>> = {}
+  const months = new Set<string>()
+  
+  for (const name of data.conversionNames) {
+    monthlyPivot[name] = {}
+    for (const date of data.dates) {
+      const [year, month] = date.split('-')
+      const monthKey = `${year}-${month}`
+      months.add(monthKey)
+      monthlyPivot[name][monthKey] = (monthlyPivot[name][monthKey] ?? 0) + (data.pivot[name]?.[date] ?? 0)
+    }
+  }
+  
+  const sortedMonths = Array.from(months).sort()
+  
+  return {
+    dates: sortedMonths,
+    pivot: monthlyPivot,
+    conversionNames: data.conversionNames,
+    conversionTypes: data.conversionTypes,
+    total: data.total,
+  }
+}
+
+function formatDate(iso: string, viewMode: ViewMode = 'daily'): string {
+  if (viewMode === 'monthly') {
+    const [year, month] = iso.split('-')
+    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+    return `${monthNames[parseInt(month, 10) - 1]} ${year.slice(2)}`
+  }
   const [, month, day] = iso.split('-')
   return `${day}/${month}`
 }
@@ -53,6 +86,10 @@ export function ConversionDailyTable({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [accountName, setAccountName] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>('daily')
+  
+  // Get display data based on view mode
+  const displayData = data ? (viewMode === 'monthly' ? groupByMonth(data) : data) : null
 
   // Derive Google Ads account ID from global filters
   const googleAccountId = (() => {
@@ -180,10 +217,32 @@ export function ConversionDailyTable({
     <Card>
       <CardHeader className="flex flex-row items-start justify-between flex-wrap gap-3">
         <div>
-          <CardTitle className="text-base font-semibold">Detalle conversiones (diario)</CardTitle>
-          <p className="text-xs text-muted-foreground mt-0.5">Nombre de conversion por dia — Google Ads</p>
+          <CardTitle className="text-base font-semibold">Detalle conversiones</CardTitle>
+          <p className="text-xs text-muted-foreground mt-0.5">Nombre de conversion por {viewMode === 'daily' ? 'dia' : 'mes'} — Google Ads</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* View mode toggle */}
+          <div className="flex rounded-lg border border-border overflow-hidden">
+            <button
+              onClick={() => setViewMode('daily')}
+              className={cn(
+                'px-3 py-1.5 text-xs font-medium transition-colors',
+                viewMode === 'daily' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+              )}
+            >
+              Diario
+            </button>
+            <button
+              onClick={() => setViewMode('monthly')}
+              className={cn(
+                'px-3 py-1.5 text-xs font-medium transition-colors',
+                viewMode === 'monthly' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+              )}
+            >
+              Mensual
+            </button>
+          </div>
+
           {/* Display current context from global filters */}
           {activeClientName && (
             <Badge variant="secondary" className="h-7 px-2 text-xs font-normal">
@@ -248,17 +307,17 @@ export function ConversionDailyTable({
           </div>
         )}
 
-        {data && !loading && (
-          data.conversionNames.length === 0 ? (
+        {displayData && !loading && (
+          displayData.conversionNames.length === 0 ? (
             <div className="px-6 py-8 text-center">
               <p className="text-sm text-muted-foreground">Sin conversiones en el periodo seleccionado.</p>
             </div>
           ) : (
             <>
               <div className="px-6 pb-3 flex items-center gap-3 text-xs text-muted-foreground">
-                <span>{data.conversionNames.length} accion{data.conversionNames.length !== 1 ? 'es' : ''}</span>
+                <span>{displayData.conversionNames.length} accion{displayData.conversionNames.length !== 1 ? 'es' : ''}</span>
                 <span>·</span>
-                <span>{data.dates.length} dia{data.dates.length !== 1 ? 's' : ''}</span>
+                <span>{displayData.dates.length} {viewMode === 'daily' ? 'dia' : 'mes'}{displayData.dates.length !== 1 ? (viewMode === 'daily' ? 's' : 'es') : ''}</span>
                 <span>·</span>
                 <span className="font-medium text-foreground">
                   {Math.round(totalConversions).toLocaleString('es-AR')} conversiones totales
@@ -272,9 +331,9 @@ export function ConversionDailyTable({
                         <th className="sticky left-0 z-10 bg-card px-6 py-3 text-left font-medium text-muted-foreground whitespace-nowrap min-w-[220px]">
                           Nombre de conversion
                         </th>
-                        {data.dates.map(date => (
+                        {displayData.dates.map(date => (
                           <th key={date} className="px-3 py-3 text-right font-medium text-muted-foreground whitespace-nowrap min-w-[52px]">
-                            {formatDate(date)}
+                            {formatDate(date, viewMode)}
                           </th>
                         ))}
                         <th className="px-4 py-3 text-right font-semibold text-foreground whitespace-nowrap min-w-[72px]">
@@ -283,9 +342,9 @@ export function ConversionDailyTable({
                       </tr>
                     </thead>
                     <tbody>
-                      {data.conversionNames.map((name, i) => {
-                        const rowTotal = data.dates.reduce((s, d) => s + (data.pivot[name]?.[d] ?? 0), 0)
-                        const convType = data.conversionTypes?.[name] ?? 'PRIMARY'
+                      {displayData.conversionNames.map((name, i) => {
+                        const rowTotal = displayData.dates.reduce((s, d) => s + (displayData.pivot[name]?.[d] ?? 0), 0)
+                        const convType = displayData.conversionTypes?.[name] ?? 'PRIMARY'
                         const isPrimary = convType === 'PRIMARY'
                         return (
                           <tr
@@ -311,8 +370,8 @@ export function ConversionDailyTable({
                                 </Badge>
                               </div>
                             </td>
-                            {data.dates.map(date => {
-                              const val = data.pivot[name]?.[date] ?? 0
+                            {displayData.dates.map(date => {
+                              const val = displayData.pivot[name]?.[date] ?? 0
                               return (
                                 <td
                                   key={date}
@@ -337,8 +396,8 @@ export function ConversionDailyTable({
                         <td className="sticky left-0 z-10 bg-muted/20 px-6 py-2.5 font-semibold text-foreground">
                           Total
                         </td>
-                        {data.dates.map(date => {
-                          const colTotal = data.conversionNames.reduce((s, n) => s + (data.pivot[n]?.[date] ?? 0), 0)
+                        {displayData.dates.map(date => {
+                          const colTotal = displayData.conversionNames.reduce((s, n) => s + (displayData.pivot[n]?.[date] ?? 0), 0)
                           return (
                             <td key={date} className={cn('px-3 py-2.5 text-right tabular-nums font-semibold', colTotal > 0 ? 'text-foreground' : 'text-muted-foreground/40')}>
                               {colTotal > 0 ? Math.round(colTotal) : '-'}
