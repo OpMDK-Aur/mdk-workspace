@@ -87,6 +87,12 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  console.log('[google-oauth] Saving to platform_tokens:')
+  console.log('[google-oauth] - access_token length:', tokenData.access_token?.length)
+  console.log('[google-oauth] - refresh_token length:', refreshToken?.length)
+  console.log('[google-oauth] - token_expiry:', expiresAt)
+  console.log('[google-oauth] - connected_email:', userInfo.email)
+
   const { error: dbError } = await supabase
     .from('platform_tokens')
     .upsert({
@@ -102,6 +108,22 @@ export async function GET(request: NextRequest) {
   if (dbError) {
     console.error('[google-oauth] DB error:', dbError)
     return NextResponse.redirect(new URL('/dashboard/platform?error=db_error', origin))
+  }
+
+  // Verify the token was saved correctly
+  const { data: verifyData, error: verifyError } = await supabase
+    .from('platform_tokens')
+    .select('access_token, refresh_token, token_expiry')
+    .eq('platform', 'google_ads')
+    .single()
+  
+  if (verifyError || !verifyData) {
+    console.error('[google-oauth] Verification failed:', verifyError)
+  } else {
+    console.log('[google-oauth] Verified saved token:')
+    console.log('[google-oauth] - access_token saved:', !!verifyData.access_token)
+    console.log('[google-oauth] - refresh_token saved:', !!verifyData.refresh_token)
+    console.log('[google-oauth] - token_expiry saved:', verifyData.token_expiry)
   }
 
   return NextResponse.redirect(new URL('/dashboard/platform?connected=google', origin))
