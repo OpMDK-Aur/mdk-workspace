@@ -159,15 +159,6 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
   const [selectedSpreadsheet, setSelectedSpreadsheet] = useState<string | null>(null)
   const [sheets, setSheets] = useState<{ sheetId: number; title: string; index: number }[]>([])
   const [loadingSheets, setLoadingSheets] = useState(false)
-  
-  // Tab state - check URL for ?tab=sheets
-  const [activeTab, setActiveTab] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search)
-      return params.get('tab') || 'opportunities'
-    }
-    return 'opportunities'
-  })
 
   const selectedClient = clients.find(c => c.id === selectedClientId)
 
@@ -228,32 +219,25 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClientId, datePreset, customStartDate, customEndDate])
 
-  // Check Google Sheets connection status (reuses Google Ads token)
+  // Check Google Sheets connection status
   useEffect(() => {
     const checkSheetsStatus = async () => {
       try {
-        // Check status - uses google_ads token
-        console.log('[v0] CRM: Checking sheets status...')
         const res = await fetch('/api/google-sheets/status')
         const data = await res.json()
-        console.log('[v0] CRM: Status response:', data)
         setSheetsConnected(data.connected)
         setSheetsEmail(data.email)
         
         // If connected, fetch spreadsheets
         if (data.connected) {
-          console.log('[v0] CRM: Fetching spreadsheets...')
           const spreadsheetsRes = await fetch('/api/google-sheets')
-          const spreadsheetsData = await spreadsheetsRes.json()
-          console.log('[v0] CRM: Spreadsheets response:', spreadsheetsRes.status, spreadsheetsData)
           if (spreadsheetsRes.ok) {
+            const spreadsheetsData = await spreadsheetsRes.json()
             setSpreadsheets(spreadsheetsData.spreadsheets ?? [])
-          } else {
-            console.log('[v0] CRM: Error fetching spreadsheets:', spreadsheetsData.error)
           }
         }
       } catch (err) {
-        console.error('[v0] CRM: Error checking sheets status:', err)
+        console.error('Error checking sheets status:', err)
       } finally {
         setSheetsLoading(false)
       }
@@ -601,7 +585,7 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
         </Card>
 
         {/* Tabs for Opportunities, Contacts and Google Sheets */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <Tabs defaultValue="opportunities" className="space-y-4">
           <TabsList>
             <TabsTrigger value="opportunities" className="gap-2">
               <Target className="h-4 w-4" />
@@ -806,62 +790,116 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="space-y-4">
-                  <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                    <p className="text-sm text-blue-600 font-medium mb-1">Instrucciones</p>
-                    <p className="text-sm text-muted-foreground">
-                      Ingresa la URL de tu Google Sheet. El documento debe estar compartido como &quot;Cualquier persona con el enlace puede ver&quot;.
-                    </p>
+                {/* Connection status */}
+                {sheetsLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Verificando conexion...
                   </div>
+                ) : sheetsConnected ? (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-green-500/20 flex items-center justify-center">
+                          <Check className="h-5 w-5 text-green-500" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-green-600">Cuenta conectada</p>
+                          {sheetsEmail && (
+                            <p className="text-sm text-muted-foreground">{sheetsEmail}</p>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.location.href = '/api/auth/google-sheets'}
+                      >
+                        Reconectar
+                      </Button>
+                    </div>
 
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="https://docs.google.com/spreadsheets/d/..."
-                      value={selectedSpreadsheet ?? ''}
-                      onChange={e => {
-                        // Extract spreadsheet ID from URL
-                        const url = e.target.value
-                        const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/)
-                        if (match) {
-                          setSelectedSpreadsheet(match[1])
-                        } else {
-                          setSelectedSpreadsheet(url)
-                        }
-                      }}
-                      className="flex-1"
-                    />
-                    <Button
-                      onClick={() => selectedSpreadsheet && fetchSheets(selectedSpreadsheet)}
-                      disabled={!selectedSpreadsheet || loadingSheets}
-                    >
-                      {loadingSheets ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                    {/* Spreadsheets list */}
+                    <div>
+                      <h3 className="text-sm font-semibold mb-3">Tus Spreadsheets</h3>
+                      {spreadsheets.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No se encontraron spreadsheets.</p>
                       ) : (
-                        'Cargar hojas'
+                        <div className="space-y-2">
+                          {spreadsheets.map(ss => (
+                            <div
+                              key={ss.id}
+                              className={cn(
+                                'flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors',
+                                selectedSpreadsheet === ss.id
+                                  ? 'border-primary bg-primary/5'
+                                  : 'border-border hover:bg-muted/50'
+                              )}
+                              onClick={() => fetchSheets(ss.id)}
+                            >
+                              <div className="flex items-center gap-3">
+                                <FileSpreadsheet className="h-5 w-5 text-green-600" />
+                                <div>
+                                  <p className="font-medium text-sm">{ss.name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Modificado: {format(new Date(ss.modifiedTime), 'dd MMM yyyy', { locale: es })}
+                                  </p>
+                                </div>
+                              </div>
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            </div>
+                          ))}
+                        </div>
                       )}
+                    </div>
+
+                    {/* Sheets in selected spreadsheet */}
+                    {selectedSpreadsheet && (
+                      <div>
+                        <h3 className="text-sm font-semibold mb-3">Hojas en el documento</h3>
+                        {loadingSheets ? (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Cargando hojas...
+                          </div>
+                        ) : sheets.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No se encontraron hojas.</p>
+                        ) : (
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                            {sheets.map(sheet => (
+                              <div
+                                key={sheet.sheetId}
+                                className="flex items-center gap-2 p-3 rounded-lg border border-border bg-muted/30"
+                              >
+                                <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                                  {sheet.index + 1}
+                                </div>
+                                <p className="text-sm font-medium truncate">{sheet.title}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="h-16 w-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
+                      <Link2 className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <h3 className="font-semibold text-lg mb-2">Conecta tu cuenta de Google</h3>
+                    <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
+                      Conecta tu cuenta de Google para acceder a tus spreadsheets y usar los datos en el CRM.
+                    </p>
+                    <Button
+                      onClick={() => window.location.href = '/api/auth/google-sheets'}
+                      className="gap-2"
+                    >
+                      <FileSpreadsheet className="h-4 w-4" />
+                      Conectar Google Sheets
                     </Button>
                   </div>
-
-                  {/* Sheets in selected spreadsheet */}
-                  {sheets.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-semibold mb-3">Hojas encontradas ({sheets.length})</h3>
-                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                        {sheets.map(sheet => (
-                          <div
-                            key={sheet.sheetId}
-                            className="flex items-center gap-2 p-3 rounded-lg border border-border bg-muted/30"
-                          >
-                            <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
-                              {sheet.index + 1}
-                            </div>
-                            <p className="text-sm font-medium truncate">{sheet.title}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

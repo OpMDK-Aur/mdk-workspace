@@ -4,11 +4,10 @@ import { createClient } from '@/lib/supabase/server'
 export async function GET() {
   const supabase = await createClient()
   
-  // Reuse google_ads token for Sheets (same Google account)
   const { data: tokenData, error } = await supabase
     .from('platform_tokens')
     .select('access_token, refresh_token, token_expiry, connected_email, updated_at')
-    .eq('platform', 'google_ads')
+    .eq('platform', 'google_sheets')
     .single()
   
   if (error || !tokenData) {

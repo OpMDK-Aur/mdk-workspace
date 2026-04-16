@@ -1,16 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-// Get access token from platform_tokens (reuse google_ads token which has same Google account)
+// Get access token from platform_tokens with auto-refresh
 async function getAccessToken(): Promise<string | null> {
   try {
     const supabase = await createClient()
     
-    // Use google_ads token - same Google account, just needs Drive/Sheets scopes added
     const { data: tokenData, error } = await supabase
       .from('platform_tokens')
       .select('access_token, refresh_token, token_expiry')
-      .eq('platform', 'google_ads')
+      .eq('platform', 'google_sheets')
       .single()
     
     if (error || !tokenData) return null
@@ -54,7 +53,7 @@ async function getAccessToken(): Promise<string | null> {
         token_expiry: newExpiry,
         updated_at: new Date().toISOString(),
       })
-      .eq('platform', 'google_ads')
+      .eq('platform', 'google_sheets')
     
     return refreshData.access_token
   } catch {
@@ -64,34 +63,26 @@ async function getAccessToken(): Promise<string | null> {
 
 // GET /api/google-sheets - List recent spreadsheets
 export async function GET() {
-  console.log('[v0] google-sheets: Starting request')
-  
   const accessToken = await getAccessToken()
-  console.log('[v0] google-sheets: Access token exists:', !!accessToken)
-  
   if (!accessToken) {
     return NextResponse.json({ error: 'No Google Sheets token. Conecta tu cuenta primero.' }, { status: 401 })
   }
 
   try {
     // Search for spreadsheets in Drive
-    const driveUrl = `https://www.googleapis.com/drive/v3/files?q=mimeType='application/vnd.google-apps.spreadsheet'&orderBy=modifiedTime desc&pageSize=20&fields=files(id,name,modifiedTime)`
-    console.log('[v0] google-sheets: Fetching from Drive API')
-    
-    const driveRes = await fetch(driveUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-
-    console.log('[v0] google-sheets: Drive API response status:', driveRes.status)
+    const driveRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=mimeType='application/vnd.google-apps.spreadsheet'&orderBy=modifiedTime desc&pageSize=20&fields=files(id,name,modifiedTime)`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    )
 
     if (!driveRes.ok) {
       const errorData = await driveRes.json()
-      console.log('[v0] google-sheets: Drive API error:', errorData)
       return NextResponse.json({ error: errorData.error?.message || 'Error listing spreadsheets' }, { status: driveRes.status })
     }
 
     const driveData = await driveRes.json()
-    console.log('[v0] google-sheets: Found files count:', driveData.files?.length ?? 0)
 
     return NextResponse.json({
       spreadsheets: driveData.files?.map((f: { id: string; name: string; modifiedTime: string }) => ({
@@ -101,7 +92,7 @@ export async function GET() {
       })) ?? [],
     })
   } catch (err) {
-    console.error('[v0] google-sheets: Error:', err)
+    console.error('[google-sheets] Error:', err)
     return NextResponse.json({ error: 'Error fetching spreadsheets' }, { status: 500 })
   }
 }
