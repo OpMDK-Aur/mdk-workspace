@@ -11,17 +11,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'GOOGLE_CLIENT_ID no configurado' }, { status: 500 })
   }
 
-  // Derive redirect URI from the incoming request so it works on localhost AND production
   const origin = request.nextUrl.origin
-  const redirectUri = `${origin}/api/auth/google-ads/callback`
-
-  console.log('[google-oauth] Redirect URI:', redirectUri)
+  const redirectUri = `${origin}/api/auth/google-sheets/callback`
 
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'openid email profile https://www.googleapis.com/auth/adwords',
+    scope: 'openid email profile https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/drive.readonly',
     access_type: 'offline',
     prompt: 'consent',
     state: user.id,

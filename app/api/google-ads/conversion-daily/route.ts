@@ -52,14 +52,73 @@ async function gaqlSearch(customerId: string, query: string, headers: HeadersIni
   return rows
 }
 
+// Get access token from platform_tokens with auto-refresh
+async function getAccessToken(): Promise<string | null> {
+  try {
+    const supabase = await createClient()
+    
+    const { data: tokenData, error } = await supabase
+      .from('platform_tokens')
+      .select('access_token, refresh_token, token_expiry')
+      .eq('platform', 'google_ads')
+      .single()
+    
+    if (error || !tokenData) return null
+    
+    // Check if token is expired or will expire in 5 minutes
+    const expiryTime = new Date(tokenData.token_expiry).getTime()
+    const now = Date.now()
+    const bufferMs = 5 * 60 * 1000
+    
+    if (expiryTime > now + bufferMs) {
+      return tokenData.access_token
+    }
+    
+    // Token expired, refresh it
+    if (!tokenData.refresh_token) return null
+    
+    const clientId = process.env.GOOGLE_CLIENT_ID
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+    if (!clientId || !clientSecret) return null
+    
+    const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: tokenData.refresh_token,
+        grant_type: 'refresh_token',
+      }),
+    })
+    
+    const refreshData = await refreshRes.json()
+    if (!refreshRes.ok || !refreshData.access_token) return null
+    
+    // Update token in database
+    const newExpiry = new Date(Date.now() + (refreshData.expires_in ?? 3600) * 1000).toISOString()
+    await supabase
+      .from('platform_tokens')
+      .update({
+        access_token: refreshData.access_token,
+        token_expiry: newExpiry,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('platform', 'google_ads')
+    
+    return refreshData.access_token
+  } catch {
+    return null
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { customerId, campaignId, dateRange, startDate, endDate } = await req.json()
     if (!customerId) return NextResponse.json({ error: 'customerId required' }, { status: 400 })
 
-    const supabase = await createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session?.provider_token) return NextResponse.json({ error: 'No Google token' }, { status: 401 })
+    const accessToken = await getAccessToken()
+    if (!accessToken) return NextResponse.json({ error: 'No Google token. Re-autoriza desde Plataformas.' }, { status: 401 })
 
     const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN
     if (!developerToken) return NextResponse.json({ error: 'Missing GOOGLE_ADS_DEVELOPER_TOKEN' }, { status: 500 })
@@ -69,14 +128,15 @@ export async function POST(req: NextRequest) {
 
     const campaignFilter = campaignId ? `AND campaign.id = ${campaignId}` : ''
 
-    // This query is valid: segments.conversion_action_name + segments.date
-    // are both compatible with metrics.conversions in the campaign resource
-    // when NO performance metrics (clicks/cost/impressions) are selected.
+    // This query includes conversion_action resource to get primary_for_goal
+    // which indicates if the conversion is a PRIMARY action or SECONDARY
     const query = `
       SELECT
         campaign.id,
         campaign.name,
         segments.conversion_action_name,
+        segments.conversion_action,
+        segments.conversion_action_category,
         segments.date,
         metrics.conversions,
         metrics.all_conversions
@@ -90,7 +150,7 @@ export async function POST(req: NextRequest) {
 
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${session.provider_token}`,
+      'Authorization': `Bearer ${accessToken}`,
       'developer-token': developerToken,
       'login-customer-id': process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/-/g, '') ?? cleanId,
     }
@@ -100,25 +160,44 @@ export async function POST(req: NextRequest) {
     // Build pivot: rows = conversion names, columns = dates
     // { [conversionName]: { [date]: number } }
     const pivot: Record<string, Record<string, number>> = {}
+    const conversionTypes: Record<string, 'PRIMARY' | 'SECONDARY'> = {}
     const datesSet = new Set<string>()
+
+    // Categories that are considered "PRIMARY" conversion actions
+    // Based on Google Ads documentation: https://developers.google.com/google-ads/api/reference/rpc/v17/ConversionActionCategoryEnum.ConversionActionCategory
+    const primaryCategories = new Set([
+      'PURCHASE', 'LEAD', 'SIGNUP', 'DOWNLOAD', 'SUBMIT_LEAD_FORM',
+      'BOOK_APPOINTMENT', 'REQUEST_QUOTE', 'GET_DIRECTIONS', 'CONTACT',
+      'DEFAULT', // Default is typically used for primary actions
+    ])
 
     for (const row of rawRows) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = row as any
       const name: string = r.segments?.conversionActionName ?? r.segments?.conversion_action_name ?? 'Sin nombre'
       const date: string = r.segments?.date ?? ''
+      const category: string = r.segments?.conversionActionCategory ?? r.segments?.conversion_action_category ?? ''
       const conv = parseFloat(String(r.metrics?.conversions ?? 0)) || parseFloat(String(r.metrics?.allConversions ?? r.metrics?.all_conversions ?? 0))
 
       if (!date) continue
       datesSet.add(date)
       if (!pivot[name]) pivot[name] = {}
       pivot[name][date] = (pivot[name][date] ?? 0) + conv
+      
+      // Determine if this is a primary or secondary conversion
+      // Primary conversions are counted in the "Conversions" column in Google Ads
+      // Secondary conversions are tracked but not counted in optimization
+      if (!conversionTypes[name]) {
+        // Check if category indicates primary action
+        const isPrimary = primaryCategories.has(category.toUpperCase())
+        conversionTypes[name] = isPrimary ? 'PRIMARY' : 'SECONDARY'
+      }
     }
 
     const dates = Array.from(datesSet).sort()
     const conversionNames = Object.keys(pivot)
 
-    return NextResponse.json({ dates, pivot, conversionNames, total: rawRows.length })
+    return NextResponse.json({ dates, pivot, conversionNames, conversionTypes, total: rawRows.length })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[v0] conversion-daily error:', msg)

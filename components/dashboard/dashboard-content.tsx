@@ -225,6 +225,8 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
         const clientRow: ScorecardRow = {
           clientId: client.id,
           clientName: client.business_name,
+          accountId: data.account_id || null,
+          accountName: data.account_name || null,
           platform: data.platform as 'meta' | 'google',
           budget: client.fee_mdk,
           daysToEnd: clientSpend > 0 && client.fee_mdk ? Math.floor((client.fee_mdk - clientSpend) / (clientSpend / 30)) : null,
@@ -245,6 +247,8 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
             newScorecardRows.push({
               clientId: client.id,
               clientName: client.business_name,
+              accountId: data.account_id || null,
+              accountName: data.account_name || null,
               campaignId: campaign.id,
               campaignName: campaign.name,
               platform: data.platform as 'meta' | 'google',
@@ -420,6 +424,7 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
           <ScorecardTable
             rows={scorecardDisplayRows}
             clients={clients}
+            filters={filters}
             loading={loading}
             view={scorecardView}
             onViewChange={setScorecardView}
@@ -435,8 +440,6 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
           <ScorecardTimeline
             clients={targetClients}
             filters={filters}
-            selectedClientId={scorecardClientId ?? (targetClients.length === 1 ? targetClients[0].id : null)}
-            selectedCampaignId={scorecardCampaignIds[0] ?? null}
             scorecardRows={scorecardRows}
           />
         </section>
@@ -444,10 +447,8 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
         {/* Detalle conversiones diario — Google Ads */}
         <section>
           <ConversionDailyTable
-            clients={clients}
+            clients={targetClients}
             scorecardRows={scorecardRows}
-            selectedClientId={scorecardClientId}
-            selectedCampaignId={scorecardCampaignIds[0] ?? null}
             filters={filters}
           />
         </section>

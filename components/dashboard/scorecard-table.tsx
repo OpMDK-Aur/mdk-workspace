@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
-import type { ScorecardRow, ScorecardColumn, Client } from '@/lib/types'
+import { useState, useCallback, useMemo, useEffect } from 'react'
+import type { ScorecardRow, ScorecardColumn, Client, DashboardFilters } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
+
 import {
   Table,
   TableBody,
@@ -14,21 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
+
 import {
   Popover,
   PopoverContent,
@@ -36,12 +22,13 @@ import {
 } from '@/components/ui/popover'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Download, Sparkles, Loader2, Send, LayoutList, Columns3, X, Search } from 'lucide-react'
+import { Download, X, Search, Columns3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ScorecardTableProps {
   rows: ScorecardRow[]
   clients: Client[]
+  filters: DashboardFilters
   loading?: boolean
   view: 'clients' | 'campaigns'
   onViewChange: (view: 'clients' | 'campaigns') => void
@@ -55,15 +42,13 @@ interface ScorecardTableProps {
 // Metric columns (existing KPIs)
 // ---------------------------------------------------------------------------
 const DEFAULT_COLUMNS: ScorecardColumn[] = [
-  { key: 'budget',      label: 'Presupuesto',                  visible: true,  format: 'currency' },
-  { key: 'daysToEnd',   label: 'Dias para fin de presupuesto', visible: true,  format: 'days' },
-  { key: 'leads',       label: 'Leads / Resultados',           visible: true,  format: 'number' },
-  { key: 'leadType',    label: 'Tipo de resultado',            visible: true,  format: 'text' },
-  { key: 'cpl',         label: 'CPL',                          visible: true,  format: 'currency' },
-  { key: 'ctr',         label: 'CTR',                          visible: true,  format: 'percent' },
-  { key: 'impressions', label: 'Impresiones',                  visible: true,  format: 'number' },
-  { key: 'clicks',      label: 'Clicks',                       visible: true,  format: 'number' },
-  { key: 'spend',       label: 'Inversion',                    visible: false, format: 'currency' },
+  { key: 'budget',      label: 'Presupuesto',        visible: true,  format: 'currency' },
+  { key: 'leads',       label: 'Leads / Resultados', visible: true,  format: 'number' },
+  { key: 'cpl',         label: 'CPL',                visible: true,  format: 'currency' },
+  { key: 'ctr',         label: 'CTR',                visible: true,  format: 'percent' },
+  { key: 'impressions', label: 'Impresiones',        visible: true,  format: 'number' },
+  { key: 'clicks',      label: 'Clicks',             visible: true,  format: 'number' },
+  { key: 'spend',       label: 'Inversion',          visible: false, format: 'currency' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -149,82 +134,12 @@ function exportToCSV(rows: ScorecardRow[], columns: ScorecardColumn[], segments:
 }
 
 // ---------------------------------------------------------------------------
-// Column manager popover
-// ---------------------------------------------------------------------------
-interface ColumnManagerProps {
-  columns: ScorecardColumn[]
-  onToggleColumn: (key: string) => void
-  segments: SegmentColumn[]
-  onToggleSegment: (key: string) => void
-}
-
-function ColumnManager({ columns, onToggleColumn, segments, onToggleSegment }: ColumnManagerProps) {
-  const [open, setOpen] = useState(false)
-  const visibleCount = columns.filter(c => c.visible).length + segments.filter(s => s.visible).length
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-          <Columns3 className="h-3.5 w-3.5" />
-          Gestionar columnas
-          {visibleCount > 0 && (
-            <Badge variant="secondary" className="h-4 px-1 text-[10px]">{visibleCount}</Badge>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-72 p-0">
-        <div className="px-3 py-2.5 border-b border-border">
-          <p className="text-xs font-semibold text-foreground">Gestionar columnas</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">Mostrar u ocultar columnas y segmentos</p>
-        </div>
-        <ScrollArea className="h-[380px]">
-          <div className="p-2">
-            <p className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Metricas</p>
-            {columns.map(col => (
-              <label
-                key={col.key}
-                className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer"
-              >
-                <Checkbox
-                  checked={col.visible}
-                  onCheckedChange={() => onToggleColumn(col.key)}
-                  className="h-3.5 w-3.5"
-                />
-                <span className="text-xs text-foreground">{col.label}</span>
-              </label>
-            ))}
-
-            <p className="px-2 py-1.5 mt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Segmentos</p>
-            {segments.map(seg => (
-              <label
-                key={seg.key}
-                className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer"
-              >
-                <Checkbox
-                  checked={seg.visible}
-                  onCheckedChange={() => onToggleSegment(seg.key)}
-                  className="h-3.5 w-3.5"
-                />
-                <div>
-                  <p className="text-xs text-foreground">{seg.label}</p>
-                  <p className="text-[10px] text-muted-foreground">{seg.key}</p>
-                </div>
-              </label>
-            ))}
-          </div>
-        </ScrollArea>
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export function ScorecardTable({
   rows,
   clients,
+  filters,
   loading,
   view,
   onViewChange,
@@ -233,25 +148,63 @@ export function ScorecardTable({
   selectedScorecardCampaignIds,
   onSelectScorecardCampaigns,
 }: ScorecardTableProps) {
-  const [columns, setColumns] = useState<ScorecardColumn[]>(DEFAULT_COLUMNS)
-  const [segments, setSegments] = useState<SegmentColumn[]>(ALL_SEGMENTS)
-  const [aiPrompt, setAiPrompt] = useState('')
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiExplanation, setAiExplanation] = useState<string | null>(null)
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const [columns] = useState<ScorecardColumn[]>(DEFAULT_COLUMNS)
+  const [segments] = useState<SegmentColumn[]>(ALL_SEGMENTS)
   const [campaignPopoverOpen, setCampaignPopoverOpen] = useState(false)
   const [campaignSearch, setCampaignSearch] = useState('')
+  const [accountNamesMap, setAccountNamesMap] = useState<Map<string, string>>(new Map())
 
   const visibleColumns = columns.filter(c => c.visible)
   const visibleSegments = segments.filter(s => s.visible)
 
-  const toggleColumn = useCallback((key: string) => {
-    setColumns(prev => prev.map(c => c.key === key ? { ...c, visible: !c.visible } : c))
+  // Fetch account names for display
+  useEffect(() => {
+    const fetchAccountNames = async () => {
+      const map = new Map<string, string>()
+      
+      // Fetch Google accounts
+      try {
+        const googleRes = await fetch('/api/ads/google/accounts')
+        if (googleRes.ok) {
+          const googleData = await googleRes.json()
+          for (const acc of googleData.accounts ?? []) {
+            map.set(acc.id, acc.name)
+          }
+        }
+      } catch {}
+      
+      // Fetch Meta accounts
+      try {
+        const metaRes = await fetch('/api/ads/meta/accounts')
+        if (metaRes.ok) {
+          const metaData = await metaRes.json()
+          for (const acc of metaData.accounts ?? []) {
+            map.set(acc.id, acc.name)
+          }
+        }
+      } catch {}
+      
+      setAccountNamesMap(map)
+    }
+    fetchAccountNames()
   }, [])
 
-  const toggleSegment = useCallback((key: string) => {
-    setSegments(prev => prev.map(s => s.key === key ? { ...s, visible: !s.visible } : s))
-  }, [])
+  // Get account name from filters or accountNamesMap
+  const getAccountName = useCallback((row: ScorecardRow): string => {
+    // If we have adAccountId in filters, use that
+    if (filters.adAccountId) {
+      const name = accountNamesMap.get(filters.adAccountId)
+      if (name) return name
+    }
+    // If row has accountId, try to get name from map
+    if (row.accountId) {
+      const name = accountNamesMap.get(row.accountId)
+      if (name) return name
+    }
+    // Fallback: use row.accountName if available
+    if (row.accountName) return row.accountName
+    return '-'
+  }, [filters.adAccountId, accountNamesMap])
 
   const campaignOptions = useMemo(() => rows
     .filter(r => !selectedScorecardClientId || r.clientId === selectedScorecardClientId)
@@ -263,11 +216,39 @@ export function ScorecardTable({
       !campaignSearch || (r.campaignName ?? '').toLowerCase().includes(campaignSearch.toLowerCase())
     ), [campaignOptions, campaignSearch])
 
-  const filteredRows = rows.filter(row => {
-    if (selectedScorecardClientId && row.clientId !== selectedScorecardClientId) return false
-    if (selectedScorecardCampaignIds.length > 0 && !selectedScorecardCampaignIds.includes(row.campaignId ?? '')) return false
-    return true
-  })
+  // Check if a specific account is selected in global filters
+  const hasAccountSelected = !!filters.adAccountId
+
+  const filteredRows = useMemo(() => {
+    let result = rows.filter(row => {
+      if (selectedScorecardClientId && row.clientId !== selectedScorecardClientId) return false
+      if (selectedScorecardCampaignIds.length > 0 && !selectedScorecardCampaignIds.includes(row.campaignId ?? '')) return false
+      return true
+    })
+    // If no account is selected, limit to first 5 results
+    if (!hasAccountSelected) {
+      result = result.slice(0, 5)
+    }
+    return result
+  }, [rows, selectedScorecardClientId, selectedScorecardCampaignIds, hasAccountSelected])
+
+  // Calculate totals for numeric columns
+  const totals = useMemo(() => {
+    const sums: Record<string, number> = {}
+    for (const col of visibleColumns) {
+      if (col.format === 'currency' || col.format === 'number') {
+        sums[col.key] = filteredRows.reduce((sum, row) => {
+          const val = row[col.key as keyof ScorecardRow]
+          return sum + (typeof val === 'number' ? val : 0)
+        }, 0)
+      } else if (col.format === 'percent') {
+        // Average for percentages
+        const values = filteredRows.map(row => row[col.key as keyof ScorecardRow]).filter((v): v is number => typeof v === 'number')
+        sums[col.key] = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
+      }
+    }
+    return sums
+  }, [filteredRows, visibleColumns])
 
   const toggleCampaign = useCallback((id: string) => {
     onSelectScorecardCampaigns(
@@ -276,43 +257,6 @@ export function ScorecardTable({
         : [...selectedScorecardCampaignIds, id]
     )
   }, [selectedScorecardCampaignIds, onSelectScorecardCampaigns])
-
-  const [aiError, setAiError] = useState<string | null>(null)
-
-  const handleAIRequest = useCallback(async () => {
-    if (!aiPrompt.trim()) return
-    setAiLoading(true)
-    setAiExplanation(null)
-    setAiError(null)
-    try {
-      console.log('[v0] Scorecard: Sending AI request with prompt:', aiPrompt)
-      const res = await fetch('/api/scorecard/columns', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: aiPrompt, currentColumns: columns }),
-      })
-      const data = await res.json()
-      console.log('[v0] Scorecard: AI response:', data)
-      
-      if (!res.ok) {
-        setAiError(data.error || 'Error al procesar la solicitud')
-        return
-      }
-      
-      if (data.columns) {
-        setColumns(data.columns)
-        setAiExplanation(data.explanation)
-        setAiPrompt('')
-      } else {
-        setAiError('Respuesta invalida de la IA')
-      }
-    } catch (err) {
-      console.error('[v0] AI column edit error:', err)
-      setAiError('Error de conexion')
-    } finally {
-      setAiLoading(false)
-    }
-  }, [aiPrompt, columns])
 
   return (
     <Card>
@@ -343,22 +287,6 @@ export function ScorecardTable({
               Campanas
             </button>
           </div>
-
-          {/* Client selector */}
-          <Select
-            value={selectedScorecardClientId || 'all'}
-            onValueChange={v => onSelectScorecardClient(v === 'all' ? null : v)}
-          >
-            <SelectTrigger className="h-8 w-44 text-xs">
-              <SelectValue placeholder="Todos los clientes" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los clientes</SelectItem>
-              {clients.map(c => (
-                <SelectItem key={c.id} value={c.id}>{c.business_name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
 
           {/* Campaign multi-select */}
           {view === 'campaigns' && campaignOptions.length > 0 && (
@@ -443,83 +371,6 @@ export function ScorecardTable({
             </Popover>
           )}
 
-          {/* Column manager */}
-          <ColumnManager
-            columns={columns}
-            onToggleColumn={toggleColumn}
-            segments={segments}
-            onToggleSegment={toggleSegment}
-          />
-
-          {/* AI Column editor */}
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                <Sparkles className="h-3.5 w-3.5 text-primary" />
-                IA · Editar columnas
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Editar columnas con IA</DialogTitle>
-                <DialogDescription>
-                  Agrega o quitá columnas del scorecard usando lenguaje natural.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Pedile a la IA que agregue o quite columnas del scorecard. Por ejemplo: &quot;Quita los dias para fin de presupuesto y agrega inversion&quot;.
-                </p>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-2">Columnas actuales:</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {columns.map(col => (
-                      <Badge
-                        key={col.key}
-                        variant={col.visible ? 'default' : 'secondary'}
-                        className="text-xs"
-                      >
-                        <LayoutList className="h-3 w-3 mr-1" />
-                        {col.label}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-                {aiExplanation && (
-                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
-                    <p className="text-xs text-foreground">{aiExplanation}</p>
-                  </div>
-                )}
-                {aiError && (
-                  <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
-                    <p className="text-xs text-destructive">{aiError}</p>
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Ej: Quita impresiones y agrega inversion total..."
-                    value={aiPrompt}
-                    onChange={e => setAiPrompt(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && !aiLoading && handleAIRequest()}
-                    className="flex-1 text-sm h-9"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={handleAIRequest}
-                    disabled={aiLoading || !aiPrompt.trim()}
-                    className="h-9 px-3 bg-primary hover:bg-primary/90"
-                  >
-                    {aiLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-
           <Button
             variant="ghost"
             size="sm"
@@ -531,7 +382,7 @@ export function ScorecardTable({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="px-0">
+      <CardContent className="p-4">
         {loading ? (
           <div className="px-6 py-4 space-y-3">
             {[0, 1, 2, 3].map(i => (
@@ -548,14 +399,13 @@ export function ScorecardTable({
               <TableHeader>
                 <TableRow>
                   <TableHead className="min-w-[140px]">Cliente</TableHead>
+                  <TableHead className="min-w-[160px]">Cuenta</TableHead>
                   {view === 'campaigns' && <TableHead className="min-w-[200px]">Campana</TableHead>}
                   <TableHead>Plataforma</TableHead>
                   {visibleColumns.map(col => (
-                    (col.key !== 'daysToEnd' || view === 'clients') && (
-                      <TableHead key={col.key} className="text-right whitespace-nowrap">
-                        {col.label}
-                      </TableHead>
-                    )
+                    <TableHead key={col.key} className="text-right whitespace-nowrap">
+                      {col.label}
+                    </TableHead>
                   ))}
                   {visibleSegments.map(seg => (
                     <TableHead key={seg.key} className="text-right whitespace-nowrap">
@@ -568,6 +418,7 @@ export function ScorecardTable({
                 {filteredRows.map((row, i) => (
                   <TableRow key={`${row.clientId}-${row.campaignId || i}`}>
                     <TableCell className="font-medium">{row.clientName}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{getAccountName(row)}</TableCell>
                     {view === 'campaigns' && (
                       <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
                         {row.campaignName || '-'}
@@ -575,11 +426,9 @@ export function ScorecardTable({
                     )}
                     <TableCell>{getPlatformBadge(row.platform)}</TableCell>
                     {visibleColumns.map(col => (
-                      (col.key !== 'daysToEnd' || view === 'clients') && (
-                        <TableCell key={col.key} className="text-right tabular-nums">
-                          {formatValue(row[col.key as keyof ScorecardRow], col.format)}
-                        </TableCell>
-                      )
+                      <TableCell key={col.key} className="text-right tabular-nums">
+                        {formatValue(row[col.key as keyof ScorecardRow], col.format)}
+                      </TableCell>
                     ))}
                     {visibleSegments.map(seg => (
                       <TableCell key={seg.key} className="text-right tabular-nums text-muted-foreground">
@@ -588,6 +437,25 @@ export function ScorecardTable({
                     ))}
                   </TableRow>
                 ))}
+                {/* Totals row */}
+                {filteredRows.length > 0 && (
+                  <TableRow className="bg-muted/30 border-t-2 border-border font-semibold">
+                    <TableCell className="font-bold text-foreground">Total</TableCell>
+                    <TableCell></TableCell>
+                    {view === 'campaigns' && <TableCell></TableCell>}
+                    <TableCell></TableCell>
+                    {visibleColumns.map(col => (
+                      <TableCell key={col.key} className="text-right tabular-nums font-semibold text-foreground">
+                        {formatValue(totals[col.key], col.format)}
+                      </TableCell>
+                    ))}
+                    {visibleSegments.map(seg => (
+                      <TableCell key={seg.key} className="text-right tabular-nums text-muted-foreground">
+                        -
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
