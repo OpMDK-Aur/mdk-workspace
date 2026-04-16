@@ -232,6 +232,24 @@ export function ScorecardTable({
     return result
   }, [rows, selectedScorecardClientId, selectedScorecardCampaignIds, hasAccountSelected])
 
+  // Calculate totals for numeric columns
+  const totals = useMemo(() => {
+    const sums: Record<string, number> = {}
+    for (const col of visibleColumns) {
+      if (col.format === 'currency' || col.format === 'number') {
+        sums[col.key] = filteredRows.reduce((sum, row) => {
+          const val = row[col.key as keyof ScorecardRow]
+          return sum + (typeof val === 'number' ? val : 0)
+        }, 0)
+      } else if (col.format === 'percent') {
+        // Average for percentages
+        const values = filteredRows.map(row => row[col.key as keyof ScorecardRow]).filter((v): v is number => typeof v === 'number')
+        sums[col.key] = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
+      }
+    }
+    return sums
+  }, [filteredRows, visibleColumns])
+
   const toggleCampaign = useCallback((id: string) => {
     onSelectScorecardCampaigns(
       selectedScorecardCampaignIds.includes(id)
@@ -364,7 +382,7 @@ export function ScorecardTable({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="px-0">
+      <CardContent className="p-4">
         {loading ? (
           <div className="px-6 py-4 space-y-3">
             {[0, 1, 2, 3].map(i => (
@@ -419,6 +437,25 @@ export function ScorecardTable({
                     ))}
                   </TableRow>
                 ))}
+                {/* Totals row */}
+                {filteredRows.length > 0 && (
+                  <TableRow className="bg-muted/30 border-t-2 border-border font-semibold">
+                    <TableCell className="font-bold text-foreground">Total</TableCell>
+                    <TableCell></TableCell>
+                    {view === 'campaigns' && <TableCell></TableCell>}
+                    <TableCell></TableCell>
+                    {visibleColumns.map(col => (
+                      <TableCell key={col.key} className="text-right tabular-nums font-semibold text-foreground">
+                        {formatValue(totals[col.key], col.format)}
+                      </TableCell>
+                    ))}
+                    {visibleSegments.map(seg => (
+                      <TableCell key={seg.key} className="text-right tabular-nums text-muted-foreground">
+                        -
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
