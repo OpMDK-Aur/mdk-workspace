@@ -228,36 +228,13 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClientId, datePreset, customStartDate, customEndDate])
 
-  // Check Google Sheets connection status and save token from Supabase session
+  // Check Google Sheets connection status (reuses Google Ads token)
   useEffect(() => {
     const checkSheetsStatus = async () => {
       try {
-        // First check if we just came back from OAuth - save the Supabase session token
-        const supabase = (await import('@/lib/supabase/client')).createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        
-        console.log('[v0] Sheets: session exists:', !!session)
-        console.log('[v0] Sheets: provider_token exists:', !!session?.provider_token)
-        
-        // If we have a provider_token, save it
-        if (session?.provider_token) {
-          console.log('[v0] Sheets: Saving token...')
-          const saveRes = await fetch('/api/google-sheets/save-token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              access_token: session.provider_token,
-              refresh_token: session.provider_refresh_token,
-            }),
-          })
-          const saveData = await saveRes.json()
-          console.log('[v0] Sheets: Save result:', saveData)
-        }
-
-        // Then check status
+        // Check status - uses google_ads token
         const res = await fetch('/api/google-sheets/status')
         const data = await res.json()
-        console.log('[v0] Sheets: Status:', data)
         setSheetsConnected(data.connected)
         setSheetsEmail(data.email)
         
@@ -266,12 +243,11 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
           const spreadsheetsRes = await fetch('/api/google-sheets')
           if (spreadsheetsRes.ok) {
             const spreadsheetsData = await spreadsheetsRes.json()
-            console.log('[v0] Sheets: Spreadsheets loaded:', spreadsheetsData.spreadsheets?.length)
             setSpreadsheets(spreadsheetsData.spreadsheets ?? [])
           }
         }
       } catch (err) {
-        console.error('[v0] Error checking sheets status:', err)
+        console.error('Error checking sheets status:', err)
       } finally {
         setSheetsLoading(false)
       }
@@ -844,13 +820,6 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
                           )}
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => window.location.href = '/api/auth/google-sheets'}
-                      >
-                        Reconectar
-                      </Button>
                     </div>
 
                     {/* Spreadsheets list */}
@@ -921,16 +890,16 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
                     <div className="h-16 w-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
                       <Link2 className="h-8 w-8 text-muted-foreground" />
                     </div>
-                    <h3 className="font-semibold text-lg mb-2">Conecta tu cuenta de Google</h3>
+                    <h3 className="font-semibold text-lg mb-2">Google Ads no conectado</h3>
                     <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
-                      Conecta tu cuenta de Google para acceder a tus spreadsheets y usar los datos en el CRM.
+                      Para acceder a Google Sheets, primero conecta tu cuenta de Google Ads en la seccion de Plataformas.
                     </p>
                     <Button
-                      onClick={() => window.location.href = '/api/auth/google-sheets'}
+                      onClick={() => window.location.href = '/dashboard/platform'}
                       className="gap-2"
                     >
                       <FileSpreadsheet className="h-4 w-4" />
-                      Conectar Google Sheets
+                      Ir a Plataformas
                     </Button>
                   </div>
                 )}
