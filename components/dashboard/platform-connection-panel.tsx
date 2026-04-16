@@ -2,7 +2,6 @@
 
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -31,6 +30,7 @@ export function PlatformConnectionPanel({ googleToken, appUrl }: PlatformConnect
 
     if (connected === 'google') {
       setNotice({ type: 'success', message: 'Cuenta de Google Ads conectada correctamente.' })
+      router.replace('/dashboard/platform')
       return
     }
     if (error) {
@@ -38,49 +38,18 @@ export function PlatformConnectionPanel({ googleToken, appUrl }: PlatformConnect
         no_token: 'No se obtuvo el token de acceso de Google.',
         db_error: 'Error al guardar los tokens en la base de datos.',
         missing_scope: 'El token no tiene el scope de Google Ads. Volvé a autorizar.',
+        no_refresh_token_revoke_required: 'No se obtuvo refresh token. Revocá el acceso en myaccount.google.com/permissions y volvé a autorizar.',
       }
       setNotice({ type: 'error', message: messages[error] ?? `Error: ${error}` })
+      router.replace('/dashboard/platform')
       return
     }
-
-    const saveTokens = async () => {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.provider_token) return
-
-      const res = await fetch('/api/auth/google-ads/save-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          access_token: session.provider_token,
-          refresh_token: session.provider_refresh_token,
-        }),
-      })
-
-      if (res.ok) {
-        router.replace('/dashboard/platform?connected=google')
-      }
-    }
-
-    saveTokens()
   }, [searchParams, router])
 
-  const handleConnect = async () => {
+  const handleConnect = () => {
     setLoading(true)
-    const supabase = createClient()
-    const redirectTo = `${appUrl || window.location.origin}/dashboard/platform`
-
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        scopes: 'https://www.googleapis.com/auth/adwords',
-        redirectTo,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
-      },
-    })
+    // Use our custom OAuth flow that properly saves refresh_token to platform_tokens
+    window.location.href = '/api/auth/google-ads'
   }
 
   const isConnected = Boolean(googleToken)
