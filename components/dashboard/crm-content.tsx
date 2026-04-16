@@ -233,21 +233,27 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
     const checkSheetsStatus = async () => {
       try {
         // Check status - uses google_ads token
+        console.log('[v0] CRM: Checking sheets status...')
         const res = await fetch('/api/google-sheets/status')
         const data = await res.json()
+        console.log('[v0] CRM: Status response:', data)
         setSheetsConnected(data.connected)
         setSheetsEmail(data.email)
         
         // If connected, fetch spreadsheets
         if (data.connected) {
+          console.log('[v0] CRM: Fetching spreadsheets...')
           const spreadsheetsRes = await fetch('/api/google-sheets')
+          const spreadsheetsData = await spreadsheetsRes.json()
+          console.log('[v0] CRM: Spreadsheets response:', spreadsheetsRes.status, spreadsheetsData)
           if (spreadsheetsRes.ok) {
-            const spreadsheetsData = await spreadsheetsRes.json()
             setSpreadsheets(spreadsheetsData.spreadsheets ?? [])
+          } else {
+            console.log('[v0] CRM: Error fetching spreadsheets:', spreadsheetsData.error)
           }
         }
       } catch (err) {
-        console.error('Error checking sheets status:', err)
+        console.error('[v0] CRM: Error checking sheets status:', err)
       } finally {
         setSheetsLoading(false)
       }

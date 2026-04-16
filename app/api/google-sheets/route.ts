@@ -64,26 +64,34 @@ async function getAccessToken(): Promise<string | null> {
 
 // GET /api/google-sheets - List recent spreadsheets
 export async function GET() {
+  console.log('[v0] google-sheets: Starting request')
+  
   const accessToken = await getAccessToken()
+  console.log('[v0] google-sheets: Access token exists:', !!accessToken)
+  
   if (!accessToken) {
     return NextResponse.json({ error: 'No Google Sheets token. Conecta tu cuenta primero.' }, { status: 401 })
   }
 
   try {
     // Search for spreadsheets in Drive
-    const driveRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=mimeType='application/vnd.google-apps.spreadsheet'&orderBy=modifiedTime desc&pageSize=20&fields=files(id,name,modifiedTime)`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    )
+    const driveUrl = `https://www.googleapis.com/drive/v3/files?q=mimeType='application/vnd.google-apps.spreadsheet'&orderBy=modifiedTime desc&pageSize=20&fields=files(id,name,modifiedTime)`
+    console.log('[v0] google-sheets: Fetching from Drive API')
+    
+    const driveRes = await fetch(driveUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+
+    console.log('[v0] google-sheets: Drive API response status:', driveRes.status)
 
     if (!driveRes.ok) {
       const errorData = await driveRes.json()
+      console.log('[v0] google-sheets: Drive API error:', errorData)
       return NextResponse.json({ error: errorData.error?.message || 'Error listing spreadsheets' }, { status: driveRes.status })
     }
 
     const driveData = await driveRes.json()
+    console.log('[v0] google-sheets: Found files count:', driveData.files?.length ?? 0)
 
     return NextResponse.json({
       spreadsheets: driveData.files?.map((f: { id: string; name: string; modifiedTime: string }) => ({
@@ -93,7 +101,7 @@ export async function GET() {
       })) ?? [],
     })
   } catch (err) {
-    console.error('[google-sheets] Error:', err)
+    console.error('[v0] google-sheets: Error:', err)
     return NextResponse.json({ error: 'Error fetching spreadsheets' }, { status: 500 })
   }
 }
