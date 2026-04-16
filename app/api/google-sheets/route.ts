@@ -6,10 +6,11 @@ async function getAccessToken(): Promise<string | null> {
   try {
     const supabase = await createClient()
     
+    // Use google_ads token (has Drive/Sheets scopes)
     const { data: tokenData, error } = await supabase
       .from('platform_tokens')
       .select('access_token, refresh_token, token_expiry')
-      .eq('platform', 'google_sheets')
+      .eq('platform', 'google_ads')
       .single()
     
     if (error || !tokenData) return null
@@ -53,7 +54,7 @@ async function getAccessToken(): Promise<string | null> {
         token_expiry: newExpiry,
         updated_at: new Date().toISOString(),
       })
-      .eq('platform', 'google_sheets')
+      .eq('platform', 'google_ads')
     
     return refreshData.access_token
   } catch {
