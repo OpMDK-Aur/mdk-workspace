@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/popover'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Download, X, Search } from 'lucide-react'
+import { Download, X, Search, Columns3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ScorecardTableProps {
