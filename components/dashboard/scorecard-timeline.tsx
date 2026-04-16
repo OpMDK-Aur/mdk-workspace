@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Checkbox } from '@/components/ui/checkbox'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Loader2, Download, Rows3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { format, parseISO } from 'date-fns'
@@ -430,7 +430,7 @@ export function ScorecardTimeline({
         )}
 
         {!loading && data.length > 0 && (
-          <ScrollArea className="w-full">
+          <ScrollArea className="w-full pb-4">
             <div className="min-w-max">
               <table className="w-full text-sm border-collapse">
                 <thead>
@@ -474,6 +474,7 @@ export function ScorecardTimeline({
                 </tbody>
               </table>
             </div>
+            <ScrollBar orientation="horizontal" className="h-2.5" />
           </ScrollArea>
         )}
       </CardContent>
