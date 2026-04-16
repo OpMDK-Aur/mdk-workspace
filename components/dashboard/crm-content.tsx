@@ -159,6 +159,15 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
   const [selectedSpreadsheet, setSelectedSpreadsheet] = useState<string | null>(null)
   const [sheets, setSheets] = useState<{ sheetId: number; title: string; index: number }[]>([])
   const [loadingSheets, setLoadingSheets] = useState(false)
+  
+  // Tab state - check URL for ?tab=sheets
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      return params.get('tab') || 'opportunities'
+    }
+    return 'opportunities'
+  })
 
   const selectedClient = clients.find(c => c.id === selectedClientId)
 
@@ -227,9 +236,13 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
         const supabase = (await import('@/lib/supabase/client')).createClient()
         const { data: { session } } = await supabase.auth.getSession()
         
-        // If we have a provider_token with sheets scope, save it
+        console.log('[v0] Sheets: session exists:', !!session)
+        console.log('[v0] Sheets: provider_token exists:', !!session?.provider_token)
+        
+        // If we have a provider_token, save it
         if (session?.provider_token) {
-          await fetch('/api/google-sheets/save-token', {
+          console.log('[v0] Sheets: Saving token...')
+          const saveRes = await fetch('/api/google-sheets/save-token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -237,11 +250,14 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
               refresh_token: session.provider_refresh_token,
             }),
           })
+          const saveData = await saveRes.json()
+          console.log('[v0] Sheets: Save result:', saveData)
         }
 
         // Then check status
         const res = await fetch('/api/google-sheets/status')
         const data = await res.json()
+        console.log('[v0] Sheets: Status:', data)
         setSheetsConnected(data.connected)
         setSheetsEmail(data.email)
         
@@ -250,11 +266,12 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
           const spreadsheetsRes = await fetch('/api/google-sheets')
           if (spreadsheetsRes.ok) {
             const spreadsheetsData = await spreadsheetsRes.json()
+            console.log('[v0] Sheets: Spreadsheets loaded:', spreadsheetsData.spreadsheets?.length)
             setSpreadsheets(spreadsheetsData.spreadsheets ?? [])
           }
         }
       } catch (err) {
-        console.error('Error checking sheets status:', err)
+        console.error('[v0] Error checking sheets status:', err)
       } finally {
         setSheetsLoading(false)
       }
@@ -602,7 +619,7 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
         </Card>
 
         {/* Tabs for Opportunities, Contacts and Google Sheets */}
-        <Tabs defaultValue="opportunities" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList>
             <TabsTrigger value="opportunities" className="gap-2">
               <Target className="h-4 w-4" />
