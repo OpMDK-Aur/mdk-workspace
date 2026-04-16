@@ -219,10 +219,27 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClientId, datePreset, customStartDate, customEndDate])
 
-  // Check Google Sheets connection status
+  // Check Google Sheets connection status and save token from Supabase session
   useEffect(() => {
     const checkSheetsStatus = async () => {
       try {
+        // First check if we just came back from OAuth - save the Supabase session token
+        const supabase = (await import('@/lib/supabase/client')).createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        // If we have a provider_token with sheets scope, save it
+        if (session?.provider_token) {
+          await fetch('/api/google-sheets/save-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              access_token: session.provider_token,
+              refresh_token: session.provider_refresh_token,
+            }),
+          })
+        }
+
+        // Then check status
         const res = await fetch('/api/google-sheets/status')
         const data = await res.json()
         setSheetsConnected(data.connected)
