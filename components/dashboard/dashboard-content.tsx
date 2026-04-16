@@ -424,6 +424,7 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
           <ScorecardTable
             rows={scorecardDisplayRows}
             clients={clients}
+            filters={filters}
             loading={loading}
             view={scorecardView}
             onViewChange={setScorecardView}

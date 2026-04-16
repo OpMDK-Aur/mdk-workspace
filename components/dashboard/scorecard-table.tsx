@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
-import type { ScorecardRow, ScorecardColumn, Client } from '@/lib/types'
+import { useState, useCallback, useMemo, useEffect } from 'react'
+import type { ScorecardRow, ScorecardColumn, Client, DashboardFilters } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils'
 interface ScorecardTableProps {
   rows: ScorecardRow[]
   clients: Client[]
+  filters: DashboardFilters
   loading?: boolean
   view: 'clients' | 'campaigns'
   onViewChange: (view: 'clients' | 'campaigns') => void
@@ -43,7 +44,6 @@ interface ScorecardTableProps {
 const DEFAULT_COLUMNS: ScorecardColumn[] = [
   { key: 'budget',      label: 'Presupuesto',        visible: true,  format: 'currency' },
   { key: 'leads',       label: 'Leads / Resultados', visible: true,  format: 'number' },
-  { key: 'leadType',    label: 'Tipo de resultado',  visible: true,  format: 'text' },
   { key: 'cpl',         label: 'CPL',                visible: true,  format: 'currency' },
   { key: 'ctr',         label: 'CTR',                visible: true,  format: 'percent' },
   { key: 'impressions', label: 'Impresiones',        visible: true,  format: 'number' },
@@ -139,6 +139,7 @@ function exportToCSV(rows: ScorecardRow[], columns: ScorecardColumn[], segments:
 export function ScorecardTable({
   rows,
   clients,
+  filters,
   loading,
   view,
   onViewChange,
@@ -151,9 +152,59 @@ export function ScorecardTable({
   const [segments] = useState<SegmentColumn[]>(ALL_SEGMENTS)
   const [campaignPopoverOpen, setCampaignPopoverOpen] = useState(false)
   const [campaignSearch, setCampaignSearch] = useState('')
+  const [accountNamesMap, setAccountNamesMap] = useState<Map<string, string>>(new Map())
 
   const visibleColumns = columns.filter(c => c.visible)
   const visibleSegments = segments.filter(s => s.visible)
+
+  // Fetch account names for display
+  useEffect(() => {
+    const fetchAccountNames = async () => {
+      const map = new Map<string, string>()
+      
+      // Fetch Google accounts
+      try {
+        const googleRes = await fetch('/api/ads/google/accounts')
+        if (googleRes.ok) {
+          const googleData = await googleRes.json()
+          for (const acc of googleData.accounts ?? []) {
+            map.set(acc.id, acc.name)
+          }
+        }
+      } catch {}
+      
+      // Fetch Meta accounts
+      try {
+        const metaRes = await fetch('/api/ads/meta/accounts')
+        if (metaRes.ok) {
+          const metaData = await metaRes.json()
+          for (const acc of metaData.accounts ?? []) {
+            map.set(acc.id, acc.name)
+          }
+        }
+      } catch {}
+      
+      setAccountNamesMap(map)
+    }
+    fetchAccountNames()
+  }, [])
+
+  // Get account name from filters or accountNamesMap
+  const getAccountName = useCallback((row: ScorecardRow): string => {
+    // If we have adAccountId in filters, use that
+    if (filters.adAccountId) {
+      const name = accountNamesMap.get(filters.adAccountId)
+      if (name) return name
+    }
+    // If row has accountId, try to get name from map
+    if (row.accountId) {
+      const name = accountNamesMap.get(row.accountId)
+      if (name) return name
+    }
+    // Fallback: use row.accountName if available
+    if (row.accountName) return row.accountName
+    return '-'
+  }, [filters.adAccountId, accountNamesMap])
 
   const campaignOptions = useMemo(() => rows
     .filter(r => !selectedScorecardClientId || r.clientId === selectedScorecardClientId)
@@ -339,7 +390,7 @@ export function ScorecardTable({
                 {filteredRows.map((row, i) => (
                   <TableRow key={`${row.clientId}-${row.campaignId || i}`}>
                     <TableCell className="font-medium">{row.clientName}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{row.accountName || '-'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{getAccountName(row)}</TableCell>
                     {view === 'campaigns' && (
                       <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
                         {row.campaignName || '-'}
