@@ -225,6 +225,8 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
         const clientRow: ScorecardRow = {
           clientId: client.id,
           clientName: client.business_name,
+          accountId: data.account_id || null,
+          accountName: data.account_name || null,
           platform: data.platform as 'meta' | 'google',
           budget: client.fee_mdk,
           daysToEnd: clientSpend > 0 && client.fee_mdk ? Math.floor((client.fee_mdk - clientSpend) / (clientSpend / 30)) : null,
@@ -245,6 +247,8 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
             newScorecardRows.push({
               clientId: client.id,
               clientName: client.business_name,
+              accountId: data.account_id || null,
+              accountName: data.account_name || null,
               campaignId: campaign.id,
               campaignName: campaign.name,
               platform: data.platform as 'meta' | 'google',

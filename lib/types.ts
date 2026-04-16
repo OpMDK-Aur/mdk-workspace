@@ -173,6 +173,8 @@ export interface InvestmentTrendPoint {
 export interface ScorecardRow {
   clientId: string
   clientName: string
+  accountName?: string
+  accountId?: string
   campaignId?: string
   campaignName?: string
   platform: 'meta' | 'google'

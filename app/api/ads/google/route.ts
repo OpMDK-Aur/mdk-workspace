@@ -357,6 +357,15 @@ export async function GET(request: NextRequest) {
         AND metrics.all_conversions > 0
     `
 
+    // Query to get customer/account name
+    const customerQuery = `
+      SELECT
+        customer.id,
+        customer.descriptive_name
+      FROM customer
+      LIMIT 1
+    `
+
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${accessToken}`,
@@ -370,10 +379,15 @@ export async function GET(request: NextRequest) {
     let rows: GoogleAdsRestRow[]
     let apiError: string | null
 
-    const [primary, convResult] = await Promise.all([
+    const [primary, convResult, customerResult] = await Promise.all([
       fetchAllCampaigns(cleanCustomerId, gaqlQuery, headers),
       fetchAllCampaigns(cleanCustomerId, conversionQuery, headers),
+      fetchAllCampaigns(cleanCustomerId, customerQuery, headers),
     ])
+    
+    // Extract account name from customer query
+    const customerRow = customerResult.rows?.[0] as { customer?: { descriptive_name?: string; descriptiveName?: string } } | undefined
+    const accountName = customerRow?.customer?.descriptive_name ?? customerRow?.customer?.descriptiveName ?? null
 
     if (primary.apiError) {
       console.error('[google-ads] Primary query failed, trying fallback:', primary.apiError)
@@ -531,6 +545,8 @@ export async function GET(request: NextRequest) {
     const responsePayload = {
       platform: 'google',
       customer_id: customerId,
+      account_id: cleanCustomerId,
+      account_name: accountName,
       date_range: { start: rangeStart, end: rangeEnd },
       campaigns,
       campaign_types: campaignTypes,
