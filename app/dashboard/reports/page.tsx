@@ -5,6 +5,9 @@ import { format, subDays, startOfWeek, endOfWeek } from 'date-fns'
 import { DateRange } from 'react-day-picker'
 import { HoursChart } from '@/components/reports/hours-chart'
 import { ProjectSummaryTable } from '@/components/reports/project-summary-table'
+import { ClientDonutChart } from '@/components/reports/client-donut-chart'
+import { ClientSummaryTable } from '@/components/reports/client-summary-table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import {
@@ -143,11 +146,27 @@ export default function ReportsPage() {
         </Card>
       </div>
 
-      {/* Charts and Tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <HoursChart />
-        <ProjectSummaryTable />
-      </div>
+      {/* Charts and Tables with Tabs */}
+      <Tabs defaultValue="by-project" className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="by-project">By Project</TabsTrigger>
+          <TabsTrigger value="by-client">By Client</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="by-project">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <HoursChart />
+            <ProjectSummaryTable />
+          </div>
+        </TabsContent>
+        
+        <TabsContent value="by-client">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ClientDonutChart />
+            <ClientSummaryTable />
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

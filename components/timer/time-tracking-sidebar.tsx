@@ -3,12 +3,13 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Clock, FileText, BarChart3, Users, Settings } from 'lucide-react'
+import { Clock, FileText, BarChart3, Users, Settings, Building2 } from 'lucide-react'
 
 const navItems = [
   { href: '/dashboard/time', label: 'Timer', icon: Clock },
   { href: '/dashboard/time/entries', label: 'Time entries', icon: FileText },
   { href: '/dashboard/reports', label: 'Reports', icon: BarChart3 },
+  { href: '/dashboard/time/clients', label: 'Clients', icon: Building2 },
   { href: '/dashboard/team', label: 'Team', icon: Users },
   { href: '/dashboard/time/settings', label: 'Settings', icon: Settings },
 ]

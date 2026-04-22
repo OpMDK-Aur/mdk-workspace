@@ -5,6 +5,7 @@ import { useTimer } from '@/lib/time-tracking/timer-context'
 import type { TimeEntry } from '@/lib/time-tracking/types'
 import {
   getProjectById,
+  getClientByProjectId,
   formatDurationShort,
   formatTimeRange,
   getDayLabel,
@@ -167,6 +168,7 @@ interface EntryRowProps {
 
 function EntryRow({ entry, onContinue, onEdit, onDelete }: EntryRowProps) {
   const project = entry.project_id ? getProjectById(entry.project_id) : null
+  const client = entry.project_id ? getClientByProjectId(entry.project_id) : null
 
   return (
     <div className="group flex items-center gap-4 p-3 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors">
@@ -183,7 +185,7 @@ function EntryRow({ entry, onContinue, onEdit, onDelete }: EntryRowProps) {
         </p>
         {project && (
           <p className="text-xs text-muted-foreground truncate">
-            {project.name}
+            {project.name}{client && ` · ${client.name}`}
           </p>
         )}
       </div>

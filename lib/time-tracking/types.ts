@@ -1,5 +1,12 @@
 // Time Tracking Types
 
+export interface Client {
+  id: string
+  name: string
+  color: string // hex
+  logo_initials: string // e.g. "AC" for Acme Corp
+}
+
 export interface TimeEntry {
   id: string
   user_id: string
@@ -17,6 +24,7 @@ export interface Project {
   name: string
   color: string // hex color
   team_id: string
+  client_id: string | null
 }
 
 export interface Task {
@@ -46,6 +54,16 @@ export interface ProjectSummary {
   project_id: string
   project_name: string
   project_color: string
+  hours: number
+  percentage: number
+  billable_hours: number
+}
+
+export interface ClientSummary {
+  client_id: string
+  client_name: string
+  client_color: string
+  projects_count: number
   hours: number
   percentage: number
   billable_hours: number
