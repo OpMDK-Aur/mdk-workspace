@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTimer } from '@/lib/time-tracking/timer-context'
 import { createClient } from '@/lib/supabase/client'
-import type { TimeEntry, Client, Project } from '@/lib/time-tracking/types'
+import type { TimeEntry } from '@/lib/time-tracking/types'
+import type { Client } from '@/lib/types'
 import {
-  getProjectById,
   formatDurationShort,
   formatTimeRange,
   getDayLabel,
@@ -23,6 +23,25 @@ import { cn } from '@/lib/utils'
 import { Play, Pencil, Trash2, DollarSign, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 
+// Generate a color from client id for visual distinction
+function getClientColor(id: string): string {
+  const colors = [
+    '#3b82f6', // blue
+    '#10b981', // green
+    '#f59e0b', // amber
+    '#ef4444', // red
+    '#8b5cf6', // violet
+    '#ec4899', // pink
+    '#06b6d4', // cyan
+    '#84cc16', // lime
+  ]
+  let hash = 0
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return colors[Math.abs(hash) % colors.length]
+}
+
 interface GroupedEntries {
   date: string
   label: string
@@ -31,40 +50,26 @@ interface GroupedEntries {
 }
 
 export function EntriesList() {
-  const { entries, continueEntry, deleteEntry, updateEntry } = useTimer()
+  const { entries, continueEntry, deleteEntry, updateEntry, timer } = useTimer()
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [editDescription, setEditDescription] = useState('')
   const [clients, setClients] = useState<Client[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
 
-  // Fetch clients and projects from Supabase
+  // Fetch clients from Supabase
   useEffect(() => {
-    async function fetchData() {
+    async function fetchClients() {
       const supabase = createClient()
-      
-      const [clientsRes, projectsRes] = await Promise.all([
-        supabase.from('clients').select('*'),
-        supabase.from('projects').select('*'),
-      ])
-
-      if (clientsRes.data) setClients(clientsRes.data)
-      if (projectsRes.data) setProjects(projectsRes.data)
+      const { data } = await supabase.from('clients').select('*').order('business_name')
+      if (data) setClients(data)
     }
 
-    fetchData()
+    fetchClients()
   }, [])
 
-  // Helper to get project from Supabase data or fallback to mock
-  const getProject = (projectId: string | null): Project | undefined => {
-    if (!projectId) return undefined
-    return projects.find((p) => p.id === projectId) || getProjectById(projectId)
-  }
-
-  // Helper to get client by project
-  const getClientByProject = (projectId: string | null): Client | undefined => {
-    const project = getProject(projectId)
-    if (!project?.client_id) return undefined
-    return clients.find((c) => c.id === project.client_id)
+  // Helper to get client by id
+  const getClient = (clientId: string | null): Client | undefined => {
+    if (!clientId) return undefined
+    return clients.find((c) => c.id === clientId)
   }
 
   // Group entries by day
@@ -95,8 +100,8 @@ export function EntriesList() {
     return result
   }, [entries])
 
-  const handleContinue = (entry: TimeEntry) => {
-    continueEntry(entry)
+  const handleContinue = (entry: TimeEntry, clientId?: string | null) => {
+    continueEntry(entry, clientId)
     toast.success('Timer started')
   }
 
@@ -149,15 +154,14 @@ export function EntriesList() {
           {/* Entries */}
           <div className="space-y-2">
             {group.entries.map((entry) => {
-              const project = getProject(entry.project_id)
-              const client = getClientByProject(entry.project_id)
+              // For now, we store client_id in project_id field (will refactor later)
+              const client = getClient(entry.project_id)
               return (
                 <EntryRow
                   key={entry.id}
                   entry={entry}
-                  project={project}
                   client={client}
-                  onContinue={() => handleContinue(entry)}
+                  onContinue={() => handleContinue(entry, entry.project_id)}
                   onEdit={() => handleEdit(entry)}
                   onDelete={() => handleDelete(entry.id)}
                 />
@@ -199,31 +203,29 @@ export function EntriesList() {
 
 interface EntryRowProps {
   entry: TimeEntry
-  project?: Project
   client?: Client
   onContinue: () => void
   onEdit: () => void
   onDelete: () => void
 }
 
-function EntryRow({ entry, project, client, onContinue, onEdit, onDelete }: EntryRowProps) {
-
+function EntryRow({ entry, client, onContinue, onEdit, onDelete }: EntryRowProps) {
   return (
     <div className="group flex items-center gap-4 p-3 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors">
-      {/* Project Color Dot */}
+      {/* Client Color Dot */}
       <div
         className="h-3 w-3 rounded-full shrink-0"
-        style={{ backgroundColor: project?.color || '#9ca3af' }}
+        style={{ backgroundColor: client ? getClientColor(client.id) : '#9ca3af' }}
       />
 
-      {/* Description & Project/Client */}
+      {/* Description & Client */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-foreground truncate">
           {entry.description}
         </p>
-        {(project || client) && (
+        {client && (
           <p className="text-xs text-muted-foreground truncate">
-            {project?.name}{client && ` · ${client.name}`}
+            {client.business_name}
           </p>
         )}
       </div>

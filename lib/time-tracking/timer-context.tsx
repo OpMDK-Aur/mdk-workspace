@@ -87,7 +87,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     const newEntry: TimeEntry = {
       id: `entry-${Date.now()}`,
       user_id: 'user-1',
-      project_id: timer.projectId,
+      // Store clientId in project_id field temporarily (until we have proper time_entries table)
+      project_id: timer.clientId,
       task_id: timer.taskId,
       description: timer.description || 'No description',
       started_at: timer.startedAt,

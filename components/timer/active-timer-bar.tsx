@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useTimer } from '@/lib/time-tracking/timer-context'
-import { mockProjects, formatDuration, formatDurationShort, getTasksByProjectId } from '@/lib/time-tracking/mock-data'
+import { formatDuration, formatDurationShort } from '@/lib/time-tracking/mock-data'
 import { createClient } from '@/lib/supabase/client'
-import type { Client, Project } from '@/lib/time-tracking/types'
+import type { Client } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -15,7 +15,36 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { Play, Square, DollarSign, Building2 } from 'lucide-react'
+import { Play, Square, DollarSign } from 'lucide-react'
+
+// Generate a color from client id for visual distinction
+function getClientColor(id: string): string {
+  const colors = [
+    '#3b82f6', // blue
+    '#10b981', // green
+    '#f59e0b', // amber
+    '#ef4444', // red
+    '#8b5cf6', // violet
+    '#ec4899', // pink
+    '#06b6d4', // cyan
+    '#84cc16', // lime
+  ]
+  let hash = 0
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return colors[Math.abs(hash) % colors.length]
+}
+
+// Get initials from business name
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join('')
+    .toUpperCase()
+}
 
 export function ActiveTimerBar() {
   const {
@@ -24,14 +53,11 @@ export function ActiveTimerBar() {
     stopTimer,
     setDescription,
     setClientId,
-    setProjectId,
-    setTaskId,
     toggleBillable,
     lastEntry,
   } = useTimer()
 
   const [clients, setClients] = useState<Client[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
   const [isLoadingClients, setIsLoadingClients] = useState(true)
 
   // Fetch clients from Supabase on mount
@@ -41,7 +67,7 @@ export function ActiveTimerBar() {
       const { data, error } = await supabase
         .from('clients')
         .select('*')
-        .order('name')
+        .order('business_name')
 
       if (!error && data) {
         setClients(data)
@@ -52,35 +78,7 @@ export function ActiveTimerBar() {
     fetchClients()
   }, [])
 
-  // Fetch projects when client changes
-  useEffect(() => {
-    async function fetchProjects() {
-      if (!timer.clientId) {
-        setProjects([])
-        return
-      }
-
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('client_id', timer.clientId)
-        .order('name')
-
-      if (!error && data) {
-        setProjects(data)
-      }
-    }
-
-    fetchProjects()
-  }, [timer.clientId])
-
-  const availableTasks = timer.projectId
-    ? getTasksByProjectId(timer.projectId)
-    : []
-
   const selectedClient = clients.find((c) => c.id === timer.clientId)
-  const selectedProject = projects.find((p) => p.id === timer.projectId)
 
   return (
     <div className="sticky top-0 z-40 border-b border-border bg-card shadow-sm">
@@ -101,17 +99,17 @@ export function ActiveTimerBar() {
           onValueChange={(val) => setClientId(val || null)}
           disabled={isLoadingClients}
         >
-          <SelectTrigger className="w-[160px] shrink-0">
-            <SelectValue placeholder="Select client">
+          <SelectTrigger className="w-[200px] shrink-0">
+            <SelectValue placeholder={isLoadingClients ? 'Loading...' : 'Select client'}>
               {selectedClient && (
                 <div className="flex items-center gap-2">
                   <div
                     className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold text-white shrink-0"
-                    style={{ backgroundColor: selectedClient.color }}
+                    style={{ backgroundColor: getClientColor(selectedClient.id) }}
                   >
-                    {selectedClient.logo_initials}
+                    {getInitials(selectedClient.business_name)}
                   </div>
-                  <span className="truncate">{selectedClient.name}</span>
+                  <span className="truncate">{selectedClient.business_name}</span>
                 </div>
               )}
             </SelectValue>
@@ -122,64 +120,12 @@ export function ActiveTimerBar() {
                 <div className="flex items-center gap-2">
                   <div
                     className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold text-white shrink-0"
-                    style={{ backgroundColor: client.color }}
+                    style={{ backgroundColor: getClientColor(client.id) }}
                   >
-                    {client.logo_initials}
+                    {getInitials(client.business_name)}
                   </div>
-                  <span>{client.name}</span>
+                  <span>{client.business_name}</span>
                 </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Project Selector */}
-        <Select
-          value={timer.projectId || ''}
-          onValueChange={(val) => setProjectId(val || null)}
-          disabled={!timer.clientId || projects.length === 0}
-        >
-          <SelectTrigger className="w-[180px] shrink-0">
-            <SelectValue placeholder="Select project">
-              {selectedProject && (
-                <div className="flex items-center gap-2">
-                  <div
-                    className="h-2.5 w-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: selectedProject.color }}
-                  />
-                  <span className="truncate">{selectedProject.name}</span>
-                </div>
-              )}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {projects.map((project) => (
-              <SelectItem key={project.id} value={project.id}>
-                <div className="flex items-center gap-2">
-                  <div
-                    className="h-2.5 w-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: project.color }}
-                  />
-                  <span>{project.name}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Task Selector */}
-        <Select
-          value={timer.taskId || ''}
-          onValueChange={(val) => setTaskId(val || null)}
-          disabled={!timer.projectId}
-        >
-          <SelectTrigger className="w-[160px] shrink-0">
-            <SelectValue placeholder="Select task" />
-          </SelectTrigger>
-          <SelectContent>
-            {availableTasks.map((task) => (
-              <SelectItem key={task.id} value={task.id}>
-                {task.name}
               </SelectItem>
             ))}
           </SelectContent>
