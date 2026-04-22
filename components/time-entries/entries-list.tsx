@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTimer } from '@/lib/time-tracking/timer-context'
-import type { TimeEntry } from '@/lib/time-tracking/types'
+import { createClient } from '@/lib/supabase/client'
+import type { TimeEntry, Client, Project } from '@/lib/time-tracking/types'
 import {
   getProjectById,
   formatDurationShort,
@@ -33,6 +34,38 @@ export function EntriesList() {
   const { entries, continueEntry, deleteEntry, updateEntry } = useTimer()
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [editDescription, setEditDescription] = useState('')
+  const [clients, setClients] = useState<Client[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
+
+  // Fetch clients and projects from Supabase
+  useEffect(() => {
+    async function fetchData() {
+      const supabase = createClient()
+      
+      const [clientsRes, projectsRes] = await Promise.all([
+        supabase.from('clients').select('*'),
+        supabase.from('projects').select('*'),
+      ])
+
+      if (clientsRes.data) setClients(clientsRes.data)
+      if (projectsRes.data) setProjects(projectsRes.data)
+    }
+
+    fetchData()
+  }, [])
+
+  // Helper to get project from Supabase data or fallback to mock
+  const getProject = (projectId: string | null): Project | undefined => {
+    if (!projectId) return undefined
+    return projects.find((p) => p.id === projectId) || getProjectById(projectId)
+  }
+
+  // Helper to get client by project
+  const getClientByProject = (projectId: string | null): Client | undefined => {
+    const project = getProject(projectId)
+    if (!project?.client_id) return undefined
+    return clients.find((c) => c.id === project.client_id)
+  }
 
   // Group entries by day
   const groupedEntries = useMemo(() => {
@@ -115,15 +148,21 @@ export function EntriesList() {
 
           {/* Entries */}
           <div className="space-y-2">
-            {group.entries.map((entry) => (
-              <EntryRow
-                key={entry.id}
-                entry={entry}
-                onContinue={() => handleContinue(entry)}
-                onEdit={() => handleEdit(entry)}
-                onDelete={() => handleDelete(entry.id)}
-              />
-            ))}
+            {group.entries.map((entry) => {
+              const project = getProject(entry.project_id)
+              const client = getClientByProject(entry.project_id)
+              return (
+                <EntryRow
+                  key={entry.id}
+                  entry={entry}
+                  project={project}
+                  client={client}
+                  onContinue={() => handleContinue(entry)}
+                  onEdit={() => handleEdit(entry)}
+                  onDelete={() => handleDelete(entry.id)}
+                />
+              )
+            })}
           </div>
         </div>
       ))}
@@ -160,13 +199,14 @@ export function EntriesList() {
 
 interface EntryRowProps {
   entry: TimeEntry
+  project?: Project
+  client?: Client
   onContinue: () => void
   onEdit: () => void
   onDelete: () => void
 }
 
-function EntryRow({ entry, onContinue, onEdit, onDelete }: EntryRowProps) {
-  const project = entry.project_id ? getProjectById(entry.project_id) : null
+function EntryRow({ entry, project, client, onContinue, onEdit, onDelete }: EntryRowProps) {
 
   return (
     <div className="group flex items-center gap-4 p-3 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors">
@@ -176,14 +216,14 @@ function EntryRow({ entry, onContinue, onEdit, onDelete }: EntryRowProps) {
         style={{ backgroundColor: project?.color || '#9ca3af' }}
       />
 
-      {/* Description & Project */}
+      {/* Description & Project/Client */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-foreground truncate">
           {entry.description}
         </p>
-        {project && (
+        {(project || client) && (
           <p className="text-xs text-muted-foreground truncate">
-            {project.name}
+            {project?.name}{client && ` · ${client.name}`}
           </p>
         )}
       </div>

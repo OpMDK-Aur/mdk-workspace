@@ -8,6 +8,7 @@ interface TimerState {
   isRunning: boolean
   startedAt: string | null
   description: string
+  clientId: string | null
   projectId: string | null
   taskId: string | null
   billable: boolean
@@ -20,10 +21,11 @@ interface TimerContextType {
   startTimer: () => void
   stopTimer: () => void
   setDescription: (desc: string) => void
+  setClientId: (id: string | null) => void
   setProjectId: (id: string | null) => void
   setTaskId: (id: string | null) => void
   toggleBillable: () => void
-  continueEntry: (entry: TimeEntry) => void
+  continueEntry: (entry: TimeEntry, clientId?: string | null) => void
   deleteEntry: (id: string) => void
   updateEntry: (id: string, updates: Partial<TimeEntry>) => void
   lastEntry: TimeEntry | null
@@ -45,6 +47,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     isRunning: false,
     startedAt: null,
     description: '',
+    clientId: null,
     projectId: null,
     taskId: null,
     billable: true,
@@ -98,6 +101,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       isRunning: false,
       startedAt: null,
       description: '',
+      clientId: null,
       projectId: null,
       taskId: null,
       billable: true,
@@ -107,6 +111,10 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
   const setDescription = useCallback((desc: string) => {
     setTimer((prev) => ({ ...prev, description: desc }))
+  }, [])
+
+  const setClientId = useCallback((id: string | null) => {
+    setTimer((prev) => ({ ...prev, clientId: id, projectId: null, taskId: null }))
   }, [])
 
   const setProjectId = useCallback((id: string | null) => {
@@ -121,11 +129,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     setTimer((prev) => ({ ...prev, billable: !prev.billable }))
   }, [])
 
-  const continueEntry = useCallback((entry: TimeEntry) => {
+  const continueEntry = useCallback((entry: TimeEntry, clientId?: string | null) => {
     setTimer({
       isRunning: true,
       startedAt: new Date().toISOString(),
       description: entry.description,
+      clientId: clientId ?? null,
       projectId: entry.project_id,
       taskId: entry.task_id,
       billable: entry.billable,
@@ -153,6 +162,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         startTimer,
         stopTimer,
         setDescription,
+        setClientId,
         setProjectId,
         setTaskId,
         toggleBillable,
