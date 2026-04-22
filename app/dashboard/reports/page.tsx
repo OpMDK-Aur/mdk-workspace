@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { format, subDays, startOfWeek, endOfWeek } from 'date-fns'
+import { useState, useMemo } from 'react'
+import useSWR from 'swr'
+import { format, subDays } from 'date-fns'
 import { DateRange } from 'react-day-picker'
 import { HoursChart } from '@/components/reports/hours-chart'
 import { ProjectSummaryTable } from '@/components/reports/project-summary-table'
@@ -24,9 +25,28 @@ import {
 } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { CalendarIcon, Download, Users } from 'lucide-react'
-import { mockTeamMembers, mockProjectSummaries } from '@/lib/time-tracking/mock-data'
+import { CalendarIcon, Download, Users, Loader2 } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import type { Client, Project, ClientSummary, ProjectSummary, User } from '@/lib/time-tracking/types'
+import { mockProjectSummaries } from '@/lib/time-tracking/mock-data'
 import { toast } from 'sonner'
+
+// Fetcher for SWR
+async function fetchReportsData() {
+  const supabase = createClient()
+  
+  const [clientsRes, projectsRes, usersRes] = await Promise.all([
+    supabase.from('clients').select('*').order('name'),
+    supabase.from('projects').select('*'),
+    supabase.from('users').select('*').order('full_name'),
+  ])
+
+  return {
+    clients: (clientsRes.data || []) as Client[],
+    projects: (projectsRes.data || []) as Project[],
+    users: (usersRes.data || []) as User[],
+  }
+}
 
 export default function ReportsPage() {
   const [date, setDate] = useState<DateRange | undefined>({
@@ -34,6 +54,48 @@ export default function ReportsPage() {
     to: new Date(),
   })
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
+
+  // Fetch data with SWR
+  const { data, isLoading } = useSWR('reports-data', fetchReportsData)
+
+  const clients = data?.clients || []
+  const projects = data?.projects || []
+  const users = data?.users || []
+
+  // Calculate client summaries from real data
+  const clientSummaries: ClientSummary[] = useMemo(() => {
+    const totalHoursAll = clients.reduce((acc, c) => acc + (c.total_hours || 0), 0)
+    
+    return clients.map((client) => {
+      const clientProjects = projects.filter((p) => p.client_id === client.id)
+      return {
+        client_id: client.id,
+        client_name: client.name,
+        client_color: client.color,
+        projects_count: clientProjects.length,
+        hours: client.total_hours || 0,
+        percentage: totalHoursAll > 0 ? ((client.total_hours || 0) / totalHoursAll) * 100 : 0,
+        billable_hours: client.total_hours || 0, // Assuming all client hours are billable
+      }
+    })
+  }, [clients, projects])
+
+  // Create client -> project mapping
+  const clientProjectMap: Record<string, string[]> = useMemo(() => {
+    const map: Record<string, string[]> = {}
+    projects.forEach((project) => {
+      if (project.client_id) {
+        if (!map[project.client_id]) {
+          map[project.client_id] = []
+        }
+        map[project.client_id].push(project.id)
+      }
+    })
+    return map
+  }, [projects])
+
+  // Project summaries (still using mock data for now, can be extended)
+  const projectSummaries = mockProjectSummaries
 
   const totalHours = mockProjectSummaries.reduce((acc, p) => acc + p.hours, 0)
   const billableHours = mockProjectSummaries.reduce((acc, p) => acc + p.billable_hours, 0)
@@ -109,9 +171,9 @@ export default function ReportsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All team members</SelectItem>
-            {mockTeamMembers.map((member) => (
-              <SelectItem key={member.id} value={member.id}>
-                {member.name}
+            {users.map((user) => (
+              <SelectItem key={user.id} value={user.id}>
+                {user.full_name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -161,10 +223,20 @@ export default function ReportsPage() {
         </TabsContent>
         
         <TabsContent value="by-client">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <ClientDonutChart />
-            <ClientSummaryTable />
-          </div>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <ClientDonutChart clientSummaries={clientSummaries} />
+              <ClientSummaryTable 
+                clientSummaries={clientSummaries}
+                projectSummaries={projectSummaries}
+                clientProjectMap={clientProjectMap}
+              />
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>

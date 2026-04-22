@@ -1,7 +1,7 @@
 'use client'
 
 import { useTimer } from '@/lib/time-tracking/timer-context'
-import { mockProjects, formatDuration, formatDurationShort, getTasksByProjectId, getClientByProjectId } from '@/lib/time-tracking/mock-data'
+import { mockProjects, formatDuration, formatDurationShort, getTasksByProjectId } from '@/lib/time-tracking/mock-data'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -31,7 +31,6 @@ export function ActiveTimerBar() {
     : []
 
   const selectedProject = mockProjects.find((p) => p.id === timer.projectId)
-  const selectedClient = timer.projectId ? getClientByProjectId(timer.projectId) : null
 
   return (
     <div className="sticky top-0 z-40 border-b border-border bg-card shadow-sm">
@@ -47,44 +46,37 @@ export function ActiveTimerBar() {
         </div>
 
         {/* Project Selector */}
-        <div className="flex flex-col shrink-0">
-          <Select
-            value={timer.projectId || ''}
-            onValueChange={(val) => setProjectId(val || null)}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Select project">
-                {selectedProject && (
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="h-2.5 w-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: selectedProject.color }}
-                    />
-                    <span className="truncate">{selectedProject.name}</span>
-                  </div>
-                )}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {mockProjects.map((project) => (
-                <SelectItem key={project.id} value={project.id}>
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="h-2.5 w-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: project.color }}
-                    />
-                    <span>{project.name}</span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {selectedClient && (
-            <span className="text-xs text-muted-foreground mt-0.5 pl-1">
-              {selectedClient.name}
-            </span>
-          )}
-        </div>
+        <Select
+          value={timer.projectId || ''}
+          onValueChange={(val) => setProjectId(val || null)}
+        >
+          <SelectTrigger className="w-[180px] shrink-0">
+            <SelectValue placeholder="Select project">
+              {selectedProject && (
+                <div className="flex items-center gap-2">
+                  <div
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: selectedProject.color }}
+                  />
+                  <span className="truncate">{selectedProject.name}</span>
+                </div>
+              )}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {mockProjects.map((project) => (
+              <SelectItem key={project.id} value={project.id}>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: project.color }}
+                  />
+                  <span>{project.name}</span>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         {/* Task Selector */}
         <Select

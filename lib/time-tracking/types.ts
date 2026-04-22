@@ -5,6 +5,9 @@ export interface Client {
   name: string
   color: string // hex
   logo_initials: string // e.g. "AC" for Acme Corp
+  hourly_rate: number // cost per hour
+  total_hours: number // accumulated tracked hours
+  created_at: string // ISO timestamptz
 }
 
 export interface TimeEntry {
@@ -43,6 +46,16 @@ export interface TeamMember {
   is_tracking: boolean
   current_task: string | null
   weekly_hours: number
+}
+
+// Supabase user type (matches DB schema)
+export interface User {
+  id: string
+  full_name: string
+  email: string
+  avatar_url: string | null
+  role: 'admin' | 'member'
+  created_at: string
 }
 
 export interface DailyHours {

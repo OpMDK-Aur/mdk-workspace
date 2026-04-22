@@ -2,19 +2,38 @@
 
 import { useMemo } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
-import { mockClientSummaries } from '@/lib/time-tracking/mock-data'
+import type { ClientSummary } from '@/lib/time-tracking/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
-export function ClientDonutChart() {
+interface ClientDonutChartProps {
+  clientSummaries?: ClientSummary[]
+}
+
+export function ClientDonutChart({ clientSummaries = [] }: ClientDonutChartProps) {
   const chartData = useMemo(() => {
-    return mockClientSummaries.map((client) => ({
+    return clientSummaries.map((client) => ({
       name: client.client_name,
       value: client.hours,
       color: client.client_color,
     }))
-  }, [])
+  }, [clientSummaries])
 
-  const totalHours = mockClientSummaries.reduce((acc, c) => acc + c.hours, 0)
+  const totalHours = clientSummaries.reduce((acc, c) => acc + c.hours, 0)
+
+  if (clientSummaries.length === 0) {
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-medium">Hours by Client</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[200px] flex items-center justify-center">
+            <p className="text-muted-foreground">No client data available</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card>

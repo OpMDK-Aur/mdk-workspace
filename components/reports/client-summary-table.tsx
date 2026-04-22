@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { mockClientSummaries, mockProjectSummaries, getProjectsByClientId } from '@/lib/time-tracking/mock-data'
+import type { ClientSummary, ProjectSummary } from '@/lib/time-tracking/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -13,19 +13,46 @@ import {
 } from '@/components/ui/table'
 import { Progress } from '@/components/ui/progress'
 import { ChevronRight, ChevronDown } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
-export function ClientSummaryTable() {
+interface ClientSummaryTableProps {
+  clientSummaries?: ClientSummary[]
+  projectSummaries?: ProjectSummary[]
+  clientProjectMap?: Record<string, string[]> // client_id -> project_ids
+}
+
+export function ClientSummaryTable({ 
+  clientSummaries = [], 
+  projectSummaries = [],
+  clientProjectMap = {}
+}: ClientSummaryTableProps) {
   const [expandedClients, setExpandedClients] = useState<string[]>([])
   
-  const totalHours = mockClientSummaries.reduce((acc, c) => acc + c.hours, 0)
-  const totalBillable = mockClientSummaries.reduce((acc, c) => acc + c.billable_hours, 0)
+  const totalHours = clientSummaries.reduce((acc, c) => acc + c.hours, 0)
+  const totalBillable = clientSummaries.reduce((acc, c) => acc + c.billable_hours, 0)
 
   const toggleExpand = (clientId: string) => {
     setExpandedClients((prev) =>
       prev.includes(clientId)
         ? prev.filter((id) => id !== clientId)
         : [...prev, clientId]
+    )
+  }
+
+  const getProjectSummariesForClient = (clientId: string): ProjectSummary[] => {
+    const projectIds = clientProjectMap[clientId] || []
+    return projectSummaries.filter((p) => projectIds.includes(p.project_id))
+  }
+
+  if (clientSummaries.length === 0) {
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-medium">Client Breakdown</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-center text-muted-foreground py-8">No client data available</p>
+        </CardContent>
+      </Card>
     )
   }
 
@@ -47,12 +74,9 @@ export function ClientSummaryTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {mockClientSummaries.map((client) => {
+            {clientSummaries.map((client) => {
               const isExpanded = expandedClients.includes(client.client_id)
-              const clientProjects = getProjectsByClientId(client.client_id)
-              const projectSummaries = mockProjectSummaries.filter((p) =>
-                clientProjects.some((cp) => cp.id === p.project_id)
-              )
+              const clientProjects = getProjectSummariesForClient(client.client_id)
 
               return (
                 <>
@@ -62,11 +86,13 @@ export function ClientSummaryTable() {
                     onClick={() => toggleExpand(client.client_id)}
                   >
                     <TableCell className="p-2">
-                      {isExpanded ? (
-                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      )}
+                      {clientProjects.length > 0 ? (
+                        isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        )
+                      ) : null}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -97,7 +123,7 @@ export function ClientSummaryTable() {
                       {client.billable_hours.toFixed(1)}h
                     </TableCell>
                   </TableRow>
-                  {isExpanded && projectSummaries.map((project) => (
+                  {isExpanded && clientProjects.map((project) => (
                     <TableRow key={project.project_id} className="bg-muted/30">
                       <TableCell></TableCell>
                       <TableCell className="pl-10">
@@ -116,7 +142,7 @@ export function ClientSummaryTable() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Progress 
-                            value={(project.hours / client.hours) * 100} 
+                            value={client.hours > 0 ? (project.hours / client.hours) * 100 : 0} 
                             className="h-1.5" 
                           />
                         </div>

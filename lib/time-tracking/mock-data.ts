@@ -1,11 +1,4 @@
-import type { TimeEntry, Project, Task, TeamMember, DailyHours, ProjectSummary, Client, ClientSummary } from './types'
-
-// Clients
-export const mockClients: Client[] = [
-  { id: 'client-1', name: 'Acme Corp', color: '#3b82f6', logo_initials: 'AC' },
-  { id: 'client-2', name: 'Globex', color: '#10b981', logo_initials: 'GX' },
-  { id: 'client-3', name: 'Initech', color: '#f59e0b', logo_initials: 'IT' },
-]
+import type { TimeEntry, Project, Task, TeamMember, DailyHours, ProjectSummary } from './types'
 
 // Projects
 export const mockProjects: Project[] = [
@@ -390,60 +383,7 @@ export function calculateDayTotal(entries: TimeEntry[]): number {
   return entries.reduce((acc, entry) => acc + (entry.duration_sec || 0), 0)
 }
 
-// Client helper functions
-export function getClientById(id: string): Client | undefined {
-  return mockClients.find((c) => c.id === id)
-}
-
-export function getClientByProjectId(projectId: string): Client | undefined {
-  const project = getProjectById(projectId)
-  if (!project?.client_id) return undefined
-  return getClientById(project.client_id)
-}
-
+// Client helper functions (for project lookups)
 export function getProjectsByClientId(clientId: string): Project[] {
   return mockProjects.filter((p) => p.client_id === clientId)
 }
-
-export function getTasksByClientId(clientId: string): Task[] {
-  const clientProjects = getProjectsByClientId(clientId)
-  const projectIds = clientProjects.map((p) => p.id)
-  return mockTasks.filter((t) => projectIds.includes(t.project_id))
-}
-
-export function getEntriesByClientId(entries: TimeEntry[], clientId: string): TimeEntry[] {
-  const clientProjects = getProjectsByClientId(clientId)
-  const projectIds = clientProjects.map((p) => p.id)
-  return entries.filter((e) => e.project_id && projectIds.includes(e.project_id))
-}
-
-// Client summaries for reports
-export const mockClientSummaries: ClientSummary[] = [
-  {
-    client_id: 'client-1',
-    client_name: 'Acme Corp',
-    client_color: '#3b82f6',
-    projects_count: 1,
-    hours: 24.5,
-    percentage: 53.3,
-    billable_hours: 24.5,
-  },
-  {
-    client_id: 'client-2',
-    client_name: 'Globex',
-    client_color: '#10b981',
-    projects_count: 1,
-    hours: 15.25,
-    percentage: 33.2,
-    billable_hours: 12.75,
-  },
-  {
-    client_id: 'client-3',
-    client_name: 'Initech',
-    client_color: '#f59e0b',
-    projects_count: 1,
-    hours: 6.5,
-    percentage: 14.1,
-    billable_hours: 0,
-  },
-]
