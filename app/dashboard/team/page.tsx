@@ -1,8 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
-import type { User, TimeEntry } from '@/lib/time-tracking/types'
 import { TeamMemberList } from '@/components/team/team-member-list'
 import { Card, CardContent } from '@/components/ui/card'
 import { Users, Clock, UserCheck } from 'lucide-react'
+
+interface Profile {
+  id: string
+  full_name: string
+  email: string
+  avatar_url: string | null
+  role?: string
+}
 
 function getStartOfWeek(): string {
   const now = new Date()
@@ -22,63 +29,79 @@ export default async function TeamPage() {
   
   let currentUserRole: 'admin' | 'member' = 'member'
   if (authUser) {
-    const { data: currentUser } = await supabase
-      .from('users')
+    const { data: currentProfile } = await supabase
+      .from('profiles')
       .select('role')
       .eq('id', authUser.id)
       .single()
     
-    currentUserRole = (currentUser?.role as 'admin' | 'member') || 'member'
+    currentUserRole = (currentProfile?.role as 'admin' | 'member') || 'member'
   }
 
-  // Fetch all users
-  const { data: users, error: usersError } = await supabase
-    .from('users')
+  // Fetch all profiles (instead of users table)
+  const { data: profiles, error: profilesError } = await supabase
+    .from('profiles')
     .select('*')
     .order('full_name')
 
-  if (usersError) {
-    console.error('[v0] Error fetching users:', usersError)
+  if (profilesError) {
+    console.log('[v0] Error fetching profiles:', profilesError.message)
   }
 
-  const typedUsers: User[] = (users || []) as User[]
+  const typedProfiles: Profile[] = (profiles || []) as Profile[]
 
-  // Fetch weekly time entries (completed only)
-  const { data: weekEntries } = await supabase
+  // Try to fetch weekly time entries (completed only)
+  // This will fail gracefully if table doesn't exist
+  let weekEntries: { user_id: string; duration_sec: number }[] = []
+  let activeTimers: { user_id: string; description: string }[] = []
+  
+  const { data: weekData, error: weekError } = await supabase
     .from('time_entries')
     .select('user_id, duration_sec')
     .gte('started_at', startOfWeek)
     .not('ended_at', 'is', null)
 
+  if (!weekError && weekData) {
+    weekEntries = weekData
+  }
+
   // Fetch active timers (entries with ended_at = null)
-  const { data: activeTimers } = await supabase
+  const { data: activeData, error: activeError } = await supabase
     .from('time_entries')
     .select('user_id, description')
     .is('ended_at', null)
 
+  if (!activeError && activeData) {
+    activeTimers = activeData
+  }
+
   // Group duration by user_id
   const weeklyHoursByUser: Record<string, number> = {}
-  ;(weekEntries || []).forEach((entry: { user_id: string; duration_sec: number }) => {
-    weeklyHoursByUser[entry.user_id] = (weeklyHoursByUser[entry.user_id] || 0) + (entry.duration_sec || 0)
+  weekEntries.forEach((entry) => {
+    if (entry.user_id) {
+      weeklyHoursByUser[entry.user_id] = (weeklyHoursByUser[entry.user_id] || 0) + (entry.duration_sec || 0)
+    }
   })
 
   // Map active timers by user_id
   const activeTimerByUser: Record<string, string> = {}
-  ;(activeTimers || []).forEach((entry: { user_id: string; description: string }) => {
-    activeTimerByUser[entry.user_id] = entry.description
+  activeTimers.forEach((entry) => {
+    if (entry.user_id) {
+      activeTimerByUser[entry.user_id] = entry.description
+    }
   })
 
-  // Transform users to team members format
-  const teamMembers = typedUsers.map((user) => {
-    const weeklySec = weeklyHoursByUser[user.id] || 0
-    const activeTimer = activeTimerByUser[user.id]
+  // Transform profiles to team members format
+  const teamMembers = typedProfiles.map((profile) => {
+    const weeklySec = weeklyHoursByUser[profile.id] || 0
+    const activeTimer = activeTimerByUser[profile.id]
     
     return {
-      id: user.id,
-      name: user.full_name,
-      email: user.email,
-      avatar_url: user.avatar_url,
-      role: user.role as 'admin' | 'member',
+      id: profile.id,
+      name: profile.full_name || 'Unknown',
+      email: profile.email || '',
+      avatar_url: profile.avatar_url,
+      role: (profile.role as 'admin' | 'member') || 'member',
       is_tracking: !!activeTimer,
       current_task: activeTimer || null,
       weekly_hours: weeklySec / 3600,

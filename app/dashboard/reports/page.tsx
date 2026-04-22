@@ -2,10 +2,9 @@
 
 import { useState, useMemo } from 'react'
 import useSWR from 'swr'
-import { format, subDays } from 'date-fns'
+import { format, subDays, isWithinInterval, startOfDay, endOfDay } from 'date-fns'
 import { DateRange } from 'react-day-picker'
 import { HoursChart } from '@/components/reports/hours-chart'
-import { ProjectSummaryTable } from '@/components/reports/project-summary-table'
 import { ClientDonutChart } from '@/components/reports/client-donut-chart'
 import { ClientSummaryTable } from '@/components/reports/client-summary-table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -27,24 +26,50 @@ import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { CalendarIcon, Download, Users, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import type { Client, Project, ClientSummary, ProjectSummary, User } from '@/lib/time-tracking/types'
-import { mockProjectSummaries } from '@/lib/time-tracking/mock-data'
+import type { Client } from '@/lib/types'
+import type { ClientSummary } from '@/lib/time-tracking/types'
 import { toast } from 'sonner'
+
+interface TimeEntry {
+  id: string
+  client_id: string | null
+  description: string
+  started_at: string
+  ended_at: string | null
+  duration_sec: number | null
+  billable: boolean
+  user_id: string | null
+}
+
+interface User {
+  id: string
+  full_name: string
+}
+
+// Generate consistent color from string
+function stringToColor(str: string): string {
+  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return colors[Math.abs(hash) % colors.length]
+}
 
 // Fetcher for SWR
 async function fetchReportsData() {
   const supabase = createClient()
   
-  const [clientsRes, projectsRes, usersRes] = await Promise.all([
-    supabase.from('clients').select('*').order('name'),
-    supabase.from('projects').select('*'),
-    supabase.from('users').select('*').order('full_name'),
+  const [clientsRes, entriesRes, profilesRes] = await Promise.all([
+    supabase.from('clients').select('*').order('business_name'),
+    supabase.from('time_entries').select('*').order('started_at', { ascending: false }),
+    supabase.from('profiles').select('id, full_name').order('full_name'),
   ])
 
   return {
     clients: (clientsRes.data || []) as Client[],
-    projects: (projectsRes.data || []) as Project[],
-    users: (usersRes.data || []) as User[],
+    entries: (entriesRes.data || []) as TimeEntry[],
+    users: (profilesRes.data || []) as User[],
   }
 }
 
@@ -59,47 +84,105 @@ export default function ReportsPage() {
   const { data, isLoading } = useSWR('reports-data', fetchReportsData)
 
   const clients = data?.clients || []
-  const projects = data?.projects || []
+  const allEntries = data?.entries || []
   const users = data?.users || []
 
-  // Calculate client summaries from real data
+  // Filter entries by date range and selected members
+  const filteredEntries = useMemo(() => {
+    return allEntries.filter((entry) => {
+      const entryDate = new Date(entry.started_at)
+      
+      // Filter by date range
+      if (date?.from && date?.to) {
+        const isInRange = isWithinInterval(entryDate, {
+          start: startOfDay(date.from),
+          end: endOfDay(date.to),
+        })
+        if (!isInRange) return false
+      }
+      
+      // Filter by selected members
+      if (selectedMembers.length > 0 && entry.user_id) {
+        if (!selectedMembers.includes(entry.user_id)) return false
+      }
+      
+      return true
+    })
+  }, [allEntries, date, selectedMembers])
+
+  // Calculate client summaries from filtered entries
   const clientSummaries: ClientSummary[] = useMemo(() => {
-    const totalHoursAll = clients.reduce((acc, c) => acc + (c.total_hours || 0), 0)
+    // Group entries by client
+    const clientHoursMap: Record<string, { hours: number, billableHours: number }> = {}
     
-    return clients.map((client) => {
-      const clientProjects = projects.filter((p) => p.client_id === client.id)
-      return {
-        client_id: client.id,
-        client_name: client.name,
-        client_color: client.color,
-        projects_count: clientProjects.length,
-        hours: client.total_hours || 0,
-        percentage: totalHoursAll > 0 ? ((client.total_hours || 0) / totalHoursAll) * 100 : 0,
-        billable_hours: client.total_hours || 0, // Assuming all client hours are billable
-      }
-    })
-  }, [clients, projects])
-
-  // Create client -> project mapping
-  const clientProjectMap: Record<string, string[]> = useMemo(() => {
-    const map: Record<string, string[]> = {}
-    projects.forEach((project) => {
-      if (project.client_id) {
-        if (!map[project.client_id]) {
-          map[project.client_id] = []
+    filteredEntries.forEach((entry) => {
+      if (entry.client_id) {
+        if (!clientHoursMap[entry.client_id]) {
+          clientHoursMap[entry.client_id] = { hours: 0, billableHours: 0 }
         }
-        map[project.client_id].push(project.id)
+        const hours = (entry.duration_sec || 0) / 3600
+        clientHoursMap[entry.client_id].hours += hours
+        if (entry.billable) {
+          clientHoursMap[entry.client_id].billableHours += hours
+        }
       }
     })
-    return map
-  }, [projects])
 
-  // Project summaries (still using mock data for now, can be extended)
-  const projectSummaries = mockProjectSummaries
+    const totalHours = Object.values(clientHoursMap).reduce((acc, c) => acc + c.hours, 0)
+    
+    return clients
+      .filter((client) => clientHoursMap[client.id])
+      .map((client) => {
+        const data = clientHoursMap[client.id] || { hours: 0, billableHours: 0 }
+        return {
+          client_id: client.id,
+          client_name: client.business_name,
+          client_color: stringToColor(client.business_name),
+          projects_count: 0,
+          hours: data.hours,
+          percentage: totalHours > 0 ? (data.hours / totalHours) * 100 : 0,
+          billable_hours: data.billableHours,
+        }
+      })
+      .sort((a, b) => b.hours - a.hours)
+  }, [clients, filteredEntries])
 
-  const totalHours = mockProjectSummaries.reduce((acc, p) => acc + p.hours, 0)
-  const billableHours = mockProjectSummaries.reduce((acc, p) => acc + p.billable_hours, 0)
+  // Calculate totals
+  const totalHours = filteredEntries.reduce((acc, e) => acc + ((e.duration_sec || 0) / 3600), 0)
+  const billableHours = filteredEntries.filter((e) => e.billable).reduce((acc, e) => acc + ((e.duration_sec || 0) / 3600), 0)
   const billablePercentage = totalHours > 0 ? (billableHours / totalHours) * 100 : 0
+
+  // Calculate daily hours for the chart
+  const dailyHours = useMemo(() => {
+    if (!date?.from || !date?.to) return []
+    
+    const days: { date: string, hours: number, billableHours: number }[] = []
+    const currentDate = new Date(date.from)
+    const endDate = new Date(date.to)
+    
+    while (currentDate <= endDate) {
+      const dayStart = startOfDay(currentDate)
+      const dayEnd = endOfDay(currentDate)
+      
+      const dayEntries = filteredEntries.filter((entry) => {
+        const entryDate = new Date(entry.started_at)
+        return isWithinInterval(entryDate, { start: dayStart, end: dayEnd })
+      })
+      
+      const hours = dayEntries.reduce((acc, e) => acc + ((e.duration_sec || 0) / 3600), 0)
+      const billable = dayEntries.filter((e) => e.billable).reduce((acc, e) => acc + ((e.duration_sec || 0) / 3600), 0)
+      
+      days.push({
+        date: format(currentDate, 'EEE'),
+        hours: Math.round(hours * 10) / 10,
+        billableHours: Math.round(billable * 10) / 10,
+      })
+      
+      currentDate.setDate(currentDate.getDate() + 1)
+    }
+    
+    return days
+  }, [date, filteredEntries])
 
   const handleExport = () => {
     toast.success('Export started', {
@@ -209,18 +292,11 @@ export default function ReportsPage() {
       </div>
 
       {/* Charts and Tables with Tabs */}
-      <Tabs defaultValue="by-project" className="w-full">
+      <Tabs defaultValue="by-client" className="w-full">
         <TabsList className="mb-4">
-          <TabsTrigger value="by-project">By Project</TabsTrigger>
           <TabsTrigger value="by-client">By Client</TabsTrigger>
+          <TabsTrigger value="by-day">By Day</TabsTrigger>
         </TabsList>
-        
-        <TabsContent value="by-project">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <HoursChart />
-            <ProjectSummaryTable />
-          </div>
-        </TabsContent>
         
         <TabsContent value="by-client">
           {isLoading ? (
@@ -230,13 +306,15 @@ export default function ReportsPage() {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <ClientDonutChart clientSummaries={clientSummaries} />
-              <ClientSummaryTable 
-                clientSummaries={clientSummaries}
-                projectSummaries={projectSummaries}
-                clientProjectMap={clientProjectMap}
-              />
+              <ClientSummaryTable clientSummaries={clientSummaries} />
             </div>
           )}
+        </TabsContent>
+        
+        <TabsContent value="by-day">
+          <div className="grid grid-cols-1 gap-6">
+            <HoursChart dailyHours={dailyHours} />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

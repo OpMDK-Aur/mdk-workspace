@@ -1,8 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { Bar, BarChart, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { mockDailyHours } from '@/lib/time-tracking/mock-data'
+import { Bar, BarChart, XAxis, YAxis } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   ChartContainer,
@@ -11,6 +10,16 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart'
 
+interface DailyHoursData {
+  date: string
+  hours: number
+  billableHours?: number
+}
+
+interface HoursChartProps {
+  dailyHours?: DailyHoursData[]
+}
+
 const chartConfig = {
   hours: {
     label: 'Hours',
@@ -18,15 +27,30 @@ const chartConfig = {
   },
 } satisfies ChartConfig
 
-export function HoursChart() {
+export function HoursChart({ dailyHours = [] }: HoursChartProps) {
   const chartData = useMemo(() => {
-    return mockDailyHours.map((item) => ({
-      date: new Date(item.date).toLocaleDateString('en-US', { weekday: 'short' }),
+    return dailyHours.map((item) => ({
+      date: item.date,
       hours: item.hours,
     }))
-  }, [])
+  }, [dailyHours])
 
-  const totalHours = mockDailyHours.reduce((acc, item) => acc + item.hours, 0)
+  const totalHours = dailyHours.reduce((acc, item) => acc + item.hours, 0)
+
+  if (dailyHours.length === 0) {
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-medium">Hours per Day</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[200px] flex items-center justify-center">
+            <p className="text-muted-foreground">No data for selected period</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card>

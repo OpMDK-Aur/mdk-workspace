@@ -1,15 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useTimer } from '@/lib/time-tracking/timer-context'
+import { useTimer, type TimeEntryWithClient } from '@/lib/time-tracking/timer-context'
 import { createClient } from '@/lib/supabase/client'
-import type { TimeEntry } from '@/lib/time-tracking/types'
 import type { Client } from '@/lib/types'
 import {
   formatDurationShort,
   formatTimeRange,
   getDayLabel,
-  calculateDayTotal,
 } from '@/lib/time-tracking/mock-data'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,7 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
-import { Play, Pencil, Trash2, DollarSign, Clock } from 'lucide-react'
+import { Play, Pencil, Trash2, DollarSign, Clock, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 // Generate a color from client id for visual distinction
@@ -42,16 +40,21 @@ function getClientColor(id: string): string {
   return colors[Math.abs(hash) % colors.length]
 }
 
+// Calculate total seconds for entries
+function calculateTotalSeconds(entries: TimeEntryWithClient[]): number {
+  return entries.reduce((acc, e) => acc + (e.duration_sec || 0), 0)
+}
+
 interface GroupedEntries {
   date: string
   label: string
   total: number
-  entries: TimeEntry[]
+  entries: TimeEntryWithClient[]
 }
 
 export function EntriesList() {
-  const { entries, continueEntry, deleteEntry, updateEntry, timer } = useTimer()
-  const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
+  const { entries, continueEntry, deleteEntry, updateEntry, isLoading } = useTimer()
+  const [editingEntry, setEditingEntry] = useState<TimeEntryWithClient | null>(null)
   const [editDescription, setEditDescription] = useState('')
   const [clients, setClients] = useState<Client[]>([])
 
@@ -74,7 +77,7 @@ export function EntriesList() {
 
   // Group entries by day
   const groupedEntries = useMemo(() => {
-    const groups = new Map<string, TimeEntry[]>()
+    const groups = new Map<string, TimeEntryWithClient[]>()
     
     // Sort entries by started_at descending
     const sorted = [...entries].sort(
@@ -92,7 +95,7 @@ export function EntriesList() {
       result.push({
         date: dateKey,
         label: getDayLabel(dateKey),
-        total: calculateDayTotal(groupEntries),
+        total: calculateTotalSeconds(groupEntries),
         entries: groupEntries,
       })
     })
@@ -100,27 +103,36 @@ export function EntriesList() {
     return result
   }, [entries])
 
-  const handleContinue = (entry: TimeEntry, clientId?: string | null) => {
-    continueEntry(entry, clientId)
+  const handleContinue = (entry: TimeEntryWithClient) => {
+    continueEntry(entry)
     toast.success('Timer started')
   }
 
-  const handleDelete = (id: string) => {
-    deleteEntry(id)
+  const handleDelete = async (id: string) => {
+    await deleteEntry(id)
     toast.success('Entry deleted')
   }
 
-  const handleEdit = (entry: TimeEntry) => {
+  const handleEdit = (entry: TimeEntryWithClient) => {
     setEditingEntry(entry)
     setEditDescription(entry.description)
   }
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (editingEntry) {
-      updateEntry(editingEntry.id, { description: editDescription })
+      await updateEntry(editingEntry.id, { description: editDescription })
       setEditingEntry(null)
       toast.success('Entry updated')
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 px-4">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="text-muted-foreground mt-4">Loading entries...</p>
+      </div>
+    )
   }
 
   if (entries.length === 0) {
@@ -154,14 +166,13 @@ export function EntriesList() {
           {/* Entries */}
           <div className="space-y-2">
             {group.entries.map((entry) => {
-              // For now, we store client_id in project_id field (will refactor later)
-              const client = getClient(entry.project_id)
+              const client = getClient(entry.client_id)
               return (
                 <EntryRow
                   key={entry.id}
                   entry={entry}
                   client={client}
-                  onContinue={() => handleContinue(entry, entry.project_id)}
+                  onContinue={() => handleContinue(entry)}
                   onEdit={() => handleEdit(entry)}
                   onDelete={() => handleDelete(entry.id)}
                 />
@@ -202,7 +213,7 @@ export function EntriesList() {
 }
 
 interface EntryRowProps {
-  entry: TimeEntry
+  entry: TimeEntryWithClient
   client?: Client
   onContinue: () => void
   onEdit: () => void
