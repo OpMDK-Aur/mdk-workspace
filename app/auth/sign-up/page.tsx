@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Eye, EyeOff, Rocket, CheckCircle2 } from 'lucide-react'
+import { Eye, EyeOff, Rocket } from 'lucide-react'
 
 // Minimalist floating astronaut SVG
 function FloatingAstronaut() {
@@ -85,7 +85,6 @@ export default function SignUpPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [success, setSuccess] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
@@ -124,74 +123,30 @@ export default function SignUpPage() {
       return
     }
 
-    // Sign up with Supabase
-    const { error: signUpError } = await supabase.auth.signUp({
+    // Sign up with Supabase (without email confirmation)
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name: fullName,
         },
-        emailRedirectTo: `${window.location.origin}/auth/confirm`,
       },
     })
 
     if (signUpError) {
       setError(signUpError.message)
       setLoading(false)
+      return
+    }
+
+    // If user was created, redirect directly to onboarding
+    if (data.user) {
+      router.push('/onboarding')
     } else {
-      setSuccess(true)
+      setError('Error al crear la cuenta. Intenta de nuevo.')
       setLoading(false)
     }
-  }
-
-  // Success state
-  if (success) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a1a] relative overflow-hidden">
-        <Stars />
-        
-        {/* Subtle glow effects */}
-        <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="w-full max-w-md mx-4 relative z-10">
-          <div className="bg-white/[0.03] backdrop-blur-sm border border-white/10 rounded-2xl p-8 shadow-2xl text-center">
-            {/* Success Icon */}
-            <div className="relative mb-6">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-24 h-24 bg-primary/20 rounded-full blur-2xl animate-pulse" />
-              </div>
-              <div className="relative w-16 h-16 mx-auto bg-primary rounded-full flex items-center justify-center">
-                <CheckCircle2 className="w-8 h-8 text-white" />
-              </div>
-            </div>
-
-            <h1 className="text-2xl font-bold text-white mb-2">
-              Revisa tu correo
-            </h1>
-            <p className="text-white/50 text-sm mb-6 leading-relaxed">
-              Te enviamos un link de confirmacion a <span className="text-white font-medium">{email}</span>. 
-              Haz click en el link para activar tu cuenta y comenzar el onboarding.
-            </p>
-
-            <div className="p-4 rounded-xl bg-white/5 border border-white/10 mb-6">
-              <p className="text-white/40 text-xs">
-                No olvides revisar tu carpeta de spam si no lo encuentras.
-              </p>
-            </div>
-
-            <Link href="/auth/login">
-              <Button 
-                variant="ghost" 
-                className="w-full h-11 text-white/60 hover:text-white hover:bg-white/5 rounded-xl"
-              >
-                Volver al login
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   return (
