@@ -107,10 +107,10 @@ export default function ConfirmPage() {
                 Tu cuenta fue verificada exitosamente. Ya podes ingresar a tu espacio de trabajo.
               </p>
 
-              <Link href="/auth/login">
+              <Link href="/onboarding">
                 <Button className="w-full h-11 bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-primary/25 flex items-center justify-center gap-2 group">
                   <Rocket className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                  Ingresar
+                  Personalizar mi cuenta
                 </Button>
               </Link>
             </>
