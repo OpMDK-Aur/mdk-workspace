@@ -5,6 +5,7 @@ import { useTimerStore, type TimeEntry } from '@/lib/time-tracking/timer-store'
 import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/lib/types'
 import {
+  formatDuration,
   formatDurationShort,
   formatTimeRange,
   getDayLabel,
@@ -24,14 +25,8 @@ import { toast } from 'sonner'
 // Generate a color from client id for visual distinction
 function getClientColor(id: string): string {
   const colors = [
-    '#3b82f6', // blue
-    '#10b981', // green
-    '#f59e0b', // amber
-    '#ef4444', // red
-    '#8b5cf6', // violet
-    '#ec4899', // pink
-    '#06b6d4', // cyan
-    '#84cc16', // lime
+    '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+    '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
   ]
   let hash = 0
   for (let i = 0; i < id.length; i++) {
@@ -53,10 +48,11 @@ interface GroupedEntries {
 }
 
 export function EntriesList() {
-  const { entries, continueEntry, deleteEntry, updateEntry, isLoading, loadEntries } = useTimerStore()
+  const { entries, continueEntry, deleteEntry, updateEntry, isLoading, loadEntries, isRunning, startedAt, getElapsedSeconds } = useTimerStore()
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [editDescription, setEditDescription] = useState('')
   const [clients, setClients] = useState<Client[]>([])
+  const [runningElapsed, setRunningElapsed] = useState(0)
 
   // Load entries from Supabase on mount
   useEffect(() => {
@@ -74,18 +70,41 @@ export function EntriesList() {
     fetchClients()
   }, [])
 
+  // Update running entry elapsed time every second
+  useEffect(() => {
+    if (!isRunning) {
+      setRunningElapsed(0)
+      return
+    }
+
+    setRunningElapsed(getElapsedSeconds())
+
+    const interval = setInterval(() => {
+      setRunningElapsed(getElapsedSeconds())
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [isRunning, startedAt, getElapsedSeconds])
+
   // Helper to get client by id
   const getClient = (clientId: string | null): Client | undefined => {
     if (!clientId) return undefined
     return clients.find((c) => c.id === clientId)
   }
 
-  // Group entries by day
+  // Separate running entry from completed entries
+  const { runningEntry, completedEntries } = useMemo(() => {
+    const running = entries.find((e) => e.ended_at === null)
+    const completed = entries.filter((e) => e.ended_at !== null)
+    return { runningEntry: running, completedEntries: completed }
+  }, [entries])
+
+  // Group completed entries by day
   const groupedEntries = useMemo(() => {
     const groups = new Map<string, TimeEntry[]>()
     
     // Sort entries by started_at descending
-    const sorted = [...entries].sort(
+    const sorted = [...completedEntries].sort(
       (a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
     )
 
@@ -106,16 +125,16 @@ export function EntriesList() {
     })
 
     return result
-  }, [entries])
+  }, [completedEntries])
 
-  const handleContinue = (entry: TimeEntry) => {
-    continueEntry(entry)
-    toast.success('Timer started')
+  const handleContinue = async (entry: TimeEntry) => {
+    await continueEntry(entry)
+    toast.success('Timer iniciado')
   }
 
   const handleDelete = async (id: string) => {
     await deleteEntry(id)
-    toast.success('Entry deleted')
+    toast.success('Entrada eliminada')
   }
 
   const handleEdit = (entry: TimeEntry) => {
@@ -127,7 +146,7 @@ export function EntriesList() {
     if (editingEntry) {
       await updateEntry(editingEntry.id, { description: editDescription })
       setEditingEntry(null)
-      toast.success('Entry updated')
+      toast.success('Entrada actualizada')
     }
   }
 
@@ -135,7 +154,7 @@ export function EntriesList() {
     return (
       <div className="flex flex-col items-center justify-center py-16 px-4">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground mt-4">Loading entries...</p>
+        <p className="text-muted-foreground mt-4">Cargando entradas...</p>
       </div>
     )
   }
@@ -147,10 +166,10 @@ export function EntriesList() {
           <Clock className="h-8 w-8 text-muted-foreground" />
         </div>
         <h3 className="text-lg font-medium text-foreground mb-1">
-          No time entries yet
+          No hay entradas de tiempo
         </h3>
         <p className="text-muted-foreground text-center max-w-sm">
-          Start tracking your time by clicking the play button in the timer bar above.
+          Comienza a registrar tu tiempo usando el botón de play en la barra superior.
         </p>
       </div>
     )
@@ -158,6 +177,26 @@ export function EntriesList() {
 
   return (
     <div className="space-y-6">
+      {/* Running Entry - Always at top with pulsing indicator */}
+      {runningEntry && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
+            <div className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-verde opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-status-verde"></span>
+            </div>
+            <h3 className="font-medium text-foreground">En progreso</h3>
+          </div>
+          <RunningEntryRow
+            entry={runningEntry}
+            client={getClient(runningEntry.client_id)}
+            elapsedSeconds={runningElapsed}
+            onEdit={() => handleEdit(runningEntry)}
+          />
+        </div>
+      )}
+
+      {/* Completed Entries grouped by day */}
       {groupedEntries.map((group) => (
         <div key={group.date}>
           {/* Day Header */}
@@ -191,12 +230,12 @@ export function EntriesList() {
       <Dialog open={!!editingEntry} onOpenChange={() => setEditingEntry(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit time entry</DialogTitle>
+            <DialogTitle>Editar entrada</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
               <label className="text-sm font-medium text-foreground">
-                Description
+                Descripción
               </label>
               <Input
                 value={editDescription}
@@ -206,13 +245,70 @@ export function EntriesList() {
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setEditingEntry(null)}>
-                Cancel
+                Cancelar
               </Button>
-              <Button onClick={handleSaveEdit}>Save changes</Button>
+              <Button onClick={handleSaveEdit}>Guardar cambios</Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+interface RunningEntryRowProps {
+  entry: TimeEntry
+  client?: Client
+  elapsedSeconds: number
+  onEdit: () => void
+}
+
+function RunningEntryRow({ entry, client, elapsedSeconds, onEdit }: RunningEntryRowProps) {
+  return (
+    <div className="flex items-center gap-4 p-3 rounded-lg bg-status-verde/10 border border-status-verde/30">
+      {/* Client Color Dot */}
+      <div
+        className="h-3 w-3 rounded-full shrink-0"
+        style={{ backgroundColor: client ? getClientColor(client.id) : '#9ca3af' }}
+      />
+
+      {/* Description & Client */}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-foreground truncate">
+          {entry.description}
+        </p>
+        {client && (
+          <p className="text-xs text-muted-foreground truncate">
+            {client.business_name}
+          </p>
+        )}
+      </div>
+
+      {/* Live Duration */}
+      <div className="font-mono text-lg font-semibold tabular-nums text-status-verde shrink-0">
+        {formatDuration(elapsedSeconds)}
+      </div>
+
+      {/* Billable Icon */}
+      <div className="shrink-0">
+        <DollarSign
+          className={cn(
+            'h-4 w-4',
+            entry.billable ? 'text-primary' : 'text-muted-foreground/40'
+          )}
+        />
+      </div>
+
+      {/* Edit Button */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 shrink-0"
+        onClick={onEdit}
+        title="Editar entrada"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </Button>
     </div>
   )
 }
@@ -273,7 +369,7 @@ function EntryRow({ entry, client, onContinue, onEdit, onDelete }: EntryRowProps
           size="icon"
           className="h-8 w-8"
           onClick={onContinue}
-          title="Continue timer"
+          title="Continuar timer"
         >
           <Play className="h-3.5 w-3.5 fill-current" />
         </Button>
@@ -282,7 +378,7 @@ function EntryRow({ entry, client, onContinue, onEdit, onDelete }: EntryRowProps
           size="icon"
           className="h-8 w-8"
           onClick={onEdit}
-          title="Edit entry"
+          title="Editar entrada"
         >
           <Pencil className="h-3.5 w-3.5" />
         </Button>
@@ -291,7 +387,7 @@ function EntryRow({ entry, client, onContinue, onEdit, onDelete }: EntryRowProps
           size="icon"
           className="h-8 w-8 text-destructive hover:text-destructive"
           onClick={onDelete}
-          title="Delete entry"
+          title="Eliminar entrada"
         >
           <Trash2 className="h-3.5 w-3.5" />
         </Button>

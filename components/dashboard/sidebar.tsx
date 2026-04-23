@@ -46,11 +46,16 @@ interface SidebarProps {
 
 const areas = [
   { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard, href: '/dashboard', active: true },
-  { id: 'time', name: 'Time Tracking', icon: Clock, href: '/dashboard/time', active: true },
   { id: 'crm', name: 'CRM', icon: Contact, href: '/dashboard/crm', active: true },
   { id: 'consultoria', name: 'Consultoría', icon: Users, href: '#', active: false },
   { id: 'operaciones', name: 'Operaciones', icon: Settings, href: '#', active: false },
   { id: 'ventas-ai', name: 'Ventas AI', icon: Zap, href: '#', active: false },
+]
+
+const timeTrackingItems = [
+  { id: 'time-entries', name: 'Time entries', icon: Clock, href: '/dashboard/time' },
+  { id: 'reports', name: 'Reports', icon: FileText, href: '/dashboard/reports' },
+  { id: 'team', name: 'Team', icon: Users, href: '/dashboard/team' },
 ]
 
 const recursos = [
@@ -215,6 +220,33 @@ export function Sidebar({
                 </div>
               </div>
             )}
+
+            {/* Time Tracking */}
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Time Tracking
+              </h3>
+              <div className="space-y-1">
+                {timeTrackingItems.map((item) => {
+                  const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                  return (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      className={cn(
+                        'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                        isActive
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-foreground hover:bg-muted'
+                      )}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {item.name}
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
 
             {/* Clients */}
             <div>

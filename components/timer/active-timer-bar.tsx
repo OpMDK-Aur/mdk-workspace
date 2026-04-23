@@ -15,19 +15,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { Play, Square, DollarSign } from 'lucide-react'
+import { Play, Square, DollarSign, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 // Generate a color from client id for visual distinction
 function getClientColor(id: string): string {
   const colors = [
-    '#3b82f6', // blue
-    '#10b981', // green
-    '#f59e0b', // amber
-    '#ef4444', // red
-    '#8b5cf6', // violet
-    '#ec4899', // pink
-    '#06b6d4', // cyan
-    '#84cc16', // lime
+    '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+    '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
   ]
   let hash = 0
   for (let i = 0; i < id.length; i++) {
@@ -60,15 +55,18 @@ export function ActiveTimerBar() {
     setClientId,
     toggleBillable,
     getElapsedSeconds,
+    loadEntries,
   } = useTimerStore()
 
   const [clients, setClients] = useState<Client[]>([])
   const [isLoadingClients, setIsLoadingClients] = useState(true)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [isStarting, setIsStarting] = useState(false)
+  const [isStopping, setIsStopping] = useState(false)
 
-  // Fetch clients from Supabase on mount
+  // Fetch clients and load entries on mount
   useEffect(() => {
-    async function fetchClients() {
+    async function init() {
       const supabase = createClient()
       const { data, error } = await supabase
         .from('clients')
@@ -79,10 +77,13 @@ export function ActiveTimerBar() {
         setClients(data)
       }
       setIsLoadingClients(false)
+
+      // Load entries to sync with any running timer from Supabase
+      await loadEntries()
     }
 
-    fetchClients()
-  }, [])
+    init()
+  }, [loadEntries])
 
   // Update elapsed time every second when running
   useEffect(() => {
@@ -102,7 +103,35 @@ export function ActiveTimerBar() {
   }, [isRunning, startedAt, getElapsedSeconds])
 
   const selectedClient = clients.find((c) => c.id === clientId)
-  const lastEntry = entries[0]
+  const lastEntry = entries.find((e) => e.ended_at !== null)
+
+  const handleStart = async () => {
+    setIsStarting(true)
+    try {
+      await startTimer()
+      toast.success('Timer iniciado')
+    } catch (error) {
+      toast.error('Error al iniciar el timer')
+    } finally {
+      setIsStarting(false)
+    }
+  }
+
+  const handleStop = async () => {
+    setIsStopping(true)
+    try {
+      await stopTimer()
+      toast.success('Tiempo guardado correctamente')
+    } catch (error) {
+      toast.error('Error al guardar el tiempo')
+    } finally {
+      setIsStopping(false)
+    }
+  }
+
+  const handleClientChange = async (val: string) => {
+    await setClientId(val || null)
+  }
 
   return (
     <div className="sticky top-0 z-40 border-b border-border bg-card shadow-sm">
@@ -120,7 +149,7 @@ export function ActiveTimerBar() {
         {/* Client Selector */}
         <Select
           value={clientId || ''}
-          onValueChange={(val) => setClientId(val || null)}
+          onValueChange={handleClientChange}
           disabled={isLoadingClients}
         >
           <SelectTrigger className="w-[200px] shrink-0">
@@ -182,15 +211,18 @@ export function ActiveTimerBar() {
 
         {/* Start/Stop Button */}
         <Button
-          onClick={isRunning ? stopTimer : startTimer}
+          onClick={isRunning ? handleStop : handleStart}
           variant={isRunning ? 'destructive' : 'default'}
           size="icon"
+          disabled={isStarting || isStopping}
           className={cn(
             'shrink-0 h-10 w-10 rounded-full',
             !isRunning && 'bg-status-verde hover:bg-status-verde/90 text-white'
           )}
         >
-          {isRunning ? (
+          {isStarting || isStopping ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : isRunning ? (
             <Square className="h-4 w-4 fill-current" />
           ) : (
             <Play className="h-4 w-4 fill-current ml-0.5" />
