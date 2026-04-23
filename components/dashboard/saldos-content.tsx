@@ -67,9 +67,8 @@ function GoogleAccountBudgetCard({
       .then(r => r.json())
       .then(json => {
         if (json.error) {
-          // Check if it's a token expiration error
-          const errorLower = (json.error as string).toLowerCase()
-          if (errorLower.includes('token') || errorLower.includes('auth') || errorLower.includes('expired') || errorLower.includes('unauthorized')) {
+          // Check if it's a token expiration error (using tokenExpired flag from API)
+          if (json.tokenExpired === true) {
             setState('token_expired')
             onBalanceResult?.(null)
           } else {
