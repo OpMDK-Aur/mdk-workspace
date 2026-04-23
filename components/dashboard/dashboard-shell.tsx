@@ -6,6 +6,7 @@ import type { User } from '@supabase/supabase-js'
 import type { Profile, Client } from '@/lib/types'
 import { Sidebar } from './sidebar'
 import { MadkyWidget } from '@/components/madky/madky-widget'
+import { ActiveTimerBar } from '@/components/timer/active-timer-bar'
 
 interface DashboardShellProps {
   user: User
@@ -47,9 +48,12 @@ export function DashboardShell({ user, profile, clients, children }: DashboardSh
         selectedClientId={selectedClientId}
         onSelectClient={setSelectedClientId}
       />
-      <main className="flex-1 overflow-auto relative">
-        {children}
-      </main>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <ActiveTimerBar />
+        <main className="flex-1 overflow-auto relative">
+          {children}
+        </main>
+      </div>
       
       {/* Madky AI Assistant Widget */}
       <MadkyWidget 
