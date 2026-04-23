@@ -15,18 +15,21 @@ export async function completeOnboarding(payload: {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  // Use SECURITY DEFINER function — bypasses RLS unconditionally
-  const { error } = await supabase.rpc('complete_user_onboarding', {
-    p_user_id:    user.id,
-    p_full_name:  payload.full_name,
-    p_avatar_url: payload.avatar_url ?? '',
-    p_role:       payload.role,
-    p_theme:      payload.theme,
-    p_accent_hue: payload.accent_hue,
-  })
+  // Update profile directly instead of using RPC
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      full_name: payload.full_name,
+      avatar_url: payload.avatar_url ?? '',
+      role: payload.role,
+      theme: payload.theme,
+      accent_hue: payload.accent_hue,
+      onboarding_completed: true,
+    })
+    .eq('id', user.id)
 
   if (error) {
-    console.error('[v0] complete_user_onboarding RPC error:', error.message)
+    console.error('[v0] complete_onboarding error:', error.message)
   }
 
   revalidatePath('/', 'layout')

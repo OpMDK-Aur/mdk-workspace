@@ -75,31 +75,26 @@ const ROLES = [
     value: 'project_manager',
     label: 'Project Manager',
     description: 'Lidera proyectos y coordina equipos',
-    icon: '🎯',
   },
   {
-    value: 'account_executive',
-    label: 'Account Executive',
+    value: 'account_manager',
+    label: 'Account Manager',
     description: 'Gestiona relaciones con clientes',
-    icon: '🤝',
   },
   {
-    value: 'editor',
-    label: 'Editor',
-    description: 'Crea y edita contenido multimedia',
-    icon: '✂️',
+    value: 'director',
+    label: 'Director',
+    description: 'Supervisa estrategia y operaciones',
+  },
+  {
+    value: 'consultor',
+    label: 'Consultor',
+    description: 'Asesora y desarrolla soluciones',
   },
   {
     value: 'designer',
-    label: 'Designer',
-    description: 'Diseña experiencias visuales',
-    icon: '🎨',
-  },
-  {
-    value: 'analyst',
-    label: 'Analyst',
-    description: 'Analiza datos y genera insights',
-    icon: '📊',
+    label: 'Disenador',
+    description: 'Disena experiencias visuales',
   },
 ] as const
 
@@ -357,7 +352,9 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
                 : 'border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/8'
             )}
           >
-            <div className="text-2xl">{role.icon}</div>
+            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-sm">
+              {role.label.charAt(0)}
+            </div>
             <div className="flex-1">
               <p className={cn(
                 'font-semibold',
