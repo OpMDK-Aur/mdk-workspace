@@ -58,11 +58,13 @@ export const useTimerStore = create<TimerState>()(
 
       startTimer: async () => {
         const state = get()
+        console.log('[v0] startTimer - starting with state:', { clientId: state.clientId, description: state.description })
         const supabase = createClient()
         const startedAt = new Date().toISOString()
         
         // Get current user
         const { data: { user } } = await supabase.auth.getUser()
+        console.log('[v0] startTimer - user:', user?.id)
         
         // Insert into Supabase immediately with ended_at = null (running)
         const { data: newEntry, error } = await supabase
@@ -79,8 +81,10 @@ export const useTimerStore = create<TimerState>()(
           .select()
           .single()
 
+        console.log('[v0] startTimer - insert result:', { newEntry, error })
+
         if (error) {
-          console.error('Error creating time entry:', error)
+          console.error('[v0] Error creating time entry:', error)
           return
         }
 
@@ -90,6 +94,8 @@ export const useTimerStore = create<TimerState>()(
           startedAt: startedAt,
           currentEntryId: newEntry.id,
         })
+
+        console.log('[v0] startTimer - success, entry id:', newEntry.id)
 
         // Add to local entries cache
         set((s) => ({
@@ -248,10 +254,12 @@ export const useTimerStore = create<TimerState>()(
       },
 
       loadEntries: async () => {
+        console.log('[v0] loadEntries - starting')
         set({ isLoading: true })
         try {
           const supabase = createClient()
           const { data: { user } } = await supabase.auth.getUser()
+          console.log('[v0] loadEntries - user:', user?.id)
           
           const { data, error } = await supabase
             .from('time_entries')
@@ -259,12 +267,20 @@ export const useTimerStore = create<TimerState>()(
             .order('started_at', { ascending: false })
             .limit(100)
 
+          console.log('[v0] loadEntries - result:', { entriesCount: data?.length, error })
+
+          if (error) {
+            console.error('[v0] loadEntries - Supabase error:', error)
+          }
+
           if (!error && data) {
+            console.log('[v0] loadEntries - setting entries:', data.length)
             set({ entries: data as TimeEntry[] })
             
             // Check if there's a running entry (ended_at = null) and sync local state
             const runningEntry = data.find((e) => e.ended_at === null)
             if (runningEntry) {
+              console.log('[v0] loadEntries - found running entry:', runningEntry.id)
               set({
                 isRunning: true,
                 startedAt: runningEntry.started_at,
@@ -276,7 +292,7 @@ export const useTimerStore = create<TimerState>()(
             }
           }
         } catch (err) {
-          console.error('Error loading entries:', err)
+          console.error('[v0] loadEntries - Error:', err)
         } finally {
           set({ isLoading: false })
         }
