@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useTimer } from '@/lib/time-tracking/timer-context'
+import { useTimerStore } from '@/lib/time-tracking/timer-store'
 import { formatDuration, formatDurationShort } from '@/lib/time-tracking/mock-data'
 import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/lib/types'
@@ -48,17 +48,23 @@ function getInitials(name: string): string {
 
 export function ActiveTimerBar() {
   const {
-    timer,
+    isRunning,
+    startedAt,
+    description,
+    clientId,
+    billable,
+    entries,
     startTimer,
     stopTimer,
     setDescription,
     setClientId,
     toggleBillable,
-    lastEntry,
-  } = useTimer()
+    getElapsedSeconds,
+  } = useTimerStore()
 
   const [clients, setClients] = useState<Client[]>([])
   const [isLoadingClients, setIsLoadingClients] = useState(true)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
 
   // Fetch clients from Supabase on mount
   useEffect(() => {
@@ -78,7 +84,25 @@ export function ActiveTimerBar() {
     fetchClients()
   }, [])
 
-  const selectedClient = clients.find((c) => c.id === timer.clientId)
+  // Update elapsed time every second when running
+  useEffect(() => {
+    if (!isRunning) {
+      setElapsedSeconds(0)
+      return
+    }
+
+    // Initial calculation
+    setElapsedSeconds(getElapsedSeconds())
+
+    const interval = setInterval(() => {
+      setElapsedSeconds(getElapsedSeconds())
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [isRunning, startedAt, getElapsedSeconds])
+
+  const selectedClient = clients.find((c) => c.id === clientId)
+  const lastEntry = entries[0]
 
   return (
     <div className="sticky top-0 z-40 border-b border-border bg-card shadow-sm">
@@ -87,7 +111,7 @@ export function ActiveTimerBar() {
         <div className="flex-1 min-w-0">
           <Input
             placeholder="What are you working on?"
-            value={timer.description}
+            value={description}
             onChange={(e) => setDescription(e.target.value)}
             className="border-0 bg-transparent text-base shadow-none focus-visible:ring-0 px-0"
           />
@@ -95,7 +119,7 @@ export function ActiveTimerBar() {
 
         {/* Client Selector */}
         <Select
-          value={timer.clientId || ''}
+          value={clientId || ''}
           onValueChange={(val) => setClientId(val || null)}
           disabled={isLoadingClients}
         >
@@ -138,19 +162,19 @@ export function ActiveTimerBar() {
           onClick={toggleBillable}
           className={cn(
             'shrink-0',
-            timer.billable
+            billable
               ? 'text-primary hover:text-primary'
               : 'text-muted-foreground hover:text-muted-foreground'
           )}
-          title={timer.billable ? 'Billable' : 'Non-billable'}
+          title={billable ? 'Billable' : 'Non-billable'}
         >
           <DollarSign className="h-4 w-4" />
         </Button>
 
         {/* Timer Display */}
         <div className="font-mono text-xl font-semibold tabular-nums w-24 text-right shrink-0">
-          {timer.isRunning
-            ? formatDuration(timer.elapsedSeconds)
+          {isRunning
+            ? formatDuration(elapsedSeconds)
             : lastEntry
               ? formatDurationShort(lastEntry.duration_sec)
               : '00:00:00'}
@@ -158,15 +182,15 @@ export function ActiveTimerBar() {
 
         {/* Start/Stop Button */}
         <Button
-          onClick={timer.isRunning ? stopTimer : startTimer}
-          variant={timer.isRunning ? 'destructive' : 'default'}
+          onClick={isRunning ? stopTimer : startTimer}
+          variant={isRunning ? 'destructive' : 'default'}
           size="icon"
           className={cn(
             'shrink-0 h-10 w-10 rounded-full',
-            !timer.isRunning && 'bg-status-verde hover:bg-status-verde/90 text-white'
+            !isRunning && 'bg-status-verde hover:bg-status-verde/90 text-white'
           )}
         >
-          {timer.isRunning ? (
+          {isRunning ? (
             <Square className="h-4 w-4 fill-current" />
           ) : (
             <Play className="h-4 w-4 fill-current ml-0.5" />

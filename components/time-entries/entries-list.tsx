@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useTimer, type TimeEntryWithClient } from '@/lib/time-tracking/timer-context'
+import { useTimerStore, type TimeEntry } from '@/lib/time-tracking/timer-store'
 import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/lib/types'
 import {
@@ -41,7 +41,7 @@ function getClientColor(id: string): string {
 }
 
 // Calculate total seconds for entries
-function calculateTotalSeconds(entries: TimeEntryWithClient[]): number {
+function calculateTotalSeconds(entries: TimeEntry[]): number {
   return entries.reduce((acc, e) => acc + (e.duration_sec || 0), 0)
 }
 
@@ -49,14 +49,19 @@ interface GroupedEntries {
   date: string
   label: string
   total: number
-  entries: TimeEntryWithClient[]
+  entries: TimeEntry[]
 }
 
 export function EntriesList() {
-  const { entries, continueEntry, deleteEntry, updateEntry, isLoading } = useTimer()
-  const [editingEntry, setEditingEntry] = useState<TimeEntryWithClient | null>(null)
+  const { entries, continueEntry, deleteEntry, updateEntry, isLoading, loadEntries } = useTimerStore()
+  const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [editDescription, setEditDescription] = useState('')
   const [clients, setClients] = useState<Client[]>([])
+
+  // Load entries from Supabase on mount
+  useEffect(() => {
+    loadEntries()
+  }, [loadEntries])
 
   // Fetch clients from Supabase
   useEffect(() => {
@@ -77,7 +82,7 @@ export function EntriesList() {
 
   // Group entries by day
   const groupedEntries = useMemo(() => {
-    const groups = new Map<string, TimeEntryWithClient[]>()
+    const groups = new Map<string, TimeEntry[]>()
     
     // Sort entries by started_at descending
     const sorted = [...entries].sort(
@@ -103,7 +108,7 @@ export function EntriesList() {
     return result
   }, [entries])
 
-  const handleContinue = (entry: TimeEntryWithClient) => {
+  const handleContinue = (entry: TimeEntry) => {
     continueEntry(entry)
     toast.success('Timer started')
   }
@@ -113,7 +118,7 @@ export function EntriesList() {
     toast.success('Entry deleted')
   }
 
-  const handleEdit = (entry: TimeEntryWithClient) => {
+  const handleEdit = (entry: TimeEntry) => {
     setEditingEntry(entry)
     setEditDescription(entry.description)
   }
@@ -213,7 +218,7 @@ export function EntriesList() {
 }
 
 interface EntryRowProps {
-  entry: TimeEntryWithClient
+  entry: TimeEntry
   client?: Client
   onContinue: () => void
   onEdit: () => void
