@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -181,7 +182,7 @@ export default function LoginPage() {
                 <Input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="••••••••"
+                  placeholder="��•••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -218,6 +219,19 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
+
+          {/* Create Account Link */}
+          <div className="mt-6 text-center">
+            <p className="text-white/50 text-sm">
+              ¿No tenés cuenta?{' '}
+              <Link 
+                href="/auth/sign-up" 
+                className="text-primary hover:text-primary/80 font-medium transition-colors"
+              >
+                Crear cuenta
+              </Link>
+            </p>
+          </div>
         </div>
 
         {/* Footer */}

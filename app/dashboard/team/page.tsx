@@ -5,10 +5,14 @@ import { Users, Clock, UserCheck } from 'lucide-react'
 
 interface Profile {
   id: string
-  full_name: string
   email: string
+  full_name: string
+  role: string
   avatar_url: string | null
-  role?: string
+  accent_hue: number | null
+  theme: 'dark' | 'light'
+  onboarding_completed: boolean
+  created_at: string
 }
 
 function getStartOfWeek(): string {
@@ -27,7 +31,7 @@ export default async function TeamPage() {
   // Fetch current user to check admin status
   const { data: { user: authUser } } = await supabase.auth.getUser()
   
-  let currentUserRole: 'admin' | 'member' = 'member'
+  let isAdmin = false
   if (authUser) {
     const { data: currentProfile } = await supabase
       .from('profiles')
@@ -35,65 +39,52 @@ export default async function TeamPage() {
       .eq('id', authUser.id)
       .single()
     
-    currentUserRole = (currentProfile?.role as 'admin' | 'member') || 'member'
+    isAdmin = currentProfile?.role === 'project_manager'
   }
 
-  // Fetch all profiles (instead of users table)
-  const { data: profiles, error: profilesError } = await supabase
+  // Fetch all profiles
+  const { data: profiles } = await supabase
     .from('profiles')
     .select('*')
     .order('full_name')
 
-  if (profilesError) {
-    console.log('[v0] Error fetching profiles:', profilesError.message)
-  }
-
   const typedProfiles: Profile[] = (profiles || []) as Profile[]
 
-  // Try to fetch weekly time entries (completed only)
-  // This will fail gracefully if table doesn't exist
-  let weekEntries: { user_id: string; duration_sec: number }[] = []
-  let activeTimers: { user_id: string; description: string }[] = []
-  
-  const { data: weekData, error: weekError } = await supabase
+  // Fetch weekly time entries (completed only)
+  const { data: weekEntries } = await supabase
     .from('time_entries')
     .select('user_id, duration_sec')
     .gte('started_at', startOfWeek)
     .not('ended_at', 'is', null)
 
-  if (!weekError && weekData) {
-    weekEntries = weekData
-  }
-
-  // Fetch active timers (entries with ended_at = null)
-  const { data: activeData, error: activeError } = await supabase
-    .from('time_entries')
-    .select('user_id, description')
-    .is('ended_at', null)
-
-  if (!activeError && activeData) {
-    activeTimers = activeData
-  }
-
-  // Group duration by user_id
+  // Build hours map: user_id → total hours this week
   const weeklyHoursByUser: Record<string, number> = {}
-  weekEntries.forEach((entry) => {
+  weekEntries?.forEach((entry) => {
     if (entry.user_id) {
-      weeklyHoursByUser[entry.user_id] = (weeklyHoursByUser[entry.user_id] || 0) + (entry.duration_sec || 0)
+      weeklyHoursByUser[entry.user_id] = (weeklyHoursByUser[entry.user_id] ?? 0) + ((entry.duration_sec ?? 0) / 3600)
     }
   })
 
+  // Fetch active timers (entries with ended_at = null) including client name
+  const { data: activeTimers } = await supabase
+    .from('time_entries')
+    .select('user_id, description, clients(business_name)')
+    .is('ended_at', null)
+
   // Map active timers by user_id
-  const activeTimerByUser: Record<string, string> = {}
-  activeTimers.forEach((entry) => {
+  const activeTimerByUser: Record<string, { description: string; client: string }> = {}
+  activeTimers?.forEach((entry: any) => {
     if (entry.user_id) {
-      activeTimerByUser[entry.user_id] = entry.description
+      activeTimerByUser[entry.user_id] = {
+        description: entry.description || '',
+        client: entry.clients?.business_name ?? '',
+      }
     }
   })
 
   // Transform profiles to team members format
   const teamMembers = typedProfiles.map((profile) => {
-    const weeklySec = weeklyHoursByUser[profile.id] || 0
+    const weeklyHours = weeklyHoursByUser[profile.id] ?? 0
     const activeTimer = activeTimerByUser[profile.id]
     
     return {
@@ -101,10 +92,12 @@ export default async function TeamPage() {
       name: profile.full_name || 'Unknown',
       email: profile.email || '',
       avatar_url: profile.avatar_url,
-      role: (profile.role as 'admin' | 'member') || 'member',
+      accent_hue: profile.accent_hue,
+      role: profile.role || 'project_manager',
       is_tracking: !!activeTimer,
-      current_task: activeTimer || null,
-      weekly_hours: weeklySec / 3600,
+      current_task: activeTimer?.description || null,
+      current_client: activeTimer?.client || null,
+      weekly_hours: weeklyHours,
     }
   })
 
@@ -198,7 +191,7 @@ export default async function TeamPage() {
           </CardContent>
         </Card>
       ) : (
-        <TeamMemberList members={teamMembers} isAdmin={currentUserRole === 'admin'} />
+        <TeamMemberList members={teamMembers} isAdmin={isAdmin} />
       )}
     </div>
   )

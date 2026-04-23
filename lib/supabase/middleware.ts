@@ -54,6 +54,30 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // If user is logged in, check onboarding status
+  if (user) {
+    // Skip onboarding check for certain paths
+    const skipOnboardingCheck = ['/onboarding', '/auth/confirm', '/api'].some(path =>
+      request.nextUrl.pathname.startsWith(path)
+    )
+
+    if (!skipOnboardingCheck) {
+      // Check if user has completed onboarding
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('onboarding_completed')
+        .eq('id', user.id)
+        .single()
+
+      // Redirect to onboarding if not completed
+      if (profile && !profile.onboarding_completed) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/onboarding'
+        return NextResponse.redirect(url)
+      }
+    }
+  }
+
   // If user is logged in and tries to access auth pages, redirect to dashboard
   const authPaths = ['/auth/login', '/auth/sign-up']
   const isAuthPath = authPaths.some(path => 
