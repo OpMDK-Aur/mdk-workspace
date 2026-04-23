@@ -69,6 +69,42 @@ const AVATARS = [
   },
 ]
 
+// ─── ROLE OPTIONS ──────────────────────────────────────────────────────────────
+const ROLES = [
+  {
+    value: 'project_manager',
+    label: 'Project Manager',
+    description: 'Lidera proyectos y coordina equipos',
+    icon: '🎯',
+  },
+  {
+    value: 'account_executive',
+    label: 'Account Executive',
+    description: 'Gestiona relaciones con clientes',
+    icon: '🤝',
+  },
+  {
+    value: 'editor',
+    label: 'Editor',
+    description: 'Crea y edita contenido multimedia',
+    icon: '✂️',
+  },
+  {
+    value: 'designer',
+    label: 'Designer',
+    description: 'Diseña experiencias visuales',
+    icon: '🎨',
+  },
+  {
+    value: 'analyst',
+    label: 'Analyst',
+    description: 'Analiza datos y genera insights',
+    icon: '📊',
+  },
+] as const
+
+type RoleValue = typeof ROLES[number]['value']
+
 // ─── COLOR PALETTES ────────────────────────────────────────────────────────────
 const COLOR_PALETTES = [
   { label: 'Naranja MDK', hue: 48,  swatch: 'oklch(0.68 0.19 48)' },
@@ -141,11 +177,12 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
   const [step, setStep] = useState(0)
   const [name, setName] = useState(userName)
   const [selectedAvatar, setSelectedAvatar] = useState<typeof AVATARS[0] | null>(null)
+  const [selectedRole, setSelectedRole] = useState<RoleValue | null>(null)
   const [selectedHue, setSelectedHue] = useState(48)
   const [selectedTheme, setSelectedTheme] = useState<'light' | 'dark' | 'system'>('system')
   const [saving, setSaving] = useState(false)
 
-  const TOTAL_STEPS = 3
+  const TOTAL_STEPS = 4
 
   // Preview color in real-time
   useEffect(() => {
@@ -174,6 +211,7 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
     await completeOnboarding({
       full_name: name,
       avatar_url: selectedAvatar ? `/avatars/${selectedAvatar.id}.jpg` : null,
+      role: selectedRole || 'editor',
       theme: selectedTheme,
       accent_hue: selectedHue,
     })
@@ -218,7 +256,7 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
   const StepAvatar = (
     <div className="animate-fade-up space-y-6">
       <div className="space-y-1">
-        <p className="text-primary text-sm font-semibold tracking-widest uppercase">Paso 1 de 2</p>
+        <p className="text-primary text-sm font-semibold tracking-widest uppercase">Paso 1 de 3</p>
         <h2 className="text-3xl font-bold text-white">Elige tu identidad</h2>
         <p className="text-white/50">Cada personaje trae su propia paleta y estilo visual.</p>
       </div>
@@ -298,11 +336,72 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
     </div>
   )
 
-  // ── STEP 2: Color + Tema ────────────────────────────────────────────────────
+  // ── STEP 2: Elegir rol ──────────────────────────────────────────────────────
+  const StepRole = (
+    <div className="animate-fade-up space-y-6">
+      <div className="space-y-1">
+        <p className="text-primary text-sm font-semibold tracking-widest uppercase">Paso 2 de 3</p>
+        <h2 className="text-3xl font-bold text-white">Cual es tu rol?</h2>
+        <p className="text-white/50">Esto nos ayuda a personalizar tu experiencia.</p>
+      </div>
+
+      <div className="space-y-3">
+        {ROLES.map(role => (
+          <button
+            key={role.value}
+            onClick={() => setSelectedRole(role.value)}
+            className={cn(
+              'w-full p-4 rounded-2xl border-2 flex items-center gap-4 transition-all duration-200 text-left',
+              selectedRole === role.value
+                ? 'border-primary bg-primary/10 scale-[1.02]'
+                : 'border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/8'
+            )}
+          >
+            <div className="text-2xl">{role.icon}</div>
+            <div className="flex-1">
+              <p className={cn(
+                'font-semibold',
+                selectedRole === role.value ? 'text-white' : 'text-white/80'
+              )}>
+                {role.label}
+              </p>
+              <p className="text-white/40 text-sm">{role.description}</p>
+            </div>
+            {selectedRole === role.value && (
+              <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center">
+                <Check className="h-3.5 w-3.5 text-white" />
+              </div>
+            )}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-3">
+        <Button
+          variant="ghost"
+          className="flex-1 h-11 text-white/60 hover:text-white hover:bg-white/5 rounded-xl gap-2"
+          onClick={() => setStep(1)}
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Volver
+        </Button>
+        <Button
+          className="flex-1 h-11 bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl gap-2 transition-all hover:shadow-lg hover:shadow-primary/25"
+          onClick={() => setStep(3)}
+          disabled={!selectedRole}
+        >
+          Continuar
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  )
+
+  // ── STEP 3: Color + Tema ────────────────────────────────────────────────────
   const StepColorTheme = (
     <div className="animate-fade-up space-y-6">
       <div className="space-y-1">
-        <p className="text-primary text-sm font-semibold tracking-widest uppercase">Paso 2 de 2</p>
+        <p className="text-primary text-sm font-semibold tracking-widest uppercase">Paso 3 de 3</p>
         <h2 className="text-3xl font-bold text-white">Tu paleta de colores</h2>
         <p className="text-white/50">Elige el color principal y el modo visual de tu plataforma.</p>
       </div>
@@ -382,7 +481,7 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
         <Button
           variant="ghost"
           className="flex-1 h-11 text-white/60 hover:text-white hover:bg-white/5 rounded-xl gap-2"
-          onClick={() => setStep(1)}
+          onClick={() => setStep(2)}
         >
           <ChevronLeft className="h-4 w-4" />
           Volver
@@ -408,7 +507,7 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
     </div>
   )
 
-  const steps = [StepWelcome, StepAvatar, StepColorTheme]
+  const steps = [StepWelcome, StepAvatar, StepRole, StepColorTheme]
 
   return (
     <div className="min-h-screen bg-[oklch(0.10_0.012_245)] flex items-center justify-center relative overflow-hidden">

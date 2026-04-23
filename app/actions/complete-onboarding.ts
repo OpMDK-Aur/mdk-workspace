@@ -7,6 +7,7 @@ import { redirect } from 'next/navigation'
 export async function completeOnboarding(payload: {
   full_name: string
   avatar_url: string | null
+  role: string
   theme: 'light' | 'dark' | 'system'
   accent_hue: number
 }) {
@@ -19,6 +20,7 @@ export async function completeOnboarding(payload: {
     p_user_id:    user.id,
     p_full_name:  payload.full_name,
     p_avatar_url: payload.avatar_url ?? '',
+    p_role:       payload.role,
     p_theme:      payload.theme,
     p_accent_hue: payload.accent_hue,
   })
