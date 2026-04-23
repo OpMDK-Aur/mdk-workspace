@@ -118,11 +118,14 @@ export function ActiveTimerBar() {
   }
 
   const handleStop = async () => {
+    console.log('[v0] handleStop called - isRunning:', isRunning)
     setIsStopping(true)
     try {
       await stopTimer()
+      console.log('[v0] handleStop - stopTimer completed')
       toast.success('Tiempo guardado correctamente')
     } catch (error) {
+      console.error('[v0] handleStop error:', error)
       toast.error('Error al guardar el tiempo')
     } finally {
       setIsStopping(false)

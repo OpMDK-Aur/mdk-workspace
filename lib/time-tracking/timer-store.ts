@@ -99,7 +99,22 @@ export const useTimerStore = create<TimerState>()(
 
       stopTimer: async () => {
         const state = get()
-        if (!state.startedAt || !state.currentEntryId) return
+        console.log('[v0] stopTimer called - state:', { 
+          isRunning: state.isRunning, 
+          startedAt: state.startedAt, 
+          currentEntryId: state.currentEntryId 
+        })
+        
+        if (!state.startedAt) {
+          console.log('[v0] stopTimer - no startedAt, aborting')
+          // Reset state anyway
+          set({
+            isRunning: false,
+            startedAt: null,
+            currentEntryId: null,
+          })
+          return
+        }
 
         const endedAt = new Date().toISOString()
         const startTime = new Date(state.startedAt).getTime()
@@ -108,35 +123,65 @@ export const useTimerStore = create<TimerState>()(
 
         const supabase = createClient()
 
-        // Update the existing entry in Supabase
-        const { error } = await supabase
-          .from('time_entries')
-          .update({
-            ended_at: endedAt,
-            duration_sec: durationSec,
-            description: state.description || 'Sin descripción',
-          })
-          .eq('id', state.currentEntryId)
+        // If we have a currentEntryId, update it. Otherwise, find the running entry.
+        let entryIdToUpdate = state.currentEntryId
 
-        if (error) {
-          console.error('Error stopping time entry:', error)
-          return
+        if (!entryIdToUpdate) {
+          console.log('[v0] stopTimer - no currentEntryId, searching for running entry in Supabase')
+          // Try to find the running entry (ended_at = null) for this user
+          const { data: { user } } = await supabase.auth.getUser()
+          const { data: runningEntries } = await supabase
+            .from('time_entries')
+            .select('id')
+            .is('ended_at', null)
+            .order('started_at', { ascending: false })
+            .limit(1)
+          
+          if (runningEntries && runningEntries.length > 0) {
+            entryIdToUpdate = runningEntries[0].id
+            console.log('[v0] stopTimer - found running entry:', entryIdToUpdate)
+          }
         }
 
-        // Update local cache
-        set((s) => ({
-          entries: s.entries.map((e) =>
-            e.id === state.currentEntryId
-              ? { ...e, ended_at: endedAt, duration_sec: durationSec, description: state.description || 'Sin descripción' }
-              : e
-          ),
+        if (entryIdToUpdate) {
+          console.log('[v0] stopTimer - updating entry:', entryIdToUpdate)
+          // Update the existing entry in Supabase
+          const { error } = await supabase
+            .from('time_entries')
+            .update({
+              ended_at: endedAt,
+              duration_sec: durationSec,
+              description: state.description || 'Sin descripción',
+            })
+            .eq('id', entryIdToUpdate)
+
+          if (error) {
+            console.error('[v0] Error stopping time entry:', error)
+          } else {
+            console.log('[v0] stopTimer - successfully updated entry')
+          }
+
+          // Update local cache
+          set((s) => ({
+            entries: s.entries.map((e) =>
+              e.id === entryIdToUpdate
+                ? { ...e, ended_at: endedAt, duration_sec: durationSec, description: state.description || 'Sin descripción' }
+                : e
+            ),
+          }))
+        } else {
+          console.log('[v0] stopTimer - no entry to update, just resetting local state')
+        }
+
+        // Always reset local state
+        set({
           isRunning: false,
           startedAt: null,
           currentEntryId: null,
           description: '',
           clientId: null,
           billable: true,
-        }))
+        })
       },
 
       setDescription: (desc) => set({ description: desc }),
