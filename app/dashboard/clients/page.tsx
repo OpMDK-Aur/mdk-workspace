@@ -5,6 +5,9 @@ import type { Client, Profile } from '@/lib/types'
 export default async function ClientsPage() {
   const supabase = await createSupabaseClient()
 
+  // Get current user
+  const { data: { user } } = await supabase.auth.getUser()
+
   // Load all clients
   const { data: clients } = await supabase
     .from('clients')
@@ -19,16 +22,52 @@ export default async function ClientsPage() {
     .order('full_name')
 
   // Get current user profile
-  const { data: currentUser } = await supabase.auth.getUser()
-  const { data: currentProfile } = currentUser?.user
-    ? await supabase.from('profiles').select('*').eq('id', currentUser.user.id).single()
+  const { data: currentProfile } = user
+    ? await supabase.from('profiles').select('*').eq('id', user.id).single()
     : { data: null }
+
+  // Current month range for time tracking
+  const now = new Date()
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
+
+  // Get current user's assignments for all clients
+  const { data: assignments } = user
+    ? await supabase
+        .from('client_assignments')
+        .select('client_id, min_hours, max_hours')
+        .eq('user_id', user.id)
+        .eq('active', true)
+    : { data: [] }
+
+  // Get current user's tracked hours this month per client
+  const { data: entries } = user
+    ? await supabase
+        .from('time_entries')
+        .select('client_id, duration_sec')
+        .eq('user_id', user.id)
+        .gte('started_at', startOfMonth)
+        .lte('started_at', endOfMonth)
+        .not('ended_at', 'is', null)
+    : { data: [] }
+
+  // Build maps
+  const assignmentMap: Record<string, { min_hours: number; max_hours: number }> = {}
+  assignments?.forEach(a => { assignmentMap[a.client_id] = a })
+
+  const hoursMap: Record<string, number> = {}
+  entries?.forEach(e => {
+    if (!e.client_id) return
+    hoursMap[e.client_id] = (hoursMap[e.client_id] ?? 0) + ((e.duration_sec ?? 0) / 3600)
+  })
 
   return (
     <ClientsListContent
       clients={(clients ?? []) as Client[]}
       profiles={(profiles ?? []) as Profile[]}
       currentProfile={currentProfile as Profile | null}
+      assignmentMap={assignmentMap}
+      hoursMap={hoursMap}
     />
   )
 }
