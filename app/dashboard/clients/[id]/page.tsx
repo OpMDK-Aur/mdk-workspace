@@ -40,7 +40,7 @@ export default async function ClientPage({ params }: Props) {
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
 
   // Get current user's assignment for this client
-  const { data: assignment, error: assignmentError } = user
+  const { data: assignment } = user
     ? await supabase
         .from('client_assignments')
         .select('min_hours, max_hours')
@@ -48,29 +48,21 @@ export default async function ClientPage({ params }: Props) {
         .eq('client_id', id)
         .eq('active', true)
         .single()
-    : { data: null, error: null }
-
-  console.log('[v0] Client ID:', id)
-  console.log('[v0] User ID:', user?.id)
-  console.log('[v0] Assignment result:', assignment, 'Error:', assignmentError)
+    : { data: null }
 
   // Get current user's tracked hours this month for this client
-  const { data: entries, error: entriesError } = user
+  const { data: entries } = user
     ? await supabase
         .from('time_entries')
-        .select('duration_sec, client_id, user_id, started_at')
+        .select('duration_sec')
         .eq('user_id', user.id)
         .eq('client_id', id)
         .gte('started_at', startOfMonth)
         .lte('started_at', endOfMonth)
         .not('ended_at', 'is', null)
-    : { data: [], error: null }
-
-  console.log('[v0] Date range:', startOfMonth, 'to', endOfMonth)
-  console.log('[v0] Entries result:', entries, 'Error:', entriesError)
+    : { data: [] }
 
   const trackedHours = (entries ?? []).reduce((acc, e) => acc + ((e.duration_sec ?? 0) / 3600), 0)
-  console.log('[v0] Tracked hours:', trackedHours)
 
   return (
     <ClientOverview

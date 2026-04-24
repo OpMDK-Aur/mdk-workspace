@@ -438,14 +438,16 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             <CardContent className="pt-5 pb-5">
               <div className="flex items-center gap-2 mb-3">
                 <Clock className={cn('h-4 w-4', dedicationConfig.textColor)} />
-                <p className="text-xs text-muted-foreground font-medium">Mi dedicacion</p>
+                <p className="text-xs text-muted-foreground font-medium">Mi dedicacion este mes</p>
+              </div>
+              <div className="flex items-end gap-2 mb-2">
+                <p className="text-2xl font-bold text-foreground">{formatHours(trackedHours)}</p>
+                {assignment && (
+                  <p className="text-xs text-muted-foreground mb-1">/ {assignment.max_hours}h</p>
+                )}
               </div>
               {assignment ? (
                 <>
-                  <div className="flex items-end gap-2 mb-2">
-                    <p className="text-2xl font-bold text-foreground">{formatHours(trackedHours)}</p>
-                    <p className="text-xs text-muted-foreground mb-1">/ {assignment.max_hours}h</p>
-                  </div>
                   <div className={cn('inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium', dedicationConfig.bgColor, dedicationConfig.textColor)}>
                     <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dedicationConfig.color }} />
                     {dedicationConfig.label}
@@ -453,7 +455,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                   <p className="text-[11px] text-muted-foreground mt-2">{dedicationConfig.description}</p>
                 </>
               ) : (
-                <p className="text-sm text-muted-foreground">Sin asignacion de horas</p>
+                <p className="text-[11px] text-muted-foreground">Sin rango de horas asignado</p>
               )}
             </CardContent>
           </Card>
