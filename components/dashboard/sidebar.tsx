@@ -33,6 +33,7 @@ import {
   Wallet,
   Contact,
   Clock,
+  CheckSquare,
 } from 'lucide-react'
 import { UserSettingsDialog } from './user-settings-dialog'
 
@@ -47,6 +48,7 @@ interface SidebarProps {
 const areas = [
   { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard, href: '/dashboard', active: true },
   { id: 'crm', name: 'CRM', icon: Contact, href: '/dashboard/crm', active: true },
+  { id: 'tasks', name: 'Tareas', icon: CheckSquare, href: '/dashboard/tasks', active: true },
   { id: 'consultoria', name: 'Consultoría', icon: Users, href: '#', active: false },
   { id: 'operaciones', name: 'Operaciones', icon: Settings, href: '#', active: false },
   { id: 'ventas-ai', name: 'Ventas AI', icon: Zap, href: '#', active: false },

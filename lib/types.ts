@@ -241,3 +241,53 @@ export interface ClientBudgetAlert {
   google_ads: BudgetPlatformSummary | null
   meta_ads: BudgetPlatformSummary | null
 }
+
+// ── Task Management ───────────────────────────────────────────────────────────
+
+export type TaskStatus = 'pendiente' | 'resolviendo' | 'demorada' | 'pausada' | 'pendiente_aprobacion'
+export type TaskPriority = 'alta' | 'media' | 'baja'
+export type TaskType = 'crm' | 'meta_ads' | 'soporte' | 'integracion' | 'reportes' | 'desarrollo'
+
+export interface TaskCustomField {
+  label: string
+  type: 'text' | 'number' | 'date' | 'select'
+  value: string
+}
+
+export interface TaskTimeSession {
+  id: string
+  startedAt: Date
+  endedAt: Date | null
+  durationSec: number
+}
+
+export interface TaskActivity {
+  id: string
+  action: string
+  timestamp: Date
+  userId: string
+  userName: string
+}
+
+export interface Task {
+  id: string
+  title: string
+  description: string | null
+  clientId: string
+  clientName: string
+  assigneeId: string
+  assigneeName: string
+  status: TaskStatus
+  priority: TaskPriority
+  type: TaskType
+  dueDate: Date | null
+  customFields: Record<string, TaskCustomField>
+  timeSessions: TaskTimeSession[]
+  totalTimeSec: number
+  isTimerRunning: boolean
+  timerStartedAt: Date | null
+  activities: TaskActivity[]
+  comments: string[]
+  createdAt: Date
+  updatedAt: Date
+}
