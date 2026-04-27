@@ -218,7 +218,7 @@ const AURELIA_CRM_PLANS: PlanItem[] = [
   },
 ]
 
-const AURELIA_CHATBOT_PLANS: PlanItem[] = [
+const MDK_CHATBOT_PLANS: PlanItem[] = [
   {
     id: 'chatbot-basico',
     name: 'Chatbot Basico',
@@ -351,9 +351,21 @@ export function QuotationSection({ task }: { task: Task }) {
     const existing = lineItems.find((item) => item.serviceId === plan.id)
     if (existing) return // Plans are typically one per quotation
 
-    let price = plan.priceARS || 0
+    // Handle USD-only plans (like Aurelia CRM)
+    // Use approximate exchange rate for ARS display (can be updated)
+    const USD_TO_ARS_RATE = 1200 // Approximate rate, can be made configurable
+    
+    let priceARS = plan.priceARS || 0
+    let priceUSD = plan.priceUSD
+    
+    // If plan only has USD price, convert to ARS for calculations
+    if (!priceARS && priceUSD) {
+      priceARS = priceUSD * USD_TO_ARS_RATE
+    }
+    
+    // Handle percentage-based plans (like MDK Pauta)
     if (plan.isPercentage && investment > 0) {
-      price = Math.max(plan.priceARS || 0, investment * (plan.percentageValue! / 100))
+      priceARS = Math.max(plan.priceARS || 0, investment * (plan.percentageValue! / 100))
     }
 
     setLineItems((prev) => [
@@ -363,10 +375,10 @@ export function QuotationSection({ task }: { task: Task }) {
         serviceId: plan.id,
         serviceName: plan.name,
         quantity: 1,
-        unitPrice: price,
-        priceUSD: plan.priceUSD,
+        unitPrice: priceARS,
+        priceUSD: priceUSD,
         unit: plan.unit,
-        total: price,
+        total: priceARS,
         includesIVA: plan.includesIVA,
         investment: plan.isPercentage ? investment : undefined,
       },
@@ -714,6 +726,28 @@ export function QuotationSection({ task }: { task: Task }) {
                   </div>
                 </AccordionContent>
               </AccordionItem>
+
+              {/* Chatbot */}
+              <AccordionItem value="chatbot">
+                <AccordionTrigger className="text-sm">Chatbot</AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-2">
+                    {MDK_CHATBOT_PLANS.map((plan) => (
+                      <div key={plan.id} className="flex items-center justify-between p-2 rounded hover:bg-muted/50">
+                        <div>
+                          <p className="text-sm font-medium">{plan.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatCurrencyARS(plan.priceARS!)} + IVA / mes
+                          </p>
+                        </div>
+                        <Button size="sm" variant="ghost" onClick={() => handleAddPlan(plan)}>
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
             </>
           )}
 
@@ -731,28 +765,6 @@ export function QuotationSection({ task }: { task: Task }) {
                           <p className="text-xs text-muted-foreground">{plan.description}</p>
                           <p className="text-xs font-medium text-purple-400">
                             {formatCurrencyUSD(plan.priceUSD!)} / mes
-                          </p>
-                        </div>
-                        <Button size="sm" variant="ghost" onClick={() => handleAddPlan(plan)}>
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-
-              {/* Chatbot Plans */}
-              <AccordionItem value="chatbot">
-                <AccordionTrigger className="text-sm">Chatbot</AccordionTrigger>
-                <AccordionContent>
-                  <div className="space-y-2">
-                    {AURELIA_CHATBOT_PLANS.map((plan) => (
-                      <div key={plan.id} className="flex items-center justify-between p-2 rounded hover:bg-muted/50">
-                        <div>
-                          <p className="text-sm font-medium">{plan.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatCurrencyARS(plan.priceARS!)} + IVA / mes
                           </p>
                         </div>
                         <Button size="sm" variant="ghost" onClick={() => handleAddPlan(plan)}>
