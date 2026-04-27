@@ -289,12 +289,12 @@ export function TaskDetailPanel() {
 
   return (
     <Sheet open={!!selectedTaskId} onOpenChange={(open) => !open && setSelectedTask(null)}>
-      <SheetContent className="w-[420px] sm:max-w-[420px] overflow-y-auto">
-        <SheetHeader className="pb-4">
+      <SheetContent className="!w-[420px] !max-w-[420px] p-0" side="right">
+        <SheetHeader className="p-6 pb-4 border-b">
           <SheetTitle className="text-lg leading-tight pr-8">{task.title}</SheetTitle>
         </SheetHeader>
 
-        <div className="space-y-6">
+        <div className="overflow-y-auto flex-1 p-6 space-y-6">
           {/* Status & Priority row */}
           <div className="grid grid-cols-2 gap-3">
             <div>
