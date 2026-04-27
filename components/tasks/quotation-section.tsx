@@ -7,7 +7,7 @@ import { useTaskStore } from '@/lib/tasks/task-store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
+
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -310,7 +310,6 @@ export function QuotationSection({ task }: { task: Task }) {
   const { updateQuotation } = useTaskStore()
   const [businessUnit, setBusinessUnit] = useState<BusinessUnit>('mdk')
   const [lineItems, setLineItems] = useState<QuotationLineItem[]>([])
-  const [notes, setNotes] = useState(task.quotation?.notes || '')
   const [investment, setInvestment] = useState(0)
 
   const IVA_RATE = 0.21
@@ -468,14 +467,7 @@ export function QuotationSection({ task }: { task: Task }) {
             padding-top: 16px;
             margin-top: 8px;
           }
-          .notes { 
-            margin-top: 24px; 
-            padding: 16px; 
-            background: #fffbeb; 
-            border-radius: 8px;
-            border-left: 4px solid #f59e0b;
-          }
-          .notes h4 { margin: 0 0 8px 0; color: #b45309; }
+
           .footer { 
             margin-top: 48px; 
             padding-top: 24px;
@@ -542,12 +534,7 @@ export function QuotationSection({ task }: { task: Task }) {
           </div>
         </div>
         
-        ${notes ? `
-          <div class="notes">
-            <h4>Notas</h4>
-            <p>${notes}</p>
-          </div>
-        ` : ''}
+
         
         <div class="footer">
           <p>Cotizacion valida por 15 dias</p>
@@ -839,17 +826,6 @@ export function QuotationSection({ task }: { task: Task }) {
               <span>Total</span>
               <span className="text-green-400">{formatCurrencyARS(totalARS)}</span>
             </div>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <Label className="text-xs text-muted-foreground">Notas</Label>
-            <Textarea
-              placeholder="Condiciones, aclaraciones..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="mt-1 min-h-[60px] text-sm"
-            />
           </div>
 
           {/* Export Button */}

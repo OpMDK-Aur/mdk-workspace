@@ -63,13 +63,11 @@ export const useTimerStore = create<TimerState>()(
 
       startTimer: async () => {
         const state = get()
-        console.log('[v0] startTimer - starting with state:', { clientId: state.clientId, description: state.description })
         const supabase = createClient()
         const startedAt = new Date().toISOString()
         
         // Get current user
         const { data: { user } } = await supabase.auth.getUser()
-        console.log('[v0] startTimer - user:', user?.id)
         
         // Insert into Supabase immediately with ended_at = null (running)
         const { data: newEntry, error } = await supabase
@@ -77,48 +75,33 @@ export const useTimerStore = create<TimerState>()(
           .insert({
             user_id: user?.id ?? null,
             client_id: state.clientId,
-            description: state.description || 'Sin descripción',
+            description: state.description || 'Sin descripcion',
             started_at: startedAt,
-            ended_at: null,  // null = timer running
+            ended_at: null,
             duration_sec: null,
             billable: state.billable,
           })
           .select()
           .single()
 
-        console.log('[v0] startTimer - insert result:', { newEntry, error })
-
         if (error) {
-          console.error('[v0] Error creating time entry:', error)
+          console.error('Error creating time entry:', error)
           return
         }
 
-        // Update local state with the entry id
+        // Update local state with the entry id and add to entries cache
         set({
           isRunning: true,
           startedAt: startedAt,
           currentEntryId: newEntry.id,
+          entries: [newEntry as TimeEntry, ...get().entries],
         })
-
-        console.log('[v0] startTimer - success, entry id:', newEntry.id)
-
-        // Add to local entries cache
-        set((s) => ({
-          entries: [newEntry as TimeEntry, ...s.entries],
-        }))
       },
 
       stopTimer: async () => {
         const state = get()
-        console.log('[v0] stopTimer called - state:', { 
-          isRunning: state.isRunning, 
-          startedAt: state.startedAt, 
-          currentEntryId: state.currentEntryId 
-        })
         
         if (!state.startedAt) {
-          console.log('[v0] stopTimer - no startedAt, aborting')
-          // Reset state anyway
           set({
             isRunning: false,
             startedAt: null,
@@ -133,14 +116,9 @@ export const useTimerStore = create<TimerState>()(
         const durationSec = Math.floor((endTime - startTime) / 1000)
 
         const supabase = createClient()
-
-        // If we have a currentEntryId, update it. Otherwise, find the running entry.
         let entryIdToUpdate = state.currentEntryId
 
         if (!entryIdToUpdate) {
-          console.log('[v0] stopTimer - no currentEntryId, searching for running entry in Supabase')
-          // Try to find the running entry (ended_at = null) for this user
-          const { data: { user } } = await supabase.auth.getUser()
           const { data: runningEntries } = await supabase
             .from('time_entries')
             .select('id')
@@ -150,41 +128,32 @@ export const useTimerStore = create<TimerState>()(
           
           if (runningEntries && runningEntries.length > 0) {
             entryIdToUpdate = runningEntries[0].id
-            console.log('[v0] stopTimer - found running entry:', entryIdToUpdate)
           }
         }
 
         if (entryIdToUpdate) {
-          console.log('[v0] stopTimer - updating entry:', entryIdToUpdate)
-          // Update the existing entry in Supabase
           const { error } = await supabase
             .from('time_entries')
             .update({
               ended_at: endedAt,
               duration_sec: durationSec,
-              description: state.description || 'Sin descripción',
+              description: state.description || 'Sin descripcion',
             })
             .eq('id', entryIdToUpdate)
 
           if (error) {
-            console.error('[v0] Error stopping time entry:', error)
-          } else {
-            console.log('[v0] stopTimer - successfully updated entry')
+            console.error('Error stopping time entry:', error)
           }
 
-          // Update local cache
           set((s) => ({
             entries: s.entries.map((e) =>
               e.id === entryIdToUpdate
-                ? { ...e, ended_at: endedAt, duration_sec: durationSec, description: state.description || 'Sin descripción' }
+                ? { ...e, ended_at: endedAt, duration_sec: durationSec, description: state.description || 'Sin descripcion' }
                 : e
             ),
           }))
-        } else {
-          console.log('[v0] stopTimer - no entry to update, just resetting local state')
         }
 
-        // Always reset local state
         set({
           isRunning: false,
           startedAt: null,
@@ -236,25 +205,19 @@ export const useTimerStore = create<TimerState>()(
       },
 
       startTimerForTask: async (taskId: string, taskTitle: string, clientId: string | null) => {
-        console.log('[v0] startTimerForTask called:', { taskId, taskTitle, clientId })
         const state = get()
         
         // If timer is running, stop it first
         if (state.isRunning && state.currentEntryId) {
-          console.log('[v0] startTimerForTask - stopping existing timer')
           await get().stopTimer()
         }
 
-        // Set state for the task AND start the timer in the same action
         const supabase = createClient()
         const startedAt = new Date().toISOString()
         const description = `[Tarea] ${taskTitle}`
         
-        // Get current user
         const { data: { user } } = await supabase.auth.getUser()
-        console.log('[v0] startTimerForTask - user:', user?.id)
         
-        // Insert into Supabase immediately
         const { data: newEntry, error } = await supabase
           .from('time_entries')
           .insert({
@@ -269,14 +232,12 @@ export const useTimerStore = create<TimerState>()(
           .select()
           .single()
 
-        console.log('[v0] startTimerForTask - insert result:', { newEntry, error })
-
         if (error) {
-          console.error('[v0] startTimerForTask - Error creating time entry:', error)
+          console.error('Error creating time entry for task:', error)
           return
         }
 
-        // Update state with all values including the entry
+        // Update state atomically with all values
         set({
           description: description,
           clientId: clientId,
@@ -287,8 +248,6 @@ export const useTimerStore = create<TimerState>()(
           currentEntryId: newEntry.id,
           entries: [newEntry as TimeEntry, ...get().entries],
         })
-
-        console.log('[v0] startTimerForTask - success, entry id:', newEntry.id, 'startedAt:', startedAt)
       },
 
       deleteEntry: async (id) => {
@@ -316,12 +275,9 @@ export const useTimerStore = create<TimerState>()(
       },
 
       loadEntries: async () => {
-        console.log('[v0] loadEntries - starting')
         set({ isLoading: true })
         try {
           const supabase = createClient()
-          const { data: { user } } = await supabase.auth.getUser()
-          console.log('[v0] loadEntries - user:', user?.id)
           
           const { data, error } = await supabase
             .from('time_entries')
@@ -329,20 +285,12 @@ export const useTimerStore = create<TimerState>()(
             .order('started_at', { ascending: false })
             .limit(100)
 
-          console.log('[v0] loadEntries - result:', { entriesCount: data?.length, error })
-
-          if (error) {
-            console.error('[v0] loadEntries - Supabase error:', error)
-          }
-
           if (!error && data) {
-            console.log('[v0] loadEntries - setting entries:', data.length)
             set({ entries: data as TimeEntry[] })
             
             // Check if there's a running entry (ended_at = null) and sync local state
             const runningEntry = data.find((e) => e.ended_at === null)
             if (runningEntry) {
-              console.log('[v0] loadEntries - found running entry:', runningEntry.id)
               set({
                 isRunning: true,
                 startedAt: runningEntry.started_at,
@@ -354,7 +302,7 @@ export const useTimerStore = create<TimerState>()(
             }
           }
         } catch (err) {
-          console.error('[v0] loadEntries - Error:', err)
+          console.error('Error loading entries:', err)
         } finally {
           set({ isLoading: false })
         }

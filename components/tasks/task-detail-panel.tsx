@@ -500,20 +500,28 @@ function CommentsSection({ task }: { task: Task }) {
       )}
 
       <div className="flex gap-2">
-        <Avatar className="h-8 w-8 shrink-0">
+        <Avatar className="h-8 w-8 shrink-0 mt-1">
           <AvatarFallback className="text-xs">US</AvatarFallback>
         </Avatar>
-        <div className="flex-1 flex gap-2">
-          <Input
+        <div className="flex-1 flex flex-col gap-2">
+          <Textarea
             placeholder="Escribe un comentario..."
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-            className="h-8 text-sm"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                handleSubmit()
+              }
+            }}
+            className="min-h-[80px] text-sm resize-none"
           />
-          <Button size="icon" className="h-8 w-8 shrink-0" onClick={handleSubmit} disabled={!comment.trim()}>
-            <Send className="h-3.5 w-3.5" />
-          </Button>
+          <div className="flex justify-end">
+            <Button size="sm" className="gap-1.5" onClick={handleSubmit} disabled={!comment.trim()}>
+              <Send className="h-3.5 w-3.5" />
+              Enviar
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -660,14 +668,14 @@ export function TaskDetailPanel() {
       >
         {/* Header */}
         <SheetHeader className="p-4 pb-3 border-b shrink-0">
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-3 pr-10">
             <div className="flex-1 min-w-0">
-              <SheetTitle className="text-lg leading-tight pr-8">{task.title}</SheetTitle>
+              <SheetTitle className="text-lg leading-tight">{task.title}</SheetTitle>
               <p className="text-xs text-muted-foreground mt-1">{task.clientName}</p>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               {/* Active Toggle */}
-              <div className="flex items-center gap-2 mr-2 px-2 py-1 rounded-md bg-muted/50">
+              <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-muted/50">
                 <Power className={cn('h-3.5 w-3.5', task.isActive ? 'text-green-400' : 'text-muted-foreground')} />
                 <span className="text-xs">{task.isActive ? 'Activa' : 'Inactiva'}</span>
                 <Switch
