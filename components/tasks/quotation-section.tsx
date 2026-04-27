@@ -281,6 +281,7 @@ interface QuotationLineItem {
   unit: string
   total: number
   includesIVA: boolean
+  isUSDPlan?: boolean // Flag for USD-based plans (no IVA)
   investment?: number // For percentage-based plans
 }
 
@@ -311,12 +312,15 @@ export function QuotationSection({ task }: { task: Task }) {
   const [businessUnit, setBusinessUnit] = useState<BusinessUnit>('mdk')
   const [lineItems, setLineItems] = useState<QuotationLineItem[]>([])
   const [investment, setInvestment] = useState(0)
+  const [usdRate, setUsdRate] = useState(1200) // Cotizacion del dolar
 
   const IVA_RATE = 0.21
 
-  // Calculate totals
+  // Calculate totals - USD plans don't add IVA
   const subtotalARS = lineItems.reduce((acc, item) => acc + item.total, 0)
-  const ivaARS = subtotalARS * IVA_RATE
+  const subtotalARSWithIVA = lineItems.filter(item => !item.isUSDPlan).reduce((acc, item) => acc + item.total, 0)
+  const subtotalUSD = lineItems.filter(item => item.isUSDPlan).reduce((acc, item) => acc + item.total, 0)
+  const ivaARS = subtotalARSWithIVA * IVA_RATE
   const totalARS = subtotalARS + ivaARS
 
   const handleAddService = (service: ServiceItem) => {
@@ -351,16 +355,14 @@ export function QuotationSection({ task }: { task: Task }) {
     const existing = lineItems.find((item) => item.serviceId === plan.id)
     if (existing) return // Plans are typically one per quotation
 
-    // Handle USD-only plans (like Aurelia CRM)
-    // Use approximate exchange rate for ARS display (can be updated)
-    const USD_TO_ARS_RATE = 1200 // Approximate rate, can be made configurable
-    
     let priceARS = plan.priceARS || 0
     let priceUSD = plan.priceUSD
+    let isUSDPlan = false
     
-    // If plan only has USD price, convert to ARS for calculations
-    if (!priceARS && priceUSD) {
-      priceARS = priceUSD * USD_TO_ARS_RATE
+    // If plan only has USD price, convert to ARS using current rate
+    if (!plan.priceARS && priceUSD) {
+      priceARS = priceUSD * usdRate
+      isUSDPlan = true
     }
     
     // Handle percentage-based plans (like MDK Pauta)
@@ -380,6 +382,7 @@ export function QuotationSection({ task }: { task: Task }) {
         unit: plan.unit,
         total: priceARS,
         includesIVA: plan.includesIVA,
+        isUSDPlan: isUSDPlan,
         investment: plan.isPercentage ? investment : undefined,
       },
     ])
@@ -536,10 +539,28 @@ export function QuotationSection({ task }: { task: Task }) {
             <span>Subtotal</span>
             <span>${formatCurrencyARS(subtotalARS)}</span>
           </div>
+          ${subtotalUSD > 0 ? `
+          <div class="totals-row" style="color:#a855f7;font-size:12px;">
+            <span>Planes USD (sin IVA) - Cotizacion: $${usdRate}</span>
+            <span>${formatCurrencyARS(subtotalUSD)}</span>
+          </div>
+          ` : ''}
+          ${subtotalARSWithIVA > 0 ? `
+          <div class="totals-row">
+            <span>IVA (21%) sobre ${formatCurrencyARS(subtotalARSWithIVA)}</span>
+            <span>${formatCurrencyARS(ivaARS)}</span>
+          </div>
+          ` : subtotalUSD > 0 ? `
+          <div class="totals-row" style="color:#999;">
+            <span>IVA</span>
+            <span>No aplica (USD)</span>
+          </div>
+          ` : `
           <div class="totals-row">
             <span>IVA (21%)</span>
             <span>${formatCurrencyARS(ivaARS)}</span>
           </div>
+          `}
           <div class="totals-row total">
             <span>TOTAL</span>
             <span>${formatCurrencyARS(totalARS)}</span>
@@ -753,6 +774,22 @@ export function QuotationSection({ task }: { task: Task }) {
 
           {businessUnit === 'aurelia' && (
             <>
+              {/* USD Rate Input */}
+              <div className="flex items-center gap-3 p-3 mb-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                <Label className="text-xs whitespace-nowrap">Cotizacion USD:</Label>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-muted-foreground">$</span>
+                  <Input
+                    type="number"
+                    placeholder="1200"
+                    className="h-8 w-24"
+                    value={usdRate || ''}
+                    onChange={(e) => setUsdRate(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground">Los planes en USD no incluyen IVA</span>
+              </div>
+
               {/* Aurelia CRM Plans */}
               <AccordionItem value="crm">
                 <AccordionTrigger className="text-sm">Planes Aurelia CRM</AccordionTrigger>
@@ -790,11 +827,19 @@ export function QuotationSection({ task }: { task: Task }) {
 
           <div className="space-y-2">
             {lineItems.map((item) => (
-              <div key={item.id} className="flex items-center gap-3 p-2 rounded bg-muted/50">
+              <div key={item.id} className={cn(
+                "flex items-center gap-3 p-2 rounded",
+                item.isUSDPlan ? "bg-purple-500/10" : "bg-muted/50"
+              )}>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{item.serviceName}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium truncate">{item.serviceName}</p>
+                    {item.isUSDPlan && (
+                      <Badge variant="outline" className="text-[10px] h-4 px-1 text-purple-400 border-purple-400/30">USD</Badge>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    {formatCurrencyARS(item.unitPrice)} x {item.quantity} {item.unit}
+                    {item.priceUSD ? `${formatCurrencyUSD(item.priceUSD)} x ${item.quantity} = ` : ''}{formatCurrencyARS(item.unitPrice)} x {item.quantity} {item.unit}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -829,10 +874,24 @@ export function QuotationSection({ task }: { task: Task }) {
               <span className="text-muted-foreground">Subtotal</span>
               <span>{formatCurrencyARS(subtotalARS)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">IVA (21%)</span>
-              <span>{formatCurrencyARS(ivaARS)}</span>
-            </div>
+            {subtotalUSD > 0 && (
+              <div className="flex justify-between text-purple-400">
+                <span className="text-xs">Planes USD (sin IVA)</span>
+                <span className="text-xs">{formatCurrencyARS(subtotalUSD)}</span>
+              </div>
+            )}
+            {subtotalARSWithIVA > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">IVA (21%) sobre {formatCurrencyARS(subtotalARSWithIVA)}</span>
+                <span>{formatCurrencyARS(ivaARS)}</span>
+              </div>
+            )}
+            {subtotalARSWithIVA === 0 && subtotalUSD > 0 && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>IVA</span>
+                <span>No aplica (USD)</span>
+              </div>
+            )}
             <Separator />
             <div className="flex justify-between font-semibold text-base">
               <span>Total</span>
