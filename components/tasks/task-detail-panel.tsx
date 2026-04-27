@@ -42,6 +42,8 @@ import {
   X,
   Clock,
   Trash2,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -270,6 +272,7 @@ export function TaskDetailPanel() {
   const { selectedTaskId, setSelectedTask, tasks, updateTask, addComment, deleteTask } = useTaskStore()
   const task = tasks.find((t) => t.id === selectedTaskId)
   const [comment, setComment] = useState('')
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   if (!task) {
     return (
@@ -287,14 +290,40 @@ export function TaskDetailPanel() {
     setComment('')
   }
 
+  const handleClose = () => {
+    setIsFullscreen(false)
+    setSelectedTask(null)
+  }
+
   return (
-    <Sheet open={!!selectedTaskId} onOpenChange={(open) => !open && setSelectedTask(null)}>
-      <SheetContent className="!w-[420px] !max-w-[420px] p-0" side="right">
-        <SheetHeader className="p-6 pb-4 border-b">
+    <Sheet open={!!selectedTaskId} onOpenChange={(open) => !open && handleClose()}>
+      <SheetContent 
+        className={cn(
+          'p-0 transition-all duration-300',
+          isFullscreen 
+            ? '!w-full !max-w-full sm:!max-w-full' 
+            : '!w-[420px] !max-w-[420px]'
+        )} 
+        side="right"
+      >
+        <SheetHeader className="p-6 pb-4 border-b flex flex-row items-center justify-between">
           <SheetTitle className="text-lg leading-tight pr-8">{task.title}</SheetTitle>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            onClick={() => setIsFullscreen(!isFullscreen)}
+          >
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
         </SheetHeader>
 
-        <div className="overflow-y-auto flex-1 p-6 space-y-6">
+        <div className={cn(
+          'overflow-y-auto flex-1 p-6',
+          isFullscreen ? 'grid grid-cols-2 gap-8' : 'space-y-6'
+        )}>
+          {/* Left column in fullscreen / main content */}
+          <div className="space-y-6">
           {/* Status & Priority row */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -431,17 +460,22 @@ export function TaskDetailPanel() {
             </div>
           </div>
 
-          <Separator />
+          {!isFullscreen && <Separator />}
 
           {/* Time Tracker */}
           <TimeTracker task={task} />
 
-          <Separator />
+          {!isFullscreen && <Separator />}
 
           {/* Custom Fields */}
           <CustomFields task={task} />
 
-          <Separator />
+          </div>
+
+          {/* Right column in fullscreen */}
+          <div className={cn('space-y-6', !isFullscreen && 'contents')}>
+          
+          {!isFullscreen && <Separator />}
 
           {/* Activity Log */}
           <div className="space-y-2">
@@ -494,7 +528,7 @@ export function TaskDetailPanel() {
             </Button>
           </div>
 
-          <Separator />
+          {!isFullscreen && <Separator />}
 
           {/* Delete */}
           <Button
@@ -502,12 +536,13 @@ export function TaskDetailPanel() {
             className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
             onClick={() => {
               deleteTask(task.id)
-              setSelectedTask(null)
+              handleClose()
             }}
           >
             <Trash2 className="h-4 w-4 mr-2" />
             Eliminar tarea
           </Button>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
