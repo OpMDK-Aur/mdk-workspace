@@ -269,10 +269,39 @@ export interface TaskActivity {
   userName: string
 }
 
+export interface TaskComment {
+  id: string
+  content: string
+  userId: string
+  userName: string
+  userAvatar: string | null
+  createdAt: Date
+}
+
+export interface TaskFile {
+  id: string
+  name: string
+  url: string
+  mimeType: string
+  size: number
+  uploadedBy: string
+  uploadedByName: string
+  createdAt: Date
+}
+
+export interface TaskQuotation {
+  hours: number
+  hourlyRate: number // Default $150,000
+  subtotal: number
+  iva: number // 21%
+  total: number
+  notes: string
+}
+
 export interface Task {
   id: string
   title: string
-  description: string | null
+  description: string | null // Rich text HTML content
   clientId: string
   clientName: string
   assigneeId: string
@@ -281,13 +310,16 @@ export interface Task {
   priority: TaskPriority
   type: TaskType
   dueDate: Date | null
+  isActive: boolean // Toggle to resume task independently of status
   customFields: Record<string, TaskCustomField>
   timeSessions: TaskTimeSession[]
   totalTimeSec: number
   isTimerRunning: boolean
   timerStartedAt: Date | null
   activities: TaskActivity[]
-  comments: string[]
+  comments: TaskComment[]
+  files: TaskFile[]
+  quotation: TaskQuotation | null
   createdAt: Date
   updatedAt: Date
 }

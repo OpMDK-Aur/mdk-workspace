@@ -1,7 +1,12 @@
 'use client'
 
 import { create } from 'zustand'
-import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField } from '@/lib/types'
+import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskComment, TaskFile, TaskQuotation } from '@/lib/types'
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+export const HOURLY_RATE = 150000 // $150,000 CLP
+export const IVA_RATE = 0.21 // 21%
 
 // ── Mock Data ─────────────────────────────────────────────────────────────────
 
@@ -9,7 +14,7 @@ const MOCK_TASKS: Task[] = [
   {
     id: '1',
     title: 'Desarrollo — Integracion Alambrados Patagonia',
-    description: 'Implementar integracion con sistema de inventario',
+    description: '<p>Implementar integracion con sistema de inventario</p><ul><li>Conexion API REST</li><li>Sincronizacion de productos</li><li>Mapeo de campos</li></ul>',
     clientId: 'alambrados',
     clientName: 'Alambrados Patagonia',
     assigneeId: 'erika',
@@ -18,20 +23,39 @@ const MOCK_TASKS: Task[] = [
     priority: 'alta',
     type: 'integracion',
     dueDate: new Date('2026-05-01'),
+    isActive: true,
     customFields: {},
     timeSessions: [],
     totalTimeSec: 0,
     isTimerRunning: false,
     timerStartedAt: null,
     activities: [],
-    comments: [],
+    comments: [
+      {
+        id: 'c1',
+        content: 'Inicio del proyecto confirmado con el cliente',
+        userId: 'erika',
+        userName: 'Erika Gordillo',
+        userAvatar: null,
+        createdAt: new Date('2026-04-20T10:30:00'),
+      },
+    ],
+    files: [],
+    quotation: {
+      hours: 8,
+      hourlyRate: HOURLY_RATE,
+      subtotal: 8 * HOURLY_RATE,
+      iva: 8 * HOURLY_RATE * IVA_RATE,
+      total: 8 * HOURLY_RATE * (1 + IVA_RATE),
+      notes: 'Incluye desarrollo y testing',
+    },
     createdAt: new Date('2026-04-20'),
     updatedAt: new Date('2026-04-20'),
   },
   {
     id: '2',
     title: 'NPS — Crear campos personalizados',
-    description: 'Agregar campos de NPS al CRM',
+    description: '<p>Agregar campos de NPS al CRM</p>',
     clientId: 'mdk',
     clientName: 'MDK',
     assigneeId: 'erika',
@@ -40,6 +64,7 @@ const MOCK_TASKS: Task[] = [
     priority: 'alta',
     type: 'desarrollo',
     dueDate: new Date('2026-04-28'),
+    isActive: true,
     customFields: {},
     timeSessions: [],
     totalTimeSec: 0,
@@ -47,13 +72,15 @@ const MOCK_TASKS: Task[] = [
     timerStartedAt: null,
     activities: [],
     comments: [],
+    files: [],
+    quotation: null,
     createdAt: new Date('2026-04-18'),
     updatedAt: new Date('2026-04-18'),
   },
   {
     id: '3',
     title: 'Icaro — Revisar conexion email',
-    description: 'El cliente reporta problemas con envio de emails',
+    description: '<p>El cliente reporta problemas con envio de emails</p><p><strong>Error reportado:</strong> Los emails no llegan a los destinatarios</p>',
     clientId: 'icaro',
     clientName: 'Icaro',
     assigneeId: 'erika',
@@ -62,6 +89,7 @@ const MOCK_TASKS: Task[] = [
     priority: 'alta',
     type: 'soporte',
     dueDate: new Date('2026-04-25'),
+    isActive: true,
     customFields: {},
     timeSessions: [
       { id: 's1', startedAt: new Date('2026-04-23T10:00:00'), endedAt: new Date('2026-04-23T11:30:00'), durationSec: 5400 },
@@ -72,14 +100,25 @@ const MOCK_TASKS: Task[] = [
     activities: [
       { id: 'a1', action: 'Inicio timer', timestamp: new Date(), userId: 'erika', userName: 'Erika Gordillo' },
     ],
-    comments: [],
+    comments: [
+      {
+        id: 'c2',
+        content: 'Revisando configuracion SMTP del servidor',
+        userId: 'erika',
+        userName: 'Erika Gordillo',
+        userAvatar: null,
+        createdAt: new Date('2026-04-24T09:15:00'),
+      },
+    ],
+    files: [],
+    quotation: null,
     createdAt: new Date('2026-04-22'),
     updatedAt: new Date('2026-04-24'),
   },
   {
     id: '4',
     title: 'Migracion de API',
-    description: 'Migrar endpoints legacy a nueva version',
+    description: '<p>Migrar endpoints legacy a nueva version</p><pre><code>GET /api/v1/users → GET /api/v2/users\nPOST /api/v1/orders → POST /api/v2/orders</code></pre>',
     clientId: 'ics',
     clientName: 'ICS Prepaqa',
     assigneeId: 'ayelen',
@@ -88,6 +127,7 @@ const MOCK_TASKS: Task[] = [
     priority: 'alta',
     type: 'crm',
     dueDate: new Date('2026-04-30'),
+    isActive: true,
     customFields: {
       sprint: { label: 'Sprint', type: 'text', value: 'Sprint 4' },
     },
@@ -99,13 +139,22 @@ const MOCK_TASKS: Task[] = [
     timerStartedAt: null,
     activities: [],
     comments: [],
+    files: [],
+    quotation: {
+      hours: 16,
+      hourlyRate: HOURLY_RATE,
+      subtotal: 16 * HOURLY_RATE,
+      iva: 16 * HOURLY_RATE * IVA_RATE,
+      total: 16 * HOURLY_RATE * (1 + IVA_RATE),
+      notes: 'Migracion completa con documentacion',
+    },
     createdAt: new Date('2026-04-15'),
     updatedAt: new Date('2026-04-22'),
   },
   {
     id: '5',
     title: 'Modificar estadio de funnel ventas',
-    description: 'Ajustar etapas del pipeline de ventas',
+    description: '<p>Ajustar etapas del pipeline de ventas</p>',
     clientId: 'mdk',
     clientName: 'MDK',
     assigneeId: 'erika',
@@ -114,6 +163,7 @@ const MOCK_TASKS: Task[] = [
     priority: 'media',
     type: 'crm',
     dueDate: new Date('2026-04-20'),
+    isActive: false,
     customFields: {},
     timeSessions: [],
     totalTimeSec: 3600,
@@ -122,14 +172,25 @@ const MOCK_TASKS: Task[] = [
     activities: [
       { id: 'a2', action: 'Marcada como demorada', timestamp: new Date('2026-04-21'), userId: 'erika', userName: 'Erika Gordillo' },
     ],
-    comments: ['Esperando feedback del equipo de ventas'],
+    comments: [
+      {
+        id: 'c3',
+        content: 'Esperando feedback del equipo de ventas',
+        userId: 'erika',
+        userName: 'Erika Gordillo',
+        userAvatar: null,
+        createdAt: new Date('2026-04-21T14:00:00'),
+      },
+    ],
+    files: [],
+    quotation: null,
     createdAt: new Date('2026-04-10'),
     updatedAt: new Date('2026-04-21'),
   },
   {
     id: '6',
     title: 'ADT: tablero automatico de control',
-    description: 'Crear dashboard automatizado para Meta Ads',
+    description: '<p>Crear dashboard automatizado para Meta Ads</p>',
     clientId: 'adt',
     clientName: 'ADT',
     assigneeId: 'erika',
@@ -138,6 +199,7 @@ const MOCK_TASKS: Task[] = [
     priority: 'media',
     type: 'meta_ads',
     dueDate: new Date('2026-04-26'),
+    isActive: true,
     customFields: {
       cuenta_publicitaria: { label: 'Cuenta publicitaria', type: 'text', value: 'ADT Argentina' },
     },
@@ -147,13 +209,15 @@ const MOCK_TASKS: Task[] = [
     timerStartedAt: null,
     activities: [],
     comments: [],
+    files: [],
+    quotation: null,
     createdAt: new Date('2026-04-12'),
     updatedAt: new Date('2026-04-20'),
   },
   {
     id: '7',
     title: 'Del Sur: Modificacion del Looker Studio',
-    description: 'Actualizar reportes en Looker Studio',
+    description: '<p>Actualizar reportes en Looker Studio</p>',
     clientId: 'delsur',
     clientName: 'Del Sur Autos',
     assigneeId: 'erika',
@@ -162,6 +226,7 @@ const MOCK_TASKS: Task[] = [
     priority: 'alta',
     type: 'reportes',
     dueDate: null,
+    isActive: false,
     customFields: {},
     timeSessions: [],
     totalTimeSec: 1800,
@@ -171,13 +236,15 @@ const MOCK_TASKS: Task[] = [
       { id: 'a3', action: 'Pausada por cliente', timestamp: new Date('2026-04-19'), userId: 'erika', userName: 'Erika Gordillo' },
     ],
     comments: [],
+    files: [],
+    quotation: null,
     createdAt: new Date('2026-04-08'),
     updatedAt: new Date('2026-04-19'),
   },
   {
     id: '8',
     title: 'Roller Pro — Mensajes de recontacto (24 y 48 hs)',
-    description: 'Configurar automatizaciones de seguimiento',
+    description: '<p>Configurar automatizaciones de seguimiento</p>',
     clientId: 'rollerpro',
     clientName: 'Roller Pro',
     assigneeId: 'erika',
@@ -186,20 +253,39 @@ const MOCK_TASKS: Task[] = [
     priority: 'alta',
     type: 'crm',
     dueDate: new Date('2026-04-27'),
+    isActive: true,
     customFields: {},
     timeSessions: [],
     totalTimeSec: 10800,
     isTimerRunning: false,
     timerStartedAt: null,
     activities: [],
-    comments: ['Enviado para revision del cliente'],
+    comments: [
+      {
+        id: 'c4',
+        content: 'Enviado para revision del cliente',
+        userId: 'erika',
+        userName: 'Erika Gordillo',
+        userAvatar: null,
+        createdAt: new Date('2026-04-23T16:30:00'),
+      },
+    ],
+    files: [],
+    quotation: {
+      hours: 4,
+      hourlyRate: HOURLY_RATE,
+      subtotal: 4 * HOURLY_RATE,
+      iva: 4 * HOURLY_RATE * IVA_RATE,
+      total: 4 * HOURLY_RATE * (1 + IVA_RATE),
+      notes: 'Configuracion de automatizaciones',
+    },
     createdAt: new Date('2026-04-14'),
     updatedAt: new Date('2026-04-23'),
   },
   {
     id: '9',
     title: 'Rame Travel | Pixel de Meta',
-    description: 'Instalar y configurar pixel de Meta Ads',
+    description: '<p>Instalar y configurar pixel de Meta Ads</p>',
     clientId: 'rame',
     clientName: 'Rame Travel',
     assigneeId: 'erika',
@@ -208,6 +294,7 @@ const MOCK_TASKS: Task[] = [
     priority: 'alta',
     type: 'meta_ads',
     dueDate: new Date('2026-04-25'),
+    isActive: true,
     customFields: {
       url_campana: { label: 'URL de campana', type: 'text', value: 'https://rametravel.com' },
     },
@@ -217,6 +304,8 @@ const MOCK_TASKS: Task[] = [
     timerStartedAt: null,
     activities: [],
     comments: [],
+    files: [],
+    quotation: null,
     createdAt: new Date('2026-04-16'),
     updatedAt: new Date('2026-04-24'),
   },
@@ -289,8 +378,9 @@ interface TaskStore {
   // Task mutations
   updateTaskStatus: (taskId: string, status: TaskStatus) => void
   updateTask: (taskId: string, updates: Partial<Task>) => void
-  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'activities' | 'timeSessions' | 'totalTimeSec' | 'isTimerRunning' | 'timerStartedAt'>) => void
+  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'activities' | 'timeSessions' | 'totalTimeSec' | 'isTimerRunning' | 'timerStartedAt' | 'comments' | 'files' | 'quotation'>) => void
   deleteTask: (taskId: string) => void
+  toggleTaskActive: (taskId: string) => void
 
   // Timer
   startTimer: (taskId: string) => void
@@ -301,7 +391,15 @@ interface TaskStore {
   removeCustomField: (taskId: string, key: string) => void
 
   // Comments
-  addComment: (taskId: string, comment: string) => void
+  addComment: (taskId: string, content: string, userId: string, userName: string) => void
+  deleteComment: (taskId: string, commentId: string) => void
+
+  // Files
+  addFile: (taskId: string, file: Omit<TaskFile, 'id' | 'createdAt'>) => void
+  deleteFile: (taskId: string, fileId: string) => void
+
+  // Quotation
+  updateQuotation: (taskId: string, quotation: TaskQuotation | null) => void
 }
 
 export const useTaskStore = create<TaskStore>((set, get) => ({
@@ -360,6 +458,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         totalTimeSec: 0,
         isTimerRunning: false,
         timerStartedAt: null,
+        comments: [],
+        files: [],
+        quotation: null,
       },
       ...state.tasks,
     ],
@@ -370,11 +471,27 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     selectedTaskId: state.selectedTaskId === taskId ? null : state.selectedTaskId,
   })),
 
+  toggleTaskActive: (taskId) => set((state) => ({
+    tasks: state.tasks.map((t) =>
+      t.id === taskId
+        ? {
+            ...t,
+            isActive: !t.isActive,
+            updatedAt: new Date(),
+            activities: [
+              { id: crypto.randomUUID(), action: t.isActive ? 'Tarea desactivada' : 'Tarea reactivada', timestamp: new Date(), userId: 'current', userName: 'Usuario' },
+              ...t.activities,
+            ].slice(0, 10),
+          }
+        : t
+    ),
+  })),
+
   startTimer: (taskId) => set((state) => ({
     tasks: state.tasks.map((t) =>
       t.id === taskId
         ? { ...t, isTimerRunning: true, timerStartedAt: new Date(), updatedAt: new Date() }
-        : { ...t, isTimerRunning: false } // Stop other timers
+        : { ...t, isTimerRunning: false }
     ),
   })),
 
@@ -422,17 +539,80 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }),
   })),
 
-  addComment: (taskId, comment) => set((state) => ({
+  addComment: (taskId, content, userId, userName) => set((state) => ({
     tasks: state.tasks.map((t) =>
       t.id === taskId
         ? {
             ...t,
-            comments: [...t.comments, comment],
+            comments: [
+              ...t.comments,
+              {
+                id: crypto.randomUUID(),
+                content,
+                userId,
+                userName,
+                userAvatar: null,
+                createdAt: new Date(),
+              },
+            ],
             updatedAt: new Date(),
             activities: [
-              { id: crypto.randomUUID(), action: 'Agrego comentario', timestamp: new Date(), userId: 'current', userName: 'Usuario' },
+              { id: crypto.randomUUID(), action: 'Agrego comentario', timestamp: new Date(), userId, userName },
               ...t.activities,
             ].slice(0, 10),
+          }
+        : t
+    ),
+  })),
+
+  deleteComment: (taskId, commentId) => set((state) => ({
+    tasks: state.tasks.map((t) =>
+      t.id === taskId
+        ? { ...t, comments: t.comments.filter((c) => c.id !== commentId), updatedAt: new Date() }
+        : t
+    ),
+  })),
+
+  addFile: (taskId, file) => set((state) => ({
+    tasks: state.tasks.map((t) =>
+      t.id === taskId
+        ? {
+            ...t,
+            files: [
+              ...t.files,
+              { ...file, id: crypto.randomUUID(), createdAt: new Date() },
+            ],
+            updatedAt: new Date(),
+            activities: [
+              { id: crypto.randomUUID(), action: `Subio archivo: ${file.name}`, timestamp: new Date(), userId: file.uploadedBy, userName: file.uploadedByName },
+              ...t.activities,
+            ].slice(0, 10),
+          }
+        : t
+    ),
+  })),
+
+  deleteFile: (taskId, fileId) => set((state) => ({
+    tasks: state.tasks.map((t) =>
+      t.id === taskId
+        ? { ...t, files: t.files.filter((f) => f.id !== fileId), updatedAt: new Date() }
+        : t
+    ),
+  })),
+
+  updateQuotation: (taskId, quotation) => set((state) => ({
+    tasks: state.tasks.map((t) =>
+      t.id === taskId
+        ? {
+            ...t,
+            quotation,
+            updatedAt: new Date(),
+            activities: quotation
+              ? [
+                  { id: crypto.randomUUID(), action: `Actualizo cotizacion: ${quotation.hours}h`, timestamp: new Date(), userId: 'current', userName: 'Usuario' },
+                  ...t.activities,
+                ].slice(0, 10)
+              : t.activities,
           }
         : t
     ),
@@ -472,4 +652,28 @@ export function useTasksByStatus() {
     grouped[task.status].push(task)
   })
   return grouped
+}
+
+// ── Quotation Helpers ─────────────────────────────────────────────────────────
+
+export function calculateQuotation(hours: number, notes: string = ''): TaskQuotation {
+  const subtotal = hours * HOURLY_RATE
+  const iva = subtotal * IVA_RATE
+  return {
+    hours,
+    hourlyRate: HOURLY_RATE,
+    subtotal,
+    iva,
+    total: subtotal + iva,
+    notes,
+  }
+}
+
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('es-CL', {
+    style: 'currency',
+    currency: 'CLP',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount)
 }
