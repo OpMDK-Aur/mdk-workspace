@@ -997,28 +997,176 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
       title = `URGENTE: ${taskData.title || 'Falta de datos'}`
     }
 
-    // Build description
-    const descParts: string[] = []
-    if (taskData.format) descParts.push(`Formato: ${taskData.format}`)
-    if (taskData.concept) descParts.push(`Concepto: ${taskData.concept}`)
-    if (taskData.platform) descParts.push(`Plataforma: ${taskData.platform}`)
-    if (taskData.issue) descParts.push(`Problema: ${taskData.issue}`)
-    if (taskData.source) descParts.push(`Origen leads: ${taskData.source}`)
-    if (taskData.destination) descParts.push(`Destino: ${taskData.destination}`)
-    if (taskData.formName) descParts.push(`Formulario: ${taskData.formName}`)
-    if (taskData.webUrl) descParts.push(`URL: ${taskData.webUrl}`)
-    if (taskData.details) descParts.push(`Detalles: ${taskData.details}`)
-    if (taskData.lastData) descParts.push(`Ultimo dato: ${taskData.lastData}`)
-    if (taskData.hours && parseInt(taskData.hours) > 0) descParts.push(`Horas estimadas: ${taskData.hours}`)
-    if (taskData.quantity) descParts.push(`Cantidad: ${taskData.quantity}`)
-    if (taskData.period) descParts.push(`Periodo: ${taskData.period}`)
-    if (taskData.notes) descParts.push(`Notas: ${taskData.notes}`)
-
     const priority = (taskData.priority || selectedTemplate.defaultPriority || 'media') as TaskPriority
+
+    // Build initial comment from collected data (the conversation)
+    const buildInitialComment = (): string => {
+      const lines: string[] = []
+      lines.push(`<p><strong>Tipo de tarea:</strong> ${selectedTemplate.label}</p>`)
+      
+      // Add all collected data as structured info
+      const dataEntries: { label: string; value: string }[] = []
+      
+      if (taskData.format) {
+        const formatLabels: Record<string, string> = {
+          'stories_feed': 'Stories + Feed',
+          'stories': 'Solo Stories',
+          'feed': 'Solo Feed',
+          'carousel': 'Carrusel',
+          'all': 'Todos los formatos',
+        }
+        dataEntries.push({ label: 'Formato', value: formatLabels[taskData.format] || taskData.format })
+      }
+      if (taskData.quantity) dataEntries.push({ label: 'Cantidad', value: taskData.quantity })
+      if (taskData.concept) dataEntries.push({ label: 'Concepto/Idea', value: taskData.concept })
+      if (taskData.platform) {
+        const platformLabels: Record<string, string> = {
+          'meta': 'Meta Ads',
+          'google': 'Google Ads',
+          'both': 'Meta + Google',
+        }
+        dataEntries.push({ label: 'Plataforma', value: platformLabels[taskData.platform] || taskData.platform })
+      }
+      if (taskData.issue) {
+        const issueLabels: Record<string, string> = {
+          'low_performance': 'Bajo rendimiento general',
+          'high_cpa': 'CPA muy alto',
+          'low_conversions': 'Pocas conversiones',
+          'general': 'Revision general',
+        }
+        dataEntries.push({ label: 'Problema', value: issueLabels[taskData.issue] || taskData.issue })
+      }
+      if (taskData.source) {
+        const sourceLabels: Record<string, string> = {
+          'landing': 'Landing web',
+          'meta_leads': 'Meta Lead Ads',
+          'google_leads': 'Google Lead Forms',
+          'whatsapp': 'WhatsApp',
+          'other': 'Otro',
+        }
+        dataEntries.push({ label: 'Origen de leads', value: sourceLabels[taskData.source] || taskData.source })
+      }
+      if (taskData.destination) {
+        const destLabels: Record<string, string> = {
+          'aurelia': 'CRM Aurelia',
+          'client_crm': 'CRM del cliente',
+          'sheets': 'Google Sheets',
+          'whatsapp': 'WhatsApp',
+          'email': 'Email',
+        }
+        dataEntries.push({ label: 'Destino', value: destLabels[taskData.destination] || taskData.destination })
+      }
+      if (taskData.problem) {
+        const problemLabels: Record<string, string> = {
+          'no_leads': 'No llegan los leads',
+          'duplicates': 'Llegan duplicados',
+          'missing_data': 'Faltan campos/datos',
+          'connection_error': 'Error en la conexion',
+          'preventive': 'Revision preventiva',
+        }
+        dataEntries.push({ label: 'Problema', value: problemLabels[taskData.problem] || taskData.problem })
+      }
+      if (taskData.area) {
+        const areaLabels: Record<string, string> = {
+          'integrations': 'Integraciones',
+          'campaign': 'Campanas',
+          'tracking': 'Tracking/Pixel',
+          'everything': 'Todo',
+          'unknown': 'Por investigar',
+        }
+        dataEntries.push({ label: 'Area afectada', value: areaLabels[taskData.area] || taskData.area })
+      }
+      if (taskData.formName) dataEntries.push({ label: 'Formulario', value: taskData.formName })
+      if (taskData.webUrl) dataEntries.push({ label: 'URL', value: taskData.webUrl })
+      if (taskData.url) dataEntries.push({ label: 'URL/Dominio', value: taskData.url })
+      if (taskData.hasDesign) {
+        const designLabels: Record<string, string> = {
+          'yes': 'Si, esta listo',
+          'no': 'No, hay que disenarlo',
+          'references': 'Tienen referencias',
+        }
+        dataEntries.push({ label: 'Diseno', value: designLabels[taskData.hasDesign] || taskData.hasDesign })
+      }
+      if (taskData.hasForm) {
+        const formLabels: Record<string, string> = {
+          'contact': 'Formulario de contacto',
+          'crm': 'Con integracion a CRM',
+          'no': 'Solo informativa',
+        }
+        dataEntries.push({ label: 'Formulario', value: formLabels[taskData.hasForm] || taskData.hasForm })
+      }
+      if (taskData.reason) {
+        const reasonLabels: Record<string, string> = {
+          'performance': 'Revisar performance',
+          'renewal': 'Renovacion contrato',
+          'proposal': 'Propuesta comercial',
+          'complaint': 'Reclamo del cliente',
+          'monthly': 'Check-in mensual',
+          'good_news': 'Buenas noticias',
+        }
+        dataEntries.push({ label: 'Motivo', value: reasonLabels[taskData.reason] || taskData.reason })
+      }
+      if (taskData.reportType) {
+        const reportLabels: Record<string, string> = {
+          'monthly': 'Mensual de resultados',
+          'campaign': 'Analisis de campana',
+          'comparative': 'Comparativo periodos',
+          'special': 'Informe especial',
+        }
+        dataEntries.push({ label: 'Tipo de informe', value: reportLabels[taskData.reportType] || taskData.reportType })
+      }
+      if (taskData.trackingType) {
+        const trackingLabels: Record<string, string> = {
+          'meta_pixel': 'Configurar pixel Meta',
+          'google_tag': 'Configurar Google Tag',
+          'conversions': 'Eventos de conversion',
+          'review': 'Revisar tracking actual',
+          'full_setup': 'Configurar todo desde cero',
+        }
+        dataEntries.push({ label: 'Tipo de tracking', value: trackingLabels[taskData.trackingType] || taskData.trackingType })
+      }
+      if (taskData.dataSource) {
+        const dataSourceLabels: Record<string, string> = {
+          'meta_crm': 'Meta vs CRM',
+          'google_crm': 'Google vs CRM',
+          'landing_crm': 'Landing vs CRM',
+          'meta_google': 'Meta vs Google',
+          'other': 'Otro',
+        }
+        dataEntries.push({ label: 'Fuentes', value: dataSourceLabels[taskData.dataSource] || taskData.dataSource })
+      }
+      if (taskData.details) dataEntries.push({ label: 'Detalles', value: taskData.details })
+      if (taskData.lastData) dataEntries.push({ label: 'Ultimo dato recibido', value: taskData.lastData })
+      if (taskData.hours && parseInt(taskData.hours) > 0) dataEntries.push({ label: 'Horas estimadas', value: taskData.hours })
+      if (taskData.period) dataEntries.push({ label: 'Periodo', value: taskData.period })
+      if (taskData.notes) dataEntries.push({ label: 'Notas', value: taskData.notes })
+
+      if (dataEntries.length > 0) {
+        lines.push('<table style="width:100%; border-collapse:collapse; margin:8px 0;">')
+        lines.push('<tbody>')
+        dataEntries.forEach(entry => {
+          lines.push(`<tr><td style="border:1px solid #333; padding:8px; background:#1a1a2e; font-weight:500; width:30%;">${entry.label}</td><td style="border:1px solid #333; padding:8px;">${entry.value}</td></tr>`)
+        })
+        lines.push('</tbody>')
+        lines.push('</table>')
+      }
+
+      lines.push(`<p style="margin-top:12px; font-size:12px; color:#888;"><em>Creado via asistente Madky</em></p>`)
+      
+      return lines.join('')
+    }
+
+    const initialComment = {
+      id: `comment-${Date.now()}`,
+      content: buildInitialComment(),
+      userId: 'madky',
+      userName: 'Madky (IA)',
+      createdAt: new Date(),
+    }
 
     addTask({
       title,
-      description: descParts.length > 0 ? descParts.join('\n') : null,
+      description: null, // Description now goes to comments
       clientId: taskData.clientId || '',
       clientName: client?.name || '',
       assigneeId: assignee?.id || '',
@@ -1028,7 +1176,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
       type: selectedTemplate.type,
       dueDate: null,
       customFields: {},
-      comments: [],
+      comments: [initialComment],
     })
 
     // Success message
