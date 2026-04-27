@@ -11,10 +11,6 @@ import {
   TYPE_CONFIG,
   ASSIGNEES,
   CLIENTS,
-  HOURLY_RATE,
-  IVA_RATE,
-  calculateQuotation,
-  formatCurrency,
 } from '@/lib/tasks/task-store'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
@@ -52,7 +48,6 @@ import {
   Minimize2,
   FileText,
   Upload,
-  Download,
   Bold,
   Italic,
   Underline,
@@ -64,12 +59,11 @@ import {
   Quote,
   Send,
   FileIcon,
-  DollarSign,
-  Calculator,
   Power,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { QuotationSection } from './quotation-section'
 
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -277,166 +271,6 @@ function TimeTracker({ task }: { task: Task }) {
             <span className="font-mono font-medium">{formatTimeShort(task.totalTimeSec)}</span>
           </div>
         </div>
-      )}
-    </div>
-  )
-}
-
-// ── Quotation Section ─────────────────────────────────────────────────────────
-
-function QuotationSection({ task }: { task: Task }) {
-  const { updateQuotation } = useTaskStore()
-  const [hours, setHours] = useState(task.quotation?.hours || 0)
-  const [notes, setNotes] = useState(task.quotation?.notes || '')
-
-  const quotation = calculateQuotation(hours, notes)
-
-  const handleSave = () => {
-    if (hours > 0) {
-      updateQuotation(task.id, quotation)
-    } else {
-      updateQuotation(task.id, null)
-    }
-  }
-
-  const handleExportPDF = () => {
-    // Create a simple PDF export using browser print
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Cotizacion - ${task.title}</title>
-        <style>
-          body { font-family: system-ui, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
-          h1 { font-size: 24px; margin-bottom: 8px; }
-          .subtitle { color: #666; margin-bottom: 32px; }
-          .client { font-size: 18px; color: #333; margin-bottom: 24px; }
-          table { width: 100%; border-collapse: collapse; margin: 24px 0; }
-          th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
-          th { background: #f5f5f5; font-weight: 600; }
-          .total-row { font-weight: bold; font-size: 18px; }
-          .total-row td { border-top: 2px solid #333; padding-top: 16px; }
-          .notes { margin-top: 24px; padding: 16px; background: #f9f9f9; border-radius: 8px; }
-          .footer { margin-top: 48px; color: #999; font-size: 12px; }
-        </style>
-      </head>
-      <body>
-        <h1>Cotizacion de Servicio</h1>
-        <p class="subtitle">${task.title}</p>
-        <p class="client">Cliente: <strong>${task.clientName}</strong></p>
-        
-        <table>
-          <thead>
-            <tr>
-              <th>Concepto</th>
-              <th style="text-align:right">Cantidad</th>
-              <th style="text-align:right">Precio Unitario</th>
-              <th style="text-align:right">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Horas de trabajo</td>
-              <td style="text-align:right">${hours}</td>
-              <td style="text-align:right">${formatCurrency(HOURLY_RATE)}</td>
-              <td style="text-align:right">${formatCurrency(quotation.subtotal)}</td>
-            </tr>
-            <tr>
-              <td colspan="3">IVA (21%)</td>
-              <td style="text-align:right">${formatCurrency(quotation.iva)}</td>
-            </tr>
-            <tr class="total-row">
-              <td colspan="3">TOTAL</td>
-              <td style="text-align:right">${formatCurrency(quotation.total)}</td>
-            </tr>
-          </tbody>
-        </table>
-        
-        ${notes ? `<div class="notes"><strong>Notas:</strong><br/>${notes}</div>` : ''}
-        
-        <div class="footer">
-          <p>Cotizacion generada el ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es })}</p>
-          <p>MDK Workspace</p>
-        </div>
-      </body>
-      </html>
-    `
-
-    const printWindow = window.open('', '_blank')
-    if (printWindow) {
-      printWindow.document.write(printContent)
-      printWindow.document.close()
-      printWindow.print()
-    }
-  }
-
-  return (
-    <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Calculator className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Cotizacion</span>
-        </div>
-        {hours > 0 && (
-          <Button size="sm" variant="outline" className="gap-1.5 h-7" onClick={handleExportPDF}>
-            <Download className="h-3 w-3" />
-            Exportar PDF
-          </Button>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label className="text-xs text-muted-foreground">Horas estimadas</Label>
-          <Input
-            type="number"
-            min="0"
-            step="0.5"
-            value={hours}
-            onChange={(e) => setHours(parseFloat(e.target.value) || 0)}
-            onBlur={handleSave}
-            className="h-9 mt-1"
-          />
-        </div>
-        <div>
-          <Label className="text-xs text-muted-foreground">Valor hora</Label>
-          <Input
-            value={formatCurrency(HOURLY_RATE)}
-            disabled
-            className="h-9 mt-1 bg-muted"
-          />
-        </div>
-      </div>
-
-      {hours > 0 && (
-        <>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>{formatCurrency(quotation.subtotal)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">IVA (21%)</span>
-              <span>{formatCurrency(quotation.iva)}</span>
-            </div>
-            <Separator />
-            <div className="flex justify-between font-semibold text-base">
-              <span>Total</span>
-              <span className="text-green-400">{formatCurrency(quotation.total)}</span>
-            </div>
-          </div>
-
-          <div>
-            <Label className="text-xs text-muted-foreground">Notas</Label>
-            <Textarea
-              placeholder="Notas adicionales para la cotizacion..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              onBlur={handleSave}
-              className="mt-1 min-h-[60px] text-sm"
-            />
-          </div>
-        </>
       )}
     </div>
   )
