@@ -37,7 +37,6 @@ import {
 import { Calendar } from '@/components/ui/calendar'
 import {
   Play,
-  Pause,
   RotateCcw,
   Calendar as CalendarIcon,
   Plus,
@@ -64,6 +63,9 @@ import {
 import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { QuotationSection } from './quotation-section'
+import { useTimerStore } from '@/lib/time-tracking/timer-store'
+import { Square, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -181,47 +183,112 @@ function RichTextEditor({
   )
 }
 
-// ── Time Tracker Component ────────────────────────────────────────────────────
+// ── Time Tracker Component (synced with global timer) ─────────────────────────
 
 function TimeTracker({ task }: { task: Task }) {
-  const { startTimer, stopTimer, updateTask } = useTaskStore()
-  const [liveSeconds, setLiveSeconds] = useState(0)
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const { updateTask } = useTaskStore()
+  const { 
+    isRunning: globalIsRunning, 
+    taskId: globalTaskId, 
+    startedAt: globalStartedAt,
+    startTimerForTask, 
+    stopTimer: globalStopTimer,
+    getElapsedSeconds 
+  } = useTimerStore()
+  
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [isStarting, setIsStarting] = useState(false)
+  const [isStopping, setIsStopping] = useState(false)
 
+  // Check if THIS task's timer is running
+  const isThisTaskRunning = globalIsRunning && globalTaskId === task.id
+
+  // Update elapsed time every second when this task's timer is running
   useEffect(() => {
-    if (task.isTimerRunning && task.timerStartedAt) {
-      intervalRef.current = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - new Date(task.timerStartedAt!).getTime()) / 1000)
-        setLiveSeconds(elapsed)
-      }, 1000)
-    } else {
-      setLiveSeconds(0)
+    if (!isThisTaskRunning) {
+      setElapsedSeconds(0)
+      return
     }
 
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
-    }
-  }, [task.isTimerRunning, task.timerStartedAt])
+    setElapsedSeconds(getElapsedSeconds())
+    const interval = setInterval(() => {
+      setElapsedSeconds(getElapsedSeconds())
+    }, 1000)
 
-  const totalDisplay = task.totalTimeSec + (task.isTimerRunning ? liveSeconds : 0)
+    return () => clearInterval(interval)
+  }, [isThisTaskRunning, globalStartedAt, getElapsedSeconds])
+
+  const totalDisplay = task.totalTimeSec + (isThisTaskRunning ? elapsedSeconds : 0)
+
+  const handleStart = async () => {
+    setIsStarting(true)
+    try {
+      // Find client ID from task
+      const clientId = CLIENTS.find(c => c.name === task.clientName)?.id || null
+      await startTimerForTask(task.id, task.title, clientId)
+      toast.success('Timer iniciado para esta tarea')
+    } catch (error) {
+      toast.error('Error al iniciar el timer')
+    } finally {
+      setIsStarting(false)
+    }
+  }
+
+  const handleStop = async () => {
+    setIsStopping(true)
+    try {
+      // Calculate duration and save to task
+      const durationSec = getElapsedSeconds()
+      await globalStopTimer()
+      
+      // Add the session to the task
+      const newSession = {
+        id: `session-${Date.now()}`,
+        startedAt: new Date(globalStartedAt!),
+        endedAt: new Date(),
+        durationSec,
+      }
+      
+      updateTask(task.id, {
+        totalTimeSec: task.totalTimeSec + durationSec,
+        timeSessions: [...task.timeSessions, newSession],
+      })
+      
+      toast.success('Tiempo guardado correctamente')
+    } catch (error) {
+      toast.error('Error al guardar el tiempo')
+    } finally {
+      setIsStopping(false)
+    }
+  }
 
   const handleReset = () => {
-    if (task.isTimerRunning) stopTimer(task.id)
+    if (isThisTaskRunning) {
+      globalStopTimer()
+    }
     updateTask(task.id, { totalTimeSec: 0, timeSessions: [] })
   }
+
+  // Check if another task's timer is running
+  const isOtherTaskRunning = globalIsRunning && globalTaskId && globalTaskId !== task.id
 
   return (
     <div className="rounded-lg border bg-muted/30 p-4">
       <div className="flex items-center gap-2 mb-3">
         <Clock className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium">Time Tracker</span>
+        {isThisTaskRunning && (
+          <Badge variant="outline" className="ml-auto text-green-400 border-green-400/30 text-xs">
+            En curso
+          </Badge>
+        )}
       </div>
 
       <div className="flex items-center justify-center mb-4">
         <span
           className={cn(
             'text-4xl font-mono tabular-nums tracking-tight',
-            task.isTimerRunning && 'text-green-400'
+            isThisTaskRunning && 'text-green-400'
           )}
         >
           {formatTime(totalDisplay)}
@@ -229,23 +296,33 @@ function TimeTracker({ task }: { task: Task }) {
       </div>
 
       <div className="flex items-center justify-center gap-2 mb-4">
-        {task.isTimerRunning ? (
+        {isThisTaskRunning ? (
           <Button
             size="sm"
             variant="destructive"
             className="gap-1.5"
-            onClick={() => stopTimer(task.id)}
+            onClick={handleStop}
+            disabled={isStopping}
           >
-            <Pause className="h-4 w-4" />
-            Pausar
+            {isStopping ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Square className="h-4 w-4 fill-current" />
+            )}
+            Detener
           </Button>
         ) : (
           <Button
             size="sm"
             className="gap-1.5 bg-green-600 hover:bg-green-700"
-            onClick={() => startTimer(task.id)}
+            onClick={handleStart}
+            disabled={isStarting || isOtherTaskRunning}
           >
-            <Play className="h-4 w-4" />
+            {isStarting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
             Iniciar
           </Button>
         )}
@@ -254,6 +331,12 @@ function TimeTracker({ task }: { task: Task }) {
           Reset
         </Button>
       </div>
+
+      {isOtherTaskRunning && (
+        <p className="text-xs text-center text-yellow-500 mb-3">
+          Hay otro timer en curso. Detenlo para iniciar este.
+        </p>
+      )}
 
       {task.timeSessions.length > 0 && (
         <div className="space-y-1.5">

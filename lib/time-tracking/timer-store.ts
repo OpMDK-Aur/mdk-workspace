@@ -23,6 +23,7 @@ interface TimerState {
   description: string
   clientId: string | null
   billable: boolean
+  taskId: string | null  // Task ID if timer started from a task
   
   // Entries (local cache)
   entries: TimeEntry[]
@@ -39,6 +40,9 @@ interface TimerState {
   updateEntry: (id: string, updates: Partial<TimeEntry>) => Promise<void>
   loadEntries: () => Promise<void>
   
+  // Task-specific actions
+  startTimerForTask: (taskId: string, taskTitle: string, clientId: string | null) => Promise<void>
+  
   // Computed
   getElapsedSeconds: () => number
 }
@@ -53,6 +57,7 @@ export const useTimerStore = create<TimerState>()(
       description: '',
       clientId: null,
       billable: true,
+      taskId: null,
       entries: [],
       isLoading: false,
 
@@ -187,6 +192,7 @@ export const useTimerStore = create<TimerState>()(
           description: '',
           clientId: null,
           billable: true,
+          taskId: null,
         })
       },
 
@@ -226,6 +232,26 @@ export const useTimerStore = create<TimerState>()(
         })
 
         // Start a new timer
+        await get().startTimer()
+      },
+
+      startTimerForTask: async (taskId: string, taskTitle: string, clientId: string | null) => {
+        const state = get()
+        
+        // If timer is running, stop it first
+        if (state.isRunning && state.currentEntryId) {
+          await get().stopTimer()
+        }
+
+        // Set state for the task
+        set({
+          description: `[Tarea] ${taskTitle}`,
+          clientId: clientId,
+          billable: true,
+          taskId: taskId,
+        })
+
+        // Start the timer
         await get().startTimer()
       },
 
@@ -316,6 +342,7 @@ export const useTimerStore = create<TimerState>()(
         description: state.description,
         clientId: state.clientId,
         billable: state.billable,
+        taskId: state.taskId,
       }),
     }
   )
