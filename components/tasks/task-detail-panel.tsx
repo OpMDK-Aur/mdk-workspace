@@ -34,6 +34,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Calendar } from '@/components/ui/calendar'
 import {
   Play,
@@ -97,6 +104,8 @@ function RichTextEditor({
   placeholder?: string
 }) {
   const editorRef = useRef<HTMLDivElement>(null)
+  const [showTableMenu, setShowTableMenu] = useState(false)
+  const [isInTable, setIsInTable] = useState(false)
 
   useEffect(() => {
     if (editorRef.current && content !== editorRef.current.innerHTML) {
@@ -116,6 +125,52 @@ function RichTextEditor({
     }
   }
 
+  // Check if cursor is inside a table
+  const checkTableContext = () => {
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0) {
+      let node: Node | null = selection.anchorNode
+      while (node) {
+        if (node.nodeName === 'TABLE' || node.nodeName === 'TD' || node.nodeName === 'TH') {
+          setIsInTable(true)
+          return
+        }
+        node = node.parentNode
+      }
+    }
+    setIsInTable(false)
+  }
+
+  // Get current cell
+  const getCurrentCell = (): HTMLTableCellElement | null => {
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0) {
+      let node: Node | null = selection.anchorNode
+      while (node) {
+        if (node.nodeName === 'TD' || node.nodeName === 'TH') {
+          return node as HTMLTableCellElement
+        }
+        node = node.parentNode
+      }
+    }
+    return null
+  }
+
+  // Get current table
+  const getCurrentTable = (): HTMLTableElement | null => {
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0) {
+      let node: Node | null = selection.anchorNode
+      while (node) {
+        if (node.nodeName === 'TABLE') {
+          return node as HTMLTableElement
+        }
+        node = node.parentNode
+      }
+    }
+    return null
+  }
+
   const insertTable = () => {
     const table = `
       <table style="width:100%; border-collapse:collapse; margin:8px 0;">
@@ -132,6 +187,79 @@ function RichTextEditor({
       </table>
     `
     execCommand('insertHTML', table)
+    setShowTableMenu(false)
+  }
+
+  const addTableRow = () => {
+    const table = getCurrentTable()
+    const cell = getCurrentCell()
+    if (!table || !cell) return
+
+    const row = cell.parentElement as HTMLTableRowElement
+    const colCount = row.cells.length
+    const newRow = table.insertRow(row.rowIndex + 1)
+    
+    for (let i = 0; i < colCount; i++) {
+      const newCell = newRow.insertCell(i)
+      newCell.style.cssText = 'border:1px solid #333; padding:8px;'
+      newCell.textContent = ''
+    }
+    handleInput()
+  }
+
+  const addTableColumn = () => {
+    const table = getCurrentTable()
+    const cell = getCurrentCell()
+    if (!table || !cell) return
+
+    const colIndex = cell.cellIndex + 1
+    
+    for (let i = 0; i < table.rows.length; i++) {
+      const row = table.rows[i]
+      const newCell = row.insertCell(colIndex)
+      if (i === 0) {
+        newCell.outerHTML = `<th style="border:1px solid #333; padding:8px; background:#1a1a2e;">Nueva col</th>`
+      } else {
+        newCell.style.cssText = 'border:1px solid #333; padding:8px;'
+        newCell.textContent = ''
+      }
+    }
+    handleInput()
+  }
+
+  const deleteTableRow = () => {
+    const table = getCurrentTable()
+    const cell = getCurrentCell()
+    if (!table || !cell) return
+
+    const row = cell.parentElement as HTMLTableRowElement
+    if (table.rows.length > 1) {
+      table.deleteRow(row.rowIndex)
+      handleInput()
+    }
+  }
+
+  const deleteTableColumn = () => {
+    const table = getCurrentTable()
+    const cell = getCurrentCell()
+    if (!table || !cell) return
+
+    const colIndex = cell.cellIndex
+    if (table.rows[0].cells.length > 1) {
+      for (let i = 0; i < table.rows.length; i++) {
+        table.rows[i].deleteCell(colIndex)
+      }
+      handleInput()
+    }
+  }
+
+  const deleteTable = () => {
+    const table = getCurrentTable()
+    if (table) {
+      table.remove()
+      handleInput()
+      setShowTableMenu(false)
+    }
   }
 
   const insertCodeBlock = () => {
@@ -163,9 +291,44 @@ function RichTextEditor({
         <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={insertCodeBlock}>
           <Code className="h-3.5 w-3.5" />
         </Button>
-        <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={insertTable}>
-          <Table className="h-3.5 w-3.5" />
-        </Button>
+        
+        {/* Table dropdown */}
+        <DropdownMenu open={showTableMenu} onOpenChange={setShowTableMenu}>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" className="h-7 w-7">
+              <Table className="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuItem onClick={insertTable}>
+              <Plus className="h-3.5 w-3.5 mr-2" />
+              Insertar tabla
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={addTableRow} disabled={!isInTable}>
+              <Plus className="h-3.5 w-3.5 mr-2" />
+              Agregar fila abajo
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={addTableColumn} disabled={!isInTable}>
+              <Plus className="h-3.5 w-3.5 mr-2" />
+              Agregar columna derecha
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={deleteTableRow} disabled={!isInTable} className="text-destructive">
+              <Trash2 className="h-3.5 w-3.5 mr-2" />
+              Eliminar fila
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={deleteTableColumn} disabled={!isInTable} className="text-destructive">
+              <Trash2 className="h-3.5 w-3.5 mr-2" />
+              Eliminar columna
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={deleteTable} disabled={!isInTable} className="text-destructive">
+              <Trash2 className="h-3.5 w-3.5 mr-2" />
+              Eliminar tabla
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => execCommand('formatBlock', 'blockquote')}>
           <Quote className="h-3.5 w-3.5" />
         </Button>
@@ -175,6 +338,8 @@ function RichTextEditor({
         ref={editorRef}
         contentEditable
         onInput={handleInput}
+        onClick={checkTableContext}
+        onKeyUp={checkTableContext}
         className="min-h-[120px] p-3 text-sm focus:outline-none prose prose-sm prose-invert max-w-none [&_table]:w-full [&_th]:bg-muted [&_td]:p-2 [&_th]:p-2 [&_td]:border [&_th]:border [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-md [&_blockquote]:border-l-2 [&_blockquote]:border-primary [&_blockquote]:pl-3 [&_blockquote]:italic"
         data-placeholder={placeholder}
         style={{ minHeight: '120px' }}
