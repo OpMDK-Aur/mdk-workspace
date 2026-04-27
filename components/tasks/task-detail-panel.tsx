@@ -16,7 +16,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+
 import { Label } from '@/components/ui/label'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
@@ -449,41 +449,46 @@ function FilesSection({ task }: { task: Task }) {
   )
 }
 
-// ── Comments Section ──────────────────────────────────────────────────────────
+// ── Comments Section (with rich text editor) ──────────────────────────────────
 
 function CommentsSection({ task }: { task: Task }) {
   const { addComment, deleteComment } = useTaskStore()
   const [comment, setComment] = useState('')
 
   const handleSubmit = () => {
-    if (!comment.trim()) return
+    // Strip HTML tags to check if there's actual content
+    const textContent = comment.replace(/<[^>]*>/g, '').trim()
+    if (!textContent) return
     addComment(task.id, comment, 'current', 'Usuario')
     setComment('')
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <p className="text-sm font-medium">Comentarios ({task.comments.length})</p>
 
       {task.comments.length > 0 && (
-        <div className="space-y-3 max-h-64 overflow-y-auto">
+        <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
           {task.comments.map((c) => (
-            <div key={c.id} className="group">
+            <div key={c.id} className="group rounded-lg border bg-muted/30 p-3">
               <div className="flex items-start gap-3">
                 <Avatar className="h-8 w-8 shrink-0">
                   <AvatarFallback className="text-xs">{getInitials(c.userName)}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium">{c.userName}</span>
                     <span className="text-xs text-muted-foreground">
                       {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      · {format(new Date(c.createdAt), 'dd/MM/yyyy HH:mm', { locale: es })}
+                      {format(new Date(c.createdAt), 'dd/MM/yyyy HH:mm', { locale: es })}
                     </span>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-1">{c.content}</p>
+                  <div 
+                    className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_table]:w-full [&_th]:bg-muted [&_td]:p-2 [&_th]:p-2 [&_td]:border [&_th]:border [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-md [&_blockquote]:border-l-2 [&_blockquote]:border-primary [&_blockquote]:pl-3 [&_blockquote]:italic"
+                    dangerouslySetInnerHTML={{ __html: c.content }}
+                  />
                 </div>
                 <Button
                   variant="ghost"
@@ -499,29 +504,28 @@ function CommentsSection({ task }: { task: Task }) {
         </div>
       )}
 
-      <div className="flex gap-2">
-        <Avatar className="h-8 w-8 shrink-0 mt-1">
-          <AvatarFallback className="text-xs">US</AvatarFallback>
-        </Avatar>
-        <div className="flex-1 flex flex-col gap-2">
-          <Textarea
-            placeholder="Escribe un comentario..."
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                handleSubmit()
-              }
-            }}
-            className="min-h-[80px] text-sm resize-none"
-          />
-          <div className="flex justify-end">
-            <Button size="sm" className="gap-1.5" onClick={handleSubmit} disabled={!comment.trim()}>
-              <Send className="h-3.5 w-3.5" />
-              Enviar
-            </Button>
-          </div>
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Avatar className="h-7 w-7 shrink-0">
+            <AvatarFallback className="text-xs">US</AvatarFallback>
+          </Avatar>
+          <span className="text-sm text-muted-foreground">Nuevo comentario</span>
+        </div>
+        <RichTextEditor
+          content={comment}
+          onChange={setComment}
+          placeholder="Escribe un comentario con formato, tablas, codigo..."
+        />
+        <div className="flex justify-end">
+          <Button 
+            size="sm" 
+            className="gap-1.5" 
+            onClick={handleSubmit} 
+            disabled={!comment.replace(/<[^>]*>/g, '').trim()}
+          >
+            <Send className="h-3.5 w-3.5" />
+            Enviar comentario
+          </Button>
         </div>
       </div>
     </div>
@@ -651,10 +655,6 @@ export function TaskDetailPanel() {
     setSelectedTask(null)
   }
 
-  const handleDescriptionChange = (html: string) => {
-    updateTask(task.id, { description: html })
-  }
-
   return (
     <Sheet open={!!selectedTaskId} onOpenChange={(open) => !open && handleClose()}>
       <SheetContent 
@@ -700,7 +700,6 @@ export function TaskDetailPanel() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
           <TabsList className="mx-4 mt-3 mb-0 shrink-0">
             <TabsTrigger value="detalles" className="text-xs">Detalles</TabsTrigger>
-            <TabsTrigger value="descripcion" className="text-xs">Descripcion</TabsTrigger>
             <TabsTrigger value="archivos" className="text-xs">Archivos ({task.files.length})</TabsTrigger>
             <TabsTrigger value="cotizacion" className="text-xs">Cotizacion</TabsTrigger>
           </TabsList>
@@ -899,14 +898,6 @@ export function TaskDetailPanel() {
                 <Trash2 className="h-4 w-4 mr-2" />
                 Eliminar tarea
               </Button>
-            </TabsContent>
-
-            <TabsContent value="descripcion" className="mt-0">
-              <RichTextEditor
-                content={task.description || ''}
-                onChange={handleDescriptionChange}
-                placeholder="Describe la tarea, agrega listas, tablas, codigo..."
-              />
             </TabsContent>
 
             <TabsContent value="archivos" className="mt-0">
