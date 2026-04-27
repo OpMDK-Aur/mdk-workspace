@@ -236,23 +236,59 @@ export const useTimerStore = create<TimerState>()(
       },
 
       startTimerForTask: async (taskId: string, taskTitle: string, clientId: string | null) => {
+        console.log('[v0] startTimerForTask called:', { taskId, taskTitle, clientId })
         const state = get()
         
         // If timer is running, stop it first
         if (state.isRunning && state.currentEntryId) {
+          console.log('[v0] startTimerForTask - stopping existing timer')
           await get().stopTimer()
         }
 
-        // Set state for the task
+        // Set state for the task AND start the timer in the same action
+        const supabase = createClient()
+        const startedAt = new Date().toISOString()
+        const description = `[Tarea] ${taskTitle}`
+        
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser()
+        console.log('[v0] startTimerForTask - user:', user?.id)
+        
+        // Insert into Supabase immediately
+        const { data: newEntry, error } = await supabase
+          .from('time_entries')
+          .insert({
+            user_id: user?.id ?? null,
+            client_id: clientId,
+            description: description,
+            started_at: startedAt,
+            ended_at: null,
+            duration_sec: null,
+            billable: true,
+          })
+          .select()
+          .single()
+
+        console.log('[v0] startTimerForTask - insert result:', { newEntry, error })
+
+        if (error) {
+          console.error('[v0] startTimerForTask - Error creating time entry:', error)
+          return
+        }
+
+        // Update state with all values including the entry
         set({
-          description: `[Tarea] ${taskTitle}`,
+          description: description,
           clientId: clientId,
           billable: true,
           taskId: taskId,
+          isRunning: true,
+          startedAt: startedAt,
+          currentEntryId: newEntry.id,
+          entries: [newEntry as TimeEntry, ...get().entries],
         })
 
-        // Start the timer
-        await get().startTimer()
+        console.log('[v0] startTimerForTask - success, entry id:', newEntry.id, 'startedAt:', startedAt)
       },
 
       deleteEntry: async (id) => {
