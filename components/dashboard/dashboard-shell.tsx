@@ -5,7 +5,6 @@ import { useTheme } from 'next-themes'
 import type { User } from '@supabase/supabase-js'
 import type { Profile, Client } from '@/lib/types'
 import { Sidebar } from './sidebar'
-import { MadkyWidget } from '@/components/madky/madky-widget'
 import { ActiveTimerBar } from '@/components/timer/active-timer-bar'
 
 interface DashboardShellProps {
@@ -54,12 +53,6 @@ export function DashboardShell({ user, profile, clients, children }: DashboardSh
           {children}
         </main>
       </div>
-      
-      {/* Madky AI Assistant Widget */}
-      <MadkyWidget 
-        selectedClient={selectedClient}
-        allClients={clients}
-      />
     </div>
   )
 }
