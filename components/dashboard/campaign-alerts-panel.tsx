@@ -1,0 +1,654 @@
+'use client'
+
+import { useState, useMemo } from 'react'
+import type { ScorecardRow, Client } from '@/lib/types'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  AlertTriangle,
+  Search,
+  TrendingDown,
+  TrendingUp,
+  Ban,
+  DollarSign,
+  MousePointerClick,
+  Eye,
+  Target,
+  ChevronDown,
+  ChevronUp,
+  Info,
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+// ── Alert Types ───────────────────────────────────────────────────────────────
+
+type AlertSeverity = 'critical' | 'warning' | 'info'
+type AlertType = 
+  | 'saldo_negativo'
+  | 'cpl_alto'
+  | 'cpl_bajo'
+  | 'zero_impressions'
+  | 'zero_clicks'
+  | 'zero_conversions'
+  | 'crm_mismatch'
+
+interface CampaignAlert {
+  id: string
+  clientId: string
+  clientName: string
+  campaignId: string
+  campaignName: string
+  platform: 'meta' | 'google'
+  alertType: AlertType
+  severity: AlertSeverity
+  message: string
+  value: number | null
+  threshold: number | null
+}
+
+interface ClientAlertGroup {
+  clientId: string
+  clientName: string
+  alerts: CampaignAlert[]
+  criticalCount: number
+  warningCount: number
+}
+
+// ── Config ────────────────────────────────────────────────────────────────────
+
+const ALERT_TYPE_CONFIG: Record<AlertType, {
+  label: string
+  icon: React.ReactNode
+  color: string
+  bgColor: string
+  borderColor: string
+}> = {
+  saldo_negativo: {
+    label: 'Saldo en rojo',
+    icon: <DollarSign className="h-3.5 w-3.5" />,
+    color: 'text-red-400',
+    bgColor: 'bg-red-500/10',
+    borderColor: 'border-red-500/30',
+  },
+  cpl_alto: {
+    label: 'CPL alto',
+    icon: <TrendingUp className="h-3.5 w-3.5" />,
+    color: 'text-amber-400',
+    bgColor: 'bg-amber-500/10',
+    borderColor: 'border-amber-500/30',
+  },
+  cpl_bajo: {
+    label: 'CPL muy bajo',
+    icon: <TrendingDown className="h-3.5 w-3.5" />,
+    color: 'text-blue-400',
+    bgColor: 'bg-blue-500/10',
+    borderColor: 'border-blue-500/30',
+  },
+  zero_impressions: {
+    label: '0 impresiones',
+    icon: <Eye className="h-3.5 w-3.5" />,
+    color: 'text-red-400',
+    bgColor: 'bg-red-500/10',
+    borderColor: 'border-red-500/30',
+  },
+  zero_clicks: {
+    label: '0 clics',
+    icon: <MousePointerClick className="h-3.5 w-3.5" />,
+    color: 'text-orange-400',
+    bgColor: 'bg-orange-500/10',
+    borderColor: 'border-orange-500/30',
+  },
+  zero_conversions: {
+    label: '0 conversiones',
+    icon: <Target className="h-3.5 w-3.5" />,
+    color: 'text-amber-400',
+    bgColor: 'bg-amber-500/10',
+    borderColor: 'border-amber-500/30',
+  },
+  crm_mismatch: {
+    label: 'Diferencia CRM',
+    icon: <AlertTriangle className="h-3.5 w-3.5" />,
+    color: 'text-violet-400',
+    bgColor: 'bg-violet-500/10',
+    borderColor: 'border-violet-500/30',
+  },
+}
+
+const SEVERITY_CONFIG: Record<AlertSeverity, {
+  label: string
+  color: string
+  bgColor: string
+  dotColor: string
+}> = {
+  critical: {
+    label: 'Critico',
+    color: 'text-red-400',
+    bgColor: 'bg-red-500/10',
+    dotColor: 'bg-red-500',
+  },
+  warning: {
+    label: 'Atencion',
+    color: 'text-amber-400',
+    bgColor: 'bg-amber-500/10',
+    dotColor: 'bg-amber-500',
+  },
+  info: {
+    label: 'Info',
+    color: 'text-blue-400',
+    bgColor: 'bg-blue-500/10',
+    dotColor: 'bg-blue-500',
+  },
+}
+
+// ── Thresholds ────────────────────────────────────────────────────────────────
+
+const THRESHOLDS = {
+  CPL_HIGH_MULTIPLIER: 2.0, // CPL > 2x average = high
+  CPL_LOW_MULTIPLIER: 0.3,  // CPL < 0.3x average = suspiciously low
+  MIN_SPEND_FOR_ALERTS: 100, // Minimum spend to consider for CPL alerts
+  CRM_MISMATCH_THRESHOLD: 0.2, // 20% difference between platform and CRM
+}
+
+// ── Alert Detection ───────────────────────────────────────────────────────────
+
+function detectAlerts(
+  rows: ScorecardRow[],
+  clients: Client[],
+  averageCPL: number
+): CampaignAlert[] {
+  const alerts: CampaignAlert[] = []
+
+  for (const row of rows) {
+    const client = clients.find(c => c.id === row.clientId)
+    const campaignId = row.campaignId || `${row.clientId}-${row.platform}`
+    const campaignName = row.campaignName || `${row.platform} Ads`
+
+    // Zero impressions (critical if spend > 0)
+    if (row.impressions === 0 && row.spend > 0) {
+      alerts.push({
+        id: `${campaignId}-zero-impressions`,
+        clientId: row.clientId,
+        clientName: row.clientName,
+        campaignId,
+        campaignName,
+        platform: row.platform,
+        alertType: 'zero_impressions',
+        severity: 'critical',
+        message: `Sin impresiones con $${row.spend.toFixed(0)} gastados`,
+        value: row.impressions,
+        threshold: null,
+      })
+    }
+
+    // Zero clicks (warning if impressions > 1000)
+    if (row.clicks === 0 && row.impressions > 1000) {
+      alerts.push({
+        id: `${campaignId}-zero-clicks`,
+        clientId: row.clientId,
+        clientName: row.clientName,
+        campaignId,
+        campaignName,
+        platform: row.platform,
+        alertType: 'zero_clicks',
+        severity: 'warning',
+        message: `Sin clics con ${row.impressions.toLocaleString()} impresiones`,
+        value: row.clicks,
+        threshold: null,
+      })
+    }
+
+    // Zero conversions (warning if spend > threshold)
+    if (row.leads === 0 && row.spend >= THRESHOLDS.MIN_SPEND_FOR_ALERTS) {
+      alerts.push({
+        id: `${campaignId}-zero-conversions`,
+        clientId: row.clientId,
+        clientName: row.clientName,
+        campaignId,
+        campaignName,
+        platform: row.platform,
+        alertType: 'zero_conversions',
+        severity: 'warning',
+        message: `Sin conversiones con $${row.spend.toFixed(0)} invertidos`,
+        value: row.leads,
+        threshold: null,
+      })
+    }
+
+    // High CPL
+    if (row.cpl > 0 && averageCPL > 0 && row.spend >= THRESHOLDS.MIN_SPEND_FOR_ALERTS) {
+      const threshold = averageCPL * THRESHOLDS.CPL_HIGH_MULTIPLIER
+      if (row.cpl > threshold) {
+        alerts.push({
+          id: `${campaignId}-high-cpl`,
+          clientId: row.clientId,
+          clientName: row.clientName,
+          campaignId,
+          campaignName,
+          platform: row.platform,
+          alertType: 'cpl_alto',
+          severity: row.cpl > threshold * 1.5 ? 'critical' : 'warning',
+          message: `CPL $${row.cpl.toFixed(0)} (promedio: $${averageCPL.toFixed(0)})`,
+          value: row.cpl,
+          threshold,
+        })
+      }
+    }
+
+    // Suspiciously low CPL
+    if (row.cpl > 0 && averageCPL > 0 && row.leads >= 3) {
+      const threshold = averageCPL * THRESHOLDS.CPL_LOW_MULTIPLIER
+      if (row.cpl < threshold) {
+        alerts.push({
+          id: `${campaignId}-low-cpl`,
+          clientId: row.clientId,
+          clientName: row.clientName,
+          campaignId,
+          campaignName,
+          platform: row.platform,
+          alertType: 'cpl_bajo',
+          severity: 'info',
+          message: `CPL muy bajo $${row.cpl.toFixed(0)} - revisar calidad`,
+          value: row.cpl,
+          threshold,
+        })
+      }
+    }
+
+    // CRM mismatch (coming soon - placeholder logic)
+    if (row.crmContacts > 0 && row.leads > 0) {
+      const diff = Math.abs(row.leads - row.crmContacts) / row.leads
+      if (diff > THRESHOLDS.CRM_MISMATCH_THRESHOLD) {
+        alerts.push({
+          id: `${campaignId}-crm-mismatch`,
+          clientId: row.clientId,
+          clientName: row.clientName,
+          campaignId,
+          campaignName,
+          platform: row.platform,
+          alertType: 'crm_mismatch',
+          severity: diff > 0.5 ? 'warning' : 'info',
+          message: `Plataforma: ${row.leads} vs CRM: ${row.crmContacts}`,
+          value: row.leads,
+          threshold: row.crmContacts,
+        })
+      }
+    }
+  }
+
+  return alerts
+}
+
+// ── Components ────────────────────────────────────────────────────────────────
+
+function AlertTypeBadge({ type }: { type: AlertType }) {
+  const config = ALERT_TYPE_CONFIG[type]
+  return (
+    <span className={cn(
+      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium',
+      config.bgColor, config.color
+    )}>
+      {config.icon}
+      {config.label}
+    </span>
+  )
+}
+
+function SeverityDot({ severity }: { severity: AlertSeverity }) {
+  const config = SEVERITY_CONFIG[severity]
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger>
+          <span className={cn('h-2 w-2 rounded-full shrink-0', config.dotColor)} />
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {config.label}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+function PlatformBadge({ platform }: { platform: 'meta' | 'google' }) {
+  return platform === 'meta' ? (
+    <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-blue-400/30 text-blue-400 bg-blue-500/5">
+      Meta
+    </Badge>
+  ) : (
+    <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-green-400/30 text-green-400 bg-green-500/5">
+      Google
+    </Badge>
+  )
+}
+
+function ClientAlertRow({ group, expanded, onToggle }: { 
+  group: ClientAlertGroup
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const totalAlerts = group.alerts.length
+  const hasCritical = group.criticalCount > 0
+
+  return (
+    <div className={cn(
+      'rounded-lg border transition-all',
+      hasCritical ? 'border-red-500/30 bg-red-500/5' : 'border-border/50'
+    )}>
+      {/* Header row */}
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors"
+      >
+        <div className={cn(
+          'h-2.5 w-2.5 rounded-full shrink-0',
+          hasCritical ? 'bg-red-500' : group.warningCount > 0 ? 'bg-amber-500' : 'bg-blue-500'
+        )} />
+        
+        <div className="flex-1 min-w-0 text-left">
+          <p className="text-sm font-medium text-foreground truncate">{group.clientName}</p>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {group.criticalCount > 0 && (
+            <span className="text-[10px] font-semibold text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">
+              {group.criticalCount} critico{group.criticalCount !== 1 ? 's' : ''}
+            </span>
+          )}
+          {group.warningCount > 0 && (
+            <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
+              {group.warningCount} alerta{group.warningCount !== 1 ? 's' : ''}
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground">{totalAlerts} total</span>
+          {expanded ? (
+            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          )}
+        </div>
+      </button>
+
+      {/* Expanded alerts */}
+      {expanded && (
+        <div className="border-t border-border/50 divide-y divide-border/30">
+          {group.alerts.map((alert) => (
+            <div 
+              key={alert.id} 
+              className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors"
+            >
+              <SeverityDot severity={alert.severity} />
+              
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-xs font-medium text-foreground truncate max-w-[200px]">
+                    {alert.campaignName}
+                  </p>
+                  <PlatformBadge platform={alert.platform} />
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">{alert.message}</p>
+              </div>
+
+              <AlertTypeBadge type={alert.alertType} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Filter Options ────────────────────────────────────────────────────────────
+
+type FilterOption = 'all' | 'critical' | 'warning' | 'zero_metrics' | 'cpl_issues'
+
+const FILTER_OPTIONS: { value: FilterOption; label: string }[] = [
+  { value: 'all', label: 'Todas' },
+  { value: 'critical', label: 'Criticas' },
+  { value: 'warning', label: 'Atencion' },
+  { value: 'zero_metrics', label: '0 metricas' },
+  { value: 'cpl_issues', label: 'CPL' },
+]
+
+// ── Main Component ────────────────────────────────────────────────────────────
+
+interface CampaignAlertsPanelProps {
+  rows: ScorecardRow[]
+  clients: Client[]
+  loading?: boolean
+}
+
+export function CampaignAlertsPanel({ rows, clients, loading }: CampaignAlertsPanelProps) {
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<FilterOption>('all')
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
+
+  // Calculate average CPL for threshold
+  const averageCPL = useMemo(() => {
+    const validCPLs = rows.filter(r => r.cpl > 0 && r.spend >= THRESHOLDS.MIN_SPEND_FOR_ALERTS)
+    if (validCPLs.length === 0) return 0
+    return validCPLs.reduce((sum, r) => sum + r.cpl, 0) / validCPLs.length
+  }, [rows])
+
+  // Detect all alerts
+  const allAlerts = useMemo(() => detectAlerts(rows, clients, averageCPL), [rows, clients, averageCPL])
+
+  // Group alerts by client
+  const groupedAlerts = useMemo(() => {
+    const groups = new Map<string, ClientAlertGroup>()
+    
+    for (const alert of allAlerts) {
+      if (!groups.has(alert.clientId)) {
+        groups.set(alert.clientId, {
+          clientId: alert.clientId,
+          clientName: alert.clientName,
+          alerts: [],
+          criticalCount: 0,
+          warningCount: 0,
+        })
+      }
+      const group = groups.get(alert.clientId)!
+      group.alerts.push(alert)
+      if (alert.severity === 'critical') group.criticalCount++
+      if (alert.severity === 'warning') group.warningCount++
+    }
+
+    return Array.from(groups.values())
+  }, [allAlerts])
+
+  // Apply filters
+  const filteredGroups = useMemo(() => {
+    let result = groupedAlerts
+
+    // Search filter
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      result = result.filter(g => 
+        g.clientName.toLowerCase().includes(q) ||
+        g.alerts.some(a => a.campaignName.toLowerCase().includes(q))
+      )
+    }
+
+    // Type filter
+    if (filter !== 'all') {
+      result = result.map(g => {
+        let filteredAlerts = g.alerts
+        
+        if (filter === 'critical') {
+          filteredAlerts = g.alerts.filter(a => a.severity === 'critical')
+        } else if (filter === 'warning') {
+          filteredAlerts = g.alerts.filter(a => a.severity === 'warning')
+        } else if (filter === 'zero_metrics') {
+          filteredAlerts = g.alerts.filter(a => 
+            a.alertType === 'zero_impressions' || 
+            a.alertType === 'zero_clicks' || 
+            a.alertType === 'zero_conversions'
+          )
+        } else if (filter === 'cpl_issues') {
+          filteredAlerts = g.alerts.filter(a => 
+            a.alertType === 'cpl_alto' || a.alertType === 'cpl_bajo'
+          )
+        }
+
+        return {
+          ...g,
+          alerts: filteredAlerts,
+          criticalCount: filteredAlerts.filter(a => a.severity === 'critical').length,
+          warningCount: filteredAlerts.filter(a => a.severity === 'warning').length,
+        }
+      }).filter(g => g.alerts.length > 0)
+    }
+
+    // Sort: most critical first
+    result.sort((a, b) => {
+      if (a.criticalCount !== b.criticalCount) return b.criticalCount - a.criticalCount
+      if (a.warningCount !== b.warningCount) return b.warningCount - a.warningCount
+      return b.alerts.length - a.alerts.length
+    })
+
+    return result
+  }, [groupedAlerts, search, filter])
+
+  const toggleClient = (clientId: string) => {
+    setExpandedClients(prev => {
+      const next = new Set(prev)
+      if (next.has(clientId)) {
+        next.delete(clientId)
+      } else {
+        next.add(clientId)
+      }
+      return next
+    })
+  }
+
+  const totalCritical = allAlerts.filter(a => a.severity === 'critical').length
+  const totalWarning = allAlerts.filter(a => a.severity === 'warning').length
+  const totalAlerts = allAlerts.length
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className={cn(
+              'h-9 w-9 rounded-lg flex items-center justify-center shrink-0',
+              totalCritical > 0 ? 'bg-red-500/10' : totalWarning > 0 ? 'bg-amber-500/10' : 'bg-muted'
+            )}>
+              <AlertTriangle className={cn(
+                'h-4.5 w-4.5',
+                totalCritical > 0 ? 'text-red-400' : totalWarning > 0 ? 'text-amber-400' : 'text-muted-foreground'
+              )} />
+            </div>
+            <div>
+              <CardTitle className="text-sm font-semibold">Alertas de Campanas</CardTitle>
+              {totalAlerts > 0 ? (
+                <div className="flex items-center gap-2 mt-0.5">
+                  {totalCritical > 0 && (
+                    <span className="text-[10px] text-red-400 font-semibold">
+                      {totalCritical} critica{totalCritical !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {totalWarning > 0 && (
+                    <span className="text-[10px] text-amber-400 font-semibold">
+                      {totalWarning} atencion
+                    </span>
+                  )}
+                  <span className="text-[10px] text-muted-foreground">
+                    {totalAlerts} total
+                  </span>
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground mt-0.5">Sin alertas activas</p>
+              )}
+            </div>
+          </div>
+
+          <div className="relative w-full sm:w-52">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Buscar cliente o campana..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="pt-0">
+        {/* Filter chips */}
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {FILTER_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setFilter(opt.value)}
+              className={cn(
+                'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-all',
+                filter === opt.value
+                  ? 'bg-foreground text-background border-foreground'
+                  : 'bg-transparent text-muted-foreground border-border/60 hover:border-border hover:text-foreground'
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <Skeleton key={i} className="h-14 w-full rounded-lg" />
+            ))}
+          </div>
+        ) : filteredGroups.length === 0 ? (
+          <div className="py-12 flex flex-col items-center justify-center gap-3 text-center">
+            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+              <AlertTriangle className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                {totalAlerts === 0 ? 'Sin alertas de campanas' : 'Sin resultados'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {totalAlerts === 0 
+                  ? 'Todas las campanas estan funcionando dentro de los parametros normales.'
+                  : `No hay alertas que coincidan con "${search}" y el filtro seleccionado.`
+                }
+              </p>
+            </div>
+          </div>
+        ) : (
+          <ScrollArea className="max-h-[500px] pr-2">
+            <div className="space-y-2">
+              {filteredGroups.map(group => (
+                <ClientAlertRow
+                  key={group.clientId}
+                  group={group}
+                  expanded={expandedClients.has(group.clientId)}
+                  onToggle={() => toggleClient(group.clientId)}
+                />
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+
+        {/* Info footer */}
+        {totalAlerts > 0 && (
+          <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/50">
+            <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <p className="text-[11px] text-muted-foreground">
+              Umbrales: CPL alto {'>'} {THRESHOLDS.CPL_HIGH_MULTIPLIER}x promedio | 
+              CPL bajo {'<'} {THRESHOLDS.CPL_LOW_MULTIPLIER}x promedio | 
+              Min. inversion: ${THRESHOLDS.MIN_SPEND_FOR_ALERTS}
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}

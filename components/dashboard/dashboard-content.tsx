@@ -8,6 +8,7 @@ import { InvestmentTrendChart } from './investment-trend-chart'
 import { ScorecardTable } from './scorecard-table'
 import { ScorecardTimeline } from './scorecard-timeline'
 import { ConversionDailyTable } from './conversion-daily-table'
+import { CampaignAlertsPanel } from './campaign-alerts-panel'
 import { DashboardFiltersBar } from './filters-bar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -394,6 +395,15 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
             ))}
           </section>
         )}
+
+        {/* Alerts Panel */}
+        <section>
+          <CampaignAlertsPanel
+            rows={scorecardRows}
+            clients={clients}
+            loading={loading}
+          />
+        </section>
 
         {/* KPIs */}
         <section>
