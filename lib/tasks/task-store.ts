@@ -319,9 +319,10 @@ export const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; b
   demorada: { label: 'Demorada', color: 'text-orange-400', bgColor: 'bg-orange-500/10', borderColor: 'border-orange-500/30' },
   pausada: { label: 'Pausada', color: 'text-amber-400', bgColor: 'bg-amber-500/10', borderColor: 'border-amber-500/30' },
   pendiente_aprobacion: { label: 'Pendiente aprobacion', color: 'text-purple-400', bgColor: 'bg-purple-500/10', borderColor: 'border-purple-500/30' },
+  resuelto: { label: 'Resuelto', color: 'text-green-400', bgColor: 'bg-green-500/10', borderColor: 'border-green-500/30' },
 }
 
-export const STATUS_ORDER: TaskStatus[] = ['pendiente_aprobacion', 'pendiente', 'resolviendo', 'demorada', 'pausada']
+export const STATUS_ORDER: TaskStatus[] = ['pendiente_aprobacion', 'pendiente', 'resolviendo', 'demorada', 'pausada', 'resuelto']
 
 export const PRIORITY_CONFIG: Record<TaskPriority, { label: string; color: string; bgColor: string }> = {
   alta: { label: 'Alta', color: 'text-red-400', bgColor: 'bg-red-500/15' },

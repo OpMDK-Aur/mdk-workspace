@@ -244,7 +244,7 @@ export interface ClientBudgetAlert {
 
 // ── Task Management ───────────────────────────────────────────────────────────
 
-export type TaskStatus = 'pendiente' | 'resolviendo' | 'demorada' | 'pausada' | 'pendiente_aprobacion'
+export type TaskStatus = 'pendiente' | 'resolviendo' | 'demorada' | 'pausada' | 'pendiente_aprobacion' | 'resuelto'
 export type TaskPriority = 'alta' | 'media' | 'baja'
 export type TaskType = 'crm' | 'meta_ads' | 'soporte' | 'integracion' | 'reportes' | 'desarrollo'
 
