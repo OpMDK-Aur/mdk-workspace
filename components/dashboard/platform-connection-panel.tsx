@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle2, AlertCircle, RefreshCw, Loader2, Calendar } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 
 interface TokenInfo {
   connected_email: string | null
@@ -26,52 +25,6 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [loadingAds, setLoadingAds] = useState(false)
   const [loadingCalendar, setLoadingCalendar] = useState(false)
-
-  // Handle saving calendar token after Supabase OAuth redirect
-  useEffect(() => {
-    const saveCalendarToken = async () => {
-      const saveCalendar = searchParams.get('save_calendar')
-      if (saveCalendar !== 'true') return
-
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-
-      console.log('[v0] save_calendar - Session:', !!session)
-      console.log('[v0] save_calendar - provider_token:', !!session?.provider_token)
-      console.log('[v0] save_calendar - provider_refresh_token:', !!session?.provider_refresh_token)
-
-      if (session?.provider_token) {
-        const { error: dbError } = await supabase
-          .from('platform_tokens')
-          .upsert({
-            platform: 'google_calendar',
-            access_token: session.provider_token,
-            refresh_token: session.provider_refresh_token || null,
-            token_expiry: new Date(Date.now() + 3600 * 1000).toISOString(),
-            connected_email: session.user?.email || null,
-            updated_at: new Date().toISOString(),
-          }, {
-            onConflict: 'platform',
-          })
-
-        if (dbError) {
-          console.error('[v0] save_calendar - DB error:', dbError)
-          setNotice({ type: 'error', message: 'Error al guardar el token en la base de datos.' })
-        } else {
-          console.log('[v0] save_calendar - Token saved successfully')
-          setNotice({ type: 'success', message: 'Cuenta de Google Calendar conectada correctamente.' })
-        }
-        router.replace('/dashboard/platform')
-        router.refresh()
-      } else {
-        console.error('[v0] save_calendar - No provider_token in session')
-        setNotice({ type: 'error', message: 'No se obtuvo el token de Google. Asegurate de tener Google configurado como proveedor en Supabase.' })
-        router.replace('/dashboard/platform')
-      }
-    }
-
-    saveCalendarToken()
-  }, [searchParams, router])
 
   // Handle URL params for success/error messages
   useEffect(() => {
@@ -107,27 +60,9 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
     window.location.href = '/api/auth/google-ads'
   }
 
-  const handleConnectCalendar = async () => {
+  const handleConnectCalendar = () => {
     setLoadingCalendar(true)
-    
-    const supabase = createClient()
-    
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        scopes: 'https://www.googleapis.com/auth/calendar',
-        redirectTo: `${window.location.origin}/dashboard/platform?save_calendar=true`,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'select_account consent',
-        },
-      },
-    })
-
-    if (error) {
-      setNotice({ type: 'error', message: `Error al conectar: ${error.message}` })
-      setLoadingCalendar(false)
-    }
+    window.location.href = '/api/auth/google-calendar'
   }
 
   const isAdsConnected = Boolean(googleToken)
