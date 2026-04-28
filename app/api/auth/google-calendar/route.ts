@@ -11,11 +11,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'GOOGLE_CLIENT_ID no configurado' }, { status: 500 })
   }
 
-  // Derive redirect URI from the incoming request so it works on localhost AND production
-  const origin = request.nextUrl.origin
-  const redirectUri = `${origin}/api/auth/google-calendar/callback`
-
-  console.log('[google-calendar-oauth] Redirect URI:', redirectUri)
+  // Use app URL for redirect URI
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.madketing.io'
+  const redirectUri = `${appUrl}/api/auth/google-calendar/callback`
 
   const params = new URLSearchParams({
     client_id: clientId,
