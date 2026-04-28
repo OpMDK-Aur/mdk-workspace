@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.madketing.io'
   const origin = request.nextUrl.origin
   const redirectUri = `${origin}/api/auth/google-calendar/callback`
   const sp = request.nextUrl.searchParams
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest) {
 
   if (error || !code) {
     return NextResponse.redirect(
-      new URL(`/dashboard/platform?error=${encodeURIComponent(error || 'no_code')}`, origin)
+      new URL(`/dashboard/platform?error=${encodeURIComponent(error || 'no_code')}`, appUrl)
     )
   }
 
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
 
   if (!clientId || !clientSecret) {
     return NextResponse.redirect(
-      new URL('/dashboard/platform?error=missing_credentials', origin)
+      new URL('/dashboard/platform?error=missing_credentials', appUrl)
     )
   }
 
@@ -44,14 +45,14 @@ export async function GET(request: NextRequest) {
   if (tokenData.error) {
     console.error('[google-calendar-oauth] Token error:', tokenData.error, tokenData.error_description)
     return NextResponse.redirect(
-      new URL(`/dashboard/platform?error=${encodeURIComponent(tokenData.error_description || tokenData.error)}`, origin)
+      new URL(`/dashboard/platform?error=${encodeURIComponent(tokenData.error_description || tokenData.error)}`, appUrl)
     )
   }
 
   if (!tokenData.access_token) {
     console.error('[google-calendar-oauth] No access_token received')
     return NextResponse.redirect(
-      new URL(`/dashboard/platform?error=no_access_token`, origin)
+      new URL(`/dashboard/platform?error=no_access_token`, appUrl)
     )
   }
 
@@ -79,7 +80,7 @@ export async function GET(request: NextRequest) {
     } else {
       console.error('[google-calendar-oauth] No refresh_token available - user needs to revoke and re-authorize')
       return NextResponse.redirect(
-        new URL('/dashboard/platform?error=no_refresh_token_revoke_required', origin)
+        new URL('/dashboard/platform?error=no_refresh_token_revoke_required', appUrl)
       )
     }
   }
@@ -101,8 +102,8 @@ export async function GET(request: NextRequest) {
 
   if (dbError) {
     console.error('[google-calendar-oauth] DB error:', dbError)
-    return NextResponse.redirect(new URL('/dashboard/platform?error=db_error', origin))
+    return NextResponse.redirect(new URL('/dashboard/platform?error=db_error', appUrl))
   }
 
-  return NextResponse.redirect(new URL('/dashboard/platform?connected=google_calendar', origin))
+  return NextResponse.redirect(new URL('/dashboard/platform?connected=google_calendar', appUrl))
 }
