@@ -83,24 +83,22 @@ export async function POST(request: NextRequest) {
     oauth2Client.setCredentials({ access_token: accessToken })
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client })
 
-    const calendarEvent = {
+    // Build event following Google Calendar API documentation
+    // https://developers.google.com/calendar/api/guides/create-events
+    const timeZone = event.timeZone || 'America/Argentina/Buenos_Aires'
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const calendarEvent: any = {
       summary: event.title,
       description: event.description || '',
       start: {
         dateTime: event.startDateTime,
-        timeZone: event.timeZone || 'America/Argentina/Buenos_Aires',
+        timeZone: timeZone,
       },
       end: {
         dateTime: event.endDateTime,
-        timeZone: event.timeZone || 'America/Argentina/Buenos_Aires',
+        timeZone: timeZone,
       },
-      attendees: event.attendees?.map((email: string) => ({ email })) || [],
-      conferenceData: event.addMeet ? {
-        createRequest: {
-          requestId: `meet-${Date.now()}`,
-          conferenceSolutionKey: { type: 'hangoutsMeet' },
-        },
-      } : undefined,
       reminders: {
         useDefault: false,
         overrides: [
@@ -110,6 +108,21 @@ export async function POST(request: NextRequest) {
       },
     }
 
+    // Add attendees if provided
+    if (event.attendees && event.attendees.length > 0) {
+      calendarEvent.attendees = event.attendees.map((email: string) => ({ email }))
+    }
+
+    // Add Google Meet conference if requested
+    if (event.addMeet) {
+      calendarEvent.conferenceData = {
+        createRequest: {
+          requestId: `mdk-meet-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          conferenceSolutionKey: { type: 'hangoutsMeet' },
+        },
+      }
+    }
+
     console.log('[v0] Calendar POST - Inserting event to calendar')
     console.log('[v0] Calendar POST - Event data:', JSON.stringify(calendarEvent, null, 2))
 
@@ -117,7 +130,7 @@ export async function POST(request: NextRequest) {
       calendarId: 'primary',
       requestBody: calendarEvent,
       conferenceDataVersion: event.addMeet ? 1 : 0,
-      sendUpdates: 'all',
+      sendUpdates: event.attendees?.length > 0 ? 'all' : 'none',
     })
 
     console.log('[v0] Calendar POST - Event created successfully:', response.data.id)

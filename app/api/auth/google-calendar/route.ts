@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'openid email profile https://www.googleapis.com/auth/calendar.events',
+    scope: 'openid email profile https://www.googleapis.com/auth/calendar',
     access_type: 'offline',
     prompt: 'select_account consent',
     state: user.id,
