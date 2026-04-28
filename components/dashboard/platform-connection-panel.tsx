@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle2, AlertCircle, RefreshCw, Loader2, Calendar } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 interface TokenInfo {
   connected_email: string | null
@@ -25,6 +26,31 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [loadingAds, setLoadingAds] = useState(false)
   const [loadingCalendar, setLoadingCalendar] = useState(false)
+
+  // Log Calendar tokens after Supabase OAuth
+  useEffect(() => {
+    const logCalendarTokens = async () => {
+      const showTokens = searchParams.get('show_calendar_tokens')
+      if (showTokens !== 'true') return
+
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+
+      console.log('========== GOOGLE CALENDAR TOKENS ==========')
+      console.log('Email:', session?.user?.email)
+      console.log('Access Token:', session?.provider_token)
+      console.log('Refresh Token:', session?.provider_refresh_token)
+      console.log('=============================================')
+      
+      if (session?.provider_token) {
+        alert('Tokens mostrados en la consola del navegador (F12). Copia el Refresh Token y agregalo en Supabase.')
+      } else {
+        alert('No se obtuvieron tokens. Verifica que Google este configurado como proveedor en Supabase.')
+      }
+    }
+
+    logCalendarTokens()
+  }, [searchParams])
 
   // Handle URL params for success/error messages
   useEffect(() => {
@@ -60,9 +86,27 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
     window.location.href = '/api/auth/google-ads'
   }
 
-  const handleConnectCalendar = () => {
+  const handleConnectCalendar = async () => {
     setLoadingCalendar(true)
-    window.location.href = '/api/auth/google-calendar'
+    
+    const supabase = createClient()
+    
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        scopes: 'https://www.googleapis.com/auth/calendar',
+        redirectTo: `${window.location.origin}/dashboard/platform?show_calendar_tokens=true`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+      },
+    })
+
+    if (error) {
+      setNotice({ type: 'error', message: `Error al conectar: ${error.message}` })
+      setLoadingCalendar(false)
+    }
   }
 
   const isAdsConnected = Boolean(googleToken)
