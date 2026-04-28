@@ -8,6 +8,7 @@ import { KanbanView } from './kanban-view'
 import { ListView } from './list-view'
 import { TaskDetailPanel } from './task-detail-panel'
 import { NewTaskModal } from './new-task-modal'
+import { FilterBuilder } from './filter-builder'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -22,18 +23,30 @@ import {
   Plus,
   LayoutGrid,
   List,
-  Filter,
   ChevronDown,
   FileText,
   X,
 } from 'lucide-react'
 
 export function TaskBoard() {
-  const { view, setView, filters, setFilter, clearFilters } = useTaskStore()
+  const { 
+    view, 
+    setView, 
+    filters, 
+    setFilter, 
+    clearFilters,
+    advancedFilters,
+    setAdvancedFilters,
+    savedFilters,
+    saveFilter,
+    loadSavedFilter,
+    deleteSavedFilter,
+  } = useTaskStore()
   const [newTaskOpen, setNewTaskOpen] = useState(false)
 
-  const hasFilters = filters.priority || filters.assigneeId || filters.type || filters.dueThisWeek
-  const activeFilterCount = [filters.priority, filters.assigneeId, filters.type, filters.dueThisWeek].filter(Boolean).length
+  const hasSimpleFilters = filters.priority || filters.assigneeId || filters.type || filters.dueThisWeek
+  const hasAdvancedFilters = advancedFilters.length > 0
+  const hasFilters = hasSimpleFilters || hasAdvancedFilters
 
   return (
     <div className="flex flex-col h-full">
@@ -76,7 +89,17 @@ export function TaskBoard() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Filter chips */}
+          {/* Advanced Filter Builder */}
+          <FilterBuilder
+            filters={advancedFilters}
+            savedFilters={savedFilters}
+            onChange={setAdvancedFilters}
+            onSaveFilter={saveFilter}
+            onLoadFilter={loadSavedFilter}
+            onDeleteSavedFilter={deleteSavedFilter}
+          />
+
+          {/* Quick filter chips */}
           <div className="flex items-center gap-1.5">
             {/* All tasks chip */}
             <Badge
@@ -100,7 +123,7 @@ export function TaskBoard() {
                     filters.priority && 'bg-red-500/10 text-red-400 border-red-500/30'
                   )}
                 >
-                  Alta prioridad
+                  Prioridad
                   <ChevronDown className="h-3 w-3" />
                 </Badge>
               </DropdownMenuTrigger>
@@ -147,18 +170,6 @@ export function TaskBoard() {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-
-            {/* This week filter */}
-            <Badge
-              variant="outline"
-              className={cn(
-                'cursor-pointer px-2.5 py-1 h-7',
-                filters.dueThisWeek && 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-              )}
-              onClick={() => setFilter('dueThisWeek', !filters.dueThisWeek)}
-            >
-              Esta semana
-            </Badge>
 
             {/* Type filter */}
             <DropdownMenu>

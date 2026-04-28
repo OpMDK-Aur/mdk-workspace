@@ -357,24 +357,176 @@ export const CLIENTS = [
   { id: 'alambrados', name: 'Alambrados Patagonia' },
 ]
 
+// ── Filter Utility ────────────────────────────────────────────────────────────
+
+export function applyAdvancedFilters(tasks: Task[], filterGroups: FilterGroup[]): Task[] {
+  if (filterGroups.length === 0) return tasks
+  
+  return tasks.filter(task => {
+    // Each group is connected by OR at the top level
+    return filterGroups.some(group => {
+      // Rules within a group use the group's connector (AND/OR)
+      if (group.connector === 'and') {
+        return group.rules.every(rule => evaluateRule(task, rule))
+      } else {
+        return group.rules.some(rule => evaluateRule(task, rule))
+      }
+    })
+  })
+}
+
+function evaluateRule(task: Task, rule: FilterRule): boolean {
+  const { field, operator, value } = rule
+  
+  // Get the actual value from the task
+  let taskValue: string | string[] | boolean | Date | null | undefined
+  
+  switch (field) {
+    case 'status':
+      taskValue = task.status
+      break
+    case 'priority':
+      taskValue = task.priority
+      break
+    case 'assignee':
+      taskValue = task.assigneeId
+      break
+    case 'type':
+      taskValue = task.type
+      break
+    case 'client':
+      taskValue = task.clientName
+      break
+    case 'title':
+      taskValue = task.title
+      break
+    case 'dueDate':
+      taskValue = task.dueDate
+      break
+    case 'createdAt':
+      taskValue = task.createdAt
+      break
+    case 'isActive':
+      taskValue = task.isActive
+      break
+    default:
+      return true
+  }
+  
+  // Evaluate based on operator
+  switch (operator) {
+    case 'equals':
+      if (Array.isArray(value)) {
+        return value.includes(taskValue as string)
+      }
+      if (typeof value === 'boolean' || field === 'isActive') {
+        return String(taskValue) === String(value)
+      }
+      if (taskValue instanceof Date && typeof value === 'string') {
+        return taskValue.toISOString().split('T')[0] === value
+      }
+      return taskValue === value
+      
+    case 'not_equals':
+      if (Array.isArray(value)) {
+        return !value.includes(taskValue as string)
+      }
+      if (taskValue instanceof Date && typeof value === 'string') {
+        return taskValue.toISOString().split('T')[0] !== value
+      }
+      return taskValue !== value
+      
+    case 'contains':
+      if (typeof taskValue === 'string' && typeof value === 'string') {
+        return taskValue.toLowerCase().includes(value.toLowerCase())
+      }
+      if (Array.isArray(value)) {
+        return value.includes(taskValue as string)
+      }
+      return false
+      
+    case 'not_contains':
+      if (typeof taskValue === 'string' && typeof value === 'string') {
+        return !taskValue.toLowerCase().includes(value.toLowerCase())
+      }
+      if (Array.isArray(value)) {
+        return !value.includes(taskValue as string)
+      }
+      return true
+      
+    case 'is_empty':
+      return taskValue === null || taskValue === undefined || taskValue === ''
+      
+    case 'is_not_empty':
+      return taskValue !== null && taskValue !== undefined && taskValue !== ''
+      
+    case 'greater_than':
+      if (taskValue instanceof Date && typeof value === 'string') {
+        return taskValue > new Date(value)
+      }
+      return false
+      
+    case 'less_than':
+      if (taskValue instanceof Date && typeof value === 'string') {
+        return taskValue < new Date(value)
+      }
+      return false
+      
+    default:
+      return true
+  }
+}
+
 // ── Store ─────────────────────────────────────────────────────────────────────
+
+// Advanced filter types
+export interface FilterRule {
+  id: string
+  field: 'status' | 'priority' | 'assignee' | 'type' | 'client' | 'title' | 'dueDate' | 'createdAt' | 'isActive'
+  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'is_empty' | 'is_not_empty' | 'greater_than' | 'less_than'
+  value: string | string[] | boolean | null
+}
+
+export interface FilterGroup {
+  id: string
+  connector: 'and' | 'or'
+  rules: FilterRule[]
+}
+
+export interface SavedFilter {
+  id: string
+  name: string
+  groups: FilterGroup[]
+}
 
 interface TaskStore {
   tasks: Task[]
   selectedTaskId: string | null
   view: 'kanban' | 'list'
+  
+  // Legacy simple filters (for quick access)
   filters: {
     priority: TaskPriority | null
     assigneeId: string | null
     type: TaskType | null
     dueThisWeek: boolean
   }
+  
+  // Advanced filters
+  advancedFilters: FilterGroup[]
+  savedFilters: SavedFilter[]
 
   // Actions
   setView: (view: 'kanban' | 'list') => void
   setSelectedTask: (id: string | null) => void
   setFilter: (key: keyof TaskStore['filters'], value: unknown) => void
   clearFilters: () => void
+  
+  // Advanced filter actions
+  setAdvancedFilters: (filters: FilterGroup[]) => void
+  saveFilter: (name: string, groups: FilterGroup[]) => void
+  loadSavedFilter: (filter: SavedFilter) => void
+  deleteSavedFilter: (id: string) => void
 
   // Task mutations
   updateTaskStatus: (taskId: string, status: TaskStatus) => void
@@ -413,6 +565,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     type: null,
     dueThisWeek: false,
   },
+  advancedFilters: [],
+  savedFilters: [],
 
   setView: (view) => set({ view }),
   setSelectedTask: (id) => set({ selectedTaskId: id }),
@@ -421,7 +575,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   })),
   clearFilters: () => set({
     filters: { priority: null, assigneeId: null, type: null, dueThisWeek: false },
+    advancedFilters: [],
   }),
+  
+  // Advanced filters
+  setAdvancedFilters: (filters) => set({ advancedFilters: filters }),
+  saveFilter: (name, groups) => set((state) => ({
+    savedFilters: [...state.savedFilters, { id: crypto.randomUUID(), name, groups }],
+  })),
+  loadSavedFilter: (filter) => set({ advancedFilters: filter.groups }),
+  deleteSavedFilter: (id) => set((state) => ({
+    savedFilters: state.savedFilters.filter(f => f.id !== id),
+  })),
 
   updateTaskStatus: (taskId, status) => set((state) => ({
     tasks: state.tasks.map((t) =>
@@ -625,8 +790,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 export function useFilteredTasks() {
   const tasks = useTaskStore((s) => s.tasks)
   const filters = useTaskStore((s) => s.filters)
+  const advancedFilters = useTaskStore((s) => s.advancedFilters)
 
-  return tasks.filter((task) => {
+  // Apply simple filters first
+  let filteredTasks = tasks.filter((task) => {
     if (filters.priority && task.priority !== filters.priority) return false
     if (filters.assigneeId && task.assigneeId !== filters.assigneeId) return false
     if (filters.type && task.type !== filters.type) return false
@@ -638,6 +805,13 @@ export function useFilteredTasks() {
     }
     return true
   })
+
+  // Apply advanced filters if any
+  if (advancedFilters.length > 0) {
+    filteredTasks = applyAdvancedFilters(filteredTasks, advancedFilters)
+  }
+
+  return filteredTasks
 }
 
 export function useTasksByStatus() {
@@ -648,9 +822,12 @@ export function useTasksByStatus() {
     demorada: [],
     pausada: [],
     pendiente_aprobacion: [],
+    resuelto: [],
   }
   tasks.forEach((task) => {
-    grouped[task.status].push(task)
+    if (grouped[task.status]) {
+      grouped[task.status].push(task)
+    }
   })
   return grouped
 }
