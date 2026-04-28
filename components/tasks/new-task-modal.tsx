@@ -801,6 +801,14 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
         }
         break
 
+      case 'multi_input':
+        messageContent = {
+          content: step.question + (step.hint ? ` (${step.hint})` : ''),
+          isInput: true,
+          inputPlaceholder: step.placeholder,
+        }
+        break
+
       case 'priority':
         if (template.defaultPriority) {
           setTaskData((prev) => ({ ...prev, priority: template.defaultPriority! }))
