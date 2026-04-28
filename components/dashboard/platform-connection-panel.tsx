@@ -27,6 +27,53 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
   const [loadingAds, setLoadingAds] = useState(false)
   const [loadingCalendar, setLoadingCalendar] = useState(false)
 
+  // Handle saving calendar token after Supabase OAuth redirect
+  useEffect(() => {
+    const saveCalendarToken = async () => {
+      const saveCalendar = searchParams.get('save_calendar')
+      if (saveCalendar !== 'true') return
+
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+
+      console.log('[v0] save_calendar - Session:', !!session)
+      console.log('[v0] save_calendar - provider_token:', !!session?.provider_token)
+      console.log('[v0] save_calendar - provider_refresh_token:', !!session?.provider_refresh_token)
+
+      if (session?.provider_token) {
+        const { error: dbError } = await supabase
+          .from('platform_tokens')
+          .upsert({
+            platform: 'google_calendar',
+            access_token: session.provider_token,
+            refresh_token: session.provider_refresh_token || null,
+            token_expiry: new Date(Date.now() + 3600 * 1000).toISOString(),
+            connected_email: session.user?.email || null,
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'platform',
+          })
+
+        if (dbError) {
+          console.error('[v0] save_calendar - DB error:', dbError)
+          setNotice({ type: 'error', message: 'Error al guardar el token en la base de datos.' })
+        } else {
+          console.log('[v0] save_calendar - Token saved successfully')
+          setNotice({ type: 'success', message: 'Cuenta de Google Calendar conectada correctamente.' })
+        }
+        router.replace('/dashboard/platform')
+        router.refresh()
+      } else {
+        console.error('[v0] save_calendar - No provider_token in session')
+        setNotice({ type: 'error', message: 'No se obtuvo el token de Google. Asegurate de tener Google configurado como proveedor en Supabase.' })
+        router.replace('/dashboard/platform')
+      }
+    }
+
+    saveCalendarToken()
+  }, [searchParams, router])
+
+  // Handle URL params for success/error messages
   useEffect(() => {
     const connected = searchParams.get('connected')
     const error = searchParams.get('error')
@@ -69,7 +116,7 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
       provider: 'google',
       options: {
         scopes: 'https://www.googleapis.com/auth/calendar',
-        redirectTo: `${window.location.origin}/api/auth/google-calendar/supabase-callback`,
+        redirectTo: `${window.location.origin}/dashboard/platform?save_calendar=true`,
         queryParams: {
           access_type: 'offline',
           prompt: 'select_account consent',
