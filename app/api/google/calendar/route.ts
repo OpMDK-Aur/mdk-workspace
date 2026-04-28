@@ -66,8 +66,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { event } = body
 
+    console.log('[v0] Calendar POST - Creating event:', event.title)
+
     // Get valid token from database
     const accessToken = await getValidToken()
+    
+    console.log('[v0] Calendar POST - Got access token:', !!accessToken)
     
     if (!accessToken) {
       return NextResponse.json({ 
@@ -106,12 +110,17 @@ export async function POST(request: NextRequest) {
       },
     }
 
+    console.log('[v0] Calendar POST - Inserting event to calendar')
+    console.log('[v0] Calendar POST - Event data:', JSON.stringify(calendarEvent, null, 2))
+
     const response = await calendar.events.insert({
       calendarId: 'primary',
       requestBody: calendarEvent,
       conferenceDataVersion: event.addMeet ? 1 : 0,
       sendUpdates: 'all',
     })
+
+    console.log('[v0] Calendar POST - Event created successfully:', response.data.id)
 
     return NextResponse.json({
       success: true,
@@ -121,11 +130,17 @@ export async function POST(request: NextRequest) {
         hangoutLink: response.data.hangoutLink,
       },
     })
-  } catch (error) {
-    console.error('Error creating calendar event:', error)
+  } catch (error: unknown) {
+    console.error('[v0] Calendar POST - Error creating calendar event:', error)
+    
+    // Try to get more details from the error
+    const errorObj = error as { response?: { data?: unknown }, message?: string }
+    if (errorObj.response?.data) {
+      console.error('[v0] Calendar POST - Error response data:', JSON.stringify(errorObj.response.data, null, 2))
+    }
     
     // Check if it's a scope error
-    const errorStr = String(error)
+    const errorStr = errorObj.message || String(error)
     if (errorStr.includes('insufficient') || errorStr.includes('scope') || errorStr.includes('calendar')) {
       return NextResponse.json({
         error: 'Calendar scope not authorized. Please reconnect Google in Platform settings.',
