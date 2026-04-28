@@ -30,17 +30,24 @@ export default async function PlatformPage() {
     .eq('platform', 'google_ads')
     .maybeSingle()
 
+  const { data: googleCalendarToken } = await supabase
+    .from('platform_tokens')
+    .select('connected_email, token_expiry, updated_at')
+    .eq('platform', 'google_calendar')
+    .maybeSingle()
+
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Plataformas</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Conecta las cuentas de Google Ads y configura los IDs de cada cliente.
+          Conecta las cuentas de Google Ads y Google Calendar, y configura los IDs de cada cliente.
         </p>
       </div>
 
       <PlatformConnectionPanel
         googleToken={googleToken ?? null}
+        googleCalendarToken={googleCalendarToken ?? null}
         appUrl={process.env.NEXT_PUBLIC_APP_URL || ''}
       />
 

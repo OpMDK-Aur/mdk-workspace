@@ -49,6 +49,38 @@ interface ClientsListContentProps {
   clients: Client[]
   profiles: Profile[]
   currentProfile: Profile | null
+  assignmentMap: Record<string, { min_hours: number; max_hours: number }>
+  hoursMap: Record<string, number>
+}
+
+type SemaforoStatus = 'en_rango' | 'baja' | 'sobre' | 'sin_datos'
+
+function computeSemaforo(tracked: number, min: number, max: number): SemaforoStatus {
+  if (min === 0 && max === 0) return 'sin_datos'
+  if (tracked === 0) return 'sin_datos'
+  if (tracked > max) return 'sobre'
+  if (tracked >= min) return 'en_rango'
+  return 'baja'
+}
+
+function getSemaforoConfig(status: SemaforoStatus) {
+  switch (status) {
+    case 'en_rango':
+      return { label: 'En rango', color: '#22c55e', borderColor: '#22c55e' }
+    case 'baja':
+      return { label: 'Baja dedicacion', color: '#eab308', borderColor: '#eab308' }
+    case 'sobre':
+      return { label: 'Sobre dedicacion', color: '#ef4444', borderColor: '#ef4444' }
+    case 'sin_datos':
+    default:
+      return { label: 'Sin datos', color: '#9ca3af', borderColor: undefined }
+  }
+}
+
+function formatTrackedHours(hours: number): string {
+  const h = Math.floor(hours)
+  const m = Math.round((hours % 1) * 60)
+  return `${h}:${String(m).padStart(2, '0')}`
 }
 
 function getStatusBadge(status: ClientStatus | null) {
@@ -71,7 +103,7 @@ function formatCurrency(value: number | null): string {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(value)
 }
 
-export function ClientsListContent({ clients, profiles, currentProfile }: ClientsListContentProps) {
+export function ClientsListContent({ clients, profiles, currentProfile, assignmentMap, hoursMap }: ClientsListContentProps) {
   const supabase = createClient()
   const canCreate = currentProfile?.role === 'direccion' || currentProfile?.role === 'project_manager'
 
@@ -522,6 +554,7 @@ export function ClientsListContent({ clients, profiles, currentProfile }: Client
                   <TableHead>Plan</TableHead>
                   <TableHead className="text-right">Fee MDK</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead>Mi dedicacion</TableHead>
                   <TableHead>Plataformas</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
@@ -529,7 +562,7 @@ export function ClientsListContent({ clients, profiles, currentProfile }: Client
               <TableBody>
                 {filteredClients.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       No se encontraron clientes
                     </TableCell>
                   </TableRow>
@@ -539,8 +572,22 @@ export function ClientsListContent({ clients, profiles, currentProfile }: Client
                     const hasGoogle = !!client.google_ads_customer_id
                     const hasMeta = !!client.meta_ads_account_id
 
+                    // Semaforo logic
+                    const assignment = assignmentMap[client.id]
+                    const tracked = hoursMap[client.id] ?? 0
+                    const semaforo = assignment
+                      ? computeSemaforo(tracked, assignment.min_hours, assignment.max_hours)
+                      : 'sin_datos'
+                    const semaforoConfig = getSemaforoConfig(semaforo)
+                    const trackedFormatted = formatTrackedHours(tracked)
+                    const hasSemaforoBorder = semaforo !== 'sin_datos'
+
                     return (
-                      <TableRow key={client.id} className="group">
+                      <TableRow 
+                        key={client.id} 
+                        className="group"
+                        style={hasSemaforoBorder ? { borderLeft: `3px solid ${semaforoConfig.borderColor}` } : undefined}
+                      >
                         <TableCell>
                           <div className="font-medium">{client.business_name}</div>
                         </TableCell>
@@ -564,6 +611,21 @@ export function ClientsListContent({ clients, profiles, currentProfile }: Client
                           <Badge variant="outline" className={cn('font-medium', status.className)}>
                             {status.label}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {assignment ? (
+                            <div className="flex items-center gap-2">
+                              <div 
+                                className="w-2 h-2 rounded-full shrink-0" 
+                                style={{ backgroundColor: semaforoConfig.color }}
+                              />
+                              <span className="text-xs text-muted-foreground">
+                                {trackedFormatted}h / {assignment.max_hours}h
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Sin asignacion</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">

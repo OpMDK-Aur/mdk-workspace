@@ -241,3 +241,86 @@ export interface ClientBudgetAlert {
   google_ads: BudgetPlatformSummary | null
   meta_ads: BudgetPlatformSummary | null
 }
+
+// ── Task Management ───────────────────────────────────────────────────────────
+
+export type TaskStatus = 'pendiente' | 'resolviendo' | 'demorada' | 'pausada' | 'pendiente_aprobacion' | 'resuelto'
+export type TaskPriority = 'alta' | 'media' | 'baja'
+export type TaskType = 'crm' | 'meta_ads' | 'soporte' | 'integracion' | 'reportes' | 'desarrollo'
+
+export interface TaskCustomField {
+  label: string
+  type: 'text' | 'number' | 'date' | 'boolean' | 'select' | 'multiselect'
+  value: string // For boolean: 'true' | 'false', for multiselect: comma-separated values
+  options?: string[] // For select and multiselect types
+}
+
+export interface TaskTimeSession {
+  id: string
+  startedAt: Date
+  endedAt: Date | null
+  durationSec: number
+}
+
+export interface TaskActivity {
+  id: string
+  action: string
+  timestamp: Date
+  userId: string
+  userName: string
+}
+
+export interface TaskComment {
+  id: string
+  content: string
+  userId: string
+  userName: string
+  userAvatar: string | null
+  createdAt: Date
+}
+
+export interface TaskFile {
+  id: string
+  name: string
+  url: string
+  mimeType: string
+  size: number
+  uploadedBy: string
+  uploadedByName: string
+  createdAt: Date
+}
+
+export interface TaskQuotation {
+  hours: number
+  hourlyRate: number // Default $150,000
+  subtotal: number
+  iva: number // 21%
+  total: number
+  notes: string
+}
+
+export interface Task {
+  id: string
+  title: string
+  description: string | null // Rich text HTML content
+  clientId: string
+  clientName: string
+  assigneeId: string
+  assigneeName: string
+  status: TaskStatus
+  priority: TaskPriority
+  type: TaskType
+  dueDate: Date | null
+  isActive: boolean // Toggle to resume task independently of status
+  customFields: Record<string, TaskCustomField>
+  timeSessions: TaskTimeSession[]
+  totalTimeSec: number
+  isTimerRunning: boolean
+  timerStartedAt: Date | null
+  activities: TaskActivity[]
+  comments: TaskComment[]
+  files: TaskFile[]
+  quotation: TaskQuotation | null
+  createdAt: Date
+  updatedAt: Date
+}

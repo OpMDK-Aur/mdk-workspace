@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   DollarSign, Target, TrendingDown, MousePointerClick, Eye,
-  Users, Megaphone, MessageSquare, Calendar,
+  Users, Megaphone, MessageSquare, Calendar, Clock,
   ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -21,6 +21,65 @@ interface ClientOverviewProps {
   client: Client
   profiles: Profile[]
   currentProfile: Profile | null
+  assignment: { min_hours: number; max_hours: number } | null
+  trackedHours: number
+}
+
+type DedicationStatus = 'normal' | 'baja' | 'exceso' | 'sin_datos'
+
+function computeDedicationStatus(tracked: number, min: number, max: number): DedicationStatus {
+  if (min === 0 && max === 0) return 'sin_datos'
+  if (tracked > max) return 'exceso'
+  if (tracked >= min) return 'normal'
+  return 'baja'
+}
+
+function getDedicationConfig(status: DedicationStatus) {
+  switch (status) {
+    case 'normal':
+      return { 
+        label: 'Dedicacion normal', 
+        description: 'Estas dentro del rango esperado de horas',
+        color: '#22c55e', 
+        bgColor: 'bg-green-500/10',
+        textColor: 'text-green-500',
+        borderColor: 'border-l-green-500'
+      }
+    case 'baja':
+      return { 
+        label: 'Falta de horas', 
+        description: 'Necesitas dedicar mas tiempo a este cliente',
+        color: '#eab308', 
+        bgColor: 'bg-yellow-500/10',
+        textColor: 'text-yellow-500',
+        borderColor: 'border-l-yellow-500'
+      }
+    case 'exceso':
+      return { 
+        label: 'Exceso de horas', 
+        description: 'Estas dedicando mas tiempo del esperado',
+        color: '#ef4444', 
+        bgColor: 'bg-red-500/10',
+        textColor: 'text-red-500',
+        borderColor: 'border-l-red-500'
+      }
+    case 'sin_datos':
+    default:
+      return { 
+        label: 'Sin asignacion', 
+        description: 'No tienes horas asignadas para este cliente',
+        color: '#9ca3af', 
+        bgColor: 'bg-muted',
+        textColor: 'text-muted-foreground',
+        borderColor: 'border-l-muted'
+      }
+  }
+}
+
+function formatHours(hours: number): string {
+  const h = Math.floor(hours)
+  const m = Math.round((hours % 1) * 60)
+  return `${h}h ${m}m`
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -162,7 +221,7 @@ function ComingSoonBlock({ icon, title, description }: { icon: React.ReactNode; 
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export function ClientOverview({ client, profiles, currentProfile }: ClientOverviewProps) {
+export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours }: ClientOverviewProps) {
   const [preset, setPreset]           = useState('last_30d')
   const [rows, setRows]               = useState<ScorecardRow[]>([])
   const [loading, setLoading]         = useState(true)
@@ -171,6 +230,12 @@ export function ClientOverview({ client, profiles, currentProfile }: ClientOverv
   const pm = profiles.find(p => p.id === client.project_manager_id) ?? null
   const am = profiles.find(p => p.id === client.account_manager_id) ?? null
   const platforms = getActivePlatforms(client)
+
+  // Dedication status
+  const dedicationStatus = assignment
+    ? computeDedicationStatus(trackedHours, assignment.min_hours, assignment.max_hours)
+    : 'sin_datos'
+  const dedicationConfig = getDedicationConfig(dedicationStatus)
 
   const fetchData = useCallback(async (p: string) => {
     setLoading(true)
@@ -339,8 +404,8 @@ export function ClientOverview({ client, profiles, currentProfile }: ClientOverv
           </div>
         </div>
 
-        {/* ── Info row: PM / AM / Fee / Plataformas ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* ── Info row: PM / AM / Fee / Dedicacion / Plataformas ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card>
             <CardContent className="pt-5 pb-5">
               <PersonChip profile={pm} label="Project Manager" />
@@ -364,6 +429,33 @@ export function ClientOverview({ client, profiles, currentProfile }: ClientOverv
                   <span className="text-[11px] text-muted-foreground">MDK: {formatCurrency(client.fee_mdk)}</span>
                   <span className="text-[11px] text-muted-foreground">Aurelia: {formatCurrency(client.fee_aurelia)}</span>
                 </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Dedication Card */}
+          <Card className={cn('border-l-4', dedicationConfig.borderColor)}>
+            <CardContent className="pt-5 pb-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Clock className={cn('h-4 w-4', dedicationConfig.textColor)} />
+                <p className="text-xs text-muted-foreground font-medium">Mi dedicacion este mes</p>
+              </div>
+              <div className="flex items-end gap-2 mb-2">
+                <p className="text-2xl font-bold text-foreground">{formatHours(trackedHours)}</p>
+                {assignment && (
+                  <p className="text-xs text-muted-foreground mb-1">/ {assignment.max_hours}h</p>
+                )}
+              </div>
+              {assignment ? (
+                <>
+                  <div className={cn('inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium', dedicationConfig.bgColor, dedicationConfig.textColor)}>
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dedicationConfig.color }} />
+                    {dedicationConfig.label}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-2">{dedicationConfig.description}</p>
+                </>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">Sin rango de horas asignado</p>
               )}
             </CardContent>
           </Card>
