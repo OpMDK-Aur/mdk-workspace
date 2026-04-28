@@ -15,6 +15,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 
 import { Label } from '@/components/ui/label'
@@ -704,17 +705,27 @@ function CustomFields({ task }: { task: Task }) {
   const [isAdding, setIsAdding] = useState(false)
   const [newFieldName, setNewFieldName] = useState('')
   const [newFieldType, setNewFieldType] = useState<TaskCustomField['type']>('text')
+  const [newFieldOptions, setNewFieldOptions] = useState('')
 
   const handleAddField = () => {
     if (!newFieldName.trim()) return
     const key = newFieldName.toLowerCase().replace(/\s+/g, '_')
-    addCustomField(task.id, key, {
+    
+    const fieldData: TaskCustomField = {
       label: newFieldName,
       type: newFieldType,
-      value: '',
-    })
+      value: newFieldType === 'boolean' ? 'false' : '',
+    }
+    
+    // Add options for select/multiselect
+    if ((newFieldType === 'select' || newFieldType === 'multiselect') && newFieldOptions.trim()) {
+      fieldData.options = newFieldOptions.split(',').map(o => o.trim()).filter(Boolean)
+    }
+    
+    addCustomField(task.id, key, fieldData)
     setNewFieldName('')
     setNewFieldType('text')
+    setNewFieldOptions('')
     setIsAdding(false)
   }
 
@@ -724,6 +735,90 @@ function CustomFields({ task }: { task: Task }) {
       [key]: { ...task.customFields[key], value },
     }
     updateTask(task.id, { customFields: updated })
+  }
+
+  const handleToggleBoolean = (key: string) => {
+    const currentValue = task.customFields[key].value === 'true'
+    handleUpdateFieldValue(key, (!currentValue).toString())
+  }
+
+  const handleToggleMultiselect = (key: string, option: string) => {
+    const currentValues = task.customFields[key].value ? task.customFields[key].value.split(',') : []
+    let newValues: string[]
+    if (currentValues.includes(option)) {
+      newValues = currentValues.filter(v => v !== option)
+    } else {
+      newValues = [...currentValues, option]
+    }
+    handleUpdateFieldValue(key, newValues.join(','))
+  }
+
+  const renderFieldInput = (key: string, field: TaskCustomField) => {
+    switch (field.type) {
+      case 'boolean':
+        return (
+          <div className="flex items-center gap-2 flex-1">
+            <Checkbox
+              id={`field-${key}`}
+              checked={field.value === 'true'}
+              onCheckedChange={() => handleToggleBoolean(key)}
+            />
+            <label 
+              htmlFor={`field-${key}`}
+              className="text-sm cursor-pointer"
+            >
+              {field.value === 'true' ? 'Si' : 'No'}
+            </label>
+          </div>
+        )
+      
+      case 'select':
+        return (
+          <Select value={field.value} onValueChange={(v) => handleUpdateFieldValue(key, v)}>
+            <SelectTrigger className="h-8 text-sm flex-1">
+              <SelectValue placeholder="Seleccionar..." />
+            </SelectTrigger>
+            <SelectContent>
+              {field.options?.map((option) => (
+                <SelectItem key={option} value={option}>{option}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )
+      
+      case 'multiselect':
+        const selectedValues = field.value ? field.value.split(',') : []
+        return (
+          <div className="flex-1 flex flex-wrap gap-1.5">
+            {field.options?.map((option) => {
+              const isSelected = selectedValues.includes(option)
+              return (
+                <Badge
+                  key={option}
+                  variant={isSelected ? 'default' : 'outline'}
+                  className={cn(
+                    'cursor-pointer text-xs',
+                    isSelected && 'bg-primary'
+                  )}
+                  onClick={() => handleToggleMultiselect(key, option)}
+                >
+                  {option}
+                </Badge>
+              )
+            })}
+          </div>
+        )
+      
+      default:
+        return (
+          <Input
+            value={field.value}
+            onChange={(e) => handleUpdateFieldValue(key, e.target.value)}
+            className="h-8 text-sm flex-1"
+            type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+          />
+        )
+    }
   }
 
   return (
@@ -744,12 +839,7 @@ function CustomFields({ task }: { task: Task }) {
       {Object.entries(task.customFields).map(([key, field]) => (
         <div key={key} className="flex items-center gap-2">
           <Label className="text-xs text-muted-foreground w-28 shrink-0">{field.label}</Label>
-          <Input
-            value={field.value}
-            onChange={(e) => handleUpdateFieldValue(key, e.target.value)}
-            className="h-8 text-sm"
-            type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-          />
+          {renderFieldInput(key, field)}
           <Button
             variant="ghost"
             size="icon"
@@ -769,21 +859,39 @@ function CustomFields({ task }: { task: Task }) {
             onChange={(e) => setNewFieldName(e.target.value)}
             className="h-8 text-sm"
           />
+          <Select value={newFieldType} onValueChange={(v) => setNewFieldType(v as TaskCustomField['type'])}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="text">Texto</SelectItem>
+              <SelectItem value="number">Numero</SelectItem>
+              <SelectItem value="date">Fecha</SelectItem>
+              <SelectItem value="boolean">Si/No (Check)</SelectItem>
+              <SelectItem value="select">Selector unico</SelectItem>
+              <SelectItem value="multiselect">Selector multiple</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          {(newFieldType === 'select' || newFieldType === 'multiselect') && (
+            <Input
+              placeholder="Opciones separadas por coma (ej: Opcion 1, Opcion 2, Opcion 3)"
+              value={newFieldOptions}
+              onChange={(e) => setNewFieldOptions(e.target.value)}
+              className="h-8 text-sm"
+            />
+          )}
+          
           <div className="flex gap-2">
-            <Select value={newFieldType} onValueChange={(v) => setNewFieldType(v as TaskCustomField['type'])}>
-              <SelectTrigger className="h-8 text-sm flex-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="text">Texto</SelectItem>
-                <SelectItem value="number">Numero</SelectItem>
-                <SelectItem value="date">Fecha</SelectItem>
-              </SelectContent>
-            </Select>
             <Button size="sm" className="h-8" onClick={handleAddField}>
               Agregar
             </Button>
-            <Button size="sm" variant="ghost" className="h-8" onClick={() => setIsAdding(false)}>
+            <Button size="sm" variant="ghost" className="h-8" onClick={() => {
+              setIsAdding(false)
+              setNewFieldName('')
+              setNewFieldType('text')
+              setNewFieldOptions('')
+            }}>
               Cancelar
             </Button>
           </div>

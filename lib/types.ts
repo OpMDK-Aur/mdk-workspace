@@ -250,8 +250,9 @@ export type TaskType = 'crm' | 'meta_ads' | 'soporte' | 'integracion' | 'reporte
 
 export interface TaskCustomField {
   label: string
-  type: 'text' | 'number' | 'date' | 'select'
-  value: string
+  type: 'text' | 'number' | 'date' | 'boolean' | 'select' | 'multiselect'
+  value: string // For boolean: 'true' | 'false', for multiselect: comma-separated values
+  options?: string[] // For select and multiselect types
 }
 
 export interface TaskTimeSession {
