@@ -529,8 +529,13 @@ export function CampaignAlertsPanel({ rows, clients, loading }: CampaignAlertsPa
   const totalWarning = allAlerts.filter(a => a.severity === 'warning').length
   const totalAlerts = allAlerts.length
 
+  // Don't render if no alerts
+  if (!loading && totalAlerts === 0) {
+    return null
+  }
+
   return (
-    <Card>
+    <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
       <CardHeader className="pb-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
@@ -545,25 +550,21 @@ export function CampaignAlertsPanel({ rows, clients, loading }: CampaignAlertsPa
             </div>
             <div>
               <CardTitle className="text-sm font-semibold">Alertas de Campanas</CardTitle>
-              {totalAlerts > 0 ? (
-                <div className="flex items-center gap-2 mt-0.5">
-                  {totalCritical > 0 && (
-                    <span className="text-[10px] text-red-400 font-semibold">
-                      {totalCritical} critica{totalCritical !== 1 ? 's' : ''}
-                    </span>
-                  )}
-                  {totalWarning > 0 && (
-                    <span className="text-[10px] text-amber-400 font-semibold">
-                      {totalWarning} atencion
-                    </span>
-                  )}
-                  <span className="text-[10px] text-muted-foreground">
-                    {totalAlerts} total
+              <div className="flex items-center gap-2 mt-0.5">
+                {totalCritical > 0 && (
+                  <span className="text-[10px] text-red-400 font-semibold">
+                    {totalCritical} critica{totalCritical !== 1 ? 's' : ''}
                   </span>
-                </div>
-              ) : (
-                <p className="text-[11px] text-muted-foreground mt-0.5">Sin alertas activas</p>
-              )}
+                )}
+                {totalWarning > 0 && (
+                  <span className="text-[10px] text-amber-400 font-semibold">
+                    {totalWarning} atencion
+                  </span>
+                )}
+                <span className="text-[10px] text-muted-foreground">
+                  {totalAlerts} total en {filteredGroups.length} cliente{filteredGroups.length !== 1 ? 's' : ''}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -606,35 +607,22 @@ export function CampaignAlertsPanel({ rows, clients, loading }: CampaignAlertsPa
             ))}
           </div>
         ) : filteredGroups.length === 0 ? (
-          <div className="py-12 flex flex-col items-center justify-center gap-3 text-center">
-            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-              <AlertTriangle className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {totalAlerts === 0 ? 'Sin alertas de campanas' : 'Sin resultados'}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {totalAlerts === 0 
-                  ? 'Todas las campanas estan funcionando dentro de los parametros normales.'
-                  : `No hay alertas que coincidan con "${search}" y el filtro seleccionado.`
-                }
-              </p>
-            </div>
+          <div className="py-8 flex flex-col items-center justify-center gap-2 text-center">
+            <p className="text-xs text-muted-foreground">
+              No hay alertas que coincidan con la busqueda.
+            </p>
           </div>
         ) : (
-          <ScrollArea className="max-h-[500px] pr-2">
-            <div className="space-y-2">
-              {filteredGroups.map(group => (
-                <ClientAlertRow
-                  key={group.clientId}
-                  group={group}
-                  expanded={expandedClients.has(group.clientId)}
-                  onToggle={() => toggleClient(group.clientId)}
-                />
-              ))}
-            </div>
-          </ScrollArea>
+          <div className="max-h-[320px] overflow-y-auto pr-1 space-y-2">
+            {filteredGroups.map(group => (
+              <ClientAlertRow
+                key={group.clientId}
+                group={group}
+                expanded={expandedClients.has(group.clientId)}
+                onToggle={() => toggleClient(group.clientId)}
+              />
+            ))}
+          </div>
         )}
 
         {/* Info footer */}
