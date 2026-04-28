@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle2, AlertCircle, RefreshCw, Loader2, Calendar } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 interface TokenInfo {
   connected_email: string | null
@@ -43,6 +44,7 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
     if (error) {
       const messages: Record<string, string> = {
         no_token: 'No se obtuvo el token de acceso de Google.',
+        no_provider_token: 'No se obtuvo el token de Google. Asegurate de tener Google configurado como proveedor en Supabase.',
         db_error: 'Error al guardar los tokens en la base de datos.',
         missing_scope: 'El token no tiene el scope necesario. Volve a autorizar.',
         no_refresh_token_revoke_required: 'No se obtuvo refresh token. Revoca el acceso en myaccount.google.com/permissions y volve a autorizar.',
@@ -58,9 +60,27 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
     window.location.href = '/api/auth/google-ads'
   }
 
-  const handleConnectCalendar = () => {
+  const handleConnectCalendar = async () => {
     setLoadingCalendar(true)
-    window.location.href = '/api/auth/google-calendar'
+    
+    const supabase = createClient()
+    
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        scopes: 'https://www.googleapis.com/auth/calendar',
+        redirectTo: `${window.location.origin}/api/auth/google-calendar/supabase-callback`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'select_account consent',
+        },
+      },
+    })
+
+    if (error) {
+      setNotice({ type: 'error', message: `Error al conectar: ${error.message}` })
+      setLoadingCalendar(false)
+    }
   }
 
   const isAdsConnected = Boolean(googleToken)
