@@ -39,9 +39,7 @@ import {
   PartyPopper,
   Flame,
   Calendar,
-  Clock,
   Video,
-  ExternalLink,
 } from 'lucide-react'
 
 interface NewTaskModalProps {
@@ -842,25 +840,6 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
   const [taskData, setTaskData] = useState<Record<string, string>>({})
   const [clientContext, setClientContext] = useState<ClientContext | null>(null)
 
-  // Check for Google auth callback
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    
-    const params = new URLSearchParams(window.location.search)
-    const googleAuth = params.get('google_auth')
-    const accessToken = params.get('access_token')
-    
-    if (googleAuth === 'success' && accessToken) {
-      localStorage.setItem('google_access_token', accessToken)
-      // Clean up URL
-      const url = new URL(window.location.href)
-      url.searchParams.delete('google_auth')
-      url.searchParams.delete('access_token')
-      url.searchParams.delete('refresh_token')
-      window.history.replaceState({}, '', url.toString())
-    }
-  }, [])
-
   // Reset on open
   useEffect(() => {
     if (open) {
@@ -1215,51 +1194,12 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     const addMeet = taskData.addMeet === 'yes'
     const attendees = taskData.attendees?.split(',').map(e => e.trim()).filter(Boolean) || []
 
-    // Check if we have Google auth
-    const storedToken = localStorage.getItem('google_access_token')
-    
-    if (!storedToken) {
-      // Need to authenticate first
-      try {
-        const authResponse = await fetch('/api/google/calendar?action=auth-url')
-        const { url } = await authResponse.json()
-        
-        // Store task data to resume after auth
-        localStorage.setItem('pending_meeting', JSON.stringify({
-          title: meetingTitle,
-          startDateTime: startDateTime.toISOString(),
-          endDateTime: endDateTime.toISOString(),
-          addMeet,
-          attendees,
-          taskData,
-          clientId: taskData.clientId,
-        }))
-        
-        // Open Google auth in new window
-        window.open(url, '_blank', 'width=500,height=600')
-        
-        addAssistantMessage({ 
-          content: 'Te abri una ventana para conectar tu cuenta de Google Calendar. Una vez autorizado, volve aca y hacemos click en "Crear en Calendar" de nuevo.' 
-        }, 300)
-        
-        setIsCreating(false)
-        return
-      } catch {
-        addAssistantMessage({ 
-          content: 'Hubo un error al conectar con Google. Intenta de nuevo.' 
-        }, 300)
-        setIsCreating(false)
-        return
-      }
-    }
-
-    // Create the event
+    // Create the event using the token from database
     try {
       const response = await fetch('/api/google/calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accessToken: storedToken,
           event: {
             title: meetingTitle,
             description: `Reunion con ${client?.name || 'cliente'}.\n\nCreado desde MDK Workspace.`,
@@ -1314,16 +1254,18 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
         setTimeout(() => {
           onOpenChange(false)
         }, 2000)
-      } else {
-        // Token might be expired, clear it and retry
-        localStorage.removeItem('google_access_token')
+      } else if (result.needsReauth) {
         addAssistantMessage({ 
-          content: 'El token expiro. Hace click en "Crear en Calendar" de nuevo para reconectar.' 
+          content: 'Necesitas reconectar Google con permisos de Calendar. Anda a Plataformas y hace click en "Reconectar".' 
+        }, 300)
+      } else {
+        addAssistantMessage({ 
+          content: `Error al crear la reunion: ${result.error || 'Error desconocido'}` 
         }, 300)
       }
-    } catch {
+    } catch (err) {
       addAssistantMessage({ 
-        content: 'Hubo un error al crear la reunion. Intenta de nuevo.' 
+        content: `Hubo un error al crear la reunion: ${err instanceof Error ? err.message : 'Error desconocido'}` 
       }, 300)
     }
 

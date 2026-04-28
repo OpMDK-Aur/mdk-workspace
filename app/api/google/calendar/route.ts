@@ -1,43 +1,79 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
+import { createClient } from '@/lib/supabase/server'
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/api/google/callback` : 'http://localhost:3000/api/google/callback'
+  process.env.GOOGLE_CLIENT_SECRET
 )
 
-// GET: Get auth URL or list events
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const action = searchParams.get('action')
+// Helper to get and refresh token from database
+async function getValidToken() {
+  const supabase = await createClient()
+  
+  const { data: tokenData, error } = await supabase
+    .from('platform_tokens')
+    .select('access_token, refresh_token, token_expiry')
+    .eq('platform', 'google_ads')
+    .maybeSingle()
 
-  if (action === 'auth-url') {
-    const scopes = [
-      'https://www.googleapis.com/auth/calendar.events',
-      'https://www.googleapis.com/auth/calendar.readonly',
-    ]
-
-    const authUrl = oauth2Client.generateAuthUrl({
-      access_type: 'offline',
-      scope: scopes,
-      prompt: 'select_account consent',
-    })
-
-    return NextResponse.json({ url: authUrl })
+  if (error || !tokenData) {
+    return null
   }
 
-  return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+  // Check if token is expired
+  const now = new Date()
+  const expiry = tokenData.token_expiry ? new Date(tokenData.token_expiry) : null
+  
+  if (expiry && expiry > now) {
+    // Token still valid
+    return tokenData.access_token
+  }
+
+  // Token expired, need to refresh
+  if (!tokenData.refresh_token) {
+    return null
+  }
+
+  try {
+    oauth2Client.setCredentials({ refresh_token: tokenData.refresh_token })
+    const { credentials } = await oauth2Client.refreshAccessToken()
+    
+    // Update token in database
+    const newExpiry = credentials.expiry_date 
+      ? new Date(credentials.expiry_date).toISOString()
+      : new Date(Date.now() + 3600000).toISOString() // 1 hour default
+
+    await supabase
+      .from('platform_tokens')
+      .update({
+        access_token: credentials.access_token,
+        token_expiry: newExpiry,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('platform', 'google_ads')
+
+    return credentials.access_token
+  } catch (refreshError) {
+    console.error('Error refreshing token:', refreshError)
+    return null
+  }
 }
 
 // POST: Create calendar event
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { accessToken, event } = body
+    const { event } = body
 
+    // Get valid token from database
+    const accessToken = await getValidToken()
+    
     if (!accessToken) {
-      return NextResponse.json({ error: 'No access token provided' }, { status: 401 })
+      return NextResponse.json({ 
+        error: 'No valid Google token. Please reconnect in Platform settings.',
+        needsReauth: true 
+      }, { status: 401 })
     }
 
     oauth2Client.setCredentials({ access_token: accessToken })
@@ -87,8 +123,19 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('Error creating calendar event:', error)
+    
+    // Check if it's a scope error
+    const errorStr = String(error)
+    if (errorStr.includes('insufficient') || errorStr.includes('scope') || errorStr.includes('calendar')) {
+      return NextResponse.json({
+        error: 'Calendar scope not authorized. Please reconnect Google in Platform settings.',
+        needsReauth: true,
+        details: errorStr,
+      }, { status: 403 })
+    }
+    
     return NextResponse.json(
-      { error: 'Failed to create event', details: String(error) },
+      { error: 'Failed to create event', details: errorStr },
       { status: 500 }
     )
   }

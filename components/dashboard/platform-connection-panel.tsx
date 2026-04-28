@@ -147,8 +147,24 @@ export function PlatformConnectionPanel({ googleToken, appUrl }: PlatformConnect
         {!isConnected && (
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Al hacer click en &quot;Autorizar con Google&quot; vas a ser redirigido a Google para otorgar acceso a Google Ads.
+              Al hacer click en &quot;Autorizar con Google&quot; vas a ser redirigido a Google para otorgar acceso a Google Ads y Google Calendar.
               Asegurate de seleccionar la cuenta que tiene acceso a las cuentas administradas (MCC).
+            </p>
+          </CardContent>
+        )}
+
+        {isConnected && (
+          <CardContent className="pt-0">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <CheckCircle2 className="h-3 w-3 text-green-500" />
+              <span>Google Ads</span>
+              <span className="text-muted-foreground/50">+</span>
+              <CheckCircle2 className="h-3 w-3 text-green-500" />
+              <span>Google Calendar</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Esta cuenta se usa para obtener metricas de Google Ads y crear reuniones en Calendar.
+              Si necesitas agregar permisos de Calendar, usa el boton &quot;Reconectar&quot;.
             </p>
           </CardContent>
         )}
