@@ -38,6 +38,10 @@ import {
   Coffee,
   PartyPopper,
   Flame,
+  Calendar,
+  Clock,
+  Video,
+  ExternalLink,
 } from 'lucide-react'
 
 interface NewTaskModalProps {
@@ -113,6 +117,18 @@ const PERSONALITY_RESPONSES = {
     'Dale! Soy todo oidos (o todo texto, mejor dicho).',
     'Perfecto, contame que necesitas y vemos como lo resolvemos.',
     'A ver, sorprendeme! Que tenes en mente?',
+  ],
+  
+  // Reunion
+  reunion_intro: [
+    'Una reunion! Vamos a coordinarla.',
+    'Reunion, perfecto. Dejame los datos y la agendo.',
+    'Coordinemos esa reunion. Contame...',
+  ],
+  reunion_calendar_success: [
+    'Listo! La reunion ya esta en el calendario con el link de Meet.',
+    'Agendado! Les va a llegar la invitacion a todos.',
+    'Perfecto, ya quedo en Google Calendar.',
   ],
   
   // Optimizar
@@ -459,6 +475,40 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       { type: 'confirm' },
     ],
   },
+  {
+    id: 'reunion',
+    label: 'Reunion',
+    icon: <Calendar className="h-4 w-4" />,
+    type: 'soporte',
+    flow: [
+      { type: 'select_client' },
+      { type: 'input', key: 'title', question: 'Cual es el tema de la reunion?', placeholder: 'Ej: Revision mensual, Kick-off campana, etc.' },
+      { type: 'options', key: 'meetingType', question: 'Que tipo de reunion es?', options: [
+        { label: 'Revision de resultados', value: 'review', emoji: '📊' },
+        { label: 'Planificacion', value: 'planning', emoji: '📝' },
+        { label: 'Kick-off', value: 'kickoff', emoji: '🚀' },
+        { label: 'Seguimiento', value: 'followup', emoji: '🔄' },
+        { label: 'Reclamo/Urgente', value: 'urgent', emoji: '🚨' },
+        { label: 'Otro', value: 'other', emoji: '📅' },
+      ]},
+      { type: 'date_time', key: 'meetingDateTime', question: 'Cuando seria la reunion?' },
+      { type: 'options', key: 'meetingDuration', question: 'Cuanto tiempo duraria?', options: [
+        { label: '15 minutos', value: '15', emoji: '⚡' },
+        { label: '30 minutos', value: '30', emoji: '⏱️' },
+        { label: '45 minutos', value: '45', emoji: '⏰' },
+        { label: '1 hora', value: '60', emoji: '🕐' },
+        { label: '1.5 horas', value: '90', emoji: '🕑' },
+        { label: '2 horas', value: '120', emoji: '🕒' },
+      ]},
+      { type: 'options', key: 'addMeet', question: 'Agrego link de Google Meet?', options: [
+        { label: 'Si, agregar Meet', value: 'yes', emoji: '📹' },
+        { label: 'No, es presencial', value: 'no', emoji: '🏢' },
+      ]},
+      { type: 'input', key: 'attendees', question: 'Emails de los participantes (separados por coma)', placeholder: 'cliente@email.com, otro@email.com', hint: 'Podes dejarlo vacio' },
+      { type: 'priority' },
+      { type: 'confirm_meeting' },
+    ],
+  },
 ]
 
 // ── Chat Message Types ────────────────────────────────────────────────────────
@@ -473,12 +523,22 @@ interface ChatMessage {
   isNumber?: boolean
   isPriority?: boolean
   isConfirm?: boolean
+  isDateTime?: boolean
+  isMeetingConfirm?: boolean
   taskSummary?: {
     title: string
     client: string
     type: string
     priority: string
     assignee: string
+  }
+  meetingSummary?: {
+    title: string
+    client: string
+    dateTime: string
+    duration: number
+    addMeet: boolean
+    attendees: string[]
   }
   typing?: boolean
 }
@@ -686,6 +746,81 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
             </div>
           </div>
         )}
+
+        {/* DateTime input */}
+        {isAssistant && message.isDateTime && isLast && (
+          <div className="flex gap-2 w-full max-w-xs">
+            <Input
+              type="datetime-local"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && inputValue.trim() && onInputSubmit?.()}
+              className="text-sm"
+              autoFocus
+            />
+            <Button size="sm" onClick={onInputSubmit} disabled={!inputValue.trim()}>
+              <Check className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* Meeting confirm with summary */}
+        {isAssistant && message.isMeetingConfirm && message.meetingSummary && isLast && (
+          <div className="space-y-3 w-full">
+            <div className="bg-muted/30 rounded-lg p-3 space-y-2 text-xs border">
+              <div className="flex justify-between items-start gap-2">
+                <span className="text-muted-foreground shrink-0">Reunion:</span>
+                <span className="font-medium text-right">{message.meetingSummary.title}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Cliente:</span>
+                <span>{message.meetingSummary.client}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Fecha y hora:</span>
+                <span>{message.meetingSummary.dateTime ? new Date(message.meetingSummary.dateTime).toLocaleString('es-AR', { dateStyle: 'medium', timeStyle: 'short' }) : '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Duracion:</span>
+                <span>{message.meetingSummary.duration} minutos</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Google Meet:</span>
+                {message.meetingSummary.addMeet ? (
+                  <Badge variant="outline" className="text-[10px] border-green-500/50 text-green-500 gap-1">
+                    <Video className="h-3 w-3" />
+                    Si
+                  </Badge>
+                ) : (
+                  <span className="text-muted-foreground">No (presencial)</span>
+                )}
+              </div>
+              {message.meetingSummary.attendees.length > 0 && (
+                <div className="flex justify-between items-start gap-2">
+                  <span className="text-muted-foreground shrink-0">Participantes:</span>
+                  <span className="text-right text-[10px]">{message.meetingSummary.attendees.join(', ')}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="gap-1.5 bg-blue-600 hover:bg-blue-700 flex-1"
+                onClick={() => onSelect?.('confirm_meeting')}
+              >
+                <Calendar className="h-4 w-4" />
+                Crear en Calendar
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onSelect?.('cancel')}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -706,6 +841,25 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
   const [currentStepIndex, setCurrentStepIndex] = useState(0)
   const [taskData, setTaskData] = useState<Record<string, string>>({})
   const [clientContext, setClientContext] = useState<ClientContext | null>(null)
+
+  // Check for Google auth callback
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    
+    const params = new URLSearchParams(window.location.search)
+    const googleAuth = params.get('google_auth')
+    const accessToken = params.get('access_token')
+    
+    if (googleAuth === 'success' && accessToken) {
+      localStorage.setItem('google_access_token', accessToken)
+      // Clean up URL
+      const url = new URL(window.location.href)
+      url.searchParams.delete('google_auth')
+      url.searchParams.delete('access_token')
+      url.searchParams.delete('refresh_token')
+      window.history.replaceState({}, '', url.toString())
+    }
+  }, [])
 
   // Reset on open
   useEffect(() => {
@@ -809,6 +963,32 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
         }
         break
 
+      case 'date_time':
+        messageContent = {
+          content: step.question,
+          isDateTime: true,
+        }
+        break
+
+      case 'confirm_meeting':
+        const meetingClient = CLIENTS.find((c) => c.id === data.clientId)
+        const meetingTitle = data.title || 'Reunion'
+        const duration = parseInt(data.meetingDuration || '30')
+        
+        messageContent = {
+          content: 'Perfecto! Te muestro el resumen de la reunion:',
+          isMeetingConfirm: true,
+          meetingSummary: {
+            title: meetingTitle,
+            client: meetingClient?.name || 'Sin cliente',
+            dateTime: data.meetingDateTime,
+            duration: duration,
+            addMeet: data.addMeet === 'yes',
+            attendees: data.attendees?.split(',').map(e => e.trim()).filter(Boolean) || [],
+          },
+        }
+        break
+
       case 'priority':
         if (template.defaultPriority) {
           setTaskData((prev) => ({ ...prev, priority: template.defaultPriority! }))
@@ -881,6 +1061,8 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
       introMessage = getRandomResponse(PERSONALITY_RESPONSES.integraciones_intro)
     } else if (template.id === 'otro') {
       introMessage = getRandomResponse(PERSONALITY_RESPONSES.otro_intro)
+    } else if (template.id === 'reunion') {
+      introMessage = getRandomResponse(PERSONALITY_RESPONSES.reunion_intro)
     }
 
     if (introMessage) {
@@ -902,6 +1084,16 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     if (currentStep.type === 'confirm') {
       if (value === 'confirm') {
         handleCreateTask()
+      } else {
+        onOpenChange(false)
+      }
+      return
+    }
+
+    // Handle meeting confirm
+    if (currentStep.type === 'confirm_meeting') {
+      if (value === 'confirm_meeting') {
+        handleCreateMeeting()
       } else {
         onOpenChange(false)
       }
@@ -1006,6 +1198,136 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
 
     const delay = currentStep.type === 'number' ? 1000 : 400
     setTimeout(() => processStep(selectedTemplate, currentStepIndex + 1, newData), delay)
+  }
+
+  // Create task
+  // Create meeting in Google Calendar
+  const handleCreateMeeting = async () => {
+    if (!selectedTemplate) return
+    
+    setIsCreating(true)
+
+    const client = CLIENTS.find((c) => c.id === taskData.clientId)
+    const meetingTitle = `${taskData.title || 'Reunion'} - ${client?.name || 'Cliente'}`
+    const startDateTime = new Date(taskData.meetingDateTime)
+    const duration = parseInt(taskData.meetingDuration || '30')
+    const endDateTime = new Date(startDateTime.getTime() + duration * 60000)
+    const addMeet = taskData.addMeet === 'yes'
+    const attendees = taskData.attendees?.split(',').map(e => e.trim()).filter(Boolean) || []
+
+    // Check if we have Google auth
+    const storedToken = localStorage.getItem('google_access_token')
+    
+    if (!storedToken) {
+      // Need to authenticate first
+      try {
+        const authResponse = await fetch('/api/google/calendar?action=auth-url')
+        const { url } = await authResponse.json()
+        
+        // Store task data to resume after auth
+        localStorage.setItem('pending_meeting', JSON.stringify({
+          title: meetingTitle,
+          startDateTime: startDateTime.toISOString(),
+          endDateTime: endDateTime.toISOString(),
+          addMeet,
+          attendees,
+          taskData,
+          clientId: taskData.clientId,
+        }))
+        
+        // Open Google auth in new window
+        window.open(url, '_blank', 'width=500,height=600')
+        
+        addAssistantMessage({ 
+          content: 'Te abri una ventana para conectar tu cuenta de Google Calendar. Una vez autorizado, volve aca y hacemos click en "Crear en Calendar" de nuevo.' 
+        }, 300)
+        
+        setIsCreating(false)
+        return
+      } catch {
+        addAssistantMessage({ 
+          content: 'Hubo un error al conectar con Google. Intenta de nuevo.' 
+        }, 300)
+        setIsCreating(false)
+        return
+      }
+    }
+
+    // Create the event
+    try {
+      const response = await fetch('/api/google/calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: storedToken,
+          event: {
+            title: meetingTitle,
+            description: `Reunion con ${client?.name || 'cliente'}.\n\nCreado desde MDK Workspace.`,
+            startDateTime: startDateTime.toISOString(),
+            endDateTime: endDateTime.toISOString(),
+            addMeet,
+            attendees,
+          },
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // Also create a task for the meeting
+        const priority = (taskData.priority || 'media') as TaskPriority
+        
+        const meetingComment = `
+          <p><strong>Reunion agendada en Google Calendar</strong></p>
+          <p>Fecha: ${startDateTime.toLocaleString('es-AR', { dateStyle: 'full', timeStyle: 'short' })}</p>
+          <p>Duracion: ${duration} minutos</p>
+          ${result.event.hangoutLink ? `<p><a href="${result.event.hangoutLink}" target="_blank">Link de Google Meet</a></p>` : ''}
+          ${result.event.htmlLink ? `<p><a href="${result.event.htmlLink}" target="_blank">Ver en Calendar</a></p>` : ''}
+        `
+
+        addTask({
+          title: meetingTitle,
+          description: null,
+          clientId: taskData.clientId || '',
+          clientName: client?.name || '',
+          assigneeId: ASSIGNEES[0].id,
+          assigneeName: ASSIGNEES[0].name,
+          status: 'pendiente' as TaskStatus,
+          priority,
+          type: 'soporte',
+          dueDate: startDateTime,
+          customFields: {},
+          comments: [{
+            id: `comment-${Date.now()}`,
+            content: meetingComment,
+            userId: 'madky',
+            userName: 'Madky (IA)',
+            createdAt: new Date(),
+          }],
+        })
+
+        addAssistantMessage({ 
+          content: getRandomResponse(PERSONALITY_RESPONSES.reunion_calendar_success) + 
+            (result.event.hangoutLink ? ` Link de Meet: ${result.event.hangoutLink}` : '')
+        }, 300)
+
+        setTimeout(() => {
+          onOpenChange(false)
+        }, 2000)
+      } else {
+        // Token might be expired, clear it and retry
+        localStorage.removeItem('google_access_token')
+        addAssistantMessage({ 
+          content: 'El token expiro. Hace click en "Crear en Calendar" de nuevo para reconectar.' 
+        }, 300)
+      }
+    } catch {
+      addAssistantMessage({ 
+        content: 'Hubo un error al crear la reunion. Intenta de nuevo.' 
+      }, 300)
+    }
+
+    setIsCreating(false)
   }
 
   // Create task
