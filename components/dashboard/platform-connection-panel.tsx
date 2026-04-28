@@ -33,19 +33,30 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
       const showTokens = searchParams.get('show_calendar_tokens')
       if (showTokens !== 'true') return
 
+      console.log('[v0] show_calendar_tokens=true detected, getting session...')
+
       const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
+      const { data, error } = await supabase.auth.getSession()
+
+      console.log('[v0] getSession error:', error)
+      console.log('[v0] getSession data:', data)
+      console.log('[v0] Full session object:', JSON.stringify(data?.session, null, 2))
+
+      const session = data?.session
 
       console.log('========== GOOGLE CALENDAR TOKENS ==========')
+      console.log('User ID:', session?.user?.id)
       console.log('Email:', session?.user?.email)
-      console.log('Access Token:', session?.provider_token)
-      console.log('Refresh Token:', session?.provider_refresh_token)
+      console.log('Provider:', session?.user?.app_metadata?.provider)
+      console.log('Access Token:', session?.provider_token || 'NO PROVIDER TOKEN')
+      console.log('Refresh Token:', session?.provider_refresh_token || 'NO REFRESH TOKEN')
+      console.log('Session Access Token:', session?.access_token?.substring(0, 50) + '...')
       console.log('=============================================')
       
       if (session?.provider_token) {
-        alert('Tokens mostrados en la consola del navegador (F12). Copia el Refresh Token y agregalo en Supabase.')
+        alert('Tokens mostrados en la consola del navegador (F12). Copia el Access Token y Refresh Token.')
       } else {
-        alert('No se obtuvieron tokens. Verifica que Google este configurado como proveedor en Supabase.')
+        alert('No se obtuvo provider_token. Mira la consola para mas detalles.')
       }
     }
 
