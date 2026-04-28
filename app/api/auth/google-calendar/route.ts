@@ -13,17 +13,17 @@ export async function GET(request: NextRequest) {
 
   // Derive redirect URI from the incoming request so it works on localhost AND production
   const origin = request.nextUrl.origin
-  const redirectUri = `${origin}/api/auth/google-ads/callback`
+  const redirectUri = `${origin}/api/auth/google-calendar/callback`
 
-  console.log('[google-oauth] Redirect URI:', redirectUri)
+  console.log('[google-calendar-oauth] Redirect URI:', redirectUri)
 
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'openid email profile https://www.googleapis.com/auth/adwords',
+    scope: 'openid email profile https://www.googleapis.com/auth/calendar.events',
     access_type: 'offline',
-    prompt: 'consent',
+    prompt: 'select_account consent',
     state: user.id,
   })
 

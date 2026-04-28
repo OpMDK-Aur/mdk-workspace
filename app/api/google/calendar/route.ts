@@ -14,7 +14,7 @@ async function getValidToken() {
   const { data: tokenData, error } = await supabase
     .from('platform_tokens')
     .select('access_token, refresh_token, token_expiry')
-    .eq('platform', 'google_ads')
+    .eq('platform', 'google_calendar')
     .maybeSingle()
 
   if (error || !tokenData) {
@@ -51,7 +51,7 @@ async function getValidToken() {
         token_expiry: newExpiry,
         updated_at: new Date().toISOString(),
       })
-      .eq('platform', 'google_ads')
+      .eq('platform', 'google_calendar')
 
     return credentials.access_token
   } catch (refreshError) {
