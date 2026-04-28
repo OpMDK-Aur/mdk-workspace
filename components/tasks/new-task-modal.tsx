@@ -999,10 +999,26 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
 
     const priority = (taskData.priority || selectedTemplate.defaultPriority || 'media') as TaskPriority
 
-    // Build initial comment from collected data (the conversation)
+    // Build initial comment from collected data AND the conversation
     const buildInitialComment = (): string => {
       const lines: string[] = []
-      lines.push(`<p><strong>Tipo de tarea:</strong> ${selectedTemplate.label}</p>`)
+      
+      // First add the full chat conversation
+      lines.push(`<p><strong>Conversacion con Madky:</strong></p>`)
+      lines.push('<div style="background:#1a1a2e; border-radius:8px; padding:12px; margin:8px 0;">')
+      
+      messages.forEach((msg) => {
+        if (msg.role === 'assistant') {
+          lines.push(`<p style="margin:8px 0;"><span style="color:#a855f7; font-weight:500;">Madky:</span> ${msg.content}</p>`)
+        } else if (msg.role === 'user') {
+          lines.push(`<p style="margin:8px 0;"><span style="color:#22c55e; font-weight:500;">Usuario:</span> ${msg.content}</p>`)
+        }
+      })
+      
+      lines.push('</div>')
+      
+      // Then add structured data summary
+      lines.push(`<p style="margin-top:16px;"><strong>Resumen de datos:</strong></p>`)
       
       // Add all collected data as structured info
       const dataEntries: { label: string; value: string }[] = []
