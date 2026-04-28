@@ -108,6 +108,13 @@ const PERSONALITY_RESPONSES = {
     'Vamos a conectar todo! Que tenemos?',
   ],
   
+  // Otro
+  otro_intro: [
+    'Dale! Soy todo oidos (o todo texto, mejor dicho).',
+    'Perfecto, contame que necesitas y vemos como lo resolvemos.',
+    'A ver, sorprendeme! Que tenes en mente?',
+  ],
+  
   // Optimizar
   optimizar_cpa: [
     'CPA alto? Uf, el dolor de todo marketer. Veamos que podemos hacer.',
@@ -435,6 +442,19 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       ]},
       { type: 'input', key: 'title', question: 'Contame mas, que numeros no cierran?', placeholder: 'Ej: Meta dice 50 leads pero el CRM tiene 35...' },
       { type: 'input', key: 'period', question: 'De que periodo estamos hablando?', placeholder: 'Ej: Esta semana o Marzo 2024' },
+      { type: 'priority' },
+      { type: 'confirm' },
+    ],
+  },
+  {
+    id: 'otro',
+    label: 'Otro',
+    icon: <Sparkles className="h-4 w-4" />,
+    type: 'soporte',
+    flow: [
+      { type: 'select_client' },
+      { type: 'input', key: 'title', question: 'Dale, contame que necesitas!', placeholder: 'Describime la tarea...' },
+      { type: 'multi_input', key: 'details', question: 'Algun detalle extra que me quieras contar?', placeholder: 'Links, contexto, urgencia...', hint: 'Podes dejarlo vacio si no hay nada mas' },
       { type: 'priority' },
       { type: 'confirm' },
     ],
@@ -851,6 +871,8 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
       introMessage = getRandomResponse(PERSONALITY_RESPONSES.falta_datos_calm)
     } else if (template.id === 'integrar' || template.id === 'revisar_integraciones') {
       introMessage = getRandomResponse(PERSONALITY_RESPONSES.integraciones_intro)
+    } else if (template.id === 'otro') {
+      introMessage = getRandomResponse(PERSONALITY_RESPONSES.otro_intro)
     }
 
     if (introMessage) {
