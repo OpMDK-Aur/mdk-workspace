@@ -71,6 +71,10 @@ export const useTimerStore = create<TimerState>()(
         const startedAt = new Date().toISOString()
 
         const { data: { user } } = await supabase.auth.getUser()
+        
+        console.log('[v0] startTimer - user:', user?.id)
+        console.log('[v0] startTimer - clientId:', state.clientId)
+        console.log('[v0] startTimer - tipoTareaId:', state.tipoTareaId)
 
         const { data: newEntry, error } = await supabase
           .from('entradas_de_tiempo')
@@ -86,6 +90,9 @@ export const useTimerStore = create<TimerState>()(
           })
           .select()
           .single()
+
+        console.log('[v0] startTimer - newEntry:', newEntry)
+        console.log('[v0] startTimer - error:', error)
 
         if (error) {
           console.error('Error creating time entry:', error)
@@ -258,15 +265,22 @@ export const useTimerStore = create<TimerState>()(
         set({ isLoading: true })
         try {
           const supabase = createClient()
+          
+          console.log('[v0] loadEntries - fetching from entradas_de_tiempo...')
+          
           const { data, error } = await supabase
             .from('entradas_de_tiempo')
             .select('*')
             .order('iniciado_en', { ascending: false })
             .limit(100)
 
+          console.log('[v0] loadEntries - data:', data)
+          console.log('[v0] loadEntries - error:', error)
+
           if (!error && data) {
             // Filter out entries with invalid iniciado_en
             const validEntries = data.filter((e) => e.iniciado_en && !isNaN(new Date(e.iniciado_en).getTime()))
+            console.log('[v0] loadEntries - validEntries count:', validEntries.length)
             set({ entries: validEntries as TimeEntry[] })
 
             const runningEntry = validEntries.find((e) => e.finalizado_en === null)
