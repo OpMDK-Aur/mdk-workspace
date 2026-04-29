@@ -688,6 +688,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         `)
         .order('created_at', { ascending: false })
 
+      console.log('[v0] loadTasks - data:', data)
+      console.log('[v0] loadTasks - error:', error)
+
       if (error) {
         console.error('Error loading tasks:', error)
         // Fallback to mock data
@@ -696,6 +699,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
 
       if (data && data.length > 0) {
+        console.log('[v0] loadTasks - found', data.length, 'tasks from DB')
         // Load comments for all tasks
         const taskIds = data.map((t) => t.id)
         const { data: comentarios } = await supabase
@@ -731,7 +735,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   setView: (view) => set({ view }),
-  setSelectedTask: (id) => set({ selectedTaskId: id }),
+  setSelectedTask: (id) => {
+    console.log('[v0] setSelectedTask - id:', id)
+    set({ selectedTaskId: id })
+  },
   setFilter: (key, value) => set((state) => ({
     filters: { ...state.filters, [key]: value },
   })),
