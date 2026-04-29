@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -17,6 +18,12 @@ import {
 import { cn } from '@/lib/utils'
 import { Play, Square, DollarSign, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+
+interface TipoTarea {
+  id: string
+  nombre: string
+  activo: boolean
+}
 
 // Generate a color from client id for visual distinction
 function getClientColor(id: string): string {
@@ -47,36 +54,74 @@ export function ActiveTimerBar() {
     startedAt,
     description,
     clientId,
+    tipoTareaId,
     billable,
     entries,
     startTimer,
     stopTimer,
     setDescription,
     setClientId,
+    setTipoTareaId,
     toggleBillable,
     getElapsedSeconds,
     loadEntries,
   } = useTimerStore()
 
   const [clients, setClients] = useState<Client[]>([])
+  const [tiposTarea, setTiposTarea] = useState<TipoTarea[]>([])
+  const [departamento, setDepartamento] = useState<string | null>(null)
   const [isLoadingClients, setIsLoadingClients] = useState(true)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [isStarting, setIsStarting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
 
-  // Fetch clients and load entries on mount
+  // Fetch clients, task types, and user department on mount
   useEffect(() => {
     async function init() {
       const supabase = createClient()
-      const { data, error } = await supabase
-        .from('clients')
+      
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      // Load clients
+      const { data: clientsData } = await supabase
+        .from('clientes')
         .select('*')
-        .order('business_name')
+        .order('nombre_del_negocio')
 
-      if (!error && data) {
-        setClients(data)
+      if (clientsData) {
+        // Map to Client type for compatibility
+        setClients(clientsData.map((c: { id: string; nombre_del_negocio: string }) => ({
+          id: c.id,
+          business_name: c.nombre_del_negocio,
+        })) as Client[])
       }
       setIsLoadingClients(false)
+
+      // Load user's department
+      if (user) {
+        const { data: colabData } = await supabase
+          .from('colaboradores')
+          .select('departamentos(nombre)')
+          .eq('id', user.id)
+          .single()
+
+        if (colabData) {
+          const dept = (colabData.departamentos as { nombre: string } | null)?.nombre ?? null
+          setDepartamento(dept)
+        }
+      }
+
+      // Load all active task types
+      const { data: tiposData } = await supabase
+        .from('tipo_de_tareas')
+        .select('id, nombre, activo')
+        .eq('activo', true)
+        .order('nombre')
+
+      if (tiposData) {
+        setTiposTarea(tiposData)
+      }
 
       // Load entries to sync with any running timer from Supabase
       await loadEntries()
@@ -136,6 +181,13 @@ export function ActiveTimerBar() {
   return (
     <div className="sticky top-0 z-40 border-b border-border bg-card shadow-sm">
       <div className="flex items-center gap-3 px-4 py-3">
+        {/* Department Badge */}
+        {departamento && (
+          <Badge variant="outline" className="shrink-0 text-xs">
+            {departamento}
+          </Badge>
+        )}
+
         {/* Description Input */}
         <div className="flex-1 min-w-0">
           <Input
@@ -145,6 +197,23 @@ export function ActiveTimerBar() {
             className="border-0 bg-transparent text-base shadow-none focus-visible:ring-0 px-0"
           />
         </div>
+
+        {/* Task Type Selector */}
+        <Select
+          value={tipoTareaId || ''}
+          onValueChange={(val) => setTipoTareaId(val || null)}
+        >
+          <SelectTrigger className="w-[160px] shrink-0">
+            <SelectValue placeholder="Tipo de tarea" />
+          </SelectTrigger>
+          <SelectContent>
+            {tiposTarea.map((tipo) => (
+              <SelectItem key={tipo.id} value={tipo.id}>
+                {tipo.nombre}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         {/* Client Selector */}
         <Select

@@ -87,10 +87,8 @@ export function ActiveTimerBar() {
           .eq('id', user.id)
           .single()
 
-        console.log('[v0] colab data:', colab)
         if (colab) {
           const dept = (colab.departamentos as { nombre: string } | null)?.nombre ?? null
-          console.log('[v0] colaborador departamento:', dept)
           setColaborador({
             nombre: colab.nombre,
             departamento: dept,
@@ -98,14 +96,12 @@ export function ActiveTimerBar() {
         }
 
         // Cargar TODOS los tipos de tarea activos
-        const { data: tipos, error: tiposError } = await supabase
+        const { data: tipos } = await supabase
           .from('tipo_de_tareas')
           .select('*')
           .eq('activo', true)
           .order('nombre')
         
-        console.log('[v0] tipos de tarea:', tipos)
-        console.log('[v0] tipos error:', tiposError)
         if (tipos) setTiposTarea(tipos)
       }
 
