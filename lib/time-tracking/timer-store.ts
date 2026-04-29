@@ -264,6 +264,13 @@ export const useTimerStore = create<TimerState>()(
             .order('iniciado_en', { ascending: false })
             .limit(100)
 
+          console.log('[v0] loadEntries - data:', data)
+          console.log('[v0] loadEntries - error:', error)
+          if (data && data.length > 0) {
+            console.log('[v0] loadEntries - first entry fields:', Object.keys(data[0]))
+            console.log('[v0] loadEntries - first entry:', data[0])
+          }
+
           if (!error && data) {
             set({ entries: data as TimeEntry[] })
 
