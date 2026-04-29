@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { TaskPriority, TaskType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useTaskStore, PRIORITY_CONFIG, TYPE_CONFIG, ASSIGNEES } from '@/lib/tasks/task-store'
@@ -41,8 +41,15 @@ export function TaskBoard() {
     saveFilter,
     loadSavedFilter,
     deleteSavedFilter,
+    loadTasks,
+    isLoading,
   } = useTaskStore()
   const [newTaskOpen, setNewTaskOpen] = useState(false)
+
+  // Load tasks from Supabase on mount
+  useEffect(() => {
+    loadTasks()
+  }, [loadTasks])
 
   const hasSimpleFilters = filters.priority || filters.assigneeId || filters.type || filters.dueThisWeek
   const hasAdvancedFilters = advancedFilters.length > 0

@@ -1,6 +1,7 @@
 'use client'
 
 import { create } from 'zustand'
+import { createClient } from '@/lib/supabase/client'
 import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskComment, TaskFile, TaskQuotation } from '@/lib/types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -8,7 +9,86 @@ import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskCom
 export const HOURLY_RATE = 150000 // $150,000 CLP
 export const IVA_RATE = 0.21 // 21%
 
-// ── Mock Data ─────────────────────────────────────────────────────────────────
+// ── Database Types ────────────────────────────────────────────────────────────
+
+interface TareaDB {
+  id: string
+  titulo: string
+  descripcion: string | null
+  tipo_tarea_id: string | null
+  cliente_id: string | null
+  servicio_id: string | null
+  asignado_a: string | null
+  creado_por: string | null
+  estado: string
+  prioridad: string
+  fecha_vencimiento: string | null
+  fecha_completada: string | null
+  hito_poe: string | null
+  agente_id: string | null
+  created_at: string
+  updated_at: string
+  // Joined relations
+  clientes?: { id: string; nombre_del_negocio: string } | null
+  colaboradores?: { id: string; nombre: string } | null
+  tipo_de_tareas?: { id: string; nombre: string } | null
+}
+
+// Map DB estado to TaskStatus
+function mapEstadoToStatus(estado: string): TaskStatus {
+  const map: Record<string, TaskStatus> = {
+    'pendiente': 'pendiente',
+    'en_progreso': 'resolviendo',
+    'resolviendo': 'resolviendo',
+    'demorada': 'demorada',
+    'pausada': 'pausada',
+    'pendiente_aprobacion': 'pendiente_aprobacion',
+    'completada': 'resuelto',
+    'resuelto': 'resuelto',
+  }
+  return map[estado] || 'pendiente'
+}
+
+// Map DB prioridad to TaskPriority
+function mapPrioridadToPriority(prioridad: string): TaskPriority {
+  const map: Record<string, TaskPriority> = {
+    'alta': 'alta',
+    'media': 'media',
+    'baja': 'baja',
+  }
+  return map[prioridad] || 'media'
+}
+
+// Convert DB tarea to Task
+function mapTareaToTask(tarea: TareaDB): Task {
+  return {
+    id: tarea.id,
+    title: tarea.titulo,
+    description: tarea.descripcion,
+    clientId: tarea.cliente_id || '',
+    clientName: tarea.clientes?.nombre_del_negocio || 'Sin cliente',
+    assigneeId: tarea.asignado_a || '',
+    assigneeName: tarea.colaboradores?.nombre || 'Sin asignar',
+    status: mapEstadoToStatus(tarea.estado),
+    priority: mapPrioridadToPriority(tarea.prioridad),
+    type: 'soporte', // Default type since we use tipo_tarea_id now
+    dueDate: tarea.fecha_vencimiento ? new Date(tarea.fecha_vencimiento) : null,
+    isActive: tarea.estado !== 'completada' && tarea.estado !== 'resuelto',
+    customFields: {},
+    timeSessions: [],
+    totalTimeSec: 0,
+    isTimerRunning: false,
+    timerStartedAt: null,
+    activities: [],
+    comments: [],
+    files: [],
+    quotation: null,
+    createdAt: new Date(tarea.created_at),
+    updatedAt: new Date(tarea.updated_at),
+  }
+}
+
+// ── Mock Data (fallback) ──────────────────────────────────────────────────────
 
 const MOCK_TASKS: Task[] = [
   {
@@ -501,6 +581,7 @@ export interface SavedFilter {
 
 interface TaskStore {
   tasks: Task[]
+  isLoading: boolean
   selectedTaskId: string | null
   view: 'kanban' | 'list'
   
@@ -517,6 +598,7 @@ interface TaskStore {
   savedFilters: SavedFilter[]
 
   // Actions
+  loadTasks: () => Promise<void>
   setView: (view: 'kanban' | 'list') => void
   setSelectedTask: (id: string | null) => void
   setFilter: (key: keyof TaskStore['filters'], value: unknown) => void
@@ -556,7 +638,8 @@ interface TaskStore {
 }
 
 export const useTaskStore = create<TaskStore>((set, get) => ({
-  tasks: MOCK_TASKS,
+  tasks: [],
+  isLoading: false,
   selectedTaskId: null,
   view: 'kanban',
   filters: {
@@ -567,6 +650,40 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
   advancedFilters: [],
   savedFilters: [],
+
+  loadTasks: async () => {
+    set({ isLoading: true })
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('tareas')
+        .select(`
+          *,
+          clientes:cliente_id(id, nombre_del_negocio),
+          colaboradores:asignado_a(id, nombre),
+          tipo_de_tareas:tipo_tarea_id(id, nombre)
+        `)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error loading tasks:', error)
+        // Fallback to mock data
+        set({ tasks: MOCK_TASKS, isLoading: false })
+        return
+      }
+
+      if (data && data.length > 0) {
+        const tasks = data.map((tarea) => mapTareaToTask(tarea as TareaDB))
+        set({ tasks, isLoading: false })
+      } else {
+        // No tasks in DB, use empty array
+        set({ tasks: [], isLoading: false })
+      }
+    } catch (error) {
+      console.error('Error loading tasks:', error)
+      set({ tasks: MOCK_TASKS, isLoading: false })
+    }
+  },
 
   setView: (view) => set({ view }),
   setSelectedTask: (id) => set({ selectedTaskId: id }),
