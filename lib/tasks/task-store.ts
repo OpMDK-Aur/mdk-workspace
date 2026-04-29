@@ -28,10 +28,33 @@ interface TareaDB {
   agente_id: string | null
   created_at: string
   updated_at: string
+  contexto_chat: string | null
   // Joined relations
   clientes?: { id: string; nombre_del_negocio: string } | null
   colaboradores?: { id: string; nombre: string } | null
   tipo_de_tareas?: { id: string; nombre: string } | null
+}
+
+interface ComentarioDB {
+  id: string
+  tarea_id: string
+  contenido: string
+  autor_id: string | null
+  autor_nombre: string
+  es_sistema: boolean
+  created_at: string
+  updated_at: string
+}
+
+function mapComentarioToComment(comentario: ComentarioDB): TaskComment {
+  return {
+    id: comentario.id,
+    content: comentario.contenido,
+    userId: comentario.autor_id || 'system',
+    userName: comentario.autor_nombre,
+    userAvatar: null,
+    createdAt: new Date(comentario.created_at),
+  }
 }
 
 // Map DB estado to TaskStatus
@@ -626,8 +649,8 @@ interface TaskStore {
   removeCustomField: (taskId: string, key: string) => void
 
   // Comments
-  addComment: (taskId: string, content: string, userId: string, userName: string) => void
-  deleteComment: (taskId: string, commentId: string) => void
+  addComment: (taskId: string, content: string, userId: string, userName: string) => Promise<void>
+  deleteComment: (taskId: string, commentId: string) => Promise<void>
 
   // Files
   addFile: (taskId: string, file: Omit<TaskFile, 'id' | 'createdAt'>) => void
@@ -673,7 +696,29 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
 
       if (data && data.length > 0) {
-        const tasks = data.map((tarea) => mapTareaToTask(tarea as TareaDB))
+        // Load comments for all tasks
+        const taskIds = data.map((t) => t.id)
+        const { data: comentarios } = await supabase
+          .from('comentarios_tareas')
+          .select('*')
+          .in('tarea_id', taskIds)
+          .order('created_at', { ascending: true })
+
+        // Group comments by task
+        const commentsByTask = new Map<string, TaskComment[]>()
+        if (comentarios) {
+          comentarios.forEach((c) => {
+            const taskComments = commentsByTask.get(c.tarea_id) || []
+            taskComments.push(mapComentarioToComment(c as ComentarioDB))
+            commentsByTask.set(c.tarea_id, taskComments)
+          })
+        }
+
+        const tasks = data.map((tarea) => {
+          const task = mapTareaToTask(tarea as TareaDB)
+          task.comments = commentsByTask.get(tarea.id) || []
+          return task
+        })
         set({ tasks, isLoading: false })
       } else {
         // No tasks in DB, use empty array
@@ -822,39 +867,77 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }),
   })),
 
-  addComment: (taskId, content, userId, userName) => set((state) => ({
-    tasks: state.tasks.map((t) =>
-      t.id === taskId
-        ? {
-            ...t,
-            comments: [
-              ...t.comments,
-              {
-                id: crypto.randomUUID(),
-                content,
-                userId,
-                userName,
-                userAvatar: null,
-                createdAt: new Date(),
-              },
-            ],
-            updatedAt: new Date(),
-            activities: [
-              { id: crypto.randomUUID(), action: 'Agrego comentario', timestamp: new Date(), userId, userName },
-              ...t.activities,
-            ].slice(0, 10),
-          }
-        : t
-    ),
-  })),
+  addComment: async (taskId, content, userId, userName) => {
+    const supabase = createClient()
+    const commentId = crypto.randomUUID()
+    const now = new Date()
 
-  deleteComment: (taskId, commentId) => set((state) => ({
-    tasks: state.tasks.map((t) =>
-      t.id === taskId
-        ? { ...t, comments: t.comments.filter((c) => c.id !== commentId), updatedAt: new Date() }
-        : t
-    ),
-  })),
+    // Insert comment into Supabase
+    const { error } = await supabase
+      .from('comentarios_tareas')
+      .insert({
+        id: commentId,
+        tarea_id: taskId,
+        contenido: content,
+        autor_id: userId === 'system' ? null : userId,
+        autor_nombre: userName,
+        es_sistema: userName === 'Madky',
+      })
+
+    if (error) {
+      console.error('Error adding comment:', error)
+      return
+    }
+
+    set((state) => ({
+      tasks: state.tasks.map((t) =>
+        t.id === taskId
+          ? {
+              ...t,
+              comments: [
+                ...t.comments,
+                {
+                  id: commentId,
+                  content,
+                  userId,
+                  userName,
+                  userAvatar: null,
+                  createdAt: now,
+                },
+              ],
+              updatedAt: now,
+              activities: [
+                { id: crypto.randomUUID(), action: 'Agregó comentario', timestamp: now, userId, userName },
+                ...t.activities,
+              ].slice(0, 10),
+            }
+          : t
+      ),
+    }))
+  },
+
+  deleteComment: async (taskId, commentId) => {
+    const supabase = createClient()
+    
+    // Delete from Supabase
+    const { error } = await supabase
+      .from('comentarios_tareas')
+      .delete()
+      .eq('id', commentId)
+
+    if (error) {
+      console.error('Error deleting comment:', error)
+      return
+    }
+
+    set((state) => ({
+      tasks: state.tasks.map((t) =>
+        t.id === taskId
+          ? { ...t, comments: t.comments.filter((c) => c.id !== commentId), updatedAt: new Date() }
+          : t
+      ),
+    }))
+  },
 
   addFile: (taskId, file) => set((state) => ({
     tasks: state.tasks.map((t) =>
