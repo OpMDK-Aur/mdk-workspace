@@ -264,17 +264,12 @@ export const useTimerStore = create<TimerState>()(
             .order('iniciado_en', { ascending: false })
             .limit(100)
 
-          console.log('[v0] loadEntries raw data:', data)
-          console.log('[v0] loadEntries error:', error)
-          if (data && data.length > 0) {
-            console.log('[v0] First entry fields:', Object.keys(data[0]))
-            console.log('[v0] First entry:', data[0])
-          }
-
           if (!error && data) {
-            set({ entries: data as TimeEntry[] })
+            // Filter out entries with invalid iniciado_en
+            const validEntries = data.filter((e) => e.iniciado_en && !isNaN(new Date(e.iniciado_en).getTime()))
+            set({ entries: validEntries as TimeEntry[] })
 
-            const runningEntry = data.find((e) => e.finalizado_en === null)
+            const runningEntry = validEntries.find((e) => e.finalizado_en === null)
             if (runningEntry) {
               set({
                 isRunning: true,
