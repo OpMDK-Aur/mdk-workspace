@@ -444,11 +444,11 @@ export default function ColaboradoresPage() {
         </div>
       </div>
 
-      {/* Resumen por colaborador */}
-      {totalesPorColaborador.length > 0 && (
+      {/* Resumen - todas las filas con colaborador + cliente */}
+      {metricas.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Resumen por Colaborador</CardTitle>
+            <CardTitle className="text-lg">Resumen</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -456,19 +456,48 @@ export default function ColaboradoresPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Colaborador</TableHead>
-                    <TableHead className="text-right">Fee Total</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead className="text-right">Fee MDK</TableHead>
                     <TableHead className="text-right">H Teóricas</TableHead>
+                    <TableHead className="text-right">Mínimo</TableHead>
+                    <TableHead className="text-right">Objetivo</TableHead>
                     <TableHead className="text-right">Acumulado</TableHead>
                     <TableHead className="text-right">% Asignación</TableHead>
-                    <TableHead className="text-right">Clientes</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {metricas.map((m) => (
+                    <TableRow key={m.id}>
+                      <TableCell className="font-medium">{m.colaborador?.nombre} {m.colaborador?.apellido || ''}</TableCell>
+                      <TableCell>{m.cliente?.nombre_del_negocio || '-'}</TableCell>
+                      <TableCell className="text-right">${m.fee_administrado.toLocaleString('en-US', { minimumFractionDigits: 2 })}</TableCell>
+                      <TableCell className="text-right">{formatHoursDisplay(m.horas_teoricas_cliente)}</TableCell>
+                      <TableCell className={cn("text-right", getHoursColor(m.minimo_no_negociable_horas, m.horas_objetivo / 2))}>
+                        {formatHoursDisplay(m.minimo_no_negociable_horas)}
+                      </TableCell>
+                      <TableCell className="text-right">{formatHoursDisplay(m.horas_objetivo)}</TableCell>
+                      <TableCell className={cn("text-right", getHoursColor(m.acumulado_mes_asignado, m.horas_objetivo))}>
+                        {formatHoursDisplay(m.acumulado_mes_asignado)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className={cn(
+                          "px-2 py-1 rounded text-sm",
+                          getPercentageColor(m.porcentaje_asignacion)
+                        )}>
+                          {m.porcentaje_asignacion.toFixed(2)}%
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {/* Fila de totales por colaborador */}
                   {totalesPorColaborador.map((t) => (
-                    <TableRow key={t.colaborador.id} className="font-medium">
+                    <TableRow key={`total-${t.colaborador.id}`} className="bg-muted/50 font-semibold border-t-2">
                       <TableCell>{t.colaborador.nombre} {t.colaborador.apellido || ''}</TableCell>
+                      <TableCell className="text-muted-foreground">Total ({t.cantidadClientes} clientes)</TableCell>
                       <TableCell className="text-right">${t.totalFee.toLocaleString('en-US', { minimumFractionDigits: 2 })}</TableCell>
                       <TableCell className="text-right">{formatHoursDisplay(t.totalHorasTeoricas)}</TableCell>
+                      <TableCell className="text-right">-</TableCell>
+                      <TableCell className="text-right">{formatHoursDisplay(t.totalObjetivo)}</TableCell>
                       <TableCell className={cn("text-right", getHoursColor(t.totalAcumulado, t.totalObjetivo))}>
                         {formatHoursDisplay(t.totalAcumulado)}
                       </TableCell>
@@ -480,7 +509,6 @@ export default function ColaboradoresPage() {
                           {t.porcentaje.toFixed(2)}%
                         </span>
                       </TableCell>
-                      <TableCell className="text-right">{t.cantidadClientes}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -614,11 +642,26 @@ export default function ColaboradoresPage() {
                             className="w-[90px] h-8 text-xs text-right"
                           />
                         </TableCell>
-                        <TableCell className="text-right text-sm font-medium">
-                          {formatHoursDisplay(m.horas_teoricas_cliente)}
+                        <TableCell className="text-right">
+                          <Input
+                            type="number"
+                            step="0.5"
+                            value={m.horas_teoricas_cliente}
+                            onChange={(e) => handleUpdateField(m.id, 'horas_teoricas_cliente', Number(e.target.value))}
+                            className="w-[80px] h-8 text-xs text-right"
+                          />
                         </TableCell>
-                        <TableCell className={cn("text-right text-sm", getHoursColor(m.minimo_no_negociable_horas, m.horas_objetivo / 2))}>
-                          {formatHoursDisplay(m.minimo_no_negociable_horas)}
+                        <TableCell className="text-right">
+                          <Input
+                            type="number"
+                            step="0.5"
+                            value={m.minimo_no_negociable_horas}
+                            onChange={(e) => handleUpdateField(m.id, 'minimo_no_negociable_horas', Number(e.target.value))}
+                            className={cn(
+                              "w-[80px] h-8 text-xs text-right",
+                              getHoursColor(m.minimo_no_negociable_horas, m.horas_objetivo / 2)
+                            )}
+                          />
                         </TableCell>
                         <TableCell className="text-right">
                           <Input
