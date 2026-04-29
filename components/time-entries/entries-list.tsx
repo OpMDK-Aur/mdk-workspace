@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTimerStore, type TimeEntry } from '@/lib/time-tracking/timer-store'
 import { createClient } from '@/lib/supabase/client'
-import type { Client } from '@/lib/types'
+import type { Cliente, TipoDeTarea } from '@/lib/types'
 import {
   formatDuration,
   formatDurationShort,
@@ -37,7 +37,7 @@ function getClientColor(id: string): string {
 
 // Calculate total seconds for entries
 function calculateTotalSeconds(entries: TimeEntry[]): number {
-  return entries.reduce((acc, e) => acc + (e.duration_sec || 0), 0)
+  return entries.reduce((acc, e) => acc + (e.duracion_seg || 0), 0)
 }
 
 interface GroupedEntries {
@@ -51,7 +51,8 @@ export function EntriesList() {
   const { entries, continueEntry, deleteEntry, updateEntry, isLoading, loadEntries, isRunning, startedAt, getElapsedSeconds } = useTimerStore()
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [editDescription, setEditDescription] = useState('')
-  const [clients, setClients] = useState<Client[]>([])
+  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
   const [runningElapsed, setRunningElapsed] = useState(0)
 
   // Load entries from Supabase on mount
@@ -59,15 +60,18 @@ export function EntriesList() {
     loadEntries()
   }, [loadEntries])
 
-  // Fetch clients from Supabase
+  // Fetch clientes and tipos de tarea from Supabase
   useEffect(() => {
-    async function fetchClients() {
+    async function fetchData() {
       const supabase = createClient()
-      const { data } = await supabase.from('clients').select('*').order('business_name')
-      if (data) setClients(data)
+      const { data: clientesData } = await supabase.from('clientes').select('*').order('nombre_del_negocio')
+      if (clientesData) setClientes(clientesData)
+
+      const { data: tiposData } = await supabase.from('tipo_de_tareas').select('*').eq('activo', true).order('nombre')
+      if (tiposData) setTiposTarea(tiposData)
     }
 
-    fetchClients()
+    fetchData()
   }, [])
 
   // Update running entry elapsed time every second
@@ -86,41 +90,51 @@ export function EntriesList() {
     return () => clearInterval(interval)
   }, [isRunning, startedAt, getElapsedSeconds])
 
-  // Helper to get client by id
-  const getClient = (clientId: string | null): Client | undefined => {
-    if (!clientId) return undefined
-    return clients.find((c) => c.id === clientId)
+  // Helper to get cliente by id
+  const getCliente = (clienteId: string | null): Cliente | undefined => {
+    if (!clienteId) return undefined
+    return clientes.find((c) => c.id === clienteId)
+  }
+
+  // Helper to get tipo tarea by id
+  const getTipoTarea = (tipoId: string | null): TipoDeTarea | undefined => {
+    if (!tipoId) return undefined
+    return tiposTarea.find((t) => t.id === tipoId)
   }
 
   // Separate running entry from completed entries
   const { runningEntry, completedEntries } = useMemo(() => {
-    const running = entries.find((e) => e.ended_at === null)
-    const completed = entries.filter((e) => e.ended_at !== null)
+    const running = entries.find((e) => e.finalizado_en === null)
+    const completed = entries.filter((e) => e.finalizado_en !== null)
     return { runningEntry: running, completedEntries: completed }
   }, [entries])
 
   // Group completed entries by day
   const groupedEntries = useMemo(() => {
-    const groups = new Map<string, TimeEntry[]>()
+    const groups = new Map<string, { isoDate: string; entries: TimeEntry[] }>()
     
-    // Sort entries by started_at descending
+    // Sort entries by iniciado_en descending
     const sorted = [...completedEntries].sort(
-      (a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+      (a, b) => new Date(b.iniciado_en).getTime() - new Date(a.iniciado_en).getTime()
     )
 
     sorted.forEach((entry) => {
-      const dateKey = new Date(entry.started_at).toDateString()
-      const existing = groups.get(dateKey) || []
-      groups.set(dateKey, [...existing, entry])
+      const dateKey = new Date(entry.iniciado_en).toDateString()
+      const existing = groups.get(dateKey)
+      if (existing) {
+        existing.entries.push(entry)
+      } else {
+        groups.set(dateKey, { isoDate: entry.iniciado_en, entries: [entry] })
+      }
     })
 
     const result: GroupedEntries[] = []
-    groups.forEach((groupEntries, dateKey) => {
+    groups.forEach((group) => {
       result.push({
-        date: dateKey,
-        label: getDayLabel(dateKey),
-        total: calculateTotalSeconds(groupEntries),
-        entries: groupEntries,
+        date: group.isoDate,
+        label: getDayLabel(group.isoDate),
+        total: calculateTotalSeconds(group.entries),
+        entries: group.entries,
       })
     })
 
@@ -139,12 +153,12 @@ export function EntriesList() {
 
   const handleEdit = (entry: TimeEntry) => {
     setEditingEntry(entry)
-    setEditDescription(entry.description)
+    setEditDescription(entry.descripcion)
   }
 
   const handleSaveEdit = async () => {
     if (editingEntry) {
-      await updateEntry(editingEntry.id, { description: editDescription })
+      await updateEntry(editingEntry.id, { descripcion: editDescription })
       setEditingEntry(null)
       toast.success('Entrada actualizada')
     }
@@ -189,7 +203,8 @@ export function EntriesList() {
           </div>
           <RunningEntryRow
             entry={runningEntry}
-            client={getClient(runningEntry.client_id)}
+            cliente={getCliente(runningEntry.cliente_id)}
+            tipoTarea={getTipoTarea(runningEntry.tipo_tarea_id)}
             elapsedSeconds={runningElapsed}
             onEdit={() => handleEdit(runningEntry)}
           />
@@ -209,19 +224,17 @@ export function EntriesList() {
 
           {/* Entries */}
           <div className="space-y-2">
-            {group.entries.map((entry) => {
-              const client = getClient(entry.client_id)
-              return (
-                <EntryRow
-                  key={entry.id}
-                  entry={entry}
-                  client={client}
-                  onContinue={() => handleContinue(entry)}
-                  onEdit={() => handleEdit(entry)}
-                  onDelete={() => handleDelete(entry.id)}
-                />
-              )
-            })}
+            {group.entries.map((entry) => (
+              <EntryRow
+                key={entry.id}
+                entry={entry}
+                cliente={getCliente(entry.cliente_id)}
+                tipoTarea={getTipoTarea(entry.tipo_tarea_id)}
+                onContinue={() => handleContinue(entry)}
+                onEdit={() => handleEdit(entry)}
+                onDelete={() => handleDelete(entry.id)}
+              />
+            ))}
           </div>
         </div>
       ))}
@@ -258,30 +271,36 @@ export function EntriesList() {
 
 interface RunningEntryRowProps {
   entry: TimeEntry
-  client?: Client
+  cliente?: Cliente
+  tipoTarea?: TipoDeTarea
   elapsedSeconds: number
   onEdit: () => void
 }
 
-function RunningEntryRow({ entry, client, elapsedSeconds, onEdit }: RunningEntryRowProps) {
+function RunningEntryRow({ entry, cliente, tipoTarea, elapsedSeconds, onEdit }: RunningEntryRowProps) {
   return (
     <div className="flex items-center gap-4 p-3 rounded-lg bg-status-verde/10 border border-status-verde/30">
       {/* Client Color Dot */}
       <div
         className="h-3 w-3 rounded-full shrink-0"
-        style={{ backgroundColor: client ? getClientColor(client.id) : '#9ca3af' }}
+        style={{ backgroundColor: cliente ? getClientColor(cliente.id) : '#9ca3af' }}
       />
 
       {/* Description & Client */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-foreground truncate">
-          {entry.description}
+          {entry.descripcion}
         </p>
-        {client && (
-          <p className="text-xs text-muted-foreground truncate">
-            {client.business_name}
-          </p>
-        )}
+        <div className="flex items-center gap-2 mt-0.5">
+          {cliente && (
+            <p className="text-xs text-muted-foreground truncate">
+              {cliente.nombre_del_negocio}
+            </p>
+          )}
+          {tipoTarea && (
+            <span className="text-xs text-primary">{tipoTarea.nombre}</span>
+          )}
+        </div>
       </div>
 
       {/* Live Duration */}
@@ -294,7 +313,7 @@ function RunningEntryRow({ entry, client, elapsedSeconds, onEdit }: RunningEntry
         <DollarSign
           className={cn(
             'h-4 w-4',
-            entry.billable ? 'text-primary' : 'text-muted-foreground/40'
+            entry.facturable ? 'text-primary' : 'text-muted-foreground/40'
           )}
         />
       </div>
@@ -315,41 +334,47 @@ function RunningEntryRow({ entry, client, elapsedSeconds, onEdit }: RunningEntry
 
 interface EntryRowProps {
   entry: TimeEntry
-  client?: Client
+  cliente?: Cliente
+  tipoTarea?: TipoDeTarea
   onContinue: () => void
   onEdit: () => void
   onDelete: () => void
 }
 
-function EntryRow({ entry, client, onContinue, onEdit, onDelete }: EntryRowProps) {
+function EntryRow({ entry, cliente, tipoTarea, onContinue, onEdit, onDelete }: EntryRowProps) {
   return (
     <div className="group flex items-center gap-4 p-3 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors">
       {/* Client Color Dot */}
       <div
         className="h-3 w-3 rounded-full shrink-0"
-        style={{ backgroundColor: client ? getClientColor(client.id) : '#9ca3af' }}
+        style={{ backgroundColor: cliente ? getClientColor(cliente.id) : '#9ca3af' }}
       />
 
       {/* Description & Client */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-foreground truncate">
-          {entry.description}
+          {entry.descripcion}
         </p>
-        {client && (
-          <p className="text-xs text-muted-foreground truncate">
-            {client.business_name}
-          </p>
-        )}
+        <div className="flex items-center gap-2 mt-0.5">
+          {cliente && (
+            <p className="text-xs text-muted-foreground truncate">
+              {cliente.nombre_del_negocio}
+            </p>
+          )}
+          {tipoTarea && (
+            <span className="text-xs text-primary">{tipoTarea.nombre}</span>
+          )}
+        </div>
       </div>
 
       {/* Time Range */}
       <div className="text-sm text-muted-foreground shrink-0">
-        {formatTimeRange(entry.started_at, entry.ended_at)}
+        {formatTimeRange(entry.iniciado_en, entry.finalizado_en)}
       </div>
 
       {/* Duration */}
       <div className="font-mono text-sm font-medium tabular-nums w-16 text-right shrink-0">
-        {formatDurationShort(entry.duration_sec)}
+        {formatDurationShort(entry.duracion_seg)}
       </div>
 
       {/* Billable Icon */}
@@ -357,7 +382,7 @@ function EntryRow({ entry, client, onContinue, onEdit, onDelete }: EntryRowProps
         <DollarSign
           className={cn(
             'h-4 w-4',
-            entry.billable ? 'text-primary' : 'text-muted-foreground/40'
+            entry.facturable ? 'text-primary' : 'text-muted-foreground/40'
           )}
         />
       </div>

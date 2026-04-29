@@ -94,13 +94,11 @@ export function EntriesList() {
   }), [entries])
 
   const groupedEntries = useMemo(() => {
-    console.log('[v0] entries-list - completedEntries:', completedEntries)
     const groups = new Map<string, { isoDate: string; entries: TimeEntry[] }>()
     const sorted = [...completedEntries].sort(
       (a, b) => new Date(b.iniciado_en).getTime() - new Date(a.iniciado_en).getTime()
     )
     sorted.forEach((entry) => {
-      console.log('[v0] entry.iniciado_en:', entry.iniciado_en, 'parsed:', new Date(entry.iniciado_en))
       const dateKey = new Date(entry.iniciado_en).toDateString()
       const existing = groups.get(dateKey)
       if (existing) {
@@ -111,7 +109,6 @@ export function EntriesList() {
     })
     const result: GroupedEntries[] = []
     groups.forEach((group, dateKey) => {
-      console.log('[v0] group isoDate:', group.isoDate, 'label:', getDayLabel(group.isoDate))
       result.push({
         date: dateKey,
         label: getDayLabel(group.isoDate),
@@ -119,7 +116,6 @@ export function EntriesList() {
         entries: group.entries,
       })
     })
-    console.log('[v0] groupedEntries result:', result)
     return result
   }, [completedEntries])
 
