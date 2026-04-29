@@ -87,9 +87,6 @@ export const useTimerStore = create<TimerState>()(
           .select()
           .single()
 
-        console.log('[v0] startTimer result - newEntry:', newEntry)
-        console.log('[v0] startTimer result - error:', error)
-
         if (error) {
           console.error('Error creating time entry:', error)
           return
