@@ -635,6 +635,7 @@ function FilesSection({ task }: { task: Task }) {
 function CommentsSection({ task }: { task: Task }) {
   const { addComment, deleteComment } = useTaskStore()
   const [comment, setComment] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string } | null>(null)
 
   useEffect(() => {
@@ -654,20 +655,24 @@ function CommentsSection({ task }: { task: Task }) {
   }, [])
 
   const handleSubmit = async () => {
-    // Strip HTML tags to check if there's actual content
-    const textContent = comment.replace(/<[^>]*>/g, '').trim()
-    if (!textContent) return
+    const textContent = comment.trim()
+    if (!textContent || isSubmitting) return
     
+    setIsSubmitting(true)
     const userId = currentUser?.id || 'system'
     const userName = currentUser?.nombre || 'Usuario'
     
+    console.log('[v0] CommentsSection handleSubmit - taskId:', task.id, 'content:', textContent)
+    
     try {
-      await addComment(task.id, comment, userId, userName)
+      await addComment(task.id, textContent, userId, userName)
       setComment('')
       toast.success('Comentario agregado')
     } catch (err) {
-      console.error('Error adding comment:', err)
+      console.error('[v0] Error adding comment:', err)
       toast.error('Error al agregar comentario')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -693,10 +698,7 @@ function CommentsSection({ task }: { task: Task }) {
                       {format(new Date(c.createdAt), 'dd/MM/yyyy HH:mm', { locale: es })}
                     </span>
                   </div>
-                  <div 
-                    className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_table]:w-full [&_th]:bg-muted [&_td]:p-2 [&_th]:p-2 [&_td]:border [&_th]:border [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-md [&_blockquote]:border-l-2 [&_blockquote]:border-primary [&_blockquote]:pl-3 [&_blockquote]:italic"
-                    dangerouslySetInnerHTML={{ __html: c.content }}
-                  />
+                  <p className="text-sm text-foreground/80 mt-2 whitespace-pre-wrap">{c.content}</p>
                 </div>
                 <Button
                   variant="ghost"
@@ -721,20 +723,21 @@ function CommentsSection({ task }: { task: Task }) {
           </Avatar>
           <span className="text-sm text-muted-foreground">Nuevo comentario</span>
         </div>
-        <RichTextEditor
-          content={comment}
-          onChange={setComment}
-          placeholder="Escribe un comentario con formato, tablas, codigo..."
+        <textarea
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          placeholder="Escribe un comentario..."
+          className="w-full min-h-[80px] p-3 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
         />
         <div className="flex justify-end">
           <Button 
             size="sm" 
             className="gap-1.5" 
             onClick={handleSubmit} 
-            disabled={!comment.replace(/<[^>]*>/g, '').trim()}
+            disabled={!comment.trim() || isSubmitting}
           >
             <Send className="h-3.5 w-3.5" />
-            Enviar comentario
+            {isSubmitting ? 'Enviando...' : 'Enviar comentario'}
           </Button>
         </div>
       </div>
