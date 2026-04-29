@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Save, Plus, Trash2, RefreshCw, AlertCircle } from 'lucide-react'
+import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -34,6 +34,7 @@ interface Colaborador {
 interface Cliente {
   id: string
   nombre_del_negocio: string
+  fee_mdk: number | null
 }
 
 interface MetricaColaborador {
@@ -43,57 +44,36 @@ interface MetricaColaborador {
   colaborador?: Colaborador
   cliente?: Cliente
   fee_administrado: number
-  horas_teoricas_cliente: string
-  minimo_no_negociable_horas: string
-  horas_objetivo: string
-  acumulado_mes_asignado: string
+  valor_hora: number
+  horas_teoricas_cliente: number
+  minimo_no_negociable_horas: number
+  horas_objetivo: number
+  acumulado_mes_asignado: number
   porcentaje_asignacion: number
   mes: number
   anio: number
 }
 
-// Parse interval string to display format
-function parseInterval(interval: string | null): string {
-  if (!interval) return '0:00:00'
-  const match = interval.match(/(\d+):(\d+):(\d+)/)
-  if (match) {
-    return `${parseInt(match[1])}:${match[2]}:${match[3]}`
-  }
-  return '0:00:00'
-}
-
-// Format interval for display
-function formatHours(interval: string | null): string {
-  const parsed = parseInterval(interval)
-  const [h, m, s] = parsed.split(':').map(Number)
-  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-
-// Parse hours input to interval format
-function hoursToInterval(input: string): string {
-  const parts = input.split(':').map(p => parseInt(p) || 0)
-  const hours = parts[0] || 0
-  const minutes = parts[1] || 0
-  const seconds = parts[2] || 0
-  return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+// Format hours as HH:MM
+function formatHoursDisplay(hours: number): string {
+  const h = Math.floor(hours)
+  const m = Math.round((hours - h) * 60)
+  return `${h}:${String(m).padStart(2, '0')}`
 }
 
 // Get color class based on percentage
-function getPercentageColor(value: number, threshold: number): string {
-  if (value >= threshold) return 'bg-green-500/20 text-green-400'
-  if (value >= threshold * 0.7) return 'bg-yellow-500/20 text-yellow-400'
+function getPercentageColor(value: number): string {
+  if (value >= 100) return 'bg-green-500/20 text-green-400'
+  if (value >= 70) return 'bg-yellow-500/20 text-yellow-400'
   return 'bg-red-500/20 text-red-400'
 }
 
 // Get color for hours comparison
-function getHoursColor(actual: string, target: string): string {
-  const actualParts = parseInterval(actual).split(':').map(Number)
-  const targetParts = parseInterval(target).split(':').map(Number)
-  const actualMinutes = actualParts[0] * 60 + actualParts[1]
-  const targetMinutes = targetParts[0] * 60 + targetParts[1]
-  
-  if (actualMinutes >= targetMinutes) return 'bg-green-500/20 text-green-400'
-  if (actualMinutes >= targetMinutes * 0.7) return 'bg-yellow-500/20 text-yellow-400'
+function getHoursColor(actual: number, target: number): string {
+  if (target === 0) return ''
+  const percentage = (actual / target) * 100
+  if (percentage >= 100) return 'bg-green-500/20 text-green-400'
+  if (percentage >= 70) return 'bg-yellow-500/20 text-yellow-400'
   return 'bg-red-500/20 text-red-400'
 }
 
@@ -108,6 +88,7 @@ export default function ColaboradoresPage() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [editedRows, setEditedRows] = useState<Set<string>>(new Set())
   const [filterColaborador, setFilterColaborador] = useState<string>('all')
+  const [valorHoraGlobal, setValorHoraGlobal] = useState<number>(150000)
 
   const supabase = createClient()
 
@@ -148,10 +129,10 @@ export default function ColaboradoresPage() {
 
       if (colabs) setColaboradores(colabs)
 
-      // Load clientes
+      // Load clientes with fee_mdk
       const { data: clientesData } = await supabase
         .from('clientes')
-        .select('id, nombre_del_negocio')
+        .select('id, nombre_del_negocio, fee_mdk')
         .order('nombre_del_negocio')
 
       if (clientesData) setClientes(clientesData)
@@ -162,7 +143,7 @@ export default function ColaboradoresPage() {
         .select(`
           *,
           colaborador:colaborador_id(id, nombre, apellido, email),
-          cliente:cliente_id(id, nombre_del_negocio)
+          cliente:cliente_id(id, nombre_del_negocio, fee_mdk)
         `)
         .eq('mes', selectedMonth)
         .eq('anio', selectedYear)
@@ -172,7 +153,12 @@ export default function ColaboradoresPage() {
         setMetricas(mets.map(m => ({
           ...m,
           colaborador: m.colaborador as Colaborador,
-          cliente: m.cliente as Cliente
+          cliente: m.cliente as Cliente,
+          horas_teoricas_cliente: Number(m.horas_teoricas_cliente) || 0,
+          minimo_no_negociable_horas: Number(m.minimo_no_negociable_horas) || 0,
+          horas_objetivo: Number(m.horas_objetivo) || 0,
+          acumulado_mes_asignado: Number(m.acumulado_mes_asignado) || 0,
+          valor_hora: Number(m.valor_hora) || 150000,
         })))
       }
 
@@ -181,23 +167,34 @@ export default function ColaboradoresPage() {
     loadData()
   }, [hasAccess, selectedMonth, selectedYear, supabase])
 
+  // Calculate horas teoricas based on formula: ((fee_mdk * 7.5%) / valor_hora) / 24
+  const calcularHorasTeoricas = (feeMdk: number, valorHora: number): number => {
+    if (valorHora === 0) return 0
+    return ((feeMdk * 0.075) / valorHora) / 24
+  }
+
   const handleAddRow = () => {
     if (colaboradores.length === 0 || clientes.length === 0) {
       toast.error('No hay colaboradores o clientes disponibles')
       return
     }
 
+    const cliente = clientes[0]
+    const feeMdk = cliente.fee_mdk || 0
+    const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHoraGlobal)
+
     const newMetrica: MetricaColaborador = {
       id: crypto.randomUUID(),
       colaborador_id: colaboradores[0].id,
-      cliente_id: clientes[0].id,
+      cliente_id: cliente.id,
       colaborador: colaboradores[0],
-      cliente: clientes[0],
-      fee_administrado: 0,
-      horas_teoricas_cliente: '0:00:00',
-      minimo_no_negociable_horas: '0:00:00',
-      horas_objetivo: '0:00:00',
-      acumulado_mes_asignado: '0:00:00',
+      cliente: cliente,
+      fee_administrado: feeMdk,
+      valor_hora: valorHoraGlobal,
+      horas_teoricas_cliente: horasTeoricas,
+      minimo_no_negociable_horas: horasTeoricas / 2,
+      horas_objetivo: horasTeoricas,
+      acumulado_mes_asignado: 0,
       porcentaje_asignacion: 0,
       mes: selectedMonth,
       anio: selectedYear,
@@ -207,18 +204,21 @@ export default function ColaboradoresPage() {
     setEditedRows(new Set([...editedRows, newMetrica.id]))
   }
 
-  const handleUpdateField = (id: string, field: keyof MetricaColaborador, value: unknown) => {
+  const handleUpdateField = (id: string, field: keyof MetricaColaborador, value: number) => {
     setMetricas(metricas.map(m => {
       if (m.id === id) {
         const updated = { ...m, [field]: value }
         
-        // Auto-calculate percentage
-        if (['acumulado_mes_asignado', 'horas_objetivo'].includes(field)) {
-          const acumParts = parseInterval(updated.acumulado_mes_asignado).split(':').map(Number)
-          const objParts = parseInterval(updated.horas_objetivo).split(':').map(Number)
-          const acumMinutes = acumParts[0] * 60 + acumParts[1]
-          const objMinutes = objParts[0] * 60 + objParts[1]
-          updated.porcentaje_asignacion = objMinutes > 0 ? Math.round((acumMinutes / objMinutes) * 10000) / 100 : 0
+        // Recalculate derived fields
+        if (field === 'horas_objetivo') {
+          updated.minimo_no_negociable_horas = value / 2
+        }
+        
+        // Always recalculate percentage
+        if (updated.horas_objetivo > 0) {
+          updated.porcentaje_asignacion = (updated.acumulado_mes_asignado * 100) / updated.horas_objetivo
+        } else {
+          updated.porcentaje_asignacion = 0
         }
         
         return updated
@@ -243,13 +243,43 @@ export default function ColaboradoresPage() {
   const handleChangeCliente = (metricaId: string, clienteId: string) => {
     const cliente = clientes.find(c => c.id === clienteId)
     if (cliente) {
-      setMetricas(metricas.map(m => 
-        m.id === metricaId 
-          ? { ...m, cliente_id: clienteId, cliente: cliente }
-          : m
-      ))
+      const feeMdk = cliente.fee_mdk || 0
+      setMetricas(metricas.map(m => {
+        if (m.id === metricaId) {
+          const horasTeoricas = calcularHorasTeoricas(feeMdk, m.valor_hora)
+          return { 
+            ...m, 
+            cliente_id: clienteId, 
+            cliente: cliente,
+            fee_administrado: feeMdk,
+            horas_teoricas_cliente: horasTeoricas,
+            horas_objetivo: horasTeoricas,
+            minimo_no_negociable_horas: horasTeoricas / 2,
+          }
+        }
+        return m
+      }))
       setEditedRows(new Set([...editedRows, metricaId]))
     }
+  }
+
+  const handleRecalcularTodo = () => {
+    setMetricas(metricas.map(m => {
+      const feeMdk = m.cliente?.fee_mdk || m.fee_administrado || 0
+      const horasTeoricas = calcularHorasTeoricas(feeMdk, m.valor_hora)
+      const porcentaje = horasTeoricas > 0 ? (m.acumulado_mes_asignado * 100) / horasTeoricas : 0
+      
+      return {
+        ...m,
+        fee_administrado: feeMdk,
+        horas_teoricas_cliente: horasTeoricas,
+        horas_objetivo: horasTeoricas,
+        minimo_no_negociable_horas: horasTeoricas / 2,
+        porcentaje_asignacion: porcentaje,
+      }
+    }))
+    setEditedRows(new Set(metricas.map(m => m.id)))
+    toast.success('Valores recalculados')
   }
 
   const handleDeleteRow = async (id: string) => {
@@ -294,10 +324,11 @@ export default function ColaboradoresPage() {
           colaborador_id: metrica.colaborador_id,
           cliente_id: metrica.cliente_id,
           fee_administrado: metrica.fee_administrado,
-          horas_teoricas_cliente: hoursToInterval(metrica.horas_teoricas_cliente),
-          minimo_no_negociable_horas: hoursToInterval(metrica.minimo_no_negociable_horas),
-          horas_objetivo: hoursToInterval(metrica.horas_objetivo),
-          acumulado_mes_asignado: hoursToInterval(metrica.acumulado_mes_asignado),
+          valor_hora: metrica.valor_hora,
+          horas_teoricas_cliente: metrica.horas_teoricas_cliente,
+          minimo_no_negociable_horas: metrica.minimo_no_negociable_horas,
+          horas_objetivo: metrica.horas_objetivo,
+          acumulado_mes_asignado: metrica.acumulado_mes_asignado,
           porcentaje_asignacion: metrica.porcentaje_asignacion,
           mes: selectedMonth,
           anio: selectedYear,
@@ -334,30 +365,17 @@ export default function ColaboradoresPage() {
   const totalesPorColaborador = colaboradores.map(colab => {
     const metricasColab = metricas.filter(m => m.colaborador_id === colab.id)
     const totalFee = metricasColab.reduce((sum, m) => sum + (m.fee_administrado || 0), 0)
-    
-    const totalHorasTeoricasMin = metricasColab.reduce((sum, m) => {
-      const parts = parseInterval(m.horas_teoricas_cliente).split(':').map(Number)
-      return sum + parts[0] * 60 + parts[1]
-    }, 0)
-    
-    const totalAcumuladoMin = metricasColab.reduce((sum, m) => {
-      const parts = parseInterval(m.acumulado_mes_asignado).split(':').map(Number)
-      return sum + parts[0] * 60 + parts[1]
-    }, 0)
-
-    const totalObjetivoMin = metricasColab.reduce((sum, m) => {
-      const parts = parseInterval(m.horas_objetivo).split(':').map(Number)
-      return sum + parts[0] * 60 + parts[1]
-    }, 0)
-
-    const porcentaje = totalObjetivoMin > 0 ? (totalAcumuladoMin / totalObjetivoMin) * 100 : 0
+    const totalHorasTeoricas = metricasColab.reduce((sum, m) => sum + (m.horas_teoricas_cliente || 0), 0)
+    const totalAcumulado = metricasColab.reduce((sum, m) => sum + (m.acumulado_mes_asignado || 0), 0)
+    const totalObjetivo = metricasColab.reduce((sum, m) => sum + (m.horas_objetivo || 0), 0)
+    const porcentaje = totalObjetivo > 0 ? (totalAcumulado * 100) / totalObjetivo : 0
 
     return {
       colaborador: colab,
       totalFee,
-      totalHorasTeoricas: `${Math.floor(totalHorasTeoricasMin / 60)}:${String(totalHorasTeoricasMin % 60).padStart(2, '0')}:00`,
-      totalAcumulado: `${Math.floor(totalAcumuladoMin / 60)}:${String(totalAcumuladoMin % 60).padStart(2, '0')}:00`,
-      totalObjetivo: `${Math.floor(totalObjetivoMin / 60)}:${String(totalObjetivoMin % 60).padStart(2, '0')}:00`,
+      totalHorasTeoricas,
+      totalAcumulado,
+      totalObjetivo,
       porcentaje,
       cantidadClientes: metricasColab.length,
     }
@@ -394,6 +412,15 @@ export default function ColaboradoresPage() {
           <p className="text-muted-foreground">Gestiona las métricas mensuales por colaborador y cliente</p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Valor hora:</span>
+            <Input
+              type="number"
+              value={valorHoraGlobal}
+              onChange={(e) => setValorHoraGlobal(Number(e.target.value))}
+              className="w-[120px] text-right"
+            />
+          </div>
           <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(Number(v))}>
             <SelectTrigger className="w-[140px]">
               <SelectValue />
@@ -430,8 +457,8 @@ export default function ColaboradoresPage() {
                   <TableRow>
                     <TableHead>Colaborador</TableHead>
                     <TableHead className="text-right">Fee Total</TableHead>
-                    <TableHead className="text-right">H Teóricas Total</TableHead>
-                    <TableHead className="text-right">Acumulado Total</TableHead>
+                    <TableHead className="text-right">H Teóricas</TableHead>
+                    <TableHead className="text-right">Acumulado</TableHead>
                     <TableHead className="text-right">% Asignación</TableHead>
                     <TableHead className="text-right">Clientes</TableHead>
                   </TableRow>
@@ -441,14 +468,14 @@ export default function ColaboradoresPage() {
                     <TableRow key={t.colaborador.id} className="font-medium">
                       <TableCell>{t.colaborador.nombre} {t.colaborador.apellido || ''}</TableCell>
                       <TableCell className="text-right">${t.totalFee.toLocaleString('en-US', { minimumFractionDigits: 2 })}</TableCell>
-                      <TableCell className="text-right">{t.totalHorasTeoricas}</TableCell>
+                      <TableCell className="text-right">{formatHoursDisplay(t.totalHorasTeoricas)}</TableCell>
                       <TableCell className={cn("text-right", getHoursColor(t.totalAcumulado, t.totalObjetivo))}>
-                        {t.totalAcumulado}
+                        {formatHoursDisplay(t.totalAcumulado)}
                       </TableCell>
                       <TableCell className="text-right">
                         <span className={cn(
                           "px-2 py-1 rounded text-sm",
-                          getPercentageColor(t.porcentaje, 100)
+                          getPercentageColor(t.porcentaje)
                         )}>
                           {t.porcentaje.toFixed(2)}%
                         </span>
@@ -470,7 +497,7 @@ export default function ColaboradoresPage() {
             <div>
               <CardTitle>Detalle por Cliente</CardTitle>
               <CardDescription>
-                {months[selectedMonth - 1]} {selectedYear}
+                {months[selectedMonth - 1]} {selectedYear} - Fórmulas: H.Teóricas = ((Fee×7.5%)/ValorHora)/24 | Mínimo = Objetivo/2 | % = (Acumulado×100)/Objetivo
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -487,6 +514,10 @@ export default function ColaboradoresPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Button variant="outline" size="sm" onClick={handleRecalcularTodo}>
+                <Calculator className="h-4 w-4 mr-1" />
+                Recalcular
+              </Button>
               <Button variant="outline" size="sm" onClick={handleAddRow}>
                 <Plus className="h-4 w-4 mr-1" />
                 Agregar
@@ -512,21 +543,22 @@ export default function ColaboradoresPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[180px]">Colaborador</TableHead>
-                    <TableHead className="w-[180px]">Cliente</TableHead>
-                    <TableHead className="text-right">Fee</TableHead>
-                    <TableHead className="text-right">H teóricas</TableHead>
-                    <TableHead className="text-right">Mínimo</TableHead>
-                    <TableHead className="text-right">Objetivo</TableHead>
-                    <TableHead className="text-right">Acumulado</TableHead>
-                    <TableHead className="text-right">%</TableHead>
+                    <TableHead className="w-[160px]">Colaborador</TableHead>
+                    <TableHead className="w-[160px]">Cliente</TableHead>
+                    <TableHead className="text-right w-[120px]">Fee MDK</TableHead>
+                    <TableHead className="text-right w-[100px]">Valor Hora</TableHead>
+                    <TableHead className="text-right w-[90px]">H Teóricas</TableHead>
+                    <TableHead className="text-right w-[90px]">Mínimo</TableHead>
+                    <TableHead className="text-right w-[90px]">Objetivo</TableHead>
+                    <TableHead className="text-right w-[90px]">Acumulado</TableHead>
+                    <TableHead className="text-right w-[80px]">%</TableHead>
                     <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredMetricas.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                         No hay datos para este período. Haz clic en &quot;Agregar&quot; para comenzar.
                       </TableCell>
                     </TableRow>
@@ -538,7 +570,7 @@ export default function ColaboradoresPage() {
                             value={m.colaborador_id} 
                             onValueChange={(v) => handleChangeColaborador(m.id, v)}
                           >
-                            <SelectTrigger className="w-full">
+                            <SelectTrigger className="w-full h-8 text-xs">
                               <SelectValue>
                                 {m.colaborador ? `${m.colaborador.nombre} ${m.colaborador.apellido || ''}`.trim() : 'Seleccionar'}
                               </SelectValue>
@@ -557,7 +589,7 @@ export default function ColaboradoresPage() {
                             value={m.cliente_id} 
                             onValueChange={(v) => handleChangeCliente(m.id, v)}
                           >
-                            <SelectTrigger className="w-full">
+                            <SelectTrigger className="w-full h-8 text-xs">
                               <SelectValue>
                                 {m.cliente?.nombre_del_negocio || 'Seleccionar'}
                               </SelectValue>
@@ -571,65 +603,57 @@ export default function ColaboradoresPage() {
                             </SelectContent>
                           </Select>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-right">
+                          <span className="text-sm">${m.fee_administrado.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        </TableCell>
+                        <TableCell className="text-right">
                           <Input
                             type="number"
-                            value={m.fee_administrado}
-                            onChange={(e) => handleUpdateField(m.id, 'fee_administrado', parseFloat(e.target.value) || 0)}
-                            className="text-right w-[120px]"
+                            value={m.valor_hora}
+                            onChange={(e) => handleUpdateField(m.id, 'valor_hora', Number(e.target.value))}
+                            className="w-[90px] h-8 text-xs text-right"
                           />
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-right text-sm font-medium">
+                          {formatHoursDisplay(m.horas_teoricas_cliente)}
+                        </TableCell>
+                        <TableCell className={cn("text-right text-sm", getHoursColor(m.minimo_no_negociable_horas, m.horas_objetivo / 2))}>
+                          {formatHoursDisplay(m.minimo_no_negociable_horas)}
+                        </TableCell>
+                        <TableCell className="text-right">
                           <Input
-                            value={formatHours(m.horas_teoricas_cliente)}
-                            onChange={(e) => handleUpdateField(m.id, 'horas_teoricas_cliente', e.target.value)}
-                            className="text-right w-[90px]"
-                            placeholder="0:00:00"
+                            type="number"
+                            step="0.5"
+                            value={m.horas_objetivo}
+                            onChange={(e) => handleUpdateField(m.id, 'horas_objetivo', Number(e.target.value))}
+                            className="w-[80px] h-8 text-xs text-right"
                           />
                         </TableCell>
-                        <TableCell>
+                        <TableCell className={cn("text-right", getHoursColor(m.acumulado_mes_asignado, m.horas_objetivo))}>
                           <Input
-                            value={formatHours(m.minimo_no_negociable_horas)}
-                            onChange={(e) => handleUpdateField(m.id, 'minimo_no_negociable_horas', e.target.value)}
+                            type="number"
+                            step="0.5"
+                            value={m.acumulado_mes_asignado}
+                            onChange={(e) => handleUpdateField(m.id, 'acumulado_mes_asignado', Number(e.target.value))}
                             className={cn(
-                              "text-right w-[90px]",
-                              getHoursColor(m.acumulado_mes_asignado, m.minimo_no_negociable_horas)
-                            )}
-                            placeholder="0:00:00"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            value={formatHours(m.horas_objetivo)}
-                            onChange={(e) => handleUpdateField(m.id, 'horas_objetivo', e.target.value)}
-                            className="text-right w-[90px]"
-                            placeholder="0:00:00"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            value={formatHours(m.acumulado_mes_asignado)}
-                            onChange={(e) => handleUpdateField(m.id, 'acumulado_mes_asignado', e.target.value)}
-                            className={cn(
-                              "text-right w-[90px]",
+                              "w-[80px] h-8 text-xs text-right",
                               getHoursColor(m.acumulado_mes_asignado, m.horas_objetivo)
                             )}
-                            placeholder="0:00:00"
                           />
                         </TableCell>
-                        <TableCell>
-                          <div className={cn(
-                            "text-right px-2 py-1 rounded text-sm font-medium whitespace-nowrap",
-                            getPercentageColor(m.porcentaje_asignacion, 100)
+                        <TableCell className="text-right">
+                          <span className={cn(
+                            "px-2 py-1 rounded text-xs",
+                            getPercentageColor(m.porcentaje_asignacion)
                           )}>
                             {m.porcentaje_asignacion.toFixed(1)}%
-                          </div>
+                          </span>
                         </TableCell>
                         <TableCell>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            className="h-7 w-7 text-destructive hover:text-destructive"
                             onClick={() => handleDeleteRow(m.id)}
                           >
                             <Trash2 className="h-4 w-4" />
