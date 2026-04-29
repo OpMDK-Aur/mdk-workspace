@@ -473,4 +473,78 @@ export const madkyTools = {
   }),
 }
 
+/**
+   * Create a new task with context from chat
+   */
+  createTask: tool({
+    description: 'Crea una nueva tarea en el sistema. Usa esta herramienta cuando el usuario pida crear una tarea, solicite un trabajo, reporte un problema, o necesite que se haga algo. Incluye un resumen del contexto del chat como primer comentario.',
+    parameters: z.object({
+      titulo: z.string().describe('Título breve y descriptivo de la tarea'),
+      descripcion: z.string().describe('Descripción detallada de lo que se necesita hacer'),
+      clienteId: z.string().describe('ID del cliente relacionado con la tarea'),
+      prioridad: z.enum(['alta', 'media', 'baja']).optional().default('media').describe('Prioridad de la tarea'),
+      contextoChat: z.string().describe('Resumen del contexto de la conversación que llevó a crear esta tarea. Incluye los puntos clave discutidos, el problema identificado, y cualquier información relevante del chat.'),
+      tipoTareaSugerido: z.string().optional().describe('Nombre del tipo de tarea sugerido (ej: "Desarrollo", "Soporte", "Integración"). Se buscará un tipo similar en la base de datos.'),
+    }),
+    execute: async ({ titulo, descripcion, clienteId, prioridad, contextoChat, tipoTareaSugerido }): Promise<{ success: boolean; taskId?: string; error?: string }> => {
+      try {
+        const supabase = await createClient()
+        
+        // Find a matching tipo_tarea if suggested
+        let tipoTareaId: string | null = null
+        if (tipoTareaSugerido) {
+          const { data: tipos } = await supabase
+            .from('tipo_de_tareas')
+            .select('id, nombre')
+            .eq('activo', true)
+            .ilike('nombre', `%${tipoTareaSugerido}%`)
+            .limit(1)
+          
+          if (tipos && tipos.length > 0) {
+            tipoTareaId = tipos[0].id
+          }
+        }
+        
+        // Create the task
+        const { data: tarea, error: tareaError } = await supabase
+          .from('tareas')
+          .insert({
+            titulo,
+            descripcion,
+            cliente_id: clienteId,
+            tipo_tarea_id: tipoTareaId,
+            prioridad,
+            estado: 'pendiente',
+            contexto_chat: contextoChat,
+          })
+          .select('id')
+          .single()
+        
+        if (tareaError || !tarea) {
+          return { success: false, error: `Error al crear tarea: ${tareaError?.message}` }
+        }
+        
+        // Add the first comment with chat context (from Madky)
+        const { error: commentError } = await supabase
+          .from('comentarios_tareas')
+          .insert({
+            tarea_id: tarea.id,
+            contenido: `**Contexto de la conversación:**\n\n${contextoChat}`,
+            autor_nombre: 'Madky',
+            es_sistema: true,
+          })
+        
+        if (commentError) {
+          console.error('Error adding comment:', commentError)
+          // Don't fail the task creation if comment fails
+        }
+        
+        return { success: true, taskId: tarea.id }
+      } catch (error) {
+        return { success: false, error: `Error inesperado: ${error}` }
+      }
+    },
+  }),
+}
+
 export type MadkyTools = typeof madkyTools
