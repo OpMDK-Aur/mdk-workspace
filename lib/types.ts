@@ -244,9 +244,38 @@ export interface ClientBudgetAlert {
 
 // ── Task Management ───────────────────────────────────────────────────────────
 
+export interface Cliente {
+  id: string
+  nombre_del_negocio: string
+  nombre_contacto?: string | null
+  apellido_contacto?: string | null
+  telefono?: string | null
+  estado?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface TipoDeTarea {
+  id: string
+  nombre: string
+  departamento_id?: string | null
+  activo: boolean
+  created_at?: string
+}
+
+export interface Colaborador {
+  id: string
+  nombre: string
+  email?: string | null
+  departamento_id?: string | null
+  rol?: string | null
+  activo?: boolean
+}
+
 export type TaskStatus = 'pendiente' | 'resolviendo' | 'demorada' | 'pausada' | 'pendiente_aprobacion' | 'resuelto'
 export type TaskPriority = 'alta' | 'media' | 'baja'
-export type TaskType = 'crm' | 'meta_ads' | 'soporte' | 'integracion' | 'reportes' | 'desarrollo'
+// TaskType is now dynamic - it's the UUID of tipo_de_tareas
+export type TaskType = string
 
 export interface TaskCustomField {
   label: string
