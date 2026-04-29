@@ -872,10 +872,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const commentId = crypto.randomUUID()
     const now = new Date()
 
-    console.log('[v0] addComment - taskId:', taskId, 'userId:', userId, 'userName:', userName)
-
     // Insert comment into Supabase
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('comentarios_tareas')
       .insert({
         id: commentId,
@@ -885,13 +883,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         autor_nombre: userName,
         es_sistema: userName === 'Madky',
       })
-      .select()
-
-    console.log('[v0] addComment - result:', data, 'error:', error)
 
     if (error) {
       console.error('Error adding comment:', error)
-      return
+      throw error
     }
 
     set((state) => ({

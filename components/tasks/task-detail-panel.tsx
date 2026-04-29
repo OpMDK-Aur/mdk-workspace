@@ -653,29 +653,22 @@ function CommentsSection({ task }: { task: Task }) {
     loadUser()
   }, [])
 
-  const handleSubmit = () => {
-    console.log('[v0] handleSubmit called')
+  const handleSubmit = async () => {
     // Strip HTML tags to check if there's actual content
     const textContent = comment.replace(/<[^>]*>/g, '').trim()
-    console.log('[v0] textContent:', textContent)
-    if (!textContent) {
-      console.log('[v0] No content, returning')
-      return
-    }
+    if (!textContent) return
     
     const userId = currentUser?.id || 'system'
     const userName = currentUser?.nombre || 'Usuario'
     
-    console.log('[v0] handleSubmit - task.id:', task.id, 'userId:', userId, 'userName:', userName)
-    
-    addComment(task.id, comment, userId, userName)
-      .then(() => {
-        console.log('[v0] Comment added successfully')
-        setComment('')
-      })
-      .catch((err) => {
-        console.error('[v0] Error adding comment:', err)
-      })
+    try {
+      await addComment(task.id, comment, userId, userName)
+      setComment('')
+      toast.success('Comentario agregado')
+    } catch (err) {
+      console.error('Error adding comment:', err)
+      toast.error('Error al agregar comentario')
+    }
   }
 
   return (
@@ -749,7 +742,7 @@ function CommentsSection({ task }: { task: Task }) {
   )
 }
 
-// ── Custom Fields Component ───────────────────────────────────────────────────
+// ── Custom Fields Component ────────────────────────────��──────────────────────
 
 function CustomFields({ task }: { task: Task }) {
   const { addCustomField, removeCustomField, updateTask } = useTaskStore()
