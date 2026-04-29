@@ -661,6 +661,8 @@ function CommentsSection({ task }: { task: Task }) {
     const userId = currentUser?.id || 'system'
     const userName = currentUser?.nombre || 'Usuario'
     
+    console.log('[v0] handleSubmit - task.id:', task.id, 'userId:', userId, 'userName:', userName, 'comment:', textContent)
+    
     await addComment(task.id, comment, userId, userName)
     setComment('')
   }
