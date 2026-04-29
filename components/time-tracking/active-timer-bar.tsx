@@ -92,36 +92,16 @@ export function ActiveTimerBar() {
             nombre: colab.nombre,
             departamento: (colab.departamentos as { nombre: string } | null)?.nombre ?? null,
           })
-
-          // Cargar tipos de tarea filtrados por departamento del colaborador
-          if ((colab.departamentos as { nombre: string } | null)?.nombre) {
-            const deptNombre = (colab.departamentos as { nombre: string }).nombre
-            const { data: dept } = await supabase
-              .from('departamentos')
-              .select('id')
-              .eq('nombre', deptNombre)
-              .single()
-
-            if (dept) {
-              const { data: tipos } = await supabase
-                .from('tipo_de_tareas')
-                .select('*')
-                .eq('departamento_id', dept.id)
-                .eq('activo', true)
-                .order('nombre')
-
-              if (tipos) setTiposTarea(tipos)
-            }
-          } else {
-            // Si no tiene departamento, cargar todos los tipos
-            const { data: tipos } = await supabase
-              .from('tipo_de_tareas')
-              .select('*')
-              .eq('activo', true)
-              .order('nombre')
-            if (tipos) setTiposTarea(tipos)
-          }
         }
+
+        // Cargar TODOS los tipos de tarea activos
+        const { data: tipos } = await supabase
+          .from('tipo_de_tareas')
+          .select('*')
+          .eq('activo', true)
+          .order('nombre')
+        
+        if (tipos) setTiposTarea(tipos)
       }
 
       // Cargar clientes
