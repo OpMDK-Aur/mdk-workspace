@@ -6,10 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle2, AlertCircle, RefreshCw, Loader2, Calendar } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 
 interface TokenInfo {
-  connected_email: string | null
+  email_conectado: string | null
   token_expiry: string | null
   updated_at: string | null
 }
@@ -26,42 +25,6 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [loadingAds, setLoadingAds] = useState(false)
   const [loadingCalendar, setLoadingCalendar] = useState(false)
-
-  // Log Calendar tokens after Supabase OAuth
-  useEffect(() => {
-    const logCalendarTokens = async () => {
-      const showTokens = searchParams.get('show_calendar_tokens')
-      if (showTokens !== 'true') return
-
-      console.log('[v0] show_calendar_tokens=true detected, getting session...')
-
-      const supabase = createClient()
-      const { data, error } = await supabase.auth.getSession()
-
-      console.log('[v0] getSession error:', error)
-      console.log('[v0] getSession data:', data)
-      console.log('[v0] Full session object:', JSON.stringify(data?.session, null, 2))
-
-      const session = data?.session
-
-      console.log('========== GOOGLE CALENDAR TOKENS ==========')
-      console.log('User ID:', session?.user?.id)
-      console.log('Email:', session?.user?.email)
-      console.log('Provider:', session?.user?.app_metadata?.provider)
-      console.log('Access Token:', session?.provider_token || 'NO PROVIDER TOKEN')
-      console.log('Refresh Token:', session?.provider_refresh_token || 'NO REFRESH TOKEN')
-      console.log('Session Access Token:', session?.access_token?.substring(0, 50) + '...')
-      console.log('=============================================')
-      
-      if (session?.provider_token) {
-        alert('Tokens mostrados en la consola del navegador (F12). Copia el Access Token y Refresh Token.')
-      } else {
-        alert('No se obtuvo provider_token. Mira la consola para mas detalles.')
-      }
-    }
-
-    logCalendarTokens()
-  }, [searchParams])
 
   // Handle URL params for success/error messages
   useEffect(() => {
@@ -97,34 +60,19 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
     window.location.href = '/api/auth/google-ads'
   }
 
-  const handleConnectCalendar = async () => {
+  const handleConnectCalendar = () => {
     setLoadingCalendar(true)
-    
-    const supabase = createClient()
-    
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        scopes: 'https://www.googleapis.com/auth/calendar',
-        redirectTo: `${window.location.origin}/dashboard/platform?show_calendar_tokens=true`,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
-      },
-    })
-
-    if (error) {
-      setNotice({ type: 'error', message: `Error al conectar: ${error.message}` })
-      setLoadingCalendar(false)
-    }
+    // Calendar token is managed manually via Google OAuth Playground
+    // and inserted directly into plataformas_tokens table
+    alert('Para conectar Google Calendar, usa Google OAuth Playground y agrega el refresh_token manualmente en Supabase.')
+    setLoadingCalendar(false)
   }
 
   const isAdsConnected = Boolean(googleToken)
   const isCalendarConnected = Boolean(googleCalendarToken)
   
-  const adsEmail = googleToken?.connected_email
-  const calendarEmail = googleCalendarToken?.connected_email
+  const adsEmail = googleToken?.email_conectado
+  const calendarEmail = googleCalendarToken?.email_conectado
   
   const adsUpdatedAt = googleToken?.updated_at
     ? new Date(googleToken.updated_at).toLocaleDateString('es-AR', {

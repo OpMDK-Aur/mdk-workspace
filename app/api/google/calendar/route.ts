@@ -12,9 +12,9 @@ async function getValidToken() {
   const supabase = await createClient()
   
   const { data: tokenData, error } = await supabase
-    .from('platform_tokens')
+    .from('plataformas_tokens')
     .select('access_token, refresh_token, token_expiry')
-    .eq('platform', 'google_calendar')
+    .eq('plataforma', 'google_calendar')
     .maybeSingle()
 
   if (error || !tokenData) {
@@ -45,13 +45,13 @@ async function getValidToken() {
       : new Date(Date.now() + 3600000).toISOString() // 1 hour default
 
     await supabase
-      .from('platform_tokens')
+      .from('plataformas_tokens')
       .update({
         access_token: credentials.access_token,
         token_expiry: newExpiry,
         updated_at: new Date().toISOString(),
       })
-      .eq('platform', 'google_calendar')
+      .eq('plataforma', 'google_calendar')
 
     return credentials.access_token
   } catch (refreshError) {
@@ -66,12 +66,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { event } = body
 
-    console.log('[v0] Calendar POST - Creating event:', event.title)
-
     // Get valid token from database
     const accessToken = await getValidToken()
-    
-    console.log('[v0] Calendar POST - Got access token:', !!accessToken)
     
     if (!accessToken) {
       return NextResponse.json({ 
@@ -123,17 +119,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('[v0] Calendar POST - Inserting event to calendar')
-    console.log('[v0] Calendar POST - Event data:', JSON.stringify(calendarEvent, null, 2))
-
     const response = await calendar.events.insert({
       calendarId: 'primary',
       requestBody: calendarEvent,
       conferenceDataVersion: event.addMeet ? 1 : 0,
       sendUpdates: event.attendees?.length > 0 ? 'all' : 'none',
     })
-
-    console.log('[v0] Calendar POST - Event created successfully:', response.data.id)
 
     return NextResponse.json({
       success: true,
@@ -144,15 +135,7 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error: unknown) {
-    console.error('[v0] Calendar POST - Error creating calendar event:', error)
-    
-    // Try to get more details from the error
     const errorObj = error as { response?: { data?: unknown }, message?: string }
-    if (errorObj.response?.data) {
-      console.error('[v0] Calendar POST - Error response data:', JSON.stringify(errorObj.response.data, null, 2))
-    }
-    
-    // Check if it's a scope error
     const errorStr = errorObj.message || String(error)
     if (errorStr.includes('insufficient') || errorStr.includes('scope') || errorStr.includes('calendar')) {
       return NextResponse.json({

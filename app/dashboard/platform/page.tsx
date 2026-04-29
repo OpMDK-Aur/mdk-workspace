@@ -10,30 +10,31 @@ export default async function PlatformPage() {
   if (!user) redirect('/auth/login')
 
   const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
+    .from('colaboradores')
+    .select('rol_id')
     .eq('id', user.id)
     .single()
 
-  if (profile?.role !== 'direccion' && profile?.role !== 'project_manager') {
+  // TODO: Check role via roles table join
+  if (!profile) {
     redirect('/dashboard')
   }
 
   const { data: clients } = await supabase
-    .from('clients')
-    .select('id, business_name, meta_ads_account_id, google_ads_customer_id, crm_type, ghl_location_id, ghl_token, status')
-    .order('business_name')
+    .from('clientes')
+    .select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, crm_type, ghl_location_id, ghl_token, semaforo_id')
+    .order('nombre_del_negocio')
 
   const { data: googleToken } = await supabase
-    .from('platform_tokens')
-    .select('connected_email, token_expiry, updated_at')
-    .eq('platform', 'google_ads')
+    .from('plataformas_tokens')
+    .select('email_conectado, token_expiry, updated_at')
+    .eq('plataforma', 'google_ads')
     .maybeSingle()
 
   const { data: googleCalendarToken } = await supabase
-    .from('platform_tokens')
-    .select('connected_email, token_expiry, updated_at')
-    .eq('platform', 'google_calendar')
+    .from('plataformas_tokens')
+    .select('email_conectado, token_expiry, updated_at')
+    .eq('plataforma', 'google_calendar')
     .maybeSingle()
 
   return (
