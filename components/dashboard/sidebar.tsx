@@ -34,6 +34,7 @@ import {
   Contact,
   Clock,
   CheckSquare,
+  UsersRound,
 } from 'lucide-react'
 import { UserSettingsDialog } from './user-settings-dialog'
 
@@ -218,6 +219,18 @@ export function Sidebar({
                   >
                     <Wallet className="h-4 w-4" />
                     Control de saldos
+                  </Link>
+                  <Link
+                    href="/dashboard/colaboradores"
+                    className={cn(
+                      'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                      pathname === '/dashboard/colaboradores'
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-foreground hover:bg-muted'
+                    )}
+                  >
+                    <UsersRound className="h-4 w-4" />
+                    Colaboradores
                   </Link>
                 </div>
               </div>
