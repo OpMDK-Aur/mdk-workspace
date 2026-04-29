@@ -471,9 +471,8 @@ export const madkyTools = {
       }
     },
   }),
-}
 
-/**
+  /**
    * Create a new task with context from chat
    */
   createTask: tool({
