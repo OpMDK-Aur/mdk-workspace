@@ -653,18 +653,29 @@ function CommentsSection({ task }: { task: Task }) {
     loadUser()
   }, [])
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
+    console.log('[v0] handleSubmit called')
     // Strip HTML tags to check if there's actual content
     const textContent = comment.replace(/<[^>]*>/g, '').trim()
-    if (!textContent) return
+    console.log('[v0] textContent:', textContent)
+    if (!textContent) {
+      console.log('[v0] No content, returning')
+      return
+    }
     
     const userId = currentUser?.id || 'system'
     const userName = currentUser?.nombre || 'Usuario'
     
-    console.log('[v0] handleSubmit - task.id:', task.id, 'userId:', userId, 'userName:', userName, 'comment:', textContent)
+    console.log('[v0] handleSubmit - task.id:', task.id, 'userId:', userId, 'userName:', userName)
     
-    await addComment(task.id, comment, userId, userName)
-    setComment('')
+    addComment(task.id, comment, userId, userName)
+      .then(() => {
+        console.log('[v0] Comment added successfully')
+        setComment('')
+      })
+      .catch((err) => {
+        console.error('[v0] Error adding comment:', err)
+      })
   }
 
   return (
