@@ -31,12 +31,19 @@ interface Colaborador {
   email: string | null
 }
 
+interface Cliente {
+  id: string
+  nombre_del_negocio: string
+}
+
 interface MetricaColaborador {
   id: string
   colaborador_id: string
+  cliente_id: string
   colaborador?: Colaborador
+  cliente?: Cliente
   fee_administrado: number
-  horas_teoricas_cliente: string // interval as string
+  horas_teoricas_cliente: string
   minimo_no_negociable_horas: string
   horas_objetivo: string
   acumulado_mes_asignado: string
@@ -45,10 +52,9 @@ interface MetricaColaborador {
   anio: number
 }
 
-// Parse interval string (HH:MM:SS or PostgreSQL interval format) to display format
+// Parse interval string to display format
 function parseInterval(interval: string | null): string {
   if (!interval) return '0:00:00'
-  // Handle PostgreSQL interval format like "15:00:00" or "1 day 02:00:00"
   const match = interval.match(/(\d+):(\d+):(\d+)/)
   if (match) {
     return `${parseInt(match[1])}:${match[2]}:${match[3]}`
@@ -65,7 +71,6 @@ function formatHours(interval: string | null): string {
 
 // Parse hours input to interval format
 function hoursToInterval(input: string): string {
-  // Accept formats like "15:00", "15:00:00", "15"
   const parts = input.split(':').map(p => parseInt(p) || 0)
   const hours = parts[0] || 0
   const minutes = parts[1] || 0
@@ -95,12 +100,14 @@ function getHoursColor(actual: string, target: string): string {
 export default function ColaboradoresPage() {
   const [metricas, setMetricas] = useState<MetricaColaborador[]>([])
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
+  const [clientes, setClientes] = useState<Cliente[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [hasAccess, setHasAccess] = useState<boolean | null>(null)
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [editedRows, setEditedRows] = useState<Set<string>>(new Set())
+  const [filterColaborador, setFilterColaborador] = useState<string>('all')
 
   const supabase = createClient()
 
@@ -141,12 +148,21 @@ export default function ColaboradoresPage() {
 
       if (colabs) setColaboradores(colabs)
 
+      // Load clientes
+      const { data: clientesData } = await supabase
+        .from('clientes')
+        .select('id, nombre_del_negocio')
+        .order('nombre_del_negocio')
+
+      if (clientesData) setClientes(clientesData)
+
       // Load metricas for selected period
       const { data: mets } = await supabase
         .from('metricas_colaboradores')
         .select(`
           *,
-          colaborador:colaborador_id(id, nombre, apellido, email)
+          colaborador:colaborador_id(id, nombre, apellido, email),
+          cliente:cliente_id(id, nombre_del_negocio)
         `)
         .eq('mes', selectedMonth)
         .eq('anio', selectedYear)
@@ -155,7 +171,8 @@ export default function ColaboradoresPage() {
       if (mets) {
         setMetricas(mets.map(m => ({
           ...m,
-          colaborador: m.colaborador as Colaborador
+          colaborador: m.colaborador as Colaborador,
+          cliente: m.cliente as Cliente
         })))
       }
 
@@ -164,20 +181,18 @@ export default function ColaboradoresPage() {
     loadData()
   }, [hasAccess, selectedMonth, selectedYear, supabase])
 
-  const handleAddRow = async () => {
-    // Find a colaborador not already in the list
-    const existingIds = metricas.map(m => m.colaborador_id)
-    const availableColab = colaboradores.find(c => !existingIds.includes(c.id))
-
-    if (!availableColab) {
-      toast.error('Todos los colaboradores ya tienen métricas para este período')
+  const handleAddRow = () => {
+    if (colaboradores.length === 0 || clientes.length === 0) {
+      toast.error('No hay colaboradores o clientes disponibles')
       return
     }
 
     const newMetrica: MetricaColaborador = {
       id: crypto.randomUUID(),
-      colaborador_id: availableColab.id,
-      colaborador: availableColab,
+      colaborador_id: colaboradores[0].id,
+      cliente_id: clientes[0].id,
+      colaborador: colaboradores[0],
+      cliente: clientes[0],
       fee_administrado: 0,
       horas_teoricas_cliente: '0:00:00',
       minimo_no_negociable_horas: '0:00:00',
@@ -197,7 +212,7 @@ export default function ColaboradoresPage() {
       if (m.id === id) {
         const updated = { ...m, [field]: value }
         
-        // Auto-calculate percentage if relevant fields change
+        // Auto-calculate percentage
         if (['acumulado_mes_asignado', 'horas_objetivo'].includes(field)) {
           const acumParts = parseInterval(updated.acumulado_mes_asignado).split(':').map(Number)
           const objParts = parseInterval(updated.horas_objetivo).split(':').map(Number)
@@ -225,11 +240,22 @@ export default function ColaboradoresPage() {
     }
   }
 
+  const handleChangeCliente = (metricaId: string, clienteId: string) => {
+    const cliente = clientes.find(c => c.id === clienteId)
+    if (cliente) {
+      setMetricas(metricas.map(m => 
+        m.id === metricaId 
+          ? { ...m, cliente_id: clienteId, cliente: cliente }
+          : m
+      ))
+      setEditedRows(new Set([...editedRows, metricaId]))
+    }
+  }
+
   const handleDeleteRow = async (id: string) => {
     const metrica = metricas.find(m => m.id === id)
     if (!metrica) return
 
-    // Check if it exists in DB (not a new row)
     const { data } = await supabase
       .from('metricas_colaboradores')
       .select('id')
@@ -266,6 +292,7 @@ export default function ColaboradoresPage() {
         const payload = {
           id: metrica.id,
           colaborador_id: metrica.colaborador_id,
+          cliente_id: metrica.cliente_id,
           fee_administrado: metrica.fee_administrado,
           horas_teoricas_cliente: hoursToInterval(metrica.horas_teoricas_cliente),
           minimo_no_negociable_horas: hoursToInterval(metrica.minimo_no_negociable_horas),
@@ -278,7 +305,7 @@ export default function ColaboradoresPage() {
 
         const { error } = await supabase
           .from('metricas_colaboradores')
-          .upsert(payload, { onConflict: 'colaborador_id,mes,anio' })
+          .upsert(payload, { onConflict: 'colaborador_id,cliente_id,mes,anio' })
 
         if (error) {
           console.error('Error saving:', error)
@@ -297,6 +324,44 @@ export default function ColaboradoresPage() {
 
     setIsSaving(false)
   }
+
+  // Filter metricas by colaborador
+  const filteredMetricas = filterColaborador === 'all' 
+    ? metricas 
+    : metricas.filter(m => m.colaborador_id === filterColaborador)
+
+  // Group metricas by colaborador for totals
+  const totalesPorColaborador = colaboradores.map(colab => {
+    const metricasColab = metricas.filter(m => m.colaborador_id === colab.id)
+    const totalFee = metricasColab.reduce((sum, m) => sum + (m.fee_administrado || 0), 0)
+    
+    const totalHorasTeoricasMin = metricasColab.reduce((sum, m) => {
+      const parts = parseInterval(m.horas_teoricas_cliente).split(':').map(Number)
+      return sum + parts[0] * 60 + parts[1]
+    }, 0)
+    
+    const totalAcumuladoMin = metricasColab.reduce((sum, m) => {
+      const parts = parseInterval(m.acumulado_mes_asignado).split(':').map(Number)
+      return sum + parts[0] * 60 + parts[1]
+    }, 0)
+
+    const totalObjetivoMin = metricasColab.reduce((sum, m) => {
+      const parts = parseInterval(m.horas_objetivo).split(':').map(Number)
+      return sum + parts[0] * 60 + parts[1]
+    }, 0)
+
+    const porcentaje = totalObjetivoMin > 0 ? (totalAcumuladoMin / totalObjetivoMin) * 100 : 0
+
+    return {
+      colaborador: colab,
+      totalFee,
+      totalHorasTeoricas: `${Math.floor(totalHorasTeoricasMin / 60)}:${String(totalHorasTeoricasMin % 60).padStart(2, '0')}:00`,
+      totalAcumulado: `${Math.floor(totalAcumuladoMin / 60)}:${String(totalAcumuladoMin % 60).padStart(2, '0')}:00`,
+      totalObjetivo: `${Math.floor(totalObjetivoMin / 60)}:${String(totalObjetivoMin % 60).padStart(2, '0')}:00`,
+      porcentaje,
+      cantidadClientes: metricasColab.length,
+    }
+  }).filter(t => t.cantidadClientes > 0)
 
   if (hasAccess === null) {
     return (
@@ -326,7 +391,7 @@ export default function ColaboradoresPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Métricas de Colaboradores</h1>
-          <p className="text-muted-foreground">Gestiona las métricas mensuales del equipo</p>
+          <p className="text-muted-foreground">Gestiona las métricas mensuales por colaborador y cliente</p>
         </div>
         <div className="flex items-center gap-3">
           <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(Number(v))}>
@@ -352,16 +417,76 @@ export default function ColaboradoresPage() {
         </div>
       </div>
 
+      {/* Resumen por colaborador */}
+      {totalesPorColaborador.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Resumen por Colaborador</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Colaborador</TableHead>
+                    <TableHead className="text-right">Fee Total</TableHead>
+                    <TableHead className="text-right">H Teóricas Total</TableHead>
+                    <TableHead className="text-right">Acumulado Total</TableHead>
+                    <TableHead className="text-right">% Asignación</TableHead>
+                    <TableHead className="text-right">Clientes</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {totalesPorColaborador.map((t) => (
+                    <TableRow key={t.colaborador.id} className="font-medium">
+                      <TableCell>{t.colaborador.nombre} {t.colaborador.apellido || ''}</TableCell>
+                      <TableCell className="text-right">${t.totalFee.toLocaleString('en-US', { minimumFractionDigits: 2 })}</TableCell>
+                      <TableCell className="text-right">{t.totalHorasTeoricas}</TableCell>
+                      <TableCell className={cn("text-right", getHoursColor(t.totalAcumulado, t.totalObjetivo))}>
+                        {t.totalAcumulado}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className={cn(
+                          "px-2 py-1 rounded text-sm",
+                          getPercentageColor(t.porcentaje, 100)
+                        )}>
+                          {t.porcentaje.toFixed(2)}%
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">{t.cantidadClientes}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Detalle por cliente */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Equipo</CardTitle>
+              <CardTitle>Detalle por Cliente</CardTitle>
               <CardDescription>
                 {months[selectedMonth - 1]} {selectedYear}
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
+              <Select value={filterColaborador} onValueChange={setFilterColaborador}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filtrar colaborador" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los colaboradores</SelectItem>
+                  {colaboradores.map(c => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.nombre} {c.apellido || ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button variant="outline" size="sm" onClick={handleAddRow}>
                 <Plus className="h-4 w-4 mr-1" />
                 Agregar
@@ -387,25 +512,26 @@ export default function ColaboradoresPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[200px]">Equipo</TableHead>
-                    <TableHead className="text-right">Fee administrado</TableHead>
-                    <TableHead className="text-right">H teóricas por cliente</TableHead>
-                    <TableHead className="text-right">Mínimo no negociable</TableHead>
-                    <TableHead className="text-right">Horas Objetivo</TableHead>
-                    <TableHead className="text-right">Acumulado del mes</TableHead>
-                    <TableHead className="text-right">% de asignación</TableHead>
+                    <TableHead className="w-[180px]">Colaborador</TableHead>
+                    <TableHead className="w-[180px]">Cliente</TableHead>
+                    <TableHead className="text-right">Fee</TableHead>
+                    <TableHead className="text-right">H teóricas</TableHead>
+                    <TableHead className="text-right">Mínimo</TableHead>
+                    <TableHead className="text-right">Objetivo</TableHead>
+                    <TableHead className="text-right">Acumulado</TableHead>
+                    <TableHead className="text-right">%</TableHead>
                     <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {metricas.length === 0 ? (
+                  {filteredMetricas.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                         No hay datos para este período. Haz clic en &quot;Agregar&quot; para comenzar.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    metricas.map((m) => (
+                    filteredMetricas.map((m) => (
                       <TableRow key={m.id} className={editedRows.has(m.id) ? 'bg-primary/5' : ''}>
                         <TableCell>
                           <Select 
@@ -427,18 +553,37 @@ export default function ColaboradoresPage() {
                           </Select>
                         </TableCell>
                         <TableCell>
+                          <Select 
+                            value={m.cliente_id} 
+                            onValueChange={(v) => handleChangeCliente(m.id, v)}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue>
+                                {m.cliente?.nombre_del_negocio || 'Seleccionar'}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {clientes.map(c => (
+                                <SelectItem key={c.id} value={c.id}>
+                                  {c.nombre_del_negocio}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
                           <Input
                             type="number"
                             value={m.fee_administrado}
                             onChange={(e) => handleUpdateField(m.id, 'fee_administrado', parseFloat(e.target.value) || 0)}
-                            className="text-right w-[140px]"
+                            className="text-right w-[120px]"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
                             value={formatHours(m.horas_teoricas_cliente)}
                             onChange={(e) => handleUpdateField(m.id, 'horas_teoricas_cliente', e.target.value)}
-                            className="text-right w-[100px]"
+                            className="text-right w-[90px]"
                             placeholder="0:00:00"
                           />
                         </TableCell>
@@ -447,7 +592,7 @@ export default function ColaboradoresPage() {
                             value={formatHours(m.minimo_no_negociable_horas)}
                             onChange={(e) => handleUpdateField(m.id, 'minimo_no_negociable_horas', e.target.value)}
                             className={cn(
-                              "text-right w-[100px]",
+                              "text-right w-[90px]",
                               getHoursColor(m.acumulado_mes_asignado, m.minimo_no_negociable_horas)
                             )}
                             placeholder="0:00:00"
@@ -457,7 +602,7 @@ export default function ColaboradoresPage() {
                           <Input
                             value={formatHours(m.horas_objetivo)}
                             onChange={(e) => handleUpdateField(m.id, 'horas_objetivo', e.target.value)}
-                            className="text-right w-[100px]"
+                            className="text-right w-[90px]"
                             placeholder="0:00:00"
                           />
                         </TableCell>
@@ -466,7 +611,7 @@ export default function ColaboradoresPage() {
                             value={formatHours(m.acumulado_mes_asignado)}
                             onChange={(e) => handleUpdateField(m.id, 'acumulado_mes_asignado', e.target.value)}
                             className={cn(
-                              "text-right w-[100px]",
+                              "text-right w-[90px]",
                               getHoursColor(m.acumulado_mes_asignado, m.horas_objetivo)
                             )}
                             placeholder="0:00:00"
@@ -474,10 +619,10 @@ export default function ColaboradoresPage() {
                         </TableCell>
                         <TableCell>
                           <div className={cn(
-                            "text-right px-2 py-1 rounded text-sm font-medium",
+                            "text-right px-2 py-1 rounded text-sm font-medium whitespace-nowrap",
                             getPercentageColor(m.porcentaje_asignacion, 100)
                           )}>
-                            {m.porcentaje_asignacion.toFixed(2)}%
+                            {m.porcentaje_asignacion.toFixed(1)}%
                           </div>
                         </TableCell>
                         <TableCell>
