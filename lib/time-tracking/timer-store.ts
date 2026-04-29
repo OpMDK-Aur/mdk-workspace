@@ -6,43 +6,46 @@ import { createClient } from '@/lib/supabase/client'
 
 export interface TimeEntry {
   id: string
-  user_id: string | null
-  client_id: string | null
-  description: string
-  started_at: string
-  ended_at: string | null
-  duration_sec: number | null
-  billable: boolean
+  colaborador_id: string | null
+  cliente_id: string | null
+  tipo_tarea_id: string | null
+  descripcion: string
+  iniciado_en: string
+  finalizado_en: string | null
+  duracion_seg: number | null
+  facturable: boolean
 }
 
 interface TimerState {
   // Timer state
   isRunning: boolean
   startedAt: string | null
-  currentEntryId: string | null  // The Supabase entry id for the running timer
+  currentEntryId: string | null
   description: string
   clientId: string | null
+  tipoTareaId: string | null
   billable: boolean
-  taskId: string | null  // Task ID if timer started from a task
-  
+  taskId: string | null
+
   // Entries (local cache)
   entries: TimeEntry[]
   isLoading: boolean
-  
+
   // Actions
   startTimer: () => Promise<void>
   stopTimer: () => Promise<void>
   setDescription: (desc: string) => void
   setClientId: (id: string | null) => Promise<void>
+  setTipoTareaId: (id: string | null) => void
   toggleBillable: () => void
   continueEntry: (entry: TimeEntry) => Promise<void>
   deleteEntry: (id: string) => Promise<void>
   updateEntry: (id: string, updates: Partial<TimeEntry>) => Promise<void>
   loadEntries: () => Promise<void>
-  
+
   // Task-specific actions
   startTimerForTask: (taskId: string, taskTitle: string, clientId: string | null) => Promise<void>
-  
+
   // Computed
   getElapsedSeconds: () => number
 }
@@ -56,6 +59,7 @@ export const useTimerStore = create<TimerState>()(
       currentEntryId: null,
       description: '',
       clientId: null,
+      tipoTareaId: null,
       billable: true,
       taskId: null,
       entries: [],
@@ -65,21 +69,20 @@ export const useTimerStore = create<TimerState>()(
         const state = get()
         const supabase = createClient()
         const startedAt = new Date().toISOString()
-        
-        // Get current user
+
         const { data: { user } } = await supabase.auth.getUser()
-        
-        // Insert into Supabase immediately with ended_at = null (running)
+
         const { data: newEntry, error } = await supabase
-          .from('time_entries')
+          .from('entradas_de_tiempo')
           .insert({
-            user_id: user?.id ?? null,
-            client_id: state.clientId,
-            description: state.description || 'Sin descripcion',
-            started_at: startedAt,
-            ended_at: null,
-            duration_sec: null,
-            billable: state.billable,
+            colaborador_id: user?.id ?? null,
+            cliente_id: state.clientId,
+            tipo_tarea_id: state.tipoTareaId,
+            descripcion: state.description || 'Sin descripción',
+            iniciado_en: startedAt,
+            finalizado_en: null,
+            duracion_seg: null,
+            facturable: state.billable,
           })
           .select()
           .single()
@@ -89,7 +92,6 @@ export const useTimerStore = create<TimerState>()(
           return
         }
 
-        // Update local state with the entry id and add to entries cache
         set({
           isRunning: true,
           startedAt: startedAt,
@@ -100,32 +102,28 @@ export const useTimerStore = create<TimerState>()(
 
       stopTimer: async () => {
         const state = get()
-        
+
         if (!state.startedAt) {
-          set({
-            isRunning: false,
-            startedAt: null,
-            currentEntryId: null,
-          })
+          set({ isRunning: false, startedAt: null, currentEntryId: null })
           return
         }
 
-        const endedAt = new Date().toISOString()
+        const finalizado_en = new Date().toISOString()
         const startTime = new Date(state.startedAt).getTime()
-        const endTime = new Date(endedAt).getTime()
-        const durationSec = Math.floor((endTime - startTime) / 1000)
+        const endTime = new Date(finalizado_en).getTime()
+        const duracion_seg = Math.floor((endTime - startTime) / 1000)
 
         const supabase = createClient()
         let entryIdToUpdate = state.currentEntryId
 
         if (!entryIdToUpdate) {
           const { data: runningEntries } = await supabase
-            .from('time_entries')
+            .from('entradas_de_tiempo')
             .select('id')
-            .is('ended_at', null)
-            .order('started_at', { ascending: false })
+            .is('finalizado_en', null)
+            .order('iniciado_en', { ascending: false })
             .limit(1)
-          
+
           if (runningEntries && runningEntries.length > 0) {
             entryIdToUpdate = runningEntries[0].id
           }
@@ -133,11 +131,11 @@ export const useTimerStore = create<TimerState>()(
 
         if (entryIdToUpdate) {
           const { error } = await supabase
-            .from('time_entries')
+            .from('entradas_de_tiempo')
             .update({
-              ended_at: endedAt,
-              duration_sec: durationSec,
-              description: state.description || 'Sin descripcion',
+              finalizado_en,
+              duracion_seg,
+              descripcion: state.description || 'Sin descripción',
             })
             .eq('id', entryIdToUpdate)
 
@@ -148,7 +146,7 @@ export const useTimerStore = create<TimerState>()(
           set((s) => ({
             entries: s.entries.map((e) =>
               e.id === entryIdToUpdate
-                ? { ...e, ended_at: endedAt, duration_sec: durationSec, description: state.description || 'Sin descripcion' }
+                ? { ...e, finalizado_en, duracion_seg, descripcion: state.description || 'Sin descripción' }
                 : e
             ),
           }))
@@ -160,74 +158,66 @@ export const useTimerStore = create<TimerState>()(
           currentEntryId: null,
           description: '',
           clientId: null,
+          tipoTareaId: null,
           billable: true,
           taskId: null,
         })
       },
 
       setDescription: (desc) => set({ description: desc }),
-      
+
+      setTipoTareaId: (id) => set({ tipoTareaId: id }),
+
       setClientId: async (id) => {
         const state = get()
-        
-        // If timer is running and client changes, stop current timer first
         if (state.isRunning && state.currentEntryId && id !== state.clientId) {
-          // Stop current timer
           await get().stopTimer()
-          
-          // Set the new client and start a new timer
           set({ clientId: id })
           await get().startTimer()
         } else {
           set({ clientId: id })
         }
       },
-      
+
       toggleBillable: () => set((s) => ({ billable: !s.billable })),
 
       continueEntry: async (entry) => {
         const state = get()
-        
-        // If timer is running, stop it first
         if (state.isRunning && state.currentEntryId) {
           await get().stopTimer()
         }
-
-        // Set state for the new entry
         set({
-          description: entry.description,
-          clientId: entry.client_id,
-          billable: entry.billable,
+          description: entry.descripcion,
+          clientId: entry.cliente_id,
+          tipoTareaId: entry.tipo_tarea_id,
+          billable: entry.facturable,
         })
-
-        // Start a new timer
         await get().startTimer()
       },
 
       startTimerForTask: async (taskId: string, taskTitle: string, clientId: string | null) => {
         const state = get()
-        
-        // If timer is running, stop it first
         if (state.isRunning && state.currentEntryId) {
           await get().stopTimer()
         }
 
         const supabase = createClient()
         const startedAt = new Date().toISOString()
-        const description = `[Tarea] ${taskTitle}`
-        
+        const descripcion = `[Tarea] ${taskTitle}`
+
         const { data: { user } } = await supabase.auth.getUser()
-        
+
         const { data: newEntry, error } = await supabase
-          .from('time_entries')
+          .from('entradas_de_tiempo')
           .insert({
-            user_id: user?.id ?? null,
-            client_id: clientId,
-            description: description,
-            started_at: startedAt,
-            ended_at: null,
-            duration_sec: null,
-            billable: true,
+            colaborador_id: user?.id ?? null,
+            cliente_id: clientId,
+            tipo_tarea_id: null,
+            descripcion,
+            iniciado_en: startedAt,
+            finalizado_en: null,
+            duracion_seg: null,
+            facturable: true,
           })
           .select()
           .single()
@@ -237,10 +227,10 @@ export const useTimerStore = create<TimerState>()(
           return
         }
 
-        // Update state atomically with all values
         set({
-          description: description,
+          description: descripcion,
           clientId: clientId,
+          tipoTareaId: null,
           billable: true,
           taskId: taskId,
           isRunning: true,
@@ -251,53 +241,42 @@ export const useTimerStore = create<TimerState>()(
       },
 
       deleteEntry: async (id) => {
-        // Remove from local state
-        set((s) => ({
-          entries: s.entries.filter((e) => e.id !== id),
-        }))
-
-        // Delete from Supabase
+        set((s) => ({ entries: s.entries.filter((e) => e.id !== id) }))
         const supabase = createClient()
-        await supabase.from('time_entries').delete().eq('id', id)
+        await supabase.from('entradas_de_tiempo').delete().eq('id', id)
       },
 
       updateEntry: async (id, updates) => {
-        // Update local state
         set((s) => ({
-          entries: s.entries.map((e) =>
-            e.id === id ? { ...e, ...updates } : e
-          ),
+          entries: s.entries.map((e) => (e.id === id ? { ...e, ...updates } : e)),
         }))
-
-        // Update in Supabase
         const supabase = createClient()
-        await supabase.from('time_entries').update(updates).eq('id', id)
+        await supabase.from('entradas_de_tiempo').update(updates).eq('id', id)
       },
 
       loadEntries: async () => {
         set({ isLoading: true })
         try {
           const supabase = createClient()
-          
           const { data, error } = await supabase
-            .from('time_entries')
+            .from('entradas_de_tiempo')
             .select('*')
-            .order('started_at', { ascending: false })
+            .order('iniciado_en', { ascending: false })
             .limit(100)
 
           if (!error && data) {
             set({ entries: data as TimeEntry[] })
-            
-            // Check if there's a running entry (ended_at = null) and sync local state
-            const runningEntry = data.find((e) => e.ended_at === null)
+
+            const runningEntry = data.find((e) => e.finalizado_en === null)
             if (runningEntry) {
               set({
                 isRunning: true,
-                startedAt: runningEntry.started_at,
+                startedAt: runningEntry.iniciado_en,
                 currentEntryId: runningEntry.id,
-                description: runningEntry.description,
-                clientId: runningEntry.client_id,
-                billable: runningEntry.billable,
+                description: runningEntry.descripcion,
+                clientId: runningEntry.cliente_id,
+                tipoTareaId: runningEntry.tipo_tarea_id,
+                billable: runningEntry.facturable,
               })
             }
           }
@@ -311,20 +290,18 @@ export const useTimerStore = create<TimerState>()(
       getElapsedSeconds: () => {
         const state = get()
         if (!state.isRunning || !state.startedAt) return 0
-        const startTime = new Date(state.startedAt).getTime()
-        const now = Date.now()
-        return Math.floor((now - startTime) / 1000)
+        return Math.floor((Date.now() - new Date(state.startedAt).getTime()) / 1000)
       },
     }),
     {
       name: 'mdk-timer-storage',
-      // Only persist timer state, not entries (entries come from Supabase)
       partialize: (state) => ({
         isRunning: state.isRunning,
         startedAt: state.startedAt,
         currentEntryId: state.currentEntryId,
         description: state.description,
         clientId: state.clientId,
+        tipoTareaId: state.tipoTareaId,
         billable: state.billable,
         taskId: state.taskId,
       }),
