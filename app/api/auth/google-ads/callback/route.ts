@@ -64,9 +64,16 @@ export async function GET(request: NextRequest) {
     
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
 
+    // First try to delete existing record, then insert new one
+    await supabase
+      .from('plataformas_tokens')
+      .delete()
+      .eq('plataforma', 'google_ads')
+      .eq('cliente_id', user.id)
+
     const { error: dbError } = await supabase
       .from('plataformas_tokens')
-      .upsert({
+      .insert({
         cliente_id: user.id,
         plataforma: 'google_ads',
         nombre_cuenta: 'Google Ads',
@@ -76,12 +83,13 @@ export async function GET(request: NextRequest) {
         email_conectado: userInfo.email || null,
         scope: tokens.scope || null,
         activo: true,
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'plataforma, cliente_id' })
+      })
 
     if (dbError) {
-      console.error('[google-ads-callback] DB error:', dbError)
-      return NextResponse.redirect(new URL('/dashboard/platform?error=db_error', appUrl))
+      console.error('[google-ads-callback] DB error:', dbError.message, dbError.details, dbError.hint)
+      return NextResponse.redirect(new URL(`/dashboard/platform?error=db_error&msg=${encodeURIComponent(dbError.message)}`, appUrl))
     }
 
     return NextResponse.redirect(new URL('/dashboard/platform?connected=google_ads', appUrl))
