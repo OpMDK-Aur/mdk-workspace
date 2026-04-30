@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -19,6 +19,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
   LayoutDashboard,
   Users,
   Zap,
@@ -34,8 +40,16 @@ import {
   Contact,
   Clock,
   CheckSquare,
+  UsersRound,
+  Bell,
+  Search,
+  Home,
+  PanelLeftClose,
+  PanelLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { UserSettingsDialog } from './user-settings-dialog'
+import { NotificationsPanel } from './notifications-panel'
 
 interface SidebarProps {
   user: User
@@ -96,6 +110,49 @@ export function Sidebar({
   const pathname = usePathname()
   const supabase = createClient()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [wasCollapsed, setWasCollapsed] = useState(false)
+  const [notificationCount, setNotificationCount] = useState(0)
+  const [notificationsPanelOpen, setNotificationsPanelOpen] = useState(false)
+
+  // Fetch unread notification count
+  useEffect(() => {
+    async function fetchNotificationCount() {
+      const { count, error } = await supabase
+        .from('notificaciones')
+        .select('*', { count: 'exact', head: true })
+        .eq('leida', false)
+      
+      if (!error && count !== null) {
+        setNotificationCount(count)
+      }
+    }
+    fetchNotificationCount()
+
+    // Subscribe to changes
+    const channel = supabase
+      .channel('notificaciones_count')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notificaciones' }, () => {
+        fetchNotificationCount()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [supabase])
+  
+  const openNotifications = () => {
+    setWasCollapsed(isCollapsed)
+    setNotificationsPanelOpen(true)
+  }
+  
+  const closeNotifications = () => {
+    setNotificationsPanelOpen(false)
+    if (wasCollapsed) {
+      setIsCollapsed(true)
+    }
+  }
 
   const userRole = profile?.role ?? 'project_manager'
   const canManageUsers = userRole === 'direccion' || userRole === 'project_manager'
@@ -116,27 +173,297 @@ export function Sidebar({
     user.email?.[0].toUpperCase() ||
     'U'
 
-  return (
-    <>
-      <aside className="w-64 border-r border-border bg-card flex flex-col h-screen overflow-hidden">
-        {/* Header */}
-        <div className="p-4 border-b border-border shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="relative w-28 h-10 flex-shrink-0">
-              <Image
-                src="/images/logo-mdk.jpg"
-                alt="MDK"
-                fill
-                priority
-                className="object-contain object-left"
-              />
+  // Collapsed sidebar component
+  if (isCollapsed && !notificationsPanelOpen) {
+    return (
+      <TooltipProvider delayDuration={0}>
+        <aside className="w-16 border-r border-border bg-card flex flex-col h-screen overflow-hidden">
+          {/* Header */}
+          <div className="p-2 border-b border-border shrink-0">
+            <div className="flex flex-col items-center gap-2">
+              <div className="relative w-10 h-10 flex-shrink-0">
+                <Image
+                  src="/images/logo-mdk.jpg"
+                  alt="MDK"
+                  fill
+                  priority
+                  className="object-contain rounded"
+                />
+              </div>
             </div>
-            <span className="text-xs text-muted-foreground">Workspace</span>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Operations · v1.0</p>
-        </div>
 
-        <ScrollArea className="flex-1 min-h-0">
+          {/* Quick actions */}
+          <div className="p-2 border-b border-border flex flex-col items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9"
+                  onClick={() => router.push('/dashboard')}
+                >
+                  <Home className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Inicio</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-9 w-9 relative"
+                  onClick={openNotifications}
+                >
+                  <Bell className="h-4 w-4" />
+                  {notificationCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
+                      {notificationCount}
+                    </span>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Notificaciones</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-9 w-9">
+                  <Search className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Buscar</TooltipContent>
+            </Tooltip>
+          </div>
+
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="p-2 space-y-4">
+              {/* Areas */}
+              <div className="space-y-1">
+                {areas.filter(a => a.active).map((area) => (
+                  <Tooltip key={area.id}>
+                    <TooltipTrigger asChild>
+                      <Link
+                        href={area.href}
+                        className={cn(
+                          'flex items-center justify-center h-9 w-full rounded-lg transition-colors',
+                          pathname === area.href || (area.href !== '/dashboard' && pathname.startsWith(area.href))
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        )}
+                      >
+                        <area.icon className="h-4 w-4" />
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">{area.name}</TooltipContent>
+                  </Tooltip>
+                ))}
+              </div>
+
+              {/* Admin */}
+              {canManageUsers && (
+                <div className="space-y-1 pt-2 border-t border-border">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Link
+                        href="/dashboard/users"
+                        className={cn(
+                          'flex items-center justify-center h-9 w-full rounded-lg transition-colors',
+                          pathname === '/dashboard/users'
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        )}
+                      >
+                        <UserCog className="h-4 w-4" />
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">Gestionar usuarios</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Link
+                        href="/dashboard/colaboradores"
+                        className={cn(
+                          'flex items-center justify-center h-9 w-full rounded-lg transition-colors',
+                          pathname === '/dashboard/colaboradores'
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        )}
+                      >
+                        <UsersRound className="h-4 w-4" />
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">Colaboradores</TooltipContent>
+                  </Tooltip>
+                </div>
+              )}
+
+              {/* Time Tracking */}
+              <div className="space-y-1 pt-2 border-t border-border">
+                {timeTrackingItems.map((item) => (
+                  <Tooltip key={item.id}>
+                    <TooltipTrigger asChild>
+                      <Link
+                        href={item.href}
+                        className={cn(
+                          'flex items-center justify-center h-9 w-full rounded-lg transition-colors',
+                          pathname === item.href || pathname.startsWith(item.href + '/')
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        )}
+                      >
+                        <item.icon className="h-4 w-4" />
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">{item.name}</TooltipContent>
+                  </Tooltip>
+                ))}
+              </div>
+            </div>
+          </ScrollArea>
+
+          {/* Expand button */}
+          <div className="p-2 border-t border-border shrink-0">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-full"
+                  onClick={() => setIsCollapsed(false)}
+                >
+                  <PanelLeft className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Expandir</TooltipContent>
+            </Tooltip>
+          </div>
+
+          {/* User section */}
+          <div className="p-2 border-t border-border shrink-0">
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-9 w-full">
+                      <Avatar className="h-7 w-7">
+                        {profile?.avatar_url && (
+                          <AvatarImage src={profile.avatar_url} alt={profile.full_name || ''} />
+                        )}
+                        <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                          {initials}
+                        </AvatarFallback>
+                      </Avatar>
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="right">{profile?.full_name || user.email}</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" side="right" className="w-56">
+                <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Configuracion
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Cerrar sesion
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </aside>
+
+        <UserSettingsDialog
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          user={user}
+          profile={profile}
+        />
+      </TooltipProvider>
+    )
+  }
+
+  // Expanded sidebar
+  return (
+    <TooltipProvider delayDuration={0}>
+      <aside className="w-64 border-r border-border bg-card flex flex-col h-screen overflow-hidden">
+        {/* Show notifications panel or main sidebar */}
+        {notificationsPanelOpen ? (
+          <NotificationsPanel onClose={closeNotifications} />
+        ) : (
+          <>
+            {/* Header */}
+            <div className="p-4 border-b border-border shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="relative w-28 h-10 flex-shrink-0">
+                    <Image
+                      src="/images/logo-mdk.jpg"
+                      alt="MDK"
+                      fill
+                      priority
+                      className="object-contain object-left"
+                    />
+                  </div>
+                </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                      onClick={() => setIsCollapsed(true)}
+                    >
+                      <PanelLeftClose className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">Colapsar</TooltipContent>
+                </Tooltip>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Operations · v1.0</p>
+            </div>
+
+            {/* Quick actions bar */}
+            <div className="px-4 py-2 border-b border-border flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => router.push('/dashboard')}
+                  >
+                    <Home className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Inicio</TooltipContent>
+              </Tooltip>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-8 px-2 relative gap-1.5"
+                onClick={openNotifications}
+              >
+                <Bell className="h-4 w-4" />
+                <span className="text-xs">Bandeja de entrada</span>
+                {notificationCount > 0 && (
+                  <span className="h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
+                    {notificationCount}
+                  </span>
+                )}
+              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto">
+                    <Search className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Buscar</TooltipContent>
+              </Tooltip>
+            </div>
+
+            <ScrollArea className="flex-1 min-h-0">
           <div className="p-4 space-y-6">
             {/* Areas */}
             <div>
@@ -218,6 +545,18 @@ export function Sidebar({
                   >
                     <Wallet className="h-4 w-4" />
                     Control de saldos
+                  </Link>
+                  <Link
+                    href="/dashboard/colaboradores"
+                    className={cn(
+                      'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                      pathname === '/dashboard/colaboradores'
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-foreground hover:bg-muted'
+                    )}
+                  >
+                    <UsersRound className="h-4 w-4" />
+                    Colaboradores
                   </Link>
                 </div>
               </div>
@@ -355,6 +694,8 @@ export function Sidebar({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+          </>
+        )}
       </aside>
 
       <UserSettingsDialog
@@ -363,6 +704,6 @@ export function Sidebar({
         user={user}
         profile={profile}
       />
-    </>
+    </TooltipProvider>
   )
 }

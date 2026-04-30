@@ -1,6 +1,7 @@
 'use client'
 
 import { create } from 'zustand'
+import { createClient } from '@/lib/supabase/client'
 import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskComment, TaskFile, TaskQuotation } from '@/lib/types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -8,7 +9,109 @@ import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskCom
 export const HOURLY_RATE = 150000 // $150,000 CLP
 export const IVA_RATE = 0.21 // 21%
 
-// ── Mock Data ─────────────────────────────────────────────────────────────────
+// ── Database Types ────────────────────────────────────────────────────────────
+
+interface TareaDB {
+  id: string
+  titulo: string
+  descripcion: string | null
+  tipo_tarea_id: string | null
+  cliente_id: string | null
+  servicio_id: string | null
+  asignado_a: string | null
+  creado_por: string | null
+  estado: string
+  prioridad: string
+  fecha_vencimiento: string | null
+  fecha_completada: string | null
+  hito_poe: string | null
+  agente_id: string | null
+  created_at: string
+  updated_at: string
+  contexto_chat: string | null
+  // Joined relations
+  clientes?: { id: string; nombre_del_negocio: string } | null
+  colaboradores?: { id: string; nombre: string } | null
+  tipo_de_tareas?: { id: string; nombre: string } | null
+}
+
+interface ComentarioDB {
+  id: string
+  tarea_id: string
+  contenido: string
+  autor_id: string | null
+  autor_nombre: string
+  es_sistema: boolean
+  created_at: string
+  updated_at: string
+}
+
+function mapComentarioToComment(comentario: ComentarioDB): TaskComment {
+  return {
+    id: comentario.id,
+    content: comentario.contenido,
+    userId: comentario.autor_id || 'system',
+    userName: comentario.autor_nombre,
+    userAvatar: null,
+    createdAt: new Date(comentario.created_at),
+  }
+}
+
+// Map DB estado to TaskStatus
+function mapEstadoToStatus(estado: string): TaskStatus {
+  const map: Record<string, TaskStatus> = {
+    'pendiente': 'pendiente',
+    'en_progreso': 'resolviendo',
+    'resolviendo': 'resolviendo',
+    'demorada': 'demorada',
+    'pausada': 'pausada',
+    'pendiente_aprobacion': 'pendiente_aprobacion',
+    'completada': 'resuelto',
+    'resuelto': 'resuelto',
+  }
+  return map[estado] || 'pendiente'
+}
+
+// Map DB prioridad to TaskPriority
+function mapPrioridadToPriority(prioridad: string): TaskPriority {
+  const map: Record<string, TaskPriority> = {
+    'alta': 'alta',
+    'media': 'media',
+    'baja': 'baja',
+  }
+  return map[prioridad] || 'media'
+}
+
+// Convert DB tarea to Task
+function mapTareaToTask(tarea: TareaDB): Task {
+  return {
+    id: tarea.id,
+    title: tarea.titulo,
+    description: tarea.descripcion,
+    clientId: tarea.cliente_id || '',
+    clientName: tarea.clientes?.nombre_del_negocio || 'Sin cliente',
+    assigneeId: tarea.asignado_a || '',
+    assigneeName: tarea.colaboradores?.nombre || 'Sin asignar',
+    status: mapEstadoToStatus(tarea.estado),
+    priority: mapPrioridadToPriority(tarea.prioridad),
+    type: 'soporte', // Default type since we use tipo_tarea_id now
+    dueDate: tarea.fecha_vencimiento ? new Date(tarea.fecha_vencimiento) : null,
+    isActive: tarea.estado !== 'completada' && tarea.estado !== 'resuelto',
+    customFields: {},
+    timeSessions: [],
+    totalTimeSec: 0,
+    isTimerRunning: false,
+    timerStartedAt: null,
+    activities: [],
+    comments: [],
+    files: [],
+    quotation: null,
+    createdAt: new Date(tarea.created_at),
+    updatedAt: new Date(tarea.updated_at),
+  }
+}
+
+// ── Mock Data (fallback) ──────────────────────────────────────────────────────
 
 const MOCK_TASKS: Task[] = [
   {
@@ -501,6 +604,7 @@ export interface SavedFilter {
 
 interface TaskStore {
   tasks: Task[]
+  isLoading: boolean
   selectedTaskId: string | null
   view: 'kanban' | 'list'
   
@@ -517,6 +621,7 @@ interface TaskStore {
   savedFilters: SavedFilter[]
 
   // Actions
+  loadTasks: () => Promise<void>
   setView: (view: 'kanban' | 'list') => void
   setSelectedTask: (id: string | null) => void
   setFilter: (key: keyof TaskStore['filters'], value: unknown) => void
@@ -544,8 +649,8 @@ interface TaskStore {
   removeCustomField: (taskId: string, key: string) => void
 
   // Comments
-  addComment: (taskId: string, content: string, userId: string, userName: string) => void
-  deleteComment: (taskId: string, commentId: string) => void
+  addComment: (taskId: string, content: string, userId: string, userName: string) => Promise<void>
+  deleteComment: (taskId: string, commentId: string) => Promise<void>
 
   // Files
   addFile: (taskId: string, file: Omit<TaskFile, 'id' | 'createdAt'>) => void
@@ -556,7 +661,8 @@ interface TaskStore {
 }
 
 export const useTaskStore = create<TaskStore>((set, get) => ({
-  tasks: MOCK_TASKS,
+  tasks: [],
+  isLoading: false,
   selectedTaskId: null,
   view: 'kanban',
   filters: {
@@ -567,6 +673,61 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
   advancedFilters: [],
   savedFilters: [],
+
+  loadTasks: async () => {
+    set({ isLoading: true })
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('tareas')
+        .select(`
+          *,
+          clientes:cliente_id(id, nombre_del_negocio),
+          colaboradores:asignado_a(id, nombre),
+          tipo_de_tareas:tipo_tarea_id(id, nombre)
+        `)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error loading tasks:', error)
+        set({ tasks: [], isLoading: false })
+        return
+      }
+
+      if (data && data.length > 0) {
+        // Load comments for all tasks
+        const taskIds = data.map((t) => t.id)
+        const { data: comentarios } = await supabase
+          .from('comentarios_tareas')
+          .select('*')
+          .in('tarea_id', taskIds)
+          .order('created_at', { ascending: true })
+
+        // Group comments by task
+        const commentsByTask = new Map<string, TaskComment[]>()
+        if (comentarios) {
+          comentarios.forEach((c) => {
+            const taskComments = commentsByTask.get(c.tarea_id) || []
+            taskComments.push(mapComentarioToComment(c as ComentarioDB))
+            commentsByTask.set(c.tarea_id, taskComments)
+          })
+        }
+
+        const tasks = data.map((tarea) => {
+          const task = mapTareaToTask(tarea as TareaDB)
+          task.comments = commentsByTask.get(tarea.id) || []
+          return task
+        })
+        set({ tasks, isLoading: false })
+      } else {
+        // No tasks in DB, use empty array
+        set({ tasks: [], isLoading: false })
+      }
+    } catch (error) {
+      console.error('Error loading tasks:', error)
+      set({ tasks: MOCK_TASKS, isLoading: false })
+    }
+  },
 
   setView: (view) => set({ view }),
   setSelectedTask: (id) => set({ selectedTaskId: id }),
@@ -705,39 +866,77 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }),
   })),
 
-  addComment: (taskId, content, userId, userName) => set((state) => ({
-    tasks: state.tasks.map((t) =>
-      t.id === taskId
-        ? {
-            ...t,
-            comments: [
-              ...t.comments,
-              {
-                id: crypto.randomUUID(),
-                content,
-                userId,
-                userName,
-                userAvatar: null,
-                createdAt: new Date(),
-              },
-            ],
-            updatedAt: new Date(),
-            activities: [
-              { id: crypto.randomUUID(), action: 'Agrego comentario', timestamp: new Date(), userId, userName },
-              ...t.activities,
-            ].slice(0, 10),
-          }
-        : t
-    ),
-  })),
+  addComment: async (taskId, content, userId, userName) => {
+    const supabase = createClient()
+    const commentId = crypto.randomUUID()
+    const now = new Date()
 
-  deleteComment: (taskId, commentId) => set((state) => ({
-    tasks: state.tasks.map((t) =>
-      t.id === taskId
-        ? { ...t, comments: t.comments.filter((c) => c.id !== commentId), updatedAt: new Date() }
-        : t
-    ),
-  })),
+    // Insert comment into Supabase
+    const { error } = await supabase
+      .from('comentarios_tareas')
+      .insert({
+        id: commentId,
+        tarea_id: taskId,
+        contenido: content,
+        autor_id: userId === 'system' ? null : userId,
+        autor_nombre: userName,
+        es_sistema: userName === 'Madky',
+      })
+
+    if (error) {
+      console.error('Error adding comment:', error)
+      throw error
+    }
+
+    set((state) => ({
+      tasks: state.tasks.map((t) =>
+        t.id === taskId
+          ? {
+              ...t,
+              comments: [
+                ...t.comments,
+                {
+                  id: commentId,
+                  content,
+                  userId,
+                  userName,
+                  userAvatar: null,
+                  createdAt: now,
+                },
+              ],
+              updatedAt: now,
+              activities: [
+                { id: crypto.randomUUID(), action: 'Agregó comentario', timestamp: now, userId, userName },
+                ...t.activities,
+              ].slice(0, 10),
+            }
+          : t
+      ),
+    }))
+  },
+
+  deleteComment: async (taskId, commentId) => {
+    const supabase = createClient()
+    
+    // Delete from Supabase
+    const { error } = await supabase
+      .from('comentarios_tareas')
+      .delete()
+      .eq('id', commentId)
+
+    if (error) {
+      console.error('Error deleting comment:', error)
+      return
+    }
+
+    set((state) => ({
+      tasks: state.tasks.map((t) =>
+        t.id === taskId
+          ? { ...t, comments: t.comments.filter((c) => c.id !== commentId), updatedAt: new Date() }
+          : t
+      ),
+    }))
+  },
 
   addFile: (taskId, file) => set((state) => ({
     tasks: state.tasks.map((t) =>

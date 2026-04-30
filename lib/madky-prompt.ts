@@ -53,6 +53,24 @@ Obtiene contactos del CRM (Go High Level).
 - Para analizar la base de datos de contactos/leads
 - Podés filtrar por fechas
 
+### createTask
+Crea una nueva tarea en el sistema con un comentario inicial que incluye el contexto de la conversación.
+- Usala cuando el usuario pida crear una tarea, solicite un trabajo, reporte un problema, o necesite que se haga algo
+- **titulo:** Un título breve y descriptivo
+- **descripcion:** Descripción detallada de lo que se necesita
+- **clienteId:** ID del cliente (usá el del contexto actual)
+- **prioridad:** alta, media, o baja según la urgencia
+- **contextoChat:** IMPORTANTE - Incluí un resumen completo de la conversación que llevó a crear esta tarea. Debe incluir:
+  - El problema o solicitud original del usuario
+  - Cualquier dato relevante discutido (métricas, errores, etc.)
+  - Decisiones tomadas durante la conversación
+  - Información que el equipo necesitará para resolver la tarea
+- **tipoTareaSugerido:** Sugerí un tipo de tarea basándote en el contexto (ej: "Desarrollo", "Soporte", "Integración", "CRM", "Ads")
+
+**Tareas relacionadas:** Si la solicitud implica múltiples trabajos que deberían rastrearse por separado, creá varias tareas. Por ejemplo:
+- "Landing con formulario" → Crear tarea de "Desarrollo de Landing" + tarea de "Integración de formulario"
+- "Configurar CRM y Ads" → Crear tarea de "Configuración CRM" + tarea de "Configuración Ads"
+
 ## Estrategia de Uso de Herramientas
 1. **Primera pregunta del usuario:** Usá getClientInfo para saber qué plataformas tiene conectadas
 2. **Preguntas sobre rendimiento general:** Consultá Meta Ads y/o Google Ads según corresponda

@@ -314,16 +314,16 @@ export function getTasksByProjectId(projectId: string): Task[] {
   return mockTasks.filter((t) => t.project_id === projectId)
 }
 
-export function formatDuration(seconds: number | null): string {
-  if (seconds === null || seconds === 0) return '00:00:00'
+export function formatDuration(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || isNaN(seconds) || seconds === 0) return '00:00:00'
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
-  const secs = seconds % 60
+  const secs = Math.floor(seconds % 60)
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
 }
 
-export function formatDurationShort(seconds: number | null): string {
-  if (seconds === null || seconds === 0) return '0h 0m'
+export function formatDurationShort(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || isNaN(seconds) || seconds === 0) return '0h 0m'
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   if (hours === 0) return `${minutes}m`
@@ -331,13 +331,19 @@ export function formatDurationShort(seconds: number | null): string {
   return `${hours}h ${minutes}m`
 }
 
-export function formatTimeRange(startedAt: string, endedAt: string | null): string {
+export function formatTimeRange(startedAt: string | null | undefined, endedAt: string | null | undefined): string {
+  if (!startedAt) return 'Invalid Date'
+  
   const start = new Date(startedAt)
+  if (isNaN(start.getTime())) return 'Invalid Date'
+  
   const startTime = start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
   
   if (!endedAt) return `${startTime} - running`
   
   const end = new Date(endedAt)
+  if (isNaN(end.getTime())) return `${startTime} - running`
+  
   const endTime = end.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
   return `${startTime} - ${endTime}`
 }
@@ -359,20 +365,24 @@ export function groupEntriesByDay(entries: TimeEntry[]): Map<string, TimeEntry[]
   return grouped
 }
 
-export function getDayLabel(dateStr: string): string {
+export function getDayLabel(dateStr: string | null | undefined): string {
+  if (!dateStr) return 'Invalid Date'
+  
   const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return 'Invalid Date'
+  
   const today = new Date()
   const yesterday = new Date()
   yesterday.setDate(yesterday.getDate() - 1)
   
   if (date.toDateString() === today.toDateString()) {
-    return 'Today'
+    return 'Hoy'
   }
   if (date.toDateString() === yesterday.toDateString()) {
-    return 'Yesterday'
+    return 'Ayer'
   }
   
-  return date.toLocaleDateString('en-US', {
+  return date.toLocaleDateString('es-AR', {
     weekday: 'long',
     month: 'short',
     day: 'numeric',

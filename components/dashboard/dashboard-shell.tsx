@@ -5,7 +5,7 @@ import { useTheme } from 'next-themes'
 import type { User } from '@supabase/supabase-js'
 import type { Profile, Client } from '@/lib/types'
 import { Sidebar } from './sidebar'
-import { ActiveTimerBar } from '@/components/timer/active-timer-bar'
+import { ActiveTimerBar } from '@/components/time-tracking/active-timer-bar'
 
 interface DashboardShellProps {
   user: User

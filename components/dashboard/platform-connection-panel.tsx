@@ -2,14 +2,14 @@
 
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle2, AlertCircle, RefreshCw, Loader2, Calendar } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 
 interface TokenInfo {
-  connected_email: string | null
+  email_conectado: string | null
   token_expiry: string | null
   updated_at: string | null
 }
@@ -27,6 +27,7 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
   const [loadingAds, setLoadingAds] = useState(false)
   const [loadingCalendar, setLoadingCalendar] = useState(false)
 
+  // Handle URL params for success/error messages
   useEffect(() => {
     const connected = searchParams.get('connected')
     const error = searchParams.get('error')
@@ -44,6 +45,7 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
     if (error) {
       const messages: Record<string, string> = {
         no_token: 'No se obtuvo el token de acceso de Google.',
+        no_provider_token: 'No se obtuvo el token de Google. Asegurate de tener Google configurado como proveedor en Supabase.',
         db_error: 'Error al guardar los tokens en la base de datos.',
         missing_scope: 'El token no tiene el scope necesario. Volve a autorizar.',
         no_refresh_token_revoke_required: 'No se obtuvo refresh token. Revoca el acceso en myaccount.google.com/permissions y volve a autorizar.',
@@ -54,41 +56,6 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
     }
   }, [searchParams, router])
 
-  // Handle Supabase OAuth callback - save provider_token to platform_tokens
-  useEffect(() => {
-    const saveCalendarToken = async () => {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (session?.provider_token && session?.user?.email) {
-        // Check if this is a calendar connection (has calendar scope)
-        // Save the token to platform_tokens
-        const { error } = await supabase
-          .from('platform_tokens')
-          .upsert({
-            platform: 'google_calendar',
-            access_token: session.provider_token,
-            refresh_token: session.provider_refresh_token || null,
-            token_expiry: new Date(Date.now() + 3600 * 1000).toISOString(), // 1 hour default
-            connected_email: session.user.email,
-            updated_at: new Date().toISOString(),
-          }, {
-            onConflict: 'platform',
-          })
-
-        if (!error) {
-          setNotice({ type: 'success', message: 'Cuenta de Google Calendar conectada correctamente.' })
-          router.refresh()
-        }
-      }
-    }
-
-    // Check URL hash for Supabase OAuth callback
-    if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
-      saveCalendarToken()
-    }
-  }, [router])
-
   const handleConnectAds = () => {
     setLoadingAds(true)
     window.location.href = '/api/auth/google-ads'
@@ -96,32 +63,26 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
 
   const handleConnectCalendar = async () => {
     setLoadingCalendar(true)
-    
     const supabase = createClient()
     
-    const { error } = await supabase.auth.signInWithOAuth({
+    await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        scopes: 'https://www.googleapis.com/auth/calendar.events',
-        redirectTo: `${window.location.origin}/dashboard/platform`,
+        redirectTo: `${appUrl}/api/auth/google-calendar/callback`,
+        scopes: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events',
         queryParams: {
           access_type: 'offline',
-          prompt: 'select_account consent',
+          prompt: 'consent',
         },
       },
     })
-
-    if (error) {
-      setNotice({ type: 'error', message: `Error al conectar: ${error.message}` })
-      setLoadingCalendar(false)
-    }
   }
 
   const isAdsConnected = Boolean(googleToken)
   const isCalendarConnected = Boolean(googleCalendarToken)
   
-  const adsEmail = googleToken?.connected_email
-  const calendarEmail = googleCalendarToken?.connected_email
+  const adsEmail = googleToken?.email_conectado
+  const calendarEmail = googleCalendarToken?.email_conectado
   
   const adsUpdatedAt = googleToken?.updated_at
     ? new Date(googleToken.updated_at).toLocaleDateString('es-AR', {

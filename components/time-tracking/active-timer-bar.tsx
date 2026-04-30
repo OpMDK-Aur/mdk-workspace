@@ -4,10 +4,9 @@ import { useEffect, useState } from 'react'
 import { useTimerStore } from '@/lib/time-tracking/timer-store'
 import { formatDuration, formatDurationShort } from '@/lib/time-tracking/mock-data'
 import { createClient } from '@/lib/supabase/client'
-import type { Client } from '@/lib/types'
+import type { Cliente, TipoDeTarea } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -15,17 +14,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { Play, Square, DollarSign, Loader2 } from 'lucide-react'
+import { Play, Square, DollarSign, Loader2, Building2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-interface TipoTarea {
-  id: string
-  nombre: string
-  activo: boolean
-}
-
-// Generate a color from client id for visual distinction
 function getClientColor(id: string): string {
   const colors = [
     '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
@@ -38,7 +31,6 @@ function getClientColor(id: string): string {
   return colors[Math.abs(hash) % colors.length]
 }
 
-// Get initials from business name
 function getInitials(name: string): string {
   return name
     .split(' ')
@@ -48,14 +40,19 @@ function getInitials(name: string): string {
     .toUpperCase()
 }
 
+interface ColaboradorInfo {
+  nombre: string
+  departamento: string | null
+}
+
 export function ActiveTimerBar() {
   const {
     isRunning,
     startedAt,
     description,
     clientId,
-    tipoTareaId,
     billable,
+    tipoTareaId,
     entries,
     startTimer,
     stopTimer,
@@ -67,95 +64,86 @@ export function ActiveTimerBar() {
     loadEntries,
   } = useTimerStore()
 
-  const [clients, setClients] = useState<Client[]>([])
-  const [tiposTarea, setTiposTarea] = useState<TipoTarea[]>([])
-  const [departamento, setDepartamento] = useState<string | null>(null)
+  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
+  const [colaborador, setColaborador] = useState<ColaboradorInfo | null>(null)
   const [isLoadingClients, setIsLoadingClients] = useState(true)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [isStarting, setIsStarting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
 
-  // Fetch clients, task types, and user department on mount
   useEffect(() => {
     async function init() {
       const supabase = createClient()
-      
-      // Get current user
+
+      // Obtener usuario actual
       const { data: { user } } = await supabase.auth.getUser()
-      
-      // Load clients
-      const { data: clientsData } = await supabase
+
+      if (user) {
+        // Obtener colaborador con su departamento
+        const { data: colab } = await supabase
+          .from('colaboradores')
+          .select('nombre, departamentos(nombre)')
+          .eq('id', user.id)
+          .single()
+
+        if (colab) {
+          const dept = (colab.departamentos as { nombre: string } | null)?.nombre ?? null
+          setColaborador({
+            nombre: colab.nombre,
+            departamento: dept,
+          })
+        }
+
+        // Cargar TODOS los tipos de tarea activos
+        const { data: tipos } = await supabase
+          .from('tipo_de_tareas')
+          .select('*')
+          .eq('activo', true)
+          .order('nombre')
+        
+        if (tipos) setTiposTarea(tipos)
+      }
+
+      // Cargar clientes
+      const { data: clientesData, error } = await supabase
         .from('clientes')
         .select('*')
         .order('nombre_del_negocio')
 
-      if (clientsData) {
-        // Map to Client type for compatibility
-        setClients(clientsData.map((c: { id: string; nombre_del_negocio: string }) => ({
-          id: c.id,
-          business_name: c.nombre_del_negocio,
-        })) as Client[])
+      if (!error && clientesData) {
+        setClientes(clientesData)
       }
       setIsLoadingClients(false)
 
-      // Load user's department
-      if (user) {
-        const { data: colabData } = await supabase
-          .from('colaboradores')
-          .select('departamentos(nombre)')
-          .eq('id', user.id)
-          .single()
-
-        if (colabData) {
-          const dept = (colabData.departamentos as { nombre: string } | null)?.nombre ?? null
-          setDepartamento(dept)
-        }
-      }
-
-      // Load all active task types
-      const { data: tiposData } = await supabase
-        .from('tipo_de_tareas')
-        .select('id, nombre, activo')
-        .eq('activo', true)
-        .order('nombre')
-
-      if (tiposData) {
-        setTiposTarea(tiposData)
-      }
-
-      // Load entries to sync with any running timer from Supabase
       await loadEntries()
     }
 
     init()
   }, [loadEntries])
 
-  // Update elapsed time every second when running
   useEffect(() => {
     if (!isRunning) {
       setElapsedSeconds(0)
       return
     }
-
-    // Initial calculation
     setElapsedSeconds(getElapsedSeconds())
-
     const interval = setInterval(() => {
       setElapsedSeconds(getElapsedSeconds())
     }, 1000)
-
     return () => clearInterval(interval)
   }, [isRunning, startedAt, getElapsedSeconds])
 
-  const selectedClient = clients.find((c) => c.id === clientId)
-  const lastEntry = entries.find((e) => e.ended_at !== null)
+  const selectedClient = clientes.find((c) => c.id === clientId)
+  const selectedTipo = tiposTarea.find((t) => t.id === tipoTareaId)
+  const lastEntry = entries.find((e) => e.finalizado_en !== null)
 
   const handleStart = async () => {
     setIsStarting(true)
     try {
       await startTimer()
       toast.success('Timer iniciado')
-    } catch (error) {
+    } catch {
       toast.error('Error al iniciar el timer')
     } finally {
       setIsStarting(false)
@@ -167,93 +155,122 @@ export function ActiveTimerBar() {
     try {
       await stopTimer()
       toast.success('Tiempo guardado correctamente')
-    } catch (error) {
+    } catch {
       toast.error('Error al guardar el tiempo')
     } finally {
       setIsStopping(false)
     }
   }
 
-  const handleClientChange = async (val: string) => {
-    await setClientId(val || null)
-  }
-
   return (
     <div className="sticky top-0 z-40 border-b border-border bg-card shadow-sm">
-      <div className="flex items-center gap-3 px-4 py-3">
-        {/* Department Badge */}
-        {departamento && (
-          <Badge variant="outline" className="shrink-0 text-xs">
-            {departamento}
-          </Badge>
-        )}
+      {/* Fila superior: departamento del colaborador */}
+      {colaborador && (
+        <div className="flex items-center gap-2 px-4 pt-2 pb-1 border-b border-border/50">
+          <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="text-xs text-muted-foreground">
+            {colaborador.nombre}
+          </span>
+          {colaborador.departamento && (
+            <>
+              <span className="text-xs text-muted-foreground">·</span>
+              <Badge variant="secondary" className="text-xs h-5 px-2">
+                {colaborador.departamento}
+              </Badge>
+            </>
+          )}
+        </div>
+      )}
 
-        {/* Description Input */}
+      {/* Fila principal: timer */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        {/* Descripción */}
         <div className="flex-1 min-w-0">
           <Input
-            placeholder="What are you working on?"
+            placeholder="¿En qué estás trabajando?"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             className="border-0 bg-transparent text-base shadow-none focus-visible:ring-0 px-0"
           />
         </div>
 
-        {/* Task Type Selector */}
+        {/* Tipo de tarea */}
         <Select
           value={tipoTareaId || ''}
           onValueChange={(val) => setTipoTareaId(val || null)}
+          disabled={tiposTarea.length === 0}
         >
-          <SelectTrigger className="w-[160px] shrink-0">
-            <SelectValue placeholder="Tipo de tarea" />
+          <SelectTrigger className="w-[200px] shrink-0">
+            <SelectValue placeholder="Tipo de tarea">
+              {selectedTipo && (
+                <div className="flex items-center gap-2">
+                  {selectedTipo.color && (
+                    <div
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: selectedTipo.color }}
+                    />
+                  )}
+                  <span className="truncate">{selectedTipo.nombre}</span>
+                </div>
+              )}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {tiposTarea.map((tipo) => (
               <SelectItem key={tipo.id} value={tipo.id}>
-                {tipo.nombre}
+                <div className="flex items-center gap-2">
+                  {tipo.color && (
+                    <div
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: tipo.color }}
+                    />
+                  )}
+                  <span>{tipo.nombre}</span>
+                </div>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
 
-        {/* Client Selector */}
+        {/* Cliente */}
         <Select
           value={clientId || ''}
-          onValueChange={handleClientChange}
+          onValueChange={async (val) => await setClientId(val || null)}
           disabled={isLoadingClients}
         >
           <SelectTrigger className="w-[200px] shrink-0">
-            <SelectValue placeholder={isLoadingClients ? 'Loading...' : 'Select client'}>
+            <SelectValue placeholder={isLoadingClients ? 'Cargando...' : 'Cliente'}>
               {selectedClient && (
                 <div className="flex items-center gap-2">
                   <div
                     className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold text-white shrink-0"
                     style={{ backgroundColor: getClientColor(selectedClient.id) }}
                   >
-                    {getInitials(selectedClient.business_name)}
+                    {getInitials(selectedClient.nombre_del_negocio)}
                   </div>
-                  <span className="truncate">{selectedClient.business_name}</span>
+                  <span className="truncate">{selectedClient.nombre_del_negocio}</span>
                 </div>
               )}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {clients.map((client) => (
-              <SelectItem key={client.id} value={client.id}>
+            {clientes.map((cliente) => (
+              <SelectItem key={cliente.id} value={cliente.id}>
                 <div className="flex items-center gap-2">
                   <div
                     className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold text-white shrink-0"
-                    style={{ backgroundColor: getClientColor(client.id) }}
+                    style={{ backgroundColor: getClientColor(cliente.id) }}
                   >
-                    {getInitials(client.business_name)}
+                    {getInitials(cliente.nombre_del_negocio)}
                   </div>
-                  <span>{client.business_name}</span>
+                  <span>{cliente.nombre_del_negocio}</span>
                 </div>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
 
-        {/* Billable Toggle */}
+        {/* Facturable */}
         <Button
           variant="ghost"
           size="icon"
@@ -264,21 +281,21 @@ export function ActiveTimerBar() {
               ? 'text-primary hover:text-primary'
               : 'text-muted-foreground hover:text-muted-foreground'
           )}
-          title={billable ? 'Billable' : 'Non-billable'}
+          title={billable ? 'Facturable' : 'No facturable'}
         >
           <DollarSign className="h-4 w-4" />
         </Button>
 
-        {/* Timer Display */}
+        {/* Timer display */}
         <div className="font-mono text-xl font-semibold tabular-nums w-24 text-right shrink-0">
           {isRunning
             ? formatDuration(elapsedSeconds)
             : lastEntry
-              ? formatDurationShort(lastEntry.duration_sec)
+              ? formatDurationShort(lastEntry.duracion_seg)
               : '00:00:00'}
         </div>
 
-        {/* Start/Stop Button */}
+        {/* Start/Stop */}
         <Button
           onClick={isRunning ? handleStop : handleStart}
           variant={isRunning ? 'destructive' : 'default'}

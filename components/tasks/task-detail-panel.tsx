@@ -3,15 +3,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 import {
   useTaskStore,
   STATUS_CONFIG,
   STATUS_ORDER,
   PRIORITY_CONFIG,
-  TYPE_CONFIG,
-  ASSIGNEES,
-  CLIENTS,
 } from '@/lib/tasks/task-store'
+
+// Database types
+interface TipoDeTarea {
+  id: string
+  nombre: string
+  activo: boolean
+}
+
+interface Colaborador {
+  id: string
+  nombre: string
+}
+
+interface Cliente {
+  id: string
+  nombre_del_negocio: string
+}
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -620,13 +635,45 @@ function FilesSection({ task }: { task: Task }) {
 function CommentsSection({ task }: { task: Task }) {
   const { addComment, deleteComment } = useTaskStore()
   const [comment, setComment] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string } | null>(null)
 
-  const handleSubmit = () => {
-    // Strip HTML tags to check if there's actual content
-    const textContent = comment.replace(/<[^>]*>/g, '').trim()
-    if (!textContent) return
-    addComment(task.id, comment, 'current', 'Usuario')
-    setComment('')
+  useEffect(() => {
+    async function loadUser() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: colab } = await supabase
+          .from('colaboradores')
+          .select('id, nombre')
+          .eq('id', user.id)
+          .single()
+        if (colab) setCurrentUser(colab)
+      }
+    }
+    loadUser()
+  }, [])
+
+  const handleSubmit = async () => {
+    const textContent = comment.trim()
+    if (!textContent || isSubmitting) return
+    
+    setIsSubmitting(true)
+    const userId = currentUser?.id || 'system'
+    const userName = currentUser?.nombre || 'Usuario'
+    
+    console.log('[v0] CommentsSection handleSubmit - taskId:', task.id, 'content:', textContent)
+    
+    try {
+      await addComment(task.id, textContent, userId, userName)
+      setComment('')
+      toast.success('Comentario agregado')
+    } catch (err) {
+      console.error('[v0] Error adding comment:', err)
+      toast.error('Error al agregar comentario')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -651,10 +698,7 @@ function CommentsSection({ task }: { task: Task }) {
                       {format(new Date(c.createdAt), 'dd/MM/yyyy HH:mm', { locale: es })}
                     </span>
                   </div>
-                  <div 
-                    className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_table]:w-full [&_th]:bg-muted [&_td]:p-2 [&_th]:p-2 [&_td]:border [&_th]:border [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-md [&_blockquote]:border-l-2 [&_blockquote]:border-primary [&_blockquote]:pl-3 [&_blockquote]:italic"
-                    dangerouslySetInnerHTML={{ __html: c.content }}
-                  />
+                  <p className="text-sm text-foreground/80 mt-2 whitespace-pre-wrap">{c.content}</p>
                 </div>
                 <Button
                   variant="ghost"
@@ -673,24 +717,27 @@ function CommentsSection({ task }: { task: Task }) {
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <Avatar className="h-7 w-7 shrink-0">
-            <AvatarFallback className="text-xs">US</AvatarFallback>
+            <AvatarFallback className="text-xs">
+              {currentUser ? getInitials(currentUser.nombre) : 'US'}
+            </AvatarFallback>
           </Avatar>
           <span className="text-sm text-muted-foreground">Nuevo comentario</span>
         </div>
-        <RichTextEditor
-          content={comment}
-          onChange={setComment}
-          placeholder="Escribe un comentario con formato, tablas, codigo..."
+        <textarea
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          placeholder="Escribe un comentario..."
+          className="w-full min-h-[80px] p-3 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
         />
         <div className="flex justify-end">
           <Button 
             size="sm" 
             className="gap-1.5" 
             onClick={handleSubmit} 
-            disabled={!comment.replace(/<[^>]*>/g, '').trim()}
+            disabled={!comment.trim() || isSubmitting}
           >
             <Send className="h-3.5 w-3.5" />
-            Enviar comentario
+            {isSubmitting ? 'Enviando...' : 'Enviar comentario'}
           </Button>
         </div>
       </div>
@@ -698,7 +745,7 @@ function CommentsSection({ task }: { task: Task }) {
   )
 }
 
-// ── Custom Fields Component ───────────────────────────────────────────────────
+// ── Custom Fields Component ────────────────────────────��──────────────────────
 
 function CustomFields({ task }: { task: Task }) {
   const { addCustomField, removeCustomField, updateTask } = useTaskStore()
@@ -912,6 +959,30 @@ export function TaskDetailPanel() {
   const task = tasks.find((t) => t.id === selectedTaskId)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [activeTab, setActiveTab] = useState('detalles')
+  
+  // Dynamic data from Supabase
+  const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
+  const [clientes, setClientes] = useState<Cliente[]>([])
+
+  // Load dynamic data on mount
+  useEffect(() => {
+    async function loadData() {
+      const supabase = createClient()
+      
+      const [tiposRes, colabRes, clientesRes] = await Promise.all([
+        supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
+        supabase.from('colaboradores').select('id, nombre').order('nombre'),
+        supabase.from('clientes').select('id, nombre_del_negocio').order('nombre_del_negocio'),
+      ])
+
+      if (tiposRes.data) setTiposTarea(tiposRes.data)
+      if (colabRes.data) setColaboradores(colabRes.data)
+      if (clientesRes.data) setClientes(clientesRes.data)
+    }
+    
+    loadData()
+  }, [])
 
   if (!task) {
     return (
@@ -1031,16 +1102,16 @@ export function TaskDetailPanel() {
                   <Select
                     value={task.clientId}
                     onValueChange={(v) => {
-                      const client = CLIENTS.find((c) => c.id === v)
-                      if (client) updateTask(task.id, { clientId: v, clientName: client.name })
+                      const cliente = clientes.find((c) => c.id === v)
+                      if (cliente) updateTask(task.id, { clientId: v, clientName: cliente.nombre_del_negocio })
                     }}
                   >
                     <SelectTrigger className="h-9">
-                      <SelectValue />
+                      <SelectValue placeholder="Seleccionar cliente" />
                     </SelectTrigger>
                     <SelectContent>
-                      {CLIENTS.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      {clientes.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.nombre_del_negocio}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1050,21 +1121,21 @@ export function TaskDetailPanel() {
                   <Select
                     value={task.assigneeId}
                     onValueChange={(v) => {
-                      const assignee = ASSIGNEES.find((a) => a.id === v)
-                      if (assignee) updateTask(task.id, { assigneeId: v, assigneeName: assignee.name })
+                      const colab = colaboradores.find((c) => c.id === v)
+                      if (colab) updateTask(task.id, { assigneeId: v, assigneeName: colab.nombre })
                     }}
                   >
                     <SelectTrigger className="h-9">
-                      <SelectValue />
+                      <SelectValue placeholder="Seleccionar colaborador" />
                     </SelectTrigger>
                     <SelectContent>
-                      {ASSIGNEES.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
+                      {colaboradores.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
                           <div className="flex items-center gap-2">
                             <Avatar className="h-5 w-5">
-                              <AvatarFallback className="text-[9px]">{getInitials(a.name)}</AvatarFallback>
+                              <AvatarFallback className="text-[9px]">{getInitials(c.nombre)}</AvatarFallback>
                             </Avatar>
-                            {a.name}
+                            {c.nombre}
                           </div>
                         </SelectItem>
                       ))}
@@ -1076,19 +1147,19 @@ export function TaskDetailPanel() {
               {/* Type & Due Date */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo</Label>
+                  <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo de tarea</Label>
                   <Select
                     value={task.type}
                     onValueChange={(v) => updateTask(task.id, { type: v as TaskType })}
                   >
                     <SelectTrigger className="h-9">
-                      <SelectValue />
+                      <SelectValue placeholder="Seleccionar tipo" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(Object.keys(TYPE_CONFIG) as TaskType[]).map((t) => (
-                        <SelectItem key={t} value={t}>
-                          <Badge variant="outline" className={cn('text-xs border-0', TYPE_CONFIG[t].color)}>
-                            {TYPE_CONFIG[t].label}
+                      {tiposTarea.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          <Badge variant="outline" className="text-xs">
+                            {t.nombre}
                           </Badge>
                         </SelectItem>
                       ))}
