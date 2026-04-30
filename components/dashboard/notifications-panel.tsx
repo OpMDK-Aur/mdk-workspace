@@ -94,9 +94,11 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
     // Generate notifications for tasks due this week, then load
     async function init() {
       try {
-        await fetch('/api/notifications/generate', { method: 'POST' })
+        const res = await fetch('/api/notifications/generate', { method: 'POST' })
+        const json = await res.json()
+        console.log('[v0] generate notifications response:', json)
       } catch (e) {
-        console.error('Error generating notifications:', e)
+        console.error('[v0] Error generating notifications:', e)
       }
       loadNotificaciones()
     }
@@ -116,6 +118,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
       .order('created_at', { ascending: false })
       .limit(50)
 
+    console.log('[v0] loadNotificaciones - data:', data?.length, 'error:', error)
     if (!error && data) {
       setNotificaciones(data)
     }

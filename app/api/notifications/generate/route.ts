@@ -13,6 +13,7 @@ export async function POST() {
     const supabase = await createClient()
     
     const { data: { user } } = await supabase.auth.getUser()
+    console.log('[v0] notifications/generate - user:', user?.id, user?.email)
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -39,6 +40,7 @@ export async function POST() {
       .lte('fecha_vencimiento', endOfWeek.toISOString())
       .order('fecha_vencimiento', { ascending: true })
 
+    console.log('[v0] notifications/generate - tareas found:', tareas?.length, 'error:', tareasError)
     if (tareasError) {
       console.error('Error fetching tasks:', tareasError)
       return NextResponse.json({ error: tareasError.message }, { status: 500 })
