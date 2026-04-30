@@ -9,12 +9,12 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error('[google-calendar-callback] OAuth error:', error)
-    return NextResponse.redirect(new URL('/dashboard/reuniones?error=oauth_error', appUrl))
+    return NextResponse.redirect(new URL('/dashboard/platform?error=oauth_error', appUrl))
   }
 
   if (!code) {
     console.error('[google-calendar-callback] No code provided')
-    return NextResponse.redirect(new URL('/dashboard/reuniones?error=no_code', appUrl))
+    return NextResponse.redirect(new URL('/dashboard/platform?error=no_code', appUrl))
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
   if (!clientId || !clientSecret) {
     console.error('[google-calendar-callback] Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET')
-    return NextResponse.redirect(new URL('/dashboard/reuniones?error=config_error', appUrl))
+    return NextResponse.redirect(new URL('/dashboard/platform?error=config_error', appUrl))
   }
 
   try {
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
     if (!tokenResponse.ok || tokens.error) {
       console.error('[google-calendar-callback] Token exchange failed:', tokens)
-      return NextResponse.redirect(new URL('/dashboard/reuniones?error=token_error', appUrl))
+      return NextResponse.redirect(new URL('/dashboard/platform?error=token_error', appUrl))
     }
 
     // Get user email
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
     
     if (!user) {
       console.error('[google-calendar-callback] No authenticated user')
-      return NextResponse.redirect(new URL('/dashboard/reuniones?error=not_authenticated', appUrl))
+      return NextResponse.redirect(new URL('/dashboard/platform?error=not_authenticated', appUrl))
     }
     
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
@@ -77,16 +77,16 @@ export async function GET(request: NextRequest) {
         scope: tokens.scope || null,
         activo: true,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'plataforma,cliente_id' })
+      }, { onConflict: 'plataforma, cliente_id' })
 
     if (dbError) {
       console.error('[google-calendar-callback] DB error:', dbError)
-      return NextResponse.redirect(new URL('/dashboard/reuniones?error=db_error', appUrl))
+      return NextResponse.redirect(new URL('/dashboard/platform?error=db_error', appUrl))
     }
 
-    return NextResponse.redirect(new URL('/dashboard/reuniones?connected=google_calendar', appUrl))
+    return NextResponse.redirect(new URL('/dashboard/platform?connected=google_calendar', appUrl))
   } catch (err) {
     console.error('[google-calendar-callback] Error:', err)
-    return NextResponse.redirect(new URL('/dashboard/reuniones?error=unknown', appUrl))
+    return NextResponse.redirect(new URL('/dashboard/platform?error=unknown', appUrl))
   }
 }
