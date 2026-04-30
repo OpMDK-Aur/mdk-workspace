@@ -49,6 +49,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { UserSettingsDialog } from './user-settings-dialog'
+import { NotificationsPanel } from './notifications-panel'
 
 interface SidebarProps {
   user: User
@@ -111,6 +112,7 @@ export function Sidebar({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [notificationCount] = useState(3) // TODO: fetch from API
+  const [notificationsPanelOpen, setNotificationsPanelOpen] = useState(false)
 
   const userRole = profile?.role ?? 'project_manager'
   const canManageUsers = userRole === 'direccion' || userRole === 'project_manager'
@@ -168,7 +170,12 @@ export function Sidebar({
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-9 w-9 relative">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-9 w-9 relative"
+                  onClick={() => setNotificationsPanelOpen(true)}
+                >
                   <Bell className="h-4 w-4" />
                   {notificationCount > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
@@ -389,7 +396,12 @@ export function Sidebar({
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8 relative">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8 relative"
+                onClick={() => setNotificationsPanelOpen(true)}
+              >
                 <Bell className="h-4 w-4" />
                 {notificationCount > 0 && (
                   <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
@@ -648,6 +660,11 @@ export function Sidebar({
         onOpenChange={setSettingsOpen}
         user={user}
         profile={profile}
+      />
+
+      <NotificationsPanel
+        isOpen={notificationsPanelOpen}
+        onClose={() => setNotificationsPanelOpen(false)}
       />
     </TooltipProvider>
   )
