@@ -56,9 +56,21 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
     }
   }, [searchParams, router])
 
-  const handleConnectAds = () => {
+  const handleConnectAds = async () => {
     setLoadingAds(true)
-    window.location.href = '/api/auth/google-ads'
+    const supabase = createClient()
+    
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${appUrl}/api/auth/google-ads/callback`,
+        scopes: 'https://www.googleapis.com/auth/adwords',
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+      },
+    })
   }
 
   const handleConnectCalendar = async () => {
