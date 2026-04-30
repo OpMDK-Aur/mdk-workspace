@@ -10,45 +10,12 @@ import {
   getDefaultColumns,
   RESOURCE_COLUMNS,
 } from '@/lib/google-ads'
+import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
 
 const GOOGLE_ADS_API_VERSION = 'v23'
 const GOOGLE_ADS_BASE_URL = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}`
 
 const SUPPORTED_RESOURCES: ResourceName[] = ['campaign', 'ad_group_ad', 'keyword_view']
-
-// ---------------------------------------------------------------------------
-// Access token — from session provider_token or platform_tokens table
-// ---------------------------------------------------------------------------
-async function getAccessToken(): Promise<string | null> {
-  try {
-    const supabase = await createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session?.provider_token) return session.provider_token
-
-    // Fallback: refresh via stored refresh_token
-    const { data: tokenRow } = await supabase
-      .from('platform_tokens')
-      .select('refresh_token')
-      .eq('platform', 'google_ads')
-      .maybeSingle()
-
-    const refreshToken = tokenRow?.refresh_token ?? process.env.GOOGLE_ADS_REFRESH_TOKEN ?? null
-    const clientId = process.env.GOOGLE_CLIENT_ID
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-
-    if (!refreshToken || !clientId || !clientSecret) return null
-
-    const res = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: 'refresh_token' }),
-    })
-    const data = await res.json()
-    return data.access_token ?? null
-  } catch {
-    return null
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Route handler
@@ -98,14 +65,14 @@ export async function GET(request: NextRequest) {
     const conversionActionName   = sp.get('conversion_action_name') ?? undefined
     const limit                  = sp.get('limit') ? Number(sp.get('limit')) : undefined
 
-    // Credentials
-    const accessToken    = await getAccessToken()
-    const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN
-    const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ?? '4435948073'
+    // Credentials from environment variables
+    const { accessToken, error: tokenError } = await getGoogleAdsAccessToken()
+    const developerToken = getGoogleAdsDeveloperToken()
+    const loginCustomerId = getGoogleAdsLoginCustomerId()
 
     if (!accessToken) {
       return NextResponse.json({
-        error: 'No se pudo obtener el access token de Google. El usuario debe re-autorizar Google OAuth desde Plataformas.',
+        error: tokenError || 'No se pudo obtener el access token de Google Ads.',
       }, { status: 401 })
     }
     if (!developerToken) {

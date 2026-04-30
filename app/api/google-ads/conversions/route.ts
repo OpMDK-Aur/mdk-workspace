@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,21 +61,11 @@ const GAQL = `
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-async function getAccessToken(): Promise<string | null> {
-  try {
-    const supabase = await createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.provider_token ?? null
-  } catch {
-    return null
-  }
-}
-
 function buildHeaders(accessToken: string): HeadersInit {
   return {
     'Authorization': `Bearer ${accessToken}`,
-    'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? '',
-    'login-customer-id': process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/-/g, '') ?? '',
+    'developer-token': getGoogleAdsDeveloperToken() ?? '',
+    'login-customer-id': getGoogleAdsLoginCustomerId(),
     'Content-Type': 'application/json',
   }
 }
@@ -170,15 +161,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'customerId requerido' }, { status: 400 })
     }
 
-    const accessToken = await getAccessToken()
+    const { accessToken, error: tokenError } = await getGoogleAdsAccessToken()
     if (!accessToken) {
       return NextResponse.json(
-        { error: 'No se encontro el access token de Google. Reconectá tu cuenta de Google Ads.' },
+        { error: tokenError || 'No se pudo obtener el access token de Google Ads.' },
         { status: 401 }
       )
     }
 
-    if (!process.env.GOOGLE_ADS_DEVELOPER_TOKEN) {
+    if (!getGoogleAdsDeveloperToken()) {
       return NextResponse.json({ error: 'GOOGLE_ADS_DEVELOPER_TOKEN no configurado' }, { status: 500 })
     }
 

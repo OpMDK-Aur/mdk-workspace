@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
 
 const GOOGLE_ADS_API_VERSION = 'v23'
 const BASE_URL = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}`
@@ -52,75 +53,17 @@ async function gaqlSearch(customerId: string, query: string, headers: HeadersIni
   return rows
 }
 
-// Get access token from platform_tokens with auto-refresh
-async function getAccessToken(): Promise<string | null> {
-  try {
-    const supabase = await createClient()
-    
-    const { data: tokenData, error } = await supabase
-      .from('platform_tokens')
-      .select('access_token, refresh_token, token_expiry')
-      .eq('platform', 'google_ads')
-      .single()
-    
-    if (error || !tokenData) return null
-    
-    // Check if token is expired or will expire in 5 minutes
-    const expiryTime = new Date(tokenData.token_expiry).getTime()
-    const now = Date.now()
-    const bufferMs = 5 * 60 * 1000
-    
-    if (expiryTime > now + bufferMs) {
-      return tokenData.access_token
-    }
-    
-    // Token expired, refresh it
-    if (!tokenData.refresh_token) return null
-    
-    const clientId = process.env.GOOGLE_CLIENT_ID
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-    if (!clientId || !clientSecret) return null
-    
-    const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: tokenData.refresh_token,
-        grant_type: 'refresh_token',
-      }),
-    })
-    
-    const refreshData = await refreshRes.json()
-    if (!refreshRes.ok || !refreshData.access_token) return null
-    
-    // Update token in database
-    const newExpiry = new Date(Date.now() + (refreshData.expires_in ?? 3600) * 1000).toISOString()
-    await supabase
-      .from('platform_tokens')
-      .update({
-        access_token: refreshData.access_token,
-        token_expiry: newExpiry,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('platform', 'google_ads')
-    
-    return refreshData.access_token
-  } catch {
-    return null
-  }
-}
+
 
 export async function POST(req: NextRequest) {
   try {
     const { customerId, campaignId, dateRange, startDate, endDate } = await req.json()
     if (!customerId) return NextResponse.json({ error: 'customerId required' }, { status: 400 })
 
-    const accessToken = await getAccessToken()
-    if (!accessToken) return NextResponse.json({ error: 'No Google token. Re-autoriza desde Plataformas.' }, { status: 401 })
+    const { accessToken, error: tokenError } = await getGoogleAdsAccessToken()
+    if (!accessToken) return NextResponse.json({ error: tokenError || 'No se pudo obtener el access token de Google Ads.' }, { status: 401 })
 
-    const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN
+    const developerToken = getGoogleAdsDeveloperToken()
     if (!developerToken) return NextResponse.json({ error: 'Missing GOOGLE_ADS_DEVELOPER_TOKEN' }, { status: 500 })
 
     const cleanId = customerId.replace(/-/g, '')
@@ -152,7 +95,7 @@ export async function POST(req: NextRequest) {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${accessToken}`,
       'developer-token': developerToken,
-      'login-customer-id': process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/-/g, '') ?? cleanId,
+      'login-customer-id': getGoogleAdsLoginCustomerId(),
     }
 
     const rawRows = await gaqlSearch(cleanId, query, headers)
