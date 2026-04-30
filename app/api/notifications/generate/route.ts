@@ -23,8 +23,17 @@ export async function POST() {
     endOfWeek.setDate(now.getDate() + (7 - now.getDay())) // End of current week (Sunday)
     endOfWeek.setHours(23, 59, 59, 999)
 
-    // Get tasks assigned to user that are due this week or overdue
-    const { data: tareas, error: tareasError } = await supabase
+    // Get user's collaborador record to check role
+    const { data: colaborador } = await supabase
+      .from('colaboradores')
+      .select('id, email')
+      .eq('id', user.id)
+      .single()
+    
+    const isAdmin = colaborador?.email === 'operaciones@madketing.io' || colaborador?.email === 'direccion@madketing.io'
+    
+    // Build query - admins see all tasks, others see only their assigned tasks
+    let query = supabase
       .from('tareas')
       .select(`
         id,
@@ -32,13 +41,19 @@ export async function POST() {
         fecha_vencimiento,
         estado,
         cliente_id,
-        clientes:cliente_id(nombre_del_negocio)
+        asignado_a
       `)
-      .eq('asignado_a', user.id)
-      .not('estado', 'eq', 'completada')
+      .neq('estado', 'completada')
       .not('fecha_vencimiento', 'is', null)
       .lte('fecha_vencimiento', endOfWeek.toISOString())
       .order('fecha_vencimiento', { ascending: true })
+    
+    // If not admin, filter by assigned tasks only
+    if (!isAdmin) {
+      query = query.eq('asignado_a', user.id)
+    }
+    
+    const { data: tareas, error: tareasError } = await query
 
     console.log('[v0] notifications/generate - tareas found:', tareas?.length, 'error:', tareasError)
     if (tareasError) {
@@ -59,7 +74,6 @@ export async function POST() {
     for (const tarea of tareas || []) {
       const fechaVencimiento = new Date(tarea.fecha_vencimiento)
       const isOverdue = fechaVencimiento < now
-      const clienteName = (tarea.clientes as { nombre_del_negocio: string } | null)?.nombre_del_negocio || ''
 
       // Check if notification already exists for this task (to avoid duplicates)
       const { data: existingNotif } = await supabase
