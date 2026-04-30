@@ -348,81 +348,82 @@ export function Sidebar({
   return (
     <TooltipProvider delayDuration={0}>
       <aside className="w-64 border-r border-border bg-card flex flex-col h-screen overflow-hidden">
-        {/* Header */}
-        <div className="p-4 border-b border-border shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="relative w-28 h-10 flex-shrink-0">
-                <Image
-                  src="/images/logo-mdk.jpg"
-                  alt="MDK"
-                  fill
-                  priority
-                  className="object-contain object-left"
-                />
+        {/* Show notifications panel or main sidebar */}
+        {notificationsPanelOpen ? (
+          <NotificationsPanel onClose={() => setNotificationsPanelOpen(false)} />
+        ) : (
+          <>
+            {/* Header */}
+            <div className="p-4 border-b border-border shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="relative w-28 h-10 flex-shrink-0">
+                    <Image
+                      src="/images/logo-mdk.jpg"
+                      alt="MDK"
+                      fill
+                      priority
+                      className="object-contain object-left"
+                    />
+                  </div>
+                </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                      onClick={() => setIsCollapsed(true)}
+                    >
+                      <PanelLeftClose className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">Colapsar</TooltipContent>
+                </Tooltip>
               </div>
+              <p className="text-xs text-muted-foreground mt-1">Operations · v1.0</p>
             </div>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                  onClick={() => setIsCollapsed(true)}
-                >
-                  <PanelLeftClose className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">Colapsar</TooltipContent>
-            </Tooltip>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">Operations · v1.0</p>
-        </div>
 
-        {/* Quick actions bar */}
-        <div className="px-4 py-2 border-b border-border flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => router.push('/dashboard')}
-              >
-                <Home className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Inicio</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
+            {/* Quick actions bar */}
+            <div className="px-4 py-2 border-b border-border flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => router.push('/dashboard')}
+                  >
+                    <Home className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Inicio</TooltipContent>
+              </Tooltip>
               <Button 
                 variant="ghost" 
-                size="icon" 
-                className="h-8 w-8 relative"
+                size="sm" 
+                className="h-8 px-2 relative gap-1.5"
                 onClick={() => setNotificationsPanelOpen(true)}
               >
                 <Bell className="h-4 w-4" />
+                <span className="text-xs">Bandeja de entrada</span>
                 {notificationCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
+                  <span className="h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
                     {notificationCount}
                   </span>
                 )}
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>Notificaciones</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <Search className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Buscar</TooltipContent>
-          </Tooltip>
-        </div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto">
+                    <Search className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Buscar</TooltipContent>
+              </Tooltip>
+            </div>
 
-        <ScrollArea className="flex-1 min-h-0">
+            <ScrollArea className="flex-1 min-h-0">
           <div className="p-4 space-y-6">
             {/* Areas */}
             <div>
@@ -653,6 +654,8 @@ export function Sidebar({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+          </>
+        )}
       </aside>
 
       <UserSettingsDialog
@@ -660,11 +663,6 @@ export function Sidebar({
         onOpenChange={setSettingsOpen}
         user={user}
         profile={profile}
-      />
-
-      <NotificationsPanel
-        isOpen={notificationsPanelOpen}
-        onClose={() => setNotificationsPanelOpen(false)}
       />
     </TooltipProvider>
   )
