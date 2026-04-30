@@ -14,17 +14,17 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status')
     const plan = searchParams.get('plan')
 
-    // Get user profile to check role
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
+    // Get user colaborador to check role
+    const { data: colaborador } = await supabase
+      .from('colaboradores')
+      .select('rol_id')
       .eq('id', user.id)
       .single()
 
     let query = supabase.from('clients').select('*')
 
-    // If not direccion, filter by user access
-    if (profile?.role !== 'direccion') {
+    // TODO: Check rol_id for access control
+    if (!colaborador) {
       const { data: access } = await supabase
         .from('user_client_access')
         .select('client_id')

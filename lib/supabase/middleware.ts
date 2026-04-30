@@ -63,14 +63,14 @@ export async function updateSession(request: NextRequest) {
 
     if (!skipOnboardingCheck) {
       // Check if user has completed onboarding
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('onboarding_completed')
+      const { data: colaborador } = await supabase
+        .from('colaboradores')
+        .select('onboarding_completado')
         .eq('id', user.id)
         .single()
 
       // Redirect to onboarding if not completed
-      if (profile && !profile.onboarding_completed) {
+      if (colaborador && !colaborador.onboarding_completado) {
         const url = request.nextUrl.clone()
         url.pathname = '/onboarding'
         return NextResponse.redirect(url)

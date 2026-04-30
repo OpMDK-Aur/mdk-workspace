@@ -68,8 +68,8 @@ export function TeamMemberList({ members, isAdmin }: TeamMemberListProps) {
     try {
       const supabase = createClient()
       const { error } = await supabase
-        .from('profiles')
-        .update({ role: newRole })
+        .from('colaboradores')
+        .update({ rol_id: newRole })
         .eq('id', editingMember.id)
 
       if (error) {

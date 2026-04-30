@@ -8,18 +8,18 @@ export default async function OnboardingPage() {
 
   if (!user) redirect('/auth/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
+  const { data: colaborador } = await supabase
+    .from('colaboradores')
     .select('*')
     .eq('id', user.id)
     .single()
 
   // If onboarding already completed, go to dashboard
-  if (profile?.onboarding_completed) {
+  if (colaborador?.onboarding_completado) {
     redirect('/dashboard')
   }
 
-  const userName = profile?.full_name || user.email?.split('@')[0] || ''
+  const userName = colaborador ? `${colaborador.nombre} ${colaborador.apellido || ''}`.trim() : user.email?.split('@')[0] || ''
 
   return <OnboardingFlow userName={userName} />
 }

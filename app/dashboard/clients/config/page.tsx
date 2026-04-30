@@ -8,13 +8,14 @@ export default async function ClientsConfigPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
+  const { data: colaborador } = await supabase
+    .from('colaboradores')
+    .select('rol_id')
     .eq('id', user.id)
     .single()
 
-  if (profile?.role !== 'direccion' && profile?.role !== 'project_manager') {
+  // TODO: Check rol_id against roles table for direccion/project_manager
+  if (!colaborador) {
     redirect('/dashboard')
   }
 

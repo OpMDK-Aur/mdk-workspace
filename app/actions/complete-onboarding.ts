@@ -15,16 +15,16 @@ export async function completeOnboarding(payload: {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  // Update profile directly instead of using RPC
+  // Update colaborador directly instead of using RPC
   const { error } = await supabase
-    .from('profiles')
+    .from('colaboradores')
     .update({
-      full_name: payload.full_name,
+      nombre: payload.full_name.split(' ')[0],
+      apellido: payload.full_name.split(' ').slice(1).join(' ') || '',
       avatar_url: payload.avatar_url ?? '',
-      role: payload.role,
       theme: payload.theme,
       accent_hue: payload.accent_hue,
-      onboarding_completed: true,
+      onboarding_completado: true,
     })
     .eq('id', user.id)
 
