@@ -55,11 +55,19 @@ export async function GET(request: NextRequest) {
 
     // Save to plataformas_tokens
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) {
+      console.error('[google-ads-callback] No authenticated user')
+      return NextResponse.redirect(new URL('/dashboard/reuniones?error=not_authenticated', appUrl))
+    }
+    
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
 
     const { error: dbError } = await supabase
       .from('plataformas_tokens')
       .upsert({
+        cliente_id: user.id,
         plataforma: 'google_ads',
         nombre_cuenta: 'Google Ads',
         access_token: tokens.access_token,
@@ -69,7 +77,7 @@ export async function GET(request: NextRequest) {
         scope: tokens.scope || null,
         activo: true,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'plataforma' })
+      }, { onConflict: 'plataforma,cliente_id' })
 
     if (dbError) {
       console.error('[google-ads-callback] DB error:', dbError)
