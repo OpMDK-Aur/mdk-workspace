@@ -2,7 +2,6 @@
 
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -56,38 +55,14 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
     }
   }, [searchParams, router])
 
-  const handleConnectAds = async () => {
+  const handleConnectAds = () => {
     setLoadingAds(true)
-    const supabase = createClient()
-    
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${appUrl}/api/auth/google-ads/callback`,
-        scopes: 'https://www.googleapis.com/auth/adwords',
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
-      },
-    })
+    window.location.href = '/api/auth/google-ads'
   }
 
-  const handleConnectCalendar = async () => {
+  const handleConnectCalendar = () => {
     setLoadingCalendar(true)
-    const supabase = createClient()
-    
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${appUrl}/api/auth/google-calendar/callback`,
-        scopes: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events',
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
-      },
-    })
+    window.location.href = '/api/auth/google-calendar'
   }
 
   const isAdsConnected = Boolean(googleToken)
