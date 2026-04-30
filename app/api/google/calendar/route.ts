@@ -1,64 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
-import { createClient } from '@/lib/supabase/server'
+import { getGoogleCalendarAccessToken } from '@/lib/google-tokens'
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET
 )
-
-// Helper to get and refresh token from database
-async function getValidToken() {
-  const supabase = await createClient()
-  
-  const { data: tokenData, error } = await supabase
-    .from('plataformas_tokens')
-    .select('access_token, refresh_token, token_expiry')
-    .eq('plataforma', 'google_calendar')
-    .maybeSingle()
-
-  if (error || !tokenData) {
-    return null
-  }
-
-  // Check if token is expired
-  const now = new Date()
-  const expiry = tokenData.token_expiry ? new Date(tokenData.token_expiry) : null
-  
-  if (expiry && expiry > now) {
-    // Token still valid
-    return tokenData.access_token
-  }
-
-  // Token expired, need to refresh
-  if (!tokenData.refresh_token) {
-    return null
-  }
-
-  try {
-    oauth2Client.setCredentials({ refresh_token: tokenData.refresh_token })
-    const { credentials } = await oauth2Client.refreshAccessToken()
-    
-    // Update token in database
-    const newExpiry = credentials.expiry_date 
-      ? new Date(credentials.expiry_date).toISOString()
-      : new Date(Date.now() + 3600000).toISOString() // 1 hour default
-
-    await supabase
-      .from('plataformas_tokens')
-      .update({
-        access_token: credentials.access_token,
-        token_expiry: newExpiry,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('plataforma', 'google_calendar')
-
-    return credentials.access_token
-  } catch (refreshError) {
-    console.error('Error refreshing token:', refreshError)
-    return null
-  }
-}
 
 // POST: Create calendar event
 export async function POST(request: NextRequest) {
@@ -66,12 +13,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { event } = body
 
-    // Get valid token from database
-    const accessToken = await getValidToken()
+    // Get valid token from environment variables
+    const { accessToken, error: tokenError } = await getGoogleCalendarAccessToken()
     
     if (!accessToken) {
       return NextResponse.json({ 
-        error: 'No valid Google token. Please reconnect in Platform settings.',
+        error: tokenError || 'No se pudo obtener el access token de Google Calendar.',
         needsReauth: true 
       }, { status: 401 })
     }
