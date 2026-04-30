@@ -31,7 +31,7 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
     const connected = searchParams.get('connected')
     const error = searchParams.get('error')
 
-    if (connected === 'google') {
+    if (connected === 'google' || connected === 'google_ads') {
       setNotice({ type: 'success', message: 'Cuenta de Google Ads conectada correctamente.' })
       router.replace('/dashboard/platform')
       return
