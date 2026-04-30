@@ -9,12 +9,12 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error('[google-ads-callback] OAuth error:', error)
-    return NextResponse.redirect(new URL('/dashboard/reuniones?error=oauth_error', appUrl))
+    return NextResponse.redirect(new URL('/dashboard/platform?error=oauth_error', appUrl))
   }
 
   if (!code) {
     console.error('[google-ads-callback] No code provided')
-    return NextResponse.redirect(new URL('/dashboard/reuniones?error=no_code', appUrl))
+    return NextResponse.redirect(new URL('/dashboard/platform?error=no_code', appUrl))
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
   if (!clientId || !clientSecret) {
     console.error('[google-ads-callback] Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET')
-    return NextResponse.redirect(new URL('/dashboard/reuniones?error=config_error', appUrl))
+    return NextResponse.redirect(new URL('/dashboard/platform?error=config_error', appUrl))
   }
 
   try {
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
     if (!tokenResponse.ok || tokens.error) {
       console.error('[google-ads-callback] Token exchange failed:', tokens)
-      return NextResponse.redirect(new URL('/dashboard/reuniones?error=token_error', appUrl))
+      return NextResponse.redirect(new URL('/dashboard/platform?error=token_error', appUrl))
     }
 
     // Get user email
@@ -59,14 +59,21 @@ export async function GET(request: NextRequest) {
     
     if (!user) {
       console.error('[google-ads-callback] No authenticated user')
-      return NextResponse.redirect(new URL('/dashboard/reuniones?error=not_authenticated', appUrl))
+      return NextResponse.redirect(new URL('/dashboard/platform?error=not_authenticated', appUrl))
     }
     
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
 
+    // First try to delete existing record, then insert new one
+    await supabase
+      .from('plataformas_tokens')
+      .delete()
+      .eq('plataforma', 'google_ads')
+      .eq('cliente_id', user.id)
+
     const { error: dbError } = await supabase
       .from('plataformas_tokens')
-      .upsert({
+      .insert({
         cliente_id: user.id,
         plataforma: 'google_ads',
         nombre_cuenta: 'Google Ads',
@@ -76,17 +83,18 @@ export async function GET(request: NextRequest) {
         email_conectado: userInfo.email || null,
         scope: tokens.scope || null,
         activo: true,
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'plataforma,cliente_id' })
+      })
 
     if (dbError) {
-      console.error('[google-ads-callback] DB error:', dbError)
-      return NextResponse.redirect(new URL('/dashboard/reuniones?error=db_error', appUrl))
+      console.error('[google-ads-callback] DB error:', dbError.message, dbError.details, dbError.hint)
+      return NextResponse.redirect(new URL(`/dashboard/platform?error=db_error&msg=${encodeURIComponent(dbError.message)}`, appUrl))
     }
 
-    return NextResponse.redirect(new URL('/dashboard/reuniones?connected=google_ads', appUrl))
+    return NextResponse.redirect(new URL('/dashboard/platform?connected=google_ads', appUrl))
   } catch (err) {
     console.error('[google-ads-callback] Error:', err)
-    return NextResponse.redirect(new URL('/dashboard/reuniones?error=unknown', appUrl))
+    return NextResponse.redirect(new URL('/dashboard/platform?error=unknown', appUrl))
   }
 }
