@@ -2,10 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.madketing.io'
+  const requestUrl = new URL(request.url)
+  const code = requestUrl.searchParams.get('code')
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || requestUrl.origin
   const supabase = await createClient()
   
-  // Handle the OAuth callback - Supabase handles the code exchange automatically
+  // Exchange code for session if present
+  if (code) {
+    await supabase.auth.exchangeCodeForSession(code)
+  }
+  
   const { data: { session }, error } = await supabase.auth.getSession()
   
   if (error) {
