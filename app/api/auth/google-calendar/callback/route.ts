@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@/lib/supabase/admin'
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
@@ -64,14 +65,17 @@ export async function GET(request: NextRequest) {
     
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
 
+    // Use admin client to bypass RLS
+    const adminClient = createAdminClient()
+
     // First try to delete existing record, then insert new one
-    await supabase
+    await adminClient
       .from('plataformas_tokens')
       .delete()
       .eq('plataforma', 'google_calendar')
       .eq('cliente_id', user.id)
 
-    const { error: dbError } = await supabase
+    const { error: dbError } = await adminClient
       .from('plataformas_tokens')
       .insert({
         cliente_id: user.id,
