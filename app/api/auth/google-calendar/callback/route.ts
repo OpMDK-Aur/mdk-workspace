@@ -36,19 +36,19 @@ export async function GET(request: NextRequest) {
   console.log('[google-calendar-callback] Provider refresh token exists:', !!providerRefreshToken)
 
   if (providerToken) {
-    // Store the calendar tokens in platform_tokens table
+    // Store the calendar tokens in plataformas_tokens table
     const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString()
 
     const { error: dbError } = await supabase
-      .from('platform_tokens')
+      .from('plataformas_tokens')
       .upsert({
-        platform: 'google_calendar',
+        plataforma: 'google_calendar',
         access_token: providerToken,
         refresh_token: providerRefreshToken || null,
         token_expiry: expiresAt,
         connected_email: session.user.email,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'platform' })
+      }, { onConflict: 'plataforma' })
 
     if (dbError) {
       console.error('[google-calendar-callback] DB error:', dbError)
