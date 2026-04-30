@@ -111,8 +111,21 @@ export function Sidebar({
   const supabase = createClient()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [wasCollapsed, setWasCollapsed] = useState(false)
   const [notificationCount] = useState(3) // TODO: fetch from API
   const [notificationsPanelOpen, setNotificationsPanelOpen] = useState(false)
+  
+  const openNotifications = () => {
+    setWasCollapsed(isCollapsed)
+    setNotificationsPanelOpen(true)
+  }
+  
+  const closeNotifications = () => {
+    setNotificationsPanelOpen(false)
+    if (wasCollapsed) {
+      setIsCollapsed(true)
+    }
+  }
 
   const userRole = profile?.role ?? 'project_manager'
   const canManageUsers = userRole === 'direccion' || userRole === 'project_manager'
@@ -134,7 +147,7 @@ export function Sidebar({
     'U'
 
   // Collapsed sidebar component
-  if (isCollapsed) {
+  if (isCollapsed && !notificationsPanelOpen) {
     return (
       <TooltipProvider delayDuration={0}>
         <aside className="w-16 border-r border-border bg-card flex flex-col h-screen overflow-hidden">
@@ -174,7 +187,7 @@ export function Sidebar({
                   variant="ghost" 
                   size="icon" 
                   className="h-9 w-9 relative"
-                  onClick={() => setNotificationsPanelOpen(true)}
+                  onClick={openNotifications}
                 >
                   <Bell className="h-4 w-4" />
                   {notificationCount > 0 && (
@@ -350,7 +363,7 @@ export function Sidebar({
       <aside className="w-64 border-r border-border bg-card flex flex-col h-screen overflow-hidden">
         {/* Show notifications panel or main sidebar */}
         {notificationsPanelOpen ? (
-          <NotificationsPanel onClose={() => setNotificationsPanelOpen(false)} />
+          <NotificationsPanel onClose={closeNotifications} />
         ) : (
           <>
             {/* Header */}
@@ -403,7 +416,7 @@ export function Sidebar({
                 variant="ghost" 
                 size="sm" 
                 className="h-8 px-2 relative gap-1.5"
-                onClick={() => setNotificationsPanelOpen(true)}
+                onClick={openNotifications}
               >
                 <Bell className="h-4 w-4" />
                 <span className="text-xs">Bandeja de entrada</span>
