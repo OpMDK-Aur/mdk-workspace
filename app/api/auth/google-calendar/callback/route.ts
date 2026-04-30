@@ -1,103 +1,70 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.madketing.io'
-  const origin = request.nextUrl.origin
-  const redirectUri = `${origin}/api/auth/google-calendar/callback`
-  const sp = request.nextUrl.searchParams
-  const code = sp.get('code')
-  const error = sp.get('error')
-
-  if (error || !code) {
-    return NextResponse.redirect(
-      new URL(`/dashboard/platform?error=${encodeURIComponent(error || 'no_code')}`, appUrl)
-    )
-  }
-
-  const clientId = process.env.GOOGLE_CLIENT_ID
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-
-  if (!clientId || !clientSecret) {
-    return NextResponse.redirect(
-      new URL('/dashboard/platform?error=missing_credentials', appUrl)
-    )
-  }
-
-  // Exchange code for tokens
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      code,
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uri: redirectUri,
-      grant_type: 'authorization_code',
-    }),
-  })
-
-  const tokenData = await tokenRes.json()
-  
-  if (tokenData.error) {
-    console.error('[google-calendar] Token error:', tokenData.error, tokenData.error_description)
-    return NextResponse.redirect(
-      new URL(`/dashboard/platform?error=${encodeURIComponent(tokenData.error_description || tokenData.error)}`, appUrl)
-    )
-  }
-
-  if (!tokenData.access_token) {
-    return NextResponse.redirect(
-      new URL(`/dashboard/platform?error=no_access_token`, appUrl)
-    )
-  }
-
-  // Get the authenticated Google user's email
-  const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-    headers: { Authorization: `Bearer ${tokenData.access_token}` },
-  })
-  const userInfo = await userInfoRes.json()
-
+  const requestUrl = new URL(request.url)
+  const code = requestUrl.searchParams.get('code')
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || requestUrl.origin
   const supabase = await createClient()
-  const expiresAt = new Date(Date.now() + (tokenData.expires_in ?? 3600) * 1000).toISOString()
 
-  // Check if we already have a refresh_token stored (Google only sends it on first auth)
-  let refreshToken = tokenData.refresh_token
-  if (!refreshToken) {
-    const { data: existing } = await supabase
-      .from('plataformas_tokens')
-      .select('refresh_token')
-      .eq('plataforma', 'google_calendar')
-      .single()
+  // Exchange code for session using Supabase
+  if (code) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
     
-    if (existing?.refresh_token) {
-      refreshToken = existing.refresh_token
-    } else {
-      return NextResponse.redirect(
-        new URL('/dashboard/platform?error=no_refresh_token_revoke_required', appUrl)
-      )
+    if (error) {
+      console.error('[v0] google-calendar-callback - Error exchanging code:', error)
+      return NextResponse.redirect(new URL('/dashboard/platform?error=auth_error', appUrl))
     }
+
+    const providerToken = data.session?.provider_token
+    const providerRefreshToken = data.session?.provider_refresh_token
+    const userEmail = data.session?.user?.email
+
+    console.log('[v0] google-calendar-callback - provider_token:', providerToken ? 'exists' : 'null')
+    console.log('[v0] google-calendar-callback - provider_refresh_token:', providerRefreshToken ? 'exists' : 'null')
+
+    if (!providerToken) {
+      return NextResponse.redirect(new URL('/dashboard/platform?error=no_provider_token', appUrl))
+    }
+
+    // Check if we need to preserve existing refresh_token
+    let refreshToken = providerRefreshToken
+    if (!refreshToken) {
+      const { data: existing } = await supabase
+        .from('plataformas_tokens')
+        .select('refresh_token')
+        .eq('plataforma', 'google_calendar')
+        .single()
+      
+      if (existing?.refresh_token) {
+        refreshToken = existing.refresh_token
+      }
+    }
+
+    // Store in plataformas_tokens
+    const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString()
+
+    const { error: dbError } = await supabase
+      .from('plataformas_tokens')
+      .upsert({
+        plataforma: 'google_calendar',
+        nombre_cuenta: 'Google Calendar',
+        access_token: providerToken,
+        refresh_token: refreshToken || null,
+        token_expiry: expiresAt,
+        email_conectado: userEmail,
+        scope: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events',
+        activo: true,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'plataforma' })
+
+    if (dbError) {
+      console.error('[v0] google-calendar-callback - DB error:', dbError)
+      return NextResponse.redirect(new URL('/dashboard/platform?error=db_error', appUrl))
+    }
+
+    return NextResponse.redirect(new URL('/dashboard/platform?connected=google_calendar', appUrl))
   }
 
-  const { error: dbError } = await supabase
-    .from('plataformas_tokens')
-    .upsert({
-      plataforma: 'google_calendar',
-      nombre_cuenta: 'Google Calendar',
-      account_id: userInfo.id || null,
-      access_token: tokenData.access_token,
-      refresh_token: refreshToken,
-      token_expiry: expiresAt,
-      scope: tokenData.scope,
-      email_conectado: userInfo.email ?? null,
-      activo: true,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'plataforma' })
-
-  if (dbError) {
-    console.error('[google-calendar] DB error:', dbError)
-    return NextResponse.redirect(new URL('/dashboard/platform?error=db_error', appUrl))
-  }
-
-  return NextResponse.redirect(new URL('/dashboard/platform?connected=google_calendar', appUrl))
+  return NextResponse.redirect(new URL('/dashboard/platform?error=no_code', appUrl))
 }
