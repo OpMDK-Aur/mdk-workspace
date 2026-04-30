@@ -39,9 +39,6 @@ interface Notificacion {
   cliente_id: string | null
   leida: boolean
   created_at: string
-  cliente?: {
-    nombre_del_negocio: string
-  } | null
 }
 
 interface NotificationsPanelProps {
@@ -111,10 +108,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
 
     const { data, error } = await supabase
       .from('notificaciones')
-      .select(`
-        *,
-        cliente:cliente_id(nombre_del_negocio)
-      `)
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(50)
 
