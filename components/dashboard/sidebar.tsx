@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -112,8 +112,35 @@ export function Sidebar({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [wasCollapsed, setWasCollapsed] = useState(false)
-  const [notificationCount] = useState(3) // TODO: fetch from API
+  const [notificationCount, setNotificationCount] = useState(0)
   const [notificationsPanelOpen, setNotificationsPanelOpen] = useState(false)
+
+  // Fetch unread notification count
+  useEffect(() => {
+    async function fetchNotificationCount() {
+      const { count, error } = await supabase
+        .from('notificaciones')
+        .select('*', { count: 'exact', head: true })
+        .eq('leida', false)
+      
+      if (!error && count !== null) {
+        setNotificationCount(count)
+      }
+    }
+    fetchNotificationCount()
+
+    // Subscribe to changes
+    const channel = supabase
+      .channel('notificaciones_count')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notificaciones' }, () => {
+        fetchNotificationCount()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [supabase])
   
   const openNotifications = () => {
     setWasCollapsed(isCollapsed)
