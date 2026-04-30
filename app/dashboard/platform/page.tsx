@@ -54,7 +54,15 @@ export default async function PlatformPage() {
 
       <div>
         <h2 className="text-lg font-semibold mb-4">IDs de clientes</h2>
-        <ClientsPlatformConfig clients={clients || []} />
+        <ClientsPlatformConfig clients={(clients || []).map(c => ({
+          id: c.id,
+          business_name: c.nombre_del_negocio || '',
+          meta_ads_account_id: c.meta_ads_account_id,
+          google_ads_customer_id: c.google_ads_customer_id,
+          crm_type: c.crm_type,
+          ghl_location_id: c.ghl_location_id,
+          ghl_token: c.ghl_token,
+        }))} />
       </div>
     </div>
   )
