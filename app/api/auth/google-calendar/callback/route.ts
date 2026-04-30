@@ -9,51 +9,63 @@ export async function GET(request: NextRequest) {
   
   // Exchange code for session if present
   if (code) {
-    await supabase.auth.exchangeCodeForSession(code)
+    const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+    
+    console.log('[v0] google-calendar-callback - exchangeCodeForSession result:', {
+      hasSession: !!data?.session,
+      providerToken: !!data?.session?.provider_token,
+      providerRefreshToken: !!data?.session?.provider_refresh_token,
+      error: exchangeError?.message
+    })
+    
+    if (data?.session?.provider_token) {
+      const session = data.session
+      const providerToken = session.provider_token
+      const providerRefreshToken = session.provider_refresh_token
+      const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString()
+
+      // Store the calendar tokens in plataformas_tokens table
+      const { error: dbError } = await supabase
+        .from('plataformas_tokens')
+        .upsert({
+          plataforma: 'google_calendar',
+          nombre_cuenta: 'Google Calendar',
+          account_id: session.user.id,
+          access_token: providerToken,
+          refresh_token: providerRefreshToken || null,
+          token_expiry: expiresAt,
+          scope: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events',
+          email_conectado: session.user.email,
+          activo: true,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'plataforma' })
+
+      console.log('[v0] google-calendar-callback - DB upsert result:', { error: dbError?.message })
+
+      if (dbError) {
+        return NextResponse.redirect(new URL('/dashboard/platform?error=db_error', appUrl))
+      }
+
+      return NextResponse.redirect(new URL('/dashboard/platform?connected=google_calendar', appUrl))
+    }
   }
   
+  // Fallback - check current session
   const { data: { session }, error } = await supabase.auth.getSession()
   
-  if (error) {
-    console.error('[google-calendar-callback] Session error:', error)
-    return NextResponse.redirect(
-      new URL(`/dashboard/platform?error=${encodeURIComponent(error.message)}`, appUrl)
-    )
+  console.log('[v0] google-calendar-callback - fallback session:', {
+    hasSession: !!session,
+    providerToken: !!session?.provider_token,
+    error: error?.message
+  })
+  
+  if (error || !session) {
+    return NextResponse.redirect(new URL('/dashboard/platform?error=no_session', appUrl))
   }
 
-  if (!session) {
-    console.error('[google-calendar-callback] No session found')
-    return NextResponse.redirect(
-      new URL('/dashboard/platform?error=no_session', appUrl)
-    )
-  }
-
-  // Get the provider token (Google Calendar access token)
-  const providerToken = session.provider_token
-  const providerRefreshToken = session.provider_refresh_token
-
-  console.log('[google-calendar-callback] Provider token exists:', !!providerToken)
-  console.log('[google-calendar-callback] Provider refresh token exists:', !!providerRefreshToken)
-
-  if (providerToken) {
-    // Store the calendar tokens in plataformas_tokens table
-    const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString()
-
-    const { error: dbError } = await supabase
-      .from('plataformas_tokens')
-      .upsert({
-        plataforma: 'google_calendar',
-        access_token: providerToken,
-        refresh_token: providerRefreshToken || null,
-        token_expiry: expiresAt,
-        connected_email: session.user.email,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'plataforma' })
-
-    if (dbError) {
-      console.error('[google-calendar-callback] DB error:', dbError)
-      return NextResponse.redirect(new URL('/dashboard/platform?error=db_error', appUrl))
-    }
+  // If no provider token, redirect with warning
+  if (!session.provider_token) {
+    return NextResponse.redirect(new URL('/dashboard/platform?error=no_provider_token', appUrl))
   }
 
   return NextResponse.redirect(new URL('/dashboard/platform?connected=google_calendar', appUrl))
