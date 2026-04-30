@@ -62,10 +62,7 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, appU
 
   const handleConnectCalendar = () => {
     setLoadingCalendar(true)
-    // Calendar token is managed manually via Google OAuth Playground
-    // and inserted directly into plataformas_tokens table
-    alert('Para conectar Google Calendar, usa Google OAuth Playground y agrega el refresh_token manualmente en Supabase.')
-    setLoadingCalendar(false)
+    window.location.href = '/api/auth/google-calendar'
   }
 
   const isAdsConnected = Boolean(googleToken)
