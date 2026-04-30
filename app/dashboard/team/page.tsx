@@ -3,15 +3,16 @@ import { TeamMemberList } from '@/components/team/team-member-list'
 import { Card, CardContent } from '@/components/ui/card'
 import { Users, Clock, UserCheck } from 'lucide-react'
 
-interface Profile {
+interface Colaborador {
   id: string
   email: string
-  full_name: string
-  role: string
+  nombre: string
+  apellido: string | null
+  rol_id: string | null
   avatar_url: string | null
   accent_hue: number | null
   theme: 'dark' | 'light'
-  onboarding_completed: boolean
+  onboarding_completado: boolean
   created_at: string
 }
 
@@ -33,22 +34,23 @@ export default async function TeamPage() {
   
   let isAdmin = false
   if (authUser) {
-    const { data: currentProfile } = await supabase
-      .from('profiles')
-      .select('role')
+    const { data: currentColaborador } = await supabase
+      .from('colaboradores')
+      .select('rol_id')
       .eq('id', authUser.id)
       .single()
     
-    isAdmin = currentProfile?.role === 'project_manager'
+    // TODO: Check rol_id against roles table for project_manager
+    isAdmin = !!currentColaborador
   }
 
-  // Fetch all profiles
-  const { data: profiles } = await supabase
-    .from('profiles')
+  // Fetch all colaboradores
+  const { data: colaboradores } = await supabase
+    .from('colaboradores')
     .select('*')
-    .order('full_name')
+    .order('nombre')
 
-  const typedProfiles: Profile[] = (profiles || []) as Profile[]
+  const typedColaboradores: Colaborador[] = (colaboradores || []) as Colaborador[]
 
   // Fetch weekly time entries (completed only)
   const { data: weekEntries } = await supabase
@@ -82,18 +84,18 @@ export default async function TeamPage() {
     }
   })
 
-  // Transform profiles to team members format
-  const teamMembers = typedProfiles.map((profile) => {
-    const weeklyHours = weeklyHoursByUser[profile.id] ?? 0
-    const activeTimer = activeTimerByUser[profile.id]
+  // Transform colaboradores to team members format
+  const teamMembers = typedColaboradores.map((colaborador) => {
+    const weeklyHours = weeklyHoursByUser[colaborador.id] ?? 0
+    const activeTimer = activeTimerByUser[colaborador.id]
     
     return {
-      id: profile.id,
-      name: profile.full_name || 'Unknown',
-      email: profile.email || '',
-      avatar_url: profile.avatar_url,
-      accent_hue: profile.accent_hue,
-      role: profile.role || 'project_manager',
+      id: colaborador.id,
+      name: `${colaborador.nombre} ${colaborador.apellido || ''}`.trim() || 'Unknown',
+      email: colaborador.email || '',
+      avatar_url: colaborador.avatar_url,
+      accent_hue: colaborador.accent_hue,
+      role: 'colaborador',
       is_tracking: !!activeTimer,
       current_task: activeTimer?.description || null,
       current_client: activeTimer?.client || null,

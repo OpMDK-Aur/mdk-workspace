@@ -14,7 +14,7 @@ export default async function SaldosPage() {
   if (!user) redirect('/auth/login')
 
   const { data: profile } = await supabase
-    .from('profiles')
+    .from('colaboradores')
     .select('*')
     .eq('id', user.id)
     .maybeSingle()

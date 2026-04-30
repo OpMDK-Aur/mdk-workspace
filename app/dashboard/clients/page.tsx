@@ -14,16 +14,15 @@ export default async function ClientsPage() {
     .select('*')
     .order('business_name')
 
-  // Load all profiles for manager dropdowns
+  // Load all colaboradores for manager dropdowns
   const { data: profiles } = await supabase
-    .from('profiles')
-    .select('id, full_name, role, avatar_url, email')
-    .in('role', ['project_manager', 'account_manager'])
-    .order('full_name')
+    .from('colaboradores')
+    .select('id, nombre, apellido, rol_id, avatar_url, email')
+    .order('nombre')
 
-  // Get current user profile
+  // Get current user colaborador
   const { data: currentProfile } = user
-    ? await supabase.from('profiles').select('*').eq('id', user.id).single()
+    ? await supabase.from('colaboradores').select('*').eq('id', user.id).single()
     : { data: null }
 
   // Current month range for time tracking

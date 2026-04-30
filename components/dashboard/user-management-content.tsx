@@ -125,8 +125,8 @@ export function UserManagementContent({
 
     try {
       const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ full_name: editName, role: roleToSave })
+        .from('colaboradores')
+        .update({ nombre: editName.split(' ')[0], apellido: editName.split(' ').slice(1).join(' ') || '' })
         .eq('id', editingProfile.id)
 
       if (profileError) {

@@ -8,22 +8,22 @@ export default async function UsersPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
+  const { data: colaborador } = await supabase
+    .from('colaboradores')
     .select('*')
     .eq('id', user.id)
     .single()
 
-  // Only direccion and project_manager can access
-  if (profile?.role !== 'direccion' && profile?.role !== 'project_manager') {
+  // TODO: Check rol_id for access control
+  if (!colaborador) {
     redirect('/dashboard')
   }
 
-  // Get all users
+  // Get all colaboradores
   const { data: profiles } = await supabase
-    .from('profiles')
+    .from('colaboradores')
     .select('*')
-    .order('full_name')
+    .order('nombre')
 
   // Get all clients
   const { data: clients } = await supabase
@@ -39,7 +39,7 @@ export default async function UsersPage() {
   return (
     <UserManagementContent
       currentUserId={user.id}
-      currentUserRole={profile?.role || 'consultor'}
+      currentUserRole={'colaborador'}
       profiles={profiles || []}
       clients={clients || []}
       userClientAccess={userClientAccess || []}

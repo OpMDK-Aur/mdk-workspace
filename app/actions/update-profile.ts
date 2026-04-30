@@ -17,21 +17,22 @@ export async function updateProfile(payload: UpdateProfilePayload) {
   if (!user) return { error: 'No autenticado' }
 
   const updateData: Record<string, unknown> = {
-    full_name: payload.full_name,
+    nombre: payload.full_name.split(' ')[0],
+    apellido: payload.full_name.split(' ').slice(1).join(' ') || '',
     avatar_url: payload.avatar_url,
     theme: payload.theme,
     accent_hue: payload.accent_hue,
   }
 
   if (payload.onboarding_completed !== undefined) {
-    updateData.onboarding_completed = payload.onboarding_completed
+    updateData.onboarding_completado = payload.onboarding_completed
   }
 
   const { error, data } = await supabase
-    .from('profiles')
+    .from('colaboradores')
     .update(updateData)
     .eq('id', user.id)
-    .select('onboarding_completed')
+    .select('onboarding_completado')
     .single()
 
   if (error) {
@@ -39,7 +40,7 @@ export async function updateProfile(payload: UpdateProfilePayload) {
     return { error: error.message }
   }
 
-  console.log('[v0] updateProfile success, onboarding_completed:', data?.onboarding_completed)
+  console.log('[v0] updateProfile success, onboarding_completado:', data?.onboarding_completado)
 
   revalidatePath('/', 'layout')
   revalidatePath('/dashboard', 'layout')

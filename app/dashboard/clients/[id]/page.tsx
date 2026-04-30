@@ -23,15 +23,15 @@ export default async function ClientPage({ params }: Props) {
 
   if (!client) notFound()
 
-  // Load all profiles (for pm/am lookup)
+  // Load all colaboradores (for pm/am lookup)
   const { data: profiles } = await supabase
-    .from('profiles')
-    .select('id, full_name, role, avatar_url, email')
-    .order('full_name')
+    .from('colaboradores')
+    .select('id, nombre, apellido, rol_id, avatar_url, email')
+    .order('nombre')
 
-  // Get current user profile
+  // Get current user colaborador
   const { data: currentProfile } = user
-    ? await supabase.from('profiles').select('*').eq('id', user.id).single()
+    ? await supabase.from('colaboradores').select('*').eq('id', user.id).single()
     : { data: null }
 
   // Current month range for time tracking
