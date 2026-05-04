@@ -3,6 +3,7 @@
 // Report Generator Modal - Madky Growth Marketing Specialist
 import { useState, useRef, useEffect } from 'react'
 import { useChat } from '@ai-sdk/react'
+import { DefaultChatTransport, UIMessage } from 'ai'
 import {
   Dialog,
   DialogContent,
@@ -25,6 +26,15 @@ interface ReportGeneratorModalProps {
   clients: Client[]
   filters: DashboardFilters
   scorecardRows: ScorecardRow[]
+}
+
+// Helper to extract text from UIMessage parts
+function getMessageText(message: UIMessage): string {
+  if (!message.parts || !Array.isArray(message.parts)) return ''
+  return message.parts
+    .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+    .map((p) => p.text)
+    .join('')
 }
 
 export function ReportGeneratorModal({
@@ -94,29 +104,34 @@ Por favor genera:
 Usa formato markdown para estructurar el reporte.`
   }
 
-  const { messages, append, isLoading, setMessages } = useChat({
-    api: '/api/dashboard/report',
-    id: 'report-generator',
-    body: {
-      filters,
-      clientIds: targetClients.map(c => c.id),
-    },
-    onError: (error) => {
-      console.error('[v0] Report generation error:', error)
-    },
+  const clientIdsRef = useRef(targetClients.map(c => c.id))
+  
+  // Keep ref updated
+  useEffect(() => {
+    clientIdsRef.current = targetClients.map(c => c.id)
+  }, [targetClients])
+
+  const { messages, sendMessage, status, setMessages } = useChat({
+    transport: new DefaultChatTransport({
+      api: '/api/dashboard/report',
+      prepareSendMessagesRequest: ({ messages }) => ({
+        body: {
+          messages,
+          filters,
+          clientIds: clientIdsRef.current,
+        },
+      }),
+    }),
   })
+  
+  const isLoading = status === 'streaming' || status === 'submitted'
 
   // Auto-start when modal opens
   useEffect(() => {
     if (open && !hasStarted && targetClients.length > 0 && scorecardRows.length > 0) {
-      console.log('[v0] Report modal: Starting report generation')
       setHasStarted(true)
       const prompt = buildInitialPrompt()
-      console.log('[v0] Report modal: Prompt built, appending...')
-      append({
-        role: 'user',
-        content: prompt,
-      })
+      sendMessage({ text: prompt })
     }
   }, [open, hasStarted, targetClients.length, scorecardRows.length])
 
@@ -138,7 +153,7 @@ Usa formato markdown para estructurar el reporte.`
   const handleCopy = () => {
     const lastAssistant = messages.filter(m => m.role === 'assistant').pop()
     if (lastAssistant) {
-      navigator.clipboard.writeText(lastAssistant.content as string)
+      navigator.clipboard.writeText(getMessageText(lastAssistant))
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
@@ -239,7 +254,7 @@ Usa formato markdown para estructurar el reporte.`
                     <Badge variant="secondary" className="text-[10px] h-4">Growth Marketing Sr.</Badge>
                   </div>
                   <div className="prose prose-sm prose-invert max-w-none [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_h1]:mt-4 [&_h2]:mt-3 [&_h3]:mt-2 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_strong]:text-foreground">
-                    <div dangerouslySetInnerHTML={{ __html: formatMarkdown(message.content as string) }} />
+                    <div dangerouslySetInnerHTML={{ __html: formatMarkdown(getMessageText(message)) }} />
                   </div>
                 </div>
               </div>
@@ -293,10 +308,7 @@ Usa formato markdown para estructurar el reporte.`
                 setHasStarted(false)
                 setTimeout(() => {
                   setHasStarted(true)
-                  append({
-                    role: 'user',
-                    content: buildInitialPrompt(),
-                  })
+                  sendMessage({ text: buildInitialPrompt() })
                 }, 100)
               }}
               disabled={isLoading}
