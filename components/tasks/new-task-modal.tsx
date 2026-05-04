@@ -1151,7 +1151,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
   }
 
   // Handle option selection
-  const handleOptionSelect = (value: string) => {
+  const handleOptionSelect = async (value: string) => {
     if (!selectedTemplate) return
 
     const currentStep = selectedTemplate.flow[currentStepIndex]
