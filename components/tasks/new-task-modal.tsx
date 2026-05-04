@@ -1587,20 +1587,32 @@ setIsCreating(true)
       return false
     })
     
-    await addTask({
-      title,
-      description: null, // Description now goes to comments
-      clientId: taskData.clientId || '',
-      clientName: client?.nombre_del_negocio || '',
-      assigneeId: assignee?.id || '',
-      assigneeName: assignee?.nombre || '',
-      status: 'pendiente' as TaskStatus,
-      priority,
-      type: tipoTarea?.id || '', // UUID from tipo_de_tareas
-      dueDate: null,
-      customFields: {},
-      comments: [initialComment],
-    })
+    console.log('[v0] handleCreateTask - taskData:', taskData)
+    console.log('[v0] handleCreateTask - client:', client)
+    console.log('[v0] handleCreateTask - assignee:', assignee)
+    console.log('[v0] handleCreateTask - tipoTarea:', tipoTarea)
+    console.log('[v0] handleCreateTask - dbClientes count:', dbClientes.length)
+    console.log('[v0] handleCreateTask - dbColaboradores count:', dbColaboradores.length)
+    
+    try {
+      await addTask({
+        title,
+        description: null, // Description now goes to comments
+        clientId: taskData.clientId || '',
+        clientName: client?.nombre_del_negocio || '',
+        assigneeId: assignee?.id || '',
+        assigneeName: assignee?.nombre || '',
+        status: 'pendiente' as TaskStatus,
+        priority,
+        type: tipoTarea?.id || '', // UUID from tipo_de_tareas
+        dueDate: null,
+        customFields: {},
+        comments: [initialComment],
+      })
+      console.log('[v0] handleCreateTask - Task created successfully')
+    } catch (err) {
+      console.error('[v0] handleCreateTask - Error creating task:', err)
+    }
 
     // Success message
     let successMsg: string
