@@ -30,8 +30,9 @@ interface ClientOverviewProps {
   currentProfile: Profile | null
   assignment: { min_hours: number; max_hours: number } | null
   trackedHours: number
-  horasObjetivo?: number // from colaboradores.capacidad_horas_semanales
-  horasAcumuladas?: number // total hours from time tracking
+  horasObjetivo?: number // from colaboradores.capacidad_horas_semanales (weekly)
+  horasEquipo?: number // total team hours this month for this client
+  misHoras?: number // current user's hours this month for this client
 }
 
 type DedicationStatus = 'normal' | 'baja' | 'exceso' | 'sin_datos'
@@ -245,7 +246,7 @@ const getSemaforoById = (id: string | null) => {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasAcumuladas = 0 }: ClientOverviewProps) {
+export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0 }: ClientOverviewProps) {
   const [preset, setPreset]           = useState('last_30d')
   const [rows, setRows]               = useState<ScorecardRow[]>([])
   const [loading, setLoading]         = useState(true)
@@ -492,39 +493,28 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             <CardContent className="pt-5 pb-5">
               <div className="flex items-center gap-2 mb-3">
                 <Clock className="h-4 w-4 text-primary" />
-                <p className="text-xs text-muted-foreground font-medium">Horas</p>
+                <p className="text-xs text-muted-foreground font-medium">Horas del equipo</p>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted-foreground">Horas objetivo</span>
                   <span className="text-sm font-semibold text-foreground">{horasObjetivo}h / semana</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted-foreground">Horas acumuladas</span>
-                  <span className="text-sm font-semibold text-foreground">{formatHours(horasAcumuladas)}</span>
+                  <span className="text-sm font-semibold text-foreground">{formatHours(horasEquipo)}</span>
                 </div>
-                {horasObjetivo > 0 && (
-                  <div className="pt-2 border-t border-border">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-muted-foreground">Progreso mensual</span>
-                      <span className={cn(
-                        'font-medium',
-                        horasAcumuladas >= horasObjetivo * 4 ? 'text-status-verde' : 'text-status-amarillo'
-                      )}>
-                        {Math.round((horasAcumuladas / (horasObjetivo * 4)) * 100)}%
-                      </span>
-                    </div>
-                    <div className="w-full h-1.5 bg-muted rounded-full mt-1.5 overflow-hidden">
-                      <div 
-                        className={cn(
-                          'h-full rounded-full transition-all',
-                          horasAcumuladas >= horasObjetivo * 4 ? 'bg-status-verde' : 'bg-primary'
-                        )}
-                        style={{ width: `${Math.min(100, (horasAcumuladas / (horasObjetivo * 4)) * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
+              </div>
+              
+              {/* Mis horas (colaborador actual) */}
+              <div className="mt-4 pt-3 border-t border-border">
+                <p className="text-xs text-muted-foreground font-medium mb-2">Mis horas este mes</p>
+                <div className="flex items-end gap-2">
+                  <span className="text-xl font-bold text-foreground">{formatHours(misHoras)}</span>
+                  {assignment && (
+                    <span className="text-xs text-muted-foreground mb-0.5">/ {assignment.max_hours}h asignadas</span>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>

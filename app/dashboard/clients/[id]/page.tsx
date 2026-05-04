@@ -53,9 +53,9 @@ export default async function ClientPage({ params }: Props) {
         .single()
     : { data: null }
 
-  // Get ALL tracked hours this month for this client (all users)
+  // Get ALL tracked hours this month for this client (all users - team total)
   // Table: entradas_de_tiempo, fields: cliente_id, duracion_seg, iniciado_en, finalizado_en
-  const { data: entries } = await supabase
+  const { data: allEntries } = await supabase
     .from('entradas_de_tiempo')
     .select('duracion_seg')
     .eq('cliente_id', id)
@@ -63,15 +63,26 @@ export default async function ClientPage({ params }: Props) {
     .lte('iniciado_en', endOfMonth)
     .not('finalizado_en', 'is', null)
 
-  const trackedHours = (entries ?? []).reduce((acc, e) => acc + ((e.duracion_seg ?? 0) / 3600), 0)
+  const horasEquipo = (allEntries ?? []).reduce((acc, e) => acc + ((e.duracion_seg ?? 0) / 3600), 0)
 
-  // Get horas objetivo from current user's colaborador record
+  // Get current user's tracked hours this month for this client (my hours)
+  const { data: myEntries } = user
+    ? await supabase
+        .from('entradas_de_tiempo')
+        .select('duracion_seg')
+        .eq('cliente_id', id)
+        .eq('colaborador_id', user.id)
+        .gte('iniciado_en', startOfMonth)
+        .lte('iniciado_en', endOfMonth)
+        .not('finalizado_en', 'is', null)
+    : { data: [] }
+
+  const misHoras = (myEntries ?? []).reduce((acc, e) => acc + ((e.duracion_seg ?? 0) / 3600), 0)
+
+  // Get horas objetivo from current user's colaborador record (weekly)
   const horasObjetivo = currentProfile?.capacidad_horas_semanales 
     ? parseFloat(currentProfile.capacidad_horas_semanales) 
     : 40
-
-  // Horas acumuladas = trackedHours (ya filtrado por este cliente)
-  const horasAcumuladas = trackedHours
 
   return (
     <ClientOverview
@@ -79,9 +90,10 @@ export default async function ClientPage({ params }: Props) {
       profiles={(profiles ?? []) as Profile[]}
       currentProfile={currentProfile as Profile | null}
       assignment={assignment as { min_hours: number; max_hours: number } | null}
-      trackedHours={trackedHours}
+      trackedHours={misHoras}
       horasObjetivo={horasObjetivo}
-      horasAcumuladas={horasAcumuladas}
+      horasEquipo={horasEquipo}
+      misHoras={misHoras}
     />
   )
 }
