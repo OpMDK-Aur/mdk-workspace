@@ -16,7 +16,7 @@ export default async function DashboardPage() {
   const roleName = colaborador?.roles?.nombre?.toLowerCase().replace(/ /g, '_') || ''
   const profile = colaborador ? { ...colaborador, role: roleName } : null
 
-  const isFullAccess = !profile || roleName === 'administrador' || roleName === 'project_manager'
+  const isFullAccess = !profile || roleName === 'master' || roleName === 'administrador' || roleName === 'project_manager'
 
   let clients: any[] = []
   if (isFullAccess) {

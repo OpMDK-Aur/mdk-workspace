@@ -48,8 +48,8 @@ export default async function DashboardLayout({
 
   const clientIds = clientAccess?.map(ca => ca.client_id) || []
 
-  // administrador and project_manager see all clients; others see only assigned clients
-  const isFullAccess = roleName === 'administrador' || roleName === 'project_manager'
+  // master, administrador and project_manager see all clients; others see only assigned clients
+  const isFullAccess = roleName === 'master' || roleName === 'administrador' || roleName === 'project_manager'
   let clientsQuery = supabase.from('clientes').select('*')
 
   if (!isFullAccess && clientIds.length > 0) {
