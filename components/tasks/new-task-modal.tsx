@@ -971,7 +971,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
       case 'select_client':
         messageContent = {
           content: 'Para que cliente es?',
-          options: CLIENTS.map((c) => ({ label: c.name, value: c.id })),
+          options: dbClientes.map((c) => ({ label: c.nombre_del_negocio, value: c.id })),
         }
         break
 
@@ -1180,8 +1180,8 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     // Get display label
     let userMessage = value
     if (currentStep.type === 'select_client') {
-      const client = CLIENTS.find((c) => c.id === value)
-      userMessage = client?.name || value
+      const client = dbClientes.find((c) => c.id === value)
+      userMessage = client?.nombre_del_negocio || value
       // Load client context
       setClientContext(getClientContext(value))
     }
@@ -1202,13 +1202,13 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     const stepKey = (currentStep as { key?: string }).key || currentStep.type
     const newData = { ...taskData, [stepKey]: value }
     
-    if (currentStep.type === 'select_client') {
+if (currentStep.type === 'select_client') {
       newData.clientId = value
       // Add personality response for client selection
-      const client = CLIENTS.find((c) => c.id === value)
+      const client = dbClientes.find((c) => c.id === value)
       if (client) {
-        addAssistantMessage({ 
-          content: getRandomResponse(PERSONALITY_RESPONSES.client_selected(client.name)) 
+        addAssistantMessage({
+          content: getRandomResponse(PERSONALITY_RESPONSES.client_selected(client.nombre_del_negocio))
         }, 300)
       }
     }
