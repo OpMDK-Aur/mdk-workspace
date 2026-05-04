@@ -229,13 +229,20 @@ function ComingSoonBlock({ icon, title, description }: { icon: React.ReactNode; 
   )
 }
 
-// Status options for the semaphore
-const STATUS_OPTIONS = [
-  { value: 'verde', label: 'Activo', color: 'bg-status-verde' },
-  { value: 'amarillo', label: 'Atencion', color: 'bg-status-amarillo' },
-  { value: 'naranja', label: 'En riesgo', color: 'bg-status-naranja' },
-  { value: 'rojo', label: 'Critico', color: 'bg-status-rojo' },
+// Status options for the semaphore (UUIDs from semaforo table)
+const SEMAFORO_OPTIONS = [
+  { id: 'd3f4361f-477e-4f7a-9f98-9868cddef57f', nombre: 'verde', label: 'Activo', color: '#22c55e', bgClass: 'bg-status-verde' },
+  { id: '04dca848-a17e-4626-b83a-5377aef062ec', nombre: 'amarillo', label: 'Atención', color: '#eab308', bgClass: 'bg-status-amarillo' },
+  { id: 'c19b9591-862e-49a8-898c-b29ed35fcd3b', nombre: 'naranja', label: 'En riesgo', color: '#f97316', bgClass: 'bg-status-naranja' },
+  { id: '753e6c36-5a9f-4b4b-b5fa-aac7d6f281af', nombre: 'rojo', label: 'Crítico', color: '#ef4444', bgClass: 'bg-status-rojo' },
+  { id: '3876a424-6749-4205-b5b2-a59c49ca8eb9', nombre: 'inhabilitado', label: 'Inhabilitado por mora', color: '#7f1d1d', bgClass: 'bg-red-900' },
+  { id: '550f7375-4aec-4e76-a006-16b427d493e9', nombre: 'inactivo', label: 'Baja / Inactivo', color: '#64748b', bgClass: 'bg-slate-500' },
 ]
+
+// Helper to get semaforo by ID
+const getSemaforoById = (id: string | null) => {
+  return SEMAFORO_OPTIONS.find(s => s.id === id) || SEMAFORO_OPTIONS[0]
+}
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasAcumuladas = 0 }: ClientOverviewProps) {
@@ -243,21 +250,22 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [rows, setRows]               = useState<ScorecardRow[]>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
-  const [clientStatus, setClientStatus] = useState(client.semaforo_id || 'verde')
+  const [semaforoId, setSemaforoId] = useState(client.semaforo_id)
+  const currentSemaforo = getSemaforoById(semaforoId)
   const [updatingStatus, setUpdatingStatus] = useState(false)
   
   const supabase = createClient()
 
-  const handleStatusChange = async (newStatus: string) => {
+  const handleSemaforoChange = async (newSemaforoId: string) => {
     setUpdatingStatus(true)
     try {
       const { error } = await supabase
         .from('clientes')
-        .update({ semaforo_id: newStatus })
+        .update({ semaforo_id: newSemaforoId })
         .eq('id', client.id)
       
       if (!error) {
-        setClientStatus(newStatus)
+        setSemaforoId(newSemaforoId)
       }
     } catch (e) {
       console.error('Error updating semaforo:', e)
@@ -400,45 +408,35 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            {/* Traffic-light semaphore - Editable */}
+            {/* Semaphore - Editable Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild disabled={updatingStatus}>
-                <button className="flex flex-col gap-1 items-center shrink-0 cursor-pointer hover:opacity-80 transition-opacity group">
-                  {['verde', 'amarillo', 'naranja', 'rojo'].map(color => (
-                    <div
-                      key={color}
-                      className={cn(
-                        'h-3 w-3 rounded-full transition-all',
-                        clientStatus === color
-                          ? cn(getStatusColor(color), 'ring-2 ring-offset-1 ring-offset-background', {
-                              'ring-status-verde':    color === 'verde',
-                              'ring-status-amarillo': color === 'amarillo',
-                              'ring-status-naranja':  color === 'naranja',
-                              'ring-status-rojo':     color === 'rojo',
-                            })
-                          : 'bg-muted opacity-30 group-hover:opacity-50'
-                      )}
-                    />
-                  ))}
+                <button className="flex items-center justify-center w-8 h-8 rounded-full cursor-pointer hover:opacity-80 transition-opacity ring-2 ring-offset-2 ring-offset-background"
+                  style={{ 
+                    backgroundColor: currentSemaforo.color,
+                    ringColor: currentSemaforo.color 
+                  }}
+                >
+                  {updatingStatus && <RefreshCw className="h-4 w-4 text-white animate-spin" />}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
-                {STATUS_OPTIONS.map(opt => (
+                {SEMAFORO_OPTIONS.map(opt => (
                   <DropdownMenuItem 
-                    key={opt.value} 
-                    onClick={() => handleStatusChange(opt.value)}
+                    key={opt.id} 
+                    onClick={() => handleSemaforoChange(opt.id)}
                     className="gap-2 cursor-pointer"
                   >
-                    <div className={cn('h-3 w-3 rounded-full', opt.color)} />
+                    <div className="h-3 w-3 rounded-full" style={{ backgroundColor: opt.color }} />
                     <span>{opt.label}</span>
-                    {clientStatus === opt.value && <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-primary" />}
+                    {semaforoId === opt.id && <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-primary" />}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
             <div>
               <h1 className="text-2xl font-bold text-foreground text-balance">{client.business_name}</h1>
-              <p className="text-sm text-muted-foreground mt-0.5">{getStatusLabel(clientStatus)}</p>
+              <p className="text-sm text-muted-foreground mt-0.5">{currentSemaforo.label}</p>
             </div>
           </div>
 
