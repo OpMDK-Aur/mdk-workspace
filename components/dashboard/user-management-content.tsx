@@ -50,6 +50,34 @@ const AVAILABLE_MODULES = [
   { id: 'timer_entries', label: 'Timer entries' },
 ]
 
+// Módulos por defecto según el rol
+const DEFAULT_MODULES_BY_ROLE: Record<string, string[]> = {
+  // Master: todos los módulos
+  master: AVAILABLE_MODULES.map(m => m.id),
+  // Administrador: todos los módulos
+  administrador: AVAILABLE_MODULES.map(m => m.id),
+  // Project Manager: todos excepto colaboradores
+  project_manager: AVAILABLE_MODULES.filter(m => m.id !== 'colaboradores').map(m => m.id),
+  // Account Manager: sin gestión_usuarios, colaboradores, reports
+  account_manager: AVAILABLE_MODULES.filter(m => 
+    !['gestion_usuarios', 'colaboradores', 'reports'].includes(m.id)
+  ).map(m => m.id),
+  // Consultor (Especialista): sin gestión_usuarios, colaboradores, reports
+  especialista: AVAILABLE_MODULES.filter(m => 
+    !['gestion_usuarios', 'colaboradores', 'reports'].includes(m.id)
+  ).map(m => m.id),
+  // Desarrollador: sin gestión_usuarios, colaboradores, reports
+  desarrollador: AVAILABLE_MODULES.filter(m => 
+    !['gestion_usuarios', 'colaboradores', 'reports'].includes(m.id)
+  ).map(m => m.id),
+}
+
+// Función para obtener módulos por defecto según rol
+function getDefaultModulesForRole(roleName: string): string[] {
+  const normalizedRole = roleName.toLowerCase().replace(/ /g, '_')
+  return DEFAULT_MODULES_BY_ROLE[normalizedRole] || ['dashboard']
+}
+
 interface Profile {
   id: string
   email: string
@@ -86,6 +114,7 @@ interface UserManagementContentProps {
 
 function getRoleBadgeClass(role: string) {
   switch (role) {
+    case 'master': return 'bg-purple-500/10 text-purple-500 border-purple-500/20'
     case 'administrador': return 'bg-primary/10 text-primary border-primary/20'
     case 'project_manager': return 'bg-status-verde/10 text-status-verde border-status-verde/20'
     case 'account_manager': return 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/20'
@@ -335,7 +364,13 @@ export function UserManagementContent({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label>Rol</Label>
-                    <Select value={newRolId} onValueChange={setNewRolId}>
+                    <Select value={newRolId} onValueChange={(value) => {
+                      setNewRolId(value)
+                      const selectedRole = roles.find(r => r.id === value)
+                      if (selectedRole) {
+                        setNewModulos(getDefaultModulesForRole(selectedRole.nombre))
+                      }
+                    }}>
                       <SelectTrigger><SelectValue placeholder="Seleccionar rol..." /></SelectTrigger>
                       <SelectContent>
                         {roles.map(r => <SelectItem key={r.id} value={r.id}>{r.nombre}</SelectItem>)}

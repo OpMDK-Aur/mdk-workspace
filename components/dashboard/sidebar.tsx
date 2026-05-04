@@ -118,6 +118,7 @@ function getRoleName(role: string, roleName?: string) {
   
   // Fallback for legacy role codes
   switch (role) {
+    case 'master': return 'Master'
     case 'direccion': return 'Dir. Operaciones'
     case 'project_manager': return 'Project Manager'
     case 'account_manager': return 'Account Manager'
@@ -183,13 +184,14 @@ export function Sidebar({
   }
 
   const userRole = profile?.role ?? 'project_manager'
-  const canManageUsers = userRole === 'direccion' || userRole === 'project_manager' || userRole === 'administrador'
+  const canManageUsers = userRole === 'direccion' || userRole === 'project_manager' || userRole === 'administrador' || userRole === 'master'
   
-  // Get enabled modules for the user - always respect modulos_habilitados
-  // If no modules are set, default to ['dashboard']
-  const enabledModules = profile?.modulos_habilitados?.length 
-    ? profile.modulos_habilitados 
-    : ['dashboard']
+  // Get enabled modules for the user
+  // Master role sees everything regardless of modulos_habilitados
+  const isMaster = userRole === 'master'
+  const enabledModules = isMaster 
+    ? Object.values(MODULE_IDS) 
+    : (profile?.modulos_habilitados?.length ? profile.modulos_habilitados : ['dashboard'])
   
   // Filter functions for each section
   const isModuleEnabled = (moduleId: string) => enabledModules.includes(moduleId)
