@@ -53,17 +53,14 @@ export default async function ClientPage({ params }: Props) {
         .single()
     : { data: null }
 
-  // Get current user's tracked hours this month for this client
-  const { data: entries } = user
-    ? await supabase
-        .from('time_entries')
-        .select('duration_sec')
-        .eq('user_id', user.id)
-        .eq('client_id', id)
-        .gte('started_at', startOfMonth)
-        .lte('started_at', endOfMonth)
-        .not('ended_at', 'is', null)
-    : { data: [] }
+  // Get ALL tracked hours this month for this client (all users)
+  const { data: entries } = await supabase
+    .from('time_entries')
+    .select('duration_sec')
+    .eq('client_id', id)
+    .gte('started_at', startOfMonth)
+    .lte('started_at', endOfMonth)
+    .not('ended_at', 'is', null)
 
   const trackedHours = (entries ?? []).reduce((acc, e) => acc + ((e.duration_sec ?? 0) / 3600), 0)
 
