@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import {
   useTaskStore,
   PRIORITY_CONFIG,
+  TYPE_CONFIG,
   ASSIGNEES,
   CLIENTS,
 } from '@/lib/tasks/task-store'
