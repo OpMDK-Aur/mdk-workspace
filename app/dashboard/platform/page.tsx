@@ -21,9 +21,9 @@ export default async function PlatformPage() {
   }
 
   const { data: clients, error: clientsError } = await supabase
-    .from('clientes')
-    .select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, crm_type, ghl_location_id, ghl_token, semaforo_id')
-    .order('nombre_del_negocio')
+    .from('clients')
+    .select('id, business_name, meta_ads_account_id, google_ads_customer_id, crm_type, ghl_location_id, ghl_token')
+    .order('business_name')
   
   console.log('[v0] Platform page - clients:', clients?.length, 'error:', clientsError)
 
@@ -58,7 +58,7 @@ export default async function PlatformPage() {
         <h2 className="text-lg font-semibold mb-4">IDs de clientes</h2>
         <ClientsPlatformConfig clients={(clients || []).map(c => ({
           id: c.id,
-          business_name: c.nombre_del_negocio || '',
+          business_name: c.business_name || '',
           meta_ads_account_id: c.meta_ads_account_id,
           google_ads_customer_id: c.google_ads_customer_id,
           crm_type: c.crm_type,
