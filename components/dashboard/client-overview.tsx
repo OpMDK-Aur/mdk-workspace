@@ -413,11 +413,13 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             {/* Semaphore - Editable Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild disabled={updatingStatus}>
-                <button className="flex items-center justify-center w-8 h-8 rounded-full cursor-pointer hover:opacity-80 transition-opacity ring-2 ring-offset-2 ring-offset-background"
+                <button 
+                  className="flex items-center justify-center w-8 h-8 rounded-full cursor-pointer hover:opacity-80 transition-opacity ring-2 ring-offset-2 ring-offset-background"
                   style={{ 
                     backgroundColor: currentSemaforo.color,
-                    ringColor: currentSemaforo.color 
-                  }}
+                    // @ts-expect-error - CSS custom property for ring color
+                    '--tw-ring-color': currentSemaforo.color 
+                  } as React.CSSProperties}
                 >
                   {updatingStatus && <RefreshCw className="h-4 w-4 text-white animate-spin" />}
                 </button>
