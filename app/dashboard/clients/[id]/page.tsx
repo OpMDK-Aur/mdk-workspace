@@ -54,15 +54,16 @@ export default async function ClientPage({ params }: Props) {
     : { data: null }
 
   // Get ALL tracked hours this month for this client (all users)
+  // Table: entradas_de_tiempo, fields: cliente_id, duracion_seg, iniciado_en, finalizado_en
   const { data: entries } = await supabase
-    .from('time_entries')
-    .select('duration_sec')
-    .eq('client_id', id)
-    .gte('started_at', startOfMonth)
-    .lte('started_at', endOfMonth)
-    .not('ended_at', 'is', null)
+    .from('entradas_de_tiempo')
+    .select('duracion_seg')
+    .eq('cliente_id', id)
+    .gte('iniciado_en', startOfMonth)
+    .lte('iniciado_en', endOfMonth)
+    .not('finalizado_en', 'is', null)
 
-  const trackedHours = (entries ?? []).reduce((acc, e) => acc + ((e.duration_sec ?? 0) / 3600), 0)
+  const trackedHours = (entries ?? []).reduce((acc, e) => acc + ((e.duracion_seg ?? 0) / 3600), 0)
 
   // Get horas objetivo from current user's colaborador record
   const horasObjetivo = currentProfile?.capacidad_horas_semanales 
