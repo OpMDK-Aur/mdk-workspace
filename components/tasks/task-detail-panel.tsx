@@ -34,7 +34,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 
 import { Label } from '@/components/ui/label'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -635,7 +635,7 @@ function CommentsSection({ task }: { task: Task }) {
   const { addComment, deleteComment } = useTaskStore()
   const [comment, setComment] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string } | null>(null)
+  const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; avatar_url: string | null } | null>(null)
 
   useEffect(() => {
     async function loadUser() {
@@ -644,8 +644,8 @@ function CommentsSection({ task }: { task: Task }) {
       if (user) {
         const { data: colab } = await supabase
           .from('colaboradores')
-          .select('id, nombre')
-          .eq('id', user.id)
+.select('id, nombre, avatar_url')
+  .eq('id', user.id)
           .single()
         if (colab) setCurrentUser(colab)
       }
@@ -664,7 +664,7 @@ function CommentsSection({ task }: { task: Task }) {
     console.log('[v0] CommentsSection handleSubmit - taskId:', task.id, 'content:', textContent)
     
     try {
-      await addComment(task.id, textContent, userId, userName)
+      await addComment(task.id, textContent, userId, userName, currentUser?.avatar_url)
       setComment('')
       toast.success('Comentario agregado')
     } catch (err) {
@@ -685,6 +685,7 @@ function CommentsSection({ task }: { task: Task }) {
             <div key={c.id} className="group rounded-lg border bg-muted/30 p-3">
               <div className="flex items-start gap-3">
                 <Avatar className="h-8 w-8 shrink-0">
+                  {c.userAvatar && <AvatarImage src={c.userAvatar} alt={c.userName} />}
                   <AvatarFallback className="text-xs">{getInitials(c.userName)}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
@@ -719,6 +720,7 @@ function CommentsSection({ task }: { task: Task }) {
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <Avatar className="h-7 w-7 shrink-0">
+            {currentUser?.avatar_url && <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />}
             <AvatarFallback className="text-xs">
               {currentUser ? getInitials(currentUser.nombre) : 'US'}
             </AvatarFallback>

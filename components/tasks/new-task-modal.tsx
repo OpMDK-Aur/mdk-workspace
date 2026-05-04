@@ -21,6 +21,7 @@ interface DbCliente {
 interface DbColaborador {
   id: string
   nombre: string
+  avatar_url: string | null
 }
 
 interface DbTipoTarea {
@@ -894,7 +895,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
       
       const [clientesRes, colabRes, tiposRes] = await Promise.all([
         supabase.from('clientes').select('id, nombre_del_negocio').order('nombre_del_negocio'),
-        supabase.from('colaboradores').select('id, nombre').order('nombre'),
+        supabase.from('colaboradores').select('id, nombre, avatar_url').order('nombre'),
         supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
       ])
       

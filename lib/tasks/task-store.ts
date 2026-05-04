@@ -462,7 +462,7 @@ export const CLIENTS = [
   { id: 'alambrados', name: 'Alambrados Patagonia' },
 ]
 
-// ── Filter Utility ────────────────────────────────────────────────────────────
+// ── Filter Utility ────────────────────────���───────────────────────────────────
 
 export function applyAdvancedFilters(tasks: Task[], filterGroups: FilterGroup[]): Task[] {
   if (filterGroups.length === 0) return tasks
@@ -651,7 +651,7 @@ interface TaskStore {
   removeCustomField: (taskId: string, key: string) => void
 
   // Comments
-  addComment: (taskId: string, content: string, userId: string, userName: string) => Promise<void>
+  addComment: (taskId: string, content: string, userId: string, userName: string, userAvatar?: string | null) => Promise<void>
   deleteComment: (taskId: string, commentId: string) => Promise<void>
 
   // Files
@@ -957,10 +957,10 @@ addTask: async (taskData) => {
     }),
   })),
 
-  addComment: async (taskId, content, userId, userName) => {
-    const supabase = createClient()
-    const commentId = crypto.randomUUID()
-    const now = new Date()
+addComment: async (taskId, content, userId, userName, userAvatar = null) => {
+  const supabase = createClient()
+  const commentId = crypto.randomUUID()
+  const now = new Date()
 
     // Insert comment into Supabase
     const { error } = await supabase
@@ -991,7 +991,7 @@ addTask: async (taskData) => {
                   content,
                   userId,
                   userName,
-                  userAvatar: null,
+                  userAvatar,
                   createdAt: now,
                 },
               ],
