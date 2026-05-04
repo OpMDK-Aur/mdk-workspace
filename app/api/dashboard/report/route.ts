@@ -66,20 +66,14 @@ Top 3 oportunidades concretas y especificas:
 - CTR Google Display: 0.3-0.8%`
 
 export async function POST(req: Request) {
-  console.log('[v0] Report API: Request received')
-  
   try {
     const body = await req.json()
-    console.log('[v0] Report API: Body parsed')
     
     const { messages, filters, clientIds }: { 
       messages: UIMessage[]
       filters?: any
       clientIds?: string[]
     } = body
-    
-    console.log('[v0] Report API: messages count:', messages?.length)
-    console.log('[v0] Report API: clientIds:', clientIds)
 
     // Optionally fetch client memoria for richer context
     let memoriaContext = ''
@@ -101,8 +95,6 @@ export async function POST(req: Request) {
 
     const systemPrompt = GROWTH_MARKETER_PROMPT + memoriaContext
 
-    console.log('[v0] Report API: Starting streamText')
-    
     const result = streamText({
       model: 'openai/gpt-4o',
       system: systemPrompt,
@@ -111,13 +103,11 @@ export async function POST(req: Request) {
       abortSignal: req.signal,
     })
 
-    console.log('[v0] Report API: Returning response')
-    
     return result.toUIMessageStreamResponse({
       originalMessages: messages,
     })
   } catch (error) {
-    console.error('[v0] Report API Error:', error)
+    console.error('Report API Error:', error)
     return new Response(JSON.stringify({ error: String(error) }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

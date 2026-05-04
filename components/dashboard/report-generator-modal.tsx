@@ -163,23 +163,23 @@ Usa formato markdown para estructurar el reporte.`
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="px-6 py-4 border-b shrink-0">
+      <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0 gap-0 bg-background/95 backdrop-blur-sm border-border/50">
+        <DialogHeader className="px-6 py-5 border-b border-border/50 shrink-0 bg-gradient-to-r from-teal-500/5 to-cyan-500/5">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center">
-                <Sparkles className="h-5 w-5 text-white" />
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-teal-500/20">
+                <Sparkles className="h-6 w-6 text-white" />
               </div>
               <div>
-                <DialogTitle className="text-lg">Madky - Reporte de Performance</DialogTitle>
-                <p className="text-sm text-muted-foreground">Growth Marketing Specialist Sr.</p>
+                <DialogTitle className="text-xl font-semibold">Madky - Reporte de Performance</DialogTitle>
+                <p className="text-sm text-muted-foreground mt-0.5">Growth Marketing Specialist Sr.</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-xs bg-background/50 border-border/50">
                 {platformLabel}
               </Badge>
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-xs bg-background/50 border-border/50">
                 {dateRangeLabel}
               </Badge>
             </div>
@@ -187,73 +187,83 @@ Usa formato markdown para estructurar el reporte.`
         </DialogHeader>
 
         {/* Quick Stats */}
-        <div className="px-6 py-3 border-b bg-muted/30 grid grid-cols-4 gap-4">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <BarChart3 className="h-4 w-4 text-primary" />
+        <div className="px-6 py-4 border-b border-border/50 bg-muted/20 grid grid-cols-4 gap-6">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
+              <BarChart3 className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-[10px] text-muted-foreground uppercase">Inversion</p>
-              <p className="text-sm font-semibold">${totalSpend.toLocaleString('es-AR')}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Inversion</p>
+              <p className="text-base font-bold text-foreground">${totalSpend.toLocaleString('es-AR')}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-green-500/10 flex items-center justify-center">
-              <Target className="h-4 w-4 text-green-500" />
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-green-500/20 to-green-500/10 flex items-center justify-center">
+              <Target className="h-5 w-5 text-green-500" />
             </div>
             <div>
-              <p className="text-[10px] text-muted-foreground uppercase">Leads</p>
-              <p className="text-sm font-semibold">{totalLeads.toLocaleString('es-AR')}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Leads</p>
+              <p className="text-base font-bold text-foreground">{totalLeads.toLocaleString('es-AR')}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-orange-500/10 flex items-center justify-center">
-              <TrendingUp className="h-4 w-4 text-orange-500" />
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-orange-500/20 to-orange-500/10 flex items-center justify-center">
+              <TrendingUp className="h-5 w-5 text-orange-500" />
             </div>
             <div>
-              <p className="text-[10px] text-muted-foreground uppercase">CPL Prom</p>
-              <p className="text-sm font-semibold">${avgCpl.toFixed(2)}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">CPL Prom</p>
+              <p className="text-base font-bold text-foreground">${avgCpl.toFixed(2)}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-              <Lightbulb className="h-4 w-4 text-blue-500" />
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-500/10 flex items-center justify-center">
+              <Lightbulb className="h-5 w-5 text-blue-500" />
             </div>
             <div>
-              <p className="text-[10px] text-muted-foreground uppercase">CTR Prom</p>
-              <p className="text-sm font-semibold">{avgCtr.toFixed(2)}%</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">CTR Prom</p>
+              <p className="text-base font-bold text-foreground">{avgCtr.toFixed(2)}%</p>
             </div>
           </div>
         </div>
 
         {/* Chat Area */}
-        <ScrollArea ref={scrollRef} className="flex-1 px-6 py-4">
-          <div className="space-y-4 max-w-3xl mx-auto">
+        <ScrollArea ref={scrollRef} className="flex-1 px-8 py-6">
+          <div className="space-y-6 max-w-none">
             {messages.length === 0 && !isLoading && (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="h-16 w-16 rounded-full bg-gradient-to-br from-teal-500/20 to-cyan-500/20 flex items-center justify-center mb-4">
-                  <Sparkles className="h-8 w-8 text-teal-500" />
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-teal-500/20 to-cyan-500/20 flex items-center justify-center mb-6 shadow-lg">
+                  <Sparkles className="h-10 w-10 text-teal-500" />
                 </div>
-                <p className="text-lg font-medium">Preparando analisis...</p>
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="text-xl font-semibold">Preparando analisis...</p>
+                <p className="text-sm text-muted-foreground mt-2">
                   Madky esta recopilando datos de {targetClients.length} cliente{targetClients.length !== 1 ? 's' : ''}
                 </p>
               </div>
             )}
 
             {messages.filter(m => m.role === 'assistant').map((message) => (
-              <div key={message.id} className="flex gap-3">
-                <Avatar className="h-8 w-8 shrink-0 mt-1">
-                  <AvatarFallback className="bg-gradient-to-br from-teal-500 to-cyan-500 text-white text-xs">
+              <div key={message.id} className="flex gap-4">
+                <Avatar className="h-10 w-10 shrink-0 mt-1 ring-2 ring-teal-500/20">
+                  <AvatarFallback className="bg-gradient-to-br from-teal-500 to-cyan-500 text-white text-sm font-medium">
                     M
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex-1 space-y-2">
+                <div className="flex-1 space-y-3 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">Madky</span>
-                    <Badge variant="secondary" className="text-[10px] h-4">Growth Marketing Sr.</Badge>
+                    <span className="font-semibold text-base">Madky</span>
+                    <Badge variant="secondary" className="text-[10px] h-5 px-2 bg-teal-500/10 text-teal-400 border-0">Growth Marketing Sr.</Badge>
                   </div>
-                  <div className="prose prose-sm prose-invert max-w-none [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_h1]:mt-4 [&_h2]:mt-3 [&_h3]:mt-2 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_strong]:text-foreground">
+                  <div className="prose prose-base prose-invert max-w-none 
+                    [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-8 [&_h1]:mb-4 [&_h1]:text-foreground [&_h1]:border-b [&_h1]:border-border/50 [&_h1]:pb-2
+                    [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-3 [&_h2]:text-foreground
+                    [&_h3]:text-lg [&_h3]:font-medium [&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:text-foreground
+                    [&_p]:my-3 [&_p]:leading-relaxed [&_p]:text-foreground/90
+                    [&_ul]:my-3 [&_ul]:space-y-1.5 [&_ul]:list-disc [&_ul]:pl-5
+                    [&_ol]:my-3 [&_ol]:space-y-1.5 [&_ol]:list-decimal [&_ol]:pl-5
+                    [&_li]:text-foreground/90 [&_li]:leading-relaxed
+                    [&_strong]:text-foreground [&_strong]:font-semibold
+                    [&_em]:text-foreground/80
+                  ">
                     <div dangerouslySetInnerHTML={{ __html: formatMarkdown(getMessageText(message)) }} />
                   </div>
                 </div>
@@ -261,15 +271,15 @@ Usa formato markdown para estructurar el reporte.`
             ))}
 
             {isLoading && (
-              <div className="flex gap-3">
-                <Avatar className="h-8 w-8 shrink-0">
-                  <AvatarFallback className="bg-gradient-to-br from-teal-500 to-cyan-500 text-white text-xs">
+              <div className="flex gap-4">
+                <Avatar className="h-10 w-10 shrink-0 ring-2 ring-teal-500/20">
+                  <AvatarFallback className="bg-gradient-to-br from-teal-500 to-cyan-500 text-white text-sm font-medium">
                     M
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">Analizando datos y generando reporte...</span>
+                <div className="flex items-center gap-3 py-2">
+                  <Loader2 className="h-5 w-5 animate-spin text-teal-500" />
+                  <span className="text-base text-muted-foreground">Analizando datos y generando reporte...</span>
                 </div>
               </div>
             )}
@@ -277,21 +287,21 @@ Usa formato markdown para estructurar el reporte.`
         </ScrollArea>
 
         {/* Actions */}
-        <div className="px-6 py-4 border-t bg-muted/30 flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
+        <div className="px-6 py-4 border-t border-border/50 bg-gradient-to-r from-muted/30 to-muted/20 flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
             Reporte generado con IA basado en datos de {platformLabel}
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <Button
               variant="outline"
-              size="sm"
+              size="default"
               onClick={handleCopy}
               disabled={!lastAssistantMessage || isLoading}
-              className="gap-2"
+              className="gap-2 h-9"
             >
               {copied ? (
                 <>
-                  <Check className="h-4 w-4" />
+                  <Check className="h-4 w-4 text-green-500" />
                   Copiado
                 </>
               ) : (
@@ -302,7 +312,7 @@ Usa formato markdown para estructurar el reporte.`
               )}
             </Button>
             <Button
-              size="sm"
+              size="default"
               onClick={() => {
                 setMessages([])
                 setHasStarted(false)
@@ -312,7 +322,7 @@ Usa formato markdown para estructurar el reporte.`
                 }, 100)
               }}
               disabled={isLoading}
-              className="gap-2"
+              className="gap-2 h-9 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white border-0"
             >
               <Sparkles className="h-4 w-4" />
               Regenerar
