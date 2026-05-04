@@ -9,18 +9,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { updateProfile } from '@/app/actions/update-profile'
-import { Check, Loader2, Sun, Moon, Monitor } from 'lucide-react'
+import { Check, Loader2, Sun, Moon, Monitor, Camera, X } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types'
 import type { User } from '@supabase/supabase-js'
-
-const AVATARS = [
-  { id: 'astronaut', src: '/avatars/astronaut.jpg', label: 'Astronauta' },
-  { id: 'rocket', src: '/avatars/rocket.jpg', label: 'Cohete' },
-  { id: 'planet', src: '/avatars/planet.jpg', label: 'Planeta' },
-  { id: 'moon', src: '/avatars/moon.jpg', label: 'Luna' },
-  { id: 'galaxy', src: '/avatars/galaxy.jpg', label: 'Galaxia' },
-  { id: 'satellite', src: '/avatars/satellite.jpg', label: 'Satelite' },
-]
 
 const ACCENT_COLORS = [
   { hue: 55, label: 'Naranja', class: 'bg-orange-400' },
@@ -47,11 +39,13 @@ interface UserSettingsDialogProps {
 }
 
 export function UserSettingsDialog({ open, onOpenChange, user, profile }: UserSettingsDialogProps) {
-  const { setTheme, theme } = useTheme()
+  const { setTheme } = useTheme()
   const [isPending, startTransition] = useTransition()
+  const supabase = createClient()
 
   const [fullName, setFullName] = useState(profile?.full_name || '')
-  const [selectedAvatar, setSelectedAvatar] = useState<string | null>(profile?.avatar_url || null)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(profile?.avatar_url || null)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [selectedHue, setSelectedHue] = useState<number>(profile?.accent_hue ?? 55)
   const [selectedTheme, setSelectedTheme] = useState<'light' | 'dark' | 'system'>(
     (profile?.theme as 'light' | 'dark' | 'system') ?? 'system'
@@ -61,10 +55,47 @@ export function UserSettingsDialog({ open, onOpenChange, user, profile }: UserSe
   // Sync state when profile changes
   useEffect(() => {
     setFullName(profile?.full_name || '')
-    setSelectedAvatar(profile?.avatar_url || null)
+    setAvatarUrl(profile?.avatar_url || null)
     setSelectedHue(profile?.accent_hue ?? 55)
     setSelectedTheme((profile?.theme as 'light' | 'dark' | 'system') ?? 'system')
   }, [profile])
+
+  // Handle avatar upload
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingAvatar(true)
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`
+      const filePath = `avatars/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true })
+
+      if (uploadError) {
+        console.error('Error uploading avatar:', uploadError)
+        return
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath)
+
+      setAvatarUrl(publicUrl)
+    } catch (err) {
+      console.error('Error uploading avatar:', err)
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
+
+  // Remove avatar
+  const handleRemoveAvatar = () => {
+    setAvatarUrl(null)
+  }
 
   // Apply accent color live as user picks
   const applyAccentHue = (hue: number) => {
@@ -89,7 +120,7 @@ export function UserSettingsDialog({ open, onOpenChange, user, profile }: UserSe
     startTransition(async () => {
       const result = await updateProfile({
         full_name: fullName,
-        avatar_url: selectedAvatar,
+        avatar_url: avatarUrl,
         theme: selectedTheme,
         accent_hue: selectedHue,
       })
@@ -119,21 +150,50 @@ export function UserSettingsDialog({ open, onOpenChange, user, profile }: UserSe
 
         <div className="space-y-6 py-2">
 
-          {/* Preview */}
+          {/* Preview with upload */}
           <div className="flex items-center gap-4 p-4 rounded-xl bg-muted/50 border border-border">
-            <div className="relative w-14 h-14 rounded-full overflow-hidden border-2 border-primary shrink-0">
-              {selectedAvatar ? (
-                <Image src={selectedAvatar} alt="Avatar" fill className="object-cover" />
-              ) : (
-                <div className="w-full h-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg">
-                  {initials}
-                </div>
-              )}
+            <div className="relative group">
+              <div className="relative w-16 h-16 rounded-full overflow-hidden border-2 border-primary shrink-0">
+                {avatarUrl ? (
+                  <Image src={avatarUrl} alt="Avatar" fill className="object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-xl">
+                    {initials}
+                  </div>
+                )}
+              </div>
+              {/* Upload overlay */}
+              <label className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                {uploadingAvatar ? (
+                  <Loader2 className="h-5 w-5 text-white animate-spin" />
+                ) : (
+                  <Camera className="h-5 w-5 text-white" />
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAvatarUpload}
+                  disabled={uploadingAvatar}
+                />
+              </label>
             </div>
-            <div>
+            <div className="flex-1">
               <p className="font-semibold text-sm">{fullName || user.email?.split('@')[0]}</p>
               <p className="text-xs text-muted-foreground">{user.email}</p>
+              <p className="text-xs text-muted-foreground/70 mt-1">Pasa el cursor sobre la foto para cambiarla</p>
             </div>
+            {avatarUrl && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                onClick={handleRemoveAvatar}
+                title="Quitar foto"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </div>
 
           {/* Nombre */}
@@ -145,53 +205,6 @@ export function UserSettingsDialog({ open, onOpenChange, user, profile }: UserSe
               onChange={e => setFullName(e.target.value)}
               placeholder="Tu nombre"
             />
-          </div>
-
-          {/* Avatares */}
-          <div className="space-y-3">
-            <Label>Avatar</Label>
-            <div className="grid grid-cols-6 gap-2">
-              {/* Sin avatar */}
-              <button
-                onClick={() => setSelectedAvatar(null)}
-                className={cn(
-                  'relative aspect-square rounded-full overflow-hidden border-2 transition-all',
-                  selectedAvatar === null
-                    ? 'border-primary ring-2 ring-primary/30 scale-105'
-                    : 'border-border hover:border-muted-foreground'
-                )}
-              >
-                <div className="w-full h-full bg-muted flex items-center justify-center text-muted-foreground text-xs font-bold">
-                  {initials}
-                </div>
-                {selectedAvatar === null && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
-                    <Check className="h-4 w-4 text-primary" />
-                  </div>
-                )}
-              </button>
-
-              {AVATARS.map(avatar => (
-                <button
-                  key={avatar.id}
-                  onClick={() => setSelectedAvatar(avatar.src)}
-                  title={avatar.label}
-                  className={cn(
-                    'relative aspect-square rounded-full overflow-hidden border-2 transition-all',
-                    selectedAvatar === avatar.src
-                      ? 'border-primary ring-2 ring-primary/30 scale-105'
-                      : 'border-border hover:border-muted-foreground'
-                  )}
-                >
-                  <Image src={avatar.src} alt={avatar.label} fill className="object-cover" />
-                  {selectedAvatar === avatar.src && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
-                      <Check className="h-4 w-4 text-white drop-shadow" />
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Color de acento */}
