@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import Image from 'next/image'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -40,6 +41,7 @@ interface UserSettingsDialogProps {
 
 export function UserSettingsDialog({ open, onOpenChange, user, profile }: UserSettingsDialogProps) {
   const { setTheme } = useTheme()
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const supabase = createClient()
 
@@ -129,6 +131,7 @@ export function UserSettingsDialog({ open, onOpenChange, user, profile }: UserSe
         setTimeout(() => {
           setSaved(false)
           onOpenChange(false)
+          router.refresh() // Refresh to update sidebar with new name/avatar
         }, 1000)
       }
     })
