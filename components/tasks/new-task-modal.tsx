@@ -1089,7 +1089,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     const assignee = dbColaboradores.find(a => a.id === quickAssigneeId)
     const tipoTarea = dbTiposTarea.find(t => t.id === quickType)
     
-    addTask({
+    await addTask({
       title: quickTitle,
       description: null,
       clientId: quickClientId,
@@ -1098,10 +1098,9 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
       assigneeName: assignee?.nombre || '',
       status: 'pendiente' as TaskStatus,
       priority: quickPriority,
-      type: tipoTarea?.nombre?.toLowerCase().replace(/ /g, '_') || quickType,
+      type: quickType, // UUID from tipo_de_tareas
       dueDate: quickDueDate || null,
       customFields: {},
-      comments: [],
     })
     
     setIsCreating(false)
@@ -1323,7 +1322,10 @@ setIsCreating(true)
         `
 
         const firstAssignee = dbColaboradores[0]
-        addTask({
+        // Find "Reunión con cliente" type from DB
+        const reunionTipo = dbTiposTarea.find(t => t.nombre.toLowerCase().includes('reuni'))
+        
+        await addTask({
           title: meetingTitle,
           description: null,
           clientId: taskData.clientId || '',
@@ -1332,7 +1334,7 @@ setIsCreating(true)
           assigneeName: firstAssignee?.nombre || '',
           status: 'pendiente' as TaskStatus,
           priority,
-          type: 'reunion',
+          type: reunionTipo?.id || '', // UUID from tipo_de_tareas
           dueDate: startDateTime,
           customFields: {},
           comments: [{
@@ -1570,7 +1572,18 @@ setIsCreating(true)
       createdAt: new Date(),
     }
 
-    addTask({
+    // Find matching type from DB based on template type
+    const tipoTarea = dbTiposTarea.find(t => {
+      const nombre = t.nombre.toLowerCase()
+      if (selectedTemplate.type === 'integracion') return nombre.includes('integraci')
+      if (selectedTemplate.type === 'desarrollo') return nombre.includes('desarrollo')
+      if (selectedTemplate.type === 'reportes') return nombre.includes('informe') || nombre.includes('reporte')
+      if (selectedTemplate.type === 'meta_ads') return nombre.includes('campana') || nombre.includes('pauta')
+      if (selectedTemplate.type === 'soporte') return nombre.includes('soporte')
+      return false
+    })
+    
+    await addTask({
       title,
       description: null, // Description now goes to comments
       clientId: taskData.clientId || '',
@@ -1579,7 +1592,7 @@ setIsCreating(true)
       assigneeName: assignee?.nombre || '',
       status: 'pendiente' as TaskStatus,
       priority,
-      type: selectedTemplate.type,
+      type: tipoTarea?.id || '', // UUID from tipo_de_tareas
       dueDate: null,
       customFields: {},
       comments: [initialComment],

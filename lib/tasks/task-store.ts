@@ -94,7 +94,8 @@ function mapTareaToTask(tarea: TareaDB): Task {
     assigneeName: tarea.colaboradores?.nombre || 'Sin asignar',
     status: mapEstadoToStatus(tarea.estado),
     priority: mapPrioridadToPriority(tarea.prioridad),
-    type: 'soporte', // Default type since we use tipo_tarea_id now
+    type: tarea.tipo_tarea_id || '', // UUID from tipo_de_tareas
+    typeName: tarea.tipo_de_tareas?.nombre || '', // Display name
     dueDate: tarea.fecha_vencimiento ? new Date(tarea.fecha_vencimiento) : null,
     isActive: tarea.estado !== 'completada' && tarea.estado !== 'resuelto',
     customFields: {},
@@ -635,9 +636,9 @@ interface TaskStore {
   deleteSavedFilter: (id: string) => void
 
   // Task mutations
-  updateTaskStatus: (taskId: string, status: TaskStatus) => void
-  updateTask: (taskId: string, updates: Partial<Task>) => void
-  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'activities' | 'timeSessions' | 'totalTimeSec' | 'isTimerRunning' | 'timerStartedAt' | 'comments' | 'files' | 'quotation'>) => void
+  updateTaskStatus: (taskId: string, status: TaskStatus) => Promise<void>
+  updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>
+  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'activities' | 'timeSessions' | 'totalTimeSec' | 'isTimerRunning' | 'timerStartedAt' | 'files' | 'quotation'> & { comments?: TaskComment[] }) => Promise<void>
   deleteTask: (taskId: string) => void
   toggleTaskActive: (taskId: string) => void
 
@@ -750,7 +751,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     savedFilters: state.savedFilters.filter(f => f.id !== id),
   })),
 
-  updateTaskStatus: (taskId, status) => set((state) => ({
+updateTaskStatus: async (taskId, status) => {
+  const supabase = createClient()
+  
+  // Update in DB
+  const { error } = await supabase
+    .from('tareas')
+    .update({ estado: status, updated_at: new Date().toISOString() })
+    .eq('id', taskId)
+  
+  if (error) {
+    console.error('Error updating task status:', error)
+  }
+  
+  // Update local state
+  set((state) => ({
     tasks: state.tasks.map((t) =>
       t.id === taskId
         ? {
@@ -764,19 +779,93 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           }
         : t
     ),
-  })),
+  }))
+},
 
-  updateTask: (taskId, updates) => set((state) => ({
+updateTask: async (taskId, updates) => {
+  const supabase = createClient()
+  
+  // Map Task fields to DB fields
+  const dbUpdates: Record<string, unknown> = {}
+  if (updates.title !== undefined) dbUpdates.titulo = updates.title
+  if (updates.description !== undefined) dbUpdates.descripcion = updates.description
+  if (updates.clientId !== undefined) dbUpdates.cliente_id = updates.clientId || null
+  if (updates.assigneeId !== undefined) dbUpdates.asignado_a = updates.assigneeId || null
+  if (updates.status !== undefined) dbUpdates.estado = updates.status
+  if (updates.priority !== undefined) dbUpdates.prioridad = updates.priority
+  if (updates.type !== undefined) dbUpdates.tipo_tarea_id = updates.type || null
+  if (updates.dueDate !== undefined) dbUpdates.fecha_vencimiento = updates.dueDate
+  if (updates.isActive !== undefined) {
+    // Map isActive to estado if needed
+    if (!updates.isActive) dbUpdates.estado = 'pausada'
+  }
+  
+  // Update in DB if we have changes
+  if (Object.keys(dbUpdates).length > 0) {
+    dbUpdates.updated_at = new Date().toISOString()
+    const { error } = await supabase
+      .from('tareas')
+      .update(dbUpdates)
+      .eq('id', taskId)
+    
+    if (error) {
+      console.error('Error updating task:', error)
+    }
+  }
+  
+  // Update local state
+  set((state) => ({
     tasks: state.tasks.map((t) =>
       t.id === taskId ? { ...t, ...updates, updatedAt: new Date() } : t
     ),
-  })),
+  }))
+},
 
-  addTask: (taskData) => set((state) => ({
+addTask: async (taskData) => {
+  const supabase = createClient()
+  const id = crypto.randomUUID()
+  
+  // Insert into tareas table
+  const { error } = await supabase
+    .from('tareas')
+    .insert({
+      id,
+      titulo: taskData.title,
+      descripcion: taskData.description,
+      tipo_tarea_id: taskData.type || null, // Now this should be a UUID
+      cliente_id: taskData.clientId || null,
+      asignado_a: taskData.assigneeId || null,
+      estado: taskData.status || 'pendiente',
+      prioridad: taskData.priority || 'media',
+      fecha_vencimiento: taskData.dueDate || null,
+    })
+  
+  if (error) {
+    console.error('Error creating task:', error)
+    return
+  }
+  
+  // Also insert initial comment if there are comments
+  if (taskData.comments && taskData.comments.length > 0) {
+    for (const comment of taskData.comments) {
+      await supabase
+        .from('tarea_comentarios')
+        .insert({
+          tarea_id: id,
+          contenido: comment.content,
+          autor_id: comment.userId === 'madky' ? null : comment.userId,
+          autor_nombre: comment.userName,
+          es_sistema: comment.userId === 'madky',
+        })
+    }
+  }
+  
+  // Update local state
+  set((state) => ({
     tasks: [
       {
         ...taskData,
-        id: crypto.randomUUID(),
+        id,
         createdAt: new Date(),
         updatedAt: new Date(),
         activities: [
@@ -786,13 +875,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         totalTimeSec: 0,
         isTimerRunning: false,
         timerStartedAt: null,
-        comments: [],
+        comments: taskData.comments || [],
         files: [],
         quotation: null,
       },
       ...state.tasks,
     ],
-  })),
+  }))
+},
 
   deleteTask: (taskId) => set((state) => ({
     tasks: state.tasks.filter((t) => t.id !== taskId),

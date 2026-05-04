@@ -344,7 +344,8 @@ export interface Task {
   assigneeName: string
   status: TaskStatus
   priority: TaskPriority
-  type: TaskType
+  type: TaskType // UUID from tipo_de_tareas or legacy string
+  typeName?: string // Display name from tipo_de_tareas
   dueDate: Date | null
   isActive: boolean // Toggle to resume task independently of status
   customFields: Record<string, TaskCustomField>
