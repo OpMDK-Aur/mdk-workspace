@@ -24,8 +24,10 @@ export default async function DashboardLayout({
 
   // Map rol name to profile.role for compatibility
   const roleName = colaborador?.roles?.nombre?.toLowerCase().replace(/ /g, '_') || ''
+  const fullName = [colaborador?.nombre, colaborador?.apellido].filter(Boolean).join(' ') || null
   const profile = colaborador ? { 
     ...colaborador, 
+    full_name: fullName,
     role: roleName, 
     role_name: colaborador?.roles?.nombre,
     departamento_name: colaborador?.departamentos?.nombre,
