@@ -20,10 +20,12 @@ export default async function PlatformPage() {
     redirect('/dashboard')
   }
 
-  const { data: clients } = await supabase
+  const { data: clients, error: clientsError } = await supabase
     .from('clientes')
     .select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, crm_type, ghl_location_id, ghl_token, semaforo_id')
     .order('nombre_del_negocio')
+  
+  console.log('[v0] Platform page - clients:', clients?.length, 'error:', clientsError)
 
   const { data: googleToken } = await supabase
     .from('plataformas_tokens')
