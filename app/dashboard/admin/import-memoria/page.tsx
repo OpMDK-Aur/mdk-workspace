@@ -87,11 +87,29 @@ export default function ImportMemoriaPage() {
         .select('id, nombre_del_negocio')
       
       for (const record of records) {
-        // Find matching client (case insensitive, partial match)
-        const cliente = clientes?.find(c => 
-          c.nombre_del_negocio?.toLowerCase().includes(record.cliente.toLowerCase()) ||
-          record.cliente.toLowerCase().includes(c.nombre_del_negocio?.toLowerCase() || '')
+        // Find matching client - exact match first, then fuzzy
+        const csvName = record.cliente.toLowerCase().trim()
+        
+        // 1. Try exact match
+        let cliente = clientes?.find(c => 
+          c.nombre_del_negocio?.toLowerCase().trim() === csvName
         )
+        
+        // 2. Try match where DB name starts with CSV name or vice versa
+        if (!cliente) {
+          cliente = clientes?.find(c => {
+            const dbName = c.nombre_del_negocio?.toLowerCase().trim() || ''
+            return dbName.startsWith(csvName) || csvName.startsWith(dbName)
+          })
+        }
+        
+        // 3. Try partial match only if CSV name is longer than 5 chars (avoid false positives)
+        if (!cliente && csvName.length > 5) {
+          cliente = clientes?.find(c => {
+            const dbName = c.nombre_del_negocio?.toLowerCase().trim() || ''
+            return dbName.includes(csvName) || csvName.includes(dbName)
+          })
+        }
         
         if (cliente) {
           // Check if memoria already exists
