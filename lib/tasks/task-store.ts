@@ -463,7 +463,7 @@ export const CLIENTS = [
   { id: 'alambrados', name: 'Alambrados Patagonia' },
 ]
 
-// ── Filter Utility ────────────────────────���───────────────────────────────────
+// ─�� Filter Utility ────────────────────────���───────────────────────────────────
 
 export function applyAdvancedFilters(tasks: Task[], filterGroups: FilterGroup[]): Task[] {
   if (filterGroups.length === 0) return tasks
@@ -609,7 +609,7 @@ interface TaskStore {
   tasks: Task[]
   isLoading: boolean
   selectedTaskId: string | null
-  view: 'kanban' | 'list'
+  view: 'kanban' | 'list' | 'calendar'
   
   // Legacy simple filters (for quick access)
   filters: {
@@ -625,7 +625,7 @@ interface TaskStore {
 
   // Actions
   loadTasks: () => Promise<void>
-  setView: (view: 'kanban' | 'list') => void
+  setView: (view: 'kanban' | 'list' | 'calendar') => void
   setSelectedTask: (id: string | null) => void
   setFilter: (key: keyof TaskStore['filters'], value: unknown) => void
   clearFilters: () => void
