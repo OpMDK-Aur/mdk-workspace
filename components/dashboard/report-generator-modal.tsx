@@ -248,23 +248,23 @@ Usa formato markdown para estructurar el reporte.`
                     M
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex-1 space-y-3 min-w-0">
+                <div className="flex-1 space-y-3 min-w-0 overflow-hidden">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-base">Madky</span>
                     <Badge variant="secondary" className="text-[10px] h-5 px-2 bg-teal-500/10 text-teal-400 border-0">Growth Marketing Sr.</Badge>
                   </div>
-                  <div className="prose prose-base prose-invert max-w-none 
+                  <div className="prose prose-base prose-invert max-w-full overflow-hidden break-words
                     [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-8 [&_h1]:mb-4 [&_h1]:text-foreground [&_h1]:border-b [&_h1]:border-border/50 [&_h1]:pb-2
                     [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-3 [&_h2]:text-foreground
                     [&_h3]:text-lg [&_h3]:font-medium [&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:text-foreground
-                    [&_p]:my-3 [&_p]:leading-relaxed [&_p]:text-foreground/90
-                    [&_ul]:my-3 [&_ul]:space-y-1.5 [&_ul]:list-disc [&_ul]:pl-5
-                    [&_ol]:my-3 [&_ol]:space-y-1.5 [&_ol]:list-decimal [&_ol]:pl-5
-                    [&_li]:text-foreground/90 [&_li]:leading-relaxed
+                    [&_p]:my-3 [&_p]:leading-relaxed [&_p]:text-foreground/90 [&_p]:break-words
+                    [&_ul]:my-3 [&_ul]:space-y-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:overflow-hidden
+                    [&_ol]:my-3 [&_ol]:space-y-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:overflow-hidden
+                    [&_li]:text-foreground/90 [&_li]:leading-relaxed [&_li]:break-words
                     [&_strong]:text-foreground [&_strong]:font-semibold
                     [&_em]:text-foreground/80
                   ">
-                    <div dangerouslySetInnerHTML={{ __html: formatMarkdown(getMessageText(message)) }} />
+                    <div className="overflow-hidden" dangerouslySetInnerHTML={{ __html: formatMarkdown(getMessageText(message)) }} />
                   </div>
                 </div>
               </div>
