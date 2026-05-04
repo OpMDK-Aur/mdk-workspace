@@ -185,10 +185,11 @@ export function Sidebar({
   const userRole = profile?.role ?? 'project_manager'
   const canManageUsers = userRole === 'direccion' || userRole === 'project_manager' || userRole === 'administrador'
   
-  // Get enabled modules for the user - admins and project managers see all
-  const enabledModules = (canManageUsers || !profile?.modulos_habilitados) 
-    ? Object.values(MODULE_IDS) 
-    : (profile?.modulos_habilitados || ['dashboard'])
+  // Get enabled modules for the user - always respect modulos_habilitados
+  // If no modules are set, default to ['dashboard']
+  const enabledModules = profile?.modulos_habilitados?.length 
+    ? profile.modulos_habilitados 
+    : ['dashboard']
   
   // Filter functions for each section
   const isModuleEnabled = (moduleId: string) => enabledModules.includes(moduleId)
