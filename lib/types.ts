@@ -25,7 +25,9 @@ export interface Profile {
   id: string
   email: string
   full_name: string | null
-  role: UserRole
+  role: string // normalized role name (lowercase, underscores)
+  role_name?: string // display name from roles table
+  rol_id?: string // UUID reference to roles table
   avatar_url: string | null
   theme: 'light' | 'dark' | 'system' | null
   accent_hue: number | null

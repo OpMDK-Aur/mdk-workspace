@@ -89,12 +89,17 @@ function getStatusColor(status: string | null) {
   }
 }
 
-function getRoleName(role: string) {
+function getRoleName(role: string, roleName?: string) {
+  // If we have the actual role name from the database, use it
+  if (roleName) return roleName
+  
+  // Fallback for legacy role codes
   switch (role) {
     case 'direccion': return 'Dir. Operaciones'
     case 'project_manager': return 'Project Manager'
     case 'account_manager': return 'Account Manager'
     case 'consultor': return 'Consultor'
+    case 'administrador': return 'Administrador'
     default: return role
   }
 }
@@ -675,7 +680,7 @@ export function Sidebar({
                     {profile?.full_name || user.email?.split('@')[0]}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {getRoleName(profile?.role || 'consultor')}
+                    {getRoleName(profile?.role || '', profile?.role_name)}
                   </p>
                 </div>
                 <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />

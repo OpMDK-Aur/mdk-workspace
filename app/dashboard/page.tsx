@@ -6,13 +6,17 @@ export default async function DashboardPage() {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { data: profile } = user ? await supabase
+  const { data: colaborador } = user ? await supabase
     .from('colaboradores')
-    .select('*')
+    .select('*, roles(id, nombre)')
     .eq('id', user.id)
     .single() : { data: null }
 
-  const isFullAccess = !profile || profile?.role === 'direccion' || profile?.role === 'project_manager'
+  // Map rol name to profile.role for compatibility
+  const roleName = colaborador?.roles?.nombre?.toLowerCase().replace(/ /g, '_') || ''
+  const profile = colaborador ? { ...colaborador, role: roleName } : null
+
+  const isFullAccess = !profile || roleName === 'administrador' || roleName === 'project_manager'
 
   let clients: any[] = []
   if (isFullAccess) {
