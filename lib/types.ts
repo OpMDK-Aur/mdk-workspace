@@ -46,6 +46,7 @@ export interface Client {
   contact_lastname: string | null
   phone: string | null
   status: ClientStatus | null
+  semaforo_id: string | null
   notion_id: string | null
   fee_mdk: number | null
   fee_aurelia: number | null

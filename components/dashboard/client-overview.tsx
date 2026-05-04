@@ -243,32 +243,24 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [rows, setRows]               = useState<ScorecardRow[]>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
-  const [clientStatus, setClientStatus] = useState(client.status)
+  const [clientStatus, setClientStatus] = useState(client.semaforo_id || 'verde')
   const [updatingStatus, setUpdatingStatus] = useState(false)
   
   const supabase = createClient()
 
   const handleStatusChange = async (newStatus: string) => {
-    console.log('[v0] handleStatusChange called with:', newStatus)
-    console.log('[v0] client.id:', client.id)
     setUpdatingStatus(true)
     try {
-      const { error, data } = await supabase
+      const { error } = await supabase
         .from('clientes')
-        .update({ status: newStatus })
+        .update({ semaforo_id: newStatus })
         .eq('id', client.id)
-        .select()
-      
-      console.log('[v0] Update response - error:', error, 'data:', data)
       
       if (!error) {
         setClientStatus(newStatus)
-        console.log('[v0] Status updated to:', newStatus)
-      } else {
-        console.error('[v0] Error updating status:', error)
       }
     } catch (e) {
-      console.error('[v0] Exception updating status:', e)
+      console.error('Error updating semaforo:', e)
     } finally {
       setUpdatingStatus(false)
     }
