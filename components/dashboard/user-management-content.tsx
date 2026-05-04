@@ -418,23 +418,25 @@ export function UserManagementContent({
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-                <div className="space-y-2">
-                  <Label>Módulos habilitados</Label>
-                  <div className="grid grid-cols-2 gap-2 p-3 border rounded-lg bg-muted/30 max-h-48 overflow-y-auto">
-                    {AVAILABLE_MODULES.map(modulo => (
-                      <label key={modulo.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 p-1.5 rounded">
-                        <Checkbox
-                          checked={newModulos.includes(modulo.id)}
-                          onCheckedChange={() => toggleNewModulo(modulo.id)}
-                        />
-                        <span>{modulo.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                {createError && <div className="flex items-center gap-2 text-destructive text-sm bg-destructive/10 rounded-lg px-3 py-2"><X className="h-4 w-4" />{createError}</div>}
-                {createSuccess && <div className="flex items-center gap-2 text-status-verde text-sm bg-status-verde/10 rounded-lg px-3 py-2"><Check className="h-4 w-4" />Usuario creado exitosamente</div>}
-                <Button type="submit" disabled={creating} className="w-full bg-primary hover:bg-primary/90">
+{currentUserRole === 'master' && (
+                    <div className="space-y-2">
+                      <Label>Módulos habilitados</Label>
+                      <div className="grid grid-cols-2 gap-2 p-3 border rounded-lg bg-muted/30 max-h-48 overflow-y-auto">
+                        {AVAILABLE_MODULES.map(modulo => (
+                          <label key={modulo.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 p-1.5 rounded">
+                            <Checkbox
+                              checked={newModulos.includes(modulo.id)}
+                              onCheckedChange={() => toggleNewModulo(modulo.id)}
+                            />
+                            <span>{modulo.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {createError && <div className="flex items-center gap-2 text-destructive text-sm bg-destructive/10 rounded-lg px-3 py-2"><X className="h-4 w-4" />{createError}</div>}
+                  {createSuccess && <div className="flex items-center gap-2 text-status-verde text-sm bg-status-verde/10 rounded-lg px-3 py-2"><Check className="h-4 w-4" />Usuario creado exitosamente</div>}
+                  <Button type="submit" disabled={creating} className="w-full bg-primary hover:bg-primary/90">
                   {creating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Creando...</> : <><UserPlus className="h-4 w-4 mr-2" />Crear usuario</>}
                 </Button>
               </form>
@@ -648,20 +650,22 @@ export function UserManagementContent({
                 </DropdownMenu>
               </div>
 
-              <div className="space-y-2">
-                <Label>Módulos habilitados</Label>
-                <div className="grid grid-cols-2 gap-2 p-3 border rounded-lg bg-muted/30 max-h-48 overflow-y-auto">
-                  {AVAILABLE_MODULES.map(modulo => (
-                    <label key={modulo.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 p-1.5 rounded">
-                      <Checkbox
-                        checked={editModulos.includes(modulo.id)}
-                        onCheckedChange={() => toggleEditModulo(modulo.id)}
-                      />
-                      <span>{modulo.label}</span>
-                    </label>
-                  ))}
+              {currentUserRole === 'master' && (
+                <div className="space-y-2">
+                  <Label>Módulos habilitados</Label>
+                  <div className="grid grid-cols-2 gap-2 p-3 border rounded-lg bg-muted/30 max-h-48 overflow-y-auto">
+                    {AVAILABLE_MODULES.map(modulo => (
+                      <label key={modulo.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 p-1.5 rounded">
+                        <Checkbox
+                          checked={editModulos.includes(modulo.id)}
+                          onCheckedChange={() => toggleEditModulo(modulo.id)}
+                        />
+                        <span>{modulo.label}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {saveError && <div className="flex items-center gap-2 text-destructive text-sm bg-destructive/10 rounded-lg px-3 py-2"><X className="h-4 w-4" />{saveError}</div>}
               {saveSuccess && <div className="flex items-center gap-2 text-status-verde text-sm bg-status-verde/10 rounded-lg px-3 py-2"><Check className="h-4 w-4" />Cambios guardados</div>}
