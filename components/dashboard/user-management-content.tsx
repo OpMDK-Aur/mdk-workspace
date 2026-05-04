@@ -30,7 +30,7 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { UserPlus, ChevronDown, Check, X, Loader2, Pencil } from 'lucide-react'
+import { UserPlus, ChevronDown, Check, X, Loader2, Pencil, Camera } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // Módulos disponibles (ordenados alfabéticamente)
@@ -153,6 +153,8 @@ export function UserManagementContent({
   const [editDepartamentoId, setEditDepartamentoId] = useState<string>('')
   const [editClientIds, setEditClientIds] = useState<string[]>([])
   const [editModulos, setEditModulos] = useState<string[]>([])
+  const [editAvatarUrl, setEditAvatarUrl] = useState<string | null>(null)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -178,8 +180,40 @@ export function UserManagementContent({
     setEditDepartamentoId(profile.departamento_id || '')
     setEditClientIds(assignedClients[profile.id] || [])
     setEditModulos(profile.modulos_habilitados || ['dashboard'])
+    setEditAvatarUrl(profile.avatar_url)
     setSaveError(null)
     setSaveSuccess(false)
+  }
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !editingProfile) return
+
+    setUploadingAvatar(true)
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${editingProfile.id}-${Date.now()}.${fileExt}`
+      const filePath = `avatars/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true })
+
+      if (uploadError) {
+        setSaveError('Error al subir la imagen: ' + uploadError.message)
+        return
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath)
+
+      setEditAvatarUrl(publicUrl)
+    } catch (err) {
+      setSaveError('Error al subir la imagen')
+    } finally {
+      setUploadingAvatar(false)
+    }
   }
 
   const handleSaveEdit = async () => {
@@ -200,6 +234,7 @@ export function UserManagementContent({
           rol_id: editRolId || null,
           departamento_id: editDepartamentoId || null,
           modulos_habilitados: editModulos,
+          avatar_url: editAvatarUrl,
         })
         .eq('id', editingProfile.id)
 
@@ -234,6 +269,7 @@ export function UserManagementContent({
           departamento_id: editDepartamentoId,
           departamento_name: newDepartamentoName,
           modulos_habilitados: editModulos,
+          avatar_url: editAvatarUrl,
         } : p)
       )
       setAssignedClients(prev => ({ ...prev, [editingProfile.id]: editClientIds }))
@@ -580,15 +616,32 @@ export function UserManagementContent({
           {editingProfile && (
             <div className="space-y-4">
               <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50 border border-border">
-                <Avatar className="h-10 w-10 shrink-0">
-                  {editingProfile.avatar_url && <AvatarImage src={editingProfile.avatar_url} alt={editingProfile.full_name || ''} />}
-                  <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                    {(editName || editingProfile.full_name || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                  </AvatarFallback>
-                </Avatar>
+                <div className="relative group">
+                  <Avatar className="h-14 w-14 shrink-0">
+                    {editAvatarUrl && <AvatarImage src={editAvatarUrl} alt={editingProfile.full_name || ''} />}
+                    <AvatarFallback className="bg-primary text-primary-foreground text-lg">
+                      {(editName || editingProfile.full_name || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <label className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                    {uploadingAvatar ? (
+                      <Loader2 className="h-5 w-5 text-white animate-spin" />
+                    ) : (
+                      <Camera className="h-5 w-5 text-white" />
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleAvatarUpload}
+                      disabled={uploadingAvatar}
+                    />
+                  </label>
+                </div>
                 <div>
                   <p className="text-sm font-medium">{editName || editingProfile.full_name || 'Sin nombre'}</p>
                   <p className="text-xs text-muted-foreground">{editingProfile.email}</p>
+                  <p className="text-xs text-muted-foreground/70 mt-0.5">Pasa el cursor sobre la foto para cambiarla</p>
                 </div>
               </div>
 
