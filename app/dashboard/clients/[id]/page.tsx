@@ -16,12 +16,15 @@ export default async function ClientPage({ params }: Props) {
 
   // Load client
   const { data: client } = await supabase
-    .from('clients')
+    .from('clientes')
     .select('*')
     .eq('id', id)
     .single()
 
   if (!client) notFound()
+
+  // Map nombre_del_negocio to business_name for consistency
+  const mappedClient = { ...client, business_name: client.nombre_del_negocio }
 
   // Load all colaboradores (for pm/am lookup)
   const { data: profiles } = await supabase
@@ -50,27 +53,47 @@ export default async function ClientPage({ params }: Props) {
         .single()
     : { data: null }
 
-  // Get current user's tracked hours this month for this client
-  const { data: entries } = user
+  // Get ALL tracked hours this month for this client (all users - team total)
+  // Table: entradas_de_tiempo, fields: cliente_id, duracion_seg, iniciado_en, finalizado_en
+  const { data: allEntries } = await supabase
+    .from('entradas_de_tiempo')
+    .select('duracion_seg')
+    .eq('cliente_id', id)
+    .gte('iniciado_en', startOfMonth)
+    .lte('iniciado_en', endOfMonth)
+    .not('finalizado_en', 'is', null)
+
+  const horasEquipo = (allEntries ?? []).reduce((acc, e) => acc + ((e.duracion_seg ?? 0) / 3600), 0)
+
+  // Get current user's tracked hours this month for this client (my hours)
+  const { data: myEntries } = user
     ? await supabase
-        .from('time_entries')
-        .select('duration_sec')
-        .eq('user_id', user.id)
-        .eq('client_id', id)
-        .gte('started_at', startOfMonth)
-        .lte('started_at', endOfMonth)
-        .not('ended_at', 'is', null)
+        .from('entradas_de_tiempo')
+        .select('duracion_seg')
+        .eq('cliente_id', id)
+        .eq('colaborador_id', user.id)
+        .gte('iniciado_en', startOfMonth)
+        .lte('iniciado_en', endOfMonth)
+        .not('finalizado_en', 'is', null)
     : { data: [] }
 
-  const trackedHours = (entries ?? []).reduce((acc, e) => acc + ((e.duration_sec ?? 0) / 3600), 0)
+  const misHoras = (myEntries ?? []).reduce((acc, e) => acc + ((e.duracion_seg ?? 0) / 3600), 0)
+
+  // Get horas objetivo from current user's colaborador record (weekly)
+  const horasObjetivo = currentProfile?.capacidad_horas_semanales 
+    ? parseFloat(currentProfile.capacidad_horas_semanales) 
+    : 40
 
   return (
     <ClientOverview
-      client={client as Client}
+      client={mappedClient as Client}
       profiles={(profiles ?? []) as Profile[]}
       currentProfile={currentProfile as Profile | null}
       assignment={assignment as { min_hours: number; max_hours: number } | null}
-      trackedHours={trackedHours}
+      trackedHours={misHoras}
+      horasObjetivo={horasObjetivo}
+      horasEquipo={horasEquipo}
+      misHoras={misHoras}
     />
   )
 }

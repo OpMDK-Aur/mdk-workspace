@@ -21,7 +21,8 @@ interface TipoDeTarea {
 interface Colaborador {
   id: string
   nombre: string
-}
+  avatar_url: string | null
+  }
 
 interface Cliente {
   id: string
@@ -34,7 +35,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 
 import { Label } from '@/components/ui/label'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -404,9 +405,8 @@ function TimeTracker({ task }: { task: Task }) {
   const handleStart = async () => {
     setIsStarting(true)
     try {
-      // Find client ID from task
-      const clientId = CLIENTS.find(c => c.name === task.clientName)?.id || null
-      await startTimerForTask(task.id, task.title, clientId)
+      // Use the task's clientId directly
+      await startTimerForTask(task.id, task.title, task.clientId || null)
       toast.success('Timer iniciado para esta tarea')
     } catch (error) {
       toast.error('Error al iniciar el timer')
@@ -636,7 +636,7 @@ function CommentsSection({ task }: { task: Task }) {
   const { addComment, deleteComment } = useTaskStore()
   const [comment, setComment] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string } | null>(null)
+  const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; avatar_url: string | null } | null>(null)
 
   useEffect(() => {
     async function loadUser() {
@@ -645,8 +645,8 @@ function CommentsSection({ task }: { task: Task }) {
       if (user) {
         const { data: colab } = await supabase
           .from('colaboradores')
-          .select('id, nombre')
-          .eq('id', user.id)
+.select('id, nombre, avatar_url')
+  .eq('id', user.id)
           .single()
         if (colab) setCurrentUser(colab)
       }
@@ -665,7 +665,7 @@ function CommentsSection({ task }: { task: Task }) {
     console.log('[v0] CommentsSection handleSubmit - taskId:', task.id, 'content:', textContent)
     
     try {
-      await addComment(task.id, textContent, userId, userName)
+      await addComment(task.id, textContent, userId, userName, currentUser?.avatar_url)
       setComment('')
       toast.success('Comentario agregado')
     } catch (err) {
@@ -686,6 +686,7 @@ function CommentsSection({ task }: { task: Task }) {
             <div key={c.id} className="group rounded-lg border bg-muted/30 p-3">
               <div className="flex items-start gap-3">
                 <Avatar className="h-8 w-8 shrink-0">
+                  {c.userAvatar && <AvatarImage src={c.userAvatar} alt={c.userName} />}
                   <AvatarFallback className="text-xs">{getInitials(c.userName)}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
@@ -698,7 +699,10 @@ function CommentsSection({ task }: { task: Task }) {
                       {format(new Date(c.createdAt), 'dd/MM/yyyy HH:mm', { locale: es })}
                     </span>
                   </div>
-                  <p className="text-sm text-foreground/80 mt-2 whitespace-pre-wrap">{c.content}</p>
+                  <div 
+                    className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold"
+                    dangerouslySetInnerHTML={{ __html: c.content }}
+                  />
                 </div>
                 <Button
                   variant="ghost"
@@ -717,6 +721,7 @@ function CommentsSection({ task }: { task: Task }) {
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <Avatar className="h-7 w-7 shrink-0">
+            {currentUser?.avatar_url && <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />}
             <AvatarFallback className="text-xs">
               {currentUser ? getInitials(currentUser.nombre) : 'US'}
             </AvatarFallback>
@@ -972,7 +977,7 @@ export function TaskDetailPanel() {
       
       const [tiposRes, colabRes, clientesRes] = await Promise.all([
         supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
-        supabase.from('colaboradores').select('id, nombre').order('nombre'),
+        supabase.from('colaboradores').select('id, nombre, avatar_url').order('nombre'),
         supabase.from('clientes').select('id, nombre_del_negocio').order('nombre_del_negocio'),
       ])
 
@@ -1048,200 +1053,421 @@ export function TaskDetailPanel() {
             <TabsTrigger value="cotizacion" className="text-xs">Cotizacion</TabsTrigger>
           </TabsList>
 
-          <div className="flex-1 overflow-y-auto p-4">
-            <TabsContent value="detalles" className="mt-0 space-y-5">
-              {/* Status & Priority */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">Estado</Label>
-                  <Select
-                    value={task.status}
-                    onValueChange={(v) => updateTask(task.id, { status: v as TaskStatus })}
-                  >
-                    <SelectTrigger className={cn('h-9', statusConfig.bgColor, statusConfig.color)}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STATUS_ORDER.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          <div className="flex items-center gap-2">
-                            <div className={cn('w-2 h-2 rounded-full', STATUS_CONFIG[s].bgColor.replace('/10', ''))} />
-                            {STATUS_CONFIG[s].label}
+          <div className={cn(
+              "flex-1 overflow-y-auto p-4",
+              isFullscreen && "p-6"
+            )}>
+            <TabsContent value="detalles" className={cn(
+              "mt-0",
+              isFullscreen ? "grid grid-cols-[1fr_400px] gap-8" : "space-y-5"
+            )}>
+              {/* Main content - Comments in fullscreen, details in normal */}
+              {isFullscreen ? (
+                <>
+                  {/* Left column - Comments & Activity */}
+                  <div className="space-y-6">
+                    <div className="rounded-xl border bg-card/50 p-5">
+                      <CommentsSection task={task} />
+                    </div>
+                    
+                    <div className="rounded-xl border bg-card/50 p-5">
+                      <div className="space-y-3">
+                        <p className="text-sm font-medium">Actividad reciente</p>
+                        {task.activities.length > 0 ? (
+                          <div className="space-y-3">
+                            {task.activities.slice(0, 10).map((activity) => (
+                              <div key={activity.id} className="flex items-start gap-3 text-sm">
+                                <Avatar className="h-6 w-6 mt-0.5 shrink-0">
+                                  <AvatarFallback className="text-[9px]">{getInitials(activity.userName)}</AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1">
+                                  <span className="text-foreground/80">{activity.action}</span>
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    {format(new Date(activity.timestamp), "dd MMM yyyy 'a las' HH:mm", { locale: es })}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">Prioridad</Label>
-                  <Select
-                    value={task.priority}
-                    onValueChange={(v) => updateTask(task.id, { priority: v as TaskPriority })}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(['alta', 'media', 'baja'] as TaskPriority[]).map((p) => (
-                        <SelectItem key={p} value={p}>
-                          <Badge variant="outline" className={cn('text-xs border-0', PRIORITY_CONFIG[p].bgColor, PRIORITY_CONFIG[p].color)}>
-                            {PRIORITY_CONFIG[p].label}
-                          </Badge>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Client & Assignee */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">Cliente</Label>
-                  <Select
-                    value={task.clientId}
-                    onValueChange={(v) => {
-                      const cliente = clientes.find((c) => c.id === v)
-                      if (cliente) updateTask(task.id, { clientId: v, clientName: cliente.nombre_del_negocio })
-                    }}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Seleccionar cliente" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clientes.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.nombre_del_negocio}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">Asignado</Label>
-                  <Select
-                    value={task.assigneeId}
-                    onValueChange={(v) => {
-                      const colab = colaboradores.find((c) => c.id === v)
-                      if (colab) updateTask(task.id, { assigneeId: v, assigneeName: colab.nombre })
-                    }}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Seleccionar colaborador" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {colaboradores.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-5 w-5">
-                              <AvatarFallback className="text-[9px]">{getInitials(c.nombre)}</AvatarFallback>
-                            </Avatar>
-                            {c.nombre}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Type & Due Date */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo de tarea</Label>
-                  <Select
-                    value={task.type}
-                    onValueChange={(v) => updateTask(task.id, { type: v as TaskType })}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Seleccionar tipo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {tiposTarea.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>
-                          <Badge variant="outline" className="text-xs">
-                            {t.nombre}
-                          </Badge>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">Vencimiento</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="h-9 w-full justify-start text-left font-normal">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {task.dueDate ? format(task.dueDate, 'dd MMM yyyy', { locale: es }) : 'Sin fecha'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={task.dueDate ?? undefined}
-                        onSelect={(date) => updateTask(task.id, { dueDate: date ?? null })}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Time Tracker */}
-              <TimeTracker task={task} />
-
-              <Separator />
-
-              {/* Custom Fields */}
-              <CustomFields task={task} />
-
-              <Separator />
-
-              {/* Comments */}
-              <CommentsSection task={task} />
-
-              <Separator />
-
-              {/* Activity Log */}
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Actividad reciente</p>
-                {task.activities.length > 0 ? (
-                  <div className="space-y-2">
-                    {task.activities.slice(0, 5).map((activity) => (
-                      <div key={activity.id} className="flex items-start gap-2 text-xs">
-                        <Avatar className="h-5 w-5 mt-0.5">
-                          <AvatarFallback className="text-[8px]">{getInitials(activity.userName)}</AvatarFallback>
-                        </Avatar>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Sin actividad reciente</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Right column - Details */}
+                  <div className="space-y-5">
+                    {/* Status & Priority */}
+                    <div className="rounded-xl border bg-card/50 p-4 space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <span className="text-muted-foreground">{activity.action}</span>
-                          <span className="text-muted-foreground/60 ml-1">
-                            · {format(new Date(activity.timestamp), 'dd/MM HH:mm', { locale: es })}
-                          </span>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Estado</Label>
+                          <Select
+                            value={task.status}
+                            onValueChange={(v) => updateTask(task.id, { status: v as TaskStatus })}
+                          >
+                            <SelectTrigger className={cn('h-9', statusConfig.bgColor, statusConfig.color)}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {STATUS_ORDER.map((s) => (
+                                <SelectItem key={s} value={s}>
+                                  <div className="flex items-center gap-2">
+                                    <div className={cn('w-2 h-2 rounded-full', STATUS_CONFIG[s].bgColor.replace('/10', ''))} />
+                                    {STATUS_CONFIG[s].label}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Prioridad</Label>
+                          <Select
+                            value={task.priority}
+                            onValueChange={(v) => updateTask(task.id, { priority: v as TaskPriority })}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(['alta', 'media', 'baja'] as TaskPriority[]).map((p) => (
+                                <SelectItem key={p} value={p}>
+                                  <Badge variant="outline" className={cn('text-xs border-0', PRIORITY_CONFIG[p].bgColor, PRIORITY_CONFIG[p].color)}>
+                                    {PRIORITY_CONFIG[p].label}
+                                  </Badge>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
-                    ))}
+                      
+                      <div>
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">Cliente</Label>
+                        <Select
+                          value={task.clientId}
+                          onValueChange={(v) => {
+                            const cliente = clientes.find((c) => c.id === v)
+                            if (cliente) updateTask(task.id, { clientId: v, clientName: cliente.nombre_del_negocio })
+                          }}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Seleccionar cliente" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {clientes.map((c) => (
+                              <SelectItem key={c.id} value={c.id}>{c.nombre_del_negocio}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div>
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">Asignado</Label>
+                        <Select
+                          value={task.assigneeId}
+                          onValueChange={(v) => {
+                            const colab = colaboradores.find((c) => c.id === v)
+                            if (colab) updateTask(task.id, { assigneeId: v, assigneeName: colab.nombre, assigneeAvatar: colab.avatar_url })
+                          }}
+                        >
+                          <SelectTrigger className="h-9">
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-5 w-5">
+                                {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
+                                <AvatarFallback className="text-[9px]">{getInitials(task.assigneeName)}</AvatarFallback>
+                              </Avatar>
+                              <span>{task.assigneeName || 'Seleccionar colaborador'}</span>
+                            </div>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {colaboradores.map((c) => (
+                              <SelectItem key={c.id} value={c.id}>
+                                <div className="flex items-center gap-2">
+                                  <Avatar className="h-5 w-5">
+                                    {c.avatar_url && <AvatarImage src={c.avatar_url} alt={c.nombre} />}
+                                    <AvatarFallback className="text-[9px]">{getInitials(c.nombre)}</AvatarFallback>
+                                  </Avatar>
+                                  {c.nombre}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo</Label>
+                          <Select
+                            value={task.type}
+                            onValueChange={(v) => updateTask(task.id, { type: v as TaskType })}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue placeholder="Tipo" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {tiposTarea.map((t) => (
+                                <SelectItem key={t.id} value={t.id}>
+                                  <Badge variant="outline" className="text-xs">
+                                    {t.nombre}
+                                  </Badge>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Vencimiento</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className="h-9 w-full justify-start text-left font-normal text-sm">
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {task.dueDate ? format(task.dueDate, 'dd MMM', { locale: es }) : 'Sin fecha'}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={task.dueDate ?? undefined}
+                                onSelect={(date) => updateTask(task.id, { dueDate: date ?? null })}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Time Tracker */}
+                    <div className="rounded-xl border bg-card/50 p-4">
+                      <TimeTracker task={task} />
+                    </div>
+                    
+                    {/* Custom Fields */}
+                    <div className="rounded-xl border bg-card/50 p-4">
+                      <CustomFields task={task} />
+                    </div>
+                    
+                    {/* Delete */}
+                    <Button
+                      variant="ghost"
+                      className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        deleteTask(task.id)
+                        handleClose()
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Eliminar tarea
+                    </Button>
                   </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Sin actividad reciente</p>
-                )}
-              </div>
+                </>
+              ) : (
+                <>
+                  {/* Status & Priority */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1.5 block">Estado</Label>
+                      <Select
+                        value={task.status}
+                        onValueChange={(v) => updateTask(task.id, { status: v as TaskStatus })}
+                      >
+                        <SelectTrigger className={cn('h-9', statusConfig.bgColor, statusConfig.color)}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STATUS_ORDER.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              <div className="flex items-center gap-2">
+                                <div className={cn('w-2 h-2 rounded-full', STATUS_CONFIG[s].bgColor.replace('/10', ''))} />
+                                {STATUS_CONFIG[s].label}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1.5 block">Prioridad</Label>
+                      <Select
+                        value={task.priority}
+                        onValueChange={(v) => updateTask(task.id, { priority: v as TaskPriority })}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(['alta', 'media', 'baja'] as TaskPriority[]).map((p) => (
+                            <SelectItem key={p} value={p}>
+                              <Badge variant="outline" className={cn('text-xs border-0', PRIORITY_CONFIG[p].bgColor, PRIORITY_CONFIG[p].color)}>
+                                {PRIORITY_CONFIG[p].label}
+                              </Badge>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
 
-              <Separator />
+                  {/* Client & Assignee */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1.5 block">Cliente</Label>
+                      <Select
+                        value={task.clientId}
+                        onValueChange={(v) => {
+                          const cliente = clientes.find((c) => c.id === v)
+                          if (cliente) updateTask(task.id, { clientId: v, clientName: cliente.nombre_del_negocio })
+                        }}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Seleccionar cliente" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clientes.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>{c.nombre_del_negocio}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1.5 block">Asignado</Label>
+                      <Select
+                        value={task.assigneeId}
+                        onValueChange={(v) => {
+                          const colab = colaboradores.find((c) => c.id === v)
+                          if (colab) updateTask(task.id, { assigneeId: v, assigneeName: colab.nombre, assigneeAvatar: colab.avatar_url })
+                        }}
+                      >
+                        <SelectTrigger className="h-9">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-5 w-5">
+                              {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
+                              <AvatarFallback className="text-[9px]">{getInitials(task.assigneeName)}</AvatarFallback>
+                            </Avatar>
+                            <span>{task.assigneeName || 'Seleccionar colaborador'}</span>
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {colaboradores.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              <div className="flex items-center gap-2">
+                                <Avatar className="h-5 w-5">
+                                  {c.avatar_url && <AvatarImage src={c.avatar_url} alt={c.nombre} />}
+                                  <AvatarFallback className="text-[9px]">{getInitials(c.nombre)}</AvatarFallback>
+                                </Avatar>
+                                {c.nombre}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
 
-              {/* Delete */}
-              <Button
-                variant="ghost"
-                className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
-                onClick={() => {
-                  deleteTask(task.id)
-                  handleClose()
-                }}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Eliminar tarea
-              </Button>
+                  {/* Type & Due Date */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo de tarea</Label>
+                      <Select
+                        value={task.type}
+                        onValueChange={(v) => updateTask(task.id, { type: v as TaskType })}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Seleccionar tipo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {tiposTarea.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>
+                              <Badge variant="outline" className="text-xs">
+                                {t.nombre}
+                              </Badge>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1.5 block">Vencimiento</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="h-9 w-full justify-start text-left font-normal">
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {task.dueDate ? format(task.dueDate, 'dd MMM yyyy', { locale: es }) : 'Sin fecha'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={task.dueDate ?? undefined}
+                            onSelect={(date) => updateTask(task.id, { dueDate: date ?? null })}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Time Tracker */}
+                  <TimeTracker task={task} />
+
+                  <Separator />
+
+                  {/* Custom Fields */}
+                  <CustomFields task={task} />
+
+                  <Separator />
+
+                  {/* Comments */}
+                  <CommentsSection task={task} />
+
+                  <Separator />
+
+                  {/* Activity Log */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Actividad reciente</p>
+                    {task.activities.length > 0 ? (
+                      <div className="space-y-2">
+                        {task.activities.slice(0, 5).map((activity) => (
+                          <div key={activity.id} className="flex items-start gap-2 text-xs">
+                            <Avatar className="h-5 w-5 mt-0.5">
+                              <AvatarFallback className="text-[8px]">{getInitials(activity.userName)}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <span className="text-muted-foreground">{activity.action}</span>
+                              <span className="text-muted-foreground/60 ml-1">
+                                · {format(new Date(activity.timestamp), 'dd/MM HH:mm', { locale: es })}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Sin actividad reciente</p>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  {/* Delete */}
+                  <Button
+                    variant="ghost"
+                    className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => {
+                      deleteTask(task.id)
+                      handleClose()
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Eliminar tarea
+                  </Button>
+                </>
+              )}
             </TabsContent>
 
             <TabsContent value="archivos" className="mt-0">

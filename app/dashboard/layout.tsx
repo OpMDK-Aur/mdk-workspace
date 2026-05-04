@@ -15,16 +15,28 @@ export default async function DashboardLayout({
     redirect('/auth/login')
   }
 
-  // Get user colaborador — use maybeSingle to avoid error if RLS blocks
-  const { data: profile, error: profileError } = await supabase
+  // Get user colaborador with role name and department — use maybeSingle to avoid error if RLS blocks
+  const { data: colaborador, error: profileError } = await supabase
     .from('colaboradores')
-    .select('*')
+    .select('*, roles(id, nombre), departamentos(id, nombre)')
     .eq('id', user.id)
     .maybeSingle()
 
+  // Map rol name to profile.role for compatibility
+  const roleName = colaborador?.roles?.nombre?.toLowerCase().replace(/ /g, '_') || ''
+  const fullName = [colaborador?.nombre, colaborador?.apellido].filter(Boolean).join(' ') || null
+  const profile = colaborador ? { 
+    ...colaborador, 
+    full_name: fullName,
+    role: roleName, 
+    role_name: colaborador?.roles?.nombre,
+    departamento_name: colaborador?.departamentos?.nombre,
+    modulos_habilitados: colaborador?.modulos_habilitados || ['dashboard'],
+  } : null
+
   // If profile is null (RLS blocked read), do NOT redirect to onboarding
   // onboarding_completado must be explicitly FALSE to trigger the redirect
-  if (profile !== null && profile?.onboarding_completado === false) {
+  if (colaborador !== null && colaborador?.onboarding_completado === false) {
     redirect('/onboarding')
   }
 
@@ -36,9 +48,9 @@ export default async function DashboardLayout({
 
   const clientIds = clientAccess?.map(ca => ca.client_id) || []
 
-  // direccion and project_manager see all clients; others see only assigned clients
-  const isFullAccess = profile?.role === 'direccion' || profile?.role === 'project_manager'
-  let clientsQuery = supabase.from('clients').select('*')
+  // master, administrador and project_manager see all clients; others see only assigned clients
+  const isFullAccess = roleName === 'master' || roleName === 'administrador' || roleName === 'project_manager'
+  let clientsQuery = supabase.from('clientes').select('*')
 
   if (!isFullAccess && clientIds.length > 0) {
     clientsQuery = clientsQuery.in('id', clientIds)
@@ -47,7 +59,8 @@ export default async function DashboardLayout({
     clientsQuery = clientsQuery.in('id', ['00000000-0000-0000-0000-000000000000'])
   }
 
-  const { data: clients } = await clientsQuery.order('business_name')
+  const { data: clientsData } = await clientsQuery.order('nombre_del_negocio')
+  const clients = (clientsData || []).map(c => ({ ...c, business_name: c.nombre_del_negocio }))
 
   return (
     <DashboardShell 

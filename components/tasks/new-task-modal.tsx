@@ -3,12 +3,32 @@
 import { useState, useEffect, useRef } from 'react'
 import type { TaskStatus, TaskPriority, TaskType } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 import {
   useTaskStore,
   PRIORITY_CONFIG,
+  TYPE_CONFIG,
   ASSIGNEES,
   CLIENTS,
 } from '@/lib/tasks/task-store'
+
+// Database types
+interface DbCliente {
+  id: string
+  nombre_del_negocio: string
+}
+
+interface DbColaborador {
+  id: string
+  nombre: string
+  avatar_url: string | null
+}
+
+interface DbTipoTarea {
+  id: string
+  nombre: string
+  activo: boolean
+}
 import {
   Dialog,
   DialogContent,
@@ -18,6 +38,14 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Palette,
   Globe,
@@ -40,6 +68,7 @@ import {
   Flame,
   Calendar,
   Video,
+  PenLine,
 } from 'lucide-react'
 
 interface NewTaskModalProps {
@@ -227,12 +256,15 @@ interface TaskTemplate {
 
 type FlowStep = 
   | { type: 'select_client' }
+  | { type: 'select_assignee' }
   | { type: 'input'; key: string; question: string; placeholder?: string; followUp?: string }
   | { type: 'number'; key: string; question: string; min?: number; max?: number }
   | { type: 'options'; key: string; question: string; options: { label: string; value: string; emoji?: string }[] }
   | { type: 'multi_input'; key: string; question: string; placeholder?: string; hint?: string }
+  | { type: 'date_time'; key: string; question: string; hint?: string }
   | { type: 'priority' }
   | { type: 'confirm' }
+  | { type: 'confirm_meeting' }
 
 const TASK_TEMPLATES: TaskTemplate[] = [
   {
@@ -244,6 +276,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       { type: 'select_client' },
       { type: 'input', key: 'title', question: 'Contame, que necesitas cotizar?', placeholder: 'Ej: Desarrollo de landing con formulario...' },
       { type: 'number', key: 'hours', question: 'Tenes una estimacion de horas en mente? (pone 0 si no sabes)' },
+      { type: 'select_assignee' },
       { type: 'priority' },
       { type: 'confirm' },
     ],
@@ -266,6 +299,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       ]},
       { type: 'input', key: 'concept', question: 'Algun concepto o idea para las placas?', placeholder: 'Ej: Promo verano, colores frescos, mostrar producto...' },
       { type: 'input', key: 'title', question: 'Como titulamos este pedido?', placeholder: 'Ej: Placas promo Black Friday' },
+      { type: 'select_assignee' },
       { type: 'priority' },
       { type: 'confirm' },
     ],
@@ -289,6 +323,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
         { label: 'Si, con integracion a CRM', value: 'crm', emoji: '🔄' },
         { label: 'No, solo informativa', value: 'no', emoji: '📖' },
       ]},
+      { type: 'select_assignee' },
       { type: 'priority' },
       { type: 'confirm' },
     ],
@@ -312,6 +347,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
         { label: 'Revision general', value: 'general', emoji: '🔎' },
       ]},
       { type: 'input', key: 'details', question: 'Algun dato mas que me sirva? (metricas, fechas, etc)', placeholder: 'Ej: El CPA subio de $500 a $1200 esta semana' },
+      { type: 'select_assignee' },
       { type: 'priority' },
       { type: 'confirm' },
     ],
@@ -339,6 +375,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
         { label: 'WhatsApp', value: 'whatsapp', emoji: '💬' },
         { label: 'Email', value: 'email', emoji: '📧' },
       ]},
+      { type: 'select_assignee' },
       { type: 'priority' },
       { type: 'confirm' },
     ],
@@ -359,6 +396,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       ]},
       { type: 'input', key: 'formName', question: 'Que formulario o integracion hay que revisar?', placeholder: 'Ej: Formulario de Meta Leads' },
       { type: 'input', key: 'details', question: 'Algun detalle mas?', placeholder: 'Ej: El ultimo lead que llego bien fue el viernes...' },
+      { type: 'select_assignee' },
       { type: 'priority' },
       { type: 'confirm' },
     ],
@@ -380,6 +418,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       ]},
       { type: 'input', key: 'title', question: 'Describime el problema', placeholder: 'Ej: No llegaron leads desde el viernes a la noche...' },
       { type: 'input', key: 'lastData', question: 'Cuando fue el ultimo dato que llego bien?', placeholder: 'Ej: El viernes 15:30 llego el ultimo lead' },
+      { type: 'select_assignee' },
       { type: 'confirm' },
     ],
   },
@@ -834,6 +873,39 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
   const [inputValue, setInputValue] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
+  const [quickMode, setQuickMode] = useState(false)
+  
+  // Quick mode form state
+  const [quickTitle, setQuickTitle] = useState('')
+  const [quickClientId, setQuickClientId] = useState('')
+  const [quickType, setQuickType] = useState<string>('')
+  const [quickPriority, setQuickPriority] = useState<TaskPriority>('media')
+  const [quickAssigneeId, setQuickAssigneeId] = useState('')
+  const [quickDueDate, setQuickDueDate] = useState('')
+  
+  // Dynamic data from database
+  const [dbClientes, setDbClientes] = useState<DbCliente[]>([])
+  const [dbColaboradores, setDbColaboradores] = useState<DbColaborador[]>([])
+  const [dbTiposTarea, setDbTiposTarea] = useState<DbTipoTarea[]>([])
+  
+  // Load dynamic data
+  useEffect(() => {
+    async function loadData() {
+      const supabase = createClient()
+      
+      const [clientesRes, colabRes, tiposRes] = await Promise.all([
+        supabase.from('clientes').select('id, nombre_del_negocio').order('nombre_del_negocio'),
+        supabase.from('colaboradores').select('id, nombre, avatar_url').order('nombre'),
+        supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
+      ])
+      
+      if (clientesRes.data) setDbClientes(clientesRes.data)
+      if (colabRes.data) setDbColaboradores(colabRes.data)
+      if (tiposRes.data) setDbTiposTarea(tiposRes.data)
+    }
+    
+    loadData()
+  }, [])
   
   const [selectedTemplate, setSelectedTemplate] = useState<TaskTemplate | null>(null)
   const [currentStepIndex, setCurrentStepIndex] = useState(0)
@@ -902,13 +974,20 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     const step = template.flow[stepIndex]
     if (!step) return
 
-    let messageContent: Partial<ChatMessage> = {}
+    let messageContent: Omit<ChatMessage, 'id' | 'role'> = { content: '' }
 
     switch (step.type) {
       case 'select_client':
         messageContent = {
           content: 'Para que cliente es?',
-          options: CLIENTS.map((c) => ({ label: c.name, value: c.id })),
+          options: dbClientes.map((c) => ({ label: c.nombre_del_negocio, value: c.id })),
+        }
+        break
+      
+      case 'select_assignee':
+        messageContent = {
+          content: 'A quien se lo asigno?',
+          options: dbColaboradores.map((c) => ({ label: c.nombre, value: c.id })),
         }
         break
 
@@ -950,7 +1029,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
         break
 
       case 'confirm_meeting':
-        const meetingClient = CLIENTS.find((c) => c.id === data.clientId)
+        const meetingClient = dbClientes.find((c) => c.id === data.clientId)
         const meetingTitle = data.title || 'Reunion'
         const duration = parseInt(data.meetingDuration || '30')
         
@@ -959,7 +1038,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
           isMeetingConfirm: true,
           meetingSummary: {
             title: meetingTitle,
-            client: meetingClient?.name || 'Sin cliente',
+            client: meetingClient?.nombre_del_negocio || 'Sin cliente',
             dateTime: data.meetingDateTime,
             duration: duration,
             addMeet: data.addMeet === 'yes',
@@ -1019,6 +1098,42 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     setCurrentStepIndex(stepIndex)
   }
 
+  // Handle quick task creation (without Madky)
+  const handleQuickCreate = async () => {
+    if (!quickTitle.trim() || !quickClientId) return
+    
+    setIsCreating(true)
+    const client = dbClientes.find(c => c.id === quickClientId)
+    const assignee = dbColaboradores.find(a => a.id === quickAssigneeId)
+    const tipoTarea = dbTiposTarea.find(t => t.id === quickType)
+    
+    await addTask({
+      title: quickTitle,
+      description: null,
+      clientId: quickClientId,
+      clientName: client?.nombre_del_negocio || '',
+      assigneeId: assignee?.id || '',
+      assigneeName: assignee?.nombre || '',
+      assigneeAvatar: assignee?.avatar_url || null,
+      status: 'pendiente' as TaskStatus,
+      priority: quickPriority,
+      type: quickType, // UUID from tipo_de_tareas
+      dueDate: quickDueDate ? new Date(quickDueDate) : null,
+      customFields: {},
+    })
+    
+    setIsCreating(false)
+    // Reset quick mode state
+    setQuickTitle('')
+    setQuickClientId('')
+    setQuickType('')
+    setQuickPriority('media')
+    setQuickAssigneeId('')
+    setQuickDueDate('')
+    setQuickMode(false)
+    onOpenChange(false)
+  }
+
   // Handle template selection
   const handleTemplateSelect = (templateId: string) => {
     const template = TASK_TEMPLATES.find((t) => t.id === templateId)
@@ -1053,7 +1168,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
   }
 
   // Handle option selection
-  const handleOptionSelect = (value: string) => {
+  const handleOptionSelect = async (value: string) => {
     if (!selectedTemplate) return
 
     const currentStep = selectedTemplate.flow[currentStepIndex]
@@ -1062,7 +1177,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     // Handle confirm
     if (currentStep.type === 'confirm') {
       if (value === 'confirm') {
-        handleCreateTask()
+        await handleCreateTask()
       } else {
         onOpenChange(false)
       }
@@ -1072,7 +1187,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     // Handle meeting confirm
     if (currentStep.type === 'confirm_meeting') {
       if (value === 'confirm_meeting') {
-        handleCreateMeeting()
+        await handleCreateMeeting()
       } else {
         onOpenChange(false)
       }
@@ -1082,10 +1197,14 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     // Get display label
     let userMessage = value
     if (currentStep.type === 'select_client') {
-      const client = CLIENTS.find((c) => c.id === value)
-      userMessage = client?.name || value
+      const client = dbClientes.find((c) => c.id === value)
+      userMessage = client?.nombre_del_negocio || value
       // Load client context
       setClientContext(getClientContext(value))
+    }
+    if (currentStep.type === 'select_assignee') {
+      const assignee = dbColaboradores.find((c) => c.id === value)
+      userMessage = assignee?.nombre || value
     }
     if (currentStep.type === 'options') {
       const opt = (currentStep as { options: { label: string; value: string }[] }).options.find((o) => o.value === value)
@@ -1104,13 +1223,23 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     const stepKey = (currentStep as { key?: string }).key || currentStep.type
     const newData = { ...taskData, [stepKey]: value }
     
-    if (currentStep.type === 'select_client') {
+if (currentStep.type === 'select_client') {
       newData.clientId = value
       // Add personality response for client selection
-      const client = CLIENTS.find((c) => c.id === value)
+      const client = dbClientes.find((c) => c.id === value)
       if (client) {
-        addAssistantMessage({ 
-          content: getRandomResponse(PERSONALITY_RESPONSES.client_selected(client.name)) 
+        addAssistantMessage({
+          content: getRandomResponse(PERSONALITY_RESPONSES.client_selected(client.nombre_del_negocio))
+        }, 300)
+      }
+    }
+    
+    if (currentStep.type === 'select_assignee') {
+      newData.assigneeId = value
+      const assignee = dbColaboradores.find((c) => c.id === value)
+      if (assignee) {
+        addAssistantMessage({
+          content: `Perfecto! Se lo asigno a ${assignee.nombre}`
         }, 300)
       }
     }
@@ -1142,7 +1271,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
 
     setTaskData(newData)
 
-    const delay = currentStep.type === 'select_client' || currentStep.type === 'priority' ? 800 : 400
+    const delay = currentStep.type === 'select_client' || currentStep.type === 'select_assignee' || currentStep.type === 'priority' ? 800 : 400
     setTimeout(() => processStep(selectedTemplate, currentStepIndex + 1, newData), delay)
   }
 
@@ -1184,10 +1313,10 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
   const handleCreateMeeting = async () => {
     if (!selectedTemplate) return
     
-    setIsCreating(true)
-
-    const client = CLIENTS.find((c) => c.id === taskData.clientId)
-    const meetingTitle = `${taskData.title || 'Reunion'} - ${client?.name || 'Cliente'}`
+setIsCreating(true)
+    
+    const client = dbClientes.find((c) => c.id === taskData.clientId)
+    const meetingTitle = `${taskData.title || 'Reunion'} - ${client?.nombre_del_negocio || 'Cliente'}`
     const startDateTime = new Date(taskData.meetingDateTime)
     const duration = parseInt(taskData.meetingDuration || '30')
     const endDateTime = new Date(startDateTime.getTime() + duration * 60000)
@@ -1202,7 +1331,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
         body: JSON.stringify({
           event: {
             title: meetingTitle,
-            description: `Reunion con ${client?.name || 'cliente'}.\n\nCreado desde MDK Workspace.`,
+            description: `Reunion con ${client?.nombre_del_negocio || 'cliente'}.\n\nCreado desde MDK Workspace.`,
             startDateTime: startDateTime.toISOString(),
             endDateTime: endDateTime.toISOString(),
             addMeet,
@@ -1225,16 +1354,21 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
           ${result.event.htmlLink ? `<p><a href="${result.event.htmlLink}" target="_blank">Ver en Calendar</a></p>` : ''}
         `
 
-        addTask({
+        const firstAssignee = dbColaboradores[0]
+        // Find "Reunión con cliente" type from DB
+        const reunionTipo = dbTiposTarea.find(t => t.nombre.toLowerCase().includes('reuni'))
+        
+        await addTask({
           title: meetingTitle,
           description: null,
           clientId: taskData.clientId || '',
-          clientName: client?.name || '',
-          assigneeId: ASSIGNEES[0].id,
-          assigneeName: ASSIGNEES[0].name,
+          clientName: client?.nombre_del_negocio || '',
+          assigneeId: firstAssignee?.id || '',
+          assigneeName: firstAssignee?.nombre || '',
+          assigneeAvatar: firstAssignee?.avatar_url || null,
           status: 'pendiente' as TaskStatus,
           priority,
-          type: 'soporte',
+          type: reunionTipo?.id || '', // UUID from tipo_de_tareas
           dueDate: startDateTime,
           customFields: {},
           comments: [{
@@ -1242,6 +1376,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
             content: meetingComment,
             userId: 'madky',
             userName: 'Madky (IA)',
+            userAvatar: '',
             createdAt: new Date(),
           }],
         })
@@ -1278,14 +1413,12 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     
     setIsCreating(true)
 
-    const client = CLIENTS.find((c) => c.id === taskData.clientId)
-    const assignee = selectedTemplate.defaultAssignee 
-      ? ASSIGNEES.find((a) => a.id === selectedTemplate.defaultAssignee)
-      : ASSIGNEES[0]
+    const client = dbClientes.find((c) => c.id === taskData.clientId)
+    const assignee = dbColaboradores.find((a) => a.id === taskData.assigneeId) || dbColaboradores[0]
 
     let title = taskData.title || selectedTemplate.label
     if (selectedTemplate.id === 'placas' && taskData.quantity) {
-      title = `${taskData.quantity} placas - ${taskData.title || taskData.concept || client?.name}`
+      title = `${taskData.quantity} placas - ${taskData.title || taskData.concept || client?.nombre_del_negocio}`
     }
     if (selectedTemplate.id === 'falta_datos') {
       title = `URGENTE: ${taskData.title || 'Falta de datos'}`
@@ -1471,23 +1604,40 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
       content: buildInitialComment(),
       userId: 'madky',
       userName: 'Madky (IA)',
+      userAvatar: '',
       createdAt: new Date(),
     }
 
-    addTask({
-      title,
-      description: null, // Description now goes to comments
-      clientId: taskData.clientId || '',
-      clientName: client?.name || '',
-      assigneeId: assignee?.id || '',
-      assigneeName: assignee?.name || '',
-      status: 'pendiente' as TaskStatus,
-      priority,
-      type: selectedTemplate.type,
-      dueDate: null,
-      customFields: {},
-      comments: [initialComment],
+    // Find matching type from DB based on template type
+    const tipoTarea = dbTiposTarea.find(t => {
+      const nombre = t.nombre.toLowerCase()
+      if (selectedTemplate.type === 'integracion') return nombre.includes('integraci')
+      if (selectedTemplate.type === 'desarrollo') return nombre.includes('desarrollo')
+      if (selectedTemplate.type === 'reportes') return nombre.includes('informe') || nombre.includes('reporte')
+      if (selectedTemplate.type === 'meta_ads') return nombre.includes('campana') || nombre.includes('pauta')
+      if (selectedTemplate.type === 'soporte') return nombre.includes('soporte')
+      return false
     })
+    
+    try {
+      await addTask({
+        title,
+        description: null, // Description now goes to comments
+        clientId: taskData.clientId || '',
+        clientName: client?.nombre_del_negocio || '',
+        assigneeId: assignee?.id || '',
+        assigneeName: assignee?.nombre || '',
+        assigneeAvatar: assignee?.avatar_url || null,
+        status: 'pendiente' as TaskStatus,
+        priority,
+        type: tipoTarea?.id || '', // UUID from tipo_de_tareas
+        dueDate: null,
+        customFields: {},
+        comments: [initialComment],
+      })
+      } catch (err) {
+      console.error('Error creating task:', err)
+    }
 
     // Success message
     let successMsg: string
@@ -1517,6 +1667,13 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     setTaskData({})
     setInputValue('')
     setClientContext(null)
+    setQuickMode(false)
+    setQuickTitle('')
+    setQuickClientId('')
+    setQuickType('')
+    setQuickPriority('media')
+    setQuickAssigneeId('')
+    setQuickDueDate('')
     setMessages([{
       id: 'welcome',
       role: 'assistant',
@@ -1533,25 +1690,173 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px] p-0 gap-0 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-3 p-4 border-b bg-gradient-to-r from-violet-500/10 to-fuchsia-500/10">
-          {selectedTemplate && (
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={handleBack}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          )}
+        <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-violet-500/10 to-fuchsia-500/10">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-lg">
-              <Sparkles className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold">{ASSISTANT_NAME}</h3>
-              <p className="text-xs text-muted-foreground">Asistente de tareas MDK</p>
+            {(selectedTemplate || quickMode) && (
+              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => {
+                if (quickMode) {
+                  setQuickMode(false)
+                } else {
+                  handleBack()
+                }
+              }}>
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            )}
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "h-10 w-10 rounded-full flex items-center justify-center shadow-lg",
+                quickMode 
+                  ? "bg-gradient-to-br from-emerald-500 to-teal-500" 
+                  : "bg-gradient-to-br from-violet-500 to-fuchsia-500"
+              )}>
+                {quickMode ? <PenLine className="h-5 w-5 text-white" /> : <Sparkles className="h-5 w-5 text-white" />}
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold">{quickMode ? 'Tarea rapida' : ASSISTANT_NAME}</h3>
+                <p className="text-xs text-muted-foreground">{quickMode ? 'Crear sin asistente' : 'Asistente de tareas MDK'}</p>
+              </div>
             </div>
           </div>
+          {!quickMode && !selectedTemplate && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="gap-1.5 text-xs"
+              onClick={() => setQuickMode(true)}
+            >
+              <PenLine className="h-3.5 w-3.5" />
+              Crear rapido
+            </Button>
+          )}
         </div>
 
-        {/* Chat area */}
-        <ScrollArea className="h-[420px] p-4" ref={scrollRef}>
+        {/* Quick Mode Form */}
+        {quickMode ? (
+          <div className="p-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="quick-title">Titulo de la tarea *</Label>
+              <Input
+                id="quick-title"
+                placeholder="Ej: Revisar campana de Meta Ads"
+                value={quickTitle}
+                onChange={(e) => setQuickTitle(e.target.value)}
+                autoFocus
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="quick-client">Cliente *</Label>
+              <Select value={quickClientId} onValueChange={setQuickClientId}>
+                <SelectTrigger id="quick-client">
+                  <SelectValue placeholder="Seleccionar cliente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {dbClientes.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.nombre_del_negocio}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="quick-type">Tipo de tarea</Label>
+                <Select value={quickType} onValueChange={setQuickType}>
+                  <SelectTrigger id="quick-type">
+                    <SelectValue placeholder="Seleccionar tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dbTiposTarea.map(t => (
+                      <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="quick-priority">Prioridad</Label>
+                <Select value={quickPriority} onValueChange={(v) => setQuickPriority(v as TaskPriority)}>
+                  <SelectTrigger id="quick-priority">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
+                      <SelectItem key={key} value={key}>{config.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="quick-assignee">Asignar a</Label>
+                <Select value={quickAssigneeId} onValueChange={setQuickAssigneeId}>
+                  <SelectTrigger id="quick-assignee">
+                    <SelectValue placeholder="Sin asignar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dbColaboradores.map(a => (
+                      <SelectItem key={a.id} value={a.id}>{a.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="quick-due-date">Fecha limite</Label>
+                <Input
+                  id="quick-due-date"
+                  type="date"
+                  value={quickDueDate}
+                  onChange={(e) => setQuickDueDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+            </div>
+            
+            <div className="pt-4 space-y-2">
+              {/* Show create meeting button if type is "reunion" */}
+              {dbTiposTarea.find(t => t.id === quickType)?.nombre?.toLowerCase().includes('reuni') && (
+                <Button 
+                  variant="outline"
+                  className="w-full gap-2 border-orange-500/50 text-orange-400 hover:bg-orange-500/10" 
+                  onClick={() => {
+                    // Open Google Calendar to create meeting
+                    const client = dbClientes.find(c => c.id === quickClientId)
+                    const title = encodeURIComponent(quickTitle || `Reunion - ${client?.nombre_del_negocio || 'Cliente'}`)
+                    const url = `https://calendar.google.com/calendar/u/0/r/eventedit?text=${title}&details=${encodeURIComponent('Creado desde MDK Workspace')}`
+                    window.open(url, '_blank')
+                  }}
+                  disabled={!quickTitle.trim() || !quickClientId}
+                >
+                  <Video className="h-4 w-4" />
+                  Crear reunion en Calendar
+                </Button>
+              )}
+              <Button 
+                className="w-full gap-2" 
+                onClick={handleQuickCreate}
+                disabled={!quickTitle.trim() || !quickClientId || isCreating}
+              >
+                {isCreating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Creando...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Crear tarea
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          /* Chat area */
+          <ScrollArea className="h-[420px] p-4" ref={scrollRef}>
           <div className="space-y-4">
             {messages.map((msg, idx) => (
               <ChatBubble
@@ -1580,8 +1885,9 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
                 Creando tarea...
               </div>
             )}
-          </div>
-        </ScrollArea>
+</div>
+          </ScrollArea>
+        )}
       </DialogContent>
     </Dialog>
   )

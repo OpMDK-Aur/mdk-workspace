@@ -20,9 +20,9 @@ export default async function PlatformPage() {
     redirect('/dashboard')
   }
 
-  const { data: clients } = await supabase
+  const { data: clientes, error: clientsError } = await supabase
     .from('clientes')
-    .select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, crm_type, ghl_location_id, ghl_token, semaforo_id')
+    .select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, crm_type, ghl_location_id, ghl_token')
     .order('nombre_del_negocio')
 
   const { data: googleToken } = await supabase
@@ -54,7 +54,7 @@ export default async function PlatformPage() {
 
       <div>
         <h2 className="text-lg font-semibold mb-4">IDs de clientes</h2>
-        <ClientsPlatformConfig clients={(clients || []).map(c => ({
+        <ClientsPlatformConfig clients={(clientes || []).map(c => ({
           id: c.id,
           business_name: c.nombre_del_negocio || '',
           meta_ads_account_id: c.meta_ads_account_id,

@@ -31,7 +31,7 @@ interface TareaDB {
   contexto_chat: string | null
   // Joined relations
   clientes?: { id: string; nombre_del_negocio: string } | null
-  colaboradores?: { id: string; nombre: string } | null
+  colaboradores?: { id: string; nombre: string; avatar_url?: string | null } | null
   tipo_de_tareas?: { id: string; nombre: string } | null
 }
 
@@ -92,9 +92,11 @@ function mapTareaToTask(tarea: TareaDB): Task {
     clientName: tarea.clientes?.nombre_del_negocio || 'Sin cliente',
     assigneeId: tarea.asignado_a || '',
     assigneeName: tarea.colaboradores?.nombre || 'Sin asignar',
+    assigneeAvatar: tarea.colaboradores?.avatar_url || null,
     status: mapEstadoToStatus(tarea.estado),
     priority: mapPrioridadToPriority(tarea.prioridad),
-    type: 'soporte', // Default type since we use tipo_tarea_id now
+    type: tarea.tipo_tarea_id || '', // UUID from tipo_de_tareas
+    typeName: tarea.tipo_de_tareas?.nombre || '', // Display name
     dueDate: tarea.fecha_vencimiento ? new Date(tarea.fecha_vencimiento) : null,
     isActive: tarea.estado !== 'completada' && tarea.estado !== 'resuelto',
     customFields: {},
@@ -433,13 +435,14 @@ export const PRIORITY_CONFIG: Record<TaskPriority, { label: string; color: strin
   baja: { label: 'Baja', color: 'text-green-400', bgColor: 'bg-green-500/15' },
 }
 
-export const TYPE_CONFIG: Record<TaskType, { label: string; color: string }> = {
-  crm: { label: 'CRM', color: 'bg-cyan-500/20 text-cyan-400' },
-  meta_ads: { label: 'Meta Ads', color: 'bg-blue-500/20 text-blue-400' },
-  soporte: { label: 'Soporte', color: 'bg-emerald-500/20 text-emerald-400' },
-  integracion: { label: 'Integracion', color: 'bg-violet-500/20 text-violet-400' },
-  reportes: { label: 'Reportes', color: 'bg-pink-500/20 text-pink-400' },
-  desarrollo: { label: 'Desarrollo', color: 'bg-indigo-500/20 text-indigo-400' },
+export const TYPE_CONFIG: Record<TaskType, { label: string; color: string; icon?: string }> = {
+  crm: { label: 'CRM', color: 'bg-cyan-500/20 text-cyan-400', icon: 'users' },
+  meta_ads: { label: 'Meta Ads', color: 'bg-blue-500/20 text-blue-400', icon: 'megaphone' },
+  soporte: { label: 'Soporte', color: 'bg-emerald-500/20 text-emerald-400', icon: 'headphones' },
+  integracion: { label: 'Integracion', color: 'bg-violet-500/20 text-violet-400', icon: 'link' },
+  reportes: { label: 'Reportes', color: 'bg-pink-500/20 text-pink-400', icon: 'file-text' },
+  desarrollo: { label: 'Desarrollo', color: 'bg-indigo-500/20 text-indigo-400', icon: 'code' },
+  reunion: { label: 'Reunion', color: 'bg-orange-500/20 text-orange-400', icon: 'video' },
 }
 
 export const ASSIGNEES = [
@@ -460,7 +463,7 @@ export const CLIENTS = [
   { id: 'alambrados', name: 'Alambrados Patagonia' },
 ]
 
-// ── Filter Utility ────────────────────────────────────────────────────────────
+// ── Filter Utility ────────────────────────���───────────────────────────────────
 
 export function applyAdvancedFilters(tasks: Task[], filterGroups: FilterGroup[]): Task[] {
   if (filterGroups.length === 0) return tasks
@@ -634,9 +637,9 @@ interface TaskStore {
   deleteSavedFilter: (id: string) => void
 
   // Task mutations
-  updateTaskStatus: (taskId: string, status: TaskStatus) => void
-  updateTask: (taskId: string, updates: Partial<Task>) => void
-  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'activities' | 'timeSessions' | 'totalTimeSec' | 'isTimerRunning' | 'timerStartedAt' | 'comments' | 'files' | 'quotation'>) => void
+  updateTaskStatus: (taskId: string, status: TaskStatus) => Promise<void>
+  updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>
+  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'activities' | 'timeSessions' | 'totalTimeSec' | 'isTimerRunning' | 'timerStartedAt' | 'files' | 'quotation'> & { comments?: TaskComment[] }) => Promise<void>
   deleteTask: (taskId: string) => void
   toggleTaskActive: (taskId: string) => void
 
@@ -649,7 +652,7 @@ interface TaskStore {
   removeCustomField: (taskId: string, key: string) => void
 
   // Comments
-  addComment: (taskId: string, content: string, userId: string, userName: string) => Promise<void>
+  addComment: (taskId: string, content: string, userId: string, userName: string, userAvatar?: string | null) => Promise<void>
   deleteComment: (taskId: string, commentId: string) => Promise<void>
 
   // Files
@@ -683,7 +686,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         .select(`
           *,
           clientes:cliente_id(id, nombre_del_negocio),
-          colaboradores:asignado_a(id, nombre),
+          colaboradores:asignado_a(id, nombre, avatar_url),
           tipo_de_tareas:tipo_tarea_id(id, nombre)
         `)
         .order('created_at', { ascending: false })
@@ -749,7 +752,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     savedFilters: state.savedFilters.filter(f => f.id !== id),
   })),
 
-  updateTaskStatus: (taskId, status) => set((state) => ({
+updateTaskStatus: async (taskId, status) => {
+  const supabase = createClient()
+  
+  // Update in DB
+  const { error } = await supabase
+    .from('tareas')
+    .update({ estado: status, updated_at: new Date().toISOString() })
+    .eq('id', taskId)
+  
+  if (error) {
+    console.error('Error updating task status:', error)
+  }
+  
+  // Update local state
+  set((state) => ({
     tasks: state.tasks.map((t) =>
       t.id === taskId
         ? {
@@ -763,19 +780,93 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           }
         : t
     ),
-  })),
+  }))
+},
 
-  updateTask: (taskId, updates) => set((state) => ({
+updateTask: async (taskId, updates) => {
+  const supabase = createClient()
+  
+  // Map Task fields to DB fields
+  const dbUpdates: Record<string, unknown> = {}
+  if (updates.title !== undefined) dbUpdates.titulo = updates.title
+  if (updates.description !== undefined) dbUpdates.descripcion = updates.description
+  if (updates.clientId !== undefined) dbUpdates.cliente_id = updates.clientId || null
+  if (updates.assigneeId !== undefined) dbUpdates.asignado_a = updates.assigneeId || null
+  if (updates.status !== undefined) dbUpdates.estado = updates.status
+  if (updates.priority !== undefined) dbUpdates.prioridad = updates.priority
+  if (updates.type !== undefined) dbUpdates.tipo_tarea_id = updates.type || null
+  if (updates.dueDate !== undefined) dbUpdates.fecha_vencimiento = updates.dueDate
+  if (updates.isActive !== undefined) {
+    // Map isActive to estado if needed
+    if (!updates.isActive) dbUpdates.estado = 'pausada'
+  }
+  
+  // Update in DB if we have changes
+  if (Object.keys(dbUpdates).length > 0) {
+    dbUpdates.updated_at = new Date().toISOString()
+    const { error } = await supabase
+      .from('tareas')
+      .update(dbUpdates)
+      .eq('id', taskId)
+    
+    if (error) {
+      console.error('Error updating task:', error)
+    }
+  }
+  
+  // Update local state
+  set((state) => ({
     tasks: state.tasks.map((t) =>
       t.id === taskId ? { ...t, ...updates, updatedAt: new Date() } : t
     ),
-  })),
+  }))
+},
 
-  addTask: (taskData) => set((state) => ({
+addTask: async (taskData) => {
+  const supabase = createClient()
+  const id = crypto.randomUUID()
+  
+  // Insert into tareas table
+  const { error } = await supabase
+    .from('tareas')
+    .insert({
+      id,
+      titulo: taskData.title,
+      descripcion: taskData.description,
+      tipo_tarea_id: taskData.type || null,
+      cliente_id: taskData.clientId || null,
+      asignado_a: taskData.assigneeId || null,
+      estado: taskData.status || 'pendiente',
+      prioridad: taskData.priority || 'media',
+      fecha_vencimiento: taskData.dueDate || null,
+    })
+  
+  if (error) {
+    console.error('Error creating task:', error)
+    return
+  }
+  
+  // Also insert initial comment if there are comments
+  if (taskData.comments && taskData.comments.length > 0) {
+    for (const comment of taskData.comments) {
+      await supabase
+        .from('tarea_comentarios')
+        .insert({
+          tarea_id: id,
+          contenido: comment.content,
+          autor_id: comment.userId === 'madky' ? null : comment.userId,
+          autor_nombre: comment.userName,
+          es_sistema: comment.userId === 'madky',
+        })
+    }
+  }
+  
+  // Update local state
+  set((state) => ({
     tasks: [
       {
         ...taskData,
-        id: crypto.randomUUID(),
+        id,
         createdAt: new Date(),
         updatedAt: new Date(),
         activities: [
@@ -785,13 +876,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         totalTimeSec: 0,
         isTimerRunning: false,
         timerStartedAt: null,
-        comments: [],
+        comments: taskData.comments || [],
         files: [],
         quotation: null,
       },
       ...state.tasks,
     ],
-  })),
+  }))
+},
 
   deleteTask: (taskId) => set((state) => ({
     tasks: state.tasks.filter((t) => t.id !== taskId),
@@ -866,10 +958,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }),
   })),
 
-  addComment: async (taskId, content, userId, userName) => {
-    const supabase = createClient()
-    const commentId = crypto.randomUUID()
-    const now = new Date()
+addComment: async (taskId, content, userId, userName, userAvatar = null) => {
+  const supabase = createClient()
+  const commentId = crypto.randomUUID()
+  const now = new Date()
 
     // Insert comment into Supabase
     const { error } = await supabase
@@ -900,7 +992,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
                   content,
                   userId,
                   userName,
-                  userAvatar: null,
+                  userAvatar,
                   createdAt: now,
                 },
               ],

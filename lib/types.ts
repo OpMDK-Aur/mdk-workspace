@@ -25,7 +25,12 @@ export interface Profile {
   id: string
   email: string
   full_name: string | null
-  role: UserRole
+  role: string // normalized role name (lowercase, underscores)
+  role_name?: string // display name from roles table
+  rol_id?: string // UUID reference to roles table
+  departamento_id?: string | null
+  departamento_name?: string | null
+  modulos_habilitados?: string[] // enabled modules for this user
   avatar_url: string | null
   theme: 'light' | 'dark' | 'system' | null
   accent_hue: number | null
@@ -41,6 +46,7 @@ export interface Client {
   contact_lastname: string | null
   phone: string | null
   status: ClientStatus | null
+  semaforo_id: string | null
   notion_id: string | null
   fee_mdk: number | null
   fee_aurelia: number | null
@@ -336,9 +342,11 @@ export interface Task {
   clientName: string
   assigneeId: string
   assigneeName: string
+  assigneeAvatar?: string | null
   status: TaskStatus
   priority: TaskPriority
-  type: TaskType
+  type: TaskType // UUID from tipo_de_tareas or legacy string
+  typeName?: string // Display name from tipo_de_tareas
   dueDate: Date | null
   isActive: boolean // Toggle to resume task independently of status
   customFields: Record<string, TaskCustomField>

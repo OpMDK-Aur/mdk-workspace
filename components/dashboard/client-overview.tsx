@@ -9,11 +9,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   DollarSign, Target, TrendingDown, MousePointerClick, Eye,
   Users, Megaphone, MessageSquare, Calendar, Clock,
-  ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe,
+  ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown,
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { ClientBudgetAlertCard } from './client-budget-alert-card'
 import { computeClientBudgetAlerts } from './budget-alerts-shared'
+import { ClientMemoria } from './client-memoria'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
@@ -23,6 +31,9 @@ interface ClientOverviewProps {
   currentProfile: Profile | null
   assignment: { min_hours: number; max_hours: number } | null
   trackedHours: number
+  horasObjetivo?: number // from colaboradores.capacidad_horas_semanales (weekly)
+  horasEquipo?: number // total team hours this month for this client
+  misHoras?: number // current user's hours this month for this client
 }
 
 type DedicationStatus = 'normal' | 'baja' | 'exceso' | 'sin_datos'
@@ -220,12 +231,50 @@ function ComingSoonBlock({ icon, title, description }: { icon: React.ReactNode; 
   )
 }
 
+// Status options for the semaphore (UUIDs from semaforo table)
+const SEMAFORO_OPTIONS = [
+  { id: 'd3f4361f-477e-4f7a-9f98-9868cddef57f', nombre: 'verde', label: 'Activo', color: '#22c55e', bgClass: 'bg-status-verde' },
+  { id: '04dca848-a17e-4626-b83a-5377aef062ec', nombre: 'amarillo', label: 'Atención', color: '#eab308', bgClass: 'bg-status-amarillo' },
+  { id: 'c19b9591-862e-49a8-898c-b29ed35fcd3b', nombre: 'naranja', label: 'En riesgo', color: '#f97316', bgClass: 'bg-status-naranja' },
+  { id: '753e6c36-5a9f-4b4b-b5fa-aac7d6f281af', nombre: 'rojo', label: 'Crítico', color: '#ef4444', bgClass: 'bg-status-rojo' },
+  { id: '3876a424-6749-4205-b5b2-a59c49ca8eb9', nombre: 'inhabilitado', label: 'Inhabilitado por mora', color: '#7f1d1d', bgClass: 'bg-red-900' },
+  { id: '550f7375-4aec-4e76-a006-16b427d493e9', nombre: 'inactivo', label: 'Baja / Inactivo', color: '#64748b', bgClass: 'bg-slate-500' },
+]
+
+// Helper to get semaforo by ID
+const getSemaforoById = (id: string | null) => {
+  return SEMAFORO_OPTIONS.find(s => s.id === id) || SEMAFORO_OPTIONS[0]
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
-export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours }: ClientOverviewProps) {
+export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0 }: ClientOverviewProps) {
   const [preset, setPreset]           = useState('last_30d')
   const [rows, setRows]               = useState<ScorecardRow[]>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
+  const [semaforoId, setSemaforoId] = useState(client.semaforo_id)
+  const currentSemaforo = getSemaforoById(semaforoId)
+  const [updatingStatus, setUpdatingStatus] = useState(false)
+  
+  const supabase = createClient()
+
+  const handleSemaforoChange = async (newSemaforoId: string) => {
+    setUpdatingStatus(true)
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .update({ semaforo_id: newSemaforoId })
+        .eq('id', client.id)
+      
+      if (!error) {
+        setSemaforoId(newSemaforoId)
+      }
+    } catch (e) {
+      console.error('Error updating semaforo:', e)
+    } finally {
+      setUpdatingStatus(false)
+    }
+  }
 
   const pm = profiles.find(p => p.id === client.project_manager_id) ?? null
   const am = profiles.find(p => p.id === client.account_manager_id) ?? null
@@ -361,28 +410,37 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            {/* Traffic-light semaphore */}
-            <div className="flex flex-col gap-1 items-center shrink-0">
-              {['verde', 'amarillo', 'naranja', 'rojo'].map(color => (
-                <div
-                  key={color}
-                  className={cn(
-                    'h-3 w-3 rounded-full transition-all',
-                    client.status === color
-                      ? cn(getStatusColor(color), 'ring-2 ring-offset-1 ring-offset-background', {
-                          'ring-status-verde':    color === 'verde',
-                          'ring-status-amarillo': color === 'amarillo',
-                          'ring-status-naranja':  color === 'naranja',
-                          'ring-status-rojo':     color === 'rojo',
-                        })
-                      : 'bg-muted opacity-30'
-                  )}
-                />
-              ))}
-            </div>
+            {/* Semaphore - Editable Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild disabled={updatingStatus}>
+                <button 
+                  className="flex items-center justify-center w-8 h-8 rounded-full cursor-pointer hover:opacity-80 transition-opacity ring-2 ring-offset-2 ring-offset-background"
+                  style={{ 
+                    backgroundColor: currentSemaforo.color,
+                    // @ts-expect-error - CSS custom property for ring color
+                    '--tw-ring-color': currentSemaforo.color 
+                  } as React.CSSProperties}
+                >
+                  {updatingStatus && <RefreshCw className="h-4 w-4 text-white animate-spin" />}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {SEMAFORO_OPTIONS.map(opt => (
+                  <DropdownMenuItem 
+                    key={opt.id} 
+                    onClick={() => handleSemaforoChange(opt.id)}
+                    className="gap-2 cursor-pointer"
+                  >
+                    <div className="h-3 w-3 rounded-full" style={{ backgroundColor: opt.color }} />
+                    <span>{opt.label}</span>
+                    {semaforoId === opt.id && <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-primary" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <div>
               <h1 className="text-2xl font-bold text-foreground text-balance">{client.business_name}</h1>
-              <p className="text-sm text-muted-foreground mt-0.5">{getStatusLabel(client.status)}</p>
+              <p className="text-sm text-muted-foreground mt-0.5">{currentSemaforo.label}</p>
             </div>
           </div>
 
@@ -433,30 +491,34 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             </CardContent>
           </Card>
 
-          {/* Dedication Card */}
-          <Card className={cn('border-l-4', dedicationConfig.borderColor)}>
+          {/* Hours Card - Objetivo vs Acumuladas */}
+          <Card>
             <CardContent className="pt-5 pb-5">
               <div className="flex items-center gap-2 mb-3">
-                <Clock className={cn('h-4 w-4', dedicationConfig.textColor)} />
-                <p className="text-xs text-muted-foreground font-medium">Mi dedicacion este mes</p>
+                <Clock className="h-4 w-4 text-primary" />
+                <p className="text-xs text-muted-foreground font-medium">Horas del equipo</p>
               </div>
-              <div className="flex items-end gap-2 mb-2">
-                <p className="text-2xl font-bold text-foreground">{formatHours(trackedHours)}</p>
-                {assignment && (
-                  <p className="text-xs text-muted-foreground mb-1">/ {assignment.max_hours}h</p>
-                )}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-muted-foreground">Horas objetivo</span>
+                  <span className="text-sm font-semibold text-foreground">{horasObjetivo}h / semana</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-muted-foreground">Horas acumuladas</span>
+                  <span className="text-sm font-semibold text-foreground">{formatHours(horasEquipo)}</span>
+                </div>
               </div>
-              {assignment ? (
-                <>
-                  <div className={cn('inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium', dedicationConfig.bgColor, dedicationConfig.textColor)}>
-                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dedicationConfig.color }} />
-                    {dedicationConfig.label}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground mt-2">{dedicationConfig.description}</p>
-                </>
-              ) : (
-                <p className="text-[11px] text-muted-foreground">Sin rango de horas asignado</p>
-              )}
+              
+              {/* Mis horas (colaborador actual) */}
+              <div className="mt-4 pt-3 border-t border-border">
+                <p className="text-xs text-muted-foreground font-medium mb-2">Mis horas este mes</p>
+                <div className="flex items-end gap-2">
+                  <span className="text-xl font-bold text-foreground">{formatHours(misHoras)}</span>
+                  {assignment && (
+                    <span className="text-xs text-muted-foreground mb-0.5">/ {assignment.max_hours}h asignadas</span>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -609,14 +671,12 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           )}
         </div>
 
+        {/* ── Memoria del Cliente ── */}
+        <ClientMemoria clienteId={client.id} />
+
         {/* ── Coming soon sections ── */}
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">Proximas funciones</h2>
-          <ComingSoonBlock
-            icon={<MessageSquare className="h-5 w-5" />}
-            title="Historico de comentarios"
-            description="Comentarios y notas del equipo sincronizados con Notion"
-          />
           <ComingSoonBlock
             icon={<svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.03.054a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>}
             title="Canal de Discord"

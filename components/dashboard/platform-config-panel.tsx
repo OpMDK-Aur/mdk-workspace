@@ -250,6 +250,7 @@ interface ClientsPlatformConfigProps {
 }
 
 export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
+  console.log('[v0] ClientsPlatformConfig received clients:', clients)
   const [metaAccounts, setMetaAccounts] = useState<MetaAccount[]>([])
   const [loadingAccounts, setLoadingAccounts] = useState(false)
   const [accountsError, setAccountsError] = useState<string | null>(null)

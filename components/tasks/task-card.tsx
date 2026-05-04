@@ -5,7 +5,32 @@ import type { Task } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useTaskStore, STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG } from '@/lib/tasks/task-store'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { 
+  Users, 
+  Megaphone, 
+  Headphones, 
+  Link, 
+  FileText, 
+  Code, 
+  Video,
+  HelpCircle,
+  CalendarDays,
+  AlertCircle
+} from 'lucide-react'
+import { format, isToday, isTomorrow, isPast, isBefore, addDays } from 'date-fns'
+import { es } from 'date-fns/locale'
+
+// Icon mapping for task types
+const TYPE_ICONS: Record<string, React.ReactNode> = {
+  users: <Users className="h-3 w-3" />,
+  megaphone: <Megaphone className="h-3 w-3" />,
+  headphones: <Headphones className="h-3 w-3" />,
+  link: <Link className="h-3 w-3" />,
+  'file-text': <FileText className="h-3 w-3" />,
+  code: <Code className="h-3 w-3" />,
+  video: <Video className="h-3 w-3" />,
+}
 
 interface TaskCardProps {
   task: Task
@@ -45,10 +70,39 @@ function getClientColor(clientId: string): string {
   return colors[index]
 }
 
+function formatDueDate(date: Date): { text: string; color: string; urgent: boolean } {
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  const dueDate = new Date(date)
+  dueDate.setHours(0, 0, 0, 0)
+  
+  if (isPast(dueDate) && !isToday(dueDate)) {
+    return { text: 'Vencida', color: 'text-red-400', urgent: true }
+  }
+  if (isToday(dueDate)) {
+    return { text: 'Hoy', color: 'text-orange-400', urgent: true }
+  }
+  if (isTomorrow(dueDate)) {
+    return { text: 'Manana', color: 'text-yellow-400', urgent: false }
+  }
+  if (isBefore(dueDate, addDays(now, 7))) {
+    return { text: format(date, 'EEE d', { locale: es }), color: 'text-muted-foreground', urgent: false }
+  }
+  return { text: format(date, 'd MMM', { locale: es }), color: 'text-muted-foreground', urgent: false }
+}
+
+// Default fallback for task types not in TYPE_CONFIG (e.g., UUIDs from DB)
+const DEFAULT_TYPE_CONFIG = { label: 'Tarea', color: 'bg-gray-500/20 text-gray-400', icon: undefined }
+
 export function TaskCard({ task, onClick }: TaskCardProps) {
   const [liveTime, setLiveTime] = useState(task.totalTimeSec)
-  const priorityConfig = PRIORITY_CONFIG[task.priority]
-  const typeConfig = TYPE_CONFIG[task.type]
+  const priorityConfig = PRIORITY_CONFIG[task.priority] || { label: 'Media', color: 'text-yellow-400', bgColor: 'bg-yellow-500/20' }
+  // Use TYPE_CONFIG if type is a known key, otherwise use task.typeName or fallback
+  const typeConfig = TYPE_CONFIG[task.type] || { 
+    label: task.typeName || 'Tarea', 
+    color: 'bg-gray-500/20 text-gray-400', 
+    icon: undefined 
+  }
 
   // Live timer update
   useEffect(() => {
@@ -101,26 +155,41 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         </Badge>
         <Badge
           variant="outline"
-          className={cn('text-[10px] px-1.5 py-0 h-5 font-medium border-0', typeConfig.color)}
+          className={cn('text-[10px] px-1.5 py-0 h-5 font-medium border-0 gap-1 flex items-center', typeConfig.color)}
         >
+          {typeConfig.icon && TYPE_ICONS[typeConfig.icon] ? TYPE_ICONS[typeConfig.icon] : <HelpCircle className="h-3 w-3" />}
           {typeConfig.label}
         </Badge>
       </div>
 
-      {/* Time tracked row */}
+      {/* Bottom row: time, due date, assignee */}
       <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-        <div className="flex items-center gap-1.5">
-          {task.isTimerRunning && (
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+        <div className="flex items-center gap-3">
+          {/* Time tracked */}
+          <div className="flex items-center gap-1.5">
+            {task.isTimerRunning && (
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+              </span>
+            )}
+            <span className={cn('font-mono tabular-nums', task.isTimerRunning && 'text-green-400 font-medium')}>
+              {formatTime(liveTime)}
             </span>
-          )}
-          <span className={cn('font-mono tabular-nums', task.isTimerRunning && 'text-green-400 font-medium')}>
-            {formatTime(liveTime)}
-          </span>
+          </div>
+          {/* Due date */}
+          {task.dueDate && (() => {
+            const { text, color, urgent } = formatDueDate(new Date(task.dueDate))
+            return (
+              <div className={cn('flex items-center gap-1', color)}>
+                {urgent ? <AlertCircle className="h-3 w-3" /> : <CalendarDays className="h-3 w-3" />}
+                <span className="font-medium">{text}</span>
+              </div>
+            )
+          })()}
         </div>
         <Avatar className="h-5 w-5 border border-border">
+          {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
           <AvatarFallback className="text-[9px] bg-muted text-muted-foreground">
             {getInitials(task.assigneeName)}
           </AvatarFallback>

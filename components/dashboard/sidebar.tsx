@@ -59,19 +59,42 @@ interface SidebarProps {
   onSelectClient: (id: string | null) => void
 }
 
+// Module IDs mapping to sidebar items
+const MODULE_IDS = {
+  dashboard: 'dashboard',
+  crm: 'crm',
+  tareas: 'tareas',
+  consultoria: 'consultoria',
+  administracion: 'administracion',
+  agentes_ia: 'agentes_ia',
+  gestion_usuarios: 'gestion_usuarios',
+  plataformas: 'plataformas',
+  control_saldos: 'control_saldos',
+  colaboradores: 'colaboradores',
+  timer_entries: 'timer_entries',
+  reports: 'reports',
+  team: 'team',
+} as const
+
 const areas = [
-  { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard, href: '/dashboard', active: true },
-  { id: 'crm', name: 'CRM', icon: Contact, href: '/dashboard/crm', active: true },
-  { id: 'tasks', name: 'Tareas', icon: CheckSquare, href: '/dashboard/tasks', active: true },
-  { id: 'consultoria', name: 'Consultoría', icon: Users, href: '#', active: false },
-  { id: 'operaciones', name: 'Operaciones', icon: Settings, href: '#', active: false },
-  { id: 'ventas-ai', name: 'Ventas AI', icon: Zap, href: '#', active: false },
+  { id: 'dashboard', moduleId: 'dashboard', name: 'Dashboard', icon: LayoutDashboard, href: '/dashboard', active: true },
+  { id: 'crm', moduleId: 'crm', name: 'CRM', icon: Contact, href: '/dashboard/crm', active: true },
+  { id: 'tasks', moduleId: 'tareas', name: 'Tareas', icon: CheckSquare, href: '/dashboard/tasks', active: true },
+  { id: 'consultoria', moduleId: 'consultoria', name: 'Consultoría', icon: Users, href: '#', active: false },
+  { id: 'agentes-ia', moduleId: 'agentes_ia', name: 'Agentes IA', icon: Zap, href: '#', active: false },
+]
+
+const adminItems = [
+  { id: 'users', moduleId: 'gestion_usuarios', name: 'Gestionar usuarios', icon: UserCog, href: '/dashboard/users' },
+  { id: 'platform', moduleId: 'plataformas', name: 'Plataformas', icon: Plug, href: '/dashboard/platform' },
+  { id: 'saldos', moduleId: 'control_saldos', name: 'Control de saldos', icon: Wallet, href: '/dashboard/saldos' },
+  { id: 'colaboradores', moduleId: 'colaboradores', name: 'Colaboradores', icon: UsersRound, href: '/dashboard/colaboradores' },
 ]
 
 const timeTrackingItems = [
-  { id: 'time-entries', name: 'Time entries', icon: Clock, href: '/dashboard/time' },
-  { id: 'reports', name: 'Reports', icon: FileText, href: '/dashboard/reports' },
-  { id: 'team', name: 'Team', icon: Users, href: '/dashboard/team' },
+  { id: 'time-entries', moduleId: 'timer_entries', name: 'Timer entries', icon: Clock, href: '/dashboard/time' },
+  { id: 'reports', moduleId: 'reports', name: 'Reports', icon: FileText, href: '/dashboard/reports' },
+  { id: 'team', moduleId: 'team', name: 'Team', icon: Users, href: '/dashboard/team' },
 ]
 
 const recursos = [
@@ -89,12 +112,18 @@ function getStatusColor(status: string | null) {
   }
 }
 
-function getRoleName(role: string) {
+function getRoleName(role: string, roleName?: string) {
+  // If we have the actual role name from the database, use it
+  if (roleName) return roleName
+  
+  // Fallback for legacy role codes
   switch (role) {
+    case 'master': return 'Master'
     case 'direccion': return 'Dir. Operaciones'
     case 'project_manager': return 'Project Manager'
     case 'account_manager': return 'Account Manager'
     case 'consultor': return 'Consultor'
+    case 'administrador': return 'Administrador'
     default: return role
   }
 }
@@ -155,7 +184,20 @@ export function Sidebar({
   }
 
   const userRole = profile?.role ?? 'project_manager'
-  const canManageUsers = userRole === 'direccion' || userRole === 'project_manager'
+  const canManageUsers = userRole === 'direccion' || userRole === 'project_manager' || userRole === 'administrador' || userRole === 'master'
+  
+  // Get enabled modules for the user
+  // Master role sees everything regardless of modulos_habilitados
+  const isMaster = userRole === 'master'
+  const enabledModules = isMaster 
+    ? Object.values(MODULE_IDS) 
+    : (profile?.modulos_habilitados?.length ? profile.modulos_habilitados : ['dashboard'])
+  
+  // Filter functions for each section
+  const isModuleEnabled = (moduleId: string) => enabledModules.includes(moduleId)
+  const filteredAreas = areas.filter(area => isModuleEnabled(area.moduleId))
+  const filteredAdminItems = adminItems.filter(item => isModuleEnabled(item.moduleId))
+  const filteredTimeTrackingItems = timeTrackingItems.filter(item => isModuleEnabled(item.moduleId))
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -240,7 +282,7 @@ export function Sidebar({
             <div className="p-2 space-y-4">
               {/* Areas */}
               <div className="space-y-1">
-                {areas.filter(a => a.active).map((area) => (
+                {filteredAreas.filter(a => a.active).map((area) => (
                   <Tooltip key={area.id}>
                     <TooltipTrigger asChild>
                       <Link
@@ -261,64 +303,52 @@ export function Sidebar({
               </div>
 
               {/* Admin */}
-              {canManageUsers && (
+              {filteredAdminItems.length > 0 && (
                 <div className="space-y-1 pt-2 border-t border-border">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Link
-                        href="/dashboard/users"
-                        className={cn(
-                          'flex items-center justify-center h-9 w-full rounded-lg transition-colors',
-                          pathname === '/dashboard/users'
-                            ? 'bg-primary/10 text-primary'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        )}
-                      >
-                        <UserCog className="h-4 w-4" />
-                      </Link>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">Gestionar usuarios</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Link
-                        href="/dashboard/colaboradores"
-                        className={cn(
-                          'flex items-center justify-center h-9 w-full rounded-lg transition-colors',
-                          pathname === '/dashboard/colaboradores'
-                            ? 'bg-primary/10 text-primary'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        )}
-                      >
-                        <UsersRound className="h-4 w-4" />
-                      </Link>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">Colaboradores</TooltipContent>
-                  </Tooltip>
+                  {filteredAdminItems.map((item) => (
+                    <Tooltip key={item.id}>
+                      <TooltipTrigger asChild>
+                        <Link
+                          href={item.href}
+                          className={cn(
+                            'flex items-center justify-center h-9 w-full rounded-lg transition-colors',
+                            pathname === item.href
+                              ? 'bg-primary/10 text-primary'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          )}
+                        >
+                          <item.icon className="h-4 w-4" />
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">{item.name}</TooltipContent>
+                    </Tooltip>
+                  ))}
                 </div>
               )}
 
               {/* Time Tracking */}
-              <div className="space-y-1 pt-2 border-t border-border">
-                {timeTrackingItems.map((item) => (
-                  <Tooltip key={item.id}>
-                    <TooltipTrigger asChild>
-                      <Link
-                        href={item.href}
-                        className={cn(
-                          'flex items-center justify-center h-9 w-full rounded-lg transition-colors',
-                          pathname === item.href || pathname.startsWith(item.href + '/')
-                            ? 'bg-primary/10 text-primary'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        )}
-                      >
-                        <item.icon className="h-4 w-4" />
-                      </Link>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">{item.name}</TooltipContent>
-                  </Tooltip>
-                ))}
-              </div>
+              {filteredTimeTrackingItems.length > 0 && (
+                <div className="space-y-1 pt-2 border-t border-border">
+                  {filteredTimeTrackingItems.map((item) => (
+                    <Tooltip key={item.id}>
+                      <TooltipTrigger asChild>
+                        <Link
+                          href={item.href}
+                          className={cn(
+                            'flex items-center justify-center h-9 w-full rounded-lg transition-colors',
+                            pathname === item.href || pathname.startsWith(item.href + '/')
+                              ? 'bg-primary/10 text-primary'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          )}
+                        >
+                          <item.icon className="h-4 w-4" />
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">{item.name}</TooltipContent>
+                    </Tooltip>
+                  ))}
+                </div>
+              )}
             </div>
           </ScrollArea>
 
@@ -466,117 +496,59 @@ export function Sidebar({
             <ScrollArea className="flex-1 min-h-0">
           <div className="p-4 space-y-6">
             {/* Areas */}
-            <div>
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                Areas
-              </h3>
-              <div className="space-y-1">
-                {areas.map((area) => {
-                  const isComingSoon = !area.active
-                  return (
-                    <div key={area.id} className="relative">
-                      {isComingSoon ? (
-                        <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground/50 cursor-default">
-                          <area.icon className="h-4 w-4 opacity-50" />
-                          <span>{area.name}</span>
-                          <span className="ml-auto text-[10px] font-semibold uppercase tracking-wider bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
-                            Pronto
-                          </span>
-                        </button>
-                      ) : (
-                        <Link
-                          href={area.href}
-                          className={cn(
-                            'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                            pathname === area.href || (area.href !== '/dashboard' && pathname.startsWith(area.href))
-                              ? 'bg-primary/10 text-primary'
-                              : 'text-foreground hover:bg-muted'
-                          )}
-                        >
-                          <area.icon className="h-4 w-4" />
-                          {area.name}
-                        </Link>
-                      )}
-                    </div>
-                  )
-                })}
+            {filteredAreas.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  Areas
+                </h3>
+                <div className="space-y-1">
+                  {filteredAreas.map((area) => {
+                    const isComingSoon = !area.active
+                    return (
+                      <div key={area.id} className="relative">
+                        {isComingSoon ? (
+                          <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground/50 cursor-default">
+                            <area.icon className="h-4 w-4 opacity-50" />
+                            <span>{area.name}</span>
+                            <span className="ml-auto text-[10px] font-semibold uppercase tracking-wider bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
+                              Pronto
+                            </span>
+                          </button>
+                        ) : (
+                          <Link
+                            href={area.href}
+                            className={cn(
+                              'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                              pathname === area.href || (area.href !== '/dashboard' && pathname.startsWith(area.href))
+                                ? 'bg-primary/10 text-primary'
+                                : 'text-foreground hover:bg-muted'
+                            )}
+                          >
+                            <area.icon className="h-4 w-4" />
+                            {area.name}
+                          </Link>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Administration — only for direccion and project_manager */}
-            {canManageUsers && (
+            {/* Administration — filtered by enabled modules */}
+            {filteredAdminItems.length > 0 && (
               <div>
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                   Administracion
                 </h3>
                 <div className="space-y-1">
-                  <Link
-                    href="/dashboard/users"
-                    className={cn(
-                      'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                      pathname === '/dashboard/users'
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-foreground hover:bg-muted'
-                    )}
-                  >
-                    <UserCog className="h-4 w-4" />
-                    Gestionar usuarios
-                  </Link>
-                  <Link
-                    href="/dashboard/platform"
-                    className={cn(
-                      'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                      pathname === '/dashboard/platform'
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-foreground hover:bg-muted'
-                    )}
-                  >
-                    <Plug className="h-4 w-4" />
-                    Plataformas
-                  </Link>
-                  <Link
-                    href="/dashboard/saldos"
-                    className={cn(
-                      'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                      pathname === '/dashboard/saldos'
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-foreground hover:bg-muted'
-                    )}
-                  >
-                    <Wallet className="h-4 w-4" />
-                    Control de saldos
-                  </Link>
-                  <Link
-                    href="/dashboard/colaboradores"
-                    className={cn(
-                      'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                      pathname === '/dashboard/colaboradores'
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-foreground hover:bg-muted'
-                    )}
-                  >
-                    <UsersRound className="h-4 w-4" />
-                    Colaboradores
-                  </Link>
-                </div>
-              </div>
-            )}
-
-            {/* Time Tracking */}
-            <div>
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                Time Tracking
-              </h3>
-              <div className="space-y-1">
-                {timeTrackingItems.map((item) => {
-                  const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-                  return (
+                  {filteredAdminItems.map((item) => (
                     <Link
                       key={item.id}
                       href={item.href}
                       className={cn(
                         'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                        isActive
+                        pathname === item.href
                           ? 'bg-primary/10 text-primary'
                           : 'text-foreground hover:bg-muted'
                       )}
@@ -584,10 +556,39 @@ export function Sidebar({
                       <item.icon className="h-4 w-4" />
                       {item.name}
                     </Link>
-                  )
-                })}
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Time Tracking — filtered by enabled modules */}
+            {filteredTimeTrackingItems.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  Time Tracking
+                </h3>
+                <div className="space-y-1">
+                  {filteredTimeTrackingItems.map((item) => {
+                    const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                    return (
+                      <Link
+                        key={item.id}
+                        href={item.href}
+                        className={cn(
+                          'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                          isActive
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-foreground hover:bg-muted'
+                        )}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        {item.name}
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Clients */}
             <div>
@@ -675,7 +676,7 @@ export function Sidebar({
                     {profile?.full_name || user.email?.split('@')[0]}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {getRoleName(profile?.role || 'consultor')}
+                    {getRoleName(profile?.role || '', profile?.role_name)}
                   </p>
                 </div>
                 <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
