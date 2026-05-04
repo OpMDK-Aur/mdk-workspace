@@ -1114,6 +1114,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
       clientName: client?.nombre_del_negocio || '',
       assigneeId: assignee?.id || '',
       assigneeName: assignee?.nombre || '',
+      assigneeAvatar: assignee?.avatar_url || null,
       status: 'pendiente' as TaskStatus,
       priority: quickPriority,
       type: quickType, // UUID from tipo_de_tareas
@@ -1364,6 +1365,7 @@ setIsCreating(true)
           clientName: client?.nombre_del_negocio || '',
           assigneeId: firstAssignee?.id || '',
           assigneeName: firstAssignee?.nombre || '',
+          assigneeAvatar: firstAssignee?.avatar_url || null,
           status: 'pendiente' as TaskStatus,
           priority,
           type: reunionTipo?.id || '', // UUID from tipo_de_tareas
@@ -1625,6 +1627,7 @@ setIsCreating(true)
         clientName: client?.nombre_del_negocio || '',
         assigneeId: assignee?.id || '',
         assigneeName: assignee?.nombre || '',
+        assigneeAvatar: assignee?.avatar_url || null,
         status: 'pendiente' as TaskStatus,
         priority,
         type: tipoTarea?.id || '', // UUID from tipo_de_tareas

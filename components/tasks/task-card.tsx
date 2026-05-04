@@ -5,7 +5,7 @@ import type { Task } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useTaskStore, STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG } from '@/lib/tasks/task-store'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { 
   Users, 
   Megaphone, 
@@ -151,6 +151,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
           </span>
         </div>
         <Avatar className="h-5 w-5 border border-border">
+          {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
           <AvatarFallback className="text-[9px] bg-muted text-muted-foreground">
             {getInitials(task.assigneeName)}
           </AvatarFallback>

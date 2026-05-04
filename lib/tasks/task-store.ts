@@ -31,7 +31,7 @@ interface TareaDB {
   contexto_chat: string | null
   // Joined relations
   clientes?: { id: string; nombre_del_negocio: string } | null
-  colaboradores?: { id: string; nombre: string } | null
+  colaboradores?: { id: string; nombre: string; avatar_url?: string | null } | null
   tipo_de_tareas?: { id: string; nombre: string } | null
 }
 
@@ -92,6 +92,7 @@ function mapTareaToTask(tarea: TareaDB): Task {
     clientName: tarea.clientes?.nombre_del_negocio || 'Sin cliente',
     assigneeId: tarea.asignado_a || '',
     assigneeName: tarea.colaboradores?.nombre || 'Sin asignar',
+    assigneeAvatar: tarea.colaboradores?.avatar_url || null,
     status: mapEstadoToStatus(tarea.estado),
     priority: mapPrioridadToPriority(tarea.prioridad),
     type: tarea.tipo_tarea_id || '', // UUID from tipo_de_tareas
@@ -685,7 +686,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         .select(`
           *,
           clientes:cliente_id(id, nombre_del_negocio),
-          colaboradores:asignado_a(id, nombre),
+          colaboradores:asignado_a(id, nombre, avatar_url),
           tipo_de_tareas:tipo_tarea_id(id, nombre)
         `)
         .order('created_at', { ascending: false })

@@ -342,6 +342,7 @@ export interface Task {
   clientName: string
   assigneeId: string
   assigneeName: string
+  assigneeAvatar?: string | null
   status: TaskStatus
   priority: TaskPriority
   type: TaskType // UUID from tipo_de_tareas or legacy string

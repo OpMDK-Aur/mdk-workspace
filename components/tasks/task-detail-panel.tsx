@@ -21,7 +21,8 @@ interface TipoDeTarea {
 interface Colaborador {
   id: string
   nombre: string
-}
+  avatar_url: string | null
+  }
 
 interface Cliente {
   id: string
@@ -976,7 +977,7 @@ export function TaskDetailPanel() {
       
       const [tiposRes, colabRes, clientesRes] = await Promise.all([
         supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
-        supabase.from('colaboradores').select('id, nombre').order('nombre'),
+        supabase.from('colaboradores').select('id, nombre, avatar_url').order('nombre'),
         supabase.from('clientes').select('id, nombre_del_negocio').order('nombre_del_negocio'),
       ])
 
@@ -1126,17 +1127,24 @@ export function TaskDetailPanel() {
                     value={task.assigneeId}
                     onValueChange={(v) => {
                       const colab = colaboradores.find((c) => c.id === v)
-                      if (colab) updateTask(task.id, { assigneeId: v, assigneeName: colab.nombre })
+                      if (colab) updateTask(task.id, { assigneeId: v, assigneeName: colab.nombre, assigneeAvatar: colab.avatar_url })
                     }}
                   >
                     <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Seleccionar colaborador" />
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-5 w-5">
+                          {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
+                          <AvatarFallback className="text-[9px]">{getInitials(task.assigneeName)}</AvatarFallback>
+                        </Avatar>
+                        <span>{task.assigneeName || 'Seleccionar colaborador'}</span>
+                      </div>
                     </SelectTrigger>
                     <SelectContent>
                       {colaboradores.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
                           <div className="flex items-center gap-2">
                             <Avatar className="h-5 w-5">
+                              {c.avatar_url && <AvatarImage src={c.avatar_url} alt={c.nombre} />}
                               <AvatarFallback className="text-[9px]">{getInitials(c.nombre)}</AvatarFallback>
                             </Avatar>
                             {c.nombre}
