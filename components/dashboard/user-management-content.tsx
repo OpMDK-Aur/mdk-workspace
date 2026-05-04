@@ -362,6 +362,14 @@ export function UserManagementContent({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="w-80 max-h-60 overflow-y-auto">
+                      <DropdownMenuCheckboxItem 
+                        checked={newClientIds.length === clients.length}
+                        onCheckedChange={() => setNewClientIds(newClientIds.length === clients.length ? [] : clients.map(c => c.id))}
+                        onSelect={(e) => e.preventDefault()}
+                        className="font-medium border-b mb-1"
+                      >
+                        Todos los clientes
+                      </DropdownMenuCheckboxItem>
                       {clients.map(client => (
                         <DropdownMenuCheckboxItem 
                           key={client.id} 
@@ -457,6 +465,29 @@ export function UserManagementContent({
                             <Button variant="ghost" size="sm" className="h-5 text-xs text-primary px-2 py-0">+ Asignar</Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent className="w-60 max-h-60 overflow-y-auto">
+                            <DropdownMenuCheckboxItem 
+                              checked={(assignedClients[profile.id] || []).length === clients.length}
+                              onCheckedChange={() => {
+                                const allAssigned = (assignedClients[profile.id] || []).length === clients.length
+                                if (allAssigned) {
+                                  // Remove all
+                                  (assignedClients[profile.id] || []).forEach(clientId => {
+                                    handleClientAssignmentToggle(profile.id, clientId)
+                                  })
+                                } else {
+                                  // Add missing ones
+                                  clients.forEach(client => {
+                                    if (!(assignedClients[profile.id] || []).includes(client.id)) {
+                                      handleClientAssignmentToggle(profile.id, client.id)
+                                    }
+                                  })
+                                }
+                              }}
+                              onSelect={(e) => e.preventDefault()}
+                              className="font-medium border-b mb-1"
+                            >
+                              Todos los clientes
+                            </DropdownMenuCheckboxItem>
                             {clients.map(client => (
                               <DropdownMenuCheckboxItem 
                                 key={client.id}
@@ -560,6 +591,14 @@ export function UserManagementContent({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent className="w-80 max-h-60 overflow-y-auto">
+                    <DropdownMenuCheckboxItem 
+                      checked={editClientIds.length === clients.length}
+                      onCheckedChange={() => setEditClientIds(editClientIds.length === clients.length ? [] : clients.map(c => c.id))}
+                      onSelect={(e) => e.preventDefault()}
+                      className="font-medium border-b mb-1"
+                    >
+                      Todos los clientes
+                    </DropdownMenuCheckboxItem>
                     {clients.map(client => (
                       <DropdownMenuCheckboxItem 
                         key={client.id} 
