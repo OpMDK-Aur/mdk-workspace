@@ -23,6 +23,9 @@ export default async function ClientPage({ params }: Props) {
 
   if (!client) notFound()
 
+  // Map nombre_del_negocio to business_name for consistency
+  const mappedClient = { ...client, business_name: client.nombre_del_negocio }
+
   // Load all colaboradores (for pm/am lookup)
   const { data: profiles } = await supabase
     .from('colaboradores')
@@ -74,7 +77,7 @@ export default async function ClientPage({ params }: Props) {
 
   return (
     <ClientOverview
-      client={client as Client}
+      client={mappedClient as Client}
       profiles={(profiles ?? []) as Profile[]}
       currentProfile={currentProfile as Profile | null}
       assignment={assignment as { min_hours: number; max_hours: number } | null}
