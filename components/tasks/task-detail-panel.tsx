@@ -404,9 +404,8 @@ function TimeTracker({ task }: { task: Task }) {
   const handleStart = async () => {
     setIsStarting(true)
     try {
-      // Find client ID from task
-      const clientId = CLIENTS.find(c => c.name === task.clientName)?.id || null
-      await startTimerForTask(task.id, task.title, clientId)
+      // Use the task's clientId directly
+      await startTimerForTask(task.id, task.title, task.clientId || null)
       toast.success('Timer iniciado para esta tarea')
     } catch (error) {
       toast.error('Error al iniciar el timer')

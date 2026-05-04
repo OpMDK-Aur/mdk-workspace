@@ -259,8 +259,10 @@ type FlowStep =
   | { type: 'number'; key: string; question: string; min?: number; max?: number }
   | { type: 'options'; key: string; question: string; options: { label: string; value: string; emoji?: string }[] }
   | { type: 'multi_input'; key: string; question: string; placeholder?: string; hint?: string }
+  | { type: 'date_time'; key: string; question: string; hint?: string }
   | { type: 'priority' }
   | { type: 'confirm' }
+  | { type: 'confirm_meeting' }
 
 const TASK_TEMPLATES: TaskTemplate[] = [
   {
@@ -963,7 +965,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     const step = template.flow[stepIndex]
     if (!step) return
 
-    let messageContent: Partial<ChatMessage> = {}
+    let messageContent: Omit<ChatMessage, 'id' | 'role'> = { content: '' }
 
     switch (step.type) {
       case 'select_client':
@@ -1099,7 +1101,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
       status: 'pendiente' as TaskStatus,
       priority: quickPriority,
       type: quickType, // UUID from tipo_de_tareas
-      dueDate: quickDueDate || null,
+      dueDate: quickDueDate ? new Date(quickDueDate) : null,
       customFields: {},
     })
     
@@ -1342,6 +1344,7 @@ setIsCreating(true)
             content: meetingComment,
             userId: 'madky',
             userName: 'Madky (IA)',
+            userAvatar: '',
             createdAt: new Date(),
           }],
         })
@@ -1569,6 +1572,7 @@ setIsCreating(true)
       content: buildInitialComment(),
       userId: 'madky',
       userName: 'Madky (IA)',
+      userAvatar: '',
       createdAt: new Date(),
     }
 
