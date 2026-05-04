@@ -349,6 +349,11 @@ export interface Task {
   typeName?: string // Display name from tipo_de_tareas
   dueDate: Date | null
   isActive: boolean // Toggle to resume task independently of status
+  isSystemTask?: boolean // System/recurring task with special styling
+  systemTaskMeta?: {
+    recurrence: 'daily' | 'weekly' | 'monthly'
+    whatsappLink?: string // Pre-built WhatsApp link for client
+  }
   customFields: Record<string, TaskCustomField>
   timeSessions: TaskTimeSession[]
   totalTimeSec: number

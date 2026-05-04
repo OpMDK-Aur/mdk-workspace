@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { useTaskStore, PRIORITY_CONFIG, TYPE_CONFIG, ASSIGNEES } from '@/lib/tasks/task-store'
 import { KanbanView } from './kanban-view'
 import { ListView } from './list-view'
+import { CalendarView } from './calendar-view'
 import { TaskDetailPanel } from './task-detail-panel'
 import { NewTaskModal } from './new-task-modal'
 import { FilterBuilder } from './filter-builder'
@@ -23,6 +24,7 @@ import {
   Plus,
   LayoutGrid,
   List,
+  Calendar,
   ChevronDown,
   FileText,
   X,
@@ -91,6 +93,18 @@ export function TaskBoard() {
             >
               <List className="h-4 w-4 mr-1.5" />
               Lista
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'h-8 px-3 rounded-md',
+                view === 'calendar' && 'bg-background shadow-sm'
+              )}
+              onClick={() => setView('calendar')}
+            >
+              <Calendar className="h-4 w-4 mr-1.5" />
+              Calendario
             </Button>
           </div>
         </div>
@@ -232,12 +246,16 @@ export function TaskBoard() {
 
       {/* Board content */}
       <div className="flex-1 overflow-hidden">
-        {view === 'kanban' ? (
+        {view === 'kanban' && (
           <KanbanView onAddTask={() => setNewTaskOpen(true)} />
-        ) : (
+        )}
+        {view === 'list' && (
           <div className="p-4 h-full overflow-auto">
             <ListView />
           </div>
+        )}
+        {view === 'calendar' && (
+          <CalendarView />
         )}
       </div>
 
