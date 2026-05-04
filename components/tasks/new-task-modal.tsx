@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { TaskStatus, TaskPriority, TaskType } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 import {
   useTaskStore,
   PRIORITY_CONFIG,
@@ -10,6 +11,23 @@ import {
   ASSIGNEES,
   CLIENTS,
 } from '@/lib/tasks/task-store'
+
+// Database types
+interface DbCliente {
+  id: string
+  nombre_del_negocio: string
+}
+
+interface DbColaborador {
+  id: string
+  nombre: string
+}
+
+interface DbTipoTarea {
+  id: string
+  nombre: string
+  activo: boolean
+}
 import {
   Dialog,
   DialogContent,
@@ -849,10 +867,34 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
   // Quick mode form state
   const [quickTitle, setQuickTitle] = useState('')
   const [quickClientId, setQuickClientId] = useState('')
-  const [quickType, setQuickType] = useState<string>('soporte')
+  const [quickType, setQuickType] = useState<string>('')
   const [quickPriority, setQuickPriority] = useState<TaskPriority>('media')
   const [quickAssigneeId, setQuickAssigneeId] = useState('')
   const [quickDueDate, setQuickDueDate] = useState('')
+  
+  // Dynamic data from database
+  const [dbClientes, setDbClientes] = useState<DbCliente[]>([])
+  const [dbColaboradores, setDbColaboradores] = useState<DbColaborador[]>([])
+  const [dbTiposTarea, setDbTiposTarea] = useState<DbTipoTarea[]>([])
+  
+  // Load dynamic data
+  useEffect(() => {
+    async function loadData() {
+      const supabase = createClient()
+      
+      const [clientesRes, colabRes, tiposRes] = await Promise.all([
+        supabase.from('clientes').select('id, nombre_del_negocio').order('nombre_del_negocio'),
+        supabase.from('colaboradores').select('id, nombre').order('nombre'),
+        supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
+      ])
+      
+      if (clientesRes.data) setDbClientes(clientesRes.data)
+      if (colabRes.data) setDbColaboradores(colabRes.data)
+      if (tiposRes.data) setDbTiposTarea(tiposRes.data)
+    }
+    
+    loadData()
+  }, [])
   
   const [selectedTemplate, setSelectedTemplate] = useState<TaskTemplate | null>(null)
   const [currentStepIndex, setCurrentStepIndex] = useState(0)
@@ -969,7 +1011,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
         break
 
       case 'confirm_meeting':
-        const meetingClient = CLIENTS.find((c) => c.id === data.clientId)
+        const meetingClient = dbClientes.find((c) => c.id === data.clientId)
         const meetingTitle = data.title || 'Reunion'
         const duration = parseInt(data.meetingDuration || '30')
         
@@ -978,7 +1020,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
           isMeetingConfirm: true,
           meetingSummary: {
             title: meetingTitle,
-            client: meetingClient?.name || 'Sin cliente',
+            client: meetingClient?.nombre_del_negocio || 'Sin cliente',
             dateTime: data.meetingDateTime,
             duration: duration,
             addMeet: data.addMeet === 'yes',
@@ -1043,19 +1085,20 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     if (!quickTitle.trim() || !quickClientId) return
     
     setIsCreating(true)
-    const client = CLIENTS.find(c => c.id === quickClientId)
-    const assignee = ASSIGNEES.find(a => a.id === quickAssigneeId) || ASSIGNEES[0]
+    const client = dbClientes.find(c => c.id === quickClientId)
+    const assignee = dbColaboradores.find(a => a.id === quickAssigneeId)
+    const tipoTarea = dbTiposTarea.find(t => t.id === quickType)
     
     addTask({
       title: quickTitle,
       description: null,
       clientId: quickClientId,
-      clientName: client?.name || '',
-      assigneeId: assignee.id,
-      assigneeName: assignee.name,
+      clientName: client?.nombre_del_negocio || '',
+      assigneeId: assignee?.id || '',
+      assigneeName: assignee?.nombre || '',
       status: 'pendiente' as TaskStatus,
       priority: quickPriority,
-      type: quickType,
+      type: tipoTarea?.nombre?.toLowerCase().replace(/ /g, '_') || quickType,
       dueDate: quickDueDate || null,
       customFields: {},
       comments: [],
@@ -1065,7 +1108,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     // Reset quick mode state
     setQuickTitle('')
     setQuickClientId('')
-    setQuickType('soporte')
+    setQuickType('')
     setQuickPriority('media')
     setQuickAssigneeId('')
     setQuickDueDate('')
@@ -1238,10 +1281,10 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
   const handleCreateMeeting = async () => {
     if (!selectedTemplate) return
     
-    setIsCreating(true)
-
-    const client = CLIENTS.find((c) => c.id === taskData.clientId)
-    const meetingTitle = `${taskData.title || 'Reunion'} - ${client?.name || 'Cliente'}`
+setIsCreating(true)
+    
+    const client = dbClientes.find((c) => c.id === taskData.clientId)
+    const meetingTitle = `${taskData.title || 'Reunion'} - ${client?.nombre_del_negocio || 'Cliente'}`
     const startDateTime = new Date(taskData.meetingDateTime)
     const duration = parseInt(taskData.meetingDuration || '30')
     const endDateTime = new Date(startDateTime.getTime() + duration * 60000)
@@ -1256,7 +1299,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
         body: JSON.stringify({
           event: {
             title: meetingTitle,
-            description: `Reunion con ${client?.name || 'cliente'}.\n\nCreado desde MDK Workspace.`,
+            description: `Reunion con ${client?.nombre_del_negocio || 'cliente'}.\n\nCreado desde MDK Workspace.`,
             startDateTime: startDateTime.toISOString(),
             endDateTime: endDateTime.toISOString(),
             addMeet,
@@ -1279,13 +1322,14 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
           ${result.event.htmlLink ? `<p><a href="${result.event.htmlLink}" target="_blank">Ver en Calendar</a></p>` : ''}
         `
 
+        const firstAssignee = dbColaboradores[0]
         addTask({
           title: meetingTitle,
           description: null,
           clientId: taskData.clientId || '',
-          clientName: client?.name || '',
-          assigneeId: ASSIGNEES[0].id,
-          assigneeName: ASSIGNEES[0].name,
+          clientName: client?.nombre_del_negocio || '',
+          assigneeId: firstAssignee?.id || '',
+          assigneeName: firstAssignee?.nombre || '',
           status: 'pendiente' as TaskStatus,
           priority,
           type: 'reunion',
@@ -1332,14 +1376,12 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     
     setIsCreating(true)
 
-    const client = CLIENTS.find((c) => c.id === taskData.clientId)
-    const assignee = selectedTemplate.defaultAssignee 
-      ? ASSIGNEES.find((a) => a.id === selectedTemplate.defaultAssignee)
-      : ASSIGNEES[0]
+    const client = dbClientes.find((c) => c.id === taskData.clientId)
+    const assignee = dbColaboradores.find((a) => a.id === taskData.assigneeId) || dbColaboradores[0]
 
     let title = taskData.title || selectedTemplate.label
     if (selectedTemplate.id === 'placas' && taskData.quantity) {
-      title = `${taskData.quantity} placas - ${taskData.title || taskData.concept || client?.name}`
+      title = `${taskData.quantity} placas - ${taskData.title || taskData.concept || client?.nombre_del_negocio}`
     }
     if (selectedTemplate.id === 'falta_datos') {
       title = `URGENTE: ${taskData.title || 'Falta de datos'}`
@@ -1532,9 +1574,9 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
       title,
       description: null, // Description now goes to comments
       clientId: taskData.clientId || '',
-      clientName: client?.name || '',
+      clientName: client?.nombre_del_negocio || '',
       assigneeId: assignee?.id || '',
-      assigneeName: assignee?.name || '',
+      assigneeName: assignee?.nombre || '',
       status: 'pendiente' as TaskStatus,
       priority,
       type: selectedTemplate.type,
@@ -1574,7 +1616,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     setQuickMode(false)
     setQuickTitle('')
     setQuickClientId('')
-    setQuickType('soporte')
+    setQuickType('')
     setQuickPriority('media')
     setQuickAssigneeId('')
     setQuickDueDate('')
@@ -1656,8 +1698,8 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
                   <SelectValue placeholder="Seleccionar cliente" />
                 </SelectTrigger>
                 <SelectContent>
-                  {CLIENTS.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  {dbClientes.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.nombre_del_negocio}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1668,11 +1710,11 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
                 <Label htmlFor="quick-type">Tipo de tarea</Label>
                 <Select value={quickType} onValueChange={setQuickType}>
                   <SelectTrigger id="quick-type">
-                    <SelectValue />
+                    <SelectValue placeholder="Seleccionar tipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(TYPE_CONFIG).map(([key, config]) => (
-                      <SelectItem key={key} value={key}>{config.label}</SelectItem>
+                    {dbTiposTarea.map(t => (
+                      <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1701,8 +1743,8 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
                     <SelectValue placeholder="Sin asignar" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ASSIGNEES.map(a => (
-                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    {dbColaboradores.map(a => (
+                      <SelectItem key={a.id} value={a.id}>{a.nombre}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
