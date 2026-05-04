@@ -1160,7 +1160,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     // Handle confirm
     if (currentStep.type === 'confirm') {
       if (value === 'confirm') {
-        handleCreateTask()
+        await handleCreateTask()
       } else {
         onOpenChange(false)
       }
@@ -1170,7 +1170,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     // Handle meeting confirm
     if (currentStep.type === 'confirm_meeting') {
       if (value === 'confirm_meeting') {
-        handleCreateMeeting()
+        await handleCreateMeeting()
       } else {
         onOpenChange(false)
       }
