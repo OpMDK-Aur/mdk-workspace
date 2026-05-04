@@ -1,5 +1,6 @@
 'use client'
 
+// Report Generator Modal - Madky Growth Marketing Specialist
 import { useState, useRef, useEffect } from 'react'
 import { useChat } from '@ai-sdk/react'
 import {
@@ -95,9 +96,13 @@ Usa formato markdown para estructurar el reporte.`
 
   const { messages, append, isLoading, setMessages } = useChat({
     api: '/api/dashboard/report',
+    id: 'report-generator',
     body: {
       filters,
       clientIds: targetClients.map(c => c.id),
+    },
+    onError: (error) => {
+      console.error('[v0] Report generation error:', error)
     },
   })
 
