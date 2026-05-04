@@ -27,7 +27,9 @@ import {
   ChevronLeft, 
   ChevronRight, 
   Calendar as CalendarIcon,
-  AlertCircle
+  AlertCircle,
+  MessageCircle,
+  RotateCcw
 } from 'lucide-react'
 
 function getInitials(name: string): string {
@@ -84,6 +86,7 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick }: DayTasksProps) {
           const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
           const statusConfig = STATUS_CONFIG[task.status] || STATUS_CONFIG.pendiente
           const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && task.status !== 'resuelto'
+          const isSystemTask = task.isSystemTask
           
           return (
             <button
@@ -91,30 +94,42 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick }: DayTasksProps) {
               onClick={() => onTaskClick(task.id)}
               className={cn(
                 'w-full text-left rounded px-1.5 py-1 text-xs transition-colors hover:ring-1 hover:ring-primary/50',
-                statusConfig.bgColor,
-                isOverdue && 'ring-1 ring-red-500/50'
+                isSystemTask 
+                  ? 'bg-gradient-to-r from-teal-500/20 to-cyan-500/20 border border-teal-500/30' 
+                  : statusConfig.bgColor,
+                isOverdue && !isSystemTask && 'ring-1 ring-red-500/50'
               )}
             >
               <div className="flex items-center gap-1">
-                {isOverdue && <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />}
+                {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-400 shrink-0" />}
+                {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />}
                 <span className={cn(
                   'truncate flex-1',
-                  statusConfig.color
+                  isSystemTask ? 'text-teal-300' : statusConfig.color
                 )}>
                   {task.title}
                 </span>
               </div>
               <div className="flex items-center justify-between mt-0.5">
-                <Badge 
-                  variant="outline" 
-                  className={cn(
-                    'h-4 px-1 text-[9px] border-0',
-                    priorityConfig.bgColor,
-                    priorityConfig.color
-                  )}
-                >
-                  {priorityConfig.label}
-                </Badge>
+                {isSystemTask ? (
+                  <Badge 
+                    variant="outline" 
+                    className="h-4 px-1 text-[9px] border-0 bg-teal-500/20 text-teal-400"
+                  >
+                    Semanal
+                  </Badge>
+                ) : (
+                  <Badge 
+                    variant="outline" 
+                    className={cn(
+                      'h-4 px-1 text-[9px] border-0',
+                      priorityConfig.bgColor,
+                      priorityConfig.color
+                    )}
+                  >
+                    {priorityConfig.label}
+                  </Badge>
+                )}
                 {task.assigneeAvatar || task.assigneeName ? (
                   <Avatar className="h-4 w-4">
                     {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}

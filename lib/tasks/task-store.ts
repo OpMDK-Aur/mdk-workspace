@@ -435,7 +435,7 @@ export const PRIORITY_CONFIG: Record<TaskPriority, { label: string; color: strin
   baja: { label: 'Baja', color: 'text-green-400', bgColor: 'bg-green-500/15' },
 }
 
-export const TYPE_CONFIG: Record<TaskType, { label: string; color: string; icon?: string }> = {
+export const TYPE_CONFIG: Record<string, { label: string; color: string; icon?: string }> = {
   crm: { label: 'CRM', color: 'bg-cyan-500/20 text-cyan-400', icon: 'users' },
   meta_ads: { label: 'Meta Ads', color: 'bg-blue-500/20 text-blue-400', icon: 'megaphone' },
   soporte: { label: 'Soporte', color: 'bg-emerald-500/20 text-emerald-400', icon: 'headphones' },
@@ -443,6 +443,7 @@ export const TYPE_CONFIG: Record<TaskType, { label: string; color: string; icon?
   reportes: { label: 'Reportes', color: 'bg-pink-500/20 text-pink-400', icon: 'file-text' },
   desarrollo: { label: 'Desarrollo', color: 'bg-indigo-500/20 text-indigo-400', icon: 'code' },
   reunion: { label: 'Reunion', color: 'bg-orange-500/20 text-orange-400', icon: 'video' },
+  seguimiento: { label: 'Seguimiento', color: 'bg-teal-500/20 text-teal-400', icon: 'rotate-ccw' },
 }
 
 export const ASSIGNEES = [
@@ -463,7 +464,94 @@ export const CLIENTS = [
   { id: 'alambrados', name: 'Alambrados Patagonia' },
 ]
 
-// ─�� Filter Utility ────────────────────────���───────────────────────────────────
+// ── System Tasks (Recurring) ──────────────────────────────────────────────────
+
+function generateSystemTasks(clientes: Array<{ id: string; nombre_del_negocio: string }>): Task[] {
+  const today = new Date()
+  const systemTasks: Task[] = []
+  
+  // Find next Friday for weekly follow-up
+  const getNextFriday = (from: Date) => {
+    const d = new Date(from)
+    const day = d.getDay()
+    const diff = (5 - day + 7) % 7 || 7 // Days until Friday
+    d.setDate(d.getDate() + diff)
+    d.setHours(10, 0, 0, 0) // 10 AM
+    return d
+  }
+  
+  // Get this week's Friday and next 3 Fridays
+  const fridays = []
+  let nextFriday = getNextFriday(today)
+  // If today is Friday and before 6pm, include today
+  if (today.getDay() === 5 && today.getHours() < 18) {
+    nextFriday = new Date(today)
+    nextFriday.setHours(10, 0, 0, 0)
+  }
+  for (let i = 0; i < 4; i++) {
+    fridays.push(new Date(nextFriday))
+    nextFriday.setDate(nextFriday.getDate() + 7)
+  }
+  
+  // Create weekly follow-up tasks for each client for each Friday
+  clientes.forEach((cliente) => {
+    fridays.forEach((friday) => {
+      const message = encodeURIComponent(
+        `Hola! Te comparto el reporte semanal de tu cuenta:\n\n` +
+        `*Metricas principales:*\n` +
+        `- Clics: [completar]\n` +
+        `- Impresiones: [completar]\n` +
+        `- Conversiones: [completar]\n` +
+        `- Costo: [completar]\n\n` +
+        `Cualquier duda me avisas!`
+      )
+      const whatsappLink = `https://wa.me/?text=${message}`
+      
+      systemTasks.push({
+        id: `system-seguimiento-${cliente.id}-${friday.toISOString().split('T')[0]}`,
+        title: `Seguimiento semanal - ${cliente.nombre_del_negocio}`,
+        description: `<p><strong>Enviar reporte de metricas al cliente:</strong></p>
+<ul>
+<li>Clics de la semana</li>
+<li>Impresiones totales</li>
+<li>Conversiones logradas</li>
+<li>Costo publicitario</li>
+</ul>`,
+        clientId: cliente.id,
+        clientName: cliente.nombre_del_negocio,
+        assigneeId: '',
+        assigneeName: 'Sin asignar',
+        assigneeAvatar: null,
+        status: 'pendiente',
+        priority: 'media',
+        type: 'seguimiento',
+        typeName: 'Seguimiento',
+        dueDate: friday,
+        isActive: true,
+        isSystemTask: true,
+        systemTaskMeta: {
+          recurrence: 'weekly',
+          whatsappLink,
+        },
+        customFields: {},
+        timeSessions: [],
+        totalTimeSec: 0,
+        isTimerRunning: false,
+        timerStartedAt: null,
+        activities: [],
+        comments: [],
+        files: [],
+        quotation: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+    })
+  })
+  
+  return systemTasks
+}
+
+// ── Filter Utility ────────────────────────────────────────────────────────────
 
 export function applyAdvancedFilters(tasks: Task[], filterGroups: FilterGroup[]): Task[] {
   if (filterGroups.length === 0) return tasks
@@ -667,7 +755,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   isLoading: false,
   selectedTaskId: null,
-  view: 'kanban',
+  view: 'calendar',
   filters: {
     priority: null,
     assigneeId: null,
@@ -697,6 +785,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         return
       }
 
+      // Load clients for system tasks
+      const { data: clientesData } = await supabase
+        .from('clientes')
+        .select('id, nombre_del_negocio')
+        .order('nombre_del_negocio')
+      
+      // Generate system tasks (weekly follow-ups)
+      const systemTasks = clientesData ? generateSystemTasks(clientesData) : []
+
       if (data && data.length > 0) {
         // Load comments for all tasks
         const taskIds = data.map((t) => t.id)
@@ -716,15 +813,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           })
         }
 
-        const tasks = data.map((tarea) => {
+        const dbTasks = data.map((tarea) => {
           const task = mapTareaToTask(tarea as TareaDB)
           task.comments = commentsByTask.get(tarea.id) || []
           return task
         })
-        set({ tasks, isLoading: false })
+        // Combine DB tasks with system tasks
+        set({ tasks: [...dbTasks, ...systemTasks], isLoading: false })
       } else {
-        // No tasks in DB, use empty array
-        set({ tasks: [], isLoading: false })
+        // No tasks in DB, just system tasks
+        set({ tasks: systemTasks, isLoading: false })
       }
     } catch (error) {
       console.error('Error loading tasks:', error)
