@@ -852,6 +852,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
   const [quickType, setQuickType] = useState<string>('soporte')
   const [quickPriority, setQuickPriority] = useState<TaskPriority>('media')
   const [quickAssigneeId, setQuickAssigneeId] = useState('')
+  const [quickDueDate, setQuickDueDate] = useState('')
   
   const [selectedTemplate, setSelectedTemplate] = useState<TaskTemplate | null>(null)
   const [currentStepIndex, setCurrentStepIndex] = useState(0)
@@ -1055,7 +1056,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
       status: 'pendiente' as TaskStatus,
       priority: quickPriority,
       type: quickType,
-      dueDate: null,
+      dueDate: quickDueDate || null,
       customFields: {},
       comments: [],
     })
@@ -1067,6 +1068,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     setQuickType('soporte')
     setQuickPriority('media')
     setQuickAssigneeId('')
+    setQuickDueDate('')
     setQuickMode(false)
     onOpenChange(false)
   }
@@ -1575,6 +1577,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     setQuickType('soporte')
     setQuickPriority('media')
     setQuickAssigneeId('')
+    setQuickDueDate('')
     setMessages([{
       id: 'welcome',
       role: 'assistant',
@@ -1690,18 +1693,31 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
               </div>
             </div>
             
-            <div className="space-y-2">
-              <Label htmlFor="quick-assignee">Asignar a</Label>
-              <Select value={quickAssigneeId} onValueChange={setQuickAssigneeId}>
-                <SelectTrigger id="quick-assignee">
-                  <SelectValue placeholder="Sin asignar" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ASSIGNEES.map(a => (
-                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="quick-assignee">Asignar a</Label>
+                <Select value={quickAssigneeId} onValueChange={setQuickAssigneeId}>
+                  <SelectTrigger id="quick-assignee">
+                    <SelectValue placeholder="Sin asignar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ASSIGNEES.map(a => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="quick-due-date">Fecha limite</Label>
+                <Input
+                  id="quick-due-date"
+                  type="date"
+                  value={quickDueDate}
+                  onChange={(e) => setQuickDueDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
             </div>
             
             <div className="pt-4">
