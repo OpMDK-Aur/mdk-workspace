@@ -28,6 +28,9 @@ export interface Profile {
   role: string // normalized role name (lowercase, underscores)
   role_name?: string // display name from roles table
   rol_id?: string // UUID reference to roles table
+  departamento_id?: string | null
+  departamento_name?: string | null
+  modulos_habilitados?: string[] // enabled modules for this user
   avatar_url: string | null
   theme: 'light' | 'dark' | 'system' | null
   accent_hue: number | null

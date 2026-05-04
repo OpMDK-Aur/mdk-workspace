@@ -363,8 +363,12 @@ export function UserManagementContent({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="w-80 max-h-60 overflow-y-auto">
                       {clients.map(client => (
-                        <DropdownMenuCheckboxItem key={client.id} checked={newClientIds.includes(client.id)}
-                          onCheckedChange={() => setNewClientIds(prev => prev.includes(client.id) ? prev.filter(id => id !== client.id) : [...prev, client.id])}>
+                        <DropdownMenuCheckboxItem 
+                          key={client.id} 
+                          checked={newClientIds.includes(client.id)}
+                          onCheckedChange={() => setNewClientIds(prev => prev.includes(client.id) ? prev.filter(id => id !== client.id) : [...prev, client.id])}
+                          onSelect={(e) => e.preventDefault()}
+                        >
                           {client.business_name}
                         </DropdownMenuCheckboxItem>
                       ))}
@@ -454,9 +458,12 @@ export function UserManagementContent({
                           </DropdownMenuTrigger>
                           <DropdownMenuContent className="w-60 max-h-60 overflow-y-auto">
                             {clients.map(client => (
-                              <DropdownMenuCheckboxItem key={client.id}
+                              <DropdownMenuCheckboxItem 
+                                key={client.id}
                                 checked={(assignedClients[profile.id] || []).includes(client.id)}
-                                onCheckedChange={() => handleClientAssignmentToggle(profile.id, client.id)}>
+                                onCheckedChange={() => handleClientAssignmentToggle(profile.id, client.id)}
+                                onSelect={(e) => e.preventDefault()}
+                              >
                                 {client.business_name}
                               </DropdownMenuCheckboxItem>
                             ))}
@@ -554,8 +561,12 @@ export function UserManagementContent({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent className="w-80 max-h-60 overflow-y-auto">
                     {clients.map(client => (
-                      <DropdownMenuCheckboxItem key={client.id} checked={editClientIds.includes(client.id)}
-                        onCheckedChange={() => setEditClientIds(prev => prev.includes(client.id) ? prev.filter(id => id !== client.id) : [...prev, client.id])}>
+                      <DropdownMenuCheckboxItem 
+                        key={client.id} 
+                        checked={editClientIds.includes(client.id)}
+                        onCheckedChange={() => setEditClientIds(prev => prev.includes(client.id) ? prev.filter(id => id !== client.id) : [...prev, client.id])}
+                        onSelect={(e) => e.preventDefault()}
+                      >
                         {client.business_name}
                       </DropdownMenuCheckboxItem>
                     ))}

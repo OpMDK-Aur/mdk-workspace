@@ -15,16 +15,22 @@ export default async function DashboardLayout({
     redirect('/auth/login')
   }
 
-  // Get user colaborador with role name — use maybeSingle to avoid error if RLS blocks
+  // Get user colaborador with role name and department — use maybeSingle to avoid error if RLS blocks
   const { data: colaborador, error: profileError } = await supabase
     .from('colaboradores')
-    .select('*, roles(id, nombre)')
+    .select('*, roles(id, nombre), departamentos(id, nombre)')
     .eq('id', user.id)
     .maybeSingle()
 
   // Map rol name to profile.role for compatibility
   const roleName = colaborador?.roles?.nombre?.toLowerCase().replace(/ /g, '_') || ''
-  const profile = colaborador ? { ...colaborador, role: roleName, role_name: colaborador?.roles?.nombre } : null
+  const profile = colaborador ? { 
+    ...colaborador, 
+    role: roleName, 
+    role_name: colaborador?.roles?.nombre,
+    departamento_name: colaborador?.departamentos?.nombre,
+    modulos_habilitados: colaborador?.modulos_habilitados || ['dashboard'],
+  } : null
 
   // If profile is null (RLS blocked read), do NOT redirect to onboarding
   // onboarding_completado must be explicitly FALSE to trigger the redirect
