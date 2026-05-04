@@ -66,10 +66,18 @@ function getClientColor(clientId: string): string {
   return colors[index]
 }
 
+// Default fallback for task types not in TYPE_CONFIG (e.g., UUIDs from DB)
+const DEFAULT_TYPE_CONFIG = { label: 'Tarea', color: 'bg-gray-500/20 text-gray-400', icon: undefined }
+
 export function TaskCard({ task, onClick }: TaskCardProps) {
   const [liveTime, setLiveTime] = useState(task.totalTimeSec)
-  const priorityConfig = PRIORITY_CONFIG[task.priority]
-  const typeConfig = TYPE_CONFIG[task.type]
+  const priorityConfig = PRIORITY_CONFIG[task.priority] || { label: 'Media', color: 'text-yellow-400', bgColor: 'bg-yellow-500/20' }
+  // Use TYPE_CONFIG if type is a known key, otherwise use task.typeName or fallback
+  const typeConfig = TYPE_CONFIG[task.type] || { 
+    label: task.typeName || 'Tarea', 
+    color: 'bg-gray-500/20 text-gray-400', 
+    icon: undefined 
+  }
 
   // Live timer update
   useEffect(() => {
