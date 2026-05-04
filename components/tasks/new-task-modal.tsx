@@ -255,6 +255,7 @@ interface TaskTemplate {
 
 type FlowStep = 
   | { type: 'select_client' }
+  | { type: 'select_assignee' }
   | { type: 'input'; key: string; question: string; placeholder?: string; followUp?: string }
   | { type: 'number'; key: string; question: string; min?: number; max?: number }
   | { type: 'options'; key: string; question: string; options: { label: string; value: string; emoji?: string }[] }
@@ -274,6 +275,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       { type: 'select_client' },
       { type: 'input', key: 'title', question: 'Contame, que necesitas cotizar?', placeholder: 'Ej: Desarrollo de landing con formulario...' },
       { type: 'number', key: 'hours', question: 'Tenes una estimacion de horas en mente? (pone 0 si no sabes)' },
+      { type: 'select_assignee' },
       { type: 'priority' },
       { type: 'confirm' },
     ],
@@ -296,6 +298,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       ]},
       { type: 'input', key: 'concept', question: 'Algun concepto o idea para las placas?', placeholder: 'Ej: Promo verano, colores frescos, mostrar producto...' },
       { type: 'input', key: 'title', question: 'Como titulamos este pedido?', placeholder: 'Ej: Placas promo Black Friday' },
+      { type: 'select_assignee' },
       { type: 'priority' },
       { type: 'confirm' },
     ],
@@ -319,6 +322,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
         { label: 'Si, con integracion a CRM', value: 'crm', emoji: '🔄' },
         { label: 'No, solo informativa', value: 'no', emoji: '📖' },
       ]},
+      { type: 'select_assignee' },
       { type: 'priority' },
       { type: 'confirm' },
     ],
@@ -342,6 +346,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
         { label: 'Revision general', value: 'general', emoji: '🔎' },
       ]},
       { type: 'input', key: 'details', question: 'Algun dato mas que me sirva? (metricas, fechas, etc)', placeholder: 'Ej: El CPA subio de $500 a $1200 esta semana' },
+      { type: 'select_assignee' },
       { type: 'priority' },
       { type: 'confirm' },
     ],
@@ -369,6 +374,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
         { label: 'WhatsApp', value: 'whatsapp', emoji: '💬' },
         { label: 'Email', value: 'email', emoji: '📧' },
       ]},
+      { type: 'select_assignee' },
       { type: 'priority' },
       { type: 'confirm' },
     ],
@@ -389,6 +395,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       ]},
       { type: 'input', key: 'formName', question: 'Que formulario o integracion hay que revisar?', placeholder: 'Ej: Formulario de Meta Leads' },
       { type: 'input', key: 'details', question: 'Algun detalle mas?', placeholder: 'Ej: El ultimo lead que llego bien fue el viernes...' },
+      { type: 'select_assignee' },
       { type: 'priority' },
       { type: 'confirm' },
     ],
@@ -410,6 +417,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       ]},
       { type: 'input', key: 'title', question: 'Describime el problema', placeholder: 'Ej: No llegaron leads desde el viernes a la noche...' },
       { type: 'input', key: 'lastData', question: 'Cuando fue el ultimo dato que llego bien?', placeholder: 'Ej: El viernes 15:30 llego el ultimo lead' },
+      { type: 'select_assignee' },
       { type: 'confirm' },
     ],
   },
@@ -974,6 +982,13 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
           options: dbClientes.map((c) => ({ label: c.nombre_del_negocio, value: c.id })),
         }
         break
+      
+      case 'select_assignee':
+        messageContent = {
+          content: 'A quien se lo asigno?',
+          options: dbColaboradores.map((c) => ({ label: c.nombre, value: c.id })),
+        }
+        break
 
       case 'input':
         messageContent = {
@@ -1185,6 +1200,10 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
       // Load client context
       setClientContext(getClientContext(value))
     }
+    if (currentStep.type === 'select_assignee') {
+      const assignee = dbColaboradores.find((c) => c.id === value)
+      userMessage = assignee?.nombre || value
+    }
     if (currentStep.type === 'options') {
       const opt = (currentStep as { options: { label: string; value: string }[] }).options.find((o) => o.value === value)
       userMessage = opt?.label || value
@@ -1209,6 +1228,16 @@ if (currentStep.type === 'select_client') {
       if (client) {
         addAssistantMessage({
           content: getRandomResponse(PERSONALITY_RESPONSES.client_selected(client.nombre_del_negocio))
+        }, 300)
+      }
+    }
+    
+    if (currentStep.type === 'select_assignee') {
+      newData.assigneeId = value
+      const assignee = dbColaboradores.find((c) => c.id === value)
+      if (assignee) {
+        addAssistantMessage({
+          content: `Perfecto! Se lo asigno a ${assignee.nombre}`
         }, 300)
       }
     }
@@ -1240,7 +1269,7 @@ if (currentStep.type === 'select_client') {
 
     setTaskData(newData)
 
-    const delay = currentStep.type === 'select_client' || currentStep.type === 'priority' ? 800 : 400
+    const delay = currentStep.type === 'select_client' || currentStep.type === 'select_assignee' || currentStep.type === 'priority' ? 800 : 400
     setTimeout(() => processStep(selectedTemplate, currentStepIndex + 1, newData), delay)
   }
 
@@ -1587,13 +1616,6 @@ setIsCreating(true)
       return false
     })
     
-    console.log('[v0] handleCreateTask - taskData:', taskData)
-    console.log('[v0] handleCreateTask - client:', client)
-    console.log('[v0] handleCreateTask - assignee:', assignee)
-    console.log('[v0] handleCreateTask - tipoTarea:', tipoTarea)
-    console.log('[v0] handleCreateTask - dbClientes count:', dbClientes.length)
-    console.log('[v0] handleCreateTask - dbColaboradores count:', dbColaboradores.length)
-    
     try {
       await addTask({
         title,
@@ -1609,9 +1631,8 @@ setIsCreating(true)
         customFields: {},
         comments: [initialComment],
       })
-      console.log('[v0] handleCreateTask - Task created successfully')
-    } catch (err) {
-      console.error('[v0] handleCreateTask - Error creating task:', err)
+      } catch (err) {
+      console.error('Error creating task:', err)
     }
 
     // Success message
@@ -1791,7 +1812,25 @@ setIsCreating(true)
               </div>
             </div>
             
-            <div className="pt-4">
+            <div className="pt-4 space-y-2">
+              {/* Show create meeting button if type is "reunion" */}
+              {dbTiposTarea.find(t => t.id === quickType)?.nombre?.toLowerCase().includes('reuni') && (
+                <Button 
+                  variant="outline"
+                  className="w-full gap-2 border-orange-500/50 text-orange-400 hover:bg-orange-500/10" 
+                  onClick={() => {
+                    // Open Google Calendar to create meeting
+                    const client = dbClientes.find(c => c.id === quickClientId)
+                    const title = encodeURIComponent(quickTitle || `Reunion - ${client?.nombre_del_negocio || 'Cliente'}`)
+                    const url = `https://calendar.google.com/calendar/u/0/r/eventedit?text=${title}&details=${encodeURIComponent('Creado desde MDK Workspace')}`
+                    window.open(url, '_blank')
+                  }}
+                  disabled={!quickTitle.trim() || !quickClientId}
+                >
+                  <Video className="h-4 w-4" />
+                  Crear reunion en Calendar
+                </Button>
+              )}
               <Button 
                 className="w-full gap-2" 
                 onClick={handleQuickCreate}

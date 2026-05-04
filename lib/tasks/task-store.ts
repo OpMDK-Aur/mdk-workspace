@@ -822,33 +822,28 @@ updateTask: async (taskId, updates) => {
 },
 
 addTask: async (taskData) => {
-  console.log('[v0] addTask called with:', taskData)
   const supabase = createClient()
   const id = crypto.randomUUID()
-  
-  const insertData = {
-    id,
-    titulo: taskData.title,
-    descripcion: taskData.description,
-    tipo_tarea_id: taskData.type || null, // Now this should be a UUID
-    cliente_id: taskData.clientId || null,
-    asignado_a: taskData.assigneeId || null,
-    estado: taskData.status || 'pendiente',
-    prioridad: taskData.priority || 'media',
-    fecha_vencimiento: taskData.dueDate || null,
-  }
-  console.log('[v0] addTask inserting:', insertData)
   
   // Insert into tareas table
   const { error } = await supabase
     .from('tareas')
-    .insert(insertData)
+    .insert({
+      id,
+      titulo: taskData.title,
+      descripcion: taskData.description,
+      tipo_tarea_id: taskData.type || null,
+      cliente_id: taskData.clientId || null,
+      asignado_a: taskData.assigneeId || null,
+      estado: taskData.status || 'pendiente',
+      prioridad: taskData.priority || 'media',
+      fecha_vencimiento: taskData.dueDate || null,
+    })
   
   if (error) {
-    console.error('[v0] Error creating task:', error)
+    console.error('Error creating task:', error)
     return
   }
-  console.log('[v0] Task inserted successfully')
   
   // Also insert initial comment if there are comments
   if (taskData.comments && taskData.comments.length > 0) {

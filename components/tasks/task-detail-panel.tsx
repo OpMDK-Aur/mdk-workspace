@@ -697,7 +697,10 @@ function CommentsSection({ task }: { task: Task }) {
                       {format(new Date(c.createdAt), 'dd/MM/yyyy HH:mm', { locale: es })}
                     </span>
                   </div>
-                  <p className="text-sm text-foreground/80 mt-2 whitespace-pre-wrap">{c.content}</p>
+                  <div 
+                    className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold"
+                    dangerouslySetInnerHTML={{ __html: c.content }}
+                  />
                 </div>
                 <Button
                   variant="ghost"
