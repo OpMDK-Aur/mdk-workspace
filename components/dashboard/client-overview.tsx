@@ -435,7 +435,9 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
               </DropdownMenuContent>
             </DropdownMenu>
             <div>
-              <h1 className="text-2xl font-bold text-foreground text-balance">{client.business_name}</h1>
+              {/* Debug: show client object keys */}
+              {console.log('[v0] Client data:', JSON.stringify(client, null, 2))}
+              <h1 className="text-2xl font-bold text-foreground text-balance">{client.business_name || client.nombre || client.razon_social || 'Sin nombre'}</h1>
               <p className="text-sm text-muted-foreground mt-0.5">{currentSemaforo.label}</p>
             </div>
           </div>
