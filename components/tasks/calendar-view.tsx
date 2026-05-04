@@ -17,7 +17,7 @@ import {
 } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
-import { useTaskStore, PRIORITY_CONFIG, STATUS_CONFIG } from '@/lib/tasks/task-store'
+import { useTaskStore, useFilteredTasks, PRIORITY_CONFIG, STATUS_CONFIG } from '@/lib/tasks/task-store'
 import type { Task } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -136,14 +136,15 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick }: DayTasksProps) {
 }
 
 export function CalendarView() {
-  const { filteredTasks, setSelectedTask } = useTaskStore()
+  const setSelectedTask = useTaskStore((s) => s.setSelectedTask)
+  const tasks = useFilteredTasks()
   const [currentMonth, setCurrentMonth] = useState(new Date())
   
   // Group tasks by due date
   const tasksByDate = useMemo(() => {
     const grouped = new Map<string, Task[]>()
     
-    filteredTasks().forEach((task) => {
+    tasks.forEach((task) => {
       if (task.dueDate) {
         const dateKey = format(new Date(task.dueDate), 'yyyy-MM-dd')
         const existing = grouped.get(dateKey) || []
@@ -152,12 +153,12 @@ export function CalendarView() {
     })
     
     return grouped
-  }, [filteredTasks])
+  }, [tasks])
   
   // Get tasks without due date
   const tasksWithoutDate = useMemo(() => {
-    return filteredTasks().filter((task) => !task.dueDate)
-  }, [filteredTasks])
+    return tasks.filter((task) => !task.dueDate)
+  }, [tasks])
   
   // Generate calendar days
   const calendarDays = useMemo(() => {
