@@ -108,14 +108,17 @@ Usa formato markdown para estructurar el reporte.`
 
   // Auto-start when modal opens
   useEffect(() => {
-    if (open && !hasStarted && targetClients.length > 0) {
+    if (open && !hasStarted && targetClients.length > 0 && scorecardRows.length > 0) {
+      console.log('[v0] Report modal: Starting report generation')
       setHasStarted(true)
+      const prompt = buildInitialPrompt()
+      console.log('[v0] Report modal: Prompt built, appending...')
       append({
         role: 'user',
-        content: buildInitialPrompt(),
+        content: prompt,
       })
     }
-  }, [open, hasStarted, targetClients.length])
+  }, [open, hasStarted, targetClients.length, scorecardRows.length])
 
   // Reset when modal closes
   useEffect(() => {
