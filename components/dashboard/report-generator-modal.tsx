@@ -163,23 +163,23 @@ Usa formato markdown para estructurar el reporte.`
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0 gap-0 bg-background/95 backdrop-blur-sm border-border/50">
-        <DialogHeader className="px-6 py-5 border-b border-border/50 shrink-0 bg-gradient-to-r from-teal-500/5 to-cyan-500/5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-teal-500/20">
-                <Sparkles className="h-6 w-6 text-white" />
+      <DialogContent className="max-w-3xl w-[95vw] h-[85vh] flex flex-col p-0 gap-0 bg-background/95 backdrop-blur-sm border-border/50 overflow-hidden">
+        <DialogHeader className="px-4 py-4 border-b border-border/50 shrink-0 bg-gradient-to-r from-teal-500/5 to-cyan-500/5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-10 w-10 shrink-0 rounded-lg bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-teal-500/20">
+                <Sparkles className="h-5 w-5 text-white" />
               </div>
-              <div>
-                <DialogTitle className="text-xl font-semibold">Madky - Reporte de Performance</DialogTitle>
-                <p className="text-sm text-muted-foreground mt-0.5">Growth Marketing Specialist Sr.</p>
+              <div className="min-w-0">
+                <DialogTitle className="text-base font-semibold truncate">Madky - Reporte de Performance</DialogTitle>
+                <p className="text-xs text-muted-foreground">Growth Marketing Specialist Sr.</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs bg-background/50 border-border/50">
+            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+              <Badge variant="outline" className="text-[10px] h-5 bg-background/50 border-border/50">
                 {platformLabel}
               </Badge>
-              <Badge variant="outline" className="text-xs bg-background/50 border-border/50">
+              <Badge variant="outline" className="text-[10px] h-5 bg-background/50 border-border/50">
                 {dateRangeLabel}
               </Badge>
             </div>
@@ -187,48 +187,48 @@ Usa formato markdown para estructurar el reporte.`
         </DialogHeader>
 
         {/* Quick Stats */}
-        <div className="px-6 py-4 border-b border-border/50 bg-muted/20 grid grid-cols-4 gap-6">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
-              <BarChart3 className="h-5 w-5 text-primary" />
+        <div className="px-4 py-3 border-b border-border/50 bg-muted/20 grid grid-cols-4 gap-2">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 shrink-0 rounded-lg bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
+              <BarChart3 className="h-4 w-4 text-primary" />
             </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Inversion</p>
-              <p className="text-base font-bold text-foreground">${totalSpend.toLocaleString('es-AR')}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-green-500/20 to-green-500/10 flex items-center justify-center">
-              <Target className="h-5 w-5 text-green-500" />
-            </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Leads</p>
-              <p className="text-base font-bold text-foreground">{totalLeads.toLocaleString('es-AR')}</p>
+            <div className="min-w-0">
+              <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-medium">Inversion</p>
+              <p className="text-sm font-bold text-foreground truncate">${totalSpend.toLocaleString('es-AR')}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-orange-500/20 to-orange-500/10 flex items-center justify-center">
-              <TrendingUp className="h-5 w-5 text-orange-500" />
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 shrink-0 rounded-lg bg-gradient-to-br from-green-500/20 to-green-500/10 flex items-center justify-center">
+              <Target className="h-4 w-4 text-green-500" />
             </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">CPL Prom</p>
-              <p className="text-base font-bold text-foreground">${avgCpl.toFixed(2)}</p>
+            <div className="min-w-0">
+              <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-medium">Leads</p>
+              <p className="text-sm font-bold text-foreground">{totalLeads.toLocaleString('es-AR')}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-500/10 flex items-center justify-center">
-              <Lightbulb className="h-5 w-5 text-blue-500" />
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 shrink-0 rounded-lg bg-gradient-to-br from-orange-500/20 to-orange-500/10 flex items-center justify-center">
+              <TrendingUp className="h-4 w-4 text-orange-500" />
             </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">CTR Prom</p>
-              <p className="text-base font-bold text-foreground">{avgCtr.toFixed(2)}%</p>
+            <div className="min-w-0">
+              <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-medium">CPL Prom</p>
+              <p className="text-sm font-bold text-foreground">${avgCpl.toFixed(2)}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 shrink-0 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-500/10 flex items-center justify-center">
+              <Lightbulb className="h-4 w-4 text-blue-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-medium">CTR Prom</p>
+              <p className="text-sm font-bold text-foreground">{avgCtr.toFixed(2)}%</p>
             </div>
           </div>
         </div>
 
         {/* Chat Area */}
-        <ScrollArea ref={scrollRef} className="flex-1 px-8 py-6">
-          <div className="space-y-6 max-w-none">
+        <ScrollArea ref={scrollRef} className="flex-1 overflow-hidden">
+          <div className="px-6 py-6 space-y-6">
             {messages.length === 0 && !isLoading && (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-teal-500/20 to-cyan-500/20 flex items-center justify-center mb-6 shadow-lg">
@@ -242,27 +242,26 @@ Usa formato markdown para estructurar el reporte.`
             )}
 
             {messages.filter(m => m.role === 'assistant').map((message) => (
-              <div key={message.id} className="flex gap-4">
+              <div key={message.id} className="flex gap-4 w-full">
                 <Avatar className="h-10 w-10 shrink-0 mt-1 ring-2 ring-teal-500/20">
                   <AvatarFallback className="bg-gradient-to-br from-teal-500 to-cyan-500 text-white text-sm font-medium">
                     M
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex-1 space-y-3 min-w-0 overflow-x-auto">
+                <div className="flex-1 space-y-3 overflow-hidden">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-base">Madky</span>
                     <Badge variant="secondary" className="text-[10px] h-5 px-2 bg-teal-500/10 text-teal-400 border-0">Growth Marketing Sr.</Badge>
                   </div>
-                  <div className="prose prose-base prose-invert max-w-full overflow-x-auto
-                    [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-8 [&_h1]:mb-4 [&_h1]:text-foreground [&_h1]:border-b [&_h1]:border-border/50 [&_h1]:pb-2
-                    [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-3 [&_h2]:text-foreground
-                    [&_h3]:text-lg [&_h3]:font-medium [&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:text-foreground
-                    [&_p]:my-3 [&_p]:leading-relaxed [&_p]:text-foreground/90
-                    [&_ul]:my-3 [&_ul]:space-y-1.5 [&_ul]:list-disc [&_ul]:pl-5
-                    [&_ol]:my-3 [&_ol]:space-y-1.5 [&_ol]:list-decimal [&_ol]:pl-5
-                    [&_li]:text-foreground/90 [&_li]:leading-relaxed
+                  <div className="prose prose-sm prose-invert max-w-none
+                    [&_h1]:text-xl [&_h1]:font-bold [&_h1]:mt-6 [&_h1]:mb-3 [&_h1]:text-foreground
+                    [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:text-foreground
+                    [&_h3]:text-base [&_h3]:font-medium [&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:text-foreground
+                    [&_p]:my-2 [&_p]:leading-relaxed [&_p]:text-foreground/90
+                    [&_ul]:my-2 [&_ul]:space-y-1 [&_ul]:list-disc [&_ul]:pl-4
+                    [&_ol]:my-2 [&_ol]:space-y-1 [&_ol]:list-decimal [&_ol]:pl-4
+                    [&_li]:text-foreground/90 [&_li]:text-sm
                     [&_strong]:text-foreground [&_strong]:font-semibold
-                    [&_em]:text-foreground/80
                   ">
                     <div dangerouslySetInnerHTML={{ __html: formatMarkdown(getMessageText(message)) }} />
                   </div>
