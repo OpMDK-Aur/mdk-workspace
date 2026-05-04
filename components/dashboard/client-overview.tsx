@@ -9,8 +9,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   DollarSign, Target, TrendingDown, MousePointerClick, Eye,
   Users, Megaphone, MessageSquare, Calendar, Clock,
-  ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe,
+  ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown,
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { ClientBudgetAlertCard } from './client-budget-alert-card'
 import { computeClientBudgetAlerts } from './budget-alerts-shared'
@@ -23,6 +30,8 @@ interface ClientOverviewProps {
   currentProfile: Profile | null
   assignment: { min_hours: number; max_hours: number } | null
   trackedHours: number
+  horasObjetivo?: number // from colaboradores.capacidad_horas_semanales
+  horasAcumuladas?: number // total hours from time tracking
 }
 
 type DedicationStatus = 'normal' | 'baja' | 'exceso' | 'sin_datos'
@@ -220,12 +229,42 @@ function ComingSoonBlock({ icon, title, description }: { icon: React.ReactNode; 
   )
 }
 
+// Status options for the semaphore
+const STATUS_OPTIONS = [
+  { value: 'verde', label: 'Activo', color: 'bg-status-verde' },
+  { value: 'amarillo', label: 'Atencion', color: 'bg-status-amarillo' },
+  { value: 'naranja', label: 'En riesgo', color: 'bg-status-naranja' },
+  { value: 'rojo', label: 'Critico', color: 'bg-status-rojo' },
+]
+
 // ── Main component ─────────────────────────────────────────────────────────────
-export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours }: ClientOverviewProps) {
+export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasAcumuladas = 0 }: ClientOverviewProps) {
   const [preset, setPreset]           = useState('last_30d')
   const [rows, setRows]               = useState<ScorecardRow[]>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
+  const [clientStatus, setClientStatus] = useState(client.status)
+  const [updatingStatus, setUpdatingStatus] = useState(false)
+  
+  const supabase = createClient()
+
+  const handleStatusChange = async (newStatus: string) => {
+    setUpdatingStatus(true)
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .update({ status: newStatus })
+        .eq('id', client.id)
+      
+      if (!error) {
+        setClientStatus(newStatus)
+      }
+    } catch (e) {
+      console.error('Error updating status:', e)
+    } finally {
+      setUpdatingStatus(false)
+    }
+  }
 
   const pm = profiles.find(p => p.id === client.project_manager_id) ?? null
   const am = profiles.find(p => p.id === client.account_manager_id) ?? null
@@ -361,28 +400,45 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            {/* Traffic-light semaphore */}
-            <div className="flex flex-col gap-1 items-center shrink-0">
-              {['verde', 'amarillo', 'naranja', 'rojo'].map(color => (
-                <div
-                  key={color}
-                  className={cn(
-                    'h-3 w-3 rounded-full transition-all',
-                    client.status === color
-                      ? cn(getStatusColor(color), 'ring-2 ring-offset-1 ring-offset-background', {
-                          'ring-status-verde':    color === 'verde',
-                          'ring-status-amarillo': color === 'amarillo',
-                          'ring-status-naranja':  color === 'naranja',
-                          'ring-status-rojo':     color === 'rojo',
-                        })
-                      : 'bg-muted opacity-30'
-                  )}
-                />
-              ))}
-            </div>
+            {/* Traffic-light semaphore - Editable */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild disabled={updatingStatus}>
+                <button className="flex flex-col gap-1 items-center shrink-0 cursor-pointer hover:opacity-80 transition-opacity group">
+                  {['verde', 'amarillo', 'naranja', 'rojo'].map(color => (
+                    <div
+                      key={color}
+                      className={cn(
+                        'h-3 w-3 rounded-full transition-all',
+                        clientStatus === color
+                          ? cn(getStatusColor(color), 'ring-2 ring-offset-1 ring-offset-background', {
+                              'ring-status-verde':    color === 'verde',
+                              'ring-status-amarillo': color === 'amarillo',
+                              'ring-status-naranja':  color === 'naranja',
+                              'ring-status-rojo':     color === 'rojo',
+                            })
+                          : 'bg-muted opacity-30 group-hover:opacity-50'
+                      )}
+                    />
+                  ))}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {STATUS_OPTIONS.map(opt => (
+                  <DropdownMenuItem 
+                    key={opt.value} 
+                    onClick={() => handleStatusChange(opt.value)}
+                    className="gap-2 cursor-pointer"
+                  >
+                    <div className={cn('h-3 w-3 rounded-full', opt.color)} />
+                    <span>{opt.label}</span>
+                    {clientStatus === opt.value && <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-primary" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <div>
               <h1 className="text-2xl font-bold text-foreground text-balance">{client.business_name}</h1>
-              <p className="text-sm text-muted-foreground mt-0.5">{getStatusLabel(client.status)}</p>
+              <p className="text-sm text-muted-foreground mt-0.5">{getStatusLabel(clientStatus)}</p>
             </div>
           </div>
 
@@ -433,30 +489,45 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             </CardContent>
           </Card>
 
-          {/* Dedication Card */}
-          <Card className={cn('border-l-4', dedicationConfig.borderColor)}>
+          {/* Hours Card - Objetivo vs Acumuladas */}
+          <Card>
             <CardContent className="pt-5 pb-5">
               <div className="flex items-center gap-2 mb-3">
-                <Clock className={cn('h-4 w-4', dedicationConfig.textColor)} />
-                <p className="text-xs text-muted-foreground font-medium">Mi dedicacion este mes</p>
+                <Clock className="h-4 w-4 text-primary" />
+                <p className="text-xs text-muted-foreground font-medium">Horas</p>
               </div>
-              <div className="flex items-end gap-2 mb-2">
-                <p className="text-2xl font-bold text-foreground">{formatHours(trackedHours)}</p>
-                {assignment && (
-                  <p className="text-xs text-muted-foreground mb-1">/ {assignment.max_hours}h</p>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-muted-foreground">Horas objetivo</span>
+                  <span className="text-sm font-semibold text-foreground">{horasObjetivo}h / semana</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-muted-foreground">Horas acumuladas</span>
+                  <span className="text-sm font-semibold text-foreground">{formatHours(horasAcumuladas)}</span>
+                </div>
+                {horasObjetivo > 0 && (
+                  <div className="pt-2 border-t border-border">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-muted-foreground">Progreso mensual</span>
+                      <span className={cn(
+                        'font-medium',
+                        horasAcumuladas >= horasObjetivo * 4 ? 'text-status-verde' : 'text-status-amarillo'
+                      )}>
+                        {Math.round((horasAcumuladas / (horasObjetivo * 4)) * 100)}%
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-muted rounded-full mt-1.5 overflow-hidden">
+                      <div 
+                        className={cn(
+                          'h-full rounded-full transition-all',
+                          horasAcumuladas >= horasObjetivo * 4 ? 'bg-status-verde' : 'bg-primary'
+                        )}
+                        style={{ width: `${Math.min(100, (horasAcumuladas / (horasObjetivo * 4)) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
-              {assignment ? (
-                <>
-                  <div className={cn('inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium', dedicationConfig.bgColor, dedicationConfig.textColor)}>
-                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dedicationConfig.color }} />
-                    {dedicationConfig.label}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground mt-2">{dedicationConfig.description}</p>
-                </>
-              ) : (
-                <p className="text-[11px] text-muted-foreground">Sin rango de horas asignado</p>
-              )}
             </CardContent>
           </Card>
 
