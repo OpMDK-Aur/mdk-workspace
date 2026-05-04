@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { ClientsPlatformConfig } from './platform-config-panel'
+import { ReportGeneratorModal } from './report-generator-modal'
 import { FileText, Clock, Settings, RefreshCw } from 'lucide-react'
 import { subDays, format } from 'date-fns'
 import type { Profile } from '@/lib/types'
@@ -135,6 +136,7 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
   const [scorecardClientId, setScorecardClientId] = useState<string | null>(null)
   const [scorecardCampaignIds, setScorecardCampaignIds] = useState<string[]>([])
   const [showPlatformConfig, setShowPlatformConfig] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
 
   const canConfigurePlatforms = profile?.role === 'direccion' || profile?.role === 'project_manager' || !profile
 
@@ -363,7 +365,11 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 Actualizar
               </Button>
-              <Button size="sm" className="bg-primary hover:bg-primary/90 h-9">
+              <Button 
+                size="sm" 
+                className="bg-primary hover:bg-primary/90 h-9"
+                onClick={() => setShowReportModal(true)}
+              >
                 <FileText className="h-4 w-4 mr-2" />
                 Generar reporte
               </Button>
@@ -493,6 +499,15 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Report Generator Modal */}
+      <ReportGeneratorModal
+        open={showReportModal}
+        onOpenChange={setShowReportModal}
+        clients={clients}
+        filters={filters}
+        scorecardRows={scorecardRows}
+      />
     </div>
   )
 }
