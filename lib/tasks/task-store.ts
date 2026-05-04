@@ -433,13 +433,14 @@ export const PRIORITY_CONFIG: Record<TaskPriority, { label: string; color: strin
   baja: { label: 'Baja', color: 'text-green-400', bgColor: 'bg-green-500/15' },
 }
 
-export const TYPE_CONFIG: Record<TaskType, { label: string; color: string }> = {
-  crm: { label: 'CRM', color: 'bg-cyan-500/20 text-cyan-400' },
-  meta_ads: { label: 'Meta Ads', color: 'bg-blue-500/20 text-blue-400' },
-  soporte: { label: 'Soporte', color: 'bg-emerald-500/20 text-emerald-400' },
-  integracion: { label: 'Integracion', color: 'bg-violet-500/20 text-violet-400' },
-  reportes: { label: 'Reportes', color: 'bg-pink-500/20 text-pink-400' },
-  desarrollo: { label: 'Desarrollo', color: 'bg-indigo-500/20 text-indigo-400' },
+export const TYPE_CONFIG: Record<TaskType, { label: string; color: string; icon?: string }> = {
+  crm: { label: 'CRM', color: 'bg-cyan-500/20 text-cyan-400', icon: 'users' },
+  meta_ads: { label: 'Meta Ads', color: 'bg-blue-500/20 text-blue-400', icon: 'megaphone' },
+  soporte: { label: 'Soporte', color: 'bg-emerald-500/20 text-emerald-400', icon: 'headphones' },
+  integracion: { label: 'Integracion', color: 'bg-violet-500/20 text-violet-400', icon: 'link' },
+  reportes: { label: 'Reportes', color: 'bg-pink-500/20 text-pink-400', icon: 'file-text' },
+  desarrollo: { label: 'Desarrollo', color: 'bg-indigo-500/20 text-indigo-400', icon: 'code' },
+  reunion: { label: 'Reunion', color: 'bg-orange-500/20 text-orange-400', icon: 'video' },
 }
 
 export const ASSIGNEES = [

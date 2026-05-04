@@ -18,6 +18,14 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Palette,
   Globe,
@@ -40,6 +48,7 @@ import {
   Flame,
   Calendar,
   Video,
+  PenLine,
 } from 'lucide-react'
 
 interface NewTaskModalProps {
@@ -834,6 +843,14 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
   const [inputValue, setInputValue] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
+  const [quickMode, setQuickMode] = useState(false)
+  
+  // Quick mode form state
+  const [quickTitle, setQuickTitle] = useState('')
+  const [quickClientId, setQuickClientId] = useState('')
+  const [quickType, setQuickType] = useState<string>('soporte')
+  const [quickPriority, setQuickPriority] = useState<TaskPriority>('media')
+  const [quickAssigneeId, setQuickAssigneeId] = useState('')
   
   const [selectedTemplate, setSelectedTemplate] = useState<TaskTemplate | null>(null)
   const [currentStepIndex, setCurrentStepIndex] = useState(0)
@@ -1017,6 +1034,40 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
 
     addAssistantMessage(messageContent)
     setCurrentStepIndex(stepIndex)
+  }
+
+  // Handle quick task creation (without Madky)
+  const handleQuickCreate = async () => {
+    if (!quickTitle.trim() || !quickClientId) return
+    
+    setIsCreating(true)
+    const client = CLIENTS.find(c => c.id === quickClientId)
+    const assignee = ASSIGNEES.find(a => a.id === quickAssigneeId) || ASSIGNEES[0]
+    
+    addTask({
+      title: quickTitle,
+      description: null,
+      clientId: quickClientId,
+      clientName: client?.name || '',
+      assigneeId: assignee.id,
+      assigneeName: assignee.name,
+      status: 'pendiente' as TaskStatus,
+      priority: quickPriority,
+      type: quickType,
+      dueDate: null,
+      customFields: {},
+      comments: [],
+    })
+    
+    setIsCreating(false)
+    // Reset quick mode state
+    setQuickTitle('')
+    setQuickClientId('')
+    setQuickType('soporte')
+    setQuickPriority('media')
+    setQuickAssigneeId('')
+    setQuickMode(false)
+    onOpenChange(false)
   }
 
   // Handle template selection
@@ -1234,7 +1285,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
           assigneeName: ASSIGNEES[0].name,
           status: 'pendiente' as TaskStatus,
           priority,
-          type: 'soporte',
+          type: 'reunion',
           dueDate: startDateTime,
           customFields: {},
           comments: [{
@@ -1517,6 +1568,12 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     setTaskData({})
     setInputValue('')
     setClientContext(null)
+    setQuickMode(false)
+    setQuickTitle('')
+    setQuickClientId('')
+    setQuickType('soporte')
+    setQuickPriority('media')
+    setQuickAssigneeId('')
     setMessages([{
       id: 'welcome',
       role: 'assistant',
@@ -1533,25 +1590,142 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px] p-0 gap-0 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-3 p-4 border-b bg-gradient-to-r from-violet-500/10 to-fuchsia-500/10">
-          {selectedTemplate && (
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={handleBack}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          )}
+        <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-violet-500/10 to-fuchsia-500/10">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-lg">
-              <Sparkles className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold">{ASSISTANT_NAME}</h3>
-              <p className="text-xs text-muted-foreground">Asistente de tareas MDK</p>
+            {(selectedTemplate || quickMode) && (
+              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => {
+                if (quickMode) {
+                  setQuickMode(false)
+                } else {
+                  handleBack()
+                }
+              }}>
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            )}
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "h-10 w-10 rounded-full flex items-center justify-center shadow-lg",
+                quickMode 
+                  ? "bg-gradient-to-br from-emerald-500 to-teal-500" 
+                  : "bg-gradient-to-br from-violet-500 to-fuchsia-500"
+              )}>
+                {quickMode ? <PenLine className="h-5 w-5 text-white" /> : <Sparkles className="h-5 w-5 text-white" />}
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold">{quickMode ? 'Tarea rapida' : ASSISTANT_NAME}</h3>
+                <p className="text-xs text-muted-foreground">{quickMode ? 'Crear sin asistente' : 'Asistente de tareas MDK'}</p>
+              </div>
             </div>
           </div>
+          {!quickMode && !selectedTemplate && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="gap-1.5 text-xs"
+              onClick={() => setQuickMode(true)}
+            >
+              <PenLine className="h-3.5 w-3.5" />
+              Crear rapido
+            </Button>
+          )}
         </div>
 
-        {/* Chat area */}
-        <ScrollArea className="h-[420px] p-4" ref={scrollRef}>
+        {/* Quick Mode Form */}
+        {quickMode ? (
+          <div className="p-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="quick-title">Titulo de la tarea *</Label>
+              <Input
+                id="quick-title"
+                placeholder="Ej: Revisar campana de Meta Ads"
+                value={quickTitle}
+                onChange={(e) => setQuickTitle(e.target.value)}
+                autoFocus
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="quick-client">Cliente *</Label>
+              <Select value={quickClientId} onValueChange={setQuickClientId}>
+                <SelectTrigger id="quick-client">
+                  <SelectValue placeholder="Seleccionar cliente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CLIENTS.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="quick-type">Tipo de tarea</Label>
+                <Select value={quickType} onValueChange={setQuickType}>
+                  <SelectTrigger id="quick-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(TYPE_CONFIG).map(([key, config]) => (
+                      <SelectItem key={key} value={key}>{config.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="quick-priority">Prioridad</Label>
+                <Select value={quickPriority} onValueChange={(v) => setQuickPriority(v as TaskPriority)}>
+                  <SelectTrigger id="quick-priority">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
+                      <SelectItem key={key} value={key}>{config.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="quick-assignee">Asignar a</Label>
+              <Select value={quickAssigneeId} onValueChange={setQuickAssigneeId}>
+                <SelectTrigger id="quick-assignee">
+                  <SelectValue placeholder="Sin asignar" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ASSIGNEES.map(a => (
+                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="pt-4">
+              <Button 
+                className="w-full gap-2" 
+                onClick={handleQuickCreate}
+                disabled={!quickTitle.trim() || !quickClientId || isCreating}
+              >
+                {isCreating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Creando...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Crear tarea
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          /* Chat area */
+          <ScrollArea className="h-[420px] p-4" ref={scrollRef}>
           <div className="space-y-4">
             {messages.map((msg, idx) => (
               <ChatBubble
@@ -1580,8 +1754,9 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
                 Creando tarea...
               </div>
             )}
-          </div>
-        </ScrollArea>
+</div>
+          </ScrollArea>
+        )}
       </DialogContent>
     </Dialog>
   )

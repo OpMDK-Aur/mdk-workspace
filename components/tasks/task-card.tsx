@@ -6,6 +6,27 @@ import { cn } from '@/lib/utils'
 import { useTaskStore, STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG } from '@/lib/tasks/task-store'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { 
+  Users, 
+  Megaphone, 
+  Headphones, 
+  Link, 
+  FileText, 
+  Code, 
+  Video,
+  HelpCircle 
+} from 'lucide-react'
+
+// Icon mapping for task types
+const TYPE_ICONS: Record<string, React.ReactNode> = {
+  users: <Users className="h-3 w-3" />,
+  megaphone: <Megaphone className="h-3 w-3" />,
+  headphones: <Headphones className="h-3 w-3" />,
+  link: <Link className="h-3 w-3" />,
+  'file-text': <FileText className="h-3 w-3" />,
+  code: <Code className="h-3 w-3" />,
+  video: <Video className="h-3 w-3" />,
+}
 
 interface TaskCardProps {
   task: Task
@@ -101,8 +122,9 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         </Badge>
         <Badge
           variant="outline"
-          className={cn('text-[10px] px-1.5 py-0 h-5 font-medium border-0', typeConfig.color)}
+          className={cn('text-[10px] px-1.5 py-0 h-5 font-medium border-0 gap-1 flex items-center', typeConfig.color)}
         >
+          {typeConfig.icon && TYPE_ICONS[typeConfig.icon] ? TYPE_ICONS[typeConfig.icon] : <HelpCircle className="h-3 w-3" />}
           {typeConfig.label}
         </Badge>
       </div>
