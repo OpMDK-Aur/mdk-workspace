@@ -16,8 +16,8 @@ export default async function DashboardPage() {
 
   let clients: any[] = []
   if (isFullAccess) {
-    const { data } = await supabase.from('clients').select('*').order('business_name')
-    clients = data || []
+    const { data } = await supabase.from('clientes').select('*').order('nombre_del_negocio')
+    clients = (data || []).map(c => ({ ...c, business_name: c.nombre_del_negocio }))
   } else {
     const { data: access } = await supabase
       .from('user_client_access')
@@ -25,8 +25,8 @@ export default async function DashboardPage() {
       .eq('user_id', user?.id ?? '')
     const ids = access?.map((a: any) => a.client_id) || []
     if (ids.length > 0) {
-      const { data } = await supabase.from('clients').select('*').in('id', ids).order('business_name')
-      clients = data || []
+      const { data } = await supabase.from('clientes').select('*').in('id', ids).order('nombre_del_negocio')
+      clients = (data || []).map(c => ({ ...c, business_name: c.nombre_del_negocio }))
     }
   }
 
