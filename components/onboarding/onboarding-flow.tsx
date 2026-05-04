@@ -9,7 +9,8 @@ import { completeOnboarding } from '@/app/actions/complete-onboarding'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import { Check, ChevronRight, ChevronLeft, Sun, Moon, Monitor } from 'lucide-react'
+import { Check, ChevronRight, ChevronLeft, Sun, Moon, Monitor, Camera, Upload, Loader2 } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 // ─── AVATAR OPTIONS ────────────────────────────────────────────────────────────
 const AVATARS = [
@@ -172,10 +173,14 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
   const [step, setStep] = useState(0)
   const [name, setName] = useState(userName)
   const [selectedAvatar, setSelectedAvatar] = useState<typeof AVATARS[0] | null>(null)
+  const [customAvatarUrl, setCustomAvatarUrl] = useState<string | null>(null)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [selectedRole, setSelectedRole] = useState<RoleValue | null>(null)
   const [selectedHue, setSelectedHue] = useState(48)
   const [selectedTheme, setSelectedTheme] = useState<'light' | 'dark' | 'system'>('system')
   const [saving, setSaving] = useState(false)
+  
+  const supabase = createClient()
 
   const TOTAL_STEPS = 4
 
@@ -189,9 +194,46 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
   // When avatar selected, suggest theme + hue
   const handleAvatarSelect = (avatar: typeof AVATARS[0]) => {
     setSelectedAvatar(avatar)
+    setCustomAvatarUrl(null) // Clear custom avatar when selecting predefined
     setSelectedHue(avatar.hue)
     setSelectedTheme(avatar.themeSuggestion)
     setTheme(avatar.themeSuggestion)
+  }
+
+  // Handle custom avatar upload
+  const handleCustomAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingAvatar(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`
+      const filePath = `avatars/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true })
+
+      if (uploadError) {
+        console.error('Error uploading avatar:', uploadError)
+        return
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath)
+
+      setCustomAvatarUrl(publicUrl)
+      setSelectedAvatar(null) // Clear predefined avatar when uploading custom
+    } catch (err) {
+      console.error('Error uploading avatar:', err)
+    } finally {
+      setUploadingAvatar(false)
+    }
   }
 
   const handleThemeChange = (t: 'light' | 'dark' | 'system') => {
@@ -201,11 +243,14 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
 
   const handleFinish = async () => {
     setSaving(true)
+    // Determine avatar URL: custom upload takes priority over predefined
+    const avatarUrl = customAvatarUrl || (selectedAvatar ? `/avatars/${selectedAvatar.id}.jpg` : null)
+    
     // completeOnboarding is a server action that sets onboarding_completed = true
     // and calls redirect('/dashboard') server-side, bypassing any RSC cache issues
     await completeOnboarding({
       full_name: name,
-      avatar_url: selectedAvatar ? `/avatars/${selectedAvatar.id}.jpg` : null,
+      avatar_url: avatarUrl,
       role: selectedRole || 'editor',
       theme: selectedTheme,
       accent_hue: selectedHue,
@@ -256,6 +301,45 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
         <p className="text-white/50">Cada personaje trae su propia paleta y estilo visual.</p>
       </div>
 
+      {/* Custom photo upload option */}
+      <div className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10">
+        <label className={cn(
+          'relative w-16 h-16 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all overflow-hidden',
+          customAvatarUrl 
+            ? 'border-primary' 
+            : 'border-dashed border-white/30 hover:border-primary/50'
+        )}>
+          {uploadingAvatar ? (
+            <Loader2 className="h-6 w-6 text-white/50 animate-spin" />
+          ) : customAvatarUrl ? (
+            <>
+              <Image src={customAvatarUrl} alt="Tu foto" fill className="object-cover" />
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                <Camera className="h-5 w-5 text-white" />
+              </div>
+            </>
+          ) : (
+            <Upload className="h-6 w-6 text-white/50" />
+          )}
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleCustomAvatarUpload}
+            disabled={uploadingAvatar}
+          />
+        </label>
+        <div className="flex-1">
+          <p className="text-white text-sm font-medium">Subir tu propia foto</p>
+          <p className="text-white/40 text-xs">O elige uno de los avatares predefinidos</p>
+        </div>
+        {customAvatarUrl && (
+          <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center">
+            <Check className="h-3.5 w-3.5 text-white" />
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-3 gap-3">
         {AVATARS.map(avatar => (
           <button
@@ -263,7 +347,7 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
             onClick={() => handleAvatarSelect(avatar)}
             className={cn(
               'group relative rounded-2xl overflow-hidden border-2 transition-all duration-200',
-              selectedAvatar?.id === avatar.id
+              selectedAvatar?.id === avatar.id && !customAvatarUrl
                 ? 'border-primary shadow-lg shadow-primary/30 scale-105'
                 : 'border-white/10 hover:border-white/30 hover:scale-102'
             )}
@@ -278,12 +362,12 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
               {/* Overlay */}
               <div className={cn(
                 'absolute inset-0 transition-opacity duration-200',
-                selectedAvatar?.id === avatar.id
+                selectedAvatar?.id === avatar.id && !customAvatarUrl
                   ? 'bg-primary/20'
                   : 'bg-black/20 group-hover:bg-black/10'
               )} />
               {/* Check mark */}
-              {selectedAvatar?.id === avatar.id && (
+              {selectedAvatar?.id === avatar.id && !customAvatarUrl && (
                 <div className="absolute top-2 right-2 w-6 h-6 bg-primary rounded-full flex items-center justify-center shadow-lg">
                   <Check className="h-3.5 w-3.5 text-white" />
                 </div>
@@ -296,7 +380,7 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
         ))}
       </div>
 
-      {selectedAvatar && (
+      {selectedAvatar && !customAvatarUrl && (
         <div className="animate-fade-up p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-4">
           <div className="flex gap-1.5">
             {selectedAvatar.palette.map((color, i) => (
@@ -322,7 +406,7 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
         <Button
           className="flex-1 h-11 bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl gap-2 transition-all hover:shadow-lg hover:shadow-primary/25"
           onClick={() => setStep(2)}
-          disabled={!selectedAvatar}
+          disabled={!selectedAvatar && !customAvatarUrl}
         >
           Continuar
           <ChevronRight className="h-4 w-4" />
