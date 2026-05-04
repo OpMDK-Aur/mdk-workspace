@@ -249,18 +249,26 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const supabase = createClient()
 
   const handleStatusChange = async (newStatus: string) => {
+    console.log('[v0] handleStatusChange called with:', newStatus)
+    console.log('[v0] client.id:', client.id)
     setUpdatingStatus(true)
     try {
-      const { error } = await supabase
+      const { error, data } = await supabase
         .from('clientes')
         .update({ status: newStatus })
         .eq('id', client.id)
+        .select()
+      
+      console.log('[v0] Update response - error:', error, 'data:', data)
       
       if (!error) {
         setClientStatus(newStatus)
+        console.log('[v0] Status updated to:', newStatus)
+      } else {
+        console.error('[v0] Error updating status:', error)
       }
     } catch (e) {
-      console.error('Error updating status:', e)
+      console.error('[v0] Exception updating status:', e)
     } finally {
       setUpdatingStatus(false)
     }
