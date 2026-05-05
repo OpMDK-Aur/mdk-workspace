@@ -133,6 +133,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     google_ads_customer_id: '',
     meta_ads_account_id: '',
     discord_channel_name: '',
+    discord_channel_id: '',
     project_manager_id: '',
     account_manager_id: '',
   })
@@ -151,6 +152,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       google_ads_customer_id: '',
       meta_ads_account_id: '',
       discord_channel_name: '',
+      discord_channel_id: '',
       project_manager_id: '',
       account_manager_id: '',
     })
@@ -177,6 +179,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
         google_ads_customer_id: newClient.google_ads_customer_id.trim() || null,
         meta_ads_account_id: newClient.meta_ads_account_id.trim() || null,
         discord_channel_name: newClient.discord_channel_name.trim() || null,
+        discord_channel_id: newClient.discord_channel_id.trim() || null,
         project_manager_id: newClient.project_manager_id || null,
         account_manager_id: newClient.account_manager_id || null,
       }
@@ -476,6 +479,19 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                           placeholder="ADT | Comunicacion interna"
                           className="mt-1"
                         />
+                      </div>
+                      <div>
+                        <Label htmlFor="discord_channel_id">Discord Channel ID</Label>
+                        <Input
+                          id="discord_channel_id"
+                          value={newClient.discord_channel_id}
+                          onChange={(e) => setNewClient(prev => ({ ...prev, discord_channel_id: e.target.value }))}
+                          placeholder="1234567890123456789"
+                          className="mt-1"
+                        />
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          Click derecho en el canal &gt; Copiar ID del canal
+                        </p>
                       </div>
                     </div>
                   </div>
