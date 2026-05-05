@@ -14,13 +14,26 @@ export async function GET(request: NextRequest) {
     if (!error && data.user) {
       const user = data.user
       const userMeta = user.user_metadata
-      const isDiscordAuth = user.app_metadata?.provider === 'discord' || userMeta?.iss?.includes('discord')
+      
+      // Check for Discord in multiple places
+      const discordIdentity = user.identities?.find(i => i.provider === 'discord')
+      const isDiscordAuth = user.app_metadata?.provider === 'discord' || 
+                           user.app_metadata?.providers?.includes('discord') ||
+                           discordIdentity !== undefined
       
       // If this is a Discord auth, save Discord info to colaboradores
-      if (isDiscordAuth || userMeta?.provider_id) {
-        const discordId = userMeta?.provider_id || userMeta?.sub || null
-        const discordUsername = userMeta?.full_name || userMeta?.name || userMeta?.custom_claims?.global_name || null
-        const discordAvatar = userMeta?.avatar_url || null
+      if (isDiscordAuth || discordIdentity) {
+        const discordId = discordIdentity?.id || 
+                         discordIdentity?.identity_data?.provider_id ||
+                         userMeta?.provider_id || 
+                         userMeta?.sub || null
+        const discordUsername = discordIdentity?.identity_data?.full_name ||
+                               discordIdentity?.identity_data?.name ||
+                               discordIdentity?.identity_data?.global_name ||
+                               userMeta?.full_name || 
+                               userMeta?.name || null
+        const discordAvatar = discordIdentity?.identity_data?.avatar_url ||
+                             userMeta?.avatar_url || null
         
         if (discordId) {
           await supabase

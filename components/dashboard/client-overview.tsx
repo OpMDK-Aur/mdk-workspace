@@ -683,7 +683,13 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             </h2>
             <DiscordChat 
               channelId={client.discord_channel_id} 
-              channelName={client.discord_channel_name || 'Canal del cliente'} 
+              channelName={client.discord_channel_name || 'Canal del cliente'}
+              currentUser={currentProfile ? {
+                id: currentProfile.id,
+                nombre: currentProfile.nombre,
+                apellido: currentProfile.apellido,
+                avatar_url: currentProfile.avatar_url,
+              } : null}
             />
           </div>
         ) : (
