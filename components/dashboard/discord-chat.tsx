@@ -113,14 +113,10 @@ function DiscordChatInner({ channelId, channelName, currentUser }: DiscordChatPr
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return
 
-    console.log('[v0] Discord chat - currentUser:', currentUser)
-    
     const messageContent = newMessage
     const senderName = currentUser 
       ? `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
       : null
-    
-    console.log('[v0] Discord chat - senderName:', senderName)
     
     setSending(true)
     setNewMessage('') // Clear input immediately for better UX

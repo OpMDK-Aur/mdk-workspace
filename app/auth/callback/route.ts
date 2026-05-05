@@ -15,11 +15,6 @@ export async function GET(request: NextRequest) {
       const user = data.user
       const userMeta = user.user_metadata
       
-      // Debug: log user metadata to understand structure
-      console.log('[v0] Auth callback - user metadata:', JSON.stringify(userMeta, null, 2))
-      console.log('[v0] Auth callback - app metadata:', JSON.stringify(user.app_metadata, null, 2))
-      console.log('[v0] Auth callback - identities:', JSON.stringify(user.identities, null, 2))
-      
       // Check for Discord in multiple places
       const discordIdentity = user.identities?.find(i => i.provider === 'discord')
       const isDiscordAuth = user.app_metadata?.provider === 'discord' || 
@@ -40,10 +35,8 @@ export async function GET(request: NextRequest) {
         const discordAvatar = discordIdentity?.identity_data?.avatar_url ||
                              userMeta?.avatar_url || null
         
-        console.log('[v0] Discord info extracted:', { discordId, discordUsername, discordAvatar })
-        
         if (discordId) {
-          const { error: updateError } = await supabase
+          await supabase
             .from('colaboradores')
             .update({
               discord_id: discordId,
@@ -51,12 +44,6 @@ export async function GET(request: NextRequest) {
               discord_avatar: discordAvatar,
             })
             .eq('id', user.id)
-          
-          if (updateError) {
-            console.error('[v0] Error updating Discord info:', updateError)
-          } else {
-            console.log('[v0] Discord info saved successfully')
-          }
         }
       }
       
