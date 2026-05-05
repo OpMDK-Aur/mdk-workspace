@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { channelId, content } = await request.json()
+  const { channelId, content, senderName } = await request.json()
 
   if (!channelId || !content) {
     return NextResponse.json({ error: 'channelId and content are required' }, { status: 400 })
@@ -70,6 +70,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Discord bot token not configured' }, { status: 500 })
   }
 
+  // Format message with sender name if provided
+  const formattedContent = senderName 
+    ? `**${senderName}:** ${content}`
+    : content
+
   try {
     const response = await fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
       method: 'POST',
@@ -77,7 +82,7 @@ export async function POST(request: NextRequest) {
         Authorization: `Bot ${BOT_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content: formattedContent }),
     })
 
     if (!response.ok) {

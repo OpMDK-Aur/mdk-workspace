@@ -114,6 +114,10 @@ function DiscordChatInner({ channelId, channelName, currentUser }: DiscordChatPr
     if (!newMessage.trim() || sending) return
 
     const messageContent = newMessage
+    const senderName = currentUser 
+      ? `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
+      : null
+    
     setSending(true)
     setNewMessage('') // Clear input immediately for better UX
     
@@ -121,7 +125,7 @@ function DiscordChatInner({ channelId, channelName, currentUser }: DiscordChatPr
       const response = await fetch('/api/discord/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channelId, content: messageContent }),
+        body: JSON.stringify({ channelId, content: messageContent, senderName }),
       })
 
       const data = await response.json()
@@ -133,17 +137,12 @@ function DiscordChatInner({ channelId, channelName, currentUser }: DiscordChatPr
 
       // Ensure message has all required fields before adding
       if (data.message && data.message.id) {
-        // Use current user info for the message author display
-        const userName = currentUser 
-          ? `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
-          : 'Tu'
-        
         const newMsg: DiscordMessage = {
           id: data.message.id,
-          content: data.message.content || messageContent,
+          content: messageContent, // Use original content without the name prefix
           author: {
             id: currentUser?.id || data.message.author?.id || 'unknown',
-            username: userName,
+            username: senderName || 'Tu',
             avatar: currentUser?.avatar_url || null,
             isBot: false,
           },
