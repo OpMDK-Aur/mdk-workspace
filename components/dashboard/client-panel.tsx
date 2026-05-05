@@ -4,7 +4,7 @@ import type { Client } from '@/lib/types'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Phone, User, Circle, ExternalLink, NotebookText } from 'lucide-react'
+import { Phone, User, Circle, ExternalLink, NotebookText, Hash } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
@@ -126,6 +126,26 @@ export function ClientPanel({ client, onClose }: ClientPanelProps) {
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Discord */}
+          {client.discord_channel_name && (
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                Discord
+              </h3>
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-[#5865F2]/10 border border-[#5865F2]/20">
+                <div className="h-8 w-8 rounded-lg bg-[#5865F2] flex items-center justify-center shrink-0">
+                  <Hash className="h-4 w-4 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground">Canal</p>
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {client.discord_channel_name}
+                  </p>
+                </div>
               </div>
             </div>
           )}
