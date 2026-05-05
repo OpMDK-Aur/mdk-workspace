@@ -100,6 +100,7 @@ export async function POST(request: NextRequest) {
           isBot: message.author.bot || false,
         },
         timestamp: message.timestamp,
+        attachments: message.attachments?.map((a: { url: string; filename: string }) => ({ url: a.url, filename: a.filename })) || [],
       }
     })
   } catch (error) {

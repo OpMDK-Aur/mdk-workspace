@@ -70,22 +70,35 @@ export function DiscordChat({ channelId, channelName }: DiscordChatProps) {
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return
 
+    const messageContent = newMessage
     setSending(true)
+    setNewMessage('') // Clear input immediately for better UX
+    
     try {
       const response = await fetch('/api/discord/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channelId, content: newMessage }),
+        body: JSON.stringify({ channelId, content: messageContent }),
       })
 
       const data = await response.json()
       
       if (!response.ok) {
+        setNewMessage(messageContent) // Restore message on error
         throw new Error(data.error || 'Failed to send message')
       }
 
-      setMessages(prev => [...prev, data.message])
-      setNewMessage('')
+      // Ensure message has all required fields before adding
+      if (data.message && data.message.id) {
+        const newMsg: DiscordMessage = {
+          id: data.message.id,
+          content: data.message.content || messageContent,
+          author: data.message.author || { id: 'unknown', username: 'Tu', avatar: null, isBot: false },
+          timestamp: data.message.timestamp || new Date().toISOString(),
+          attachments: data.message.attachments || [],
+        }
+        setMessages(prev => [...prev, newMsg])
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error sending message')
     } finally {
