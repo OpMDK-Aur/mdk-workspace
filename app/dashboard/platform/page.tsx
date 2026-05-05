@@ -37,6 +37,12 @@ export default async function PlatformPage() {
     .eq('plataforma', 'google_calendar')
     .maybeSingle()
 
+  const { data: discordInfo } = await supabase
+    .from('colaboradores')
+    .select('discord_id, discord_username')
+    .eq('id', user.id)
+    .single()
+
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-8">
       <div>
@@ -49,6 +55,7 @@ export default async function PlatformPage() {
       <PlatformConnectionPanel
         googleToken={googleToken ?? null}
         googleCalendarToken={googleCalendarToken ?? null}
+        discordInfo={discordInfo ?? null}
         appUrl={process.env.NEXT_PUBLIC_APP_URL || ''}
       />
 
