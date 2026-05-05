@@ -77,7 +77,19 @@ export function ActiveTimerBar() {
       const supabase = createClient()
 
       // Obtener usuario actual
-      const { data: { user } } = await supabase.auth.getUser()
+      let user = null
+      try {
+        const { data } = await supabase.auth.getUser()
+        user = data.user
+      } catch (err) {
+        // Ignore lock errors - they happen when multiple components call getUser simultaneously
+        if (err instanceof Error && err.message.includes('Lock')) {
+          // Retry after a short delay
+          await new Promise(resolve => setTimeout(resolve, 100))
+          const { data } = await supabase.auth.getUser()
+          user = data.user
+        }
+      }
 
       if (user) {
         // Obtener colaborador con su departamento
