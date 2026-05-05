@@ -55,6 +55,8 @@ export interface Client {
   crm_type: string | null
   ghl_location_id: string | null
   ghl_token: string | null
+  discord_channel_name: string | null
+  discord_channel_id: string | null
   plan: ClientPlan
   project_manager_id: string | null
   account_manager_id: string | null

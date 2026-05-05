@@ -15,17 +15,33 @@ export async function completeOnboarding(payload: {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
+  // Extract Discord info from user metadata if authenticated via Discord
+  const discordId = user.user_metadata?.provider_id || user.user_metadata?.sub || null
+  const discordUsername = user.user_metadata?.full_name || user.user_metadata?.name || null
+  const discordAvatar = user.user_metadata?.avatar_url || null
+  const isDiscordAuth = user.app_metadata?.provider === 'discord'
+
+  // Build update object
+  const updateData: Record<string, unknown> = {
+    nombre: payload.full_name.split(' ')[0],
+    apellido: payload.full_name.split(' ').slice(1).join(' ') || '',
+    avatar_url: payload.avatar_url ?? '',
+    theme: payload.theme,
+    accent_hue: payload.accent_hue,
+    onboarding_completado: true,
+  }
+
+  // Add Discord info if user authenticated via Discord
+  if (isDiscordAuth && discordId) {
+    updateData.discord_id = discordId
+    updateData.discord_username = discordUsername
+    updateData.discord_avatar = discordAvatar
+  }
+
   // Update colaborador directly instead of using RPC
   const { error } = await supabase
     .from('colaboradores')
-    .update({
-      nombre: payload.full_name.split(' ')[0],
-      apellido: payload.full_name.split(' ').slice(1).join(' ') || '',
-      avatar_url: payload.avatar_url ?? '',
-      theme: payload.theme,
-      accent_hue: payload.accent_hue,
-      onboarding_completado: true,
-    })
+    .update(updateData)
     .eq('id', user.id)
 
   if (error) {

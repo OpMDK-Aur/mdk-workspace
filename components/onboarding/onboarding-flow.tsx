@@ -9,7 +9,7 @@ import { completeOnboarding } from '@/app/actions/complete-onboarding'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import { Check, ChevronRight, ChevronLeft, Sun, Moon, Monitor, Camera, Upload, Loader2 } from 'lucide-react'
+import { Check, ChevronRight, ChevronLeft, Sun, Moon, Monitor, Camera, Upload, Loader2, Calendar, Link2, ExternalLink } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 // ─── AVATAR OPTIONS ────────────────────────────────────────────────────────────
@@ -179,10 +179,30 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
   const [selectedHue, setSelectedHue] = useState(48)
   const [selectedTheme, setSelectedTheme] = useState<'light' | 'dark' | 'system'>('system')
   const [saving, setSaving] = useState(false)
+  const [discordConnected, setDiscordConnected] = useState(false)
+  const [discordLoading, setDiscordLoading] = useState(false)
+  const [discordUser, setDiscordUser] = useState<{ username: string; avatar: string } | null>(null)
+  const [calendarConnected, setCalendarConnected] = useState(false)
+  const [calendarLoading, setCalendarLoading] = useState(false)
   
   const supabase = createClient()
 
-  const TOTAL_STEPS = 4
+  // Check if Discord is already connected (user logged in via Discord)
+  useEffect(() => {
+    const checkDiscordConnection = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.app_metadata?.provider === 'discord' || user?.user_metadata?.provider_id) {
+        setDiscordConnected(true)
+        setDiscordUser({
+          username: user.user_metadata?.full_name || user.user_metadata?.name || 'Usuario Discord',
+          avatar: user.user_metadata?.avatar_url || '',
+        })
+      }
+    }
+    checkDiscordConnection()
+  }, [supabase])
+
+  const TOTAL_STEPS = 5
 
   // Preview color in real-time
   useEffect(() => {
@@ -239,6 +259,26 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
   const handleThemeChange = (t: 'light' | 'dark' | 'system') => {
     setSelectedTheme(t)
     setTheme(t)
+  }
+
+  const handleConnectDiscord = async () => {
+    setDiscordLoading(true)
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'discord',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+        scopes: 'identify email',
+      },
+    })
+    if (error) {
+      console.error('[v0] Discord OAuth error:', error)
+      setDiscordLoading(false)
+    }
+  }
+
+  const handleConnectCalendar = () => {
+    setCalendarLoading(true)
+    window.location.href = '/api/auth/google-calendar'
   }
 
   const handleFinish = async () => {
@@ -478,11 +518,139 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
     </div>
   )
 
-  // ── STEP 3: Color + Tema ────────────────────────────────────────────────────
+  // ── STEP 3: Conectar Integraciones ──────────────────────────────────────────
+  const StepIntegrations = (
+    <div className="animate-fade-up space-y-6">
+      <div className="space-y-1">
+        <p className="text-primary text-sm font-semibold tracking-widest uppercase">Paso 3 de 4</p>
+        <h2 className="text-3xl font-bold text-white">Conecta tus cuentas</h2>
+        <p className="text-white/50">Vincula tus herramientas para una experiencia integrada.</p>
+      </div>
+
+      <div className="space-y-3">
+        {/* Discord Connection */}
+        <div className={cn(
+          'p-4 rounded-2xl border-2 flex items-center gap-4 transition-all duration-200',
+          discordConnected
+            ? 'border-[#5865F2]/50 bg-[#5865F2]/10'
+            : 'border-white/10 bg-white/5'
+        )}>
+          <div className="w-12 h-12 rounded-xl bg-[#5865F2] flex items-center justify-center shrink-0">
+            <svg viewBox="0 0 24 24" className="w-6 h-6 text-white" fill="currentColor">
+              <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-white font-semibold">Discord</p>
+            {discordConnected && discordUser ? (
+              <p className="text-white/60 text-sm truncate">Conectado como {discordUser.username}</p>
+            ) : (
+              <p className="text-white/40 text-sm">Recibe notificaciones y conecta con tu equipo</p>
+            )}
+          </div>
+          {discordConnected ? (
+            <div className="w-8 h-8 bg-[#5865F2] rounded-full flex items-center justify-center shrink-0">
+              <Check className="h-4 w-4 text-white" />
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              className="bg-[#5865F2] hover:bg-[#4752C4] text-white shrink-0"
+              onClick={handleConnectDiscord}
+              disabled={discordLoading}
+            >
+              {discordLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                'Conectar'
+              )}
+            </Button>
+          )}
+        </div>
+
+        {/* Google Calendar Connection */}
+        <div className={cn(
+          'p-4 rounded-2xl border-2 flex items-center gap-4 transition-all duration-200',
+          calendarConnected
+            ? 'border-blue-500/50 bg-blue-500/10'
+            : 'border-white/10 bg-white/5'
+        )}>
+          <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shrink-0">
+            <Calendar className="w-6 h-6 text-blue-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-white font-semibold">Google Calendar</p>
+            {calendarConnected ? (
+              <p className="text-white/60 text-sm">Calendario conectado</p>
+            ) : (
+              <p className="text-white/40 text-sm">Sincroniza reuniones y tareas</p>
+            )}
+          </div>
+          {calendarConnected ? (
+            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center shrink-0">
+              <Check className="h-4 w-4 text-white" />
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-white/20 text-white hover:bg-white/10 shrink-0"
+              onClick={handleConnectCalendar}
+              disabled={calendarLoading}
+            >
+              {calendarLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                'Conectar'
+              )}
+            </Button>
+          )}
+        </div>
+
+        {/* Hostinger - Coming Soon */}
+        <div className="p-4 rounded-2xl border-2 border-white/5 bg-white/[0.02] flex items-center gap-4 opacity-50">
+          <div className="w-12 h-12 rounded-xl bg-[#673DE6]/20 flex items-center justify-center shrink-0">
+            <Link2 className="w-6 h-6 text-[#673DE6]" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-white/60 font-semibold">Hostinger</p>
+            <p className="text-white/30 text-sm">Proximamente disponible</p>
+          </div>
+          <span className="text-xs text-white/30 bg-white/5 px-2 py-1 rounded-full shrink-0">
+            Pronto
+          </span>
+        </div>
+      </div>
+
+      <p className="text-white/30 text-xs text-center">
+        Podes conectar mas servicios despues desde Configuracion
+      </p>
+
+      <div className="flex gap-3">
+        <Button
+          variant="ghost"
+          className="flex-1 h-11 text-white/60 hover:text-white hover:bg-white/5 rounded-xl gap-2"
+          onClick={() => setStep(2)}
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Volver
+        </Button>
+        <Button
+          className="flex-1 h-11 bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl gap-2 transition-all hover:shadow-lg hover:shadow-primary/25"
+          onClick={() => setStep(4)}
+        >
+          {discordConnected ? 'Continuar' : 'Omitir por ahora'}
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  )
+
+  // ── STEP 4: Color + Tema ────────────────────────────────────────────────────
   const StepColorTheme = (
     <div className="animate-fade-up space-y-6">
       <div className="space-y-1">
-        <p className="text-primary text-sm font-semibold tracking-widest uppercase">Paso 3 de 3</p>
+        <p className="text-primary text-sm font-semibold tracking-widest uppercase">Paso 4 de 4</p>
         <h2 className="text-3xl font-bold text-white">Tu paleta de colores</h2>
         <p className="text-white/50">Elige el color principal y el modo visual de tu plataforma.</p>
       </div>
@@ -562,7 +730,7 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
         <Button
           variant="ghost"
           className="flex-1 h-11 text-white/60 hover:text-white hover:bg-white/5 rounded-xl gap-2"
-          onClick={() => setStep(2)}
+          onClick={() => setStep(3)}
         >
           <ChevronLeft className="h-4 w-4" />
           Volver
@@ -588,7 +756,7 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
     </div>
   )
 
-  const steps = [StepWelcome, StepAvatar, StepRole, StepColorTheme]
+  const steps = [StepWelcome, StepAvatar, StepRole, StepIntegrations, StepColorTheme]
 
   return (
     <div className="min-h-screen bg-[oklch(0.10_0.012_245)] flex items-center justify-center relative overflow-hidden">
