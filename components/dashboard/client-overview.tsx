@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 import { ClientBudgetAlertCard } from './client-budget-alert-card'
 import { computeClientBudgetAlerts } from './budget-alerts-shared'
 import { ClientMemoria } from './client-memoria'
+import { ClientComentarios } from './client-comentarios'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
@@ -673,6 +674,12 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
         {/* ── Memoria del Cliente ── */}
         <ClientMemoria clienteId={client.id} />
+
+        {/* ── Comentarios del equipo ── */}
+        <ClientComentarios 
+          clienteId={client.id} 
+          autorActual={currentProfile?.full_name ?? currentProfile?.email ?? 'Usuario'} 
+        />
 
         {/* ── Coming soon sections ── */}
         <div className="space-y-3">
