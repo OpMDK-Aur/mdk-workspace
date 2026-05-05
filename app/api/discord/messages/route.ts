@@ -61,6 +61,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const { channelId, content, senderName } = await request.json()
+  
+  console.log('[v0] Discord POST - received:', { channelId, content, senderName })
 
   if (!channelId || !content) {
     return NextResponse.json({ error: 'channelId and content are required' }, { status: 400 })
@@ -74,6 +76,8 @@ export async function POST(request: NextRequest) {
   const formattedContent = senderName 
     ? `**${senderName}:** ${content}`
     : content
+  
+  console.log('[v0] Discord POST - formatted content:', formattedContent)
 
   try {
     const response = await fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
