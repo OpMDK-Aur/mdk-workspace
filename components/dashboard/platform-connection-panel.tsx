@@ -76,15 +76,19 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, disc
   const handleConnectDiscord = async () => {
     setLoadingDiscord(true)
     const supabase = createClient()
-    const { error } = await supabase.auth.signInWithOAuth({
+    
+    // Use linkIdentity to link Discord to existing user (instead of signInWithOAuth which is for login)
+    const { error } = await supabase.auth.linkIdentity({
       provider: 'discord',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=/dashboard/platform`,
+        redirectTo: `${window.location.origin}/auth/callback/discord`,
         scopes: 'identify email',
       },
     })
+    
     if (error) {
-      setNotice({ type: 'error', message: 'Error al conectar con Discord.' })
+      console.error('[v0] Discord link error:', error)
+      setNotice({ type: 'error', message: `Error al conectar con Discord: ${error.message}` })
       setLoadingDiscord(false)
     }
   }
