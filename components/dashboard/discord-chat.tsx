@@ -1,11 +1,46 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Component, ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Loader2, Send, RefreshCw, MessageSquare, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+// Error boundary to catch any rendering errors
+class DiscordChatErrorBoundary extends Component<
+  { children: ReactNode; channelName: string },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode; channelName: string }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-center">
+          <AlertCircle className="h-8 w-8 text-destructive/50 mx-auto mb-2" />
+          <p className="text-sm text-destructive">Error al cargar el chat de Discord</p>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => this.setState({ hasError: false })}
+            className="mt-2"
+          >
+            Reintentar
+          </Button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 interface DiscordMessage {
   id: string
@@ -25,7 +60,7 @@ interface DiscordChatProps {
   channelName: string
 }
 
-export function DiscordChat({ channelId, channelName }: DiscordChatProps) {
+function DiscordChatInner({ channelId, channelName }: DiscordChatProps) {
   const [messages, setMessages] = useState<DiscordMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -234,7 +269,7 @@ export function DiscordChat({ channelId, channelName }: DiscordChatProps) {
                       <p className="text-sm text-foreground/90 break-words whitespace-pre-wrap">
                         {msg.content}
                       </p>
-                      {msg.attachments.length > 0 && (
+                      {msg.attachments && msg.attachments.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1">
                           {msg.attachments.map((att, i) => (
                             <a
@@ -290,5 +325,14 @@ export function DiscordChat({ channelId, channelName }: DiscordChatProps) {
         </form>
       </div>
     </div>
+  )
+}
+
+// Export wrapped component with error boundary
+export function DiscordChat({ channelId, channelName }: DiscordChatProps) {
+  return (
+    <DiscordChatErrorBoundary channelName={channelName}>
+      <DiscordChatInner channelId={channelId} channelName={channelName} />
+    </DiscordChatErrorBoundary>
   )
 }
