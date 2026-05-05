@@ -11,17 +11,23 @@ export async function GET(request: NextRequest) {
     const { error, data } = await supabase.auth.exchangeCodeForSession(code)
     
     if (!error && data.user) {
-      // Get Discord identity from user identities
+      // Try to get Discord info from identities first, then user_metadata
       const discordIdentity = data.user.identities?.find(i => i.provider === 'discord')
+      const userMeta = data.user.user_metadata
       
-      if (discordIdentity) {
-        // Save Discord info to colaboradores table
-        const discordId = discordIdentity.id
-        const discordUsername = discordIdentity.identity_data?.full_name || 
-                               discordIdentity.identity_data?.name || 
-                               discordIdentity.identity_data?.username || null
-        const discordAvatar = discordIdentity.identity_data?.avatar_url || null
+      // Extract Discord info from either source
+      const discordId = discordIdentity?.id || 
+                       userMeta?.provider_id || 
+                       userMeta?.sub || null
+      const discordUsername = discordIdentity?.identity_data?.full_name || 
+                             discordIdentity?.identity_data?.name || 
+                             userMeta?.full_name || 
+                             userMeta?.name ||
+                             userMeta?.custom_claims?.global_name || null
+      const discordAvatar = discordIdentity?.identity_data?.avatar_url || 
+                           userMeta?.avatar_url || null
 
+      if (discordId) {
         const { error: updateError } = await supabase
           .from('colaboradores')
           .update({

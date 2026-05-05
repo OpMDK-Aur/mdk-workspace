@@ -37,6 +37,7 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, disc
   // Handle URL params for success/error messages
   useEffect(() => {
     const connected = searchParams.get('connected')
+    const discord = searchParams.get('discord')
     const error = searchParams.get('error')
 
     if (connected === 'google' || connected === 'google_ads') {
@@ -46,6 +47,16 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, disc
     }
     if (connected === 'google_calendar') {
       setNotice({ type: 'success', message: 'Cuenta de Google Calendar conectada correctamente.' })
+      router.replace('/dashboard/platform')
+      return
+    }
+    if (discord === 'connected') {
+      setNotice({ type: 'success', message: 'Cuenta de Discord conectada correctamente.' })
+      router.replace('/dashboard/platform')
+      return
+    }
+    if (discord === 'error') {
+      setNotice({ type: 'error', message: 'Error al conectar con Discord.' })
       router.replace('/dashboard/platform')
       return
     }
@@ -77,8 +88,7 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, disc
     setLoadingDiscord(true)
     const supabase = createClient()
     
-    // Use linkIdentity to link Discord to existing user (instead of signInWithOAuth which is for login)
-    const { error } = await supabase.auth.linkIdentity({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: 'discord',
       options: {
         redirectTo: `${window.location.origin}/auth/callback/discord`,
@@ -87,7 +97,7 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, disc
     })
     
     if (error) {
-      console.error('[v0] Discord link error:', error)
+      console.error('[v0] Discord OAuth error:', error)
       setNotice({ type: 'error', message: `Error al conectar con Discord: ${error.message}` })
       setLoadingDiscord(false)
     }
