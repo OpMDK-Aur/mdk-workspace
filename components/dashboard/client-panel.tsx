@@ -47,12 +47,6 @@ function formatCurrency(value: number | null): string {
 
 export function ClientPanel({ client, onClose }: ClientPanelProps) {
   if (!client) return null
-  
-  console.log('[v0] Client data for Discord:', {
-    discord_channel_name: client.discord_channel_name,
-    discord_channel_id: client.discord_channel_id,
-    fullClient: client
-  })
 
   const status = getStatusInfo(client.status)
   const initials = client.business_name
