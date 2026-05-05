@@ -55,12 +55,20 @@ interface DiscordMessage {
   attachments: { url: string; filename: string }[]
 }
 
+interface CurrentUser {
+  id: string
+  nombre: string
+  apellido?: string
+  avatar_url?: string | null
+}
+
 interface DiscordChatProps {
   channelId: string
   channelName: string
+  currentUser?: CurrentUser | null
 }
 
-function DiscordChatInner({ channelId, channelName }: DiscordChatProps) {
+function DiscordChatInner({ channelId, channelName, currentUser }: DiscordChatProps) {
   const [messages, setMessages] = useState<DiscordMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -125,10 +133,20 @@ function DiscordChatInner({ channelId, channelName }: DiscordChatProps) {
 
       // Ensure message has all required fields before adding
       if (data.message && data.message.id) {
+        // Use current user info for the message author display
+        const userName = currentUser 
+          ? `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
+          : 'Tu'
+        
         const newMsg: DiscordMessage = {
           id: data.message.id,
           content: data.message.content || messageContent,
-          author: data.message.author || { id: 'unknown', username: 'Tu', avatar: null, isBot: false },
+          author: {
+            id: currentUser?.id || data.message.author?.id || 'unknown',
+            username: userName,
+            avatar: currentUser?.avatar_url || null,
+            isBot: false,
+          },
           timestamp: data.message.timestamp || new Date().toISOString(),
           attachments: data.message.attachments || [],
         }
@@ -329,10 +347,10 @@ function DiscordChatInner({ channelId, channelName }: DiscordChatProps) {
 }
 
 // Export wrapped component with error boundary
-export function DiscordChat({ channelId, channelName }: DiscordChatProps) {
+export function DiscordChat({ channelId, channelName, currentUser }: DiscordChatProps) {
   return (
     <DiscordChatErrorBoundary channelName={channelName}>
-      <DiscordChatInner channelId={channelId} channelName={channelName} />
+      <DiscordChatInner channelId={channelId} channelName={channelName} currentUser={currentUser} />
     </DiscordChatErrorBoundary>
   )
 }
