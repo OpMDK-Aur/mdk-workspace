@@ -12,11 +12,33 @@ export async function GET(request: NextRequest) {
     const { error, data } = await supabase.auth.exchangeCodeForSession(code)
     
     if (!error && data.user) {
+      const user = data.user
+      const userMeta = user.user_metadata
+      const isDiscordAuth = user.app_metadata?.provider === 'discord' || userMeta?.iss?.includes('discord')
+      
+      // If this is a Discord auth, save Discord info to colaboradores
+      if (isDiscordAuth || userMeta?.provider_id) {
+        const discordId = userMeta?.provider_id || userMeta?.sub || null
+        const discordUsername = userMeta?.full_name || userMeta?.name || userMeta?.custom_claims?.global_name || null
+        const discordAvatar = userMeta?.avatar_url || null
+        
+        if (discordId) {
+          await supabase
+            .from('colaboradores')
+            .update({
+              discord_id: discordId,
+              discord_username: discordUsername,
+              discord_avatar: discordAvatar,
+            })
+            .eq('id', user.id)
+        }
+      }
+      
       // Check if user has completed onboarding
       const { data: colaborador } = await supabase
         .from('colaboradores')
         .select('onboarding_completado')
-        .eq('id', data.user.id)
+        .eq('id', user.id)
         .single()
       
       // If next param is provided, use it; otherwise decide based on onboarding status

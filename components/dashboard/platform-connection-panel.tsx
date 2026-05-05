@@ -91,7 +91,7 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, disc
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'discord',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback/discord`,
+        redirectTo: `${window.location.origin}/auth/callback?next=/dashboard/platform`,
         scopes: 'identify email',
       },
     })
