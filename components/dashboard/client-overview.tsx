@@ -23,6 +23,7 @@ import { ClientBudgetAlertCard } from './client-budget-alert-card'
 import { computeClientBudgetAlerts } from './budget-alerts-shared'
 import { ClientMemoria } from './client-memoria'
 import { DiscordChat } from './discord-chat'
+import { ClientComments } from './client-comments'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
@@ -671,6 +672,17 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             </div>
           )}
         </div>
+
+        {/* ── Comentarios del Cliente ── */}
+        <ClientComments 
+          clientId={client.id} 
+          currentUser={currentProfile ? {
+            id: currentProfile.id,
+            nombre: currentProfile.nombre,
+            apellido: currentProfile.apellido,
+            avatar_url: currentProfile.avatar_url,
+          } : null}
+        />
 
         {/* ── Memoria del Cliente ── */}
         <ClientMemoria clienteId={client.id} />
