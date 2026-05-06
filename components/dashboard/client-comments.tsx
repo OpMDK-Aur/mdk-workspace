@@ -6,8 +6,15 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Loader2, Send, Trash2, MessageSquare } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import type { ClientComment } from '@/lib/types'
+
+interface ComentarioCliente {
+  id: string
+  cliente_id: string
+  contenido: string
+  autor: string
+  creado_en: string
+  actualizado_en: string
+}
 
 interface CurrentUser {
   id: string
@@ -22,7 +29,7 @@ interface ClientCommentsProps {
 }
 
 export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
-  const [comments, setComments] = useState<ClientComment[]>([])
+  const [comments, setComments] = useState<ComentarioCliente[]>([])
   const [newComment, setNewComment] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
@@ -37,10 +44,10 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       setError(null)
 
       const { data, error: fetchError } = await supabase
-        .from('client_comments')
+        .from('comentarios_clientes')
         .select('*')
-        .eq('client_id', clientId)
-        .order('created_at', { ascending: false })
+        .eq('cliente_id', clientId)
+        .order('creado_en', { ascending: false })
 
       if (fetchError) {
         setError('Error al cargar comentarios')
@@ -62,16 +69,14 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     setSending(true)
     setError(null)
 
-    const userName = `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
+    const autorName = `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
 
     const { data, error: insertError } = await supabase
-      .from('client_comments')
+      .from('comentarios_clientes')
       .insert({
-        client_id: clientId,
-        content: newComment.trim(),
-        user_id: currentUser.id,
-        user_name: userName,
-        user_avatar: currentUser.avatar_url || null,
+        cliente_id: clientId,
+        contenido: newComment.trim(),
+        autor: autorName,
       })
       .select()
       .single()
@@ -90,7 +95,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   // Delete comment
   const handleDeleteComment = async (commentId: string) => {
     const { error: deleteError } = await supabase
-      .from('client_comments')
+      .from('comentarios_clientes')
       .delete()
       .eq('id', commentId)
 
@@ -116,6 +121,11 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     if (diffHours < 24) return `Hace ${diffHours}h`
     if (diffDays < 7) return `Hace ${diffDays}d`
     return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+  }
+
+  // Get initials from author name
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
   }
 
   return (
@@ -201,20 +211,19 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
             >
               <div className="flex items-start gap-3">
                 <Avatar className="h-8 w-8 shrink-0">
-                  <AvatarImage src={comment.user_avatar || undefined} />
                   <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                    {comment.user_name[0]}
+                    {getInitials(comment.autor)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{comment.user_name}</span>
+                      <span className="text-sm font-medium">{comment.autor}</span>
                       <span className="text-xs text-muted-foreground">
-                        {formatDate(comment.created_at)}
+                        {formatDate(comment.creado_en)}
                       </span>
                     </div>
-                    {currentUser?.id === comment.user_id && (
+                    {currentUser && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -225,7 +234,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                       </Button>
                     )}
                   </div>
-                  <p className="text-sm mt-1 whitespace-pre-wrap">{comment.content}</p>
+                  <p className="text-sm mt-1 whitespace-pre-wrap">{comment.contenido}</p>
                 </div>
               </div>
             </div>

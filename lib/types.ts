@@ -316,16 +316,6 @@ export interface TaskComment {
   createdAt: Date
 }
 
-export interface ClientComment {
-  id: string
-  client_id: string
-  content: string
-  user_id: string
-  user_name: string
-  user_avatar: string | null
-  created_at: string
-}
-
 export interface TaskFile {
   id: string
   name: string
