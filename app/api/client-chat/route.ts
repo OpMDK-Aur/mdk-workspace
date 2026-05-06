@@ -15,7 +15,9 @@ interface ClientChatRequest {
 
 export async function POST(req: Request) {
   try {
-    const { messages, clientId }: ClientChatRequest = await req.json()
+    const body = await req.json()
+    console.log('[v0] Client chat received:', JSON.stringify(body, null, 2))
+    const { messages, clientId }: ClientChatRequest = body
 
     const supabase = await createClient()
 

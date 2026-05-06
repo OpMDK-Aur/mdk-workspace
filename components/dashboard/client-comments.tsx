@@ -16,7 +16,16 @@ import {
 } from '@/components/ui/select'
 import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar } from 'lucide-react'
 import { useChat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
 import { cn } from '@/lib/utils'
+
+function getMessageText(parts: Array<{ type: string; text?: string }> | undefined): string {
+  if (!parts || !Array.isArray(parts)) return ''
+  return parts
+    .filter((p): p is { type: 'text'; text: string } => p.type === 'text' && typeof p.text === 'string')
+    .map((p) => p.text)
+    .join('')
+}
 
 interface ComentarioCliente {
   id: string
@@ -57,10 +66,19 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   const chatContainerRef = useRef<HTMLDivElement>(null)
 
   // AI Chat
-  const { messages, input, handleInputChange, handleSubmit, isLoading: aiLoading, setMessages } = useChat({
-    api: '/api/client-chat',
-    body: { clientId },
+  const [aiInput, setAiInput] = useState('')
+  const { messages, sendMessage, status, setMessages } = useChat({
+    transport: new DefaultChatTransport({
+      api: '/api/client-chat',
+    }),
   })
+  const aiLoading = status === 'streaming' || status === 'submitted'
+  
+  const handleAiSend = () => {
+    if (!aiInput.trim() || aiLoading) return
+    sendMessage({ text: aiInput }, { body: { clientId } })
+    setAiInput('')
+  }
 
   // Scroll to bottom when new AI messages arrive
   useEffect(() => {
@@ -488,16 +506,12 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                     )}
                   >
                     {message.role === 'assistant' ? (
-                      <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                        {message.parts?.map((part, i) => {
-                          if (part.type === 'text') {
-                            return <div key={i} dangerouslySetInnerHTML={{ __html: formatMarkdown(part.text) }} />
-                          }
-                          return null
-                        })}
-                      </div>
+                      <div 
+                        className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+                        dangerouslySetInnerHTML={{ __html: formatMarkdown(getMessageText(message.parts)) }}
+                      />
                     ) : (
-                      <p>{message.parts?.map((part, i) => part.type === 'text' ? part.text : null)}</p>
+                      <p className="whitespace-pre-wrap">{getMessageText(message.parts)}</p>
                     )}
                   </div>
                 </div>
@@ -518,22 +532,28 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
             </div>
 
             {/* Chat input */}
-            <form onSubmit={handleSubmit} className="border-t p-3 flex gap-2">
+            <div className="border-t p-3 flex gap-2">
               <Input
-                value={input}
-                onChange={handleInputChange}
+                value={aiInput}
+                onChange={(e) => setAiInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    handleAiSend()
+                  }
+                }}
                 placeholder="Pregunta algo sobre el cliente..."
                 className="flex-1 h-9 text-sm"
                 disabled={aiLoading}
               />
-              <Button type="submit" size="sm" disabled={!input?.trim() || aiLoading} className="h-9 px-3">
+              <Button type="button" size="sm" onClick={handleAiSend} disabled={!aiInput?.trim() || aiLoading} className="h-9 px-3">
                 {aiLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Send className="h-4 w-4" />
                 )}
               </Button>
-            </form>
+            </div>
           </div>
 
           {/* Clear chat button */}
