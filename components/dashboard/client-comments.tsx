@@ -526,7 +526,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                 className="flex-1 h-9 text-sm"
                 disabled={aiLoading}
               />
-              <Button type="submit" size="sm" disabled={!input.trim() || aiLoading} className="h-9 px-3">
+              <Button type="submit" size="sm" disabled={!input?.trim() || aiLoading} className="h-9 px-3">
                 {aiLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
