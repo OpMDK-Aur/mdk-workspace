@@ -41,6 +41,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
   Plus,
   Search,
   Building2,
@@ -127,6 +133,43 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [amFilter, setAmFilter] = useState<string>('all')
   const [platformFilter, setPlatformFilter] = useState<string>('all')
   
+  // Advanced filter state
+  const [feeMinFilter, setFeeMinFilter] = useState<string>('')
+  const [feeMaxFilter, setFeeMaxFilter] = useState<string>('')
+  const [sortBy, setSortBy] = useState<string>('business_name')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  
+  // Visible columns
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('clientVisibleColumns')
+      return saved ? JSON.parse(saved) : ['cliente', 'contacto', 'plan', 'fee_mdk', 'fee_aurelia', 'estado', 'plataformas']
+    }
+    return ['cliente', 'contacto', 'plan', 'fee_mdk', 'fee_aurelia', 'estado', 'plataformas']
+  })
+
+  const allColumns = [
+    { id: 'cliente', label: 'Cliente' },
+    { id: 'contacto', label: 'Contacto' },
+    { id: 'plan', label: 'Plan' },
+    { id: 'fee_mdk', label: 'Fee MDK' },
+    { id: 'fee_aurelia', label: 'Fee Aurelia' },
+    { id: 'estado', label: 'Estado' },
+    { id: 'plataformas', label: 'Plataformas' },
+    { id: 'pm', label: 'Project Manager' },
+    { id: 'am', label: 'Account Manager' },
+    { id: 'nps', label: 'NPS' },
+  ]
+
+  const toggleColumn = (columnId: string) => {
+    const updated = visibleColumns.includes(columnId)
+      ? visibleColumns.filter(c => c !== columnId)
+      : [...visibleColumns, columnId]
+    setVisibleColumns(updated)
+    localStorage.setItem('clientVisibleColumns', JSON.stringify(updated))
+  }
+  
   // Saved filters
   interface SavedFilter {
     name: string
@@ -135,10 +178,15 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     pm: string
     am: string
     platform: string
+    feeMin: string
+    feeMax: string
+    sortBy: string
+    sortOrder: 'asc' | 'desc'
+    columns: string[]
   }
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('clientFilters')
+      const saved = localStorage.getItem('clientFiltersV2')
       return saved ? JSON.parse(saved) : []
     }
     return []
@@ -146,7 +194,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [saveFilterName, setSaveFilterName] = useState('')
   const [saveFilterOpen, setSaveFilterOpen] = useState(false)
 
-  const hasActiveFilters = statusFilter !== 'all' || planFilter !== 'all' || pmFilter !== 'all' || amFilter !== 'all' || platformFilter !== 'all' || searchTerm !== ''
+  const hasActiveFilters = statusFilter !== 'all' || planFilter !== 'all' || pmFilter !== 'all' || amFilter !== 'all' || platformFilter !== 'all' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== ''
 
   const clearAllFilters = () => {
     setSearchTerm('')
@@ -155,6 +203,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setPmFilter('all')
     setAmFilter('all')
     setPlatformFilter('all')
+    setFeeMinFilter('')
+    setFeeMaxFilter('')
   }
 
   const saveCurrentFilter = () => {
@@ -166,10 +216,15 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       pm: pmFilter,
       am: amFilter,
       platform: platformFilter,
+      feeMin: feeMinFilter,
+      feeMax: feeMaxFilter,
+      sortBy,
+      sortOrder,
+      columns: visibleColumns,
     }
     const updated = [...savedFilters, newFilter]
     setSavedFilters(updated)
-    localStorage.setItem('clientFilters', JSON.stringify(updated))
+    localStorage.setItem('clientFiltersV2', JSON.stringify(updated))
     setSaveFilterName('')
     setSaveFilterOpen(false)
   }
@@ -180,12 +235,20 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setPmFilter(filter.pm)
     setAmFilter(filter.am)
     setPlatformFilter(filter.platform)
+    setFeeMinFilter(filter.feeMin || '')
+    setFeeMaxFilter(filter.feeMax || '')
+    setSortBy(filter.sortBy || 'business_name')
+    setSortOrder(filter.sortOrder || 'asc')
+    if (filter.columns?.length) {
+      setVisibleColumns(filter.columns)
+      localStorage.setItem('clientVisibleColumns', JSON.stringify(filter.columns))
+    }
   }
 
   const deleteFilter = (index: number) => {
     const updated = savedFilters.filter((_, i) => i !== index)
     setSavedFilters(updated)
-    localStorage.setItem('clientFilters', JSON.stringify(updated))
+    localStorage.setItem('clientFiltersV2', JSON.stringify(updated))
   }
 
   // Create dialog state
@@ -316,7 +379,48 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       (platformFilter === 'meta' && client.meta_ads_account_id) ||
       (platformFilter === 'both' && client.google_ads_customer_id && client.meta_ads_account_id) ||
       (platformFilter === 'none' && !client.google_ads_customer_id && !client.meta_ads_account_id)
-    return matchesSearch && matchesStatus && matchesPlan && matchesPm && matchesAm && matchesPlatform
+    const totalFee = (client.fee_mdk || 0) + (client.fee_aurelia || 0)
+    const matchesFeeMin = !feeMinFilter || totalFee >= parseFloat(feeMinFilter)
+    const matchesFeeMax = !feeMaxFilter || totalFee <= parseFloat(feeMaxFilter)
+    return matchesSearch && matchesStatus && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesFeeMin && matchesFeeMax
+  }).sort((a, b) => {
+    let valueA: string | number = ''
+    let valueB: string | number = ''
+    
+    switch (sortBy) {
+      case 'business_name':
+        valueA = a.business_name.toLowerCase()
+        valueB = b.business_name.toLowerCase()
+        break
+      case 'fee_mdk':
+        valueA = a.fee_mdk || 0
+        valueB = b.fee_mdk || 0
+        break
+      case 'fee_aurelia':
+        valueA = a.fee_aurelia || 0
+        valueB = b.fee_aurelia || 0
+        break
+      case 'fee_total':
+        valueA = (a.fee_mdk || 0) + (a.fee_aurelia || 0)
+        valueB = (b.fee_mdk || 0) + (b.fee_aurelia || 0)
+        break
+      case 'nps':
+        valueA = a.nps_score ?? -1
+        valueB = b.nps_score ?? -1
+        break
+      case 'status':
+        const statusOrder = { verde: 0, amarillo: 1, naranja: 2, rojo: 3 }
+        valueA = statusOrder[a.status as keyof typeof statusOrder] ?? 4
+        valueB = statusOrder[b.status as keyof typeof statusOrder] ?? 4
+        break
+      default:
+        valueA = a.business_name.toLowerCase()
+        valueB = b.business_name.toLowerCase()
+    }
+    
+    if (valueA < valueB) return sortOrder === 'asc' ? -1 : 1
+    if (valueA > valueB) return sortOrder === 'asc' ? 1 : -1
+    return 0
   })
 
   const projectManagers = profiles.filter(p => p.role === 'project_manager' || p.role === 'direccion')
