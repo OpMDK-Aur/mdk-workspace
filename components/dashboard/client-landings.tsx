@@ -11,13 +11,9 @@ import { Badge } from '@/components/ui/badge'
 import { Plus, ExternalLink, Trash2, Loader2, Globe, Pencil } from 'lucide-react'
 
 interface Landing {
-  id: string
-  cliente_id: string
   nombre: string
   url: string
   tipo: string
-  activa: boolean
-  created_at: string
 }
 
 interface ClientLandingsProps {
@@ -38,7 +34,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingLanding, setEditingLanding] = useState<Landing | null>(null)
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [form, setForm] = useState({ nombre: '', url: '', tipo: 'landing' })
 
   const supabase = createClient()
@@ -50,82 +46,69 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
   const fetchLandings = async () => {
     setLoading(true)
     const { data, error } = await supabase
-      .from('cliente_landings')
-      .select('*')
-      .eq('cliente_id', clientId)
-      .order('created_at', { ascending: false })
+      .from('clientes')
+      .select('landings')
+      .eq('id', clientId)
+      .single()
 
     if (!error && data) {
-      setLandings(data)
+      setLandings(data.landings || [])
     }
     setLoading(false)
+  }
+
+  const saveLandings = async (newLandings: Landing[]) => {
+    setSaving(true)
+    const { error } = await supabase
+      .from('clientes')
+      .update({ landings: newLandings })
+      .eq('id', clientId)
+
+    if (!error) {
+      setLandings(newLandings)
+    }
+    setSaving(false)
+    return !error
   }
 
   const handleSave = async () => {
     if (!form.nombre.trim() || !form.url.trim()) return
 
-    setSaving(true)
-    
-    if (editingLanding) {
-      const { error } = await supabase
-        .from('cliente_landings')
-        .update({
-          nombre: form.nombre.trim(),
-          url: form.url.trim(),
-          tipo: form.tipo,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', editingLanding.id)
+    const newLanding: Landing = {
+      nombre: form.nombre.trim(),
+      url: form.url.trim(),
+      tipo: form.tipo,
+    }
 
-      if (!error) {
-        setLandings(prev => prev.map(l => 
-          l.id === editingLanding.id 
-            ? { ...l, nombre: form.nombre.trim(), url: form.url.trim(), tipo: form.tipo }
-            : l
-        ))
-      }
+    let newLandings: Landing[]
+    if (editingIndex !== null) {
+      newLandings = landings.map((l, i) => i === editingIndex ? newLanding : l)
     } else {
-      const { data, error } = await supabase
-        .from('cliente_landings')
-        .insert({
-          cliente_id: clientId,
-          nombre: form.nombre.trim(),
-          url: form.url.trim(),
-          tipo: form.tipo,
-        })
-        .select()
-        .single()
-
-      if (!error && data) {
-        setLandings(prev => [data, ...prev])
-      }
+      newLandings = [...landings, newLanding]
     }
 
-    setSaving(false)
-    setDialogOpen(false)
-    setEditingLanding(null)
-    setForm({ nombre: '', url: '', tipo: 'landing' })
-  }
-
-  const handleDelete = async (id: string) => {
-    const { error } = await supabase
-      .from('cliente_landings')
-      .delete()
-      .eq('id', id)
-
-    if (!error) {
-      setLandings(prev => prev.filter(l => l.id !== id))
+    const success = await saveLandings(newLandings)
+    if (success) {
+      setDialogOpen(false)
+      setEditingIndex(null)
+      setForm({ nombre: '', url: '', tipo: 'landing' })
     }
   }
 
-  const openEdit = (landing: Landing) => {
-    setEditingLanding(landing)
+  const handleDelete = async (index: number) => {
+    const newLandings = landings.filter((_, i) => i !== index)
+    await saveLandings(newLandings)
+  }
+
+  const openEdit = (index: number) => {
+    const landing = landings[index]
+    setEditingIndex(index)
     setForm({ nombre: landing.nombre, url: landing.url, tipo: landing.tipo })
     setDialogOpen(true)
   }
 
   const openNew = () => {
-    setEditingLanding(null)
+    setEditingIndex(null)
     setForm({ nombre: '', url: '', tipo: 'landing' })
     setDialogOpen(true)
   }
@@ -144,7 +127,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{editingLanding ? 'Editar Landing' : 'Agregar Landing'}</DialogTitle>
+              <DialogTitle>{editingIndex !== null ? 'Editar Landing' : 'Agregar Landing'}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
@@ -182,7 +165,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
               </div>
               <Button onClick={handleSave} disabled={saving || !form.nombre.trim() || !form.url.trim()} className="w-full">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                {editingLanding ? 'Guardar cambios' : 'Agregar'}
+                {editingIndex !== null ? 'Guardar cambios' : 'Agregar'}
               </Button>
             </div>
           </DialogContent>
@@ -197,9 +180,9 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
         <p className="text-sm text-muted-foreground text-center py-4">Sin landings configuradas</p>
       ) : (
         <div className="space-y-2">
-          {landings.map(landing => (
+          {landings.map((landing, index) => (
             <div
-              key={landing.id}
+              key={index}
               className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors group"
             >
               <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
@@ -227,7 +210,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
                   variant="ghost"
                   size="sm"
                   className="h-7 w-7 p-0"
-                  onClick={() => openEdit(landing)}
+                  onClick={() => openEdit(index)}
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
@@ -235,7 +218,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
                   variant="ghost"
                   size="sm"
                   className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                  onClick={() => handleDelete(landing.id)}
+                  onClick={() => handleDelete(index)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>

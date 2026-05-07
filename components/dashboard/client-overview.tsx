@@ -29,6 +29,7 @@ import { ClientCRMs } from './client-crms'
 import { ClientAdjuntos } from './client-adjuntos'
 import { ClientCotizaciones } from './client-cotizaciones'
 import { ClientTareas } from './client-tareas'
+import { ClientNPS } from './client-nps'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
@@ -678,14 +679,15 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           )}
         </div>
 
-        {/* ── Landings y CRMs ── */}
-        <div className="grid md:grid-cols-2 gap-4">
+        {/* ── Landings, CRMs y NPS ── */}
+        <div className="grid md:grid-cols-3 gap-4">
           <div className="rounded-xl border bg-card p-5">
             <ClientLandings clientId={client.id} />
           </div>
           <div className="rounded-xl border bg-card p-5">
             <ClientCRMs clientId={client.id} />
           </div>
+          <ClientNPS clientId={client.id} currentUserId={currentProfile?.id} />
         </div>
 
         {/* ── Tareas, Cotizaciones, Adjuntos ── */}
