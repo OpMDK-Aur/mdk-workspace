@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { ExternalLink, Loader2, Database, Pencil, Trash2 } from 'lucide-react'
+import { ExternalLink, Loader2, Database, Pencil, Trash2, Eye, EyeOff, Copy, Check } from 'lucide-react'
 
 interface ClientCRMsProps {
   clientId: string
@@ -27,15 +27,25 @@ const TIPOS_CRM = [
 ]
 
 export function ClientCRMs({ clientId }: ClientCRMsProps) {
-  const [crmData, setCrmData] = useState<{ tipo: string | null; url: string | null; location_id: string | null }>({
+  const [crmData, setCrmData] = useState<{ 
+    tipo: string | null
+    url: string | null
+    location_id: string | null
+    usuario: string | null
+    password: string | null
+  }>({
     tipo: null,
     url: null,
     location_id: null,
+    usuario: null,
+    password: null,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [form, setForm] = useState({ tipo: 'ghl', url: '', location_id: '' })
+  const [form, setForm] = useState({ tipo: 'ghl', url: '', location_id: '', usuario: '', password: '' })
+  const [showPassword, setShowPassword] = useState(false)
+  const [copied, setCopied] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -47,7 +57,7 @@ export function ClientCRMs({ clientId }: ClientCRMsProps) {
     setLoading(true)
     const { data, error } = await supabase
       .from('clientes')
-      .select('crm_tipo, crm_url, crm_location_id')
+      .select('crm_tipo, crm_url, crm_location_id, crm_usuario, crm_password')
       .eq('id', clientId)
       .single()
 
@@ -56,9 +66,17 @@ export function ClientCRMs({ clientId }: ClientCRMsProps) {
         tipo: data.crm_tipo,
         url: data.crm_url,
         location_id: data.crm_location_id,
+        usuario: data.crm_usuario,
+        password: data.crm_password,
       })
     }
     setLoading(false)
+  }
+  
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text)
+    setCopied(field)
+    setTimeout(() => setCopied(null), 2000)
   }
 
   const handleSave = async () => {
@@ -71,6 +89,8 @@ export function ClientCRMs({ clientId }: ClientCRMsProps) {
         crm_tipo: form.tipo,
         crm_url: form.url.trim() || null,
         crm_location_id: form.location_id.trim() || null,
+        crm_usuario: form.usuario.trim() || null,
+        crm_password: form.password.trim() || null,
       })
       .eq('id', clientId)
 
@@ -79,6 +99,8 @@ export function ClientCRMs({ clientId }: ClientCRMsProps) {
         tipo: form.tipo,
         url: form.url.trim() || null,
         location_id: form.location_id.trim() || null,
+        usuario: form.usuario.trim() || null,
+        password: form.password.trim() || null,
       })
       setDialogOpen(false)
     }
@@ -93,11 +115,13 @@ export function ClientCRMs({ clientId }: ClientCRMsProps) {
         crm_tipo: null,
         crm_url: null,
         crm_location_id: null,
+        crm_usuario: null,
+        crm_password: null,
       })
       .eq('id', clientId)
 
     if (!error) {
-      setCrmData({ tipo: null, url: null, location_id: null })
+      setCrmData({ tipo: null, url: null, location_id: null, usuario: null, password: null })
     }
     setSaving(false)
   }
@@ -107,7 +131,10 @@ export function ClientCRMs({ clientId }: ClientCRMsProps) {
       tipo: crmData.tipo || 'ghl',
       url: crmData.url || '',
       location_id: crmData.location_id || '',
+      usuario: crmData.usuario || '',
+      password: crmData.password || '',
     })
+    setShowPassword(false)
     setDialogOpen(true)
   }
 
@@ -169,6 +196,45 @@ export function ClientCRMs({ clientId }: ClientCRMsProps) {
                   className="mt-1"
                 />
               </div>
+              
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium text-muted-foreground mb-3">Credenciales de acceso (opcional)</p>
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="usuario">Usuario / Email</Label>
+                    <Input
+                      id="usuario"
+                      value={form.usuario}
+                      onChange={(e) => setForm(prev => ({ ...prev, usuario: e.target.value }))}
+                      placeholder="usuario@ejemplo.com"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="password">Contraseña</Label>
+                    <div className="relative mt-1">
+                      <Input
+                        id="password"
+                        type={showPassword ? 'text' : 'password'}
+                        value={form.password}
+                        onChange={(e) => setForm(prev => ({ ...prev, password: e.target.value }))}
+                        placeholder="••••••••"
+                        className="pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
               <Button onClick={handleSave} disabled={saving} className="w-full">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Guardar
@@ -198,6 +264,29 @@ export function ClientCRMs({ clientId }: ClientCRMsProps) {
             </div>
             {crmData.location_id && (
               <p className="text-xs text-muted-foreground truncate">ID: {crmData.location_id}</p>
+            )}
+            {crmData.usuario && (
+              <div className="flex items-center gap-1 mt-1">
+                <p className="text-xs text-muted-foreground truncate">Usuario: {crmData.usuario}</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 w-5 p-0"
+                  onClick={() => copyToClipboard(crmData.usuario!, 'usuario')}
+                >
+                  {copied === 'usuario' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                </Button>
+                {crmData.password && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 px-1 text-[10px]"
+                    onClick={() => copyToClipboard(crmData.password!, 'password')}
+                  >
+                    {copied === 'password' ? <Check className="h-3 w-3 text-green-500" /> : 'Copiar clave'}
+                  </Button>
+                )}
+              </div>
             )}
           </div>
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
