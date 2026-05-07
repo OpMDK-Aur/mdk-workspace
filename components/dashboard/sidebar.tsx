@@ -50,6 +50,7 @@ import {
 } from 'lucide-react'
 import { UserSettingsDialog } from './user-settings-dialog'
 import { NotificationsPanel } from './notifications-panel'
+import { ClientSearch } from './client-search'
 
 interface SidebarProps {
   user: User
@@ -143,6 +144,19 @@ export function Sidebar({
   const [wasCollapsed, setWasCollapsed] = useState(false)
   const [notificationCount, setNotificationCount] = useState(0)
   const [notificationsPanelOpen, setNotificationsPanelOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  // Keyboard shortcut for search (Cmd+K / Ctrl+K)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   // Fetch unread notification count
   useEffect(() => {
@@ -270,11 +284,11 @@ export function Sidebar({
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-9 w-9">
+                <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setSearchOpen(true)}>
                   <Search className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="right">Buscar</TooltipContent>
+              <TooltipContent side="right">Buscar (Cmd+K)</TooltipContent>
             </Tooltip>
           </div>
 
@@ -485,11 +499,11 @@ export function Sidebar({
               </Button>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto" onClick={() => setSearchOpen(true)}>
                     <Search className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Buscar</TooltipContent>
+                <TooltipContent>Buscar (Cmd+K)</TooltipContent>
               </Tooltip>
             </div>
 
@@ -705,6 +719,8 @@ export function Sidebar({
         user={user}
         profile={profile}
       />
+
+      <ClientSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </TooltipProvider>
   )
 }
