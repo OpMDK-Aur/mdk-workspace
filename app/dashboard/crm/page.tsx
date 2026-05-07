@@ -30,8 +30,8 @@ export default async function CRMPage() {
     }
   }
 
-  // Filter only clients with GHL configured (crm_tipo = 'ghl' and has location_id)
-  const ghlClients = clients.filter(c => c.crm_tipo === 'ghl' && c.crm_location_id)
+  // Filter only clients with GHL configured (crm_type = 'ghl' and has ghl_location_id)
+  const ghlClients = clients.filter(c => c.crm_type === 'ghl' && c.ghl_location_id)
 
   return (
     <CRMContent clients={ghlClients} allClients={clients} profile={profile} />
