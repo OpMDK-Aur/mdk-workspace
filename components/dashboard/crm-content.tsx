@@ -392,7 +392,7 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
                 <SelectContent>
                   {clients.map(client => (
                     <SelectItem key={client.id} value={client.id}>
-                      {client.business_name}
+                      {client.nombre_del_negocio}
                     </SelectItem>
                   ))}
                 </SelectContent>

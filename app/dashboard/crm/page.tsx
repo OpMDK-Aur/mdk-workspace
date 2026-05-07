@@ -16,7 +16,7 @@ export default async function CRMPage() {
 
   let clients: any[] = []
   if (isFullAccess) {
-    const { data } = await supabase.from('clientes').select('*').order('business_name')
+    const { data } = await supabase.from('clientes').select('*').order('nombre_del_negocio')
     clients = data || []
   } else {
     const { data: access } = await supabase
@@ -25,13 +25,13 @@ export default async function CRMPage() {
       .eq('user_id', user?.id ?? '')
     const ids = access?.map((a: any) => a.client_id) || []
     if (ids.length > 0) {
-      const { data } = await supabase.from('clientes').select('*').in('id', ids).order('business_name')
+      const { data } = await supabase.from('clientes').select('*').in('id', ids).order('nombre_del_negocio')
       clients = data || []
     }
   }
 
-  // Filter only clients with GHL configured
-  const ghlClients = clients.filter(c => c.crm_type === 'ghl' && c.ghl_location_id && c.ghl_token)
+  // Filter only clients with GHL configured (crm_tipo = 'ghl' and has location_id)
+  const ghlClients = clients.filter(c => c.crm_tipo === 'ghl' && c.crm_location_id)
 
   return (
     <CRMContent clients={ghlClients} allClients={clients} profile={profile} />

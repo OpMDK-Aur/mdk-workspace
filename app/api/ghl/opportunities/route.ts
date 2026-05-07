@@ -79,13 +79,13 @@ export async function GET(req: NextRequest) {
     // Load client CRM credentials from Supabase
     const { data: client, error: clientErr } = await supabase
       .from('clientes')
-      .select('id, business_name, crm_type, ghl_location_id, ghl_token')
+      .select('id, nombre_del_negocio, crm_tipo, crm_location_id, ghl_token')
       .eq('id', clientId)
       .single()
 
     if (clientErr || !client) return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
-    if (client.crm_type !== 'ghl') return NextResponse.json({ error: `CRM type "${client.crm_type}" no soportado`, crm_type: client.crm_type }, { status: 400 })
-    if (!client.ghl_location_id || !client.ghl_token) {
+    if (client.crm_tipo !== 'ghl') return NextResponse.json({ error: `CRM type "${client.crm_tipo}" no soportado`, crm_type: client.crm_tipo }, { status: 400 })
+    if (!client.crm_location_id || !client.ghl_token) {
       return NextResponse.json({ error: 'Credenciales GHL no configuradas. Configuralas en Plataformas.' }, { status: 400 })
     }
 
@@ -94,13 +94,13 @@ export async function GET(req: NextRequest) {
     let currentPage = 1 // GHL uses 1-indexed pages
     let hasMorePages = true
 
-    console.log(`[v0] GHL Opportunities: Starting pagination for client ${client.business_name}`)
+    console.log(`[v0] GHL Opportunities: Starting pagination for client ${client.nombre_del_negocio}`)
 
     // Paginate through all opportunities using page number
     while (hasMorePages && currentPage <= MAX_PAGES) {
       // Build request body - GHL uses page number for pagination
       const body: Record<string, unknown> = {
-        locationId: client.ghl_location_id,
+        locationId: client.crm_location_id,
         limit: PAGE_SIZE,
         page: currentPage,
       }
