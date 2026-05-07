@@ -45,27 +45,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Obtener fecha de hoy (lunes)
+    // Obtener fecha de hoy y calcular el proximo lunes
     const today = new Date()
-    const dayOfWeek = today.getDay()
+    const dayOfWeek = today.getDay() // 0=Domingo, 1=Lunes, ..., 6=Sabado
     
-    // Calcular fecha del próximo lunes si no es lunes
+    // Calcular fecha del proximo lunes
     const dueDate = new Date(today)
-    if (dayOfWeek !== 1) {
-      // Si no es lunes, calcular el próximo lunes
-      const daysUntilMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek
+    if (dayOfWeek === 1) {
+      // Hoy es lunes, usar hoy
+      dueDate.setHours(10, 0, 0, 0)
+    } else if (dayOfWeek === 0) {
+      // Hoy es domingo, el proximo lunes es manana
+      dueDate.setDate(dueDate.getDate() + 1)
+      dueDate.setHours(10, 0, 0, 0)
+    } else {
+      // Martes a sabado, calcular dias hasta el proximo lunes
+      const daysUntilMonday = (8 - dayOfWeek) % 7 || 7
       dueDate.setDate(dueDate.getDate() + daysUntilMonday)
+      dueDate.setHours(10, 0, 0, 0)
     }
-    dueDate.setHours(10, 0, 0, 0) // 10:00 AM
     
     const dueDateStr = dueDate.toISOString()
     const weekStart = dueDate.toISOString().split('T')[0]
 
-    // Cargar todos los clientes activos
+    // Cargar todos los clientes (sin filtro de status por ahora)
     const { data: clientes, error: clientesError } = await supabase
       .from('clientes')
-      .select('id, nombre_del_negocio, plan, contact_name, project_manager_id, status')
-      .in('status', ['verde', 'amarillo', 'naranja']) // Solo clientes activos
+      .select('id, nombre_del_negocio, plan, contact_name, project_manager_id')
       .order('nombre_del_negocio')
 
     if (clientesError) {
@@ -166,11 +172,10 @@ export async function GET() {
     }
     const weekStart = dueDate.toISOString().split('T')[0]
 
-    // Contar clientes activos
+    // Contar clientes
     const { count: totalClientes } = await supabase
       .from('clientes')
       .select('id', { count: 'exact', head: true })
-      .in('status', ['verde', 'amarillo', 'naranja'])
 
     // Contar tareas de seguimiento ya creadas para esta semana
     const { count: tareasCreadas } = await supabase
