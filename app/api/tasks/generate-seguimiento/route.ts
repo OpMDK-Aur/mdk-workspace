@@ -108,7 +108,7 @@ export async function POST(request: Request) {
     // Cargar todos los clientes
     const { data: clientes, error: clientesError } = await supabase
       .from('clientes')
-      .select('id, nombre_del_negocio, plan, contact_name, project_manager_id')
+      .select('id, nombre_del_negocio, plan, contact_name, account_manager_id')
       .order('nombre_del_negocio')
 
     if (clientesError) {
@@ -164,7 +164,7 @@ export async function POST(request: Request) {
           titulo: `Seguimiento Lunes - ${cliente.nombre_del_negocio}`,
           descripcion: `Enviar mensaje de inicio de semana al cliente.`,
           cliente_id: cliente.id,
-          asignado_a: cliente.project_manager_id,
+          asignado_a: cliente.account_manager_id,
           creado_por: user.id,
           estado: 'pendiente',
           prioridad: 'media',
@@ -185,7 +185,7 @@ export async function POST(request: Request) {
           titulo: `Seguimiento Viernes - ${cliente.nombre_del_negocio}`,
           descripcion: `Enviar mensaje de cierre de semana al cliente.`,
           cliente_id: cliente.id,
-          asignado_a: cliente.project_manager_id,
+          asignado_a: cliente.account_manager_id,
           creado_por: user.id,
           estado: 'pendiente',
           prioridad: 'media',

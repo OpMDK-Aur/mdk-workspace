@@ -51,15 +51,11 @@ export function TaskBoard() {
   // Auto-generate seguimiento tasks on mount, then load all tasks
   useEffect(() => {
     const initTasks = async () => {
-      // Generar tareas de seguimiento si es lunes o viernes
-      const today = new Date()
-      const dayOfWeek = today.getDay()
-      if (dayOfWeek === 1 || dayOfWeek === 5) {
-        try {
-          await fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
-        } catch (e) {
-          // Silently fail - tasks will be created next time
-        }
+      // Generar tareas de seguimiento para la semana
+      try {
+        await fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
+      } catch (e) {
+        // Silently fail - tasks will be created next time
       }
       loadTasks()
     }
