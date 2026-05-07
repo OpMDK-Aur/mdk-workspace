@@ -283,14 +283,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     }
   }
 
-  console.log('[v0] Client PM/AM IDs:', { pm_id: client.project_manager_id, am_id: client.account_manager_id })
-  console.log('[v0] Profiles available:', profiles.map(p => ({ id: p.id, name: p.full_name })))
-  
   const pm = profiles.find(p => p.id === client.project_manager_id) ?? null
   const am = profiles.find(p => p.id === client.account_manager_id) ?? null
-  
-  console.log('[v0] Found PM:', pm)
-  console.log('[v0] Found AM:', am)
   const platforms = getActivePlatforms(client)
 
   // Dedication status
