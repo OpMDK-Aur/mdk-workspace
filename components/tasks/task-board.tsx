@@ -28,10 +28,7 @@ import {
   ChevronDown,
   FileText,
   X,
-  Send,
-  Loader2,
 } from 'lucide-react'
-import { toast } from 'sonner'
 
 export function TaskBoard() {
   const { 
@@ -50,26 +47,6 @@ export function TaskBoard() {
     isLoading,
   } = useTaskStore()
   const [newTaskOpen, setNewTaskOpen] = useState(false)
-  const [generatingSeguimiento, setGeneratingSeguimiento] = useState(false)
-
-  const handleGenerateSeguimiento = async () => {
-    setGeneratingSeguimiento(true)
-    try {
-      const res = await fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
-      const data = await res.json()
-      
-      if (res.ok) {
-        toast.success(`Se crearon ${data.created} tareas de seguimiento`)
-        loadTasks() // Recargar tareas
-      } else {
-        toast.error(data.error || 'Error al generar tareas')
-      }
-    } catch (error) {
-      toast.error('Error de conexion')
-    } finally {
-      setGeneratingSeguimiento(false)
-    }
-  }
 
   // Load tasks from Supabase on mount
   useEffect(() => {
@@ -89,21 +66,6 @@ export function TaskBoard() {
           <Button className="gap-1.5" onClick={() => setNewTaskOpen(true)}>
             <Plus className="h-4 w-4" />
             Nueva tarea
-          </Button>
-
-          {/* Generate Seguimiento Tasks */}
-          <Button 
-            variant="outline" 
-            className="gap-1.5" 
-            onClick={handleGenerateSeguimiento}
-            disabled={generatingSeguimiento}
-          >
-            {generatingSeguimiento ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-            Generar Seguimientos
           </Button>
 
           {/* View Toggle */}
