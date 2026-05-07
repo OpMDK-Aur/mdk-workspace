@@ -51,8 +51,9 @@ export function TaskBoard() {
   // Auto-generate seguimiento tasks on mount, then load all tasks
   useEffect(() => {
     const initTasks = async () => {
-      // Generar tareas de seguimiento para la semana
+      // Borrar tareas de seguimiento existentes y recrearlas
       try {
+        await fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' })
         await fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
       } catch (e) {
         // Silently fail - tasks will be created next time

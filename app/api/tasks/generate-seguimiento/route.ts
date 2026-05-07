@@ -238,6 +238,36 @@ export async function POST(request: Request) {
   }
 }
 
+// DELETE para borrar tareas de seguimiento existentes y recrearlas
+export async function DELETE() {
+  try {
+    const supabase = await createClient()
+    
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    }
+
+    // Borrar todas las tareas de seguimiento
+    const { data: deleted, error } = await supabase
+      .from('tareas')
+      .delete()
+      .ilike('titulo', '%Seguimiento%')
+      .select()
+
+    if (error) {
+      return NextResponse.json({ error: 'Error al borrar tareas', details: error }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      message: `Se borraron ${deleted?.length || 0} tareas de seguimiento`,
+      deleted: deleted?.length || 0
+    })
+  } catch (error) {
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
+  }
+}
+
 // GET para verificar estado
 export async function GET() {
   try {
