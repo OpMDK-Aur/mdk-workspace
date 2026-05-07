@@ -34,6 +34,13 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Plus,
   Search,
   Building2,
@@ -43,6 +50,10 @@ import {
   ExternalLink,
   CheckCircle2,
   AlertCircle,
+  X,
+  Bookmark,
+  Save,
+  Trash2,
 } from 'lucide-react'
 
 interface ClientsListContentProps {
@@ -115,6 +126,67 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [pmFilter, setPmFilter] = useState<string>('all')
   const [amFilter, setAmFilter] = useState<string>('all')
   const [platformFilter, setPlatformFilter] = useState<string>('all')
+  
+  // Saved filters
+  interface SavedFilter {
+    name: string
+    status: string
+    plan: string
+    pm: string
+    am: string
+    platform: string
+  }
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('clientFilters')
+      return saved ? JSON.parse(saved) : []
+    }
+    return []
+  })
+  const [saveFilterName, setSaveFilterName] = useState('')
+  const [saveFilterOpen, setSaveFilterOpen] = useState(false)
+
+  const hasActiveFilters = statusFilter !== 'all' || planFilter !== 'all' || pmFilter !== 'all' || amFilter !== 'all' || platformFilter !== 'all' || searchTerm !== ''
+
+  const clearAllFilters = () => {
+    setSearchTerm('')
+    setStatusFilter('all')
+    setPlanFilter('all')
+    setPmFilter('all')
+    setAmFilter('all')
+    setPlatformFilter('all')
+  }
+
+  const saveCurrentFilter = () => {
+    if (!saveFilterName.trim()) return
+    const newFilter: SavedFilter = {
+      name: saveFilterName.trim(),
+      status: statusFilter,
+      plan: planFilter,
+      pm: pmFilter,
+      am: amFilter,
+      platform: platformFilter,
+    }
+    const updated = [...savedFilters, newFilter]
+    setSavedFilters(updated)
+    localStorage.setItem('clientFilters', JSON.stringify(updated))
+    setSaveFilterName('')
+    setSaveFilterOpen(false)
+  }
+
+  const applyFilter = (filter: SavedFilter) => {
+    setStatusFilter(filter.status)
+    setPlanFilter(filter.plan)
+    setPmFilter(filter.pm)
+    setAmFilter(filter.am)
+    setPlatformFilter(filter.platform)
+  }
+
+  const deleteFilter = (index: number) => {
+    const updated = savedFilters.filter((_, i) => i !== index)
+    setSavedFilters(updated)
+    localStorage.setItem('clientFilters', JSON.stringify(updated))
+  }
 
   // Create dialog state
   const [createOpen, setCreateOpen] = useState(false)
@@ -641,6 +713,72 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                   <SelectItem value="none">Sin plataformas</SelectItem>
                 </SelectContent>
               </Select>
+              
+              {/* Clear filters */}
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" onClick={clearAllFilters} className="h-9 px-2 gap-1">
+                  <X className="h-4 w-4" />
+                  Limpiar
+                </Button>
+              )}
+              
+              {/* Save/Load filters */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-1">
+                    <Bookmark className="h-4 w-4" />
+                    Filtros
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {savedFilters.length > 0 && (
+                    <>
+                      {savedFilters.map((filter, i) => (
+                        <DropdownMenuItem key={i} className="flex justify-between">
+                          <span onClick={() => applyFilter(filter)} className="flex-1 cursor-pointer">
+                            {filter.name}
+                          </span>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-5 w-5 p-0 hover:bg-destructive/20"
+                            onClick={(e) => { e.stopPropagation(); deleteFilter(i); }}
+                          >
+                            <Trash2 className="h-3 w-3 text-destructive" />
+                          </Button>
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  <Dialog open={saveFilterOpen} onOpenChange={setSaveFilterOpen}>
+                    <DialogTrigger asChild>
+                      <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                        <Save className="h-4 w-4 mr-2" />
+                        Guardar filtro actual
+                      </DropdownMenuItem>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[300px]">
+                      <DialogHeader>
+                        <DialogTitle>Guardar filtro</DialogTitle>
+                        <DialogDescription>
+                          Guarda la combinacion actual de filtros
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-2">
+                        <Input
+                          placeholder="Nombre del filtro..."
+                          value={saveFilterName}
+                          onChange={(e) => setSaveFilterName(e.target.value)}
+                        />
+                        <Button onClick={saveCurrentFilter} disabled={!saveFilterName.trim()} className="w-full">
+                          Guardar
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </CardContent>
         </Card>
