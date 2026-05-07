@@ -248,20 +248,38 @@ export async function DELETE() {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Borrar todas las tareas de seguimiento
-    const { data: deleted, error } = await supabase
+    // Buscar el tipo de tarea "Semanal"
+    const { data: tipoSemanal } = await supabase
+      .from('tipo_de_tareas')
+      .select('id')
+      .ilike('nombre', '%Semanal%')
+      .single()
+
+    let totalDeleted = 0
+
+    // Borrar por titulo que contenga "Seguimiento" o "Seg"
+    const { data: deleted1 } = await supabase
       .from('tareas')
       .delete()
-      .ilike('titulo', '%Seguimiento%')
+      .or('titulo.ilike.%Seguimiento%,titulo.ilike.Seg %')
       .select()
+    
+    totalDeleted += deleted1?.length || 0
 
-    if (error) {
-      return NextResponse.json({ error: 'Error al borrar tareas', details: error }, { status: 500 })
+    // Borrar por tipo de tarea "Semanal" si existe
+    if (tipoSemanal?.id) {
+      const { data: deleted2 } = await supabase
+        .from('tareas')
+        .delete()
+        .eq('tipo_tarea_id', tipoSemanal.id)
+        .select()
+      
+      totalDeleted += deleted2?.length || 0
     }
 
     return NextResponse.json({
-      message: `Se borraron ${deleted?.length || 0} tareas de seguimiento`,
-      deleted: deleted?.length || 0
+      message: `Se borraron ${totalDeleted} tareas de seguimiento`,
+      deleted: totalDeleted
     })
   } catch (error) {
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
