@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -47,10 +47,10 @@ import {
   PanelLeftClose,
   PanelLeft,
   ChevronRight,
+  X,
 } from 'lucide-react'
 import { UserSettingsDialog } from './user-settings-dialog'
 import { NotificationsPanel } from './notifications-panel'
-import { ClientSearch } from './client-search'
 
 interface SidebarProps {
   user: User
@@ -144,19 +144,27 @@ export function Sidebar({
   const [wasCollapsed, setWasCollapsed] = useState(false)
   const [notificationCount, setNotificationCount] = useState(0)
   const [notificationsPanelOpen, setNotificationsPanelOpen] = useState(false)
-  const [searchOpen, setSearchOpen] = useState(false)
+  const [clientSearch, setClientSearch] = useState('')
+  const [searchFocused, setSearchFocused] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Keyboard shortcut for search (Cmd+K / Ctrl+K)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
-        setSearchOpen(true)
+        searchInputRef.current?.focus()
+        setSearchFocused(true)
       }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
+
+  // Filter clients based on search
+  const filteredClients = clients.filter(client => 
+    client.nombre.toLowerCase().includes(clientSearch.toLowerCase())
+  )
 
   // Fetch unread notification count
   useEffect(() => {
@@ -282,14 +290,7 @@ export function Sidebar({
               </TooltipTrigger>
               <TooltipContent side="right">Notificaciones</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setSearchOpen(true)}>
-                  <Search className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">Buscar (Cmd+K)</TooltipContent>
-            </Tooltip>
+            
           </div>
 
           <ScrollArea className="flex-1 min-h-0">
@@ -497,14 +498,6 @@ export function Sidebar({
                   </span>
                 )}
               </Button>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto" onClick={() => setSearchOpen(true)}>
-                    <Search className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Buscar (Cmd+K)</TooltipContent>
-              </Tooltip>
             </div>
 
             <ScrollArea className="flex-1 min-h-0">
@@ -606,29 +599,72 @@ export function Sidebar({
 
             {/* Clients */}
             <div>
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                Clientes
-              </h3>
-              <div className="space-y-1">
-                <Link
-                  href="/dashboard/clients"
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Clientes
+                </h3>
+              </div>
+              
+              {/* Search input */}
+              <div className="relative mb-2">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={clientSearch}
+                  onChange={(e) => setClientSearch(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                  placeholder="Buscar cliente..."
                   className={cn(
-                    'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                    pathname === '/dashboard/clients'
-                      ? 'bg-muted font-medium text-foreground'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    'w-full h-8 pl-8 pr-8 rounded-md border bg-background text-sm placeholder:text-muted-foreground',
+                    'focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary',
+                    'transition-all'
                   )}
-                >
-                  <Rocket className="h-3.5 w-3.5" />
-                  <span>Todos los clientes</span>
-                </Link>
-                {clients.slice(0, 10).map((client) => {
+                />
+                {clientSearch && (
+                  <button
+                    onClick={() => setClientSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 rounded-sm hover:bg-muted flex items-center justify-center"
+                  >
+                    <X className="h-3 w-3 text-muted-foreground" />
+                  </button>
+                )}
+                {!clientSearch && !searchFocused && (
+                  <kbd className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+                    <span className="text-xs">⌘</span>K
+                  </kbd>
+                )}
+              </div>
+              
+              <div className="space-y-1">
+                {!clientSearch && (
+                  <Link
+                    href="/dashboard/clients"
+                    className={cn(
+                      'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                      pathname === '/dashboard/clients'
+                        ? 'bg-muted font-medium text-foreground'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    )}
+                  >
+                    <Rocket className="h-3.5 w-3.5" />
+                    <span>Todos los clientes</span>
+                  </Link>
+                )}
+                {filteredClients.length === 0 && clientSearch && (
+                  <p className="px-3 py-2 text-sm text-muted-foreground">
+                    No se encontraron clientes
+                  </p>
+                )}
+                {(clientSearch ? filteredClients : filteredClients.slice(0, 10)).map((client) => {
                   const clientHref = `/dashboard/clients/${client.id}`
                   const isClientPage = pathname === clientHref
                   return (
                     <Link
                       key={client.id}
                       href={clientHref}
+                      onClick={() => setClientSearch('')}
                       className={cn(
                         'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
                         isClientPage
@@ -640,14 +676,17 @@ export function Sidebar({
                         'h-2.5 w-2.5 rounded-full flex-shrink-0 ring-1 ring-inset ring-black/10',
                         getStatusColor(client.status)
                       )} />
-                      <span className="truncate">{client.business_name}</span>
+                      <span className="truncate">{client.nombre}</span>
                     </Link>
                   )
                 })}
-                {clients.length > 10 && (
-                  <button className="w-full text-left px-3 py-2 text-xs text-primary hover:underline">
+                {!clientSearch && clients.length > 10 && (
+                  <Link 
+                    href="/dashboard/clients"
+                    className="w-full text-left px-3 py-2 text-xs text-primary hover:underline block"
+                  >
                     Ver todos ({clients.length})
-                  </button>
+                  </Link>
                 )}
               </div>
             </div>
@@ -719,8 +758,6 @@ export function Sidebar({
         user={user}
         profile={profile}
       />
-
-      <ClientSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </TooltipProvider>
   )
 }
