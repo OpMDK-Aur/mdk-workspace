@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/generate-seguimiento",
-      "schedule": "0 10 * * 1,5"
-    }
-  ]
-}

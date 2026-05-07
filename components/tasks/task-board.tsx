@@ -48,9 +48,22 @@ export function TaskBoard() {
   } = useTaskStore()
   const [newTaskOpen, setNewTaskOpen] = useState(false)
 
-  // Load tasks from Supabase on mount
+  // Auto-generate seguimiento tasks on mount, then load all tasks
   useEffect(() => {
-    loadTasks()
+    const initTasks = async () => {
+      // Generar tareas de seguimiento si es lunes o viernes
+      const today = new Date()
+      const dayOfWeek = today.getDay()
+      if (dayOfWeek === 1 || dayOfWeek === 5) {
+        try {
+          await fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
+        } catch (e) {
+          // Silently fail - tasks will be created next time
+        }
+      }
+      loadTasks()
+    }
+    initTasks()
   }, [loadTasks])
 
   const hasSimpleFilters = filters.priority || filters.assigneeId || filters.type || filters.dueThisWeek
