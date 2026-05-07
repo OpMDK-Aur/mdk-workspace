@@ -680,14 +680,7 @@ export function Sidebar({
                     </Link>
                   )
                 })}
-                {!clientSearch && clients.length > 10 && (
-                  <Link 
-                    href="/dashboard/clients"
-                    className="w-full text-left px-3 py-2 text-xs text-primary hover:underline block"
-                  >
-                    Ver todos ({clients.length})
-                  </Link>
-                )}
+                
               </div>
             </div>
 
