@@ -68,13 +68,22 @@ export function ClientTareas({ clientId, onTaskClick }: ClientTareasProps) {
         prioridad,
         fecha_vencimiento,
         asignado_a,
-        colaborador:colaboradores!tareas_asignado_a_fkey(nombre, apellido)
+        colaboradores:asignado_a(nombre, apellido)
       `)
       .eq('cliente_id', clientId)
       .order('fecha_vencimiento', { ascending: true, nullsFirst: false })
 
-    if (!error && data) {
-      setTareas(data as Tarea[])
+    if (error) {
+      console.log('[v0] Error fetching tareas:', error)
+    }
+    
+    if (data) {
+      // Map colaboradores to colaborador for consistency
+      const mapped = data.map(t => ({
+        ...t,
+        colaborador: t.colaboradores
+      }))
+      setTareas(mapped as Tarea[])
     }
     setLoading(false)
   }
