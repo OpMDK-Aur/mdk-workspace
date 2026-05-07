@@ -161,9 +161,9 @@ export function Sidebar({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  // Filter clients based on search by business name
+  // Filter clients based on search by nombre_del_negocio
   const filteredClients = clients.filter(client => 
-    client.business_name?.toLowerCase().includes(clientSearch.toLowerCase())
+    client.nombre_del_negocio?.toLowerCase().includes(clientSearch.toLowerCase())
   )
 
   // Fetch unread notification count
@@ -676,7 +676,7 @@ export function Sidebar({
                         'h-2.5 w-2.5 rounded-full flex-shrink-0 ring-1 ring-inset ring-black/10',
                         getStatusColor(client.status)
                       )} />
-                      <span className="truncate">{client.business_name}</span>
+                      <span className="truncate">{client.nombre_del_negocio}</span>
                     </Link>
                   )
                 })}

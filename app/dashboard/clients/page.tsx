@@ -12,7 +12,7 @@ export default async function ClientsPage() {
   const { data: clients } = await supabase
     .from('clientes')
     .select('*')
-    .order('business_name', { ascending: true })
+    .order('nombre_del_negocio', { ascending: true })
 
   // Load all colaboradores for manager dropdowns
   const { data: colaboradores } = await supabase

@@ -138,7 +138,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // Advanced filter state
   const [feeMinFilter, setFeeMinFilter] = useState<string>('')
   const [feeMaxFilter, setFeeMaxFilter] = useState<string>('')
-  const [sortBy, setSortBy] = useState<string>('business_name')
+  const [sortBy, setSortBy] = useState<string>('nombre_del_negocio')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [advancedOpen, setAdvancedOpen] = useState(false)
   
@@ -239,7 +239,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setPlatformFilter(filter.platform)
     setFeeMinFilter(filter.feeMin || '')
     setFeeMaxFilter(filter.feeMax || '')
-    setSortBy(filter.sortBy || 'business_name')
+    setSortBy(filter.sortBy || 'nombre_del_negocio')
     setSortOrder(filter.sortOrder || 'asc')
     if (filter.columns?.length) {
       setVisibleColumns(filter.columns)
@@ -261,7 +261,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
 
   // New client form state
   const [newClient, setNewClient] = useState({
-    business_name: '',
+    nombre_del_negocio: '',
     contact_name: '',
     contact_lastname: '',
     phone: '',
@@ -286,7 +286,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
 
   const resetForm = () => {
     setNewClient({
-      business_name: '',
+      nombre_del_negocio: '',
       contact_name: '',
       contact_lastname: '',
       phone: '',
@@ -319,8 +319,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
 
     try {
       const clientData = {
-        business_name: newClient.business_name.trim(),
-        nombre: newClient.business_name.trim(), // Also set nombre for compatibility
+        nombre_del_negocio: newClient.nombre_del_negocio.trim(),
         contact_name: newClient.contact_name.trim() || null,
         contact_lastname: newClient.contact_lastname.trim() || null,
         phone: newClient.phone.trim() || null,
@@ -371,7 +370,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       }
 
       // Add to local state
-      setLocalClients(prev => [...prev, data as Client].sort((a, b) => a.business_name.localeCompare(b.business_name)))
+      setLocalClients(prev => [...prev, data as Client].sort((a, b) => a.nombre_del_negocio.localeCompare(b.nombre_del_negocio)))
 
       setCreateSuccess(true)
       setTimeout(() => {
@@ -388,7 +387,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
 
   // Filter clients
   const filteredClients = localClients.filter(client => {
-    const matchesSearch = client.business_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = client.nombre_del_negocio.toLowerCase().includes(searchTerm.toLowerCase()) ||
       client.contact_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       client.contact_lastname?.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || client.status === statusFilter
@@ -409,9 +408,9 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     let valueB: string | number = ''
     
     switch (sortBy) {
-      case 'business_name':
-        valueA = a.business_name.toLowerCase()
-        valueB = b.business_name.toLowerCase()
+      case 'nombre_del_negocio':
+        valueA = a.nombre_del_negocio.toLowerCase()
+        valueB = b.nombre_del_negocio.toLowerCase()
         break
       case 'fee_mdk':
         valueA = a.fee_mdk || 0
@@ -435,8 +434,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
         valueB = statusOrder[b.status as keyof typeof statusOrder] ?? 4
         break
       default:
-        valueA = a.business_name.toLowerCase()
-        valueB = b.business_name.toLowerCase()
+        valueA = a.nombre_del_negocio.toLowerCase()
+        valueB = b.nombre_del_negocio.toLowerCase()
     }
     
     if (valueA < valueB) return sortOrder === 'asc' ? -1 : 1
@@ -488,11 +487,11 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                     </h3>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="col-span-2">
-                        <Label htmlFor="business_name">Nombre del negocio *</Label>
-                        <Input
-                          id="business_name"
-                          value={newClient.business_name}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, business_name: e.target.value }))}
+<Label htmlFor="nombre_del_negocio">Nombre del negocio *</Label>
+                      <Input
+                        id="nombre_del_negocio"
+                        value={newClient.nombre_del_negocio}
+                        onChange={(e) => setNewClient(prev => ({ ...prev, nombre_del_negocio: e.target.value }))}
                           placeholder="Ej: Mi Empresa S.A."
                           required
                           className="mt-1"
@@ -807,7 +806,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                     <Button type="button" variant="outline" onClick={() => { setCreateOpen(false); resetForm(); }}>
                       Cancelar
                     </Button>
-                    <Button type="submit" disabled={creating || !newClient.business_name.trim()}>
+                    <Button type="submit" disabled={creating || !newClient.nombre_del_negocio.trim()}>
                       {creating ? 'Creando...' : 'Crear cliente'}
                     </Button>
                   </div>
@@ -1027,7 +1026,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="business_name">Nombre</SelectItem>
+                            <SelectItem value="nombre_del_negocio">Nombre</SelectItem>
                             <SelectItem value="fee_mdk">Fee MDK</SelectItem>
                             <SelectItem value="fee_aurelia">Fee Aurelia</SelectItem>
                             <SelectItem value="fee_total">Fee Total</SelectItem>
@@ -1114,7 +1113,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                       >
                         {visibleColumns.includes('cliente') && (
                           <TableCell>
-                            <div className="font-medium">{client.business_name}</div>
+                            <div className="font-medium">{client.nombre_del_negocio}</div>
                           </TableCell>
                         )}
                         {visibleColumns.includes('contacto') && (
