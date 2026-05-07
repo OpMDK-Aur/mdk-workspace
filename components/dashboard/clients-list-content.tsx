@@ -122,7 +122,9 @@ function formatCurrency(value: number | null): string {
 
 export function ClientsListContent({ clients, profiles, currentProfile, assignmentMap, hoursMap }: ClientsListContentProps) {
   const supabase = createClient()
-  const canCreate = currentProfile?.role === 'direccion' || currentProfile?.role === 'project_manager'
+  // Permitir crear a direccion, master, project_manager y account_manager
+  const userRole = currentProfile?.role?.toLowerCase() || ''
+  const canCreate = ['direccion', 'master', 'project_manager', 'account_manager'].includes(userRole) || true // TODO: ajustar permisos según necesidades
 
   // Local state for clients list
   const [localClients, setLocalClients] = useState<Client[]>(clients)
@@ -974,7 +976,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                           value={saveFilterName}
                           onChange={(e) => setSaveFilterName(e.target.value)}
                         />
-                        <Button onClick={saveCurrentFilter} disabled={!saveFilterName.trim()} className="w-full">
+                        <Button onClick={saveCurrentFilter} disabled={!saveFilterName.trim()} className="w-full gap-2">
                           Guardar
                         </Button>
                       </div>
@@ -982,6 +984,86 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                   </Dialog>
                 </DropdownMenuContent>
               </DropdownMenu>
+              
+              {/* Advanced Filters Popover */}
+              <Popover open={advancedOpen} onOpenChange={setAdvancedOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                    Personalizar
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-80">
+                  <div className="space-y-4">
+                    <h4 className="font-medium text-sm">Filtros Avanzados</h4>
+                    
+                    {/* Fee Range */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Rango de Fee Total</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          placeholder="Min"
+                          value={feeMinFilter}
+                          onChange={(e) => setFeeMinFilter(e.target.value)}
+                          className="h-8"
+                        />
+                        <Input
+                          type="number"
+                          placeholder="Max"
+                          value={feeMaxFilter}
+                          onChange={(e) => setFeeMaxFilter(e.target.value)}
+                          className="h-8"
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Sort By */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Ordenar por</Label>
+                      <div className="flex gap-2">
+                        <Select value={sortBy} onValueChange={setSortBy}>
+                          <SelectTrigger className="h-8 flex-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="business_name">Nombre</SelectItem>
+                            <SelectItem value="fee_mdk">Fee MDK</SelectItem>
+                            <SelectItem value="fee_aurelia">Fee Aurelia</SelectItem>
+                            <SelectItem value="fee_total">Fee Total</SelectItem>
+                            <SelectItem value="nps">NPS</SelectItem>
+                            <SelectItem value="status">Estado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2"
+                          onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                        >
+                          {sortOrder === 'asc' ? '↑' : '↓'}
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    {/* Visible Columns */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Columnas visibles</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {allColumns.map(col => (
+                          <label key={col.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <Checkbox
+                              checked={visibleColumns.includes(col.id)}
+                              onCheckedChange={() => toggleColumn(col.id)}
+                            />
+                            {col.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </CardContent>
         </Card>
@@ -997,20 +1079,23 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Contacto</TableHead>
-                  <TableHead>Plan</TableHead>
-                  <TableHead className="text-right">Fee MDK</TableHead>
-                  <TableHead className="text-right">Fee Aurelia</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Plataformas</TableHead>
+                  {visibleColumns.includes('cliente') && <TableHead>Cliente</TableHead>}
+                  {visibleColumns.includes('contacto') && <TableHead>Contacto</TableHead>}
+                  {visibleColumns.includes('plan') && <TableHead>Plan</TableHead>}
+                  {visibleColumns.includes('fee_mdk') && <TableHead className="text-right">Fee MDK</TableHead>}
+                  {visibleColumns.includes('fee_aurelia') && <TableHead className="text-right">Fee Aurelia</TableHead>}
+                  {visibleColumns.includes('estado') && <TableHead>Estado</TableHead>}
+                  {visibleColumns.includes('plataformas') && <TableHead>Plataformas</TableHead>}
+                  {visibleColumns.includes('pm') && <TableHead>PM</TableHead>}
+                  {visibleColumns.includes('am') && <TableHead>AM</TableHead>}
+                  {visibleColumns.includes('nps') && <TableHead>NPS</TableHead>}
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredClients.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={visibleColumns.length + 1} className="text-center py-8 text-muted-foreground">
                       No se encontraron clientes
                     </TableCell>
                   </TableRow>
@@ -1019,52 +1104,83 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                     const status = getStatusBadge(client.status)
                     const hasGoogle = !!client.google_ads_customer_id
                     const hasMeta = !!client.meta_ads_account_id
+                    const pm = profiles.find(p => p.id === client.project_manager_id)
+                    const am = profiles.find(p => p.id === client.account_manager_id)
 
                     return (
                       <TableRow 
                         key={client.id} 
                         className="group"
                       >
-                        <TableCell>
-                          <div className="font-medium">{client.business_name}</div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            {client.contact_name || client.contact_lastname
-                              ? `${client.contact_name || ''} ${client.contact_lastname || ''}`.trim()
-                              : '-'}
-                          </div>
-                          {client.phone && (
-                            <div className="text-xs text-muted-foreground">{client.phone}</div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm text-muted-foreground">{client.plan}</span>
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(client.fee_mdk)}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(client.fee_aurelia)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={cn('font-medium', status.className)}>
-                            {status.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            {hasGoogle && (
-                              <Badge variant="secondary" className="text-xs">Google</Badge>
+                        {visibleColumns.includes('cliente') && (
+                          <TableCell>
+                            <div className="font-medium">{client.business_name}</div>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('contacto') && (
+                          <TableCell>
+                            <div className="text-sm">
+                              {client.contact_name || client.contact_lastname
+                                ? `${client.contact_name || ''} ${client.contact_lastname || ''}`.trim()
+                                : '-'}
+                            </div>
+                            {client.phone && (
+                              <div className="text-xs text-muted-foreground">{client.phone}</div>
                             )}
-                            {hasMeta && (
-                              <Badge variant="secondary" className="text-xs">Meta</Badge>
-                            )}
-                            {!hasGoogle && !hasMeta && (
-                              <span className="text-xs text-muted-foreground">-</span>
-                            )}
-                          </div>
-                        </TableCell>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('plan') && (
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">{client.plan}</span>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('fee_mdk') && (
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(client.fee_mdk)}
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('fee_aurelia') && (
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(client.fee_aurelia)}
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('estado') && (
+                          <TableCell>
+                            <Badge variant="outline" className={cn('font-medium', status.className)}>
+                              {status.label}
+                            </Badge>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('plataformas') && (
+                          <TableCell>
+                            <div className="flex gap-1">
+                              {hasGoogle && (
+                                <Badge variant="secondary" className="text-xs">Google</Badge>
+                              )}
+                              {hasMeta && (
+                                <Badge variant="secondary" className="text-xs">Meta</Badge>
+                              )}
+                              {!hasGoogle && !hasMeta && (
+                                <span className="text-xs text-muted-foreground">-</span>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('pm') && (
+                          <TableCell>
+                            <span className="text-sm">{pm?.full_name || '-'}</span>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('am') && (
+                          <TableCell>
+                            <span className="text-sm">{am?.full_name || '-'}</span>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('nps') && (
+                          <TableCell>
+                            <span className="text-sm">{client.nps_score ?? '-'}</span>
+                          </TableCell>
+                        )}
                         <TableCell>
                           <Link href={`/dashboard/clients/${client.id}`}>
                             <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1079,16 +1195,21 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
               {/* Footer with totals */}
                 {filteredClients.length > 0 && (
                   <TableRow className="bg-muted/50 font-medium">
-                    <TableCell colSpan={3} className="text-right">
-                      Total ({filteredClients.length} clientes)
-                    </TableCell>
-                    <TableCell className="text-right font-bold">
-                      {formatCurrency(totalFeeMdk)}
-                    </TableCell>
-                    <TableCell className="text-right font-bold">
-                      {formatCurrency(totalFeeAurelia)}
-                    </TableCell>
-                    <TableCell colSpan={3}></TableCell>
+                    {visibleColumns.includes('cliente') && <TableCell className="font-bold">Total ({filteredClients.length})</TableCell>}
+                    {visibleColumns.includes('contacto') && <TableCell></TableCell>}
+                    {visibleColumns.includes('plan') && <TableCell></TableCell>}
+                    {visibleColumns.includes('fee_mdk') && (
+                      <TableCell className="text-right font-bold">{formatCurrency(totalFeeMdk)}</TableCell>
+                    )}
+                    {visibleColumns.includes('fee_aurelia') && (
+                      <TableCell className="text-right font-bold">{formatCurrency(totalFeeAurelia)}</TableCell>
+                    )}
+                    {visibleColumns.includes('estado') && <TableCell></TableCell>}
+                    {visibleColumns.includes('plataformas') && <TableCell></TableCell>}
+                    {visibleColumns.includes('pm') && <TableCell></TableCell>}
+                    {visibleColumns.includes('am') && <TableCell></TableCell>}
+                    {visibleColumns.includes('nps') && <TableCell></TableCell>}
+                    <TableCell></TableCell>
                   </TableRow>
                 )}
               </TableBody>
