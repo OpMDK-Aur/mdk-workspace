@@ -108,7 +108,7 @@ export async function POST(request: Request) {
     // Cargar todos los clientes
     const { data: clientes, error: clientesError } = await supabase
       .from('clientes')
-      .select('id, nombre_del_negocio, plan, contact_name, account_manager_id')
+      .select('id, nombre_del_negocio, plan, account_manager_id')
       .order('nombre_del_negocio')
 
     if (clientesError) {
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
     const tareasToCreate: any[] = []
 
     clientes.forEach(cliente => {
-      const clientName = cliente.contact_name || cliente.nombre_del_negocio || 'equipo'
+      const clientName = cliente.nombre_del_negocio || 'equipo'
       
       // Tarea de LUNES si no existe
       if (!existingLunes.has(cliente.id)) {
@@ -256,32 +256,66 @@ export async function DELETE() {
       .single()
 
     let totalDeleted = 0
+    const deletedIds: string[] = []
 
-    // Borrar por titulo que contenga "Seguimiento" o "Seg"
-    const { data: deleted1 } = await supabase
-      .from('tareas')
-      .delete()
-      .or('titulo.ilike.%Seguimiento%,titulo.ilike.Seg %')
-      .select()
-    
-    totalDeleted += deleted1?.length || 0
-
-    // Borrar por tipo de tarea "Semanal" si existe
+    // 1. Borrar por tipo de tarea "Semanal" primero (es lo mas seguro)
     if (tipoSemanal?.id) {
-      const { data: deleted2 } = await supabase
+      const { data: deleted1 } = await supabase
         .from('tareas')
         .delete()
         .eq('tipo_tarea_id', tipoSemanal.id)
-        .select()
+        .select('id')
       
-      totalDeleted += deleted2?.length || 0
+      if (deleted1) {
+        totalDeleted += deleted1.length
+        deleted1.forEach(t => deletedIds.push(t.id))
+      }
+    }
+
+    // 2. Borrar por titulo que contenga "Seguimiento"
+    const { data: deleted2 } = await supabase
+      .from('tareas')
+      .delete()
+      .ilike('titulo', '%Seguimiento%')
+      .select('id')
+    
+    if (deleted2) {
+      const newDeleted = deleted2.filter(t => !deletedIds.includes(t.id))
+      totalDeleted += newDeleted.length
+    }
+
+    // 3. Borrar tareas con metadata que contenga tipo_seguimiento
+    const { data: deleted3 } = await supabase
+      .from('tareas')
+      .delete()
+      .not('metadata', 'is', null)
+      .contains('metadata', { tipo_seguimiento: 'lunes' })
+      .select('id')
+    
+    if (deleted3) {
+      const newDeleted = deleted3.filter(t => !deletedIds.includes(t.id))
+      totalDeleted += newDeleted.length
+    }
+
+    const { data: deleted4 } = await supabase
+      .from('tareas')
+      .delete()
+      .not('metadata', 'is', null)
+      .contains('metadata', { tipo_seguimiento: 'viernes' })
+      .select('id')
+    
+    if (deleted4) {
+      const newDeleted = deleted4.filter(t => !deletedIds.includes(t.id))
+      totalDeleted += newDeleted.length
     }
 
     return NextResponse.json({
       message: `Se borraron ${totalDeleted} tareas de seguimiento`,
-      deleted: totalDeleted
+      deleted: totalDeleted,
+      tipoSemanalId: tipoSemanal?.id || null
     })
   } catch (error) {
+    console.error('[v0] DELETE error:', error)
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
   }
 }
