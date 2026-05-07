@@ -16,6 +16,8 @@ import {
 interface DbCliente {
   id: string
   nombre_del_negocio: string
+  plan?: string | null
+  contact_name?: string | null
 }
 
 interface DbColaborador {
@@ -240,6 +242,49 @@ const getClientContext = (clientId: string): ClientContext | null => {
     websites: ['www.ejemplo.com'],
     formNames: ['Formulario Contacto', 'Newsletter'],
   }
+}
+
+// ── Seguimiento Templates by Plan ─────────────────────────────────────────────
+
+const SEGUIMIENTO_TEMPLATES = {
+  estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
+
+Desde el equipo de Operaciones de **MDK** te compartimos los hitos clave en los que vamos a estar trabajando en tu cuenta esta semana:
+
+🎯 **Foco principal:** [Ej: Optimización de campañas post-informe de cierre / Lanzamiento de la nueva segmentación]
+
+✅ **Checklist de la semana:**
+— [Item 1: acción concreta]
+— [Item 2: seguimiento o ajuste técnico]
+— [Item 3: preparación de reporte o análisis]
+
+🚀 **Objetivo:** [Resultado esperado. Ej: Recuperar el CPL a los niveles de la semana 2 del mes anterior.]`,
+
+  esencial: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
+
+Esta semana en tu cuenta vamos a estar trabajando en:
+
+🎯 [Una sola línea con el foco de la semana. Ej: Optimización de campañas y revisión de trackeo.]
+
+🚀 Objetivo: [Una sola línea. Ej: Mantener el CPL dentro del rango acordado.]
+
+Cualquier consulta, acá estamos. 💪`,
+
+  default: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
+
+Te escribimos desde el equipo de MDK para darte el seguimiento semanal de tu cuenta.
+
+Cualquier consulta, estamos a disposición.`,
+}
+
+const getSeguimientoTemplate = (plan: string | null | undefined, clientName: string): string => {
+  const planLower = (plan || '').toLowerCase()
+  if (planLower.includes('estrat')) {
+    return SEGUIMIENTO_TEMPLATES.estrategico(clientName)
+  } else if (planLower.includes('esencial')) {
+    return SEGUIMIENTO_TEMPLATES.esencial(clientName)
+  }
+  return SEGUIMIENTO_TEMPLATES.default(clientName)
 }
 
 // ── Task Templates ────────────────────────────────────────────────────────────
@@ -894,7 +939,7 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
       const supabase = createClient()
       
       const [clientesRes, colabRes, tiposRes] = await Promise.all([
-        supabase.from('clientes').select('id, nombre_del_negocio').order('nombre_del_negocio'),
+        supabase.from('clientes').select('id, nombre_del_negocio, plan, contact_name').order('nombre_del_negocio'),
         supabase.from('colaboradores').select('id, nombre, avatar_url').order('nombre'),
         supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
       ])
@@ -1423,6 +1468,10 @@ setIsCreating(true)
     if (selectedTemplate.id === 'falta_datos') {
       title = `URGENTE: ${taskData.title || 'Falta de datos'}`
     }
+    if (selectedTemplate.id === 'seguimiento') {
+      const dayName = new Date().toLocaleDateString('es-AR', { weekday: 'long' })
+      title = `Seguimiento semanal - ${client?.nombre_del_negocio || 'Cliente'} (${dayName})`
+    }
 
     const priority = (taskData.priority || selectedTemplate.defaultPriority || 'media') as TaskPriority
 
@@ -1430,7 +1479,16 @@ setIsCreating(true)
     const buildInitialComment = (): string => {
       const lines: string[] = []
       
-      // First add the full chat conversation
+      // For seguimiento tasks, add the template message first
+      if (selectedTemplate.id === 'seguimiento') {
+        const clientName = client?.contact_name || client?.nombre_del_negocio || 'equipo'
+        const templateMessage = getSeguimientoTemplate(client?.plan, clientName)
+        lines.push(`<p><strong>📋 Plantilla de mensaje (Plan ${client?.plan || 'Sin plan'}):</strong></p>`)
+        lines.push(`<div style="background:#0f172a; border-radius:8px; padding:16px; margin:8px 0; border-left:3px solid #a855f7; white-space:pre-wrap; font-family:inherit;">${templateMessage}</div>`)
+        lines.push('<hr style="border-color:#333; margin:16px 0;" />')
+      }
+      
+      // Then add the full chat conversation
       lines.push(`<p><strong>Conversacion con Madky:</strong></p>`)
       lines.push('<div style="background:#1a1a2e; border-radius:8px; padding:12px; margin:8px 0;">')
       
