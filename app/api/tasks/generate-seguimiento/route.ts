@@ -3,58 +3,58 @@ import { NextResponse } from 'next/server'
 
 // Templates de LUNES por plan
 const LUNES_TEMPLATES = {
-  estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
+  estrategico: (clientName: string) => `Hola ${clientName}! Buen lunes.
 
-Desde el equipo de Operaciones de **MDK** te compartimos los hitos clave en los que vamos a estar trabajando en tu cuenta esta semana:
+Desde el equipo de Operaciones de MDK te compartimos los hitos clave en los que vamos a estar trabajando en tu cuenta esta semana:
 
-🎯 **Foco principal:** [Ej: Optimización de campañas post-informe de cierre / Lanzamiento de la nueva segmentación]
+Foco principal: [Ej: Optimizacion de campanas post-informe de cierre / Lanzamiento de la nueva segmentacion]
 
-✅ **Checklist de la semana:**
-— [Item 1: acción concreta]
-— [Item 2: seguimiento o ajuste técnico]
-— [Item 3: preparación de reporte o análisis]
+Checklist de la semana:
+- [Item 1: accion concreta]
+- [Item 2: seguimiento o ajuste tecnico]
+- [Item 3: preparacion de reporte o analisis]
 
-🚀 **Objetivo:** [Resultado esperado. Ej: Recuperar el CPL a los niveles de la semana 2 del mes anterior.]`,
+Objetivo: [Resultado esperado. Ej: Recuperar el CPL a los niveles de la semana 2 del mes anterior.]`,
 
-  esencial: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
+  esencial: (clientName: string) => `Hola ${clientName}! Buen lunes.
 
 Esta semana en tu cuenta vamos a estar trabajando en:
 
-🎯 [Una sola línea con el foco de la semana. Ej: Optimización de campañas y revisión de trackeo.]
+[Una sola linea con el foco de la semana. Ej: Optimizacion de campanas y revision de trackeo.]
 
-🚀 Objetivo: [Una sola línea. Ej: Mantener el CPL dentro del rango acordado.]
+Objetivo: [Una sola linea. Ej: Mantener el CPL dentro del rango acordado.]
 
-Cualquier consulta, acá estamos. 💪`,
+Cualquier consulta, aca estamos.`,
 }
 
 // Templates de VIERNES por plan
 const VIERNES_TEMPLATES = {
-  estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Cerramos la semana en **MDK** con los avances y métricas clave de tu cuenta:
+  estrategico: (clientName: string) => `Hola ${clientName}! Cerramos la semana en MDK con los avances y metricas clave de tu cuenta:
 
-✅ **Hitos Completados:**
-- **Logro 1:** [Ej: Campaña de X lanzada con éxito]
-- **Logro 2:** [Ej: Ajuste técnico de la plataforma finalizado]
+Hitos Completados:
+- Logro 1: [Ej: Campana de X lanzada con exito]
+- Logro 2: [Ej: Ajuste tecnico de la plataforma finalizado]
 
-📊 **Métricas de Gestión (Corte al viernes):**
-- **Métrica A:** [Valor] (Ej: +15% en Leads vs. semana pasada)
-- **Métrica B:** [Valor] (Ej: CPC promedio en $XX)
-- **Métrica C:** [Valor] (Ej: [Cantidad] de tickets resueltos)
+Metricas de Gestion (Corte al viernes):
+- Metrica A: [Valor] (Ej: +15% en Leads vs. semana pasada)
+- Metrica B: [Valor] (Ej: CPC promedio en $XX)
+- Metrica C: [Valor] (Ej: [Cantidad] de tickets resueltos)
 
-💡 **Conclusión:** [Una frase corta sobre qué significan estos números. Ej: "Los ajustes de pauta del martes ya muestran una mejora en el costo por conversión"].
+Conclusion: [Una frase corta sobre que significan estos numeros. Ej: "Los ajustes de pauta del martes ya muestran una mejora en el costo por conversion"].
 
-⏭️ **Próximos pasos:** [Lo más importante para el lunes/martes].
+Proximos pasos: [Lo mas importante para el lunes/martes].
 
-¡Buen fin de semana para todo el equipo! 🥂`,
+Buen fin de semana para todo el equipo!`,
 
-  esencial: (clientName: string) => `¡Hola ${clientName}! 👋 Cerramos la semana con tu cuenta al día.
+  esencial: (clientName: string) => `Hola ${clientName}! Cerramos la semana con tu cuenta al dia.
 
-✅ Lo que hicimos: [Una sola línea. Ej: Optimizamos las campañas de búsqueda y ajustamos el presupuesto diario.]
+Lo que hicimos: [Una sola linea. Ej: Optimizamos las campanas de busqueda y ajustamos el presupuesto diario.]
 
-📊 Número de la semana: [Un solo KPI relevante. Ej: CPL esta semana: $XX — estable vs semana anterior.]
+Numero de la semana: [Un solo KPI relevante. Ej: CPL esta semana: $XX — estable vs semana anterior.]
 
-⏭️ La semana que viene: [Una sola acción. Ej: Arrancamos con los nuevos creativos aprobados.]
+La semana que viene: [Una sola accion. Ej: Arrancamos con los nuevos creativos aprobados.]
 
-¡Buen finde! 🙌`,
+Buen finde!`,
 }
 
 const getTemplate = (plan: string | null | undefined, clientName: string, dayType: 'lunes' | 'viernes'): string => {
@@ -67,21 +67,19 @@ const getTemplate = (plan: string | null | undefined, clientName: string, dayTyp
   return templates.esencial(clientName)
 }
 
-// Calcular fechas de lunes y viernes de la semana actual o proxima
+// Calcular fechas de lunes y viernes de la semana actual
 const getWeekDates = () => {
   const today = new Date()
   const dayOfWeek = today.getDay() // 0=Dom, 1=Lun, ..., 6=Sab
   
-  // Calcular el proximo lunes (o hoy si es lunes)
+  // Calcular el lunes de esta semana
   const monday = new Date(today)
   if (dayOfWeek === 0) {
-    // Domingo -> lunes es manana
     monday.setDate(monday.getDate() + 1)
   } else if (dayOfWeek === 1) {
-    // Lunes -> usar hoy
+    // Hoy es lunes
   } else {
-    // Mar-Sab -> proximo lunes
-    monday.setDate(monday.getDate() + (8 - dayOfWeek))
+    monday.setDate(monday.getDate() - (dayOfWeek - 1))
   }
   monday.setHours(10, 0, 0, 0)
   
@@ -93,11 +91,10 @@ const getWeekDates = () => {
   return { monday, friday, weekStart: monday.toISOString().split('T')[0] }
 }
 
-export async function POST(request: Request) {
+export async function POST() {
   try {
     const supabase = await createClient()
     
-    // Verificar autenticacion
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -119,50 +116,45 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'No hay clientes', created: 0 })
     }
 
-    // Verificar tareas de seguimiento existentes para esta semana
-    const { data: existingTasks } = await supabase
-      .from('tareas')
-      .select('cliente_id, metadata')
-      .ilike('titulo', '%Seguimiento%')
-      .gte('fecha_vencimiento', weekStart)
-      .lt('fecha_vencimiento', new Date(monday.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
-
-    // Crear set de tareas existentes por cliente y dia
-    const existingLunes = new Set<string>()
-    const existingViernes = new Set<string>()
-    
-    existingTasks?.forEach(t => {
-      const tipo = t.metadata?.tipo_seguimiento
-      if (tipo === 'lunes') {
-        existingLunes.add(t.cliente_id)
-      } else if (tipo === 'viernes') {
-        existingViernes.add(t.cliente_id)
-      } else {
-        // Si no tiene tipo, asumimos que es lunes (compatibilidad)
-        existingLunes.add(t.cliente_id)
-      }
-    })
-
-    // Buscar el tipo de tarea "Seguimiento"
+    // Buscar el tipo de tarea "Mapa de servicio"
     const { data: tipoTarea } = await supabase
-      .from('tipos_tarea')
+      .from('tipo_de_tareas')
       .select('id')
-      .ilike('nombre', '%Seguimiento%')
+      .ilike('nombre', '%Mapa de servicio%')
       .single()
 
     const tipoTareaId = tipoTarea?.id || null
 
-    // Crear array de tareas a insertar
+    // Verificar tareas existentes para esta semana
+    const { data: existingTasks } = await supabase
+      .from('tareas')
+      .select('cliente_id, titulo')
+      .ilike('titulo', '%Seguimiento%')
+      .gte('fecha_vencimiento', monday.toISOString())
+      .lte('fecha_vencimiento', friday.toISOString())
+
+    const existingLunes = new Set<string>()
+    const existingViernes = new Set<string>()
+    
+    existingTasks?.forEach(t => {
+      if (t.titulo?.toLowerCase().includes('lunes')) {
+        existingLunes.add(t.cliente_id)
+      } else if (t.titulo?.toLowerCase().includes('viernes')) {
+        existingViernes.add(t.cliente_id)
+      }
+    })
+
+    // Crear array de tareas
     const tareasToCreate: any[] = []
 
     clientes.forEach(cliente => {
       const clientName = cliente.nombre_del_negocio || 'equipo'
       
-      // Tarea de LUNES si no existe
+      // Tarea de LUNES
       if (!existingLunes.has(cliente.id)) {
         tareasToCreate.push({
           titulo: `Seguimiento Lunes - ${cliente.nombre_del_negocio}`,
-          descripcion: `Enviar mensaje de inicio de semana al cliente.`,
+          descripcion: getTemplate(cliente.plan, clientName, 'lunes'),
           cliente_id: cliente.id,
           asignado_a: cliente.account_manager_id,
           creado_por: user.id,
@@ -170,20 +162,14 @@ export async function POST(request: Request) {
           prioridad: 'media',
           fecha_vencimiento: monday.toISOString(),
           tipo_tarea_id: tipoTareaId,
-          metadata: {
-            tipo_seguimiento: 'lunes',
-            plan: cliente.plan,
-            plantilla: getTemplate(cliente.plan, clientName, 'lunes'),
-            semana: weekStart,
-          }
         })
       }
       
-      // Tarea de VIERNES si no existe
+      // Tarea de VIERNES
       if (!existingViernes.has(cliente.id)) {
         tareasToCreate.push({
           titulo: `Seguimiento Viernes - ${cliente.nombre_del_negocio}`,
-          descripcion: `Enviar mensaje de cierre de semana al cliente.`,
+          descripcion: getTemplate(cliente.plan, clientName, 'viernes'),
           cliente_id: cliente.id,
           asignado_a: cliente.account_manager_id,
           creado_por: user.id,
@@ -191,22 +177,14 @@ export async function POST(request: Request) {
           prioridad: 'media',
           fecha_vencimiento: friday.toISOString(),
           tipo_tarea_id: tipoTareaId,
-          metadata: {
-            tipo_seguimiento: 'viernes',
-            plan: cliente.plan,
-            plantilla: getTemplate(cliente.plan, clientName, 'viernes'),
-            semana: weekStart,
-          }
         })
       }
     })
 
     if (tareasToCreate.length === 0) {
       return NextResponse.json({ 
-        message: 'Todas las tareas de seguimiento ya fueron creadas para esta semana',
+        message: 'Todas las tareas ya existen',
         created: 0,
-        existingLunes: existingLunes.size,
-        existingViernes: existingViernes.size
       })
     }
 
@@ -220,25 +198,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Error al crear tareas', details: insertError }, { status: 500 })
     }
 
-    const lunesCreadas = tareasToCreate.filter(t => t.metadata.tipo_seguimiento === 'lunes').length
-    const viernesCreadas = tareasToCreate.filter(t => t.metadata.tipo_seguimiento === 'viernes').length
-
     return NextResponse.json({
-      message: `Se crearon ${createdTasks?.length || 0} tareas de seguimiento`,
+      message: `Se crearon ${createdTasks?.length || 0} tareas`,
       created: createdTasks?.length || 0,
-      lunesCreadas,
-      viernesCreadas,
       monday: monday.toISOString(),
       friday: friday.toISOString(),
     })
 
   } catch (error) {
-    console.error('Error generating seguimiento tasks:', error)
-    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
+    console.error('Error:', error)
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
   }
 }
 
-// DELETE para borrar tareas de seguimiento existentes y recrearlas
+// DELETE para borrar tareas de seguimiento
 export async function DELETE() {
   try {
     const supabase = await createClient()
@@ -248,28 +221,24 @@ export async function DELETE() {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Buscar el tipo de tarea "Semanal"
-    const { data: tipoSemanal } = await supabase
+    // Buscar el tipo de tarea "Mapa de servicio"
+    const { data: tipoMapaServicio } = await supabase
       .from('tipo_de_tareas')
       .select('id')
-      .ilike('nombre', '%Semanal%')
+      .ilike('nombre', '%Mapa de servicio%')
       .single()
 
     let totalDeleted = 0
-    const deletedIds: string[] = []
 
-    // 1. Borrar por tipo de tarea "Semanal" primero (es lo mas seguro)
-    if (tipoSemanal?.id) {
+    // 1. Borrar por tipo de tarea "Mapa de servicio"
+    if (tipoMapaServicio?.id) {
       const { data: deleted1 } = await supabase
         .from('tareas')
         .delete()
-        .eq('tipo_tarea_id', tipoSemanal.id)
+        .eq('tipo_tarea_id', tipoMapaServicio.id)
         .select('id')
       
-      if (deleted1) {
-        totalDeleted += deleted1.length
-        deleted1.forEach(t => deletedIds.push(t.id))
-      }
+      totalDeleted += deleted1?.length || 0
     }
 
     // 2. Borrar por titulo que contenga "Seguimiento"
@@ -279,44 +248,15 @@ export async function DELETE() {
       .ilike('titulo', '%Seguimiento%')
       .select('id')
     
-    if (deleted2) {
-      const newDeleted = deleted2.filter(t => !deletedIds.includes(t.id))
-      totalDeleted += newDeleted.length
-    }
-
-    // 3. Borrar tareas con metadata que contenga tipo_seguimiento
-    const { data: deleted3 } = await supabase
-      .from('tareas')
-      .delete()
-      .not('metadata', 'is', null)
-      .contains('metadata', { tipo_seguimiento: 'lunes' })
-      .select('id')
-    
-    if (deleted3) {
-      const newDeleted = deleted3.filter(t => !deletedIds.includes(t.id))
-      totalDeleted += newDeleted.length
-    }
-
-    const { data: deleted4 } = await supabase
-      .from('tareas')
-      .delete()
-      .not('metadata', 'is', null)
-      .contains('metadata', { tipo_seguimiento: 'viernes' })
-      .select('id')
-    
-    if (deleted4) {
-      const newDeleted = deleted4.filter(t => !deletedIds.includes(t.id))
-      totalDeleted += newDeleted.length
-    }
+    totalDeleted += deleted2?.length || 0
 
     return NextResponse.json({
-      message: `Se borraron ${totalDeleted} tareas de seguimiento`,
+      message: `Se borraron ${totalDeleted} tareas`,
       deleted: totalDeleted,
-      tipoSemanalId: tipoSemanal?.id || null
     })
   } catch (error) {
-    console.error('[v0] DELETE error:', error)
-    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
+    console.error('DELETE error:', error)
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
   }
 }
 
@@ -324,36 +264,27 @@ export async function DELETE() {
 export async function GET() {
   try {
     const supabase = await createClient()
-    
     const { monday, friday, weekStart } = getWeekDates()
 
-    // Contar clientes
     const { count: totalClientes } = await supabase
       .from('clientes')
       .select('id', { count: 'exact', head: true })
 
-    // Contar tareas de seguimiento ya creadas para esta semana
     const { data: existingTasks } = await supabase
       .from('tareas')
-      .select('metadata')
+      .select('titulo')
       .ilike('titulo', '%Seguimiento%')
-      .gte('fecha_vencimiento', weekStart)
-      .lt('fecha_vencimiento', new Date(monday.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
-
-    const lunesCount = existingTasks?.filter(t => t.metadata?.tipo_seguimiento === 'lunes' || !t.metadata?.tipo_seguimiento).length || 0
-    const viernesCount = existingTasks?.filter(t => t.metadata?.tipo_seguimiento === 'viernes').length || 0
+      .gte('fecha_vencimiento', monday.toISOString())
+      .lte('fecha_vencimiento', friday.toISOString())
 
     return NextResponse.json({
       weekStart,
       monday: monday.toISOString(),
       friday: friday.toISOString(),
       totalClientes: totalClientes || 0,
-      tareasLunes: lunesCount,
-      tareasViernes: viernesCount,
-      pendientesLunes: (totalClientes || 0) - lunesCount,
-      pendientesViernes: (totalClientes || 0) - viernesCount,
+      tareasExistentes: existingTasks?.length || 0,
     })
   } catch (error) {
-    return NextResponse.json({ error: 'Error al verificar estado' }, { status: 500 })
+    return NextResponse.json({ error: 'Error' }, { status: 500 })
   }
 }
