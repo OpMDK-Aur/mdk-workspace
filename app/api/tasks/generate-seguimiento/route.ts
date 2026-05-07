@@ -3,58 +3,58 @@ import { NextResponse } from 'next/server'
 
 // Templates de LUNES por plan
 const LUNES_TEMPLATES = {
-  estrategico: (clientName: string) => `Hola ${clientName}! Buen lunes.
+  estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
 
-Desde el equipo de Operaciones de MDK te compartimos los hitos clave en los que vamos a estar trabajando en tu cuenta esta semana:
+Desde el equipo de Operaciones de **MDK** te compartimos los hitos clave en los que vamos a estar trabajando en tu cuenta esta semana:
 
-Foco principal: [Ej: Optimizacion de campanas post-informe de cierre / Lanzamiento de la nueva segmentacion]
+🎯 **Foco principal:** [Ej: Optimización de campañas post-informe de cierre / Lanzamiento de la nueva segmentación]
 
-Checklist de la semana:
-- [Item 1: accion concreta]
-- [Item 2: seguimiento o ajuste tecnico]
-- [Item 3: preparacion de reporte o analisis]
+✅ **Checklist de la semana:**
+— [Item 1: acción concreta]
+— [Item 2: seguimiento o ajuste técnico]
+— [Item 3: preparación de reporte o análisis]
 
-Objetivo: [Resultado esperado. Ej: Recuperar el CPL a los niveles de la semana 2 del mes anterior.]`,
+🚀 **Objetivo:** [Resultado esperado. Ej: Recuperar el CPL a los niveles de la semana 2 del mes anterior.]`,
 
-  esencial: (clientName: string) => `Hola ${clientName}! Buen lunes.
+  esencial: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
 
 Esta semana en tu cuenta vamos a estar trabajando en:
 
-[Una sola linea con el foco de la semana. Ej: Optimizacion de campanas y revision de trackeo.]
+🎯 [Una sola línea con el foco de la semana. Ej: Optimización de campañas y revisión de trackeo.]
 
-Objetivo: [Una sola linea. Ej: Mantener el CPL dentro del rango acordado.]
+🚀 Objetivo: [Una sola línea. Ej: Mantener el CPL dentro del rango acordado.]
 
-Cualquier consulta, aca estamos.`,
+Cualquier consulta, acá estamos. 💪`,
 }
 
 // Templates de VIERNES por plan
 const VIERNES_TEMPLATES = {
-  estrategico: (clientName: string) => `Hola ${clientName}! Cerramos la semana en MDK con los avances y metricas clave de tu cuenta:
+  estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Cerramos la semana en **MDK** con los avances y métricas clave de tu cuenta:
 
-Hitos Completados:
-- Logro 1: [Ej: Campana de X lanzada con exito]
-- Logro 2: [Ej: Ajuste tecnico de la plataforma finalizado]
+✅ **Hitos Completados:**
+— **Logro 1:** [Ej: Campaña de X lanzada con éxito]
+— **Logro 2:** [Ej: Ajuste técnico de la plataforma finalizado]
 
-Metricas de Gestion (Corte al viernes):
-- Metrica A: [Valor] (Ej: +15% en Leads vs. semana pasada)
-- Metrica B: [Valor] (Ej: CPC promedio en $XX)
-- Metrica C: [Valor] (Ej: [Cantidad] de tickets resueltos)
+📊 **Métricas de Gestión (Corte al viernes):**
+— **Métrica A:** [Valor] (Ej: +15% en Leads vs. semana pasada)
+— **Métrica B:** [Valor] (Ej: CPC promedio en $XX)
+— **Métrica C:** [Valor] (Ej: [Cantidad] de tickets resueltos)
 
-Conclusion: [Una frase corta sobre que significan estos numeros. Ej: "Los ajustes de pauta del martes ya muestran una mejora en el costo por conversion"].
+💡 **Conclusión:** *[Una frase corta sobre qué significan estos números. Ej: "Los ajustes de pauta del martes ya muestran una mejora en el costo por conversión"].*
 
-Proximos pasos: [Lo mas importante para el lunes/martes].
+⏭️ **Próximos pasos:** [Lo más importante para el lunes/martes].
 
-Buen fin de semana para todo el equipo!`,
+¡Buen fin de semana para todo el equipo! 🥂`,
 
-  esencial: (clientName: string) => `Hola ${clientName}! Cerramos la semana con tu cuenta al dia.
+  esencial: (clientName: string) => `¡Hola ${clientName}! 👋 Cerramos la semana con tu cuenta al día.
 
-Lo que hicimos: [Una sola linea. Ej: Optimizamos las campanas de busqueda y ajustamos el presupuesto diario.]
+✅ Lo que hicimos: [Una sola línea. Ej: Optimizamos las campañas de búsqueda y ajustamos el presupuesto diario.]
 
-Numero de la semana: [Un solo KPI relevante. Ej: CPL esta semana: $XX — estable vs semana anterior.]
+📊 Número de la semana: [Un solo KPI relevante. Ej: CPL esta semana: $XX — estable vs semana anterior.]
 
-La semana que viene: [Una sola accion. Ej: Arrancamos con los nuevos creativos aprobados.]
+⏭️ La semana que viene: [Una sola acción. Ej: Arrancamos con los nuevos creativos aprobados.]
 
-Buen finde!`,
+¡Buen finde! 🙌`,
 }
 
 const getTemplate = (plan: string | null | undefined, clientName: string, dayType: 'lunes' | 'viernes'): string => {
@@ -116,12 +116,22 @@ export async function POST() {
       return NextResponse.json({ message: 'No hay clientes', created: 0 })
     }
 
-    // Buscar el tipo de tarea "Mapa de servicio"
-    const { data: tipoTarea } = await supabase
+    // Buscar o crear el tipo de tarea "Seguimiento"
+    let { data: tipoTarea } = await supabase
       .from('tipo_de_tareas')
       .select('id')
-      .ilike('nombre', '%Mapa de servicio%')
+      .ilike('nombre', '%Seguimiento%')
       .single()
+
+    // Si no existe, crearlo
+    if (!tipoTarea) {
+      const { data: newTipo } = await supabase
+        .from('tipo_de_tareas')
+        .insert({ nombre: 'Seguimiento', activo: true })
+        .select('id')
+        .single()
+      tipoTarea = newTipo
+    }
 
     const tipoTareaId = tipoTarea?.id || null
 
@@ -221,21 +231,21 @@ export async function DELETE() {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Buscar el tipo de tarea "Mapa de servicio"
-    const { data: tipoMapaServicio } = await supabase
+    // Buscar el tipo de tarea "Seguimiento"
+    const { data: tipoSeguimiento } = await supabase
       .from('tipo_de_tareas')
       .select('id')
-      .ilike('nombre', '%Mapa de servicio%')
+      .ilike('nombre', '%Seguimiento%')
       .single()
 
     let totalDeleted = 0
 
-    // 1. Borrar por tipo de tarea "Mapa de servicio"
-    if (tipoMapaServicio?.id) {
+    // 1. Borrar por tipo de tarea "Seguimiento"
+    if (tipoSeguimiento?.id) {
       const { data: deleted1 } = await supabase
         .from('tareas')
         .delete()
-        .eq('tipo_tarea_id', tipoMapaServicio.id)
+        .eq('tipo_tarea_id', tipoSeguimiento.id)
         .select('id')
       
       totalDeleted += deleted1?.length || 0

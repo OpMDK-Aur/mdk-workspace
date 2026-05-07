@@ -53,15 +53,10 @@ export function TaskBoard() {
     const initTasks = async () => {
       // Borrar tareas de seguimiento existentes y recrearlas
       try {
-        const delRes = await fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' })
-        const delData = await delRes.json()
-        console.log('[v0] DELETE seguimiento:', delData)
-        
-        const postRes = await fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
-        const postData = await postRes.json()
-        console.log('[v0] POST seguimiento:', postData)
+        await fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' })
+        await fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
       } catch (e) {
-        console.log('[v0] Error seguimiento:', e)
+        // Silently fail
       }
       loadTasks()
     }
