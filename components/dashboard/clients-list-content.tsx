@@ -263,10 +263,12 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     contact_name: '',
     contact_lastname: '',
     phone: '',
+    email: '',
     status: 'verde' as ClientStatus,
     plan: 'Esencial' as ClientPlan,
     fee_mdk: '',
     fee_aurelia: '',
+    nps_score: '',
     notion_id: '',
     google_ads_customer_id: '',
     meta_ads_account_id: '',
@@ -274,6 +276,10 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     discord_channel_id: '',
     project_manager_id: '',
     account_manager_id: '',
+    crm_tipo: '',
+    crm_url: '',
+    crm_location_id: '',
+    landing_url: '',
   })
 
   const resetForm = () => {
@@ -282,10 +288,12 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       contact_name: '',
       contact_lastname: '',
       phone: '',
+      email: '',
       status: 'verde',
       plan: 'Esencial',
       fee_mdk: '',
       fee_aurelia: '',
+      nps_score: '',
       notion_id: '',
       google_ads_customer_id: '',
       meta_ads_account_id: '',
@@ -293,6 +301,10 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       discord_channel_id: '',
       project_manager_id: '',
       account_manager_id: '',
+      crm_tipo: '',
+      crm_url: '',
+      crm_location_id: '',
+      landing_url: '',
     })
     setCreateError(null)
     setCreateSuccess(false)
@@ -306,13 +318,16 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     try {
       const clientData = {
         business_name: newClient.business_name.trim(),
+        nombre: newClient.business_name.trim(), // Also set nombre for compatibility
         contact_name: newClient.contact_name.trim() || null,
         contact_lastname: newClient.contact_lastname.trim() || null,
         phone: newClient.phone.trim() || null,
+        email: newClient.email.trim() || null,
         status: newClient.status,
         plan: newClient.plan,
         fee_mdk: newClient.fee_mdk ? parseFloat(newClient.fee_mdk) : null,
         fee_aurelia: newClient.fee_aurelia ? parseFloat(newClient.fee_aurelia) : null,
+        nps_score: newClient.nps_score ? parseInt(newClient.nps_score) : null,
         notion_id: newClient.notion_id.trim() || null,
         google_ads_customer_id: newClient.google_ads_customer_id.trim() || null,
         meta_ads_account_id: newClient.meta_ads_account_id.trim() || null,
@@ -320,10 +335,14 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
         discord_channel_id: newClient.discord_channel_id.trim() || null,
         project_manager_id: newClient.project_manager_id || null,
         account_manager_id: newClient.account_manager_id || null,
+        crm_tipo: newClient.crm_tipo || null,
+        crm_url: newClient.crm_url.trim() || null,
+        crm_location_id: newClient.crm_location_id.trim() || null,
+        landings: newClient.landing_url.trim() ? [{ nombre: 'Principal', url: newClient.landing_url.trim(), tipo: 'landing' }] : [],
       }
 
       const { data, error } = await supabase
-        .from('clients')
+        .from('clientes')
         .insert(clientData)
         .select()
         .single()
@@ -540,13 +559,24 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                           className="mt-1"
                         />
                       </div>
-                      <div className="col-span-2">
+                      <div>
                         <Label htmlFor="phone">Telefono</Label>
                         <Input
                           id="phone"
                           value={newClient.phone}
                           onChange={(e) => setNewClient(prev => ({ ...prev, phone: e.target.value }))}
                           placeholder="+54 9 11 1234-5678"
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="email">Email</Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          value={newClient.email}
+                          onChange={(e) => setNewClient(prev => ({ ...prev, email: e.target.value }))}
+                          placeholder="contacto@empresa.com"
                           className="mt-1"
                         />
                       </div>
@@ -576,6 +606,19 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                           value={newClient.fee_aurelia}
                           onChange={(e) => setNewClient(prev => ({ ...prev, fee_aurelia: e.target.value }))}
                           placeholder="0"
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="nps_score">NPS Score (0-10)</Label>
+                        <Input
+                          id="nps_score"
+                          type="number"
+                          min="0"
+                          max="10"
+                          value={newClient.nps_score}
+                          onChange={(e) => setNewClient(prev => ({ ...prev, nps_score: e.target.value }))}
+                          placeholder="8"
                           className="mt-1"
                         />
                       </div>
@@ -627,9 +670,65 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                     </div>
                   </div>
 
+                  {/* CRM & Landing */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-foreground">CRM y Landing</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="crm_tipo">Tipo de CRM</Label>
+                        <Select
+                          value={newClient.crm_tipo || 'none'}
+                          onValueChange={(v) => setNewClient(prev => ({ ...prev, crm_tipo: v === 'none' ? '' : v }))}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Seleccionar..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Sin CRM</SelectItem>
+                            <SelectItem value="ghl">GoHighLevel</SelectItem>
+                            <SelectItem value="hubspot">HubSpot</SelectItem>
+                            <SelectItem value="salesforce">Salesforce</SelectItem>
+                            <SelectItem value="pipedrive">Pipedrive</SelectItem>
+                            <SelectItem value="otro">Otro</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="crm_url">URL del CRM</Label>
+                        <Input
+                          id="crm_url"
+                          value={newClient.crm_url}
+                          onChange={(e) => setNewClient(prev => ({ ...prev, crm_url: e.target.value }))}
+                          placeholder="https://app.gohighlevel.com/..."
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="crm_location_id">CRM Location ID</Label>
+                        <Input
+                          id="crm_location_id"
+                          value={newClient.crm_location_id}
+                          onChange={(e) => setNewClient(prev => ({ ...prev, crm_location_id: e.target.value }))}
+                          placeholder="xxxxxxxxxxxxxxx"
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="landing_url">URL Landing principal</Label>
+                        <Input
+                          id="landing_url"
+                          value={newClient.landing_url}
+                          onChange={(e) => setNewClient(prev => ({ ...prev, landing_url: e.target.value }))}
+                          placeholder="https://www.ejemplo.com"
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Integrations */}
                   <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-foreground">Integraciones (opcional)</h3>
+                    <h3 className="text-sm font-semibold text-foreground">Integraciones Ads (opcional)</h3>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <Label htmlFor="google_ads_customer_id">Google Ads Customer ID</Label>
