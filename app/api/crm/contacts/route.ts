@@ -129,13 +129,13 @@ export async function GET(request: NextRequest) {
   // Load client CRM credentials
   const { data: client, error: clientErr } = await supabase
     .from('clientes')
-    .select('id, business_name, crm_type, ghl_location_id, ghl_token')
+    .select('id, nombre_del_negocio, crm_type, ghl_location_id, ghl_token')
     .eq('id', clientId)
     .single()
 
   if (clientErr || !client) return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
 
-  console.log('[v0] CRM contacts request — client:', client.business_name, 'crm_type:', client.crm_type, 'has_location:', !!client.ghl_location_id, 'has_token:', !!client.ghl_token)
+  console.log('[v0] CRM contacts request — client:', client.nombre_del_negocio, 'crm_type:', client.crm_type, 'has_location:', !!client.ghl_location_id, 'has_token:', !!client.ghl_token)
 
   // Return 0 gracefully when no CRM is configured (not an error)
   if (!client.crm_type) return NextResponse.json({ total: 0, byDay: {}, crm_type: null })

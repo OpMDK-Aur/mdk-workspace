@@ -70,7 +70,7 @@ export default async function TeamPage() {
   // Fetch active timers (entries with ended_at = null) including client name
   const { data: activeTimers } = await supabase
     .from('time_entries')
-    .select('user_id, description, clients(business_name)')
+    .select('user_id, description, clientes:cliente_id(nombre_del_negocio)')
     .is('ended_at', null)
 
   // Map active timers by user_id
@@ -79,7 +79,7 @@ export default async function TeamPage() {
     if (entry.user_id) {
       activeTimerByUser[entry.user_id] = {
         description: entry.description || '',
-        client: entry.clients?.business_name ?? '',
+        client: entry.clientes?.nombre_del_negocio ?? '',
       }
     }
   })
