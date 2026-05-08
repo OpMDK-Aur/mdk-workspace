@@ -15,15 +15,17 @@ export default async function SaldosPage() {
 
   const { data: profile } = await supabase
     .from('colaboradores')
-    .select('*')
+    .select('*, roles(id, nombre)')
     .eq('id', user.id)
     .maybeSingle()
 
-  const isFullAccess = profile?.role === 'direccion' || profile?.role === 'project_manager'
+  // Get role name from colaborador
+  const roleName = profile?.roles?.nombre?.toLowerCase().replace(/ /g, '_') || ''
+  const isFullAccess = roleName === 'master' || roleName === 'administrador' || roleName === 'project_manager' || roleName === 'account_manager'
 
   let clientsQuery = supabase
     .from('clientes')
-    .select('id, business_name, meta_ads_account_id, google_ads_customer_id, status')
+    .select('id, nombre_del_negocio, meta_ads_id, google_ads_id, semaforo_id')
 
   if (!isFullAccess) {
     const { data: access } = await supabase
@@ -36,7 +38,16 @@ export default async function SaldosPage() {
       : clientsQuery.in('id', ['00000000-0000-0000-0000-000000000000'])
   }
 
-  const { data: clients } = await clientsQuery.order('business_name')
+  const { data: clientsData } = await clientsQuery.order('nombre_del_negocio')
+  
+  // Map to expected format
+  const clients = (clientsData ?? []).map(c => ({
+    id: c.id,
+    business_name: c.nombre_del_negocio,
+    meta_ads_account_id: c.meta_ads_id,
+    google_ads_customer_id: c.google_ads_id,
+    status: c.semaforo_id,
+  }))
 
-  return <SaldosContent clients={clients ?? []} />
+  return <SaldosContent clients={clients} />
 }
