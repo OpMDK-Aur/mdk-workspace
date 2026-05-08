@@ -67,7 +67,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { Check, ChevronsUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Check, ChevronsUpDown, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
 import {
   Play,
   RotateCcw,
@@ -704,12 +704,14 @@ function FilesSection({ task }: { task: Task }) {
 // ── Comments Section (with rich text editor) ──────────────────────────────────
 
 function CommentsSection({ task }: { task: Task }) {
-  const { addComment, deleteComment } = useTaskStore()
+  const { addComment, updateComment, deleteComment } = useTaskStore()
   const [comment, setComment] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; avatar_url: string | null } | null>(null)
   const [pendingImages, setPendingImages] = useState<{ file: File; preview: string }[]>([])
   const [uploadingImages, setUploadingImages] = useState(false)
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editingContent, setEditingContent] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -792,6 +794,23 @@ function CommentsSection({ task }: { task: Task }) {
     return urls
   }
 
+  // Handle keyboard events
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit()
+    }
+  }
+
+  // Handle edit comment
+  const handleEditComment = async (commentId: string) => {
+    if (!editingContent.trim()) return
+    await updateComment(task.id, commentId, editingContent)
+    setEditingCommentId(null)
+    setEditingContent('')
+    toast.success('Comentario actualizado')
+  }
+
   const handleSubmit = async () => {
     const textContent = comment.trim()
     if (!textContent && pendingImages.length === 0) return
@@ -856,19 +875,64 @@ function CommentsSection({ task }: { task: Task }) {
                       {format(new Date(c.createdAt), 'dd/MM/yyyy HH:mm', { locale: es })}
                     </span>
                   </div>
-                  <div 
-                    className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block"
-                    dangerouslySetInnerHTML={{ __html: c.content }}
-                  />
+                  {editingCommentId === c.id ? (
+                    <div className="mt-2 space-y-2">
+                      <textarea
+                        value={editingContent}
+                        onChange={(e) => setEditingContent(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            handleEditComment(c.id)
+                          }
+                          if (e.key === 'Escape') {
+                            setEditingCommentId(null)
+                            setEditingContent('')
+                          }
+                        }}
+                        className="w-full min-h-[60px] p-2 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => handleEditComment(c.id)}>
+                          Guardar
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => { setEditingCommentId(null); setEditingContent('') }}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div 
+                      className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block"
+                      dangerouslySetInnerHTML={{ __html: c.content }}
+                    />
+                  )}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                  onClick={() => deleteComment(task.id, c.id)}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content.replace(/<[^>]*>/g, '')) }}
+                    title="Editar"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => deleteComment(task.id, c.id)}
+                    title="Eliminar"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
@@ -890,7 +954,8 @@ function CommentsSection({ task }: { task: Task }) {
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           onPaste={handlePaste}
-          placeholder="Escribe un comentario... (podes pegar imagenes con Ctrl+V)"
+          onKeyDown={handleKeyDown}
+          placeholder="Escribe un comentario... (Enter para enviar, Shift+Enter nueva linea)"
           className="w-full min-h-[80px] p-3 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
         />
         

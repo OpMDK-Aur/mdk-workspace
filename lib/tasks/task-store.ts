@@ -765,6 +765,7 @@ interface TaskStore {
 
   // Comments
   addComment: (taskId: string, content: string, userId: string, userName: string, userAvatar?: string | null) => Promise<void>
+  updateComment: (taskId: string, commentId: string, content: string) => Promise<void>
   deleteComment: (taskId: string, commentId: string) => Promise<void>
 
   // Files
@@ -1129,6 +1130,34 @@ addComment: async (taskId, content, userId, userName, userAvatar = null) => {
                 { id: crypto.randomUUID(), action: 'Agregó comentario', timestamp: now, userId, userName },
                 ...t.activities,
               ].slice(0, 10),
+            }
+          : t
+      ),
+    }))
+  },
+
+  updateComment: async (taskId, commentId, content) => {
+    const supabase = createClient()
+    
+    const { error } = await supabase
+      .from('comentarios_tareas')
+      .update({ contenido: content })
+      .eq('id', commentId)
+
+    if (error) {
+      console.error('Error updating comment:', error)
+      return
+    }
+
+    set((state) => ({
+      tasks: state.tasks.map((t) =>
+        t.id === taskId
+          ? { 
+              ...t, 
+              comments: t.comments.map((c) => 
+                c.id === commentId ? { ...c, content } : c
+              ),
+              updatedAt: new Date() 
             }
           : t
       ),
