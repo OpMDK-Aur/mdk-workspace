@@ -271,11 +271,7 @@ export function ActiveTimerBar() {
 
         {/* Timer Display */}
         <div className="font-mono text-xl font-semibold tabular-nums w-24 text-right shrink-0">
-          {isRunning
-            ? formatDuration(elapsedSeconds)
-            : lastEntry
-              ? formatDurationShort(lastEntry.duration_sec)
-              : '00:00:00'}
+          {isRunning ? formatDuration(elapsedSeconds) : '00:00:00'}
         </div>
 
         {/* Start/Stop Button */}
