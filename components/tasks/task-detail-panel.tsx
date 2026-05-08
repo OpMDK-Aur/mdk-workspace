@@ -705,14 +705,11 @@ function FilesSection({ task }: { task: Task }) {
 
 function CommentsSection({ task }: { task: Task }) {
   const { addComment, updateComment, deleteComment } = useTaskStore()
-  const [comment, setComment] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; avatar_url: string | null } | null>(null)
-  const [pendingImages, setPendingImages] = useState<{ file: File; preview: string }[]>([])
-  const [uploadingImages, setUploadingImages] = useState(false)
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const editorRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     async function loadUser() {
@@ -722,7 +719,7 @@ function CommentsSection({ task }: { task: Task }) {
         const { data: colab } = await supabase
           .from('colaboradores')
           .select('id, nombre, avatar_url')
-  .eq('id', user.id)
+          .eq('id', user.id)
           .single()
         if (colab) setCurrentUser(colab)
       }
@@ -730,8 +727,8 @@ function CommentsSection({ task }: { task: Task }) {
     loadUser()
   }, [])
 
-  // Handle paste event for images
-  const handlePaste = (e: React.ClipboardEvent) => {
+  // Handle paste event - insert images inline
+  const handlePaste = async (e: React.ClipboardEvent<HTMLDivElement>) => {
     const items = e.clipboardData?.items
     if (!items) return
 
@@ -740,44 +737,41 @@ function CommentsSection({ task }: { task: Task }) {
         e.preventDefault()
         const file = item.getAsFile()
         if (file) {
-          const preview = URL.createObjectURL(file)
-          setPendingImages(prev => [...prev, { file, preview }])
+          // Convert to base64 and insert inline
+          const reader = new FileReader()
+          reader.onload = () => {
+            const dataUrl = reader.result as string
+            const img = document.createElement('img')
+            img.src = dataUrl
+            img.alt = 'Imagen'
+            img.style.maxWidth = '100%'
+            img.style.maxHeight = '200px'
+            img.style.borderRadius = '8px'
+            img.style.margin = '4px 0'
+            img.style.display = 'inline-block'
+            img.style.verticalAlign = 'middle'
+            
+            const selection = window.getSelection()
+            if (selection && selection.rangeCount > 0) {
+              const range = selection.getRangeAt(0)
+              range.deleteContents()
+              range.insertNode(img)
+              range.setStartAfter(img)
+              range.collapse(true)
+              selection.removeAllRanges()
+              selection.addRange(range)
+            } else if (editorRef.current) {
+              editorRef.current.appendChild(img)
+            }
+          }
+          reader.readAsDataURL(file)
         }
       }
     }
   }
 
-  // Remove pending image
-  const removePendingImage = (index: number) => {
-    setPendingImages(prev => {
-      URL.revokeObjectURL(prev[index].preview)
-      return prev.filter((_, i) => i !== index)
-    })
-  }
-
-  // Convert images to base64 data URLs (no storage needed)
-  const processImages = async (): Promise<string[]> => {
-    const dataUrls: string[] = []
-    
-    for (const { file } of pendingImages) {
-      try {
-        const reader = new FileReader()
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          reader.onload = () => resolve(reader.result as string)
-          reader.onerror = reject
-          reader.readAsDataURL(file)
-        })
-        dataUrls.push(dataUrl)
-      } catch (err) {
-        console.error('Error processing image:', err)
-        toast.error('Error procesando imagen')
-      }
-    }
-    return dataUrls
-  }
-
   // Handle keyboard events
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSubmit()
@@ -794,8 +788,9 @@ function CommentsSection({ task }: { task: Task }) {
   }
 
   const handleSubmit = async () => {
-    const textContent = comment.trim()
-    if (!textContent && pendingImages.length === 0) return
+    if (!editorRef.current) return
+    const content = editorRef.current.innerHTML.trim()
+    if (!content || content === '<br>') return
     if (isSubmitting) return
     
     setIsSubmitting(true)
@@ -803,33 +798,14 @@ function CommentsSection({ task }: { task: Task }) {
     const userName = currentUser?.nombre || 'Usuario'
     
     try {
-      // Process images to base64
-      let imageDataUrls: string[] = []
-      if (pendingImages.length > 0) {
-        setUploadingImages(true)
-        imageDataUrls = await processImages()
-        setUploadingImages(false)
-      }
-      
-      // Build content with images
-      let fullContent = textContent
-      if (imageDataUrls.length > 0) {
-        const imagesHtml = imageDataUrls.map(dataUrl => 
-          `<img src="${dataUrl}" alt="Imagen adjunta" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 8px; display: block;" />`
-        ).join('')
-        fullContent = textContent ? `${textContent}<br/>${imagesHtml}` : imagesHtml
-      }
-      
-      await addComment(task.id, fullContent, userId, userName, currentUser?.avatar_url)
-      setComment('')
-      setPendingImages([])
+      await addComment(task.id, content, userId, userName, currentUser?.avatar_url)
+      editorRef.current.innerHTML = ''
       toast.success('Comentario agregado')
     } catch (err) {
-      console.error('[v0] Error adding comment:', err)
+      console.error('Error adding comment:', err)
       toast.error('Error al agregar comentario')
     } finally {
       setIsSubmitting(false)
-      setUploadingImages(false)
     }
   }
 
@@ -930,49 +906,24 @@ function CommentsSection({ task }: { task: Task }) {
           </Avatar>
           <span className="text-sm text-muted-foreground">Nuevo comentario</span>
         </div>
-        <textarea
-          ref={textareaRef}
-          value={comment}
-          onChange={(e) => setComment(e.target.value)}
+        <div
+          ref={editorRef}
+          contentEditable
           onPaste={handlePaste}
           onKeyDown={handleKeyDown}
-          placeholder="Escribe un comentario... (Enter para enviar, Shift+Enter nueva linea)"
-          className="w-full min-h-[80px] p-3 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+          data-placeholder="Escribe un comentario... (podes pegar imagenes con Ctrl+V)"
+          className="w-full min-h-[80px] p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1"
         />
         
-        {/* Pending images preview */}
-        {pendingImages.length > 0 && (
-          <div className="flex flex-wrap gap-2 p-2 border border-dashed border-border rounded-md">
-            {pendingImages.map((img, index) => (
-              <div key={index} className="relative group">
-                <img 
-                  src={img.preview} 
-                  alt={`Preview ${index + 1}`} 
-                  className="h-20 w-20 object-cover rounded-md"
-                />
-                <button
-                  onClick={() => removePendingImage(index)}
-                  className="absolute -top-1.5 -right-1.5 h-5 w-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">
-            {pendingImages.length > 0 && `${pendingImages.length} imagen(es) adjuntas`}
-          </span>
+        <div className="flex items-center justify-end">
           <Button 
             size="sm" 
             className="gap-1.5" 
             onClick={handleSubmit} 
-            disabled={(!comment.trim() && pendingImages.length === 0) || isSubmitting}
+            disabled={isSubmitting}
           >
             <Send className="h-3.5 w-3.5" />
-            {uploadingImages ? 'Subiendo imagenes...' : isSubmitting ? 'Enviando...' : 'Enviar comentario'}
+            {isSubmitting ? 'Enviando...' : 'Enviar'}
           </Button>
         </div>
       </div>
