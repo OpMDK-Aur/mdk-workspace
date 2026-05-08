@@ -1724,7 +1724,7 @@ setIsCreating(true)
         status: 'pendiente' as TaskStatus,
         priority,
         type: tipoTarea?.id || '', // UUID from tipo_de_tareas
-        dueDate: null,
+        dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
         customFields: {},
         comments: [initialComment],
       })
