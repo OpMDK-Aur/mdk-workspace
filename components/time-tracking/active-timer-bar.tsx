@@ -43,6 +43,7 @@ function getInitials(name: string): string {
 interface ColaboradorInfo {
   nombre: string
   departamento: string | null
+  departamento_id: string | null
 }
 
 export function ActiveTimerBar() {
@@ -94,23 +95,27 @@ export function ActiveTimerBar() {
         // Obtener colaborador con su departamento
         const { data: colab } = await supabase
           .from('colaboradores')
-          .select('nombre, departamentos(nombre)')
+          .select('nombre, departamento_id, departamentos(id, nombre)')
           .eq('id', user.id)
           .single()
 
+        let deptoId: string | null = null
         if (colab) {
-          const dept = (colab.departamentos as { nombre: string } | null)?.nombre ?? null
+          const dept = (colab.departamentos as { id: string; nombre: string } | null)
+          deptoId = colab.departamento_id ?? null
           setColaborador({
             nombre: colab.nombre,
-            departamento: dept,
+            departamento: dept?.nombre ?? null,
+            departamento_id: deptoId,
           })
         }
 
-        // Cargar TODOS los tipos de tarea activos
+        // Cargar tipos de tarea: los genéricos (sin departamento) + los del departamento del usuario
         const { data: tipos } = await supabase
           .from('tipo_de_tareas')
           .select('*')
           .eq('activo', true)
+          .or(deptoId ? `departamento_id.is.null,departamento_id.eq.${deptoId}` : 'departamento_id.is.null')
           .order('nombre')
         
         if (tipos) setTiposTarea(tipos)

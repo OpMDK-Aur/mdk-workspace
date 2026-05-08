@@ -262,10 +262,9 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // New client form state
   const [newClient, setNewClient] = useState({
     nombre_del_negocio: '',
-    contact_name: '',
-    contact_lastname: '',
-    phone: '',
-    email: '',
+    nombre: '',
+    apellido: '',
+    telefono: '',
     status: 'verde' as ClientStatus,
     plan: 'Esencial' as ClientPlan,
     fee_mdk: '',
@@ -287,10 +286,9 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const resetForm = () => {
     setNewClient({
       nombre_del_negocio: '',
-      contact_name: '',
-      contact_lastname: '',
-      phone: '',
-      email: '',
+      nombre: '',
+      apellido: '',
+      telefono: '',
       status: 'verde',
       plan: 'Esencial',
       fee_mdk: '',
@@ -320,10 +318,9 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     try {
       const clientData = {
         nombre_del_negocio: newClient.nombre_del_negocio.trim(),
-        contact_name: newClient.contact_name.trim() || null,
-        contact_lastname: newClient.contact_lastname.trim() || null,
-        phone: newClient.phone.trim() || null,
-        email: newClient.email.trim() || null,
+        nombre: newClient.nombre.trim() || null,
+        apellido: newClient.apellido.trim() || null,
+        telefono: newClient.telefono.trim() || null,
         status: newClient.status,
         plan: newClient.plan,
         fee_mdk: newClient.fee_mdk ? parseFloat(newClient.fee_mdk) : null,
@@ -388,8 +385,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // Filter clients
   const filteredClients = localClients.filter(client => {
     const matchesSearch = client.nombre_del_negocio.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.contact_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.contact_lastname?.toLowerCase().includes(searchTerm.toLowerCase())
+      client.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.apellido?.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || client.status === statusFilter
     const matchesPlan = planFilter === 'all' || client.plan === planFilter
     const matchesPm = pmFilter === 'all' || client.project_manager_id === pmFilter
@@ -541,43 +538,32 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                     </h3>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="contact_name">Nombre</Label>
+                        <Label htmlFor="nombre">Nombre</Label>
                         <Input
-                          id="contact_name"
-                          value={newClient.contact_name}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, contact_name: e.target.value }))}
+                          id="nombre"
+                          value={newClient.nombre}
+                          onChange={(e) => setNewClient(prev => ({ ...prev, nombre: e.target.value }))}
                           placeholder="Juan"
                           className="mt-1"
                         />
                       </div>
                       <div>
-                        <Label htmlFor="contact_lastname">Apellido</Label>
+                        <Label htmlFor="apellido">Apellido</Label>
                         <Input
-                          id="contact_lastname"
-                          value={newClient.contact_lastname}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, contact_lastname: e.target.value }))}
+                          id="apellido"
+                          value={newClient.apellido}
+                          onChange={(e) => setNewClient(prev => ({ ...prev, apellido: e.target.value }))}
                           placeholder="Perez"
                           className="mt-1"
                         />
                       </div>
                       <div>
-                        <Label htmlFor="phone">Telefono</Label>
+                        <Label htmlFor="telefono">Telefono</Label>
                         <Input
-                          id="phone"
-                          value={newClient.phone}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, phone: e.target.value }))}
+                          id="telefono"
+                          value={newClient.telefono}
+                          onChange={(e) => setNewClient(prev => ({ ...prev, telefono: e.target.value }))}
                           placeholder="+54 9 11 1234-5678"
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="email">Email</Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          value={newClient.email}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, email: e.target.value }))}
-                          placeholder="contacto@empresa.com"
                           className="mt-1"
                         />
                       </div>
@@ -1119,12 +1105,12 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                         {visibleColumns.includes('contacto') && (
                           <TableCell>
                             <div className="text-sm">
-                              {client.contact_name || client.contact_lastname
-                                ? `${client.contact_name || ''} ${client.contact_lastname || ''}`.trim()
+                              {client.nombre || client.apellido
+                                ? `${client.nombre || ''} ${client.apellido || ''}`.trim()
                                 : '-'}
                             </div>
-                            {client.phone && (
-                              <div className="text-xs text-muted-foreground">{client.phone}</div>
+                            {client.telefono && (
+                              <div className="text-xs text-muted-foreground">{client.telefono}</div>
                             )}
                           </TableCell>
                         )}
