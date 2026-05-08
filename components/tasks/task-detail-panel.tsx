@@ -839,7 +839,7 @@ function CommentsSection({ task }: { task: Task }) {
                     </span>
                   </div>
                   <div 
-                    className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold"
+                    className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block"
                     dangerouslySetInnerHTML={{ __html: c.content }}
                   />
                 </div>
