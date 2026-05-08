@@ -637,6 +637,9 @@ function CommentsSection({ task }: { task: Task }) {
   const [comment, setComment] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; avatar_url: string | null } | null>(null)
+  const [pendingImages, setPendingImages] = useState<{ file: File; preview: string }[]>([])
+  const [uploadingImages, setUploadingImages] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     async function loadUser() {
@@ -645,7 +648,7 @@ function CommentsSection({ task }: { task: Task }) {
       if (user) {
         const { data: colab } = await supabase
           .from('colaboradores')
-.select('id, nombre, avatar_url')
+          .select('id, nombre, avatar_url')
   .eq('id', user.id)
           .single()
         if (colab) setCurrentUser(colab)
@@ -654,25 +657,88 @@ function CommentsSection({ task }: { task: Task }) {
     loadUser()
   }, [])
 
+  // Handle paste event for images
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (file) {
+          const preview = URL.createObjectURL(file)
+          setPendingImages(prev => [...prev, { file, preview }])
+        }
+      }
+    }
+  }
+
+  // Remove pending image
+  const removePendingImage = (index: number) => {
+    setPendingImages(prev => {
+      URL.revokeObjectURL(prev[index].preview)
+      return prev.filter((_, i) => i !== index)
+    })
+  }
+
+  // Upload images to blob storage
+  const uploadImages = async (): Promise<string[]> => {
+    const urls: string[] = []
+    for (const { file } of pendingImages) {
+      const formData = new FormData()
+      formData.append('file', file)
+      
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+      
+      if (res.ok) {
+        const { url } = await res.json()
+        urls.push(url)
+      }
+    }
+    return urls
+  }
+
   const handleSubmit = async () => {
     const textContent = comment.trim()
-    if (!textContent || isSubmitting) return
+    if (!textContent && pendingImages.length === 0) return
+    if (isSubmitting) return
     
     setIsSubmitting(true)
     const userId = currentUser?.id || 'system'
     const userName = currentUser?.nombre || 'Usuario'
     
-    console.log('[v0] CommentsSection handleSubmit - taskId:', task.id, 'content:', textContent)
-    
     try {
-      await addComment(task.id, textContent, userId, userName, currentUser?.avatar_url)
+      // Upload images first
+      let imageUrls: string[] = []
+      if (pendingImages.length > 0) {
+        setUploadingImages(true)
+        imageUrls = await uploadImages()
+        setUploadingImages(false)
+      }
+      
+      // Build content with images
+      let fullContent = textContent
+      if (imageUrls.length > 0) {
+        const imagesHtml = imageUrls.map(url => 
+          `<img src="${url}" alt="Imagen adjunta" class="max-w-full rounded-lg mt-2" style="max-height: 300px;" />`
+        ).join('')
+        fullContent = textContent ? `${textContent}<br/>${imagesHtml}` : imagesHtml
+      }
+      
+      await addComment(task.id, fullContent, userId, userName, currentUser?.avatar_url)
       setComment('')
+      setPendingImages([])
       toast.success('Comentario agregado')
     } catch (err) {
       console.error('[v0] Error adding comment:', err)
       toast.error('Error al agregar comentario')
     } finally {
       setIsSubmitting(false)
+      setUploadingImages(false)
     }
   }
 
@@ -729,20 +795,47 @@ function CommentsSection({ task }: { task: Task }) {
           <span className="text-sm text-muted-foreground">Nuevo comentario</span>
         </div>
         <textarea
+          ref={textareaRef}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          placeholder="Escribe un comentario..."
+          onPaste={handlePaste}
+          placeholder="Escribe un comentario... (podes pegar imagenes con Ctrl+V)"
           className="w-full min-h-[80px] p-3 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
         />
-        <div className="flex justify-end">
+        
+        {/* Pending images preview */}
+        {pendingImages.length > 0 && (
+          <div className="flex flex-wrap gap-2 p-2 border border-dashed border-border rounded-md">
+            {pendingImages.map((img, index) => (
+              <div key={index} className="relative group">
+                <img 
+                  src={img.preview} 
+                  alt={`Preview ${index + 1}`} 
+                  className="h-20 w-20 object-cover rounded-md"
+                />
+                <button
+                  onClick={() => removePendingImage(index)}
+                  className="absolute -top-1.5 -right-1.5 h-5 w-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            {pendingImages.length > 0 && `${pendingImages.length} imagen(es) adjuntas`}
+          </span>
           <Button 
             size="sm" 
             className="gap-1.5" 
             onClick={handleSubmit} 
-            disabled={!comment.trim() || isSubmitting}
+            disabled={(!comment.trim() && pendingImages.length === 0) || isSubmitting}
           >
             <Send className="h-3.5 w-3.5" />
-            {isSubmitting ? 'Enviando...' : 'Enviar comentario'}
+            {uploadingImages ? 'Subiendo imagenes...' : isSubmitting ? 'Enviando...' : 'Enviar comentario'}
           </Button>
         </div>
       </div>
