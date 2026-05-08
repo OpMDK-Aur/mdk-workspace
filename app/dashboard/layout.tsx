@@ -53,8 +53,8 @@ export default async function DashboardLayout({
 
   const clientIds = clientAccessResult.data?.map(ca => ca.client_id) || []
 
-  // master, administrador and project_manager see all clients; others see only assigned clients
-  const isFullAccess = roleName === 'master' || roleName === 'administrador' || roleName === 'project_manager'
+  // master, administrador, project_manager and account_manager see all clients; others see only assigned clients
+  const isFullAccess = roleName === 'master' || roleName === 'administrador' || roleName === 'project_manager' || roleName === 'account_manager'
   
   // Semaforo ID to status mapping
   const SEMAFORO_MAP: Record<string, string> = {
@@ -77,6 +77,7 @@ export default async function DashboardLayout({
   }
 
   const { data: clientsData } = await clientsQuery.order('nombre_del_negocio')
+  
   const clients = (clientsData || []).map(c => ({ 
     ...c, 
     business_name: c.nombre_del_negocio,
