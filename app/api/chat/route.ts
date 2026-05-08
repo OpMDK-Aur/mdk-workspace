@@ -43,12 +43,12 @@ Contexto del cliente actual:
 
   const { data: allClients } = await supabase
     .from('clientes')
-    .select('business_name, status, plan, fee_mdk')
+    .select('nombre_del_negocio, semaforo_id, plan, fee_mdk')
     .order('fee_mdk', { ascending: false })
     .limit(10)
 
   const clientsOverview = allClients
-    ?.map(c => `- ${c.business_name}: ${c.plan}, Estado: ${c.status || 'N/A'}, Fee: $${c.fee_mdk?.toLocaleString() || 'N/A'}`)
+    ?.map(c => `- ${c.nombre_del_negocio}: ${c.plan}, Fee: $${c.fee_mdk?.toLocaleString() || 'N/A'}`)
     .join('\n') || ''
 
   const systemPrompt = `Eres el Asistente MDK, un asistente de IA especializado en análisis de marketing digital y publicidad paga (Paid Media) para una agencia de marketing.

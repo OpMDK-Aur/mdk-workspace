@@ -30,7 +30,7 @@ export default async function ConversionsPage() {
 
   let query = supabase
     .from('clientes')
-    .select('id, business_name, google_ads_customer_id')
+    .select('id, nombre_del_negocio, google_ads_id')
 
   if (!isFullAccess && clientIds.length > 0) {
     query = query.in('id', clientIds)
@@ -38,7 +38,14 @@ export default async function ConversionsPage() {
     query = query.in('id', ['00000000-0000-0000-0000-000000000000'])
   }
 
-  const { data: clients } = await query.order('business_name')
+  const { data: clientsData } = await query.order('nombre_del_negocio')
+  
+  // Map to expected format
+  const clients = (clientsData ?? []).map(c => ({
+    id: c.id,
+    business_name: c.nombre_del_negocio,
+    google_ads_customer_id: c.google_ads_id,
+  }))
 
   return (
     <main className="p-6 max-w-5xl mx-auto">

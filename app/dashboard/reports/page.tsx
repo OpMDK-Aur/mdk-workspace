@@ -61,7 +61,7 @@ async function fetchReportsData() {
   const supabase = createClient()
   
   const [clientsRes, entriesRes, profilesRes] = await Promise.all([
-    supabase.from('clientes').select('*').order('business_name'),
+    supabase.from('clientes').select('*').order('nombre_del_negocio'),
     supabase.from('time_entries').select('*').order('started_at', { ascending: false }),
     supabase.from('colaboradores').select('id, nombre, apellido').order('nombre'),
   ])
