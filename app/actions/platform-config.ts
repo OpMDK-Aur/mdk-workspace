@@ -35,7 +35,7 @@ export async function updateClientPlatformIds(
   if (ghlToken !== undefined) updates.ghl_token = ghlToken || null
 
   const { error } = await supabase
-    .from('clients')
+    .from('clientes')
     .update(updates)
     .eq('id', clientId)
 

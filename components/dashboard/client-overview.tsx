@@ -23,6 +23,13 @@ import { ClientBudgetAlertCard } from './client-budget-alert-card'
 import { computeClientBudgetAlerts } from './budget-alerts-shared'
 import { ClientMemoria } from './client-memoria'
 import { DiscordChat } from './discord-chat'
+import { ClientComments } from './client-comments'
+import { ClientLandings } from './client-landings'
+import { ClientCRMs } from './client-crms'
+import { ClientAdjuntos } from './client-adjuntos'
+import { ClientCotizaciones } from './client-cotizaciones'
+import { ClientTareas } from './client-tareas'
+import { ClientNPS } from './client-nps'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
@@ -671,6 +678,37 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             </div>
           )}
         </div>
+
+        {/* ── Landings, CRMs y NPS ── */}
+        <div className="grid md:grid-cols-3 gap-4">
+          <div className="rounded-xl border bg-card p-5">
+            <ClientLandings clientId={client.id} />
+          </div>
+          <div className="rounded-xl border bg-card p-5">
+            <ClientCRMs clientId={client.id} />
+          </div>
+          <ClientNPS clientId={client.id} currentUserId={currentProfile?.id} />
+        </div>
+
+        {/* ── Tareas, Cotizaciones, Adjuntos ── */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <ClientTareas clientId={client.id} />
+          <ClientCotizaciones clientId={client.id} currentUserId={currentProfile?.id} />
+        </div>
+
+        {/* ── Adjuntos ── */}
+        <ClientAdjuntos clientId={client.id} currentUserId={currentProfile?.id} />
+
+        {/* ── Comentarios del Cliente ── */}
+        <ClientComments 
+          clientId={client.id} 
+          currentUser={currentProfile ? {
+            id: currentProfile.id,
+            nombre: currentProfile.nombre,
+            apellido: currentProfile.apellido,
+            avatar_url: currentProfile.avatar_url,
+          } : null}
+        />
 
         {/* ── Memoria del Cliente ── */}
         <ClientMemoria clienteId={client.id} />

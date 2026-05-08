@@ -41,18 +41,25 @@ export interface Profile {
 
 export interface Client {
   id: string
-  business_name: string
+  nombre_del_negocio: string
+  // Alias for compatibility
+  business_name?: string
   contact_name: string | null
   contact_lastname: string | null
   phone: string | null
+  email?: string | null
   status: ClientStatus | null
   semaforo_id: string | null
   notion_id: string | null
   fee_mdk: number | null
   fee_aurelia: number | null
+  nps_score?: number | null
   google_ads_customer_id: string | null
   meta_ads_account_id: string | null
   crm_type: string | null
+  crm_tipo?: string | null
+  crm_url?: string | null
+  crm_location_id?: string | null
   ghl_location_id: string | null
   ghl_token: string | null
   discord_channel_name: string | null
@@ -60,6 +67,7 @@ export interface Client {
   plan: ClientPlan
   project_manager_id: string | null
   account_manager_id: string | null
+  landings?: Array<{ nombre: string; url: string; tipo: string }> | null
   created_at: string
   updated_at: string
 }

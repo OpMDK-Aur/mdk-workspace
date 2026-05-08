@@ -27,10 +27,19 @@ export default async function ClientPage({ params }: Props) {
   const mappedClient = { ...client, business_name: client.nombre_del_negocio }
 
   // Load all colaboradores (for pm/am lookup)
-  const { data: profiles } = await supabase
+  const { data: colaboradores } = await supabase
     .from('colaboradores')
-    .select('id, nombre, apellido, rol_id, avatar_url, email')
+    .select('id, nombre, apellido, rol_id, avatar_url, email, roles(nombre)')
     .order('nombre')
+
+  // Map colaboradores to profiles format with full_name and role
+  const profiles = (colaboradores ?? []).map(c => ({
+    id: c.id,
+    email: c.email,
+    full_name: [c.nombre, c.apellido].filter(Boolean).join(' ') || null,
+    role: (c.roles as { nombre: string } | null)?.nombre?.toLowerCase().replace(/ /g, '_') || '',
+    avatar_url: c.avatar_url,
+  }))
 
   // Get current user colaborador
   const { data: currentProfile } = user

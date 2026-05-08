@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   let clientContext = ''
   if (clientId) {
     const { data: client } = await supabase
-      .from('clients')
+      .from('clientes')
       .select('*')
       .eq('id', clientId)
       .single()
@@ -42,7 +42,7 @@ Contexto del cliente actual:
   }
 
   const { data: allClients } = await supabase
-    .from('clients')
+    .from('clientes')
     .select('business_name, status, plan, fee_mdk')
     .order('fee_mdk', { ascending: false })
     .limit(10)

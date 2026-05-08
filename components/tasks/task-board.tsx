@@ -48,9 +48,19 @@ export function TaskBoard() {
   } = useTaskStore()
   const [newTaskOpen, setNewTaskOpen] = useState(false)
 
-  // Load tasks from Supabase on mount
+  // Auto-generate seguimiento tasks on mount, then load all tasks
   useEffect(() => {
-    loadTasks()
+    const initTasks = async () => {
+      // Borrar tareas de seguimiento existentes y recrearlas
+      try {
+        await fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' })
+        await fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
+      } catch (e) {
+        // Silently fail
+      }
+      loadTasks()
+    }
+    initTasks()
   }, [loadTasks])
 
   const hasSimpleFilters = filters.priority || filters.assigneeId || filters.type || filters.dueThisWeek

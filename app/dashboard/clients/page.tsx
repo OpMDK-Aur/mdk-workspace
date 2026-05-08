@@ -10,15 +10,25 @@ export default async function ClientsPage() {
 
   // Load all clients
   const { data: clients } = await supabase
-    .from('clients')
+    .from('clientes')
     .select('*')
-    .order('business_name')
+    .order('nombre_del_negocio', { ascending: true })
 
   // Load all colaboradores for manager dropdowns
-  const { data: profiles } = await supabase
+  const { data: colaboradores } = await supabase
     .from('colaboradores')
-    .select('id, nombre, apellido, rol_id, avatar_url, email')
+    .select('id, nombre, apellido, rol_id, avatar_url, email, roles(nombre)')
     .order('nombre')
+
+  // Map colaboradores to profiles with full_name and role
+  const profiles = (colaboradores ?? []).map(c => ({
+    id: c.id,
+    email: c.email,
+    full_name: [c.nombre, c.apellido].filter(Boolean).join(' ') || null,
+    role: (c.roles as { nombre: string } | null)?.nombre?.toLowerCase().replace(/ /g, '_') || '',
+    avatar_url: c.avatar_url,
+    rol_id: c.rol_id,
+  }))
 
   // Get current user colaborador
   const { data: currentProfile } = user

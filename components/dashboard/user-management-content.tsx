@@ -294,34 +294,50 @@ export function UserManagementContent({
     const apellido = nameParts.slice(1).join(' ') || ''
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email: newEmail,
-        password: newPassword,
-        options: { data: { full_name: newName } },
+      // Use admin API to create user without logging in as them
+      const response = await fetch('/api/admin/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: newEmail,
+          password: newPassword,
+          nombre,
+          apellido,
+          rol_id: newRolId || null,
+          departamento_id: newDepartamentoId || null,
+          modulos_habilitados: newModulos,
+          client_ids: newClientIds,
+        }),
       })
 
-      if (error) { setCreateError(error.message); return }
+      const result = await response.json()
+      
+      if (!response.ok) {
+        setCreateError(result.error || 'Error al crear usuario')
+        return
+      }
 
-      const newUserId = data.user?.id
-      if (!newUserId) { setCreateError('No se pudo obtener el ID del nuevo usuario.'); return }
-
-      // Create colaborador record
-      await supabase.from('colaboradores').upsert({
-        id: newUserId,
+      // Add to local state
+      const newRoleName = roles.find(r => r.id === newRolId)?.nombre || ''
+      const newDepartamentoName = departamentos.find(d => d.id === newDepartamentoId)?.nombre || ''
+      
+      const newProfile: Profile = {
+        id: result.userId,
         email: newEmail,
-        nombre,
-        apellido,
+        full_name: newName,
+        role: newRoleName.toLowerCase().replace(/ /g, '_'),
+        role_name: newRoleName,
         rol_id: newRolId || null,
         departamento_id: newDepartamentoId || null,
+        departamento_name: newDepartamentoName,
         modulos_habilitados: newModulos,
+        avatar_url: null,
         activo: true,
-      })
-
-      // Assign clients
+      }
+      
+      setLocalProfiles(prev => [...prev, newProfile])
       if (newClientIds.length > 0) {
-        await supabase.from('user_client_access').insert(
-          newClientIds.map(clientId => ({ user_id: newUserId, client_id: clientId, access_level: 'read' as const }))
-        )
+        setAssignedClients(prev => ({ ...prev, [result.userId]: newClientIds }))
       }
 
       setCreateSuccess(true)
@@ -332,7 +348,7 @@ export function UserManagementContent({
       setNewDepartamentoId('')
       setNewClientIds([])
       setNewModulos(['dashboard'])
-      setTimeout(() => { setCreateSuccess(false); setCreateOpen(false); window.location.reload() }, 1500)
+      setTimeout(() => { setCreateSuccess(false); setCreateOpen(false) }, 1500)
     } finally {
       setCreating(false)
     }

@@ -29,7 +29,7 @@ export default async function ConversionsPage() {
   const isFullAccess = !!colaborador
 
   let query = supabase
-    .from('clients')
+    .from('clientes')
     .select('id, business_name, google_ads_customer_id')
 
   if (!isFullAccess && clientIds.length > 0) {

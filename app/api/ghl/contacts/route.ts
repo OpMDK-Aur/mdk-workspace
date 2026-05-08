@@ -82,8 +82,8 @@ export async function GET(req: NextRequest) {
 
     // Load client CRM credentials from Supabase
     const { data: client, error: clientErr } = await supabase
-      .from('clients')
-      .select('id, business_name, crm_type, ghl_location_id, ghl_token')
+      .from('clientes')
+      .select('id, nombre_del_negocio, crm_type, ghl_location_id, ghl_token')
       .eq('id', clientId)
       .single()
 
@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
     let hasMorePages = true
     let nextPageUrl: string | null = null
 
-    console.log(`[v0] GHL Contacts: Starting pagination for client ${client.business_name}`)
+    console.log(`[v0] GHL Contacts: Starting pagination for client ${client.nombre_del_negocio}`)
 
     // Paginate through all contacts
     while (hasMorePages && currentPage < MAX_PAGES) {
