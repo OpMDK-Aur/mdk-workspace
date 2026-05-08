@@ -307,6 +307,7 @@ type FlowStep =
   | { type: 'multi_input'; key: string; question: string; placeholder?: string; hint?: string }
   | { type: 'date_time'; key: string; question: string; hint?: string }
   | { type: 'priority' }
+  | { type: 'select_due_date' }
   | { type: 'confirm' }
   | { type: 'confirm_meeting' }
 
@@ -322,6 +323,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       { type: 'number', key: 'hours', question: 'Tenes una estimacion de horas en mente? (pone 0 si no sabes)' },
       { type: 'select_assignee' },
       { type: 'priority' },
+      { type: 'select_due_date' },
       { type: 'confirm' },
     ],
   },
@@ -345,6 +347,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       { type: 'input', key: 'title', question: 'Como titulamos este pedido?', placeholder: 'Ej: Placas promo Black Friday' },
       { type: 'select_assignee' },
       { type: 'priority' },
+      { type: 'select_due_date' },
       { type: 'confirm' },
     ],
   },
@@ -369,6 +372,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       ]},
       { type: 'select_assignee' },
       { type: 'priority' },
+      { type: 'select_due_date' },
       { type: 'confirm' },
     ],
   },
@@ -393,6 +397,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       { type: 'input', key: 'details', question: 'Algun dato mas que me sirva? (metricas, fechas, etc)', placeholder: 'Ej: El CPA subio de $500 a $1200 esta semana' },
       { type: 'select_assignee' },
       { type: 'priority' },
+      { type: 'select_due_date' },
       { type: 'confirm' },
     ],
   },
@@ -421,6 +426,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       ]},
       { type: 'select_assignee' },
       { type: 'priority' },
+      { type: 'select_due_date' },
       { type: 'confirm' },
     ],
   },
@@ -442,6 +448,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       { type: 'input', key: 'details', question: 'Algun detalle mas?', placeholder: 'Ej: El ultimo lead que llego bien fue el viernes...' },
       { type: 'select_assignee' },
       { type: 'priority' },
+      { type: 'select_due_date' },
       { type: 'confirm' },
     ],
   },
@@ -463,6 +470,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       { type: 'input', key: 'title', question: 'Describime el problema', placeholder: 'Ej: No llegaron leads desde el viernes a la noche...' },
       { type: 'input', key: 'lastData', question: 'Cuando fue el ultimo dato que llego bien?', placeholder: 'Ej: El viernes 15:30 llego el ultimo lead' },
       { type: 'select_assignee' },
+      { type: 'select_due_date' },
       { type: 'confirm' },
     ],
   },
@@ -483,6 +491,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       ]},
       { type: 'input', key: 'notes', question: 'Algun punto importante para el seguimiento?', placeholder: 'Ej: Comentarle los resultados del ultimo mes...' },
       { type: 'priority' },
+      { type: 'select_due_date' },
       { type: 'confirm' },
     ],
   },
@@ -501,6 +510,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       ]},
       { type: 'input', key: 'period', question: 'Que periodo abarca?', placeholder: 'Ej: Marzo 2024 o Q1 2024' },
       { type: 'priority' },
+      { type: 'select_due_date' },
       { type: 'confirm' },
     ],
   },
@@ -520,6 +530,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       ]},
       { type: 'input', key: 'webUrl', question: 'En que sitio web?', placeholder: 'Ej: www.cliente.com' },
       { type: 'priority' },
+      { type: 'select_due_date' },
       { type: 'confirm' },
     ],
   },
@@ -540,6 +551,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       { type: 'input', key: 'title', question: 'Contame mas, que numeros no cierran?', placeholder: 'Ej: Meta dice 50 leads pero el CRM tiene 35...' },
       { type: 'input', key: 'period', question: 'De que periodo estamos hablando?', placeholder: 'Ej: Esta semana o Marzo 2024' },
       { type: 'priority' },
+      { type: 'select_due_date' },
       { type: 'confirm' },
     ],
   },
@@ -553,6 +565,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       { type: 'input', key: 'title', question: 'Dale, contame que necesitas!', placeholder: 'Describime la tarea...' },
       { type: 'multi_input', key: 'details', question: 'Algun detalle extra que me quieras contar?', placeholder: 'Links, contexto, urgencia...', hint: 'Podes dejarlo vacio si no hay nada mas' },
       { type: 'priority' },
+      { type: 'select_due_date' },
       { type: 'confirm' },
     ],
   },
@@ -1079,6 +1092,13 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
         }
         break
 
+      case 'select_due_date':
+        messageContent = {
+          content: 'Para cuando necesitas que este listo?',
+          isDateTime: true,
+        }
+        break
+
       case 'confirm_meeting':
         const meetingClient = dbClientes.find((c) => c.id === data.clientId)
         const meetingTitle = data.title || 'Reunion'
@@ -1305,6 +1325,15 @@ if (currentStep.type === 'select_client') {
       addAssistantMessage({ content: response }, 300)
     }
 
+    // Handle due date selection
+    if (currentStep.type === 'select_due_date') {
+      newData.dueDate = value
+      const dueDate = new Date(value)
+      addAssistantMessage({ 
+        content: `Listo, fecha limite: ${dueDate.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}` 
+      }, 300)
+    }
+
     // Special responses based on selection
     if (selectedTemplate.id === 'falta_datos' && stepKey === 'area' && value === 'everything') {
       addAssistantMessage({ 
@@ -1322,7 +1351,7 @@ if (currentStep.type === 'select_client') {
 
     setTaskData(newData)
 
-    const delay = currentStep.type === 'select_client' || currentStep.type === 'select_assignee' || currentStep.type === 'priority' ? 800 : 400
+    const delay = currentStep.type === 'select_client' || currentStep.type === 'select_assignee' || currentStep.type === 'priority' || currentStep.type === 'select_due_date' ? 800 : 400
     setTimeout(() => processStep(selectedTemplate, currentStepIndex + 1, newData), delay)
   }
 

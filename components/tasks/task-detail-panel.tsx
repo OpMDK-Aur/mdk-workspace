@@ -60,6 +60,15 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Calendar } from '@/components/ui/calendar'
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import { Check, ChevronsUpDown, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
+import {
   Play,
   RotateCcw,
   Calendar as CalendarIcon,
@@ -96,6 +105,68 @@ function formatTime(seconds: number): string {
   const m = Math.floor((seconds % 3600) / 60)
   const s = seconds % 60
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+// Searchable Task Type Select Component
+function SearchableTaskTypeSelect({ 
+  tiposTarea, 
+  value, 
+  onValueChange 
+}: { 
+  tiposTarea: TipoDeTarea[]
+  value: string
+  onValueChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const selectedTipo = tiposTarea.find(t => t.id === value)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="h-9 w-full justify-between font-normal overflow-hidden"
+        >
+          {selectedTipo ? (
+            <span className="truncate text-sm">{selectedTipo.nombre}</span>
+          ) : (
+            <span className="text-muted-foreground">Seleccionar tipo...</span>
+          )}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[250px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Buscar tipo de tarea..." />
+          <CommandList>
+            <CommandEmpty>No se encontraron tipos.</CommandEmpty>
+            <CommandGroup>
+              {tiposTarea.map((tipo) => (
+                <CommandItem
+                  key={tipo.id}
+                  value={tipo.nombre}
+                  onSelect={() => {
+                    onValueChange(tipo.id)
+                    setOpen(false)
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === tipo.id ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  {tipo.nombre}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 function formatTimeShort(seconds: number): string {
@@ -633,10 +704,12 @@ function FilesSection({ task }: { task: Task }) {
 // ── Comments Section (with rich text editor) ──────────────────────────────────
 
 function CommentsSection({ task }: { task: Task }) {
-  const { addComment, deleteComment } = useTaskStore()
-  const [comment, setComment] = useState('')
+  const { addComment, updateComment, deleteComment } = useTaskStore()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; avatar_url: string | null } | null>(null)
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editingContent, setEditingContent] = useState('')
+  const editorRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     async function loadUser() {
@@ -645,8 +718,8 @@ function CommentsSection({ task }: { task: Task }) {
       if (user) {
         const { data: colab } = await supabase
           .from('colaboradores')
-.select('id, nombre, avatar_url')
-  .eq('id', user.id)
+          .select('id, nombre, avatar_url')
+          .eq('id', user.id)
           .single()
         if (colab) setCurrentUser(colab)
       }
@@ -654,22 +727,82 @@ function CommentsSection({ task }: { task: Task }) {
     loadUser()
   }, [])
 
+  // Handle paste event - insert images inline
+  const handlePaste = async (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (file) {
+          // Convert to base64 and insert inline
+          const reader = new FileReader()
+          reader.onload = () => {
+            const dataUrl = reader.result as string
+            const img = document.createElement('img')
+            img.src = dataUrl
+            img.alt = 'Imagen'
+            img.style.maxWidth = '100%'
+            img.style.maxHeight = '200px'
+            img.style.borderRadius = '8px'
+            img.style.margin = '4px 0'
+            img.style.display = 'inline-block'
+            img.style.verticalAlign = 'middle'
+            
+            const selection = window.getSelection()
+            if (selection && selection.rangeCount > 0) {
+              const range = selection.getRangeAt(0)
+              range.deleteContents()
+              range.insertNode(img)
+              range.setStartAfter(img)
+              range.collapse(true)
+              selection.removeAllRanges()
+              selection.addRange(range)
+            } else if (editorRef.current) {
+              editorRef.current.appendChild(img)
+            }
+          }
+          reader.readAsDataURL(file)
+        }
+      }
+    }
+  }
+
+  // Handle keyboard events
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit()
+    }
+  }
+
+  // Handle edit comment
+  const handleEditComment = async (commentId: string) => {
+    if (!editingContent.trim()) return
+    await updateComment(task.id, commentId, editingContent)
+    setEditingCommentId(null)
+    setEditingContent('')
+    toast.success('Comentario actualizado')
+  }
+
   const handleSubmit = async () => {
-    const textContent = comment.trim()
-    if (!textContent || isSubmitting) return
+    if (!editorRef.current) return
+    const content = editorRef.current.innerHTML.trim()
+    if (!content || content === '<br>') return
+    if (isSubmitting) return
     
     setIsSubmitting(true)
     const userId = currentUser?.id || 'system'
     const userName = currentUser?.nombre || 'Usuario'
     
-    console.log('[v0] CommentsSection handleSubmit - taskId:', task.id, 'content:', textContent)
-    
     try {
-      await addComment(task.id, textContent, userId, userName, currentUser?.avatar_url)
-      setComment('')
+      await addComment(task.id, content, userId, userName, currentUser?.avatar_url)
+      editorRef.current.innerHTML = ''
       toast.success('Comentario agregado')
     } catch (err) {
-      console.error('[v0] Error adding comment:', err)
+      console.error('Error adding comment:', err)
       toast.error('Error al agregar comentario')
     } finally {
       setIsSubmitting(false)
@@ -699,19 +832,64 @@ function CommentsSection({ task }: { task: Task }) {
                       {format(new Date(c.createdAt), 'dd/MM/yyyy HH:mm', { locale: es })}
                     </span>
                   </div>
-                  <div 
-                    className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold"
-                    dangerouslySetInnerHTML={{ __html: c.content }}
-                  />
+                  {editingCommentId === c.id ? (
+                    <div className="mt-2 space-y-2">
+                      <textarea
+                        value={editingContent}
+                        onChange={(e) => setEditingContent(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            handleEditComment(c.id)
+                          }
+                          if (e.key === 'Escape') {
+                            setEditingCommentId(null)
+                            setEditingContent('')
+                          }
+                        }}
+                        className="w-full min-h-[60px] p-2 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => handleEditComment(c.id)}>
+                          Guardar
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => { setEditingCommentId(null); setEditingContent('') }}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div 
+                      className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block"
+                      dangerouslySetInnerHTML={{ __html: c.content }}
+                    />
+                  )}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                  onClick={() => deleteComment(task.id, c.id)}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content.replace(/<[^>]*>/g, '')) }}
+                    title="Editar"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => deleteComment(task.id, c.id)}
+                    title="Eliminar"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
@@ -728,21 +906,24 @@ function CommentsSection({ task }: { task: Task }) {
           </Avatar>
           <span className="text-sm text-muted-foreground">Nuevo comentario</span>
         </div>
-        <textarea
-          value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          placeholder="Escribe un comentario..."
-          className="w-full min-h-[80px] p-3 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+        <div
+          ref={editorRef}
+          contentEditable
+          onPaste={handlePaste}
+          onKeyDown={handleKeyDown}
+          data-placeholder="Escribe un comentario... (podes pegar imagenes con Ctrl+V)"
+          className="w-full min-h-[80px] p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1"
         />
-        <div className="flex justify-end">
+        
+        <div className="flex items-center justify-end">
           <Button 
             size="sm" 
             className="gap-1.5" 
             onClick={handleSubmit} 
-            disabled={!comment.trim() || isSubmitting}
+            disabled={isSubmitting}
           >
             <Send className="h-3.5 w-3.5" />
-            {isSubmitting ? 'Enviando...' : 'Enviar comentario'}
+            {isSubmitting ? 'Enviando...' : 'Enviar'}
           </Button>
         </div>
       </div>
@@ -750,7 +931,7 @@ function CommentsSection({ task }: { task: Task }) {
   )
 }
 
-// ── Custom Fields Component ────────────────────────────��──────────────────────
+// ── Custom Fields Component ──────────────────────�������─────����──────────────────────
 
 function CustomFields({ task }: { task: Task }) {
   const { addCustomField, removeCustomField, updateTask } = useTaskStore()
@@ -1004,6 +1185,23 @@ export function TaskDetailPanel() {
     setSelectedTask(null)
   }
 
+  // Navigation between tasks
+  const currentIndex = tasks.findIndex(t => t.id === selectedTaskId)
+  const hasPrevious = currentIndex > 0
+  const hasNext = currentIndex < tasks.length - 1
+
+  const goToPrevious = () => {
+    if (hasPrevious) {
+      setSelectedTask(tasks[currentIndex - 1].id)
+    }
+  }
+
+  const goToNext = () => {
+    if (hasNext) {
+      setSelectedTask(tasks[currentIndex + 1].id)
+    }
+  }
+
   return (
     <Sheet open={!!selectedTaskId} onOpenChange={(open) => !open && handleClose()}>
       <SheetContent 
@@ -1076,6 +1274,34 @@ export function TaskDetailPanel() {
                   className="scale-75"
                 />
               </div>
+              
+              {/* Navigation buttons */}
+              <div className="flex items-center gap-1 border-l pl-2 ml-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={goToPrevious}
+                  disabled={!hasPrevious}
+                  title="Tarea anterior"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs text-muted-foreground min-w-[3rem] text-center">
+                  {currentIndex + 1} / {tasks.length}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={goToNext}
+                  disabled={!hasNext}
+                  title="Siguiente tarea"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+              
               <Button
                 variant="ghost"
                 size="icon"
@@ -1252,26 +1478,14 @@ export function TaskDetailPanel() {
                         </Select>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-3">
                         <div>
-                          <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo</Label>
-                          <Select
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo de tarea</Label>
+                          <SearchableTaskTypeSelect 
+                            tiposTarea={tiposTarea}
                             value={task.type}
                             onValueChange={(v) => updateTask(task.id, { type: v as TaskType })}
-                          >
-                            <SelectTrigger className="h-9">
-                              <SelectValue placeholder="Tipo" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {tiposTarea.map((t) => (
-                                <SelectItem key={t.id} value={t.id}>
-                                  <Badge variant="outline" className="text-xs">
-                                    {t.nombre}
-                                  </Badge>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          />
                         </div>
                         <div>
                           <Label className="text-xs text-muted-foreground mb-1.5 block">Vencimiento</Label>
@@ -1437,23 +1651,11 @@ export function TaskDetailPanel() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo de tarea</Label>
-                      <Select
+                      <SearchableTaskTypeSelect 
+                        tiposTarea={tiposTarea}
                         value={task.type}
                         onValueChange={(v) => updateTask(task.id, { type: v as TaskType })}
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder="Seleccionar tipo" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {tiposTarea.map((t) => (
-                            <SelectItem key={t.id} value={t.id}>
-                              <Badge variant="outline" className="text-xs">
-                                {t.nombre}
-                              </Badge>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      />
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground mb-1.5 block">Vencimiento</Label>
