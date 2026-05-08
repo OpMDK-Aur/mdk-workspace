@@ -53,7 +53,6 @@ export function ActiveTimerBar() {
     clientId,
     billable,
     tipoTareaId,
-    entries,
     startTimer,
     stopTimer,
     setDescription,
@@ -148,7 +147,6 @@ export function ActiveTimerBar() {
 
   const selectedClient = clientes.find((c) => c.id === clientId)
   const selectedTipo = tiposTarea.find((t) => t.id === tipoTareaId)
-  const lastEntry = entries.find((e) => e.finalizado_en !== null)
 
   const handleStart = async () => {
     setIsStarting(true)
@@ -300,11 +298,7 @@ export function ActiveTimerBar() {
 
         {/* Timer display */}
         <div className="font-mono text-xl font-semibold tabular-nums w-24 text-right shrink-0">
-          {isRunning
-            ? formatDuration(elapsedSeconds)
-            : lastEntry
-              ? formatDurationShort(lastEntry.duracion_seg)
-              : '00:00:00'}
+          {isRunning ? formatDuration(elapsedSeconds) : '00:00:00'}
         </div>
 
         {/* Start/Stop */}
