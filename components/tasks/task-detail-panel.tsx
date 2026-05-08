@@ -758,9 +758,13 @@ function CommentsSection({ task }: { task: Task }) {
     const supabase = createClient()
     const urls: string[] = []
     
+    console.log('[v0] Starting image upload, pending images:', pendingImages.length)
+    
     for (const { file } of pendingImages) {
       const fileExt = file.name.split('.').pop() || 'png'
       const fileName = `${task.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+      
+      console.log('[v0] Uploading file:', fileName, 'size:', file.size)
       
       const { data, error } = await supabase.storage
         .from('comment-images')
@@ -771,15 +775,20 @@ function CommentsSection({ task }: { task: Task }) {
       
       if (error) {
         console.log('[v0] Error uploading image:', error)
+        toast.error('Error subiendo imagen: ' + error.message)
         continue
       }
+      
+      console.log('[v0] Upload successful, path:', data.path)
       
       const { data: urlData } = supabase.storage
         .from('comment-images')
         .getPublicUrl(data.path)
       
+      console.log('[v0] Public URL:', urlData.publicUrl)
       urls.push(urlData.publicUrl)
     }
+    console.log('[v0] All uploads complete, URLs:', urls)
     return urls
   }
 
@@ -810,6 +819,7 @@ function CommentsSection({ task }: { task: Task }) {
         fullContent = textContent ? `${textContent}<br/>${imagesHtml}` : imagesHtml
       }
       
+      console.log('[v0] Final comment content:', fullContent)
       await addComment(task.id, fullContent, userId, userName, currentUser?.avatar_url)
       setComment('')
       setPendingImages([])
@@ -924,7 +934,7 @@ function CommentsSection({ task }: { task: Task }) {
   )
 }
 
-// ── Custom Fields Component ──────────────────────�����─────����──────────────────────
+// ── Custom Fields Component ──────────────────────�������─────����──────────────────────
 
 function CustomFields({ task }: { task: Task }) {
   const { addCustomField, removeCustomField, updateTask } = useTaskStore()
