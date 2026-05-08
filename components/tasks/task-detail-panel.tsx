@@ -67,7 +67,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { Check, ChevronsUpDown } from 'lucide-react'
+import { Check, ChevronsUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   Play,
   RotateCcw,
@@ -914,7 +914,7 @@ function CommentsSection({ task }: { task: Task }) {
   )
 }
 
-// ── Custom Fields Component ──────────────────────���─────��──────────────────────
+// ── Custom Fields Component ──────────────────────���─────����──────────────────────
 
 function CustomFields({ task }: { task: Task }) {
   const { addCustomField, removeCustomField, updateTask } = useTaskStore()
@@ -1168,6 +1168,23 @@ export function TaskDetailPanel() {
     setSelectedTask(null)
   }
 
+  // Navigation between tasks
+  const currentIndex = tasks.findIndex(t => t.id === selectedTaskId)
+  const hasPrevious = currentIndex > 0
+  const hasNext = currentIndex < tasks.length - 1
+
+  const goToPrevious = () => {
+    if (hasPrevious) {
+      setSelectedTask(tasks[currentIndex - 1].id)
+    }
+  }
+
+  const goToNext = () => {
+    if (hasNext) {
+      setSelectedTask(tasks[currentIndex + 1].id)
+    }
+  }
+
   return (
     <Sheet open={!!selectedTaskId} onOpenChange={(open) => !open && handleClose()}>
       <SheetContent 
@@ -1240,6 +1257,34 @@ export function TaskDetailPanel() {
                   className="scale-75"
                 />
               </div>
+              
+              {/* Navigation buttons */}
+              <div className="flex items-center gap-1 border-l pl-2 ml-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={goToPrevious}
+                  disabled={!hasPrevious}
+                  title="Tarea anterior"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs text-muted-foreground min-w-[3rem] text-center">
+                  {currentIndex + 1} / {tasks.length}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={goToNext}
+                  disabled={!hasNext}
+                  title="Siguiente tarea"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+              
               <Button
                 variant="ghost"
                 size="icon"
