@@ -118,7 +118,7 @@ export function ActiveTimerBar() {
 
       // Cargar clientes
       const { data: clientesData, error } = await supabase
-        .from('clientes')
+        .from('Clientes')
         .select('*')
         .order('nombre_del_negocio')
 

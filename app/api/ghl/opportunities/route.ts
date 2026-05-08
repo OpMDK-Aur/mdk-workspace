@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
 
     // Load client CRM credentials from Supabase
     const { data: client, error: clientErr } = await supabase
-      .from('clientes')
+      .from('Clientes')
       .select('id, nombre_del_negocio, crm_type, ghl_location_id, ghl_token')
       .eq('id', clientId)
       .single()

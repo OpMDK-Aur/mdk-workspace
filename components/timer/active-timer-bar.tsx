@@ -85,7 +85,7 @@ export function ActiveTimerBar() {
       
       // Load clients
       const { data: clientsData } = await supabase
-        .from('clientes')
+        .from('Clientes')
         .select('*')
         .order('nombre_del_negocio')
 

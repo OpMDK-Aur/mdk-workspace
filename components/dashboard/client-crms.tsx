@@ -56,7 +56,7 @@ export function ClientCRMs({ clientId }: ClientCRMsProps) {
   const fetchCRM = async () => {
     setLoading(true)
     const { data, error } = await supabase
-      .from('clientes')
+      .from('Clientes')
       .select('crm_tipo, crm_url, crm_location_id, crm_usuario, crm_password')
       .eq('id', clientId)
       .single()
@@ -84,7 +84,7 @@ export function ClientCRMs({ clientId }: ClientCRMsProps) {
 
     setSaving(true)
     const { error } = await supabase
-      .from('clientes')
+      .from('Clientes')
       .update({
         crm_tipo: form.tipo,
         crm_url: form.url.trim() || null,
@@ -110,7 +110,7 @@ export function ClientCRMs({ clientId }: ClientCRMsProps) {
   const handleDelete = async () => {
     setSaving(true)
     const { error } = await supabase
-      .from('clientes')
+      .from('Clientes')
       .update({
         crm_tipo: null,
         crm_url: null,

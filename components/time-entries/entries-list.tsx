@@ -64,7 +64,7 @@ export function EntriesList() {
   useEffect(() => {
     async function fetchData() {
       const supabase = createClient()
-      const { data: clientesData } = await supabase.from('clientes').select('*').order('nombre_del_negocio')
+      const { data: clientesData } = await supabase.from('Clientes').select('*').order('nombre_del_negocio')
       if (clientesData) setClientes(clientesData)
 
       const { data: tiposData } = await supabase.from('tipo_de_tareas').select('*').eq('activo', true).order('nombre')

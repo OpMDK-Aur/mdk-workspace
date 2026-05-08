@@ -41,7 +41,7 @@ export default async function UsersPage() {
 
   // Get all clients from clientes table
   const { data: clientes } = await supabase
-    .from('clientes')
+    .from('Clientes')
     .select('id, nombre_del_negocio, activo')
     .order('nombre_del_negocio')
 

@@ -60,7 +60,7 @@ export function EntriesList() {
     async function fetchData() {
       const supabase = createClient()
       const { data: clientesData } = await supabase
-        .from('clientes')
+        .from('Clientes')
         .select('*')
         .order('nombre_del_negocio')
       if (clientesData) setClientes(clientesData)

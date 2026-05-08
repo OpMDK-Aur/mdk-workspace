@@ -21,7 +21,7 @@ export default async function PlatformPage() {
   }
 
   const { data: clientes, error: clientsError } = await supabase
-    .from('clientes')
+    .from('Clientes')
     .select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, crm_type, ghl_location_id, ghl_token')
     .order('nombre_del_negocio')
 

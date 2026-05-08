@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    let query = supabase.from('clientes').select('*')
+    let query = supabase.from('Clientes').select('*')
 
     // TODO: Check rol_id for access control
     if (!colaborador) {
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data: client, error } = await supabase
-      .from('clientes')
+      .from('Clientes')
       .insert({
         business_name,
         contact_name,

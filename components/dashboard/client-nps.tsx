@@ -118,7 +118,7 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
       
       // Update clientes table with most recent score
       await supabase
-        .from('clientes')
+        .from('Clientes')
         .update({ nps_score: mostRecent.score })
         .eq('id', clientId)
 

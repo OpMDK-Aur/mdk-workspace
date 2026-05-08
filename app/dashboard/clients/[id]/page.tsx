@@ -16,7 +16,7 @@ export default async function ClientPage({ params }: Props) {
 
   // Load client
   const { data: client } = await supabase
-    .from('clientes')
+    .from('Clientes')
     .select('*')
     .eq('id', id)
     .single()

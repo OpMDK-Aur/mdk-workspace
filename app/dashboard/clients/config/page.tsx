@@ -20,7 +20,7 @@ export default async function ClientsConfigPage() {
   }
 
   const { data: clients } = await supabase
-    .from('clientes')
+    .from('Clientes')
     .select('id, nombre_del_negocio, meta_ads_id, google_ads_id, crm_type, ghl_location_id, ghl_token, semaforo_id')
     .order('nombre_del_negocio')
 

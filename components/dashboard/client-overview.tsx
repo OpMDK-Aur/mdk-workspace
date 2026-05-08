@@ -270,7 +270,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     setUpdatingStatus(true)
     try {
       const { error } = await supabase
-        .from('clientes')
+        .from('Clientes')
         .update({ semaforo_id: newSemaforoId })
         .eq('id', client.id)
       

@@ -978,7 +978,7 @@ export function TaskDetailPanel() {
       const [tiposRes, colabRes, clientesRes] = await Promise.all([
         supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
         supabase.from('colaboradores').select('id, nombre, avatar_url').order('nombre'),
-        supabase.from('clientes').select('id, nombre_del_negocio').order('nombre_del_negocio'),
+        supabase.from('Clientes').select('id, nombre_del_negocio').order('nombre_del_negocio'),
       ])
 
       if (tiposRes.data) setTiposTarea(tiposRes.data)

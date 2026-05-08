@@ -131,7 +131,7 @@ export default function ColaboradoresPage() {
 
       // Load clientes with fee_mdk
       const { data: clientesData } = await supabase
-        .from('clientes')
+        .from('Clientes')
         .select('id, nombre_del_negocio, fee_mdk')
         .order('nombre_del_negocio')
 

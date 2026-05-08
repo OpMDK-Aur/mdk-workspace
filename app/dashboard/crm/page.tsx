@@ -15,7 +15,7 @@ export default async function CRMPage() {
   const isFullAccess = !profile || profile?.role === 'direccion' || profile?.role === 'project_manager'
 
   // Load all clients
-  const { data: allClients } = await supabase.from('clientes').select('*').order('nombre_del_negocio')
+  const { data: allClients } = await supabase.from('Clientes').select('*').order('nombre_del_negocio')
   const clients = allClients || []
 
   // Filter only clients with GHL configured (crm_type = 'ghl' and has ghl_location_id)

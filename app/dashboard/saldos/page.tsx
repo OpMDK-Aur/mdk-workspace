@@ -24,7 +24,7 @@ export default async function SaldosPage() {
   const isFullAccess = roleName === 'master' || roleName === 'administrador' || roleName === 'project_manager' || roleName === 'account_manager'
 
   let clientsQuery = supabase
-    .from('clientes')
+    .from('Clientes')
     .select('id, nombre_del_negocio, meta_ads_id, google_ads_id, semaforo_id')
 
   if (!isFullAccess) {
