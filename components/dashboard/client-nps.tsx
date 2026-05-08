@@ -65,19 +65,8 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
 
   const fetchNPS = async () => {
     setLoading(true)
-    
-    // Fetch current NPS from clientes table
-    const { data: clientData } = await supabase
-      .from('clientes')
-      .select('nps_score')
-      .eq('id', clientId)
-      .single()
 
-    if (clientData) {
-      setCurrentScore(clientData.nps_score)
-    }
-
-    // Fetch NPS history
+    // Fetch NPS history ordered by date ascending (for chart)
     const { data: historyData, error } = await supabase
       .from('cliente_nps_historial')
       .select('*')
@@ -86,6 +75,13 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
 
     if (!error && historyData) {
       setRecords(historyData)
+      // Set current score from the most recent record (last in ascending order)
+      if (historyData.length > 0) {
+        const mostRecent = historyData[historyData.length - 1]
+        setCurrentScore(mostRecent.score)
+      } else {
+        setCurrentScore(null)
+      }
     }
     
     setLoading(false)
@@ -110,14 +106,22 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
       .single()
 
     if (!error && data) {
-      // Update current NPS in clientes table
+      // Add to records and sort by date
+      const newRecords = [...records, data].sort((a, b) => 
+        new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+      )
+      setRecords(newRecords)
+      
+      // Set current score from most recent record
+      const mostRecent = newRecords[newRecords.length - 1]
+      setCurrentScore(mostRecent.score)
+      
+      // Update clientes table with most recent score
       await supabase
         .from('clientes')
-        .update({ nps_score: form.score })
+        .update({ nps_score: mostRecent.score })
         .eq('id', clientId)
 
-      setRecords(prev => [...prev, data])
-      setCurrentScore(form.score)
       setDialogOpen(false)
       setForm({
         score: 3,
