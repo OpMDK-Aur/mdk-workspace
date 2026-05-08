@@ -243,26 +243,18 @@ export function UserManagementContent({
         return
       }
 
-      // Update client access
-      const { error: deleteError } = await supabase.from('user_client_access').delete().eq('user_id', editingProfile.id)
-      if (deleteError) {
-        console.log('[v0] Error deleting client access:', deleteError)
+      // Update client access via API (uses service role key)
+      const accessRes = await fetch('/api/admin/user-client-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: editingProfile.id, client_ids: editClientIds }),
+      })
+      
+      if (!accessRes.ok) {
+        const error = await accessRes.json()
+        setSaveError('Error al asignar clientes: ' + (error.error || 'Error desconocido'))
+        return
       }
-      if (editClientIds.length > 0) {
-        const { error: insertError } = await supabase.from('user_client_access').insert(
-          editClientIds.map(clientId => ({
-            user_id: editingProfile.id,
-            client_id: clientId,
-            access_level: 'read' as const,
-          }))
-        )
-        if (insertError) {
-          console.log('[v0] Error inserting client access:', insertError)
-          setSaveError('Error al asignar clientes: ' + insertError.message)
-          return
-        }
-      }
-      console.log('[v0] Client access updated successfully for user:', editingProfile.id, 'clients:', editClientIds)
 
       // Update local state
       const newRoleName = roles.find(r => r.id === editRolId)?.nombre || ''
@@ -367,22 +359,26 @@ export function UserManagementContent({
     const current = assignedClients[userId] || []
     const isAssigned = current.includes(clientId)
 
+    const res = await fetch('/api/admin/user-client-access', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        user_id: userId, 
+        client_id: clientId, 
+        action: isAssigned ? 'remove' : 'add' 
+      }),
+    })
+
+    if (!res.ok) {
+      console.log('[v0] Error toggling client access')
+      return
+    }
+
     if (isAssigned) {
-      const { error } = await supabase.from('user_client_access').delete().eq('user_id', userId).eq('client_id', clientId)
-      if (error) {
-        console.log('[v0] Error removing client access:', error)
-        return
-      }
       setAssignedClients(prev => ({ ...prev, [userId]: (prev[userId] || []).filter(id => id !== clientId) }))
     } else {
-      const { error } = await supabase.from('user_client_access').insert({ user_id: userId, client_id: clientId, access_level: 'read' })
-      if (error) {
-        console.log('[v0] Error adding client access:', error)
-        return
-      }
       setAssignedClients(prev => ({ ...prev, [userId]: [...(prev[userId] || []), clientId] }))
     }
-    console.log('[v0] Client assignment toggled:', { userId, clientId, wasAssigned: isAssigned })
   }
 
   const toggleNewModulo = (moduloId: string) => {
