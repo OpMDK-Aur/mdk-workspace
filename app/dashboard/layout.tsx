@@ -56,8 +56,18 @@ export default async function DashboardLayout({
   // master, administrador and project_manager see all clients; others see only assigned clients
   const isFullAccess = roleName === 'master' || roleName === 'administrador' || roleName === 'project_manager'
   
-  // Only select needed fields for sidebar, not all columns
-  let clientsQuery = supabase.from('clientes').select('id, nombre_del_negocio, plan')
+  // Semaforo ID to status mapping
+  const SEMAFORO_MAP: Record<string, string> = {
+    'd3f4361f-477e-4f7a-9f98-9868cddef57f': 'verde',
+    '04dca848-a17e-4626-b83a-5377aef062ec': 'amarillo',
+    'c19b9591-862e-49a8-898c-b29ed35fcd3b': 'naranja',
+    '753e6c36-5a9f-4b4b-b5fa-aac7d6f281af': 'rojo',
+    '3876a424-6749-4205-b5b2-a59c49ca8eb9': 'inhabilitado',
+    '550f7375-4aec-4e76-a006-16b427d493e9': 'inactivo',
+  }
+
+  // Select fields including semaforo_id for status mapping
+  let clientsQuery = supabase.from('clientes').select('id, nombre_del_negocio, plan, semaforo_id, meta_ads_id, google_ads_id')
 
   if (!isFullAccess && clientIds.length > 0) {
     clientsQuery = clientsQuery.in('id', clientIds)
@@ -67,7 +77,11 @@ export default async function DashboardLayout({
   }
 
   const { data: clientsData } = await clientsQuery.order('nombre_del_negocio')
-  const clients = (clientsData || []).map(c => ({ ...c, business_name: c.nombre_del_negocio }))
+  const clients = (clientsData || []).map(c => ({ 
+    ...c, 
+    business_name: c.nombre_del_negocio,
+    status: c.semaforo_id ? SEMAFORO_MAP[c.semaforo_id] || null : null,
+  }))
 
   return (
     <DashboardShell 
