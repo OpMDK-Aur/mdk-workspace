@@ -753,22 +753,32 @@ function CommentsSection({ task }: { task: Task }) {
     })
   }
 
-  // Upload images to blob storage
+  // Upload images to Supabase Storage
   const uploadImages = async (): Promise<string[]> => {
+    const supabase = createClient()
     const urls: string[] = []
+    
     for (const { file } of pendingImages) {
-      const formData = new FormData()
-      formData.append('file', file)
+      const fileExt = file.name.split('.').pop() || 'png'
+      const fileName = `${task.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
       
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      })
+      const { data, error } = await supabase.storage
+        .from('comment-images')
+        .upload(fileName, file, { 
+          cacheControl: '3600',
+          upsert: false 
+        })
       
-      if (res.ok) {
-        const { url } = await res.json()
-        urls.push(url)
+      if (error) {
+        console.log('[v0] Error uploading image:', error)
+        continue
       }
+      
+      const { data: urlData } = supabase.storage
+        .from('comment-images')
+        .getPublicUrl(data.path)
+      
+      urls.push(urlData.publicUrl)
     }
     return urls
   }
@@ -914,7 +924,7 @@ function CommentsSection({ task }: { task: Task }) {
   )
 }
 
-// ── Custom Fields Component ──────────────────────���─────����──────────────────────
+// ── Custom Fields Component ──────────────────────�����─────����──────────────────────
 
 function CustomFields({ task }: { task: Task }) {
   const { addCustomField, removeCustomField, updateTask } = useTaskStore()
