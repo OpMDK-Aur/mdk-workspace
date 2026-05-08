@@ -127,12 +127,10 @@ function SearchableTaskTypeSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="h-9 w-full justify-between font-normal"
+          className="h-9 w-full justify-between font-normal overflow-hidden"
         >
           {selectedTipo ? (
-            <Badge variant="outline" className="text-xs">
-              {selectedTipo.nombre}
-            </Badge>
+            <span className="truncate text-sm">{selectedTipo.nombre}</span>
           ) : (
             <span className="text-muted-foreground">Seleccionar tipo...</span>
           )}
@@ -916,7 +914,7 @@ function CommentsSection({ task }: { task: Task }) {
   )
 }
 
-// ── Custom Fields Component ────────────────────────────��──────────────────────
+// ── Custom Fields Component ──────────────────────���─────��──────────────────────
 
 function CustomFields({ task }: { task: Task }) {
   const { addCustomField, removeCustomField, updateTask } = useTaskStore()
@@ -1418,9 +1416,9 @@ export function TaskDetailPanel() {
                         </Select>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-3">
                         <div>
-                          <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo</Label>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo de tarea</Label>
                           <SearchableTaskTypeSelect 
                             tiposTarea={tiposTarea}
                             value={task.type}
