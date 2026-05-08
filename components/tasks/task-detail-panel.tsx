@@ -755,43 +755,25 @@ function CommentsSection({ task }: { task: Task }) {
     })
   }
 
-  // Upload images to Supabase Storage
-  const uploadImages = async (): Promise<string[]> => {
-    const supabase = createClient()
-    const urls: string[] = []
-    
-    console.log('[v0] Starting image upload, pending images:', pendingImages.length)
+  // Convert images to base64 data URLs (no storage needed)
+  const processImages = async (): Promise<string[]> => {
+    const dataUrls: string[] = []
     
     for (const { file } of pendingImages) {
-      const fileExt = file.name.split('.').pop() || 'png'
-      const fileName = `${task.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
-      
-      console.log('[v0] Uploading file:', fileName, 'size:', file.size)
-      
-      const { data, error } = await supabase.storage
-        .from('comment-images')
-        .upload(fileName, file, { 
-          cacheControl: '3600',
-          upsert: false 
+      try {
+        const reader = new FileReader()
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = reject
+          reader.readAsDataURL(file)
         })
-      
-      if (error) {
-        console.log('[v0] Error uploading image:', error)
-        toast.error('Error subiendo imagen: ' + error.message)
-        continue
+        dataUrls.push(dataUrl)
+      } catch (err) {
+        console.error('Error processing image:', err)
+        toast.error('Error procesando imagen')
       }
-      
-      console.log('[v0] Upload successful, path:', data.path)
-      
-      const { data: urlData } = supabase.storage
-        .from('comment-images')
-        .getPublicUrl(data.path)
-      
-      console.log('[v0] Public URL:', urlData.publicUrl)
-      urls.push(urlData.publicUrl)
     }
-    console.log('[v0] All uploads complete, URLs:', urls)
-    return urls
+    return dataUrls
   }
 
   // Handle keyboard events
@@ -821,24 +803,23 @@ function CommentsSection({ task }: { task: Task }) {
     const userName = currentUser?.nombre || 'Usuario'
     
     try {
-      // Upload images first
-      let imageUrls: string[] = []
+      // Process images to base64
+      let imageDataUrls: string[] = []
       if (pendingImages.length > 0) {
         setUploadingImages(true)
-        imageUrls = await uploadImages()
+        imageDataUrls = await processImages()
         setUploadingImages(false)
       }
       
       // Build content with images
       let fullContent = textContent
-      if (imageUrls.length > 0) {
-        const imagesHtml = imageUrls.map(url => 
-          `<img src="${url}" alt="Imagen adjunta" class="max-w-full rounded-lg mt-2" style="max-height: 300px;" />`
+      if (imageDataUrls.length > 0) {
+        const imagesHtml = imageDataUrls.map(dataUrl => 
+          `<img src="${dataUrl}" alt="Imagen adjunta" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 8px; display: block;" />`
         ).join('')
         fullContent = textContent ? `${textContent}<br/>${imagesHtml}` : imagesHtml
       }
       
-      console.log('[v0] Final comment content:', fullContent)
       await addComment(task.id, fullContent, userId, userName, currentUser?.avatar_url)
       setComment('')
       setPendingImages([])
