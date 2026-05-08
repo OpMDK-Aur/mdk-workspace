@@ -1325,15 +1325,6 @@ if (currentStep.type === 'select_client') {
       addAssistantMessage({ content: response }, 300)
     }
 
-    // Handle due date selection
-    if (currentStep.type === 'select_due_date') {
-      newData.dueDate = value
-      const dueDate = new Date(value)
-      addAssistantMessage({ 
-        content: `Listo, fecha limite: ${dueDate.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}` 
-      }, 300)
-    }
-
     // Special responses based on selection
     if (selectedTemplate.id === 'falta_datos' && stepKey === 'area' && value === 'everything') {
       addAssistantMessage({ 
@@ -1379,12 +1370,25 @@ if (currentStep.type === 'select_client') {
       }
     }
 
-    const stepKey = (currentStep as { key?: string }).key || currentStep.type
+    // Map step type to correct data key
+    let stepKey = (currentStep as { key?: string }).key || currentStep.type
+    if (currentStep.type === 'select_due_date') {
+      stepKey = 'dueDate'
+    }
+    
     const newData = { ...taskData, [stepKey]: value }
     setTaskData(newData)
     setInputValue('')
 
-    const delay = currentStep.type === 'number' ? 1000 : 400
+    // Special response for due date
+    if (currentStep.type === 'select_due_date') {
+      const dueDate = new Date(value)
+      addAssistantMessage({ 
+        content: `Listo, fecha limite: ${dueDate.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}` 
+      }, 300)
+    }
+
+    const delay = currentStep.type === 'number' || currentStep.type === 'select_due_date' ? 1000 : 400
     setTimeout(() => processStep(selectedTemplate, currentStepIndex + 1, newData), delay)
   }
 
