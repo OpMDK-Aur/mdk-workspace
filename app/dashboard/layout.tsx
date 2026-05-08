@@ -67,7 +67,7 @@ export default async function DashboardLayout({
   }
 
   // Select fields including semaforo_id for status mapping
-  let clientsQuery = supabase.from('Clientes').select('id, nombre_del_negocio, plan, semaforo_id')
+  let clientsQuery = supabase.from('clientes').select('id, nombre_del_negocio, plan, semaforo_id')
 
   if (!isFullAccess && clientIds.length > 0) {
     clientsQuery = clientsQuery.in('id', clientIds)

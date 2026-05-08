@@ -424,7 +424,7 @@ export const madkyTools = {
         }
         
         const { data: client, error } = await supabase
-          .from('Clientes')
+          .from('clientes')
           .select(`
             id,
             nombre_del_negocio,

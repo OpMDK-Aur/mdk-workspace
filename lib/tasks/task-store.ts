@@ -806,7 +806,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           `)
           .order('created_at', { ascending: false }),
         supabase
-          .from('Clientes')
+          .from('clientes')
           .select('id, nombre_del_negocio')
           .order('nombre_del_negocio'),
         loadAssignees(), // Load assignees in parallel

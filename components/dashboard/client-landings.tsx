@@ -46,7 +46,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
   const fetchLandings = async () => {
     setLoading(true)
     const { data, error } = await supabase
-      .from('Clientes')
+      .from('clientes')
       .select('landings')
       .eq('id', clientId)
       .single()
@@ -60,7 +60,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
   const saveLandings = async (newLandings: Landing[]) => {
     setSaving(true)
     const { error } = await supabase
-      .from('Clientes')
+      .from('clientes')
       .update({ landings: newLandings })
       .eq('id', clientId)
 

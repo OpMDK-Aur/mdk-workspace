@@ -104,7 +104,7 @@ export async function POST() {
 
     // Cargar todos los clientes
     const { data: clientes, error: clientesError } = await supabase
-      .from('Clientes')
+      .from('clientes')
       .select('id, nombre_del_negocio, plan, account_manager_id')
       .order('nombre_del_negocio')
 
@@ -277,7 +277,7 @@ export async function GET() {
     const { monday, friday, weekStart } = getWeekDates()
 
     const { count: totalClientes } = await supabase
-      .from('Clientes')
+      .from('clientes')
       .select('id', { count: 'exact', head: true })
 
     const { data: existingTasks } = await supabase

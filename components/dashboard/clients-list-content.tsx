@@ -343,7 +343,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       }
 
       const { data, error } = await supabase
-        .from('Clientes')
+        .from('clientes')
         .insert(clientData)
         .select()
         .single()

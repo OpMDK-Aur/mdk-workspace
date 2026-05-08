@@ -10,7 +10,7 @@ export default async function ClientsPage() {
 
   // Load all clients
   const { data: clients } = await supabase
-    .from('Clientes')
+    .from('clientes')
     .select('*')
     .order('nombre_del_negocio', { ascending: true })
 

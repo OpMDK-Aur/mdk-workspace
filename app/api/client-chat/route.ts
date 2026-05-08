@@ -28,7 +28,7 @@ export async function POST(req: Request) {
 
     // 1. Fetch client data
     const { data: client } = await supabase
-      .from('Clientes')
+      .from('clientes')
       .select('*')
       .eq('id', clientId)
       .single()

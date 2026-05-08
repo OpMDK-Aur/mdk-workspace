@@ -83,7 +83,7 @@ export default function ImportMemoriaPage() {
       
       // Get all clients for matching
       const { data: clientes } = await supabase
-        .from('Clientes')
+        .from('clientes')
         .select('id, nombre_del_negocio')
       
       for (const record of records) {
