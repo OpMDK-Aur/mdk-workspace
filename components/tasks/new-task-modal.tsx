@@ -943,6 +943,13 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
         supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
       ])
       
+      console.log('[v0] NewTaskModal loadData:', {
+        clientes: clientesRes.data?.length,
+        clientesError: clientesRes.error,
+        colaboradores: colabRes.data?.length,
+        tipos: tiposRes.data?.length,
+      })
+      
       if (clientesRes.data) setDbClientes(clientesRes.data)
       if (colabRes.data) setDbColaboradores(colabRes.data)
       if (tiposRes.data) setDbTiposTarea(tiposRes.data)
