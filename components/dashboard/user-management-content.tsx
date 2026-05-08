@@ -243,16 +243,17 @@ export function UserManagementContent({
         return
       }
 
-      // Update client access
-      await supabase.from('user_client_access').delete().eq('user_id', editingProfile.id)
-      if (editClientIds.length > 0) {
-        await supabase.from('user_client_access').insert(
-          editClientIds.map(clientId => ({
-            user_id: editingProfile.id,
-            client_id: clientId,
-            access_level: 'read' as const,
-          }))
-        )
+      // Update client access via API (uses service role key)
+      const accessRes = await fetch('/api/admin/user-client-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: editingProfile.id, client_ids: editClientIds }),
+      })
+      
+      if (!accessRes.ok) {
+        const error = await accessRes.json()
+        setSaveError('Error al asignar clientes: ' + (error.error || 'Error desconocido'))
+        return
       }
 
       // Update local state
@@ -358,11 +359,24 @@ export function UserManagementContent({
     const current = assignedClients[userId] || []
     const isAssigned = current.includes(clientId)
 
+    const res = await fetch('/api/admin/user-client-access', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        user_id: userId, 
+        client_id: clientId, 
+        action: isAssigned ? 'remove' : 'add' 
+      }),
+    })
+
+    if (!res.ok) {
+      console.log('[v0] Error toggling client access')
+      return
+    }
+
     if (isAssigned) {
-      await supabase.from('user_client_access').delete().eq('user_id', userId).eq('client_id', clientId)
       setAssignedClients(prev => ({ ...prev, [userId]: (prev[userId] || []).filter(id => id !== clientId) }))
     } else {
-      await supabase.from('user_client_access').insert({ user_id: userId, client_id: clientId, access_level: 'read' })
       setAssignedClients(prev => ({ ...prev, [userId]: [...(prev[userId] || []), clientId] }))
     }
   }

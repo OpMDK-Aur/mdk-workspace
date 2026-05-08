@@ -18,20 +18,12 @@ export default async function DashboardLayout({
     redirect('/auth/login')
   }
 
-  // Run queries in parallel for better performance
-  const [colaboradorResult, clientAccessResult] = await Promise.all([
-    supabase
-      .from('colaboradores')
-      .select('*, roles(id, nombre), departamentos(id, nombre)')
-      .eq('id', user.id)
-      .maybeSingle(),
-    supabase
-      .from('user_client_access')
-      .select('client_id')
-      .eq('user_id', user.id)
-  ])
-
-  const colaborador = colaboradorResult.data
+  // Get colaborador data
+  const { data: colaborador } = await supabase
+    .from('colaboradores')
+    .select('*, roles(id, nombre), departamentos(id, nombre)')
+    .eq('id', user.id)
+    .maybeSingle()
 
   // Map rol name to profile.role for compatibility
   const roleName = colaborador?.roles?.nombre?.toLowerCase().replace(/ /g, '_') || ''
@@ -51,11 +43,6 @@ export default async function DashboardLayout({
     redirect('/onboarding')
   }
 
-  const clientIds = clientAccessResult.data?.map(ca => ca.client_id) || []
-
-  // master, administrador, project_manager and account_manager see all clients; others see only assigned clients
-  const isFullAccess = roleName === 'master' || roleName === 'administrador' || roleName === 'project_manager' || roleName === 'account_manager'
-  
   // Semaforo ID to status mapping
   const SEMAFORO_MAP: Record<string, string> = {
     'd3f4361f-477e-4f7a-9f98-9868cddef57f': 'verde',
@@ -66,15 +53,8 @@ export default async function DashboardLayout({
     '550f7375-4aec-4e76-a006-16b427d493e9': 'inactivo',
   }
 
-  // Select fields including semaforo_id for status mapping
-  let clientsQuery = supabase.from('clientes').select('id, nombre_del_negocio, plan, semaforo_id')
-
-  if (!isFullAccess && clientIds.length > 0) {
-    clientsQuery = clientsQuery.in('id', clientIds)
-  } else if (!isFullAccess && clientIds.length === 0) {
-    // No access at all for other roles with no assignments
-    clientsQuery = clientsQuery.in('id', ['00000000-0000-0000-0000-000000000000'])
-  }
+  // All users see all clients
+  const clientsQuery = supabase.from('clientes').select('id, nombre_del_negocio, plan, semaforo_id')
 
   const { data: clientsData } = await clientsQuery.order('nombre_del_negocio')
   
