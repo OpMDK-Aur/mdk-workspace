@@ -46,7 +46,8 @@ function TaskRow({ task }: { task: Task }) {
   const [liveTime, setLiveTime] = useState(task.totalTimeSec)
   const statusConfig = STATUS_CONFIG[task.status] || { label: task.status, color: 'text-gray-400', bgColor: 'bg-gray-500/20' }
   const priorityConfig = PRIORITY_CONFIG[task.priority] || { label: 'Media', color: 'text-yellow-400', bgColor: 'bg-yellow-500/20' }
-  const typeConfig = TYPE_CONFIG[task.type] || { label: task.typeName || 'Tarea', color: 'bg-gray-500/20 text-gray-400' }
+  const typeNameKey = task.typeName?.toLowerCase().replace(/ /g, '_') || ''
+  const typeConfig = TYPE_CONFIG[task.type] || TYPE_CONFIG[typeNameKey] || TYPE_CONFIG[task.typeName?.toLowerCase() || ''] || { label: task.typeName || 'Tarea', color: 'bg-gray-500/20 text-gray-400' }
 
   useEffect(() => {
     if (!task.isTimerRunning || !task.timerStartedAt) {

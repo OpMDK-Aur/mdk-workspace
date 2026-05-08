@@ -31,7 +31,7 @@ interface TareaDB {
   contexto_chat: string | null
   // Joined relations
   clientes?: { id: string; nombre_del_negocio: string } | null
-  colaboradores?: { id: string; nombre: string; avatar_url?: string | null } | null
+  colaboradores?: { id: string; nombre: string; apellido?: string | null; avatar_url?: string | null } | null
   tipo_de_tareas?: { id: string; nombre: string } | null
 }
 
@@ -91,7 +91,9 @@ function mapTareaToTask(tarea: TareaDB): Task {
     clientId: tarea.cliente_id || '',
     clientName: tarea.clientes?.nombre_del_negocio || 'Sin cliente',
     assigneeId: tarea.asignado_a || '',
-    assigneeName: tarea.colaboradores?.nombre || 'Sin asignar',
+    assigneeName: tarea.colaboradores 
+      ? [tarea.colaboradores.nombre, tarea.colaboradores.apellido].filter(Boolean).join(' ') 
+      : 'Sin asignar',
     assigneeAvatar: tarea.colaboradores?.avatar_url || null,
     status: mapEstadoToStatus(tarea.estado),
     priority: mapPrioridadToPriority(tarea.prioridad),
@@ -443,14 +445,36 @@ export const TYPE_CONFIG: Record<string, { label: string; color: string; icon?: 
   reportes: { label: 'Reportes', color: 'bg-pink-500/20 text-pink-400', icon: 'file-text' },
   desarrollo: { label: 'Desarrollo', color: 'bg-indigo-500/20 text-indigo-400', icon: 'code' },
   reunion: { label: 'Reunion', color: 'bg-orange-500/20 text-orange-400', icon: 'video' },
-  seguimiento: { label: 'Seguimiento', color: 'bg-teal-500/20 text-teal-400', icon: 'rotate-ccw' },
+  // Hitos del Mapa de Servicio - color dorado distintivo
+  seguimiento: { label: 'Seguimiento', color: 'bg-amber-500/30 text-amber-300 border border-amber-500/50', icon: 'send' },
+  'mapa de servicio': { label: 'Mapa de Servicio', color: 'bg-amber-500/30 text-amber-300 border border-amber-500/50', icon: 'map' },
+  mapa_de_servicio: { label: 'Mapa de Servicio', color: 'bg-amber-500/30 text-amber-300 border border-amber-500/50', icon: 'map' },
 }
 
-export const ASSIGNEES = [
-  { id: 'erika', name: 'Erika Gordillo' },
-  { id: 'ayelen', name: 'Ayelen Suarez' },
-  { id: 'paula', name: 'Paula Aguirre' },
-]
+// Will be populated dynamically from colaboradores table
+export let ASSIGNEES: Array<{ id: string; name: string; avatar_url?: string | null }> = []
+
+// Function to load assignees from database
+export async function loadAssignees() {
+  try {
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('colaboradores')
+      .select('id, nombre, apellido, avatar_url')
+      .order('nombre')
+    
+    if (data) {
+      ASSIGNEES = data.map(c => ({
+        id: c.id,
+        name: [c.nombre, c.apellido].filter(Boolean).join(' ') || 'Sin nombre',
+        avatar_url: c.avatar_url,
+      }))
+    }
+  } catch (error) {
+    console.error('Error loading assignees:', error)
+  }
+  return ASSIGNEES
+}
 
 export const CLIENTS = [
   { id: 'ics', name: 'ICS Prepaqa' },
@@ -769,27 +793,33 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set({ isLoading: true })
     try {
       const supabase = createClient()
-      const { data, error } = await supabase
-        .from('tareas')
-        .select(`
-          *,
-          clientes:cliente_id(id, nombre_del_negocio),
-          colaboradores:asignado_a(id, nombre, avatar_url),
-          tipo_de_tareas:tipo_tarea_id(id, nombre)
-        `)
-        .order('created_at', { ascending: false })
+      
+      // Load tasks, clients and assignees in parallel
+      const [tasksResult, clientesResult] = await Promise.all([
+        supabase
+          .from('tareas')
+          .select(`
+            *,
+            clientes:cliente_id(id, nombre_del_negocio),
+            colaboradores:asignado_a(id, nombre, apellido, avatar_url),
+            tipo_de_tareas:tipo_tarea_id(id, nombre)
+          `)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('clientes')
+          .select('id, nombre_del_negocio')
+          .order('nombre_del_negocio'),
+        loadAssignees(), // Load assignees in parallel
+      ])
+
+      const { data, error } = tasksResult
+      const { data: clientesData } = clientesResult
 
       if (error) {
         console.error('Error loading tasks:', error)
         set({ tasks: [], isLoading: false })
         return
       }
-
-      // Load clients for system tasks
-      const { data: clientesData } = await supabase
-        .from('clientes')
-        .select('id, nombre_del_negocio')
-        .order('nombre_del_negocio')
       
       // Generate system tasks (weekly follow-ups)
       const systemTasks = clientesData ? generateSystemTasks(clientesData) : []

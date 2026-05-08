@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo, useCallback, memo } from 'react'
 import Link from 'next/link'
 import type { Client, Profile, ClientStatus, ClientPlan } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'

@@ -31,9 +31,11 @@ interface ClientNPSProps {
 }
 
 function getNPSCategory(score: number): { label: string; color: string; bgColor: string } {
-  if (score >= 9) return { label: 'Promotor', color: 'text-green-500', bgColor: 'bg-green-500' }
-  if (score >= 7) return { label: 'Pasivo', color: 'text-yellow-500', bgColor: 'bg-yellow-500' }
-  return { label: 'Detractor', color: 'text-red-500', bgColor: 'bg-red-500' }
+  if (score >= 5) return { label: 'Excelente', color: 'text-green-500', bgColor: 'bg-green-500' }
+  if (score >= 4) return { label: 'Bueno', color: 'text-emerald-500', bgColor: 'bg-emerald-500' }
+  if (score >= 3) return { label: 'Regular', color: 'text-yellow-500', bgColor: 'bg-yellow-500' }
+  if (score >= 2) return { label: 'Malo', color: 'text-orange-500', bgColor: 'bg-orange-500' }
+  return { label: 'Muy malo', color: 'text-red-500', bgColor: 'bg-red-500' }
 }
 
 function formatDate(dateStr: string): string {
@@ -48,7 +50,7 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
   const [saving, setSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState({
-    score: 8,
+    score: 3,
     comentario: '',
     encuestado_nombre: '',
     encuestado_cargo: '',
@@ -63,19 +65,8 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
 
   const fetchNPS = async () => {
     setLoading(true)
-    
-    // Fetch current NPS from clientes table
-    const { data: clientData } = await supabase
-      .from('clientes')
-      .select('nps_score')
-      .eq('id', clientId)
-      .single()
 
-    if (clientData) {
-      setCurrentScore(clientData.nps_score)
-    }
-
-    // Fetch NPS history
+    // Fetch NPS history ordered by date ascending (for chart)
     const { data: historyData, error } = await supabase
       .from('cliente_nps_historial')
       .select('*')
@@ -84,6 +75,13 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
 
     if (!error && historyData) {
       setRecords(historyData)
+      // Set current score from the most recent record (last in ascending order)
+      if (historyData.length > 0) {
+        const mostRecent = historyData[historyData.length - 1]
+        setCurrentScore(mostRecent.score)
+      } else {
+        setCurrentScore(null)
+      }
     }
     
     setLoading(false)
@@ -108,17 +106,25 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
       .single()
 
     if (!error && data) {
-      // Update current NPS in clientes table
+      // Add to records and sort by date
+      const newRecords = [...records, data].sort((a, b) => 
+        new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+      )
+      setRecords(newRecords)
+      
+      // Set current score from most recent record
+      const mostRecent = newRecords[newRecords.length - 1]
+      setCurrentScore(mostRecent.score)
+      
+      // Update clientes table with most recent score
       await supabase
         .from('clientes')
-        .update({ nps_score: form.score })
+        .update({ nps_score: mostRecent.score })
         .eq('id', clientId)
 
-      setRecords(prev => [...prev, data])
-      setCurrentScore(form.score)
       setDialogOpen(false)
       setForm({
-        score: 8,
+        score: 3,
         comentario: '',
         encuestado_nombre: '',
         encuestado_cargo: '',
@@ -172,24 +178,25 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
-                <Label>Score (0-10)</Label>
+                <Label>Score (1-5)</Label>
                 <div className="flex items-center gap-2 mt-2">
-                  <Input
-                    type="range"
-                    min={0}
-                    max={10}
-                    value={form.score}
-                    onChange={(e) => setForm(prev => ({ ...prev, score: parseInt(e.target.value) }))}
-                    className="flex-1"
-                  />
-                  <div className={cn(
-                    "w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-lg",
-                    getNPSCategory(form.score).bgColor
-                  )}>
-                    {form.score}
-                  </div>
+                  {[1, 2, 3, 4, 5].map((score) => (
+                    <button
+                      key={score}
+                      type="button"
+                      onClick={() => setForm(prev => ({ ...prev, score }))}
+                      className={cn(
+                        "w-10 h-10 rounded-lg flex items-center justify-center font-bold text-lg transition-all",
+                        form.score === score
+                          ? cn("text-white scale-110", getNPSCategory(score).bgColor)
+                          : "bg-muted text-muted-foreground hover:bg-muted/80"
+                      )}
+                    >
+                      {score}
+                    </button>
+                  ))}
                 </div>
-                <p className={cn("text-sm mt-1", getNPSCategory(form.score).color)}>
+                <p className={cn("text-sm mt-2", getNPSCategory(form.score).color)}>
                   {getNPSCategory(form.score).label}
                 </p>
               </div>
@@ -310,15 +317,16 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
                       axisLine={false}
                     />
                     <YAxis 
-                      domain={[0, 10]} 
+                      domain={[1, 5]} 
+                      ticks={[1, 2, 3, 4, 5]}
                       tick={{ fontSize: 10 }}
                       tickLine={false}
                       axisLine={false}
                       width={20}
                     />
                     <ChartTooltip content={<ChartTooltipContent />} />
-                    <ReferenceLine y={9} stroke="#22c55e" strokeDasharray="3 3" strokeOpacity={0.5} />
-                    <ReferenceLine y={7} stroke="#eab308" strokeDasharray="3 3" strokeOpacity={0.5} />
+                    <ReferenceLine y={4} stroke="#22c55e" strokeDasharray="3 3" strokeOpacity={0.5} />
+                    <ReferenceLine y={3} stroke="#eab308" strokeDasharray="3 3" strokeOpacity={0.5} />
                     <Line
                       type="monotone"
                       dataKey="score"

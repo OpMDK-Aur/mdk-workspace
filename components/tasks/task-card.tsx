@@ -97,8 +97,9 @@ const DEFAULT_TYPE_CONFIG = { label: 'Tarea', color: 'bg-gray-500/20 text-gray-4
 export function TaskCard({ task, onClick }: TaskCardProps) {
   const [liveTime, setLiveTime] = useState(task.totalTimeSec)
   const priorityConfig = PRIORITY_CONFIG[task.priority] || { label: 'Media', color: 'text-yellow-400', bgColor: 'bg-yellow-500/20' }
-  // Use TYPE_CONFIG if type is a known key, otherwise use task.typeName or fallback
-  const typeConfig = TYPE_CONFIG[task.type] || { 
+  // Use TYPE_CONFIG if type is a known key, try typeName lowercase, otherwise fallback
+  const typeNameKey = task.typeName?.toLowerCase().replace(/ /g, '_') || ''
+  const typeConfig = TYPE_CONFIG[task.type] || TYPE_CONFIG[typeNameKey] || TYPE_CONFIG[task.typeName?.toLowerCase() || ''] || { 
     label: task.typeName || 'Tarea', 
     color: 'bg-gray-500/20 text-gray-400', 
     icon: undefined 
