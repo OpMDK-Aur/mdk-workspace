@@ -56,7 +56,7 @@ export function ClientPanel({ client, onClose }: ClientPanelProps) {
     .toUpperCase()
     .slice(0, 2)
 
-  const hasContact = client.contact_name || client.phone
+  const hasContact = client.nombre || client.telefono
 
   return (
     <Sheet open={!!client} onOpenChange={(open) => { if (!open) onClose() }}>
@@ -98,7 +98,7 @@ export function ClientPanel({ client, onClose }: ClientPanelProps) {
                 Contacto
               </h3>
               <div className="space-y-2">
-                {client.contact_name && (
+                {client.nombre && (
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
                       <User className="h-4 w-4 text-muted-foreground" />
@@ -106,12 +106,12 @@ export function ClientPanel({ client, onClose }: ClientPanelProps) {
                     <div>
                       <p className="text-xs text-muted-foreground">Nombre</p>
                       <p className="text-sm font-medium">
-                        {client.contact_name} {client.contact_lastname || ''}
+                        {client.nombre} {client.apellido || ''}
                       </p>
                     </div>
                   </div>
                 )}
-                {client.phone && (
+                {client.telefono && (
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
                       <Phone className="h-4 w-4 text-muted-foreground" />
@@ -119,10 +119,10 @@ export function ClientPanel({ client, onClose }: ClientPanelProps) {
                     <div>
                       <p className="text-xs text-muted-foreground">Telefono</p>
                       <a
-                        href={`tel:${client.phone}`}
+                        href={`tel:${client.telefono}`}
                         className="text-sm font-medium text-primary hover:underline"
                       >
-                        {client.phone}
+                        {client.telefono}
                       </a>
                     </div>
                   </div>
