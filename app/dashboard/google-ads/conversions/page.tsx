@@ -30,7 +30,7 @@ export default async function ConversionsPage() {
 
   let query = supabase
     .from('clientes')
-    .select('*')
+    .select('id, nombre_del_negocio, google_ads_customer_id')
 
   if (!isFullAccess && clientIds.length > 0) {
     query = query.in('id', clientIds)
@@ -44,7 +44,7 @@ export default async function ConversionsPage() {
   const clients = (clientsData ?? []).map((c: any) => ({
     id: c.id,
     business_name: c.nombre_del_negocio,
-    google_ads_customer_id: c.google_ads_id || c.google_customer_id || null,
+    google_ads_customer_id: c.google_ads_customer_id,
   }))
 
   return (

@@ -25,7 +25,7 @@ export default async function SaldosPage() {
 
   let clientsQuery = supabase
     .from('clientes')
-    .select('*')
+    .select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, semaforo_id')
 
   if (!isFullAccess) {
     const { data: access } = await supabase
@@ -40,12 +40,12 @@ export default async function SaldosPage() {
 
   const { data: clientsData } = await clientsQuery.order('nombre_del_negocio')
   
-  // Map to expected format - use actual column names from clientes table
+  // Map to expected format
   const clients = (clientsData ?? []).map((c: any) => ({
     id: c.id,
     business_name: c.nombre_del_negocio,
-    meta_ads_account_id: c.meta_ads_id || c.meta_account_id || c.id_meta_ads || null,
-    google_ads_customer_id: c.google_ads_id || c.google_customer_id || c.id_google_ads || null,
+    meta_ads_account_id: c.meta_ads_account_id,
+    google_ads_customer_id: c.google_ads_customer_id,
     status: c.semaforo_id,
   }))
 
