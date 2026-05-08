@@ -244,16 +244,25 @@ export function UserManagementContent({
       }
 
       // Update client access
-      await supabase.from('user_client_access').delete().eq('user_id', editingProfile.id)
+      const { error: deleteError } = await supabase.from('user_client_access').delete().eq('user_id', editingProfile.id)
+      if (deleteError) {
+        console.log('[v0] Error deleting client access:', deleteError)
+      }
       if (editClientIds.length > 0) {
-        await supabase.from('user_client_access').insert(
+        const { error: insertError } = await supabase.from('user_client_access').insert(
           editClientIds.map(clientId => ({
             user_id: editingProfile.id,
             client_id: clientId,
             access_level: 'read' as const,
           }))
         )
+        if (insertError) {
+          console.log('[v0] Error inserting client access:', insertError)
+          setSaveError('Error al asignar clientes: ' + insertError.message)
+          return
+        }
       }
+      console.log('[v0] Client access updated successfully for user:', editingProfile.id, 'clients:', editClientIds)
 
       // Update local state
       const newRoleName = roles.find(r => r.id === editRolId)?.nombre || ''
@@ -359,12 +368,21 @@ export function UserManagementContent({
     const isAssigned = current.includes(clientId)
 
     if (isAssigned) {
-      await supabase.from('user_client_access').delete().eq('user_id', userId).eq('client_id', clientId)
+      const { error } = await supabase.from('user_client_access').delete().eq('user_id', userId).eq('client_id', clientId)
+      if (error) {
+        console.log('[v0] Error removing client access:', error)
+        return
+      }
       setAssignedClients(prev => ({ ...prev, [userId]: (prev[userId] || []).filter(id => id !== clientId) }))
     } else {
-      await supabase.from('user_client_access').insert({ user_id: userId, client_id: clientId, access_level: 'read' })
+      const { error } = await supabase.from('user_client_access').insert({ user_id: userId, client_id: clientId, access_level: 'read' })
+      if (error) {
+        console.log('[v0] Error adding client access:', error)
+        return
+      }
       setAssignedClients(prev => ({ ...prev, [userId]: [...(prev[userId] || []), clientId] }))
     }
+    console.log('[v0] Client assignment toggled:', { userId, clientId, wasAssigned: isAssigned })
   }
 
   const toggleNewModulo = (moduloId: string) => {
