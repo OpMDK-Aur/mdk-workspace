@@ -60,6 +60,15 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Calendar } from '@/components/ui/calendar'
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import { Check, ChevronsUpDown } from 'lucide-react'
+import {
   Play,
   RotateCcw,
   Calendar as CalendarIcon,
@@ -96,6 +105,70 @@ function formatTime(seconds: number): string {
   const m = Math.floor((seconds % 3600) / 60)
   const s = seconds % 60
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+// Searchable Task Type Select Component
+function SearchableTaskTypeSelect({ 
+  tiposTarea, 
+  value, 
+  onValueChange 
+}: { 
+  tiposTarea: TipoDeTarea[]
+  value: string
+  onValueChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const selectedTipo = tiposTarea.find(t => t.id === value)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="h-9 w-full justify-between font-normal"
+        >
+          {selectedTipo ? (
+            <Badge variant="outline" className="text-xs">
+              {selectedTipo.nombre}
+            </Badge>
+          ) : (
+            <span className="text-muted-foreground">Seleccionar tipo...</span>
+          )}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[250px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Buscar tipo de tarea..." />
+          <CommandList>
+            <CommandEmpty>No se encontraron tipos.</CommandEmpty>
+            <CommandGroup>
+              {tiposTarea.map((tipo) => (
+                <CommandItem
+                  key={tipo.id}
+                  value={tipo.nombre}
+                  onSelect={() => {
+                    onValueChange(tipo.id)
+                    setOpen(false)
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === tipo.id ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  {tipo.nombre}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 function formatTimeShort(seconds: number): string {
@@ -1348,23 +1421,11 @@ export function TaskDetailPanel() {
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo</Label>
-                          <Select
+                          <SearchableTaskTypeSelect 
+                            tiposTarea={tiposTarea}
                             value={task.type}
                             onValueChange={(v) => updateTask(task.id, { type: v as TaskType })}
-                          >
-                            <SelectTrigger className="h-9">
-                              <SelectValue placeholder="Tipo" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {tiposTarea.map((t) => (
-                                <SelectItem key={t.id} value={t.id}>
-                                  <Badge variant="outline" className="text-xs">
-                                    {t.nombre}
-                                  </Badge>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          />
                         </div>
                         <div>
                           <Label className="text-xs text-muted-foreground mb-1.5 block">Vencimiento</Label>
@@ -1530,23 +1591,11 @@ export function TaskDetailPanel() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo de tarea</Label>
-                      <Select
+                      <SearchableTaskTypeSelect 
+                        tiposTarea={tiposTarea}
                         value={task.type}
                         onValueChange={(v) => updateTask(task.id, { type: v as TaskType })}
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder="Seleccionar tipo" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {tiposTarea.map((t) => (
-                            <SelectItem key={t.id} value={t.id}>
-                              <Badge variant="outline" className="text-xs">
-                                {t.nombre}
-                              </Badge>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      />
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground mb-1.5 block">Vencimiento</Label>
