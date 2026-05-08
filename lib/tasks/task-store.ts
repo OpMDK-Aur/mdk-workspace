@@ -83,18 +83,44 @@ function mapPrioridadToPriority(prioridad: string): TaskPriority {
 }
 
 // Convert DB tarea to Task
-function mapTareaToTask(tarea: TareaDB): Task {
+function mapTareaToTask(
+  tarea: TareaDB, 
+  colaboradoresMap?: Map<string, { id: string; nombre: string; apellido?: string | null; avatar_url?: string | null }>
+): Task {
+  // Build assignees array from asignados_a
+  const assignees: Array<{ id: string; nombre: string; avatar_url: string | null }> = []
+  if (tarea.asignados_a && tarea.asignados_a.length > 0 && colaboradoresMap) {
+    for (const assigneeId of tarea.asignados_a) {
+      const colab = colaboradoresMap.get(assigneeId)
+      if (colab) {
+        assignees.push({
+          id: colab.id,
+          nombre: [colab.nombre, colab.apellido].filter(Boolean).join(' '),
+          avatar_url: colab.avatar_url || null,
+        })
+      }
+    }
+  } else if (tarea.colaboradores) {
+    // Fallback to single colaborador for backwards compatibility
+    assignees.push({
+      id: tarea.colaboradores.id,
+      nombre: [tarea.colaboradores.nombre, tarea.colaboradores.apellido].filter(Boolean).join(' '),
+      avatar_url: tarea.colaboradores.avatar_url || null,
+    })
+  }
+
   return {
     id: tarea.id,
     title: tarea.titulo,
     description: tarea.descripcion,
     clientId: tarea.cliente_id || '',
     clientName: tarea.clientes?.nombre_del_negocio || 'Sin cliente',
-    assigneeId: tarea.asignado_a || '',
-    assigneeName: tarea.colaboradores 
-      ? [tarea.colaboradores.nombre, tarea.colaboradores.apellido].filter(Boolean).join(' ') 
-      : 'Sin asignar',
-    assigneeAvatar: tarea.colaboradores?.avatar_url || null,
+    // Legacy single assignee (first in array or fallback)
+    assigneeId: assignees[0]?.id || tarea.asignado_a || '',
+    assigneeName: assignees[0]?.nombre || 'Sin asignar',
+    assigneeAvatar: assignees[0]?.avatar_url || null,
+    // Multi-assignee
+    assignees,
     status: mapEstadoToStatus(tarea.estado),
     priority: mapPrioridadToPriority(tarea.prioridad),
     type: tarea.tipo_tarea_id || '', // UUID from tipo_de_tareas
@@ -126,6 +152,7 @@ const MOCK_TASKS: Task[] = [
     clientName: 'Alambrados Patagonia',
     assigneeId: 'erika',
     assigneeName: 'Erika Gordillo',
+    assignees: [{ id: 'erika', nombre: 'Erika Gordillo', avatar_url: null }],
     status: 'pendiente',
     priority: 'alta',
     type: 'integracion',
@@ -167,6 +194,7 @@ const MOCK_TASKS: Task[] = [
     clientName: 'MDK',
     assigneeId: 'erika',
     assigneeName: 'Erika Gordillo',
+    assignees: [{ id: 'erika', nombre: 'Erika Gordillo', avatar_url: null }],
     status: 'pendiente',
     priority: 'alta',
     type: 'desarrollo',
@@ -546,6 +574,7 @@ function generateSystemTasks(clientes: Array<{ id: string; nombre_del_negocio: s
         assigneeId: '',
         assigneeName: 'Sin asignar',
         assigneeAvatar: null,
+        assignees: [],
         status: 'pendiente',
         priority: 'media',
         type: 'seguimiento',
@@ -795,8 +824,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     try {
       const supabase = createClient()
       
-      // Load tasks, clients and assignees in parallel
-      const [tasksResult, clientesResult] = await Promise.all([
+      // Load tasks, clients and colaboradores in parallel
+      const [tasksResult, clientesResult, colaboradoresResult] = await Promise.all([
         supabase
           .from('tareas')
           .select(`
@@ -810,11 +839,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           .from('clientes')
           .select('id, nombre_del_negocio')
           .order('nombre_del_negocio'),
-        loadAssignees(), // Load assignees in parallel
+        supabase
+          .from('colaboradores')
+          .select('id, nombre, apellido, avatar_url'),
       ])
+      
+      // Also update ASSIGNEES global
+      loadAssignees()
 
       const { data, error } = tasksResult
       const { data: clientesData } = clientesResult
+      const { data: colaboradoresData } = colaboradoresResult
+      
+      // Build colaboradores map for assignees lookup
+      const colaboradoresMap = new Map<string, { id: string; nombre: string; apellido?: string | null; avatar_url?: string | null }>()
+      if (colaboradoresData) {
+        colaboradoresData.forEach(c => colaboradoresMap.set(c.id, c))
+      }
 
       if (error) {
         console.error('Error loading tasks:', error)
@@ -845,7 +886,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         }
 
         const dbTasks = data.map((tarea) => {
-          const task = mapTareaToTask(tarea as TareaDB)
+          const task = mapTareaToTask(tarea as TareaDB, colaboradoresMap)
           task.comments = commentsByTask.get(tarea.id) || []
           return task
         })

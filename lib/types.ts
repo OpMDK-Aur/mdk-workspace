@@ -344,15 +344,24 @@ export interface TaskQuotation {
   notes: string
 }
 
+export interface TaskAssignee {
+  id: string
+  nombre: string
+  avatar_url: string | null
+}
+
 export interface Task {
   id: string
   title: string
   description: string | null // Rich text HTML content
   clientId: string
   clientName: string
+  // Legacy single assignee (for backwards compatibility)
   assigneeId: string
   assigneeName: string
   assigneeAvatar?: string | null
+  // Multi-assignee support
+  assignees: TaskAssignee[]
   status: TaskStatus
   priority: TaskPriority
   type: TaskType // UUID from tipo_de_tareas or legacy string
