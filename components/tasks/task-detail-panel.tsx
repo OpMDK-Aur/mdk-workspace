@@ -107,6 +107,98 @@ function formatTime(seconds: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
+// Multi Assignee Select Component
+function MultiAssigneeSelect({ 
+  assignees, 
+  colaboradores,
+  onChange 
+}: { 
+  assignees: Array<{ id: string; nombre: string; avatar_url: string | null }>
+  colaboradores: Array<{ id: string; nombre: string; avatar_url: string | null }>
+  onChange: (assignees: Array<{ id: string; nombre: string; avatar_url: string | null }>) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  const addAssignee = (colabId: string) => {
+    const colab = colaboradores.find(c => c.id === colabId)
+    if (colab && !assignees.find(a => a.id === colabId)) {
+      onChange([...assignees, { id: colab.id, nombre: colab.nombre, avatar_url: colab.avatar_url }])
+    }
+  }
+
+  const removeAssignee = (id: string) => {
+    onChange(assignees.filter(a => a.id !== id))
+  }
+
+  const availableColaboradores = colaboradores.filter(c => !assignees.find(a => a.id === c.id))
+
+  return (
+    <div className="space-y-2">
+      {/* Current assignees */}
+      <div className="flex flex-wrap gap-1.5">
+        {assignees.length === 0 ? (
+          <span className="text-sm text-muted-foreground">Sin asignar</span>
+        ) : (
+          assignees.map(a => (
+            <div 
+              key={a.id} 
+              className="flex items-center gap-1.5 bg-muted/50 rounded-full pl-1 pr-2 py-0.5 group"
+            >
+              <Avatar className="h-5 w-5">
+                {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
+                <AvatarFallback className="text-[9px]">{getInitials(a.nombre)}</AvatarFallback>
+              </Avatar>
+              <span className="text-xs">{a.nombre.split(' ')[0]}</span>
+              <button 
+                onClick={() => removeAssignee(a.id)}
+                className="h-4 w-4 rounded-full hover:bg-destructive/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+      
+      {/* Add assignee popover */}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+            <Plus className="h-3 w-3" />
+            Agregar
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-56 p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Buscar colaborador..." />
+            <CommandList>
+              <CommandEmpty>No hay más colaboradores.</CommandEmpty>
+              <CommandGroup>
+                {availableColaboradores.map((c) => (
+                  <CommandItem
+                    key={c.id}
+                    value={c.nombre}
+                    onSelect={() => {
+                      addAssignee(c.id)
+                      setOpen(false)
+                    }}
+                  >
+                    <Avatar className="h-5 w-5 mr-2">
+                      {c.avatar_url && <AvatarImage src={c.avatar_url} alt={c.nombre} />}
+                      <AvatarFallback className="text-[9px]">{getInitials(c.nombre)}</AvatarFallback>
+                    </Avatar>
+                    {c.nombre}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
+}
+
 // Searchable Task Type Select Component
 function SearchableTaskTypeSelect({ 
   tiposTarea, 
