@@ -1109,6 +1109,17 @@ export function TaskDetailPanel() {
                 <>
                   {/* Left column - Comments & Activity */}
                   <div className="space-y-6">
+                    {/* Description */}
+                    {task.description && (
+                      <div className="rounded-xl border bg-card/50 p-5">
+                        <Label className="text-xs text-muted-foreground mb-2 block">Descripcion</Label>
+                        <div 
+                          className="text-sm prose prose-sm prose-invert max-w-none whitespace-pre-wrap"
+                          dangerouslySetInnerHTML={{ __html: task.description }}
+                        />
+                      </div>
+                    )}
+                    
                     <div className="rounded-xl border bg-card/50 p-5">
                       <CommentsSection task={task} />
                     </div>
@@ -1310,6 +1321,17 @@ export function TaskDetailPanel() {
                 </>
               ) : (
                 <>
+                  {/* Description */}
+                  {task.description && (
+                    <div className="rounded-lg border bg-card/50 p-4">
+                      <Label className="text-xs text-muted-foreground mb-2 block">Descripcion</Label>
+                      <div 
+                        className="text-sm prose prose-sm prose-invert max-w-none whitespace-pre-wrap"
+                        dangerouslySetInnerHTML={{ __html: task.description }}
+                      />
+                    </div>
+                  )}
+                  
                   {/* Status & Priority */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
