@@ -258,9 +258,19 @@ export const useTimerStore = create<TimerState>()(
         set({ isLoading: true })
         try {
           const supabase = createClient()
+          
+          // Get current user
+          const { data: { user } } = await supabase.auth.getUser()
+          if (!user) {
+            set({ entries: [], isLoading: false })
+            return
+          }
+          
+          // Only load entries for the current user
           const { data, error } = await supabase
             .from('entradas_de_tiempo')
             .select('*')
+            .eq('colaborador_id', user.id)
             .order('iniciado_en', { ascending: false })
             .limit(100)
 
