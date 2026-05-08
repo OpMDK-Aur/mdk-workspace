@@ -445,7 +445,10 @@ export const TYPE_CONFIG: Record<string, { label: string; color: string; icon?: 
   reportes: { label: 'Reportes', color: 'bg-pink-500/20 text-pink-400', icon: 'file-text' },
   desarrollo: { label: 'Desarrollo', color: 'bg-indigo-500/20 text-indigo-400', icon: 'code' },
   reunion: { label: 'Reunion', color: 'bg-orange-500/20 text-orange-400', icon: 'video' },
-  seguimiento: { label: 'Seguimiento', color: 'bg-teal-500/20 text-teal-400', icon: 'rotate-ccw' },
+  // Hitos del Mapa de Servicio - color dorado distintivo
+  seguimiento: { label: 'Seguimiento', color: 'bg-amber-500/30 text-amber-300 border border-amber-500/50', icon: 'send' },
+  'mapa de servicio': { label: 'Mapa de Servicio', color: 'bg-amber-500/30 text-amber-300 border border-amber-500/50', icon: 'map' },
+  mapa_de_servicio: { label: 'Mapa de Servicio', color: 'bg-amber-500/30 text-amber-300 border border-amber-500/50', icon: 'map' },
 }
 
 // Will be populated dynamically from colaboradores table
