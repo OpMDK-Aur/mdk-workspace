@@ -405,7 +405,7 @@ export const madkyTools = {
    * Get client information including connected platforms
    */
   getClientInfo: tool({
-    description: 'Obtiene información completa del cliente incluyendo plataformas conectadas (Meta Ads, Google Ads, CRM). Usa esta herramienta al inicio de la conversación o cuando necesites saber qué plataformas tiene conectadas el cliente.',
+    description: 'Obtiene información completa del cliente incluyendo plataformas conectadas (Meta Ads, Google Ads, CRM) y su estado/semaforo actual. Usa esta herramienta al inicio de la conversación o cuando necesites saber qué plataformas tiene conectadas el cliente o su estado actual.',
     parameters: z.object({
       clientId: z.string().describe('ID del cliente en el sistema'),
     }),
@@ -413,13 +413,23 @@ export const madkyTools = {
       try {
         const supabase = await createClient()
         
+        // Semaforo mapping (UUID to status name)
+        const SEMAFORO_MAP: Record<string, string> = {
+          'd3f4361f-477e-4f7a-9f98-9868cddef57f': 'verde',
+          '04dca848-a17e-4626-b83a-5377aef062ec': 'amarillo',
+          'c19b9591-862e-49a8-898c-b29ed35fcd3b': 'naranja',
+          '753e6c36-5a9f-4b4b-b5fa-aac7d6f281af': 'rojo',
+          '3876a424-6749-4205-b5b2-a59c49ca8eb9': 'inhabilitado',
+          '550f7375-4aec-4e76-a006-16b427d493e9': 'inactivo',
+        }
+        
         const { data: client, error } = await supabase
           .from('clientes')
           .select(`
             id,
-            business_name,
+            nombre_del_negocio,
             plan,
-            status,
+            semaforo_id,
             monthly_fee,
             percentage_fee,
             currency,
@@ -438,12 +448,15 @@ export const madkyTools = {
           return { error: 'Cliente no encontrado' } as ClientInfoResponse
         }
         
+        // Get semaforo status from ID
+        const semaforoStatus = client.semaforo_id ? (SEMAFORO_MAP[client.semaforo_id] || 'desconocido') : 'sin_estado'
+        
         return {
           client: {
             id: client.id,
-            business_name: client.business_name,
+            business_name: client.nombre_del_negocio,
             plan: client.plan,
-            status: client.status,
+            status: semaforoStatus,
             monthly_fee: client.monthly_fee,
             percentage_fee: client.percentage_fee,
             currency: client.currency || 'ARS',
