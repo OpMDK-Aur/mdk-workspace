@@ -2,6 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { DashboardShell } from '@/components/dashboard/dashboard-shell'
 
+// Cache revalidation
+export const revalidate = 60 // Revalidate every 60 seconds
+
 export default async function DashboardLayout({
   children,
 }: {
@@ -15,12 +18,20 @@ export default async function DashboardLayout({
     redirect('/auth/login')
   }
 
-  // Get user colaborador with role name and department — use maybeSingle to avoid error if RLS blocks
-  const { data: colaborador, error: profileError } = await supabase
-    .from('colaboradores')
-    .select('*, roles(id, nombre), departamentos(id, nombre)')
-    .eq('id', user.id)
-    .maybeSingle()
+  // Run queries in parallel for better performance
+  const [colaboradorResult, clientAccessResult] = await Promise.all([
+    supabase
+      .from('colaboradores')
+      .select('*, roles(id, nombre), departamentos(id, nombre)')
+      .eq('id', user.id)
+      .maybeSingle(),
+    supabase
+      .from('user_client_access')
+      .select('client_id')
+      .eq('user_id', user.id)
+  ])
+
+  const colaborador = colaboradorResult.data
 
   // Map rol name to profile.role for compatibility
   const roleName = colaborador?.roles?.nombre?.toLowerCase().replace(/ /g, '_') || ''
@@ -40,17 +51,13 @@ export default async function DashboardLayout({
     redirect('/onboarding')
   }
 
-  // Get clients the user has access to
-  const { data: clientAccess } = await supabase
-    .from('user_client_access')
-    .select('client_id')
-    .eq('user_id', user.id)
-
-  const clientIds = clientAccess?.map(ca => ca.client_id) || []
+  const clientIds = clientAccessResult.data?.map(ca => ca.client_id) || []
 
   // master, administrador and project_manager see all clients; others see only assigned clients
   const isFullAccess = roleName === 'master' || roleName === 'administrador' || roleName === 'project_manager'
-  let clientsQuery = supabase.from('clientes').select('*')
+  
+  // Only select needed fields for sidebar, not all columns
+  let clientsQuery = supabase.from('clientes').select('id, nombre_del_negocio, plan')
 
   if (!isFullAccess && clientIds.length > 0) {
     clientsQuery = clientsQuery.in('id', clientIds)

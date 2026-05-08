@@ -1,15 +1,24 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense, useCallback, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import type { TaskPriority, TaskType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useTaskStore, PRIORITY_CONFIG, TYPE_CONFIG, ASSIGNEES } from '@/lib/tasks/task-store'
-import { KanbanView } from './kanban-view'
-import { ListView } from './list-view'
-import { CalendarView } from './calendar-view'
-import { TaskDetailPanel } from './task-detail-panel'
-import { NewTaskModal } from './new-task-modal'
-import { FilterBuilder } from './filter-builder'
+
+// Lazy load heavy components
+const KanbanView = dynamic(() => import('./kanban-view').then(m => ({ default: m.KanbanView })), {
+  loading: () => <div className="flex items-center justify-center h-64"><div className="animate-pulse text-muted-foreground">Cargando...</div></div>
+})
+const ListView = dynamic(() => import('./list-view').then(m => ({ default: m.ListView })), {
+  loading: () => <div className="flex items-center justify-center h-64"><div className="animate-pulse text-muted-foreground">Cargando...</div></div>
+})
+const CalendarView = dynamic(() => import('./calendar-view').then(m => ({ default: m.CalendarView })), {
+  loading: () => <div className="flex items-center justify-center h-64"><div className="animate-pulse text-muted-foreground">Cargando...</div></div>
+})
+const TaskDetailPanel = dynamic(() => import('./task-detail-panel').then(m => ({ default: m.TaskDetailPanel })))
+const NewTaskModal = dynamic(() => import('./new-task-modal').then(m => ({ default: m.NewTaskModal })))
+const FilterBuilder = dynamic(() => import('./filter-builder').then(m => ({ default: m.FilterBuilder })))
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -48,15 +57,19 @@ export function TaskBoard() {
   } = useTaskStore()
   const [newTaskOpen, setNewTaskOpen] = useState(false)
 
+  // Track if seguimiento was already generated this session
+  const seguimientoGenerated = useRef(false)
+  
   // Auto-generate seguimiento tasks on mount, then load all tasks
   useEffect(() => {
     const initTasks = async () => {
-      // Borrar tareas de seguimiento existentes y recrearlas
-      try {
-        await fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' })
-        await fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
-      } catch (e) {
-        // Silently fail
+      // Only generate seguimiento once per session
+      if (!seguimientoGenerated.current) {
+        seguimientoGenerated.current = true
+        // Run in background, don't block task loading
+        fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' })
+          .then(() => fetch('/api/tasks/generate-seguimiento', { method: 'POST' }))
+          .catch(() => {})
       }
       loadTasks()
     }
