@@ -318,8 +318,23 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [amId, setAmId] = useState(client.account_manager_id)
   const [updatingPM, setUpdatingPM] = useState(false)
   const [updatingAM, setUpdatingAM] = useState(false)
+  const [unidadId, setUnidadId] = useState(client.unidad_de_negocio_id)
+  const [updatingUnidad, setUpdatingUnidad] = useState(false)
+  const [unidades, setUnidades] = useState<{ id: string; nombre: string }[]>([])
   
   const supabase = createClient()
+
+  // Load unidades de negocio
+  useEffect(() => {
+    async function loadUnidades() {
+      const { data } = await supabase
+        .from('unidades_de_negocio')
+        .select('id, nombre')
+        .order('nombre')
+      if (data) setUnidades(data)
+    }
+    loadUnidades()
+  }, [supabase])
 
   const handleSemaforoChange = async (newSemaforoId: string) => {
     setUpdatingStatus(true)
@@ -372,6 +387,24 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
       console.error('Error updating AM:', e)
     } finally {
       setUpdatingAM(false)
+    }
+  }
+
+  const handleUnidadChange = async (newUnidadId: string | null) => {
+    setUpdatingUnidad(true)
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .update({ unidad_de_negocio_id: newUnidadId })
+        .eq('id', client.id)
+      
+      if (!error) {
+        setUnidadId(newUnidadId)
+      }
+    } catch (e) {
+      console.error('Error updating Unidad:', e)
+    } finally {
+      setUpdatingUnidad(false)
     }
   }
 
@@ -561,8 +594,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           </div>
         </div>
 
-        {/* ── Info row: PM / AM / Fee / Dedicacion / Plataformas ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* ── Info row: PM / AM / Unidad / Fee / Horas / Plataformas ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           <Card>
             <CardContent className="pt-5 pb-5">
               <EditablePersonChip 
@@ -583,6 +616,52 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 onChange={handleAMChange}
                 updating={updatingAM}
               />
+            </CardContent>
+          </Card>
+
+          {/* Unidad de Negocio */}
+          <Card>
+            <CardContent className="pt-5 pb-5">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs text-muted-foreground font-medium">Unidad de Negocio</span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild disabled={updatingUnidad}>
+                    <button className="flex items-center gap-2 hover:bg-muted/50 rounded-lg p-1 -m-1 transition-colors cursor-pointer text-left">
+                      {unidadId ? (
+                        <span className="text-sm font-medium">
+                          {unidades.find(u => u.id === unidadId)?.nombre || 'Cargando...'}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Sin asignar</span>
+                      )}
+                      {updatingUnidad ? (
+                        <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-spin ml-auto" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
+                      )}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-48">
+                    <DropdownMenuItem 
+                      onClick={() => handleUnidadChange(null)}
+                      className="gap-2 cursor-pointer"
+                    >
+                      <span className="text-muted-foreground">Sin asignar</span>
+                      {!unidadId && <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-primary" />}
+                    </DropdownMenuItem>
+                    {unidades.map(u => (
+                      <DropdownMenuItem 
+                        key={u.id} 
+                        onClick={() => handleUnidadChange(u.id)}
+                        className="gap-2 cursor-pointer"
+                      >
+                        <span>{u.nombre}</span>
+                        {unidadId === u.id && <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-primary" />}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </CardContent>
           </Card>
 
