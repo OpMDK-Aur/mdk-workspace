@@ -105,11 +105,10 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [] }: ClientInfoCar
   const [showServiceSelect, setShowServiceSelect] = useState(false)
   const [savingServices, setSavingServices] = useState(false)
   
-  // Contact state
-  const [contactoNombre, setContactoNombre] = useState(client.contacto_nombre || '')
-  const [contactoEmail, setContactoEmail] = useState(client.contacto_email || '')
-  const [contactoTelefono, setContactoTelefono] = useState(client.contacto_telefono || '')
-  const [contactoCargo, setContactoCargo] = useState(client.contacto_cargo || '')
+  // Contact state - using existing fields from clientes table
+  const [contactNombre, setContactNombre] = useState(client.contact_name || '')
+  const [contactApellido, setContactApellido] = useState(client.contact_lastname || '')
+  const [contactTelefono, setContactTelefono] = useState(client.phone || '')
   const [editingContact, setEditingContact] = useState(false)
   const [savingContact, setSavingContact] = useState(false)
   
@@ -174,16 +173,15 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [] }: ClientInfoCar
     setSavingServices(false)
   }
   
-  // Save contact
+  // Save contact - using existing fields: nombre, apellido, telefono
   const saveContact = async () => {
     setSavingContact(true)
     await supabase
       .from('clientes')
       .update({
-        contacto_nombre: contactoNombre || null,
-        contacto_email: contactoEmail || null,
-        contacto_telefono: contactoTelefono || null,
-        contacto_cargo: contactoCargo || null,
+        nombre: contactNombre || null,
+        apellido: contactApellido || null,
+        telefono: contactTelefono || null,
       })
       .eq('id', client.id)
     setSavingContact(false)
@@ -323,42 +321,35 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [] }: ClientInfoCar
         <CardContent>
           {editingContact ? (
             <div className="space-y-3">
-              <div>
-                <Label className="text-xs">Nombre</Label>
-                <Input value={contactoNombre} onChange={e => setContactoNombre(e.target.value)} className="h-8 text-sm" />
-              </div>
-              <div>
-                <Label className="text-xs">Cargo</Label>
-                <Input value={contactoCargo} onChange={e => setContactoCargo(e.target.value)} className="h-8 text-sm" />
-              </div>
-              <div>
-                <Label className="text-xs">Email</Label>
-                <Input value={contactoEmail} onChange={e => setContactoEmail(e.target.value)} className="h-8 text-sm" type="email" />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Nombre</Label>
+                  <Input value={contactNombre} onChange={e => setContactNombre(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs">Apellido</Label>
+                  <Input value={contactApellido} onChange={e => setContactApellido(e.target.value)} className="h-8 text-sm" />
+                </div>
               </div>
               <div>
                 <Label className="text-xs">Telefono</Label>
-                <Input value={contactoTelefono} onChange={e => setContactoTelefono(e.target.value)} className="h-8 text-sm" />
+                <Input value={contactTelefono} onChange={e => setContactTelefono(e.target.value)} className="h-8 text-sm" />
               </div>
             </div>
           ) : (
             <div className="space-y-2">
-              {contactoNombre ? (
+              {contactNombre || contactApellido ? (
                 <>
                   <div className="flex items-center gap-2">
                     <User className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-sm font-medium">{contactoNombre}</span>
-                    {contactoCargo && <span className="text-xs text-muted-foreground">({contactoCargo})</span>}
+                    <span className="text-sm font-medium">
+                      {[contactNombre, contactApellido].filter(Boolean).join(' ')}
+                    </span>
                   </div>
-                  {contactoEmail && (
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                      <a href={`mailto:${contactoEmail}`} className="text-sm text-primary hover:underline">{contactoEmail}</a>
-                    </div>
-                  )}
-                  {contactoTelefono && (
+                  {contactTelefono && (
                     <div className="flex items-center gap-2">
                       <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                      <a href={`tel:${contactoTelefono}`} className="text-sm text-primary hover:underline">{contactoTelefono}</a>
+                      <a href={`tel:${contactTelefono}`} className="text-sm text-primary hover:underline">{contactTelefono}</a>
                     </div>
                   )}
                 </>
