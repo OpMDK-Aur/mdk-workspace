@@ -891,6 +891,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (colaboradoresData) {
         colaboradoresData.forEach(c => colaboradoresMap.set(c.id, c))
       }
+      
+      // Debug: Log first task's creado_por and map keys
+      if (data && data.length > 0) {
+        const firstTask = data[0]
+        console.log('[v0] Debug creador mapping:', {
+          creado_por: firstTask.creado_por,
+          mapSize: colaboradoresMap.size,
+          mapKeys: Array.from(colaboradoresMap.keys()),
+          foundInMap: firstTask.creado_por ? colaboradoresMap.has(firstTask.creado_por) : false
+        })
+      }
 
       if (error) {
         console.error('Error loading tasks:', error)
