@@ -1,13 +1,15 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import type { TaskStatus } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useTaskStore, useTasksByStatus, STATUS_CONFIG, STATUS_ORDER } from '@/lib/tasks/task-store'
 import { TaskCard } from './task-card'
 import { Button } from '@/components/ui/button'
-import { Plus } from 'lucide-react'
+import { Plus, ChevronDown, ChevronUp } from 'lucide-react'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
+
+const INITIAL_VISIBLE_COUNT = 10
 
 interface KanbanColumnProps {
   status: TaskStatus
@@ -20,6 +22,10 @@ function KanbanColumn({ status, onAddTask }: KanbanColumnProps) {
   const setSelectedTask = useTaskStore((s) => s.setSelectedTask)
   const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus)
   const config = STATUS_CONFIG[status]
+  const [isExpanded, setIsExpanded] = useState(false)
+  
+  const visibleTasks = isExpanded ? tasks : tasks.slice(0, INITIAL_VISIBLE_COUNT)
+  const hiddenCount = tasks.length - INITIAL_VISIBLE_COUNT
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -66,7 +72,7 @@ function KanbanColumn({ status, onAddTask }: KanbanColumnProps) {
       {/* Tasks */}
       <ScrollArea className="flex-1 max-h-[calc(100vh-280px)]">
         <div className="p-2 space-y-2">
-          {tasks.map((task) => (
+          {visibleTasks.map((task) => (
             <div
               key={task.id}
               draggable
@@ -81,6 +87,28 @@ function KanbanColumn({ status, onAddTask }: KanbanColumnProps) {
               <TaskCard task={task} onClick={() => setSelectedTask(task.id)} />
             </div>
           ))}
+          
+          {/* Expand/Collapse button */}
+          {hiddenCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => setIsExpanded(!isExpanded)}
+            >
+              {isExpanded ? (
+                <>
+                  <ChevronUp className="h-3 w-3 mr-1" />
+                  Mostrar menos
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-3 w-3 mr-1" />
+                  +{hiddenCount} mas
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </ScrollArea>
 
