@@ -695,13 +695,19 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
 
           {!loading && filteredComments.length > 0 && (
             <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
-              {filteredComments.map((comment) => (
+              {filteredComments.map((comment) => {
+                // Find collaborator by name to get avatar
+                const authorColab = colaboradores.find(c => 
+                  comment.autor.toLowerCase().includes(c.nombre.toLowerCase())
+                )
+                return (
                 <div
                   key={comment.id}
                   className="group rounded-lg border bg-muted/30 p-3"
                 >
                   <div className="flex items-start gap-3">
                     <Avatar className="h-8 w-8 shrink-0">
+                      <AvatarImage src={authorColab?.avatar_url || undefined} />
                       <AvatarFallback className="text-xs bg-primary/10 text-primary">
                         {getInitials(comment.autor)}
                       </AvatarFallback>
@@ -729,7 +735,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                     </div>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           )}
         </TabsContent>
