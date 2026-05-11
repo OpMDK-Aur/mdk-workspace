@@ -1127,7 +1127,7 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
         .map(mentionedId => ({
           id: crypto.randomUUID(),
           colaborador_id: mentionedId,
-          tipo: 'mencion_comentario',
+          tipo: 'mencion',
           titulo: `${userName} te mencionó en un comentario`,
           descripcion: `En la tarea "${taskTitle}"`,
           referencia_id: taskId,
