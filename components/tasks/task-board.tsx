@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, lazy, Suspense, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import type { TaskPriority, TaskType } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -37,7 +37,9 @@ import {
   ChevronDown,
   FileText,
   X,
+  Search,
 } from 'lucide-react'
+import { Input } from '@/components/ui/input'
 
 export function TaskBoard() {
   const { 
@@ -56,27 +58,30 @@ export function TaskBoard() {
     isLoading,
   } = useTaskStore()
   const [newTaskOpen, setNewTaskOpen] = useState(false)
-
+  
   // Track if seguimiento was already generated this session
   const seguimientoGenerated = useRef(false)
   
-  // Auto-generate seguimiento tasks on mount, then load all tasks
+  // Generate seguimiento tasks for MDK clients on mount, then load all tasks
   useEffect(() => {
     const initTasks = async () => {
       // Only generate seguimiento once per session
       if (!seguimientoGenerated.current) {
         seguimientoGenerated.current = true
-        // Run in background, don't block task loading
-        fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' })
-          .then(() => fetch('/api/tasks/generate-seguimiento', { method: 'POST' }))
-          .catch(() => {})
+        // First delete non-MDK seguimiento tasks, then create new ones for MDK clients
+        try {
+          await fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' })
+          await fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
+        } catch {
+          // Silently fail, don't block task loading
+        }
       }
       loadTasks()
     }
     initTasks()
   }, [loadTasks])
 
-  const hasSimpleFilters = filters.priority || filters.assigneeId || filters.type || filters.dueThisWeek
+  const hasSimpleFilters = filters.priority || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned
   const hasAdvancedFilters = advancedFilters.length > 0
   const hasFilters = hasSimpleFilters || hasAdvancedFilters
 
@@ -133,6 +138,18 @@ export function TaskBoard() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Buscar tareas..."
+              value={filters.searchQuery}
+              onChange={(e) => setFilter('searchQuery', e.target.value)}
+              className="pl-9 w-[200px] h-8"
+            />
+          </div>
+
           {/* Advanced Filter Builder */}
           <FilterBuilder
             filters={advancedFilters}
@@ -186,28 +203,64 @@ export function TaskBoard() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Assignee filter */}
+            {/* Assignee filter (multi-select) */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Badge
                   variant="outline"
                   className={cn(
                     'cursor-pointer px-2.5 py-1 h-7 gap-1',
-                    filters.assigneeId && 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                    (filters.assigneeIds.length > 0 || filters.showUnassigned) && 'bg-blue-500/10 text-blue-400 border-blue-500/30'
                   )}
                 >
-                  {filters.assigneeId
-                    ? ASSIGNEES.find((a) => a.id === filters.assigneeId)?.name ?? 'Asignado'
-                    : 'Asignado'}
+                  {filters.showUnassigned
+                    ? 'Sin asignar'
+                    : filters.assigneeIds.length === 0
+                    ? 'Asignado'
+                    : filters.assigneeIds.length === 1
+                    ? ASSIGNEES.find((a) => a.id === filters.assigneeIds[0])?.name ?? 'Asignado'
+                    : `${filters.assigneeIds.length} asignados`}
                   <ChevronDown className="h-3 w-3" />
                 </Badge>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
+                {/* Todos option */}
+                <DropdownMenuItem
+                  onClick={() => {
+                    setFilter('assigneeIds', [])
+                    setFilter('showUnassigned', false)
+                  }}
+                  className={cn(
+                    !filters.showUnassigned && filters.assigneeIds.length === 0 && 'bg-muted'
+                  )}
+                >
+                  Todos
+                </DropdownMenuItem>
+                
+                {/* Sin asignar option */}
+                <DropdownMenuCheckboxItem
+                  checked={filters.showUnassigned === true}
+                  onCheckedChange={(checked) => {
+                    setFilter('showUnassigned', checked)
+                    if (checked) setFilter('assigneeIds', [])
+                  }}
+                >
+                  Sin asignar
+                </DropdownMenuCheckboxItem>
+                
+                <DropdownMenuSeparator />
+                
                 {ASSIGNEES.map((a) => (
                   <DropdownMenuCheckboxItem
                     key={a.id}
-                    checked={filters.assigneeId === a.id}
-                    onCheckedChange={(checked) => setFilter('assigneeId', checked ? a.id : null)}
+                    checked={filters.assigneeIds.includes(a.id)}
+                    onCheckedChange={(checked) => {
+                      setFilter('showUnassigned', false)
+                      const newIds = checked
+                        ? [...filters.assigneeIds, a.id]
+                        : filters.assigneeIds.filter(id => id !== a.id)
+                      setFilter('assigneeIds', newIds)
+                    }}
                   >
                     {a.name}
                   </DropdownMenuCheckboxItem>

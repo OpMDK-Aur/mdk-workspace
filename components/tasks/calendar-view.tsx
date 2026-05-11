@@ -29,8 +29,10 @@ import {
   Calendar as CalendarIcon,
   AlertCircle,
   MessageCircle,
-  RotateCcw
+  RotateCcw,
+  Plus
 } from 'lucide-react'
+import { NewTaskModal } from './new-task-modal'
 
 function getInitials(name: string): string {
   return name
@@ -46,9 +48,10 @@ interface DayTasksProps {
   tasks: Task[]
   isCurrentMonth: boolean
   onTaskClick: (taskId: string) => void
+  onAddTask: (date: Date) => void
 }
 
-function DayTasks({ date, tasks, isCurrentMonth, onTaskClick }: DayTasksProps) {
+function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTasksProps) {
   const today = isToday(date)
   const pastDay = isPast(date) && !today
   
@@ -62,7 +65,7 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick }: DayTasksProps) {
       )}
     >
       {/* Day header */}
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-center justify-between mb-1 group/day">
         <span 
           className={cn(
             'text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full',
@@ -73,11 +76,27 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick }: DayTasksProps) {
         >
           {format(date, 'd')}
         </span>
-        {tasks.length > 0 && (
-          <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-            {tasks.length}
-          </Badge>
-        )}
+        <div className="flex items-center gap-1">
+          {tasks.length > 0 && (
+            <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+              {tasks.length}
+            </Badge>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onAddTask(date)
+            }}
+            className={cn(
+              'h-5 w-5 flex items-center justify-center rounded hover:bg-primary/20 transition-colors',
+              'opacity-0 group-hover/day:opacity-100',
+              !isCurrentMonth && 'text-muted-foreground/50'
+            )}
+            title="Crear tarea"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
       
       {/* Tasks */}
@@ -154,6 +173,13 @@ export function CalendarView() {
   const setSelectedTask = useTaskStore((s) => s.setSelectedTask)
   const tasks = useFilteredTasks()
   const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [newTaskModalOpen, setNewTaskModalOpen] = useState(false)
+  const [selectedDateForTask, setSelectedDateForTask] = useState<Date | null>(null)
+  
+  const handleAddTask = (date: Date) => {
+    setSelectedDateForTask(date)
+    setNewTaskModalOpen(true)
+  }
   
   // Group tasks by due date
   const tasksByDate = useMemo(() => {
@@ -256,6 +282,7 @@ export function CalendarView() {
                   tasks={dayTasks}
                   isCurrentMonth={isSameMonth(date, currentMonth)}
                   onTaskClick={setSelectedTask}
+                  onAddTask={handleAddTask}
                 />
               )
             })}
@@ -336,6 +363,13 @@ export function CalendarView() {
           </div>
         </ScrollArea>
       </div>
+      
+      {/* New Task Modal */}
+      <NewTaskModal 
+        open={newTaskModalOpen} 
+        onOpenChange={setNewTaskModalOpen}
+        initialDueDate={selectedDateForTask}
+      />
     </div>
   )
 }

@@ -19,6 +19,7 @@ interface TareaDB {
   cliente_id: string | null
   servicio_id: string | null
   asignado_a: string | null
+  asignados_a?: string[] | null
   creado_por: string | null
   estado: string
   prioridad: string
@@ -136,6 +137,16 @@ function mapTareaToTask(
     comments: [],
     files: [],
     quotation: null,
+    createdById: tarea.creado_por || null,
+    createdByName: (() => {
+      if (tarea.creado_por && colaboradoresMap) {
+        const creador = colaboradoresMap.get(tarea.creado_por)
+        if (creador) {
+          return [creador.nombre, creador.apellido].filter(Boolean).join(' ')
+        }
+      }
+      return 'Sistema'
+    })(),
     createdAt: new Date(tarea.created_at),
     updatedAt: new Date(tarea.updated_at),
   }
@@ -183,6 +194,8 @@ const MOCK_TASKS: Task[] = [
       total: 8 * HOURLY_RATE * (1 + IVA_RATE),
       notes: 'Incluye desarrollo y testing',
     },
+    createdById: 'erika',
+    createdByName: 'Erika Gordillo',
     createdAt: new Date('2026-04-20'),
     updatedAt: new Date('2026-04-20'),
   },
@@ -209,6 +222,8 @@ const MOCK_TASKS: Task[] = [
     comments: [],
     files: [],
     quotation: null,
+    createdById: 'erika',
+    createdByName: 'Erika Gordillo',
     createdAt: new Date('2026-04-18'),
     updatedAt: new Date('2026-04-18'),
   },
@@ -247,6 +262,8 @@ const MOCK_TASKS: Task[] = [
     ],
     files: [],
     quotation: null,
+    createdById: 'ayelen',
+    createdByName: 'Ayelen Suarez',
     createdAt: new Date('2026-04-22'),
     updatedAt: new Date('2026-04-24'),
   },
@@ -283,6 +300,8 @@ const MOCK_TASKS: Task[] = [
       total: 16 * HOURLY_RATE * (1 + IVA_RATE),
       notes: 'Migracion completa con documentacion',
     },
+    createdById: 'ayelen',
+    createdByName: 'Ayelen Suarez',
     createdAt: new Date('2026-04-15'),
     updatedAt: new Date('2026-04-22'),
   },
@@ -319,6 +338,8 @@ const MOCK_TASKS: Task[] = [
     ],
     files: [],
     quotation: null,
+    createdById: 'erika',
+    createdByName: 'Erika Gordillo',
     createdAt: new Date('2026-04-10'),
     updatedAt: new Date('2026-04-21'),
   },
@@ -346,6 +367,8 @@ const MOCK_TASKS: Task[] = [
     comments: [],
     files: [],
     quotation: null,
+    createdById: 'erika',
+    createdByName: 'Erika Gordillo',
     createdAt: new Date('2026-04-12'),
     updatedAt: new Date('2026-04-20'),
   },
@@ -373,6 +396,8 @@ const MOCK_TASKS: Task[] = [
     comments: [],
     files: [],
     quotation: null,
+    createdById: 'erika',
+    createdByName: 'Erika Gordillo',
     createdAt: new Date('2026-04-08'),
     updatedAt: new Date('2026-04-19'),
   },
@@ -414,6 +439,8 @@ const MOCK_TASKS: Task[] = [
       total: 4 * HOURLY_RATE * (1 + IVA_RATE),
       notes: 'Configuracion de automatizaciones',
     },
+    createdById: 'erika',
+    createdByName: 'Erika Gordillo',
     createdAt: new Date('2026-04-14'),
     updatedAt: new Date('2026-04-23'),
   },
@@ -441,6 +468,8 @@ const MOCK_TASKS: Task[] = [
     comments: [],
     files: [],
     quotation: null,
+    createdById: 'erika',
+    createdByName: 'Erika Gordillo',
     createdAt: new Date('2026-04-16'),
     updatedAt: new Date('2026-04-24'),
   },
@@ -516,94 +545,6 @@ export const CLIENTS = [
   { id: 'alambrados', name: 'Alambrados Patagonia' },
 ]
 
-// ── System Tasks (Recurring) ──────────────────────────────────────────────────
-
-function generateSystemTasks(clientes: Array<{ id: string; nombre_del_negocio: string }>): Task[] {
-  const today = new Date()
-  const systemTasks: Task[] = []
-  
-  // Find next Friday for weekly follow-up
-  const getNextFriday = (from: Date) => {
-    const d = new Date(from)
-    const day = d.getDay()
-    const diff = (5 - day + 7) % 7 || 7 // Days until Friday
-    d.setDate(d.getDate() + diff)
-    d.setHours(10, 0, 0, 0) // 10 AM
-    return d
-  }
-  
-  // Get this week's Friday and next 3 Fridays
-  const fridays = []
-  let nextFriday = getNextFriday(today)
-  // If today is Friday and before 6pm, include today
-  if (today.getDay() === 5 && today.getHours() < 18) {
-    nextFriday = new Date(today)
-    nextFriday.setHours(10, 0, 0, 0)
-  }
-  for (let i = 0; i < 4; i++) {
-    fridays.push(new Date(nextFriday))
-    nextFriday.setDate(nextFriday.getDate() + 7)
-  }
-  
-  // Create weekly follow-up tasks for each client for each Friday
-  clientes.forEach((cliente) => {
-    fridays.forEach((friday) => {
-      const message = encodeURIComponent(
-        `Hola! Te comparto el reporte semanal de tu cuenta:\n\n` +
-        `*Metricas principales:*\n` +
-        `- Clics: [completar]\n` +
-        `- Impresiones: [completar]\n` +
-        `- Conversiones: [completar]\n` +
-        `- Costo: [completar]\n\n` +
-        `Cualquier duda me avisas!`
-      )
-      const whatsappLink = `https://wa.me/?text=${message}`
-      
-      systemTasks.push({
-        id: `system-seguimiento-${cliente.id}-${friday.toISOString().split('T')[0]}`,
-        title: `Seguimiento semanal - ${cliente.nombre_del_negocio}`,
-        description: `<p><strong>Enviar reporte de metricas al cliente:</strong></p>
-<ul>
-<li>Clics de la semana</li>
-<li>Impresiones totales</li>
-<li>Conversiones logradas</li>
-<li>Costo publicitario</li>
-</ul>`,
-        clientId: cliente.id,
-        clientName: cliente.nombre_del_negocio,
-        assigneeId: '',
-        assigneeName: 'Sin asignar',
-        assigneeAvatar: null,
-        assignees: [],
-        status: 'pendiente',
-        priority: 'media',
-        type: 'seguimiento',
-        typeName: 'Seguimiento',
-        dueDate: friday,
-        isActive: true,
-        isSystemTask: true,
-        systemTaskMeta: {
-          recurrence: 'weekly',
-          whatsappLink,
-        },
-        customFields: {},
-        timeSessions: [],
-        totalTimeSec: 0,
-        isTimerRunning: false,
-        timerStartedAt: null,
-        activities: [],
-        comments: [],
-        files: [],
-        quotation: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-    })
-  })
-  
-  return systemTasks
-}
-
 // ── Filter Utility ────────────────────────────────────────────────────────────
 
 export function applyAdvancedFilters(tasks: Task[], filterGroups: FilterGroup[]): Task[] {
@@ -655,6 +596,9 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
       break
     case 'isActive':
       taskValue = task.isActive
+      break
+    case 'createdBy':
+      taskValue = task.createdById
       break
     default:
       return true
@@ -729,7 +673,7 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
 // Advanced filter types
 export interface FilterRule {
   id: string
-  field: 'status' | 'priority' | 'assignee' | 'type' | 'client' | 'title' | 'dueDate' | 'createdAt' | 'isActive'
+  field: 'status' | 'priority' | 'assignee' | 'type' | 'client' | 'title' | 'dueDate' | 'createdAt' | 'isActive' | 'createdBy'
   operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'is_empty' | 'is_not_empty' | 'greater_than' | 'less_than'
   value: string | string[] | boolean | null
 }
@@ -754,10 +698,12 @@ interface TaskStore {
   
   // Legacy simple filters (for quick access)
   filters: {
-    priority: TaskPriority | null
-    assigneeId: string | null
-    type: TaskType | null
-    dueThisWeek: boolean
+  priority: TaskPriority | null
+  assigneeIds: string[]
+  showUnassigned: boolean
+  type: TaskType | null
+  dueThisWeek: boolean
+  searchQuery: string
   }
   
   // Advanced filters
@@ -811,10 +757,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   selectedTaskId: null,
   view: 'calendar',
   filters: {
-    priority: null,
-    assigneeId: null,
-    type: null,
-    dueThisWeek: false,
+  priority: null,
+  assigneeIds: [],
+  showUnassigned: false,
+  type: null,
+  dueThisWeek: false,
+  searchQuery: '',
   },
   advancedFilters: [],
   savedFilters: [],
@@ -863,12 +811,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         return
       }
       
-      // Generate system tasks (weekly follow-ups)
-      const systemTasks = clientesData ? generateSystemTasks(clientesData) : []
-
       if (data && data.length > 0) {
-        // Load comments for all tasks
-        const taskIds = data.map((t) => t.id)
+      // Load comments for all tasks
+      const taskIds = data.map((t) => t.id)
         const { data: comentarios } = await supabase
           .from('comentarios_tareas')
           .select('*')
@@ -886,15 +831,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         }
 
         const dbTasks = data.map((tarea) => {
-          const task = mapTareaToTask(tarea as TareaDB, colaboradoresMap)
-          task.comments = commentsByTask.get(tarea.id) || []
-          return task
+        const task = mapTareaToTask(tarea as TareaDB, colaboradoresMap)
+        task.comments = commentsByTask.get(tarea.id) || []
+        return task
         })
-        // Combine DB tasks with system tasks
-        set({ tasks: [...dbTasks, ...systemTasks], isLoading: false })
+        set({ tasks: dbTasks, isLoading: false })
       } else {
-        // No tasks in DB, just system tasks
-        set({ tasks: systemTasks, isLoading: false })
+        set({ tasks: [], isLoading: false })
       }
     } catch (error) {
       console.error('Error loading tasks:', error)
@@ -908,8 +851,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     filters: { ...state.filters, [key]: value },
   })),
   clearFilters: () => set({
-    filters: { priority: null, assigneeId: null, type: null, dueThisWeek: false },
-    advancedFilters: [],
+  filters: { priority: null, assigneeIds: [], showUnassigned: false, type: null, dueThisWeek: false, searchQuery: '' },
+  advancedFilters: [],
   }),
   
   // Advanced filters
@@ -921,6 +864,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   deleteSavedFilter: (id) => set((state) => ({
     savedFilters: state.savedFilters.filter(f => f.id !== id),
   })),
+
+  // Bulk delete tasks
+  deleteTasks: async (taskIds: string[]) => {
+    if (taskIds.length === 0) return
+    
+    const supabase = createClient()
+    
+    const { error } = await supabase
+      .from('tareas')
+      .delete()
+      .in('id', taskIds)
+    
+    if (error) {
+      console.error('Error deleting tasks:', error)
+      return
+    }
+    
+    // Update local state
+    set((state) => ({
+      tasks: state.tasks.filter((t) => !taskIds.includes(t.id)),
+    }))
+  },
 
 updateTaskStatus: async (taskId, status) => {
   const supabase = createClient()
@@ -1280,19 +1245,41 @@ export function useFilteredTasks() {
   const tasks = useTaskStore((s) => s.tasks)
   const filters = useTaskStore((s) => s.filters)
   const advancedFilters = useTaskStore((s) => s.advancedFilters)
-
+  
   // Apply simple filters first
   let filteredTasks = tasks.filter((task) => {
-    if (filters.priority && task.priority !== filters.priority) return false
-    if (filters.assigneeId && task.assigneeId !== filters.assigneeId) return false
-    if (filters.type && task.type !== filters.type) return false
-    if (filters.dueThisWeek && task.dueDate) {
-      const now = new Date()
-      const endOfWeek = new Date(now)
-      endOfWeek.setDate(now.getDate() + (7 - now.getDay()))
-      if (task.dueDate > endOfWeek) return false
-    }
-    return true
+  if (filters.priority && task.priority !== filters.priority) return false
+  // Show unassigned filter - only show tasks without assignee
+  if (filters.showUnassigned) {
+    const hasNoAssignee = !task.assigneeId || task.assigneeId === ''
+    const hasNoAdditionalAssignees = !task.assigneeIds || task.assigneeIds.length === 0
+    if (!hasNoAssignee || !hasNoAdditionalAssignees) return false
+  }
+  // Multi-assignee filter - check if task's assignee is in the selected list
+  if (filters.assigneeIds.length > 0) {
+  // Check primary assignee
+  const hasMatchingAssignee = task.assigneeId && filters.assigneeIds.includes(task.assigneeId)
+  // Check additional assignees if they exist
+  const hasMatchingAdditionalAssignee = task.assigneeIds?.some(id => filters.assigneeIds.includes(id)) ?? false
+  if (!hasMatchingAssignee && !hasMatchingAdditionalAssignee) return false
+  }
+  if (filters.type && task.type !== filters.type) return false
+  if (filters.dueThisWeek && task.dueDate) {
+  const now = new Date()
+  const endOfWeek = new Date(now)
+  endOfWeek.setDate(now.getDate() + (7 - now.getDay()))
+  if (task.dueDate > endOfWeek) return false
+  }
+  // Search query filter - search in title, client name, and description
+  if (filters.searchQuery) {
+  const query = filters.searchQuery.toLowerCase()
+  const matchesTitle = task.title.toLowerCase().includes(query)
+  const matchesClient = task.clientName?.toLowerCase().includes(query) ?? false
+  const matchesDescription = task.description?.toLowerCase().includes(query) ?? false
+  const matchesAssignee = task.assigneeName?.toLowerCase().includes(query) ?? false
+  if (!matchesTitle && !matchesClient && !matchesDescription && !matchesAssignee) return false
+  }
+  return true
   })
 
   // Apply advanced filters if any

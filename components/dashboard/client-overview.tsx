@@ -33,6 +33,11 @@ import { ClientNPS } from './client-nps'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
+interface UnidadDeNegocio {
+  unidad_de_negocio_id: string
+  unidad_de_negocio: { id: string; nombre: string } | null
+}
+
 interface ClientOverviewProps {
   client: Client
   profiles: Profile[]
@@ -42,6 +47,7 @@ interface ClientOverviewProps {
   horasObjetivo?: number // from colaboradores.capacidad_horas_semanales (weekly)
   horasEquipo?: number // total team hours this month for this client
   misHoras?: number // current user's hours this month for this client
+  unidadesDeNegocio?: UnidadDeNegocio[]
 }
 
 type DedicationStatus = 'normal' | 'baja' | 'exceso' | 'sin_datos'
@@ -290,6 +296,24 @@ function ComingSoonBlock({ icon, title, description }: { icon: React.ReactNode; 
   )
 }
 
+// Orden de prioridad para unidades de negocio
+const UNIDAD_ORDEN: Record<string, number> = {
+  'MDK': 0,
+  'Aurelia': 1,
+  'Consultoría': 2,
+  'Consultoria': 2, // sin tilde
+}
+
+function sortUnidades(unidades: UnidadDeNegocio[]): UnidadDeNegocio[] {
+  return [...unidades].sort((a, b) => {
+    const nombreA = a.unidad_de_negocio?.nombre ?? ''
+    const nombreB = b.unidad_de_negocio?.nombre ?? ''
+    const ordenA = UNIDAD_ORDEN[nombreA] ?? 99
+    const ordenB = UNIDAD_ORDEN[nombreB] ?? 99
+    return ordenA - ordenB
+  })
+}
+
 // Status options for the semaphore (UUIDs from semaforo table)
 const SEMAFORO_OPTIONS = [
   { id: 'd3f4361f-477e-4f7a-9f98-9868cddef57f', nombre: 'verde', label: 'Activo', color: '#22c55e', bgClass: 'bg-status-verde' },
@@ -306,7 +330,8 @@ const getSemaforoById = (id: string | null) => {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0 }: ClientOverviewProps) {
+export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0, unidadesDeNegocio = [] }: ClientOverviewProps) {
+  const sortedUnidades = sortUnidades(unidadesDeNegocio)
   const [preset, setPreset]           = useState('last_30d')
   const [rows, setRows]               = useState<ScorecardRow[]>([])
   const [loading, setLoading]         = useState(true)
@@ -536,12 +561,22 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
-            </DropdownMenu>
-            <div>
-              <h1 className="text-2xl font-bold text-foreground text-balance">{client.business_name}</h1>
-              <p className="text-sm text-muted-foreground mt-0.5">{currentSemaforo.label}</p>
-            </div>
-          </div>
+  </DropdownMenu>
+  <div>
+  <div className="flex items-center gap-2 flex-wrap">
+    <h1 className="text-2xl font-bold text-foreground text-balance">{client.business_name}</h1>
+    {sortedUnidades.map((u) => (
+      <Badge 
+        key={u.unidad_de_negocio_id} 
+        className="bg-zinc-800 text-white hover:bg-zinc-700 text-xs"
+      >
+        {u.unidad_de_negocio?.nombre}
+      </Badge>
+    ))}
+  </div>
+  <p className="text-sm text-muted-foreground mt-0.5">{currentSemaforo.label}</p>
+  </div>
+  </div>
 
           {/* Date filter */}
           <div className="flex items-center gap-2 shrink-0">

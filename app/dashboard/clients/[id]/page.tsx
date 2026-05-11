@@ -26,6 +26,12 @@ export default async function ClientPage({ params }: Props) {
   // Map nombre_del_negocio to business_name for consistency
   const mappedClient = { ...client, business_name: client.nombre_del_negocio }
 
+  // Load unidades de negocio
+  const { data: unidadesDeNegocio } = await supabase
+    .from('clientes_unidades_de_negocio')
+    .select('unidad_de_negocio_id, unidad_de_negocio(id, nombre)')
+    .eq('cliente_id', id)
+
   // Load all colaboradores (for pm/am lookup)
   const { data: colaboradores } = await supabase
     .from('colaboradores')
@@ -103,6 +109,7 @@ export default async function ClientPage({ params }: Props) {
       horasObjetivo={horasObjetivo}
       horasEquipo={horasEquipo}
       misHoras={misHoras}
+      unidadesDeNegocio={unidadesDeNegocio ?? []}
     />
   )
 }

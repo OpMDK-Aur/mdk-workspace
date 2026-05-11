@@ -1,300 +1,174 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-// Templates de LUNES por plan
-const LUNES_TEMPLATES = {
-  estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
+const MDK_UNIDAD_ID = 'afcc1aa2-d63d-4b03-b68a-e7e89bc7bd3c'
 
-Desde el equipo de Operaciones de **MDK** te compartimos los hitos clave en los que vamos a estar trabajando en tu cuenta esta semana:
-
-🎯 **Foco principal:** [Ej: Optimización de campañas post-informe de cierre / Lanzamiento de la nueva segmentación]
-
-✅ **Checklist de la semana:**
-— [Item 1: acción concreta]
-— [Item 2: seguimiento o ajuste técnico]
-— [Item 3: preparación de reporte o análisis]
-
-🚀 **Objetivo:** [Resultado esperado. Ej: Recuperar el CPL a los niveles de la semana 2 del mes anterior.]`,
-
-  esencial: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
-
-Esta semana en tu cuenta vamos a estar trabajando en:
-
-🎯 [Una sola línea con el foco de la semana. Ej: Optimización de campañas y revisión de trackeo.]
-
-🚀 Objetivo: [Una sola línea. Ej: Mantener el CPL dentro del rango acordado.]
-
-Cualquier consulta, acá estamos. 💪`,
-}
-
-// Templates de VIERNES por plan
-const VIERNES_TEMPLATES = {
-  estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Cerramos la semana en **MDK** con los avances y métricas clave de tu cuenta:
-
-✅ **Hitos Completados:**
-— **Logro 1:** [Ej: Campaña de X lanzada con éxito]
-— **Logro 2:** [Ej: Ajuste técnico de la plataforma finalizado]
-
-📊 **Métricas de Gestión (Corte al viernes):**
-— **Métrica A:** [Valor] (Ej: +15% en Leads vs. semana pasada)
-— **Métrica B:** [Valor] (Ej: CPC promedio en $XX)
-— **Métrica C:** [Valor] (Ej: [Cantidad] de tickets resueltos)
-
-💡 **Conclusión:** *[Una frase corta sobre qué significan estos números. Ej: "Los ajustes de pauta del martes ya muestran una mejora en el costo por conversión"].*
-
-⏭️ **Próximos pasos:** [Lo más importante para el lunes/martes].
-
-¡Buen fin de semana para todo el equipo! 🥂`,
-
-  esencial: (clientName: string) => `¡Hola ${clientName}! 👋 Cerramos la semana con tu cuenta al día.
-
-✅ Lo que hicimos: [Una sola línea. Ej: Optimizamos las campañas de búsqueda y ajustamos el presupuesto diario.]
-
-📊 Número de la semana: [Un solo KPI relevante. Ej: CPL esta semana: $XX — estable vs semana anterior.]
-
-⏭️ La semana que viene: [Una sola acción. Ej: Arrancamos con los nuevos creativos aprobados.]
-
-¡Buen finde! 🙌`,
-}
-
-const getTemplate = (plan: string | null | undefined, clientName: string, dayType: 'lunes' | 'viernes'): string => {
-  const planLower = (plan || '').toLowerCase()
-  const templates = dayType === 'lunes' ? LUNES_TEMPLATES : VIERNES_TEMPLATES
-  
-  if (planLower.includes('estrat')) {
-    return templates.estrategico(clientName)
-  }
-  return templates.esencial(clientName)
-}
-
-// Calcular fechas de lunes y viernes de la semana actual
-const getWeekDates = () => {
+// Get next 4 Fridays starting from today
+function getNextFridays(): Date[] {
   const today = new Date()
-  const dayOfWeek = today.getDay() // 0=Dom, 1=Lun, ..., 6=Sab
+  const fridays: Date[] = []
   
-  // Calcular el lunes de esta semana
-  const monday = new Date(today)
-  if (dayOfWeek === 0) {
-    monday.setDate(monday.getDate() + 1)
-  } else if (dayOfWeek === 1) {
-    // Hoy es lunes
-  } else {
-    monday.setDate(monday.getDate() - (dayOfWeek - 1))
+  let nextFriday = new Date(today)
+  const day = nextFriday.getDay()
+  const diff = (5 - day + 7) % 7 || 7
+  nextFriday.setDate(nextFriday.getDate() + diff)
+  nextFriday.setHours(10, 0, 0, 0)
+  
+  // If today is Friday and before 6pm, include today
+  if (today.getDay() === 5 && today.getHours() < 18) {
+    nextFriday = new Date(today)
+    nextFriday.setHours(10, 0, 0, 0)
   }
-  monday.setHours(10, 0, 0, 0)
   
-  // Viernes es lunes + 4 dias
-  const friday = new Date(monday)
-  friday.setDate(friday.getDate() + 4)
-  friday.setHours(10, 0, 0, 0)
+  for (let i = 0; i < 4; i++) {
+    fridays.push(new Date(nextFriday))
+    nextFriday.setDate(nextFriday.getDate() + 7)
+  }
   
-  return { monday, friday, weekStart: monday.toISOString().split('T')[0] }
+  return fridays
 }
 
+// POST: Generate seguimiento tasks for MDK clients only
 export async function POST() {
+  const supabase = await createClient()
+  
   try {
-    const supabase = await createClient()
+    // Get clients that have MDK as unidad de negocio, including account_manager_id
+    const { data: mdkClients, error: clientsError } = await supabase
+      .from('clientes_unidades_de_negocio')
+      .select('cliente_id, clientes(id, nombre_del_negocio, account_manager_id)')
+      .eq('unidad_de_negocio_id', MDK_UNIDAD_ID)
     
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    if (clientsError) {
+      console.error('Error fetching MDK clients:', clientsError)
+      return NextResponse.json({ error: clientsError.message }, { status: 500 })
     }
-
-    const { monday, friday, weekStart } = getWeekDates()
-
-    // Cargar todos los clientes
-    const { data: clientes, error: clientesError } = await supabase
-      .from('clientes')
-      .select('id, nombre_del_negocio, plan, account_manager_id')
-      .order('nombre_del_negocio')
-
-    if (clientesError) {
-      return NextResponse.json({ error: 'Error al cargar clientes', details: clientesError }, { status: 500 })
+    
+    if (!mdkClients || mdkClients.length === 0) {
+      return NextResponse.json({ message: 'No MDK clients found', created: 0 })
     }
-
-    if (!clientes || clientes.length === 0) {
-      return NextResponse.json({ message: 'No hay clientes', created: 0 })
-    }
-
-    // Buscar o crear el tipo de tarea "Seguimiento"
-    let { data: tipoTarea } = await supabase
+    
+    const fridays = getNextFridays()
+    const tasksToCreate: Array<{
+      titulo: string
+      descripcion: string
+      cliente_id: string
+      tipo_tarea_id: string | null
+      asignado_a: string | null
+      estado: string
+      prioridad: string
+      fecha_vencimiento: string
+    }> = []
+    
+    // Get tipo_tarea_id for "Seguimiento" if it exists
+    const { data: tipoTarea } = await supabase
       .from('tipo_de_tareas')
       .select('id')
       .ilike('nombre', '%Seguimiento%')
       .single()
-
-    // Si no existe, crearlo
-    if (!tipoTarea) {
-      const { data: newTipo } = await supabase
-        .from('tipo_de_tareas')
-        .insert({ nombre: 'Seguimiento', activo: true })
-        .select('id')
-        .single()
-      tipoTarea = newTipo
-    }
-
-    const tipoTareaId = tipoTarea?.id || null
-
-    // Verificar tareas existentes para esta semana
-    const { data: existingTasks } = await supabase
-      .from('tareas')
-      .select('cliente_id, titulo')
-      .ilike('titulo', '%Seguimiento%')
-      .gte('fecha_vencimiento', monday.toISOString())
-      .lte('fecha_vencimiento', friday.toISOString())
-
-    const existingLunes = new Set<string>()
-    const existingViernes = new Set<string>()
     
-    existingTasks?.forEach(t => {
-      if (t.titulo?.toLowerCase().includes('lunes')) {
-        existingLunes.add(t.cliente_id)
-      } else if (t.titulo?.toLowerCase().includes('viernes')) {
-        existingViernes.add(t.cliente_id)
-      }
-    })
-
-    // Crear array de tareas
-    const tareasToCreate: any[] = []
-
-    clientes.forEach(cliente => {
-      const clientName = cliente.nombre_del_negocio || 'equipo'
+    for (const mdkClient of mdkClients) {
+      const cliente = mdkClient.clientes as { id: string; nombre_del_negocio: string; account_manager_id: string | null } | null
+      if (!cliente) continue
       
-      // Tarea de LUNES
-      if (!existingLunes.has(cliente.id)) {
-        tareasToCreate.push({
-          titulo: `Seguimiento Lunes - ${cliente.nombre_del_negocio}`,
-          descripcion: getTemplate(cliente.plan, clientName, 'lunes'),
-          cliente_id: cliente.id,
-          asignado_a: cliente.account_manager_id,
-          creado_por: user.id,
-          estado: 'pendiente',
-          prioridad: 'media',
-          fecha_vencimiento: monday.toISOString(),
-          tipo_tarea_id: tipoTareaId,
-        })
+      for (const friday of fridays) {
+        const fechaVencimiento = friday.toISOString()
+        
+        // Check if task already exists for this client and date (same day)
+        const startOfDay = new Date(friday)
+        startOfDay.setHours(0, 0, 0, 0)
+        const endOfDay = new Date(friday)
+        endOfDay.setHours(23, 59, 59, 999)
+        
+        const { data: existing } = await supabase
+          .from('tareas')
+          .select('id')
+          .eq('cliente_id', cliente.id)
+          .gte('fecha_vencimiento', startOfDay.toISOString())
+          .lte('fecha_vencimiento', endOfDay.toISOString())
+          .ilike('titulo', '%Seguimiento semanal%')
+          .maybeSingle()
+        
+        if (!existing) {
+          tasksToCreate.push({
+            titulo: `Seguimiento semanal - ${cliente.nombre_del_negocio}`,
+            descripcion: `<p><strong>Enviar reporte de metricas al cliente:</strong></p>
+<ul>
+<li>Clics de la semana</li>
+<li>Impresiones totales</li>
+<li>Conversiones logradas</li>
+<li>Costo publicitario</li>
+</ul>`,
+            cliente_id: cliente.id,
+            tipo_tarea_id: tipoTarea?.id ?? null,
+            asignado_a: cliente.account_manager_id,
+            estado: 'pendiente',
+            prioridad: 'media',
+            fecha_vencimiento: fechaVencimiento,
+          })
+        }
       }
+    }
+    
+    if (tasksToCreate.length > 0) {
+      const { error: insertError } = await supabase
+        .from('tareas')
+        .insert(tasksToCreate)
       
-      // Tarea de VIERNES
-      if (!existingViernes.has(cliente.id)) {
-        tareasToCreate.push({
-          titulo: `Seguimiento Viernes - ${cliente.nombre_del_negocio}`,
-          descripcion: getTemplate(cliente.plan, clientName, 'viernes'),
-          cliente_id: cliente.id,
-          asignado_a: cliente.account_manager_id,
-          creado_por: user.id,
-          estado: 'pendiente',
-          prioridad: 'media',
-          fecha_vencimiento: friday.toISOString(),
-          tipo_tarea_id: tipoTareaId,
-        })
+      if (insertError) {
+        console.error('Error creating tasks:', insertError)
+        return NextResponse.json({ error: insertError.message }, { status: 500 })
       }
-    })
-
-    if (tareasToCreate.length === 0) {
-      return NextResponse.json({ 
-        message: 'Todas las tareas ya existen',
-        created: 0,
-      })
     }
-
-    // Insertar las tareas
-    const { data: createdTasks, error: insertError } = await supabase
-      .from('tareas')
-      .insert(tareasToCreate)
-      .select()
-
-    if (insertError) {
-      return NextResponse.json({ error: 'Error al crear tareas', details: insertError }, { status: 500 })
-    }
-
-    return NextResponse.json({
-      message: `Se crearon ${createdTasks?.length || 0} tareas`,
-      created: createdTasks?.length || 0,
-      monday: monday.toISOString(),
-      friday: friday.toISOString(),
+    
+    return NextResponse.json({ 
+      message: 'Seguimiento tasks generated for MDK clients',
+      created: tasksToCreate.length,
+      clients: mdkClients.length
     })
-
   } catch (error) {
-    console.error('Error:', error)
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
+    console.error('Error in generate-seguimiento:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-// DELETE para borrar tareas de seguimiento
+// DELETE: Remove seguimiento tasks for non-MDK clients
 export async function DELETE() {
+  const supabase = await createClient()
+  
   try {
-    const supabase = await createClient()
+    // Get all client IDs that have MDK
+    const { data: mdkClients } = await supabase
+      .from('clientes_unidades_de_negocio')
+      .select('cliente_id')
+      .eq('unidad_de_negocio_id', MDK_UNIDAD_ID)
     
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
-
-    // Buscar el tipo de tarea "Seguimiento"
-    const { data: tipoSeguimiento } = await supabase
-      .from('tipo_de_tareas')
-      .select('id')
-      .ilike('nombre', '%Seguimiento%')
-      .single()
-
-    let totalDeleted = 0
-
-    // 1. Borrar por tipo de tarea "Seguimiento"
-    if (tipoSeguimiento?.id) {
-      const { data: deleted1 } = await supabase
-        .from('tareas')
-        .delete()
-        .eq('tipo_tarea_id', tipoSeguimiento.id)
-        .select('id')
-      
-      totalDeleted += deleted1?.length || 0
-    }
-
-    // 2. Borrar por titulo que contenga "Seguimiento"
-    const { data: deleted2 } = await supabase
+    const mdkClientIds = mdkClients?.map(c => c.cliente_id) ?? []
+    
+    // Delete seguimiento tasks for clients NOT in MDK list
+    let query = supabase
       .from('tareas')
       .delete()
-      .ilike('titulo', '%Seguimiento%')
-      .select('id')
+      .ilike('titulo', '%Seguimiento semanal%')
     
-    totalDeleted += deleted2?.length || 0
-
-    return NextResponse.json({
-      message: `Se borraron ${totalDeleted} tareas`,
-      deleted: totalDeleted,
+    if (mdkClientIds.length > 0) {
+      // Delete where cliente_id is NOT in the MDK clients list
+      query = query.not('cliente_id', 'in', `(${mdkClientIds.join(',')})`)
+    }
+    
+    const { error, count } = await query.select('id')
+    
+    if (error) {
+      console.error('Error deleting non-MDK seguimiento tasks:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    
+    return NextResponse.json({ 
+      message: 'Deleted seguimiento tasks for non-MDK clients',
+      deleted: count ?? 0
     })
   } catch (error) {
-    console.error('DELETE error:', error)
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
-  }
-}
-
-// GET para verificar estado
-export async function GET() {
-  try {
-    const supabase = await createClient()
-    const { monday, friday, weekStart } = getWeekDates()
-
-    const { count: totalClientes } = await supabase
-      .from('clientes')
-      .select('id', { count: 'exact', head: true })
-
-    const { data: existingTasks } = await supabase
-      .from('tareas')
-      .select('titulo')
-      .ilike('titulo', '%Seguimiento%')
-      .gte('fecha_vencimiento', monday.toISOString())
-      .lte('fecha_vencimiento', friday.toISOString())
-
-    return NextResponse.json({
-      weekStart,
-      monday: monday.toISOString(),
-      friday: friday.toISOString(),
-      totalClientes: totalClientes || 0,
-      tareasExistentes: existingTasks?.length || 0,
-    })
-  } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    console.error('Error in delete seguimiento:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
