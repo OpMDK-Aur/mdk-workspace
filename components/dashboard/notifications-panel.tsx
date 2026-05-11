@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -8,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+
 import { 
   Calendar, 
   CheckSquare, 
@@ -31,7 +33,7 @@ import {
 
 interface Notificacion {
   id: string
-  tipo: 'reunion' | 'tarea_vence' | 'comentario' | 'cpl_alerta' | 'impresiones_cero'
+  tipo: 'reunion' | 'tarea_vence' | 'comentario' | 'cpl_alerta' | 'impresiones_cero' | 'mencion'
   titulo: string
   descripcion: string | null
   referencia_id: string | null
@@ -49,6 +51,7 @@ const TIPO_CONFIG: Record<string, { icon: typeof Calendar; color: string; bgColo
   reunion: { icon: Calendar, color: 'text-blue-400', bgColor: 'bg-blue-500/10', label: 'Reunión' },
   tarea_vence: { icon: CheckSquare, color: 'text-amber-400', bgColor: 'bg-amber-500/10', label: 'Tarea' },
   comentario: { icon: MessageSquare, color: 'text-green-400', bgColor: 'bg-green-500/10', label: 'Comentario' },
+  mencion: { icon: MessageSquare, color: 'text-cyan-400', bgColor: 'bg-cyan-500/10', label: 'Mención' },
   cpl_alerta: { icon: TrendingDown, color: 'text-red-400', bgColor: 'bg-red-500/10', label: 'CPL Alerta' },
   impresiones_cero: { icon: AlertTriangle, color: 'text-orange-400', bgColor: 'bg-orange-500/10', label: 'Sin impresiones' },
 }
@@ -83,36 +86,64 @@ function groupByDate(notifications: Notificacion[]) {
 }
 
 export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
+  const router = useRouter()
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'todas' | 'no_leidas'>('todas')
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   useEffect(() => {
-    // Generate notifications for tasks due this week, then load
+    // Get current user, generate notifications, then load
     async function init() {
-      try {
-        const res = await fetch('/api/notifications/generate', { method: 'POST' })
-        const json = await res.json()
-        console.log('[v0] generate notifications response:', json)
-      } catch (e) {
-        console.error('[v0] Error generating notifications:', e)
+      const supabase = createClient()
+      
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setLoading(false)
+        return
       }
-      loadNotificaciones()
+      
+      // Get colaborador_id from user email
+      const { data: colaborador } = await supabase
+        .from('colaboradores')
+        .select('id')
+        .eq('email', user.email)
+        .single()
+      
+      if (!colaborador) {
+        setLoading(false)
+        return
+      }
+      
+      setCurrentUserId(colaborador.id)
+      
+      // Clean up and generate notifications in parallel, then load
+      try {
+        await Promise.all([
+          fetch('/api/notifications/generate', { method: 'DELETE' }),
+          fetch('/api/notifications/generate', { method: 'POST' })
+        ])
+      } catch {
+        // Silently fail, still load existing notifications
+      }
+      
+      loadNotificaciones(colaborador.id)
     }
     init()
   }, [])
 
-  async function loadNotificaciones() {
+  async function loadNotificaciones(userId: string) {
     const supabase = createClient()
     setLoading(true)
 
     const { data, error } = await supabase
       .from('notificaciones')
       .select('*')
+      .eq('colaborador_id', userId)
       .order('created_at', { ascending: false })
       .limit(50)
 
-    console.log('[v0] loadNotificaciones - data:', data?.length, 'error:', error)
     if (!error && data) {
       setNotificaciones(data)
     }
@@ -120,11 +151,13 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
   }
 
   async function marcarLeida(id: string) {
+    if (!currentUserId) return
     const supabase = createClient()
     await supabase
       .from('notificaciones')
       .update({ leida: true })
       .eq('id', id)
+      .eq('colaborador_id', currentUserId)
 
     setNotificaciones((prev) =>
       prev.map((n) => (n.id === id ? { ...n, leida: true } : n))
@@ -132,6 +165,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
   }
 
   async function marcarTodasLeidas() {
+    if (!currentUserId) return
     const supabase = createClient()
     const ids = notificaciones.filter((n) => !n.leida).map((n) => n.id)
     
@@ -141,10 +175,21 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
       .from('notificaciones')
       .update({ leida: true })
       .in('id', ids)
+      .eq('colaborador_id', currentUserId)
 
     setNotificaciones((prev) =>
       prev.map((n) => ({ ...n, leida: true }))
     )
+  }
+
+  function handleNotificationClick(notif: Notificacion) {
+    marcarLeida(notif.id)
+    
+    // Navigate to task if it's a task-related notification
+    if (notif.referencia_tipo === 'tarea' && notif.referencia_id) {
+      onClose()
+      router.push(`/dashboard/tasks?task=${notif.referencia_id}`)
+    }
   }
 
   const filteredNotificaciones = filter === 'no_leidas' 
@@ -253,7 +298,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
                         "px-3 py-2.5 hover:bg-muted/50 cursor-pointer transition-colors",
                         !notif.leida && "bg-muted/30"
                       )}
-                      onClick={() => marcarLeida(notif.id)}
+                      onClick={() => handleNotificationClick(notif)}
                     >
                       <div className="flex items-start gap-2.5">
                         <Avatar className={cn("h-7 w-7 shrink-0", config.bgColor)}>

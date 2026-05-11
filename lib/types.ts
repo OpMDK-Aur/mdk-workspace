@@ -348,14 +348,23 @@ export interface TaskAssignee {
   id: string
   nombre: string
   avatar_url: string | null
-}
+  }
 
+export interface TaskClient {
+  id: string
+  nombre_del_negocio: string
+  }
+  
 export interface Task {
   id: string
   title: string
   description: string | null // Rich text HTML content
+  // Legacy single client (for backwards compatibility)
   clientId: string
   clientName: string
+  // Multi-client support
+  clientIds: string[]
+  clients: TaskClient[]
   // Legacy single assignee (for backwards compatibility)
   assigneeId: string
   assigneeName: string

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { TaskPriority, TaskType } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -42,6 +43,7 @@ import {
 import { Input } from '@/components/ui/input'
 
 export function TaskBoard() {
+  const searchParams = useSearchParams()
   const { 
     view, 
     setView, 
@@ -56,27 +58,37 @@ export function TaskBoard() {
     deleteSavedFilter,
     loadTasks,
     isLoading,
+    setSelectedTask,
   } = useTaskStore()
   const [newTaskOpen, setNewTaskOpen] = useState(false)
   
   // Track if seguimiento was already generated this session
   const seguimientoGenerated = useRef(false)
   
+  // Open task from URL parameter (e.g., from notification click)
+  useEffect(() => {
+    const taskId = searchParams.get('task')
+    if (taskId) {
+      setSelectedTask(taskId)
+    }
+  }, [searchParams, setSelectedTask])
+  
   // Generate seguimiento tasks for MDK clients on mount, then load all tasks
   useEffect(() => {
     const initTasks = async () => {
-      // Only generate seguimiento once per session
+      // Load tasks immediately, generate seguimiento in background
+      const loadPromise = loadTasks()
+      
+      // Only generate seguimiento once per session (non-blocking)
       if (!seguimientoGenerated.current) {
         seguimientoGenerated.current = true
-        // First delete non-MDK seguimiento tasks, then create new ones for MDK clients
-        try {
-          await fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' })
-          await fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
-        } catch {
-          // Silently fail, don't block task loading
-        }
+        Promise.all([
+          fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' }),
+          fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
+        ]).catch(() => {}) // Silently fail
       }
-      loadTasks()
+      
+      await loadPromise
     }
     initTasks()
   }, [loadTasks])

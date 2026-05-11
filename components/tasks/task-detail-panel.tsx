@@ -9,6 +9,7 @@ import {
   STATUS_CONFIG,
   STATUS_ORDER,
   PRIORITY_CONFIG,
+  ASSIGNEES,
 } from '@/lib/tasks/task-store'
 
 // Database types
@@ -105,6 +106,90 @@ function formatTime(seconds: number): string {
   const m = Math.floor((seconds % 3600) / 60)
   const s = seconds % 60
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+// Multi Client Select Component
+function MultiClientSelect({
+  clients,
+  availableClients,
+  onChange
+}: {
+  clients: Array<{ id: string; nombre_del_negocio: string }>
+  availableClients: Array<{ id: string; nombre_del_negocio: string }>
+  onChange: (clients: Array<{ id: string; nombre_del_negocio: string }>) => void
+}) {
+  const [open, setOpen] = useState(false)
+  
+  const addClient = (clientId: string) => {
+    const client = availableClients.find(c => c.id === clientId)
+    if (client && !clients.find(c => c.id === clientId)) {
+      onChange([...clients, { id: client.id, nombre_del_negocio: client.nombre_del_negocio }])
+    }
+  }
+  
+  const removeClient = (id: string) => {
+    onChange(clients.filter(c => c.id !== id))
+  }
+  
+  const remainingClients = availableClients.filter(c => !clients.find(cl => cl.id === c.id))
+  
+  return (
+    <div className="space-y-2">
+      {/* Current clients */}
+      <div className="flex flex-wrap gap-1.5">
+        {clients.length === 0 ? (
+          <span className="text-sm text-muted-foreground">Sin cliente</span>
+        ) : (
+          clients.map(c => (
+            <div
+              key={c.id}
+              className="flex items-center gap-1.5 bg-muted/50 rounded-full px-2.5 py-0.5 group"
+            >
+              <span className="text-xs">{c.nombre_del_negocio}</span>
+              <button
+                onClick={() => removeClient(c.id)}
+                className="h-4 w-4 rounded-full hover:bg-destructive/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+      
+      {/* Add client popover */}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+            <Plus className="h-3 w-3" />
+            Agregar cliente
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-56 p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Buscar cliente..." className="h-9" />
+            <CommandList>
+              <CommandEmpty>No se encontraron clientes</CommandEmpty>
+              <CommandGroup>
+                {remainingClients.map((c) => (
+                  <CommandItem
+                    key={c.id}
+                    value={c.nombre_del_negocio}
+                    onSelect={() => {
+                      addClient(c.id)
+                      setOpen(false)
+                    }}
+                  >
+                    {c.nombre_del_negocio}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
 }
 
 // Multi Assignee Select Component
@@ -703,7 +788,7 @@ function TimeTracker({ task }: { task: Task }) {
   )
 }
 
-// ── Files Section ────────────────────────────────────���────────────────────────
+// ── Files Section ───────────────────────────────�����─��──���────────────────────────
 
 function FilesSection({ task }: { task: Task }) {
   const { addFile, deleteFile } = useTaskStore()
@@ -802,16 +887,27 @@ function CommentsSection({ task }: { task: Task }) {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
   const editorRef = useRef<HTMLDivElement>(null)
+  
+  // Mention states
+  const [showMentions, setShowMentions] = useState(false)
+  const [mentionSearch, setMentionSearch] = useState('')
+  const [mentionPosition, setMentionPosition] = useState({ top: 0, left: 0 })
+  const [selectedMentionIndex, setSelectedMentionIndex] = useState(0)
+  const mentionStartRef = useRef<{ node: Node; offset: number } | null>(null)
+  
+  const filteredAssignees = ASSIGNEES.filter(a => 
+    a.name.toLowerCase().includes(mentionSearch.toLowerCase())
+  ).slice(0, 5)
 
   useEffect(() => {
     async function loadUser() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
+      if (user?.email) {
         const { data: colab } = await supabase
           .from('colaboradores')
           .select('id, nombre, avatar_url')
-          .eq('id', user.id)
+          .eq('email', user.email)
           .single()
         if (colab) setCurrentUser(colab)
       }
@@ -862,8 +958,131 @@ function CommentsSection({ task }: { task: Task }) {
     }
   }
 
+  // Handle input for mentions
+  const handleInput = () => {
+    if (!editorRef.current) return
+    
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) return
+    
+    const range = selection.getRangeAt(0)
+    const textNode = range.startContainer
+    
+    if (textNode.nodeType !== Node.TEXT_NODE) {
+      setShowMentions(false)
+      return
+    }
+    
+    const text = textNode.textContent || ''
+    const cursorPos = range.startOffset
+    
+    // Find @ before cursor
+    const textBeforeCursor = text.slice(0, cursorPos)
+    const atIndex = textBeforeCursor.lastIndexOf('@')
+    
+    if (atIndex !== -1) {
+      // Check no space between @ and cursor
+      const textAfterAt = textBeforeCursor.slice(atIndex + 1)
+      if (!textAfterAt.includes(' ')) {
+        setMentionSearch(textAfterAt)
+        mentionStartRef.current = { node: textNode, offset: atIndex }
+        
+        // Get position for dropdown
+        const tempRange = document.createRange()
+        tempRange.setStart(textNode, atIndex)
+        tempRange.setEnd(textNode, atIndex)
+        const rect = tempRange.getBoundingClientRect()
+        const editorRect = editorRef.current.getBoundingClientRect()
+        
+        setMentionPosition({
+          top: rect.bottom - editorRect.top + 5,
+          left: rect.left - editorRect.left
+        })
+        setShowMentions(true)
+        setSelectedMentionIndex(0)
+        return
+      }
+    }
+    
+    setShowMentions(false)
+  }
+
+  // Insert mention
+  const insertMention = (assignee: { id: string; name: string }) => {
+    if (!editorRef.current || !mentionStartRef.current) return
+    
+    const selection = window.getSelection()
+    if (!selection) return
+    
+    const { node, offset } = mentionStartRef.current
+    const range = document.createRange()
+    
+    // Create mention span
+    const mentionSpan = document.createElement('span')
+    mentionSpan.className = 'mention bg-primary/20 text-primary px-1 rounded'
+    mentionSpan.setAttribute('data-mention-id', assignee.id)
+    mentionSpan.setAttribute('data-mention-name', assignee.name)
+    mentionSpan.contentEditable = 'false'
+    mentionSpan.textContent = `@${assignee.name}`
+    
+    // Get current text and cursor position
+    const text = node.textContent || ''
+    const cursorPos = selection.getRangeAt(0).startOffset
+    
+    // Split text
+    const beforeMention = text.slice(0, offset)
+    const afterMention = text.slice(cursorPos)
+    
+    // Create new nodes
+    const beforeText = document.createTextNode(beforeMention)
+    const afterText = document.createTextNode(' ' + afterMention)
+    
+    // Replace content
+    const parent = node.parentNode
+    if (parent) {
+      parent.insertBefore(beforeText, node)
+      parent.insertBefore(mentionSpan, node)
+      parent.insertBefore(afterText, node)
+      parent.removeChild(node)
+      
+      // Set cursor after mention
+      range.setStartAfter(afterText)
+      range.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+    
+    setShowMentions(false)
+    mentionStartRef.current = null
+    editorRef.current.focus()
+  }
+
   // Handle keyboard events
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Handle mention navigation
+    if (showMentions && filteredAssignees.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedMentionIndex(i => Math.min(i + 1, filteredAssignees.length - 1))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedMentionIndex(i => Math.max(i - 1, 0))
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        insertMention(filteredAssignees[selectedMentionIndex])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setShowMentions(false)
+        return
+      }
+    }
+    
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSubmit()
@@ -889,8 +1108,17 @@ function CommentsSection({ task }: { task: Task }) {
     const userId = currentUser?.id || 'system'
     const userName = currentUser?.nombre || 'Usuario'
     
+    // Extract mentioned user IDs
+    const mentionedIds: string[] = []
+    editorRef.current.querySelectorAll('.mention[data-mention-id]').forEach(el => {
+      const id = el.getAttribute('data-mention-id')
+      if (id && !mentionedIds.includes(id)) {
+        mentionedIds.push(id)
+      }
+    })
+    
     try {
-      await addComment(task.id, content, userId, userName, currentUser?.avatar_url)
+      await addComment(task.id, content, userId, userName, currentUser?.avatar_url, mentionedIds)
       editorRef.current.innerHTML = ''
       toast.success('Comentario agregado')
     } catch (err) {
@@ -998,14 +1226,44 @@ function CommentsSection({ task }: { task: Task }) {
           </Avatar>
           <span className="text-sm text-muted-foreground">Nuevo comentario</span>
         </div>
-        <div
-          ref={editorRef}
-          contentEditable
-          onPaste={handlePaste}
-          onKeyDown={handleKeyDown}
-          data-placeholder="Escribe un comentario... (podes pegar imagenes con Ctrl+V)"
-          className="w-full min-h-[80px] p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1"
-        />
+        <div className="relative">
+          <div
+            ref={editorRef}
+            contentEditable
+            onPaste={handlePaste}
+            onKeyDown={handleKeyDown}
+            onInput={handleInput}
+            data-placeholder="Escribe un comentario... usa @ para mencionar (podes pegar imagenes con Ctrl+V)"
+            className="w-full min-h-[80px] p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1 [&_.mention]:bg-primary/20 [&_.mention]:text-primary [&_.mention]:px-1 [&_.mention]:rounded"
+          />
+          
+          {/* Mention dropdown */}
+          {showMentions && filteredAssignees.length > 0 && (
+            <div 
+              className="absolute z-50 bg-popover border rounded-md shadow-lg py-1 min-w-[200px]"
+              style={{ top: mentionPosition.top, left: mentionPosition.left }}
+            >
+              {filteredAssignees.map((assignee, index) => (
+                <button
+                  key={assignee.id}
+                  type="button"
+                  className={cn(
+                    'w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-muted',
+                    index === selectedMentionIndex && 'bg-muted'
+                  )}
+                  onClick={() => insertMention(assignee)}
+                  onMouseEnter={() => setSelectedMentionIndex(index)}
+                >
+                  <Avatar className="h-6 w-6">
+                    {assignee.avatar_url && <AvatarImage src={assignee.avatar_url} />}
+                    <AvatarFallback className="text-xs">{getInitials(assignee.name)}</AvatarFallback>
+                  </Avatar>
+                  <span>{assignee.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         
         <div className="flex items-center justify-end">
           <Button 
@@ -1317,7 +1575,11 @@ export function TaskDetailPanel() {
                   </Badge>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">{task.clientName}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {task.clients && task.clients.length > 0 
+                  ? task.clients.map(c => c.nombre_del_negocio).join(', ')
+                  : task.clientName}
+              </p>
               
               {/* WhatsApp button for system tasks */}
               {task.isSystemTask && task.systemTaskMeta?.whatsappLink && (
@@ -1517,23 +1779,20 @@ export function TaskDetailPanel() {
                       </div>
                       
                       <div>
-                        <Label className="text-xs text-muted-foreground mb-1.5 block">Cliente</Label>
-                        <Select
-                          value={task.clientId}
-                          onValueChange={(v) => {
-                            const cliente = clientes.find((c) => c.id === v)
-                            if (cliente) updateTask(task.id, { clientId: v, clientName: cliente.nombre_del_negocio })
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">Clientes</Label>
+                        <MultiClientSelect
+                          clients={task.clients || []}
+                          availableClients={clientes}
+                          onChange={(newClients) => {
+                            console.log('[v0] MultiClientSelect onChange:', newClients)
+                            updateTask(task.id, { 
+                              clients: newClients,
+                              clientIds: newClients.map(c => c.id),
+                              clientId: newClients[0]?.id || '',
+                              clientName: newClients[0]?.nombre_del_negocio || 'Sin cliente',
+                            })
                           }}
-                        >
-                          <SelectTrigger className="h-9">
-                            <SelectValue placeholder="Seleccionar cliente" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {clientes.map((c) => (
-                              <SelectItem key={c.id} value={c.id}>{c.nombre_del_negocio}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        />
                       </div>
                       
                       <div>
@@ -1678,23 +1937,19 @@ export function TaskDetailPanel() {
                   {/* Client & Assignee */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-xs text-muted-foreground mb-1.5 block">Cliente</Label>
-                      <Select
-                        value={task.clientId}
-                        onValueChange={(v) => {
-                          const cliente = clientes.find((c) => c.id === v)
-                          if (cliente) updateTask(task.id, { clientId: v, clientName: cliente.nombre_del_negocio })
+                      <Label className="text-xs text-muted-foreground mb-1.5 block">Clientes</Label>
+                      <MultiClientSelect
+                        clients={task.clients || []}
+                        availableClients={clientes}
+                        onChange={(newClients) => {
+                          updateTask(task.id, { 
+                            clients: newClients,
+                            clientIds: newClients.map(c => c.id),
+                            clientId: newClients[0]?.id || '',
+                            clientName: newClients[0]?.nombre_del_negocio || 'Sin cliente',
+                          })
                         }}
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder="Seleccionar cliente" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clientes.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>{c.nombre_del_negocio}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      />
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground mb-1.5 block">Asignados</Label>
