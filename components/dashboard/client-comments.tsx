@@ -14,7 +14,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar } from 'lucide-react'
+import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, ExternalLink } from 'lucide-react'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import Link from 'next/link'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { cn } from '@/lib/utils'
@@ -34,6 +48,13 @@ interface ComentarioCliente {
   autor: string
   creado_en: string
   actualizado_en: string
+}
+
+interface TareaCliente {
+  id: string
+  titulo: string
+  estado: string
+  numero_tarea: number
 }
 
 interface CurrentUser {
@@ -61,6 +82,12 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   const [authorFilter, setAuthorFilter] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState<string>('all')
   const [showFilters, setShowFilters] = useState(false)
+  
+  // Task mentions
+  const [clientTasks, setClientTasks] = useState<TareaCliente[]>([])
+  const [showTaskPopover, setShowTaskPopover] = useState(false)
+  const [taskSearchQuery, setTaskSearchQuery] = useState('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const supabase = createClient()
   const chatContainerRef = useRef<HTMLDivElement>(null)
@@ -87,29 +114,41 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     }
   }, [messages])
 
-  // Fetch comments
+  // Fetch comments and tasks
   useEffect(() => {
-    async function fetchComments() {
+    async function fetchData() {
       setLoading(true)
       setError(null)
 
-      const { data, error: fetchError } = await supabase
-        .from('comentarios_clientes')
-        .select('*')
-        .eq('cliente_id', clientId)
-        .order('creado_en', { ascending: false })
+      const [commentsRes, tasksRes] = await Promise.all([
+        supabase
+          .from('comentarios_clientes')
+          .select('*')
+          .eq('cliente_id', clientId)
+          .order('creado_en', { ascending: false }),
+        supabase
+          .from('tareas')
+          .select('id, titulo, estado, numero_tarea')
+          .or(`cliente_id.eq.${clientId},cliente_ids.cs.{${clientId}}`)
+          .order('numero_tarea', { ascending: false })
+          .limit(50)
+      ])
 
-      if (fetchError) {
+      if (commentsRes.error) {
         setError('Error al cargar comentarios')
-        console.error('[v0] Error fetching comments:', fetchError)
+        console.error('[v0] Error fetching comments:', commentsRes.error)
       } else {
-        setComments(data || [])
+        setComments(commentsRes.data || [])
+      }
+      
+      if (!tasksRes.error && tasksRes.data) {
+        setClientTasks(tasksRes.data)
       }
 
       setLoading(false)
     }
 
-    fetchComments()
+    fetchData()
   }, [clientId, supabase])
 
   // Get unique authors for filter
@@ -231,6 +270,68 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   }
 
   const hasActiveFilters = searchQuery || authorFilter !== 'all' || dateFilter !== 'all'
+  
+  // Insert task mention
+  const insertTaskMention = (task: TareaCliente) => {
+    const mention = `#MDK-${task.numero_tarea}`
+    setNewComment(prev => prev + mention + ' ')
+    setShowTaskPopover(false)
+    setTaskSearchQuery('')
+    textareaRef.current?.focus()
+  }
+  
+  // Filter tasks for search
+  const filteredTasks = useMemo(() => {
+    if (!taskSearchQuery) return clientTasks.slice(0, 10)
+    const query = taskSearchQuery.toLowerCase()
+    return clientTasks
+      .filter(t => 
+        t.titulo.toLowerCase().includes(query) || 
+        t.numero_tarea.toString().includes(query)
+      )
+      .slice(0, 10)
+  }, [clientTasks, taskSearchQuery])
+  
+  // Render comment content with task links
+  const renderCommentContent = (content: string) => {
+    // Match #MDK-123 pattern
+    const taskMentionRegex = /#MDK-(\d+)/g
+    const parts: React.ReactNode[] = []
+    let lastIndex = 0
+    let match
+    
+    while ((match = taskMentionRegex.exec(content)) !== null) {
+      // Add text before the match
+      if (match.index > lastIndex) {
+        parts.push(content.slice(lastIndex, match.index))
+      }
+      
+      const taskNumber = parseInt(match[1])
+      const linkedTask = clientTasks.find(t => t.numero_tarea === taskNumber)
+      
+      // Add the task link
+      parts.push(
+        <Link
+          key={match.index}
+          href={`/dashboard/tasks?task=${linkedTask?.id || ''}`}
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <CheckSquare className="h-3 w-3" />
+          {match[0]}
+        </Link>
+      )
+      
+      lastIndex = match.index + match[0].length
+    }
+    
+    // Add remaining text
+    if (lastIndex < content.length) {
+      parts.push(content.slice(lastIndex))
+    }
+    
+    return parts.length > 0 ? parts : content
+  }
 
   return (
     <div className="space-y-4">
@@ -334,7 +435,8 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
               </Avatar>
               <div className="flex-1 space-y-2">
                 <Textarea
-                  placeholder="Escribe un comentario..."
+                  ref={textareaRef}
+                  placeholder="Escribe un comentario... Usa # para mencionar tareas"
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   className="min-h-[80px] resize-none text-sm"
@@ -342,12 +444,61 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                     if (e.key === 'Enter' && e.metaKey) {
                       handleAddComment()
                     }
+                    // Open task popover on #
+                    if (e.key === '#' || (e.key === '3' && e.shiftKey)) {
+                      setTimeout(() => setShowTaskPopover(true), 50)
+                    }
                   }}
                 />
                 <div className="flex justify-between items-center">
-                  <span className="text-[10px] text-muted-foreground">
-                    Cmd + Enter para enviar
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <Popover open={showTaskPopover} onOpenChange={setShowTaskPopover}>
+                      <PopoverTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          <Hash className="h-3 w-3" />
+                          Mencionar tarea
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 p-0" align="start">
+                        <Command>
+                          <CommandInput 
+                            placeholder="Buscar tarea..." 
+                            value={taskSearchQuery}
+                            onValueChange={setTaskSearchQuery}
+                            className="h-9"
+                          />
+                          <CommandList>
+                            <CommandEmpty>No se encontraron tareas</CommandEmpty>
+                            <CommandGroup heading="Tareas del cliente">
+                              {filteredTasks.map(task => (
+                                <CommandItem
+                                  key={task.id}
+                                  value={`${task.numero_tarea} ${task.titulo}`}
+                                  onSelect={() => insertTaskMention(task)}
+                                  className="gap-2"
+                                >
+                                  <CheckSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <span className="text-xs font-mono text-primary">
+                                    #MDK-{task.numero_tarea}
+                                  </span>
+                                  <span className="text-xs truncate flex-1">
+                                    {task.titulo}
+                                  </span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <span className="text-[10px] text-muted-foreground">
+                      Cmd + Enter para enviar
+                    </span>
+                  </div>
                   <Button
                     size="sm"
                     onClick={handleAddComment}
@@ -427,7 +578,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                           </Button>
                         )}
                       </div>
-                      <p className="text-sm mt-1 whitespace-pre-wrap">{comment.contenido}</p>
+                      <p className="text-sm mt-1 whitespace-pre-wrap">{renderCommentContent(comment.contenido)}</p>
                     </div>
                   </div>
                 </div>
