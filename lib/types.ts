@@ -60,9 +60,14 @@ export interface Client {
   nombre_del_negocio: string
   // Alias for compatibility
   business_name?: string
-  contact_name: string | null
-  contact_lastname: string | null
-  phone: string | null
+  // Contact fields - DB uses nombre/apellido/telefono
+  nombre?: string | null
+  apellido?: string | null
+  telefono?: string | null
+  // Legacy aliases
+  contact_name?: string | null
+  contact_lastname?: string | null
+  phone?: string | null
   email?: string | null
   status: ClientStatus | null
   semaforo_id: string | null

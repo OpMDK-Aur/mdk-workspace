@@ -105,10 +105,10 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [] }: ClientInfoCar
   const [showServiceSelect, setShowServiceSelect] = useState(false)
   const [savingServices, setSavingServices] = useState(false)
   
-  // Contact state - using existing fields from clientes table
-  const [contactNombre, setContactNombre] = useState(client.contact_name || '')
-  const [contactApellido, setContactApellido] = useState(client.contact_lastname || '')
-  const [contactTelefono, setContactTelefono] = useState(client.phone || '')
+  // Contact state - using existing fields from clientes table (nombre, apellido, telefono)
+  const [contactNombre, setContactNombre] = useState(client.nombre || '')
+  const [contactApellido, setContactApellido] = useState(client.apellido || '')
+  const [contactTelefono, setContactTelefono] = useState(client.telefono || '')
   const [editingContact, setEditingContact] = useState(false)
   const [savingContact, setSavingContact] = useState(false)
   
