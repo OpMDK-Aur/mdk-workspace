@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, lazy, Suspense, useCallback, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import type { TaskPriority, TaskType } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -58,24 +58,10 @@ export function TaskBoard() {
     isLoading,
   } = useTaskStore()
   const [newTaskOpen, setNewTaskOpen] = useState(false)
-
-  // Track if seguimiento was already generated this session
-  const seguimientoGenerated = useRef(false)
   
-  // Auto-generate seguimiento tasks on mount, then load all tasks
+  // Load tasks on mount
   useEffect(() => {
-    const initTasks = async () => {
-      // Only generate seguimiento once per session
-      if (!seguimientoGenerated.current) {
-        seguimientoGenerated.current = true
-        // Run in background, don't block task loading
-        fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' })
-          .then(() => fetch('/api/tasks/generate-seguimiento', { method: 'POST' }))
-          .catch(() => {})
-      }
-      loadTasks()
-    }
-    initTasks()
+    loadTasks()
   }, [loadTasks])
 
   const hasSimpleFilters = filters.priority || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery
