@@ -13,19 +13,10 @@ import {
 } from '@/lib/tasks/task-store'
 
 // Database types
-interface Landing {
-  nombre: string
-  url: string
-  tipo: string
-}
-
 interface DbCliente {
   id: string
   nombre_del_negocio: string
   plan?: string | null
-  landings?: Landing[] | null
-  crm_url?: string | null
-  sitio_web?: string | null
 }
 
 interface DbColaborador {
@@ -239,9 +230,6 @@ const getRandomResponse = (responses: string[]) => responses[Math.floor(Math.ran
 interface ClientContext {
   id: string
   name: string
-  landings?: Landing[]
-  crmUrl?: string
-  sitioWeb?: string
   plan?: string
 }
 
@@ -253,9 +241,6 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   return {
     id: client.id,
     name: client.nombre_del_negocio,
-    landings: client.landings || [],
-    crmUrl: client.crm_url || undefined,
-    sitioWeb: client.sitio_web || undefined,
     plan: client.plan || undefined,
   }
 }
@@ -979,7 +964,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
       const supabase = createClient()
       
   const [clientesRes, colabRes, tiposRes] = await Promise.all([
-  supabase.from('clientes').select('id, nombre_del_negocio, plan, landings, crm_url, sitio_web').order('nombre_del_negocio'),
+  supabase.from('clientes').select('id, nombre_del_negocio, plan').order('nombre_del_negocio'),
         supabase.from('colaboradores').select('id, nombre, avatar_url').order('nombre'),
         supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
       ])
@@ -1069,12 +1054,12 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
     let messageContent: Omit<ChatMessage, 'id' | 'role'> = { content: '' }
 
     switch (step.type) {
-      case 'select_client':
-        messageContent = {
-          content: 'Para que cliente es?',
-          options: dbClientes.map((c) => ({ label: c.nombre_del_negocio, value: c.id })),
-        }
-        break
+  case 'select_client':
+  messageContent = {
+  content: 'Para que cliente es?',
+  options: dbClientes.map((c) => ({ label: c.nombre_del_negocio, value: c.id })),
+  }
+  break
       
       case 'select_assignee':
         messageContent = {
@@ -1084,31 +1069,10 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
         break
 
       case 'input':
-        // Check if this is a URL/landing input and client has landings
-        const inputKey = (step as { key?: string }).key
-        const isUrlInput = inputKey && ['url', 'webUrl', 'landingUrl', 'formName'].includes(inputKey)
-        const selectedClient = dbClientes.find(c => c.id === data.clientId)
-        const clientLandings = selectedClient?.landings || []
-        
-        if (isUrlInput && clientLandings.length > 0) {
-          // Show landings as options plus an "other" option for custom input
-          messageContent = {
-            content: step.question + `\n\n📋 *${selectedClient?.nombre_del_negocio} tiene estas landings:*`,
-            options: [
-              ...clientLandings.map(l => ({
-                label: l.nombre,
-                value: l.url,
-                emoji: l.tipo === 'landing' ? '🌐' : l.tipo === 'funnel' ? '🎯' : l.tipo === 'ecommerce' ? '🛒' : '📄',
-              })),
-              { label: 'Otra URL (escribir)', value: '__custom__', emoji: '✏️' },
-            ],
-          }
-        } else {
-          messageContent = {
-            content: step.question,
-            isInput: true,
-            inputPlaceholder: step.placeholder,
-          }
+        messageContent = {
+          content: step.question,
+          isInput: true,
+          inputPlaceholder: step.placeholder,
         }
         break
 
@@ -1360,32 +1324,11 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
     
   if (currentStep.type === 'select_client') {
   newData.clientId = value
-  // Add personality response for client selection with relevant info
+  // Add personality response for client selection
   const client = dbClientes.find((c) => c.id === value)
   if (client) {
-    let responseContent = getRandomResponse(PERSONALITY_RESPONSES.client_selected(client.nombre_del_negocio))
-    
-    // Add client info summary if available
-    const infoItems: string[] = []
-    if (client.landings && client.landings.length > 0) {
-      infoItems.push(`**Landings:** ${client.landings.map(l => l.nombre).join(', ')}`)
-    }
-    if (client.sitio_web) {
-      infoItems.push(`**Sitio web:** ${client.sitio_web}`)
-    }
-    if (client.crm_url) {
-      infoItems.push(`**CRM:** ${client.crm_url}`)
-    }
-    if (client.plan) {
-      infoItems.push(`**Plan:** ${client.plan}`)
-    }
-    
-    if (infoItems.length > 0) {
-      responseContent += `\n\n📋 *Info del cliente:*\n${infoItems.join('\n')}`
-    }
-    
     addAssistantMessage({
-      content: responseContent
+      content: getRandomResponse(PERSONALITY_RESPONSES.client_selected(client.nombre_del_negocio))
     }, 300)
   }
   }
@@ -1423,16 +1366,6 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
       } else if (value === 'low_performance') {
         addAssistantMessage({ content: getRandomResponse(PERSONALITY_RESPONSES.optimizar_low) }, 300)
       }
-    }
-
-    // Handle custom URL input selection - show input instead of advancing
-    if (value === '__custom__') {
-      addAssistantMessage({
-        content: 'Dale, escribime la URL:',
-        isInput: true,
-        inputPlaceholder: 'Ej: www.cliente.com/landing',
-      }, 300)
-      return // Don't advance, wait for input
     }
 
     setTaskData(newData)
