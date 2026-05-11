@@ -545,96 +545,6 @@ export const CLIENTS = [
   { id: 'alambrados', name: 'Alambrados Patagonia' },
 ]
 
-// ── System Tasks (Recurring) ──────────────────────────────────────────────────
-
-function generateSystemTasks(clientes: Array<{ id: string; nombre_del_negocio: string }>): Task[] {
-  const today = new Date()
-  const systemTasks: Task[] = []
-  
-  // Find next Friday for weekly follow-up
-  const getNextFriday = (from: Date) => {
-    const d = new Date(from)
-    const day = d.getDay()
-    const diff = (5 - day + 7) % 7 || 7 // Days until Friday
-    d.setDate(d.getDate() + diff)
-    d.setHours(10, 0, 0, 0) // 10 AM
-    return d
-  }
-  
-  // Get this week's Friday and next 3 Fridays
-  const fridays = []
-  let nextFriday = getNextFriday(today)
-  // If today is Friday and before 6pm, include today
-  if (today.getDay() === 5 && today.getHours() < 18) {
-    nextFriday = new Date(today)
-    nextFriday.setHours(10, 0, 0, 0)
-  }
-  for (let i = 0; i < 4; i++) {
-    fridays.push(new Date(nextFriday))
-    nextFriday.setDate(nextFriday.getDate() + 7)
-  }
-  
-  // Create weekly follow-up tasks for each client for each Friday
-  clientes.forEach((cliente) => {
-    fridays.forEach((friday) => {
-      const message = encodeURIComponent(
-        `Hola! Te comparto el reporte semanal de tu cuenta:\n\n` +
-        `*Metricas principales:*\n` +
-        `- Clics: [completar]\n` +
-        `- Impresiones: [completar]\n` +
-        `- Conversiones: [completar]\n` +
-        `- Costo: [completar]\n\n` +
-        `Cualquier duda me avisas!`
-      )
-      const whatsappLink = `https://wa.me/?text=${message}`
-      
-      systemTasks.push({
-        id: `system-seguimiento-${cliente.id}-${friday.toISOString().split('T')[0]}`,
-        title: `Seguimiento semanal - ${cliente.nombre_del_negocio}`,
-        description: `<p><strong>Enviar reporte de metricas al cliente:</strong></p>
-<ul>
-<li>Clics de la semana</li>
-<li>Impresiones totales</li>
-<li>Conversiones logradas</li>
-<li>Costo publicitario</li>
-</ul>`,
-        clientId: cliente.id,
-        clientName: cliente.nombre_del_negocio,
-        assigneeId: '',
-        assigneeName: 'Sin asignar',
-        assigneeAvatar: null,
-        assignees: [],
-        status: 'pendiente',
-        priority: 'media',
-        type: 'seguimiento',
-        typeName: 'Seguimiento',
-        dueDate: friday,
-        isActive: true,
-        isSystemTask: true,
-        systemTaskMeta: {
-          recurrence: 'weekly',
-          whatsappLink,
-        },
-        customFields: {},
-        timeSessions: [],
-        totalTimeSec: 0,
-        isTimerRunning: false,
-        timerStartedAt: null,
-        activities: [],
-        comments: [],
-        files: [],
-        quotation: null,
-        createdById: null,
-        createdByName: 'Sistema',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-    })
-  })
-  
-  return systemTasks
-}
-
 // ── Filter Utility ────────────────────────────────────────────────────────────
 
 export function applyAdvancedFilters(tasks: Task[], filterGroups: FilterGroup[]): Task[] {
@@ -899,12 +809,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         return
       }
       
-      // Generate system tasks (weekly follow-ups)
-      const systemTasks = clientesData ? generateSystemTasks(clientesData) : []
-
       if (data && data.length > 0) {
-        // Load comments for all tasks
-        const taskIds = data.map((t) => t.id)
+      // Load comments for all tasks
+      const taskIds = data.map((t) => t.id)
         const { data: comentarios } = await supabase
           .from('comentarios_tareas')
           .select('*')
@@ -922,15 +829,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         }
 
         const dbTasks = data.map((tarea) => {
-          const task = mapTareaToTask(tarea as TareaDB, colaboradoresMap)
-          task.comments = commentsByTask.get(tarea.id) || []
-          return task
+        const task = mapTareaToTask(tarea as TareaDB, colaboradoresMap)
+        task.comments = commentsByTask.get(tarea.id) || []
+        return task
         })
-        // Combine DB tasks with system tasks
-        set({ tasks: [...dbTasks, ...systemTasks], isLoading: false })
+        set({ tasks: dbTasks, isLoading: false })
       } else {
-        // No tasks in DB, just system tasks
-        set({ tasks: systemTasks, isLoading: false })
+        set({ tasks: [], isLoading: false })
       }
     } catch (error) {
       console.error('Error loading tasks:', error)
