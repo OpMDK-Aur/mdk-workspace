@@ -14,8 +14,19 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ArrowUpDown } from 'lucide-react'
+import { ArrowUpDown, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -41,7 +52,7 @@ function getInitials(name: string): string {
 type SortKey = 'title' | 'clientName' | 'status' | 'priority' | 'dueDate' | 'totalTimeSec'
 type SortDir = 'asc' | 'desc'
 
-function TaskRow({ task }: { task: Task }) {
+function TaskRow({ task, isSelected, onSelect }: { task: Task; isSelected: boolean; onSelect: (id: string, checked: boolean) => void }) {
   const setSelectedTask = useTaskStore((s) => s.setSelectedTask)
   const [liveTime, setLiveTime] = useState(task.totalTimeSec)
   const statusConfig = STATUS_CONFIG[task.status] || { label: task.status, color: 'text-gray-400', bgColor: 'bg-gray-500/20' }
@@ -66,6 +77,12 @@ function TaskRow({ task }: { task: Task }) {
       className="cursor-pointer hover:bg-muted/50 transition-colors"
       onClick={() => setSelectedTask(task.id)}
     >
+      <TableCell className="w-[40px]" onClick={(e) => e.stopPropagation()}>
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={(checked) => onSelect(task.id, checked === true)}
+        />
+      </TableCell>
       <TableCell className="max-w-[300px]">
         <p className="font-medium text-sm truncate">{task.title}</p>
       </TableCell>
@@ -127,8 +144,40 @@ function TaskRow({ task }: { task: Task }) {
 
 export function ListView() {
   const tasks = useFilteredTasks()
+  const deleteTasks = useTaskStore((s) => s.deleteTasks)
   const [sortKey, setSortKey] = useState<SortKey>('status')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  const handleSelect = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) {
+        next.add(id)
+      } else {
+        next.delete(id)
+      }
+      return next
+    })
+  }
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(sortedTasks.map((t) => t.id)))
+    } else {
+      setSelectedIds(new Set())
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    setIsDeleting(true)
+    await deleteTasks(Array.from(selectedIds))
+    setSelectedIds(new Set())
+    setShowDeleteDialog(false)
+    setIsDeleting(false)
+  }
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -180,14 +229,51 @@ export function ListView() {
     </Button>
   )
 
+  const allSelected = sortedTasks.length > 0 && selectedIds.size === sortedTasks.length
+  const someSelected = selectedIds.size > 0 && selectedIds.size < sortedTasks.length
+
   return (
-    <div className="rounded-lg border bg-card overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="w-[300px]">
-              <SortButton sortKeyProp="title">Tarea</SortButton>
-            </TableHead>
+    <div className="space-y-2">
+      {/* Bulk actions bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2 bg-muted/50 rounded-lg border">
+          <span className="text-sm text-muted-foreground">
+            {selectedIds.size} tarea{selectedIds.size > 1 ? 's' : ''} seleccionada{selectedIds.size > 1 ? 's' : ''}
+          </span>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setShowDeleteDialog(true)}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Eliminar
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            Cancelar
+          </Button>
+        </div>
+      )}
+
+      <div className="rounded-lg border bg-card overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="w-[40px]">
+                <Checkbox
+                  checked={allSelected}
+                  ref={(el) => {
+                    if (el) (el as HTMLButtonElement & { indeterminate?: boolean }).indeterminate = someSelected
+                  }}
+                  onCheckedChange={handleSelectAll}
+                />
+              </TableHead>
+              <TableHead className="w-[300px]">
+                <SortButton sortKeyProp="title">Tarea</SortButton>
+              </TableHead>
             <TableHead>
               <SortButton sortKeyProp="clientName">Cliente</SortButton>
             </TableHead>
@@ -210,17 +296,45 @@ export function ListView() {
         </TableHeader>
         <TableBody>
           {sortedTasks.map((task) => (
-            <TaskRow key={task.id} task={task} />
+            <TaskRow
+              key={task.id}
+              task={task}
+              isSelected={selectedIds.has(task.id)}
+              onSelect={handleSelect}
+            />
           ))}
           {sortedTasks.length === 0 && (
             <TableRow>
-              <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+              <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
                 No hay tareas que coincidan con los filtros
               </TableCell>
             </TableRow>
           )}
         </TableBody>
       </Table>
+    </div>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar tareas</AlertDialogTitle>
+            <AlertDialogDescription>
+              Estas por eliminar {selectedIds.size} tarea{selectedIds.size > 1 ? 's' : ''}. Esta accion no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

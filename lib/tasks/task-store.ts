@@ -863,6 +863,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     savedFilters: state.savedFilters.filter(f => f.id !== id),
   })),
 
+  // Bulk delete tasks
+  deleteTasks: async (taskIds: string[]) => {
+    if (taskIds.length === 0) return
+    
+    const supabase = createClient()
+    
+    const { error } = await supabase
+      .from('tareas')
+      .delete()
+      .in('id', taskIds)
+    
+    if (error) {
+      console.error('Error deleting tasks:', error)
+      return
+    }
+    
+    // Update local state
+    set((state) => ({
+      tasks: state.tasks.filter((t) => !taskIds.includes(t.id)),
+    }))
+  },
+
 updateTaskStatus: async (taskId, status) => {
   const supabase = createClient()
   
