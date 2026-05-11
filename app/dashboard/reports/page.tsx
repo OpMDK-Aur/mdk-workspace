@@ -135,10 +135,11 @@ export default function ReportsPage() {
       .filter((client) => clientHoursMap[client.id])
       .map((client) => {
         const data = clientHoursMap[client.id] || { hours: 0, billableHours: 0 }
+        const clientName = client.nombre_del_negocio || client.business_name || 'Sin nombre'
         return {
           client_id: client.id,
-          client_name: client.business_name,
-          client_color: stringToColor(client.business_name),
+          client_name: clientName,
+          client_color: stringToColor(clientName),
           projects_count: 0,
           hours: data.hours,
           percentage: totalHours > 0 ? (data.hours / totalHours) * 100 : 0,
@@ -149,8 +150,8 @@ export default function ReportsPage() {
   }, [clients, filteredEntries])
 
   // Calculate totals
-  const totalHours = filteredEntries.reduce((acc, e) => acc + ((e.duration_sec || 0) / 3600), 0)
-  const billableHours = filteredEntries.filter((e) => e.billable).reduce((acc, e) => acc + ((e.duration_sec || 0) / 3600), 0)
+  const totalHours = filteredEntries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
+  const billableHours = filteredEntries.filter((e) => e.facturable).reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
   const billablePercentage = totalHours > 0 ? (billableHours / totalHours) * 100 : 0
 
   // Calculate daily hours for the chart
