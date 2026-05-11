@@ -90,7 +90,8 @@ export interface Client {
   account_manager_id: string | null
   landings?: Array<{ nombre: string; url: string; tipo: string }> | null
   // Nuevos campos
-  servicios_contratados?: ServicioContratado[] | null
+  servicio_id?: string[] | null // Array de UUIDs de servicios
+  servicios_contratados?: ServicioContratado[] | null // Legacy
   contacto_nombre?: string | null
   contacto_email?: string | null
   contacto_telefono?: string | null

@@ -99,8 +99,8 @@ const SERVICE_COLORS: Record<string, string> = {
 export function ClientInfoCard({ client, unidadesDeNegocio = [] }: ClientInfoCardProps) {
   const supabase = createClient()
   
-  // Services state
-  const [servicios, setServicios] = useState<ServicioContratado[]>(client.servicios_contratados || [])
+  // Services state - using servicio_id (array of UUIDs)
+  const [servicioIds, setServicioIds] = useState<string[]>(client.servicio_id || [])
   const [serviciosDisponibles, setServiciosDisponibles] = useState<ServicioDisponible[]>([])
   const [showServiceSelect, setShowServiceSelect] = useState(false)
   const [savingServices, setSavingServices] = useState(false)
@@ -141,37 +141,34 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [] }: ClientInfoCar
     loadServices()
   }, [supabase])
   
-  // Add service
+  // Add service by ID
   const addService = async (service: ServicioDisponible) => {
-    const newServicio: ServicioContratado = {
-      id: service.id,
-      nombre: service.nombre,
-      categoria: service.categoria || undefined,
-      icono: service.icono || undefined,
-      color: service.color || undefined,
-    }
-    const newServicios = [...servicios, newServicio]
-    setServicios(newServicios)
+    if (servicioIds.includes(service.id)) return
+    const newIds = [...servicioIds, service.id]
+    setServicioIds(newIds)
     setShowServiceSelect(false)
-    await saveServices(newServicios)
+    await saveServices(newIds)
   }
   
-  // Remove service
+  // Remove service by ID
   const removeService = async (serviceId: string) => {
-    const newServicios = servicios.filter(s => s.id !== serviceId)
-    setServicios(newServicios)
-    await saveServices(newServicios)
+    const newIds = servicioIds.filter(id => id !== serviceId)
+    setServicioIds(newIds)
+    await saveServices(newIds)
   }
   
-  // Save services
-  const saveServices = async (servs: ServicioContratado[]) => {
+  // Save services - using servicio_id column (array of UUIDs)
+  const saveServices = async (ids: string[]) => {
     setSavingServices(true)
     await supabase
       .from('clientes')
-      .update({ servicios_contratados: servs })
+      .update({ servicio_id: ids })
       .eq('id', client.id)
     setSavingServices(false)
   }
+  
+  // Get service details by ID
+  const getServiceById = (id: string) => serviciosDisponibles.find(s => s.id === id)
   
   // Save contact - using existing fields: nombre, apellido, telefono
   const saveContact = async () => {
@@ -222,7 +219,7 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [] }: ClientInfoCar
   }
   
   const availableServicesFiltered = serviciosDisponibles.filter(
-    s => !servicios.some(cs => cs.id === s.id)
+    s => !servicioIds.includes(s.id)
   )
 
   const unidades = unidadesDeNegocio
@@ -243,26 +240,40 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [] }: ClientInfoCar
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {servicios.map(servicio => (
-              <Badge
-                key={servicio.id}
-                variant="outline"
-                className={cn(
-                  'gap-1.5 pr-1.5 group',
-                  SERVICE_COLORS[servicio.color || 'gray']
-                )}
-              >
-                {servicio.icono && SERVICE_ICONS[servicio.icono]}
-                {servicio.nombre}
-                <button
-                  onClick={() => removeService(servicio.id)}
-                  className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-foreground/10 rounded-full p-0.5"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
+  <div className="flex flex-wrap gap-2">
+  {servicioIds.map(id => {
+    const servicio = getServiceById(id)
+    if (!servicio) return (
+      <Badge key={id} variant="outline" className="gap-1.5 pr-1.5 group">
+        {id.slice(0, 8)}...
+        <button
+          onClick={() => removeService(id)}
+          className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-foreground/10 rounded-full p-0.5"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </Badge>
+    )
+    return (
+      <Badge
+        key={id}
+        variant="outline"
+        className={cn(
+          'gap-1.5 pr-1.5 group',
+          SERVICE_COLORS[servicio.color || 'gray']
+        )}
+      >
+        {servicio.icono && SERVICE_ICONS[servicio.icono]}
+        {servicio.nombre}
+        <button
+          onClick={() => removeService(id)}
+          className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-foreground/10 rounded-full p-0.5"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </Badge>
+    )
+  })}
             <Popover open={showServiceSelect} onOpenChange={setShowServiceSelect}>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="h-6 gap-1 text-xs">
