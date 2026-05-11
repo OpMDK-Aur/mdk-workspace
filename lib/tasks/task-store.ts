@@ -713,7 +713,7 @@ interface TaskStore {
   // Actions
   loadTasks: () => Promise<void>
   setView: (view: 'kanban' | 'list' | 'calendar') => void
-  setSelectedTask: (id: string | null) => void
+  setSelectedTask: (id: string | null) => Promise<void>
   setFilter: (key: keyof TaskStore['filters'], value: unknown) => void
   clearFilters: () => void
   
@@ -812,28 +812,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
       
       if (data && data.length > 0) {
-      // Load comments for all tasks
-      const taskIds = data.map((t) => t.id)
-        const { data: comentarios } = await supabase
-          .from('comentarios_tareas')
-          .select('*')
-          .in('tarea_id', taskIds)
-          .order('created_at', { ascending: true })
-
-        // Group comments by task
-        const commentsByTask = new Map<string, TaskComment[]>()
-        if (comentarios) {
-          comentarios.forEach((c) => {
-            const taskComments = commentsByTask.get(c.tarea_id) || []
-            taskComments.push(mapComentarioToComment(c as ComentarioDB))
-            commentsByTask.set(c.tarea_id, taskComments)
-          })
-        }
-
+        // Map tasks without comments - comments will be loaded on demand when task is selected
         const dbTasks = data.map((tarea) => {
-        const task = mapTareaToTask(tarea as TareaDB, colaboradoresMap)
-        task.comments = commentsByTask.get(tarea.id) || []
-        return task
+          const task = mapTareaToTask(tarea as TareaDB, colaboradoresMap)
+          task.comments = [] // Loaded on demand
+          return task
         })
         set({ tasks: dbTasks, isLoading: false })
       } else {
@@ -846,7 +829,33 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   setView: (view) => set({ view }),
-  setSelectedTask: (id) => set({ selectedTaskId: id }),
+  setSelectedTask: async (id) => {
+    set({ selectedTaskId: id })
+    
+    // Load comments on demand when task is selected
+    if (id) {
+      const task = get().tasks.find(t => t.id === id)
+      // Only load if comments haven't been loaded yet
+      if (task && task.comments.length === 0) {
+        const supabase = createClient()
+        const { data: comentarios } = await supabase
+          .from('comentarios_tareas')
+          .select('*')
+          .eq('tarea_id', id)
+          .order('created_at', { ascending: true })
+        
+        if (comentarios && comentarios.length > 0) {
+          set((state) => ({
+            tasks: state.tasks.map(t => 
+              t.id === id 
+                ? { ...t, comments: comentarios.map(c => mapComentarioToComment(c as ComentarioDB)) }
+                : t
+            )
+          }))
+        }
+      }
+    }
+  },
   setFilter: (key, value) => set((state) => ({
     filters: { ...state.filters, [key]: value },
   })),

@@ -118,12 +118,14 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
       
       setCurrentUserId(colaborador.id)
       
-      // Clean up old notifications and generate new ones for current user's tasks
+      // Clean up and generate notifications in parallel, then load
       try {
-        await fetch('/api/notifications/generate', { method: 'DELETE' })
-        await fetch('/api/notifications/generate', { method: 'POST' })
-      } catch (e) {
-        console.error('Error with notifications:', e)
+        await Promise.all([
+          fetch('/api/notifications/generate', { method: 'DELETE' }),
+          fetch('/api/notifications/generate', { method: 'POST' })
+        ])
+      } catch {
+        // Silently fail, still load existing notifications
       }
       
       loadNotificaciones(colaborador.id)

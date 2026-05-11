@@ -52,32 +52,28 @@ export async function POST() {
       return NextResponse.json({ error: tareasError.message }, { status: 500 })
     }
 
-    const notificationsToCreate: {
-      colaborador_id: string
-      tipo: string
-      titulo: string
-      descripcion: string
-      referencia_id: string
-      referencia_tipo: string
-      cliente_id: string | null
-    }[] = []
+    // Get existing notifications for today in a single query
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+    const taskIds = (tareas || []).map(t => t.id)
+    
+    const { data: existingNotifs } = taskIds.length > 0 
+      ? await supabase
+          .from('notificaciones')
+          .select('referencia_id')
+          .eq('colaborador_id', currentColaborador.id)
+          .eq('tipo', 'tarea_vence')
+          .in('referencia_id', taskIds)
+          .gte('created_at', todayStart)
+      : { data: [] }
+    
+    const existingTaskIds = new Set(existingNotifs?.map(n => n.referencia_id) || [])
 
-    for (const tarea of tareas || []) {
-      const fechaVencimiento = new Date(tarea.fecha_vencimiento)
-      const isOverdue = fechaVencimiento < now
-
-      // Check if notification already exists for this task today
-      const { data: existingNotif } = await supabase
-        .from('notificaciones')
-        .select('id')
-        .eq('colaborador_id', currentColaborador.id)
-        .eq('referencia_id', tarea.id)
-        .eq('tipo', 'tarea_vence')
-        .gte('created_at', new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString())
-        .limit(1)
-
-      if (!existingNotif || existingNotif.length === 0) {
-        notificationsToCreate.push({
+    const notificationsToCreate = (tareas || [])
+      .filter(tarea => !existingTaskIds.has(tarea.id))
+      .map(tarea => {
+        const fechaVencimiento = new Date(tarea.fecha_vencimiento)
+        const isOverdue = fechaVencimiento < now
+        return {
           colaborador_id: currentColaborador.id,
           tipo: 'tarea_vence',
           titulo: isOverdue 
@@ -89,9 +85,8 @@ export async function POST() {
           referencia_id: tarea.id,
           referencia_tipo: 'tarea',
           cliente_id: tarea.cliente_id,
-        })
-      }
-    }
+        }
+      })
 
     if (notificationsToCreate.length > 0) {
       const { error: insertError } = await supabase

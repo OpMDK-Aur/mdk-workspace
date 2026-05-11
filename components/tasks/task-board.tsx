@@ -76,18 +76,19 @@ export function TaskBoard() {
   // Generate seguimiento tasks for MDK clients on mount, then load all tasks
   useEffect(() => {
     const initTasks = async () => {
-      // Only generate seguimiento once per session
+      // Load tasks immediately, generate seguimiento in background
+      const loadPromise = loadTasks()
+      
+      // Only generate seguimiento once per session (non-blocking)
       if (!seguimientoGenerated.current) {
         seguimientoGenerated.current = true
-        // First delete non-MDK seguimiento tasks, then create new ones for MDK clients
-        try {
-          await fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' })
-          await fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
-        } catch {
-          // Silently fail, don't block task loading
-        }
+        Promise.all([
+          fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' }),
+          fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
+        ]).catch(() => {}) // Silently fail
       }
-      loadTasks()
+      
+      await loadPromise
     }
     initTasks()
   }, [loadTasks])

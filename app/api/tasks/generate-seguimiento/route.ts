@@ -67,29 +67,43 @@ export async function POST() {
       .ilike('nombre', '%Seguimiento%')
       .single()
     
+    // Get date range for all fridays
+    const firstFriday = fridays[0]
+    const lastFriday = fridays[fridays.length - 1]
+    const rangeStart = new Date(firstFriday)
+    rangeStart.setHours(0, 0, 0, 0)
+    const rangeEnd = new Date(lastFriday)
+    rangeEnd.setHours(23, 59, 59, 999)
+    
+    // Get all existing seguimiento tasks in one query
+    const clientIds = mdkClients
+      .map(c => (c.clientes as { id: string } | null)?.id)
+      .filter(Boolean) as string[]
+    
+    const { data: existingTasks } = await supabase
+      .from('tareas')
+      .select('cliente_id, fecha_vencimiento')
+      .in('cliente_id', clientIds)
+      .gte('fecha_vencimiento', rangeStart.toISOString())
+      .lte('fecha_vencimiento', rangeEnd.toISOString())
+      .ilike('titulo', '%Seguimiento semanal%')
+    
+    // Create a set of existing task keys for fast lookup
+    const existingKeys = new Set(
+      (existingTasks || []).map(t => {
+        const date = new Date(t.fecha_vencimiento)
+        return `${t.cliente_id}-${date.toISOString().split('T')[0]}`
+      })
+    )
+    
     for (const mdkClient of mdkClients) {
       const cliente = mdkClient.clientes as { id: string; nombre_del_negocio: string; account_manager_id: string | null } | null
       if (!cliente) continue
       
       for (const friday of fridays) {
-        const fechaVencimiento = friday.toISOString()
+        const dateKey = `${cliente.id}-${friday.toISOString().split('T')[0]}`
         
-        // Check if task already exists for this client and date (same day)
-        const startOfDay = new Date(friday)
-        startOfDay.setHours(0, 0, 0, 0)
-        const endOfDay = new Date(friday)
-        endOfDay.setHours(23, 59, 59, 999)
-        
-        const { data: existing } = await supabase
-          .from('tareas')
-          .select('id')
-          .eq('cliente_id', cliente.id)
-          .gte('fecha_vencimiento', startOfDay.toISOString())
-          .lte('fecha_vencimiento', endOfDay.toISOString())
-          .ilike('titulo', '%Seguimiento semanal%')
-          .maybeSingle()
-        
-        if (!existing) {
+        if (!existingKeys.has(dateKey)) {
           tasksToCreate.push({
             titulo: `Seguimiento semanal - ${cliente.nombre_del_negocio}`,
             descripcion: `<p><strong>Enviar reporte de metricas al cliente:</strong></p>
@@ -104,7 +118,7 @@ export async function POST() {
             asignado_a: cliente.account_manager_id,
             estado: 'pendiente',
             prioridad: 'media',
-            fecha_vencimiento: fechaVencimiento,
+            fecha_vencimiento: friday.toISOString(),
           })
         }
       }
