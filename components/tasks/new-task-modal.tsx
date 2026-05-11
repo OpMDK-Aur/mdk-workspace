@@ -1504,11 +1504,82 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
   const handleOptionSelect = async (value: string) => {
     if (!selectedTemplate) return
 
+    // Handle design flow confirm FIRST (before checking currentStep)
+    if (designFlowState?.step === 'confirm') {
+      if (value === 'confirm') {
+        await handleCreateTask()
+      } else {
+        onOpenChange(false)
+      }
+      return
+    }
+
+    // Handle design flow options (date confirmation, integration) - check early
+    if (designFlowState && selectedTemplate.id === 'pedido_diseno') {
+      const florColaborador = dbColaboradores.find(c => c.nombre.toLowerCase().includes('flor'))
+      const ayeColaborador = dbColaboradores.find(c => c.nombre.toLowerCase().includes('aye'))
+      
+      // Add user message
+      setMessages((prev) => [...prev, {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: value === 'accept_date' ? 'Si, esa fecha' : value === 'choose_date' ? 'Elegir otra fecha' : value === 'no_date' ? 'Sin fecha limite' : value === 'add_aye' ? `Si, agregar a ${ayeColaborador?.nombre || 'Aye'}` : 'Solo diseno',
+      }])
+      
+      if (designFlowState.step === 'ask_integration') {
+        const newData = { ...taskData }
+        if (value === 'add_aye' && ayeColaborador) {
+          newData.assigneeIds = [florColaborador?.id || '', ayeColaborador.id].filter(Boolean).join(',')
+          addAssistantMessage({ content: `Perfecto! Agrego a ${florColaborador?.nombre || 'Flor'} y a ${ayeColaborador.nombre}.` }, 300)
+        } else {
+          newData.assigneeId = florColaborador?.id || ''
+          addAssistantMessage({ content: `Ok, solo ${florColaborador?.nombre || 'Flor'} entonces.` }, 300)
+        }
+        
+        const recommendedDate = new Date(taskData.recommendedDate || Date.now())
+        const dateStr = recommendedDate.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
+        
+        setTimeout(() => {
+          addAssistantMessage({
+            content: `Te recomiendo fecha de entrega para el **${dateStr}** (${designFlowState.config.daysMin}-${designFlowState.config.daysMax} dias habiles). Te parece bien?`,
+            options: [
+              { label: `Si, para el ${dateStr}`, value: 'accept_date', emoji: '✅' },
+              { label: 'Prefiero elegir otra fecha', value: 'choose_date', emoji: '📅' },
+              { label: 'Sin fecha limite', value: 'no_date', emoji: '🔓' },
+            ],
+          }, 400)
+          setTaskData(newData)
+          setDesignFlowState({ ...designFlowState, step: 'confirm_date' })
+        }, 600)
+        return
+      }
+      
+      if (designFlowState.step === 'confirm_date') {
+        const newData = { ...taskData }
+        if (value === 'accept_date') {
+          newData.dueDate = taskData.recommendedDate
+          addAssistantMessage({ content: 'Perfecto!' }, 300)
+          setTimeout(() => showDesignConfirmation(newData), 600)
+        } else if (value === 'choose_date') {
+          addAssistantMessage({
+            content: 'Dale, decime para cuando lo necesitas:',
+            isDateTime: true,
+          }, 300)
+          setTaskData(newData)
+          setDesignFlowState({ ...designFlowState, step: 'custom_date' })
+        } else {
+          addAssistantMessage({ content: 'Ok, sin fecha limite.' }, 300)
+          setTimeout(() => showDesignConfirmation(newData), 600)
+        }
+        return
+      }
+    }
+
     const currentStep = selectedTemplate.flow[currentStepIndex]
     if (!currentStep) return
 
   // Handle confirm
-  if (currentStep.type === 'confirm' || (designFlowState?.step === 'confirm')) {
+  if (currentStep.type === 'confirm') {
   if (value === 'confirm') {
   await handleCreateTask()
   } else {
@@ -1607,63 +1678,6 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
       setTaskData(newData)
       // Continue with subtype-specific flow
       setTimeout(() => handleDesignSubtypeFlow(value, newData), 400)
-      return
-    }
-
-    // Handle design flow options (date confirmation, integration)
-    if (designFlowState && selectedTemplate.id === 'pedido_diseno') {
-      const florColaborador = dbColaboradores.find(c => c.nombre.toLowerCase().includes('flor'))
-      const ayeColaborador = dbColaboradores.find(c => c.nombre.toLowerCase().includes('aye'))
-      
-      if (designFlowState.step === 'ask_integration') {
-        if (value === 'add_aye' && ayeColaborador) {
-          newData.assigneeIds = [florColaborador?.id || '', ayeColaborador.id].filter(Boolean)
-          addAssistantMessage({ content: `Perfecto! Agrego a ${florColaborador?.nombre || 'Flor'} y a ${ayeColaborador.nombre}.` }, 300)
-        } else {
-          newData.assigneeId = florColaborador?.id || ''
-          addAssistantMessage({ content: `Ok, solo ${florColaborador?.nombre || 'Flor'} entonces.` }, 300)
-        }
-        
-        // Now ask about date
-        const recommendedDate = new Date(newData.recommendedDate || Date.now())
-        const dateStr = recommendedDate.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
-        
-        setTimeout(() => {
-          addAssistantMessage({
-            content: `Te recomiendo fecha de entrega para el **${dateStr}** (${designFlowState.config.daysMin}-${designFlowState.config.daysMax} dias habiles). Te parece bien?`,
-            options: [
-              { label: `Si, para el ${dateStr}`, value: 'accept_date', emoji: '✅' },
-              { label: 'Prefiero elegir otra fecha', value: 'choose_date', emoji: '📅' },
-              { label: 'Sin fecha limite', value: 'no_date', emoji: '🔓' },
-            ],
-          }, 400)
-          setTaskData(newData)
-          setDesignFlowState({ ...designFlowState, step: 'confirm_date' })
-        }, 600)
-        return
-      }
-      
-      if (designFlowState.step === 'confirm_date') {
-        if (value === 'accept_date') {
-          newData.dueDate = newData.recommendedDate
-          addAssistantMessage({ content: 'Perfecto!' }, 300)
-          setTimeout(() => showDesignConfirmation(newData), 600)
-        } else if (value === 'choose_date') {
-          addAssistantMessage({
-            content: 'Dale, decime para cuando lo necesitas:',
-            isDateTime: true,
-          }, 300)
-          setTaskData(newData)
-          setDesignFlowState({ ...designFlowState, step: 'custom_date' })
-        } else {
-          // No date
-          addAssistantMessage({ content: 'Ok, sin fecha limite.' }, 300)
-          setTimeout(() => showDesignConfirmation(newData), 600)
-        }
-        return
-      }
-      
-      setTaskData(newData)
       return
     }
 
