@@ -330,6 +330,12 @@ const getSemaforoById = (id: string | null) => {
   return SEMAFORO_OPTIONS.find(s => s.id === id) || SEMAFORO_OPTIONS[0]
 }
 
+// Helper to get semaforo color by name (verde, amarillo, etc)
+const getSemaforoByNombre = (nombre: string | null) => {
+  if (!nombre) return null
+  return SEMAFORO_OPTIONS.find(s => s.nombre === nombre) || null
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0, unidadesDeNegocio = [] }: ClientOverviewProps) {
   const sortedUnidades = sortUnidades(unidadesDeNegocio)
@@ -344,6 +350,24 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [amId, setAmId] = useState(client.account_manager_id)
   const [updatingPM, setUpdatingPM] = useState(false)
   const [updatingAM, setUpdatingAM] = useState(false)
+  
+  // Selected unit for dynamic semaphore display
+  const [selectedUnidadId, setSelectedUnidadId] = useState<string | null>(null)
+  
+  // Get the active semaphore based on selected unit or global
+  const getActiveSemaforo = () => {
+    if (selectedUnidadId && client.semaforo_unidades) {
+      const unidadSemaforo = client.semaforo_unidades[selectedUnidadId]
+      if (unidadSemaforo) {
+        const semaforoByNombre = getSemaforoByNombre(unidadSemaforo)
+        if (semaforoByNombre) return semaforoByNombre
+      }
+    }
+    return currentSemaforo
+  }
+  
+  const activeSemaforo = getActiveSemaforo()
+  const selectedUnidad = sortedUnidades.find(u => u.unidad_de_negocio_id === selectedUnidadId)
   
   const supabase = createClient()
 
@@ -537,14 +561,18 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           <div className="flex items-center gap-3">
             {/* Semaphore - Editable Dropdown */}
             <DropdownMenu>
-              <DropdownMenuTrigger asChild disabled={updatingStatus}>
+              <DropdownMenuTrigger asChild disabled={updatingStatus || !!selectedUnidadId}>
                 <button 
-                  className="flex items-center justify-center w-8 h-8 rounded-full cursor-pointer hover:opacity-80 transition-opacity ring-2 ring-offset-2 ring-offset-background"
+                  className={cn(
+                    "flex items-center justify-center w-8 h-8 rounded-full transition-all ring-2 ring-offset-2 ring-offset-background",
+                    selectedUnidadId ? "cursor-default" : "cursor-pointer hover:opacity-80"
+                  )}
                   style={{ 
-                    backgroundColor: currentSemaforo.color,
+                    backgroundColor: activeSemaforo.color,
                     // @ts-expect-error - CSS custom property for ring color
-                    '--tw-ring-color': currentSemaforo.color 
+                    '--tw-ring-color': activeSemaforo.color 
                   } as React.CSSProperties}
+                  title={selectedUnidadId ? `Semaforo de ${selectedUnidad?.unidad_de_negocio?.nombre}` : 'Cambiar semaforo global'}
                 >
                   {updatingStatus && <RefreshCw className="h-4 w-4 text-white animate-spin" />}
                 </button>
@@ -566,16 +594,36 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   <div>
   <div className="flex items-center gap-2 flex-wrap">
     <h1 className="text-2xl font-bold text-foreground text-balance">{client.business_name}</h1>
-    {sortedUnidades.map((u) => (
-      <Badge 
-        key={u.unidad_de_negocio_id} 
-        className="bg-zinc-800 text-white hover:bg-zinc-700 text-xs"
-      >
-        {u.unidad_de_negocio?.nombre}
-      </Badge>
-    ))}
+    {sortedUnidades.map((u) => {
+      const isSelected = selectedUnidadId === u.unidad_de_negocio_id
+      const unidadSemaforoNombre = client.semaforo_unidades?.[u.unidad_de_negocio_id]
+      const unidadSemaforo = unidadSemaforoNombre ? getSemaforoByNombre(unidadSemaforoNombre) : null
+      
+      return (
+        <Badge 
+          key={u.unidad_de_negocio_id} 
+          className={cn(
+            "text-xs cursor-pointer transition-all",
+            isSelected 
+              ? "ring-2 ring-offset-2 ring-offset-background" 
+              : "hover:bg-zinc-700",
+            unidadSemaforo ? `bg-opacity-80` : "bg-zinc-800 text-white"
+          )}
+          style={unidadSemaforo ? { 
+            backgroundColor: unidadSemaforo.color,
+            color: 'white',
+            ...(isSelected ? { ringColor: unidadSemaforo.color } : {})
+          } : undefined}
+          onClick={() => setSelectedUnidadId(isSelected ? null : u.unidad_de_negocio_id)}
+        >
+          {u.unidad_de_negocio?.nombre}
+        </Badge>
+      )
+    })}
   </div>
-  <p className="text-sm text-muted-foreground mt-0.5">{currentSemaforo.label}</p>
+  <p className="text-sm text-muted-foreground mt-0.5">
+    {selectedUnidad ? `${selectedUnidad.unidad_de_negocio?.nombre}: ${activeSemaforo.label}` : activeSemaforo.label}
+  </p>
   </div>
   </div>
 
