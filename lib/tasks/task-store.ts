@@ -19,6 +19,7 @@ interface TareaDB {
   cliente_id: string | null
   servicio_id: string | null
   asignado_a: string | null
+  asignados_a?: string[] | null
   creado_por: string | null
   estado: string
   prioridad: string
@@ -143,6 +144,7 @@ function mapTareaToTask(
         if (creador) {
           return [creador.nombre, creador.apellido].filter(Boolean).join(' ')
         }
+        console.log('[v0] Creador not found in map for creado_por:', tarea.creado_por, 'Map keys:', Array.from(colaboradoresMap.keys()))
       }
       return 'Sistema'
     })(),
