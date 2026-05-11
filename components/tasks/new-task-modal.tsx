@@ -706,21 +706,23 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
           {message.content}
         </div>
 
-        {/* Template options - grid layout for initial selection */}
+        {/* Template options - grid layout for initial selection with scroll */}
         {isAssistant && message.options && message.options.length > 6 && isLast && (
-          <div className="grid grid-cols-2 gap-2 w-full">
-            {message.options.map((opt) => (
-              <Button
-                key={opt.value}
-                variant="outline"
-                size="sm"
-                className="h-auto py-2.5 px-3 text-xs gap-2 justify-start hover:bg-primary hover:text-primary-foreground transition-all hover:scale-[1.02]"
-                onClick={() => onSelect?.(opt.value)}
-              >
-                {opt.icon}
-                <span className="truncate">{opt.label}</span>
-              </Button>
-            ))}
+          <div className="max-h-[280px] overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 gap-2 w-full">
+              {message.options.map((opt) => (
+                <Button
+                  key={opt.value}
+                  variant="outline"
+                  size="sm"
+                  className="h-auto py-2.5 px-3 text-xs gap-2 justify-start hover:bg-primary hover:text-primary-foreground transition-all hover:scale-[1.02]"
+                  onClick={() => onSelect?.(opt.value)}
+                >
+                  {opt.icon}
+                  <span className="truncate">{opt.label}</span>
+                </Button>
+              ))}
+            </div>
           </div>
         )}
 
