@@ -23,14 +23,18 @@ export async function POST() {
     endOfWeek.setDate(now.getDate() + (7 - now.getDay())) // End of current week (Sunday)
     endOfWeek.setHours(23, 59, 59, 999)
 
-    // Get user's collaborador record to check role
+    // Get user's collaborador record using email
     const { data: colaborador } = await supabase
       .from('colaboradores')
       .select('id, email')
-      .eq('id', user.id)
+      .eq('email', user.email)
       .single()
     
-    const isAdmin = colaborador?.email === 'operaciones@madketing.io' || colaborador?.email === 'direccion@madketing.io'
+    if (!colaborador) {
+      return NextResponse.json({ error: 'Colaborador not found' }, { status: 404 })
+    }
+    
+    const isAdmin = colaborador.email === 'operaciones@madketing.io' || colaborador.email === 'direccion@madketing.io'
     
     // Build query - admins see all tasks, others see only their assigned tasks
     let query = supabase
@@ -50,7 +54,7 @@ export async function POST() {
     
     // If not admin, filter by assigned tasks only
     if (!isAdmin) {
-      query = query.eq('asignado_a', user.id)
+      query = query.eq('asignado_a', colaborador.id)
     }
     
     const { data: tareas, error: tareasError } = await query
@@ -79,7 +83,7 @@ export async function POST() {
       const { data: existingNotif } = await supabase
         .from('notificaciones')
         .select('id')
-        .eq('colaborador_id', user.id)
+        .eq('colaborador_id', colaborador.id)
         .eq('referencia_id', tarea.id)
         .eq('tipo', 'tarea_vence')
         .gte('created_at', new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString())
@@ -87,7 +91,7 @@ export async function POST() {
 
       if (!existingNotif || existingNotif.length === 0) {
         notificationsToCreate.push({
-          colaborador_id: user.id,
+          colaborador_id: colaborador.id,
           tipo: 'tarea_vence',
           titulo: isOverdue 
             ? `Tarea vencida: ${tarea.titulo}`
