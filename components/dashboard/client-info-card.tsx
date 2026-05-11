@@ -304,7 +304,7 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [] }: ClientInfoCar
               </PopoverContent>
             </Popover>
           </div>
-          {servicios.length === 0 && (
+          {servicioIds.length === 0 && (
             <p className="text-xs text-muted-foreground mt-2">Sin servicios asignados</p>
           )}
         </CardContent>
