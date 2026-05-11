@@ -57,16 +57,13 @@ export async function POST() {
       estado: string
       prioridad: string
       fecha_vencimiento: string
-      es_activa: boolean
-      es_recurrente: boolean
-      frecuencia_recurrencia: string
     }> = []
     
     // Get tipo_tarea_id for "Seguimiento" if it exists
     const { data: tipoTarea } = await supabase
       .from('tipo_de_tareas')
       .select('id')
-      .eq('nombre', 'Seguimiento')
+      .ilike('nombre', '%Seguimiento%')
       .single()
     
     for (const mdkClient of mdkClients) {
@@ -74,16 +71,22 @@ export async function POST() {
       if (!cliente) continue
       
       for (const friday of fridays) {
-        const fechaStr = friday.toISOString().split('T')[0]
+        const fechaVencimiento = friday.toISOString()
         
-        // Check if task already exists for this client and date
+        // Check if task already exists for this client and date (same day)
+        const startOfDay = new Date(friday)
+        startOfDay.setHours(0, 0, 0, 0)
+        const endOfDay = new Date(friday)
+        endOfDay.setHours(23, 59, 59, 999)
+        
         const { data: existing } = await supabase
           .from('tareas')
           .select('id')
           .eq('cliente_id', cliente.id)
-          .eq('fecha_vencimiento', fechaStr)
+          .gte('fecha_vencimiento', startOfDay.toISOString())
+          .lte('fecha_vencimiento', endOfDay.toISOString())
           .ilike('titulo', '%Seguimiento semanal%')
-          .single()
+          .maybeSingle()
         
         if (!existing) {
           tasksToCreate.push({
@@ -99,10 +102,7 @@ export async function POST() {
             tipo_tarea_id: tipoTarea?.id ?? null,
             estado: 'pendiente',
             prioridad: 'media',
-            fecha_vencimiento: fechaStr,
-            es_activa: true,
-            es_recurrente: true,
-            frecuencia_recurrencia: 'weekly',
+            fecha_vencimiento: fechaVencimiento,
           })
         }
       }

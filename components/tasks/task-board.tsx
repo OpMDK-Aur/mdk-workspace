@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import type { TaskPriority, TaskType } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -59,9 +59,26 @@ export function TaskBoard() {
   } = useTaskStore()
   const [newTaskOpen, setNewTaskOpen] = useState(false)
   
-  // Load tasks on mount
+  // Track if seguimiento was already generated this session
+  const seguimientoGenerated = useRef(false)
+  
+  // Generate seguimiento tasks for MDK clients on mount, then load all tasks
   useEffect(() => {
-    loadTasks()
+    const initTasks = async () => {
+      // Only generate seguimiento once per session
+      if (!seguimientoGenerated.current) {
+        seguimientoGenerated.current = true
+        // First delete non-MDK seguimiento tasks, then create new ones for MDK clients
+        try {
+          await fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' })
+          await fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
+        } catch {
+          // Silently fail, don't block task loading
+        }
+      }
+      loadTasks()
+    }
+    initTasks()
   }, [loadTasks])
 
   const hasSimpleFilters = filters.priority || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery
