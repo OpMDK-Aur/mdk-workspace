@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { useTaskStore } from '@/lib/tasks/task-store'
+
 import { 
   Calendar, 
   CheckSquare, 
@@ -87,7 +87,6 @@ function groupByDate(notifications: Notificacion[]) {
 
 export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
   const router = useRouter()
-  const setSelectedTask = useTaskStore((s) => s.setSelectedTask)
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'todas' | 'no_leidas'>('todas')
@@ -186,14 +185,8 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
     
     // Navigate to task if it's a task-related notification
     if (notif.referencia_tipo === 'tarea' && notif.referencia_id) {
-      // Close the panel
       onClose()
-      // Navigate to tasks page and open the task
-      router.push('/dashboard/tareas')
-      // Set selected task after a small delay to ensure the page has loaded
-      setTimeout(() => {
-        setSelectedTask(notif.referencia_id!)
-      }, 100)
+      router.push(`/dashboard/tasks?task=${notif.referencia_id}`)
     }
   }
 

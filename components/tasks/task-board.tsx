@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { TaskPriority, TaskType } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -42,6 +43,7 @@ import {
 import { Input } from '@/components/ui/input'
 
 export function TaskBoard() {
+  const searchParams = useSearchParams()
   const { 
     view, 
     setView, 
@@ -56,11 +58,20 @@ export function TaskBoard() {
     deleteSavedFilter,
     loadTasks,
     isLoading,
+    setSelectedTask,
   } = useTaskStore()
   const [newTaskOpen, setNewTaskOpen] = useState(false)
   
   // Track if seguimiento was already generated this session
   const seguimientoGenerated = useRef(false)
+  
+  // Open task from URL parameter (e.g., from notification click)
+  useEffect(() => {
+    const taskId = searchParams.get('task')
+    if (taskId) {
+      setSelectedTask(taskId)
+    }
+  }, [searchParams, setSelectedTask])
   
   // Generate seguimiento tasks for MDK clients on mount, then load all tasks
   useEffect(() => {
