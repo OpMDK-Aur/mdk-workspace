@@ -158,12 +158,17 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       
       // Filter tasks that belong to this client
       if (!tasksRes.error && tasksRes.data) {
+        console.log('[v0] All tasks:', tasksRes.data.length, 'clientId:', clientId)
+        console.log('[v0] Sample task:', tasksRes.data[0])
         const clientTasksFiltered = tasksRes.data.filter(task => {
           if (task.cliente_id === clientId) return true
           if (Array.isArray(task.cliente_ids) && task.cliente_ids.includes(clientId)) return true
           return false
         })
+        console.log('[v0] Filtered tasks for client:', clientTasksFiltered.length)
         setClientTasks(clientTasksFiltered)
+      } else if (tasksRes.error) {
+        console.error('[v0] Error fetching tasks:', tasksRes.error)
       }
       
       if (!colabRes.error && colabRes.data) {
