@@ -78,7 +78,7 @@ export function TaskBoard() {
     initTasks()
   }, [loadTasks])
 
-  const hasSimpleFilters = filters.priority || filters.assigneeId || filters.type || filters.dueThisWeek || filters.searchQuery
+  const hasSimpleFilters = filters.priority || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery
   const hasAdvancedFilters = advancedFilters.length > 0
   const hasFilters = hasSimpleFilters || hasAdvancedFilters
 
@@ -200,19 +200,21 @@ export function TaskBoard() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Assignee filter */}
+            {/* Assignee filter (multi-select) */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Badge
                   variant="outline"
                   className={cn(
                     'cursor-pointer px-2.5 py-1 h-7 gap-1',
-                    filters.assigneeId && 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                    filters.assigneeIds.length > 0 && 'bg-blue-500/10 text-blue-400 border-blue-500/30'
                   )}
                 >
-                  {filters.assigneeId
-                    ? ASSIGNEES.find((a) => a.id === filters.assigneeId)?.name ?? 'Asignado'
-                    : 'Asignado'}
+                  {filters.assigneeIds.length === 0
+                    ? 'Asignado'
+                    : filters.assigneeIds.length === 1
+                    ? ASSIGNEES.find((a) => a.id === filters.assigneeIds[0])?.name ?? 'Asignado'
+                    : `${filters.assigneeIds.length} asignados`}
                   <ChevronDown className="h-3 w-3" />
                 </Badge>
               </DropdownMenuTrigger>
@@ -220,12 +222,28 @@ export function TaskBoard() {
                 {ASSIGNEES.map((a) => (
                   <DropdownMenuCheckboxItem
                     key={a.id}
-                    checked={filters.assigneeId === a.id}
-                    onCheckedChange={(checked) => setFilter('assigneeId', checked ? a.id : null)}
+                    checked={filters.assigneeIds.includes(a.id)}
+                    onCheckedChange={(checked) => {
+                      const newIds = checked
+                        ? [...filters.assigneeIds, a.id]
+                        : filters.assigneeIds.filter(id => id !== a.id)
+                      setFilter('assigneeIds', newIds)
+                    }}
                   >
                     {a.name}
                   </DropdownMenuCheckboxItem>
                 ))}
+                {filters.assigneeIds.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-muted-foreground text-xs justify-center"
+                      onClick={() => setFilter('assigneeIds', [])}
+                    >
+                      Limpiar seleccion
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 

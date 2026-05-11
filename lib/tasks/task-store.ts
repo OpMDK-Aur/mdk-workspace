@@ -789,7 +789,7 @@ interface TaskStore {
   // Legacy simple filters (for quick access)
   filters: {
   priority: TaskPriority | null
-  assigneeId: string | null
+  assigneeIds: string[]
   type: TaskType | null
   dueThisWeek: boolean
   searchQuery: string
@@ -847,7 +847,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   view: 'calendar',
   filters: {
   priority: null,
-  assigneeId: null,
+  assigneeIds: [],
   type: null,
   dueThisWeek: false,
   searchQuery: '',
@@ -944,7 +944,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     filters: { ...state.filters, [key]: value },
   })),
   clearFilters: () => set({
-  filters: { priority: null, assigneeId: null, type: null, dueThisWeek: false, searchQuery: '' },
+  filters: { priority: null, assigneeIds: [], type: null, dueThisWeek: false, searchQuery: '' },
   advancedFilters: [],
   }),
   
@@ -1320,7 +1320,14 @@ export function useFilteredTasks() {
   // Apply simple filters first
   let filteredTasks = tasks.filter((task) => {
   if (filters.priority && task.priority !== filters.priority) return false
-  if (filters.assigneeId && task.assigneeId !== filters.assigneeId) return false
+  // Multi-assignee filter - check if task's assignee is in the selected list
+  if (filters.assigneeIds.length > 0) {
+    // Check primary assignee
+    const hasMatchingAssignee = task.assigneeId && filters.assigneeIds.includes(task.assigneeId)
+    // Check additional assignees if they exist
+    const hasMatchingAdditionalAssignee = task.assigneeIds?.some(id => filters.assigneeIds.includes(id)) ?? false
+    if (!hasMatchingAssignee && !hasMatchingAdditionalAssignee) return false
+  }
   if (filters.type && task.type !== filters.type) return false
   if (filters.dueThisWeek && task.dueDate) {
   const now = new Date()
