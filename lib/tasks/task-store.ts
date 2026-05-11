@@ -788,10 +788,11 @@ interface TaskStore {
   
   // Legacy simple filters (for quick access)
   filters: {
-    priority: TaskPriority | null
-    assigneeId: string | null
-    type: TaskType | null
-    dueThisWeek: boolean
+  priority: TaskPriority | null
+  assigneeId: string | null
+  type: TaskType | null
+  dueThisWeek: boolean
+  searchQuery: string
   }
   
   // Advanced filters
@@ -845,10 +846,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   selectedTaskId: null,
   view: 'calendar',
   filters: {
-    priority: null,
-    assigneeId: null,
-    type: null,
-    dueThisWeek: false,
+  priority: null,
+  assigneeId: null,
+  type: null,
+  dueThisWeek: false,
+  searchQuery: '',
   },
   advancedFilters: [],
   savedFilters: [],
@@ -942,8 +944,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     filters: { ...state.filters, [key]: value },
   })),
   clearFilters: () => set({
-    filters: { priority: null, assigneeId: null, type: null, dueThisWeek: false },
-    advancedFilters: [],
+  filters: { priority: null, assigneeId: null, type: null, dueThisWeek: false, searchQuery: '' },
+  advancedFilters: [],
   }),
   
   // Advanced filters
@@ -1314,19 +1316,28 @@ export function useFilteredTasks() {
   const tasks = useTaskStore((s) => s.tasks)
   const filters = useTaskStore((s) => s.filters)
   const advancedFilters = useTaskStore((s) => s.advancedFilters)
-
+  
   // Apply simple filters first
   let filteredTasks = tasks.filter((task) => {
-    if (filters.priority && task.priority !== filters.priority) return false
-    if (filters.assigneeId && task.assigneeId !== filters.assigneeId) return false
-    if (filters.type && task.type !== filters.type) return false
-    if (filters.dueThisWeek && task.dueDate) {
-      const now = new Date()
-      const endOfWeek = new Date(now)
-      endOfWeek.setDate(now.getDate() + (7 - now.getDay()))
-      if (task.dueDate > endOfWeek) return false
-    }
-    return true
+  if (filters.priority && task.priority !== filters.priority) return false
+  if (filters.assigneeId && task.assigneeId !== filters.assigneeId) return false
+  if (filters.type && task.type !== filters.type) return false
+  if (filters.dueThisWeek && task.dueDate) {
+  const now = new Date()
+  const endOfWeek = new Date(now)
+  endOfWeek.setDate(now.getDate() + (7 - now.getDay()))
+  if (task.dueDate > endOfWeek) return false
+  }
+  // Search query filter - search in title, client name, and description
+  if (filters.searchQuery) {
+  const query = filters.searchQuery.toLowerCase()
+  const matchesTitle = task.title.toLowerCase().includes(query)
+  const matchesClient = task.clientName?.toLowerCase().includes(query) ?? false
+  const matchesDescription = task.description?.toLowerCase().includes(query) ?? false
+  const matchesAssignee = task.assigneeName?.toLowerCase().includes(query) ?? false
+  if (!matchesTitle && !matchesClient && !matchesDescription && !matchesAssignee) return false
+  }
+  return true
   })
 
   // Apply advanced filters if any

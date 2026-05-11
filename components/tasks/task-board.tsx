@@ -37,7 +37,9 @@ import {
   ChevronDown,
   FileText,
   X,
+  Search,
 } from 'lucide-react'
+import { Input } from '@/components/ui/input'
 
 export function TaskBoard() {
   const { 
@@ -76,7 +78,7 @@ export function TaskBoard() {
     initTasks()
   }, [loadTasks])
 
-  const hasSimpleFilters = filters.priority || filters.assigneeId || filters.type || filters.dueThisWeek
+  const hasSimpleFilters = filters.priority || filters.assigneeId || filters.type || filters.dueThisWeek || filters.searchQuery
   const hasAdvancedFilters = advancedFilters.length > 0
   const hasFilters = hasSimpleFilters || hasAdvancedFilters
 
@@ -133,6 +135,18 @@ export function TaskBoard() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Buscar tareas..."
+              value={filters.searchQuery}
+              onChange={(e) => setFilter('searchQuery', e.target.value)}
+              className="pl-9 w-[200px] h-8"
+            />
+          </div>
+
           {/* Advanced Filter Builder */}
           <FilterBuilder
             filters={advancedFilters}
