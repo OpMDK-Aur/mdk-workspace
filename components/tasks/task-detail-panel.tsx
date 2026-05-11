@@ -1780,7 +1780,6 @@ export function TaskDetailPanel() {
                       
                       <div>
                         <Label className="text-xs text-muted-foreground mb-1.5 block">Clientes</Label>
-                        {console.log('[v0] MultiClientSelect - task.clients:', task.clients, 'clientes:', clientes?.length)}
                         <MultiClientSelect
                           clients={task.clients || []}
                           availableClients={clientes}
@@ -1938,23 +1937,19 @@ export function TaskDetailPanel() {
                   {/* Client & Assignee */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-xs text-muted-foreground mb-1.5 block">Cliente</Label>
-                      <Select
-                        value={task.clientId}
-                        onValueChange={(v) => {
-                          const cliente = clientes.find((c) => c.id === v)
-                          if (cliente) updateTask(task.id, { clientId: v, clientName: cliente.nombre_del_negocio })
+                      <Label className="text-xs text-muted-foreground mb-1.5 block">Clientes</Label>
+                      <MultiClientSelect
+                        clients={task.clients || []}
+                        availableClients={clientes}
+                        onChange={(newClients) => {
+                          updateTask(task.id, { 
+                            clients: newClients,
+                            clientIds: newClients.map(c => c.id),
+                            clientId: newClients[0]?.id || '',
+                            clientName: newClients[0]?.nombre_del_negocio || 'Sin cliente',
+                          })
                         }}
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder="Seleccionar cliente" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clientes.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>{c.nombre_del_negocio}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      />
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground mb-1.5 block">Asignados</Label>
