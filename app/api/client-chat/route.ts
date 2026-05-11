@@ -96,15 +96,61 @@ export async function POST(req: Request) {
       // Cache errors are non-fatal
     }
 
-    // Build context
+    // Build context with all client properties
     const clientInfo = `
 ## Información del Cliente
-- Nombre: ${client.nombre_del_negocio || client.business_name || 'N/A'}
+- ID: ${client.id}
+- Nombre del Negocio: ${client.nombre_del_negocio || client.business_name || 'N/A'}
 - Plan: ${client.plan || 'N/A'}
-- Estado: ${client.estado || client.status || 'N/A'}
+- Estado/Semaforo: ${client.semaforo_id || client.status || 'N/A'}
+- Etapa: ${client.etapa || 'N/A'}
+
+### Contacto
+- Nombre: ${client.nombre || ''} ${client.apellido || ''}
+- Teléfono: ${client.telefono || 'N/A'}
+- Email: ${client.email || 'N/A'}
+
+### Fechas Importantes
+- Fecha de Venta: ${client.fecha_venta || 'N/A'}
+- Fecha de Activación: ${client.fecha_activacion || 'N/A'}
+- Fecha de Inicio de Trabajo: ${client.fecha_inicio_trabajo || 'N/A'}
+- Fecha de Baja: ${client.fecha_baja || 'N/A'}
+- Creado: ${client.created_at || 'N/A'}
+- Actualizado: ${client.updated_at || 'N/A'}
+
+### Fees y Financiero
 - Fee MDK: $${client.fee_mdk?.toLocaleString() || 'N/A'}
-- Google Ads ID: ${client.google_ads_customer_id || 'No configurado'}
-- Meta Ads ID: ${client.meta_ads_account_id || 'No configurado'}
+- Fee Aurelia: $${client.fee_aurelia?.toLocaleString() || 'N/A'}
+- NPS Score: ${client.nps_score || 'N/A'}
+
+### Plataformas Publicitarias
+- Google Ads Customer ID: ${client.google_ads_customer_id || 'No configurado'}
+- Meta Ads Account ID: ${client.meta_ads_account_id || 'No configurado'}
+
+### CRM
+- Tipo de CRM: ${client.crm_type || client.crm_tipo || 'N/A'}
+- URL CRM: ${client.crm_url || 'N/A'}
+- GHL Location ID: ${client.ghl_location_id || 'N/A'}
+
+### Equipo Asignado
+- Project Manager ID: ${client.project_manager_id || 'No asignado'}
+- Account Manager ID: ${client.account_manager_id || 'No asignado'}
+
+### Servicios Contratados
+${client.servicio_id && client.servicio_id.length > 0 ? client.servicio_id.map((id: string) => `- ${id}`).join('\n') : '- Sin servicios asignados'}
+
+### Semáforo por Unidad de Negocio
+${client.semaforo_unidades ? Object.entries(client.semaforo_unidades).map(([unidad, color]) => `- ${unidad}: ${color}`).join('\n') : '- Sin semáforos por unidad'}
+
+### Landings
+${client.landings && client.landings.length > 0 ? client.landings.map((l: { nombre: string; url: string; tipo: string }) => `- ${l.nombre} (${l.tipo}): ${l.url}`).join('\n') : '- Sin landings registradas'}
+
+### Discord
+- Canal: ${client.discord_channel_name || 'N/A'}
+- Canal ID: ${client.discord_channel_id || 'N/A'}
+
+### Notion
+- Notion ID: ${client.notion_id || 'N/A'}
 `
 
     const memoriaContent = memoria?.contenido
