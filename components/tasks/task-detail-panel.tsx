@@ -108,6 +108,90 @@ function formatTime(seconds: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
+// Multi Client Select Component
+function MultiClientSelect({
+  clients,
+  availableClients,
+  onChange
+}: {
+  clients: Array<{ id: string; nombre_del_negocio: string }>
+  availableClients: Array<{ id: string; nombre_del_negocio: string }>
+  onChange: (clients: Array<{ id: string; nombre_del_negocio: string }>) => void
+}) {
+  const [open, setOpen] = useState(false)
+  
+  const addClient = (clientId: string) => {
+    const client = availableClients.find(c => c.id === clientId)
+    if (client && !clients.find(c => c.id === clientId)) {
+      onChange([...clients, { id: client.id, nombre_del_negocio: client.nombre_del_negocio }])
+    }
+  }
+  
+  const removeClient = (id: string) => {
+    onChange(clients.filter(c => c.id !== id))
+  }
+  
+  const remainingClients = availableClients.filter(c => !clients.find(cl => cl.id === c.id))
+  
+  return (
+    <div className="space-y-2">
+      {/* Current clients */}
+      <div className="flex flex-wrap gap-1.5">
+        {clients.length === 0 ? (
+          <span className="text-sm text-muted-foreground">Sin cliente</span>
+        ) : (
+          clients.map(c => (
+            <div
+              key={c.id}
+              className="flex items-center gap-1.5 bg-muted/50 rounded-full px-2.5 py-0.5 group"
+            >
+              <span className="text-xs">{c.nombre_del_negocio}</span>
+              <button
+                onClick={() => removeClient(c.id)}
+                className="h-4 w-4 rounded-full hover:bg-destructive/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+      
+      {/* Add client popover */}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+            <Plus className="h-3 w-3" />
+            Agregar cliente
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-56 p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Buscar cliente..." className="h-9" />
+            <CommandList>
+              <CommandEmpty>No se encontraron clientes</CommandEmpty>
+              <CommandGroup>
+                {remainingClients.map((c) => (
+                  <CommandItem
+                    key={c.id}
+                    value={c.nombre_del_negocio}
+                    onSelect={() => {
+                      addClient(c.id)
+                      setOpen(false)
+                    }}
+                  >
+                    {c.nombre_del_negocio}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
+}
+
 // Multi Assignee Select Component
 function MultiAssigneeSelect({ 
   assignees, 
@@ -704,7 +788,7 @@ function TimeTracker({ task }: { task: Task }) {
   )
 }
 
-// ── Files Section ───────────────────────────────����─��──���────────────────────────
+// ── Files Section ───────────────────────────────�����─��──���────────────────────────
 
 function FilesSection({ task }: { task: Task }) {
   const { addFile, deleteFile } = useTaskStore()
@@ -1491,7 +1575,11 @@ export function TaskDetailPanel() {
                   </Badge>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">{task.clientName}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {task.clients && task.clients.length > 0 
+                  ? task.clients.map(c => c.nombre_del_negocio).join(', ')
+                  : task.clientName}
+              </p>
               
               {/* WhatsApp button for system tasks */}
               {task.isSystemTask && task.systemTaskMeta?.whatsappLink && (
@@ -1691,23 +1779,19 @@ export function TaskDetailPanel() {
                       </div>
                       
                       <div>
-                        <Label className="text-xs text-muted-foreground mb-1.5 block">Cliente</Label>
-                        <Select
-                          value={task.clientId}
-                          onValueChange={(v) => {
-                            const cliente = clientes.find((c) => c.id === v)
-                            if (cliente) updateTask(task.id, { clientId: v, clientName: cliente.nombre_del_negocio })
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">Clientes</Label>
+                        <MultiClientSelect
+                          clients={task.clients || []}
+                          availableClients={clientes}
+                          onChange={(newClients) => {
+                            updateTask(task.id, { 
+                              clients: newClients,
+                              clientIds: newClients.map(c => c.id),
+                              clientId: newClients[0]?.id || '',
+                              clientName: newClients[0]?.nombre_del_negocio || 'Sin cliente',
+                            })
                           }}
-                        >
-                          <SelectTrigger className="h-9">
-                            <SelectValue placeholder="Seleccionar cliente" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {clientes.map((c) => (
-                              <SelectItem key={c.id} value={c.id}>{c.nombre_del_negocio}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        />
                       </div>
                       
                       <div>

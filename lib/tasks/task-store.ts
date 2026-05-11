@@ -17,6 +17,7 @@ interface TareaDB {
   descripcion: string | null
   tipo_tarea_id: string | null
   cliente_id: string | null
+  cliente_ids?: string[] | null // Multi-client support
   servicio_id: string | null
   asignado_a: string | null
   asignados_a?: string[] | null
@@ -86,7 +87,8 @@ function mapPrioridadToPriority(prioridad: string): TaskPriority {
 // Convert DB tarea to Task
 function mapTareaToTask(
   tarea: TareaDB, 
-  colaboradoresMap?: Map<string, { id: string; nombre: string; apellido?: string | null; avatar_url?: string | null }>
+  colaboradoresMap?: Map<string, { id: string; nombre: string; apellido?: string | null; avatar_url?: string | null }>,
+  clientesMap?: Map<string, { id: string; nombre_del_negocio: string }>
 ): Task {
   // Build assignees array from asignados_a
   const assignees: Array<{ id: string; nombre: string; avatar_url: string | null }> = []
@@ -110,12 +112,32 @@ function mapTareaToTask(
     })
   }
 
+  // Build clients array from cliente_ids
+  const clients: Array<{ id: string; nombre_del_negocio: string }> = []
+  const clientIds = tarea.cliente_ids || (tarea.cliente_id ? [tarea.cliente_id] : [])
+  
+  if (clientIds.length > 0 && clientesMap) {
+    for (const clientId of clientIds) {
+      const cliente = clientesMap.get(clientId)
+      if (cliente) {
+        clients.push({ id: cliente.id, nombre_del_negocio: cliente.nombre_del_negocio })
+      }
+    }
+  } else if (tarea.clientes) {
+    // Fallback to single client for backwards compatibility
+    clients.push({ id: tarea.clientes.id, nombre_del_negocio: tarea.clientes.nombre_del_negocio })
+  }
+
   return {
     id: tarea.id,
     title: tarea.titulo,
     description: tarea.descripcion,
-    clientId: tarea.cliente_id || '',
-    clientName: tarea.clientes?.nombre_del_negocio || 'Sin cliente',
+    // Legacy single client (first in array or fallback)
+    clientId: clients[0]?.id || tarea.cliente_id || '',
+    clientName: clients[0]?.nombre_del_negocio || tarea.clientes?.nombre_del_negocio || 'Sin cliente',
+    // Multi-client
+    clientIds,
+    clients,
     // Legacy single assignee (first in array or fallback)
     assigneeId: assignees[0]?.id || tarea.asignado_a || '',
     assigneeName: assignees[0]?.nombre || 'Sin asignar',
@@ -161,6 +183,8 @@ const MOCK_TASKS: Task[] = [
     description: '<p>Implementar integracion con sistema de inventario</p><ul><li>Conexion API REST</li><li>Sincronizacion de productos</li><li>Mapeo de campos</li></ul>',
     clientId: 'alambrados',
     clientName: 'Alambrados Patagonia',
+    clientIds: ['alambrados'],
+    clients: [{ id: 'alambrados', nombre_del_negocio: 'Alambrados Patagonia' }],
     assigneeId: 'erika',
     assigneeName: 'Erika Gordillo',
     assignees: [{ id: 'erika', nombre: 'Erika Gordillo', avatar_url: null }],
@@ -804,6 +828,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (colaboradoresData) {
         colaboradoresData.forEach(c => colaboradoresMap.set(c.id, c))
       }
+      
+      // Build clientes map for multi-client lookup
+      const clientesMap = new Map<string, { id: string; nombre_del_negocio: string }>()
+      if (clientesData) {
+        clientesData.forEach(c => clientesMap.set(c.id, c))
+      }
 
       if (error) {
         console.error('Error loading tasks:', error)
@@ -814,7 +844,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (data && data.length > 0) {
         // Map tasks without comments - comments will be loaded on demand when task is selected
         const dbTasks = data.map((tarea) => {
-          const task = mapTareaToTask(tarea as TareaDB, colaboradoresMap)
+          const task = mapTareaToTask(tarea as TareaDB, colaboradoresMap, clientesMap)
           task.comments = [] // Loaded on demand
           return task
         })
@@ -940,9 +970,13 @@ updateTask: async (taskId, updates) => {
   if (updates.priority !== undefined) dbUpdates.prioridad = updates.priority
   if (updates.type !== undefined) dbUpdates.tipo_tarea_id = updates.type || null
   if (updates.dueDate !== undefined) dbUpdates.fecha_vencimiento = updates.dueDate
+  if (updates.clientIds !== undefined) {
+    dbUpdates.cliente_ids = updates.clientIds.length > 0 ? updates.clientIds : null
+    dbUpdates.cliente_id = updates.clientIds[0] || null // First client for backwards compatibility
+  }
   if (updates.isActive !== undefined) {
-    // Map isActive to estado if needed
-    if (!updates.isActive) dbUpdates.estado = 'pausada'
+  // Map isActive to estado if needed
+  if (!updates.isActive) dbUpdates.estado = 'pausada'
   }
   
   // Update in DB if we have changes
@@ -971,19 +1005,23 @@ addTask: async (taskData) => {
   const id = crypto.randomUUID()
   
   // Insert into tareas table
+  // Support both single clientId and multiple clientIds
+  const clientIds = taskData.clientIds || (taskData.clientId ? [taskData.clientId] : [])
+  
   const { error } = await supabase
-    .from('tareas')
-    .insert({
-      id,
-      titulo: taskData.title,
-      descripcion: taskData.description,
-      tipo_tarea_id: taskData.type || null,
-      cliente_id: taskData.clientId || null,
-      asignado_a: taskData.assigneeId || null,
-      estado: taskData.status || 'pendiente',
-      prioridad: taskData.priority || 'media',
-      fecha_vencimiento: taskData.dueDate || null,
-    })
+  .from('tareas')
+  .insert({
+  id,
+  titulo: taskData.title,
+  descripcion: taskData.description,
+  tipo_tarea_id: taskData.type || null,
+  cliente_id: clientIds[0] || null, // First client for backwards compatibility
+  cliente_ids: clientIds.length > 0 ? clientIds : null,
+  asignado_a: taskData.assigneeId || null,
+  estado: taskData.status || 'pendiente',
+  prioridad: taskData.priority || 'media',
+  fecha_vencimiento: taskData.dueDate || null,
+  })
   
   if (error) {
     console.error('Error creating task:', error)
