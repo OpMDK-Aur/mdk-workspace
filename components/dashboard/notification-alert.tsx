@@ -21,6 +21,31 @@ const TIPO_ICONS: Record<string, typeof Bell> = {
   comentario: MessageSquare,
 }
 
+// Play notification sound
+function playNotificationSound() {
+  try {
+    const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+    
+    oscillator.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+    
+    // Pleasant notification tone
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime)
+    oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1)
+    oscillator.type = 'sine'
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
+    
+    oscillator.start(audioContext.currentTime)
+    oscillator.stop(audioContext.currentTime + 0.3)
+  } catch {
+    // Silently fail if audio context is not available
+  }
+}
+
 export function NotificationAlertProvider() {
   const router = useRouter()
   const [alerts, setAlerts] = useState<NotificationAlert[]>([])
@@ -64,6 +89,9 @@ export function NotificationAlertProvider() {
         (payload) => {
           const newNotif = payload.new as NotificationAlert
           setAlerts((prev) => [...prev, newNotif])
+          
+          // Play notification sound
+          playNotificationSound()
           
           // Auto-dismiss after 20 seconds
           setTimeout(() => {
