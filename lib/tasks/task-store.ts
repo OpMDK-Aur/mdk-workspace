@@ -33,7 +33,6 @@ interface TareaDB {
   clientes?: { id: string; nombre_del_negocio: string } | null
   colaboradores?: { id: string; nombre: string; apellido?: string | null; avatar_url?: string | null } | null
   tipo_de_tareas?: { id: string; nombre: string } | null
-  creador?: { id: string; nombre: string; apellido?: string | null } | null
 }
 
 interface ComentarioDB {
@@ -138,9 +137,15 @@ function mapTareaToTask(
     files: [],
     quotation: null,
     createdById: tarea.creado_por || null,
-    createdByName: tarea.creador 
-      ? [tarea.creador.nombre, tarea.creador.apellido].filter(Boolean).join(' ')
-      : 'Sistema',
+    createdByName: (() => {
+      if (tarea.creado_por && colaboradoresMap) {
+        const creador = colaboradoresMap.get(tarea.creado_por)
+        if (creador) {
+          return [creador.nombre, creador.apellido].filter(Boolean).join(' ')
+        }
+      }
+      return 'Sistema'
+    })(),
     createdAt: new Date(tarea.created_at),
     updatedAt: new Date(tarea.updated_at),
   }
@@ -860,8 +865,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             *,
             clientes:cliente_id(id, nombre_del_negocio),
             colaboradores:asignado_a(id, nombre, apellido, avatar_url),
-            tipo_de_tareas:tipo_tarea_id(id, nombre),
-            creador:colaboradores!creado_por(id, nombre, apellido)
+            tipo_de_tareas:tipo_tarea_id(id, nombre)
           `)
           .order('created_at', { ascending: false }),
         supabase
