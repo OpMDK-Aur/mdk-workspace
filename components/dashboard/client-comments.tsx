@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign } from 'lucide-react'
+import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign, Pencil, Check } from 'lucide-react'
 import {
   Popover,
   PopoverContent,
@@ -105,6 +105,10 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [showColabPopover, setShowColabPopover] = useState(false)
   const [colabSearchQuery, setColabSearchQuery] = useState('')
+  
+  // Edit comment
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editingContent, setEditingContent] = useState('')
 
   const supabase = createClient()
   const chatContainerRef = useRef<HTMLDivElement>(null)
@@ -309,6 +313,44 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       console.error('[v0] Error deleting comment:', deleteError)
     } else {
       setComments(prev => prev.filter(c => c.id !== commentId))
+    }
+  }
+  
+  // Start editing comment
+  const startEditComment = (comment: ComentarioCliente) => {
+    setEditingCommentId(comment.id)
+    setEditingContent(comment.contenido)
+  }
+  
+  // Cancel editing
+  const cancelEditComment = () => {
+    setEditingCommentId(null)
+    setEditingContent('')
+  }
+  
+  // Save edited comment
+  const handleSaveEdit = async () => {
+    if (!editingCommentId || !editingContent.trim()) return
+    
+    const { error: updateError } = await supabase
+      .from('comentarios_clientes')
+      .update({ 
+        contenido: editingContent.trim(),
+        actualizado_en: new Date().toISOString()
+      })
+      .eq('id', editingCommentId)
+
+    if (updateError) {
+      setError('Error al actualizar comentario')
+      console.error('[v0] Error updating comment:', updateError)
+    } else {
+      setComments(prev => prev.map(c => 
+        c.id === editingCommentId 
+          ? { ...c, contenido: editingContent.trim(), actualizado_en: new Date().toISOString() }
+          : c
+      ))
+      setEditingCommentId(null)
+      setEditingContent('')
     }
   }
 
@@ -727,17 +769,57 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                           </span>
                         </div>
                         {currentUser && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                            onClick={() => handleDeleteComment(comment.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-muted-foreground hover:text-primary"
+                              onClick={() => startEditComment(comment)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleDeleteComment(comment.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         )}
                       </div>
-                      <p className="text-sm mt-1 whitespace-pre-wrap">{renderCommentContent(comment.contenido)}</p>
+                      {editingCommentId === comment.id ? (
+                        <div className="mt-2 space-y-2">
+                          <Textarea
+                            value={editingContent}
+                            onChange={(e) => setEditingContent(e.target.value)}
+                            className="min-h-[60px] text-sm"
+                            autoFocus
+                          />
+                          <div className="flex items-center gap-2 justify-end">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={cancelEditComment}
+                              className="h-7 text-xs"
+                            >
+                              Cancelar
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={handleSaveEdit}
+                              className="h-7 text-xs gap-1"
+                              disabled={!editingContent.trim()}
+                            >
+                              <Check className="h-3 w-3" />
+                              Guardar
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm mt-1 whitespace-pre-wrap">{renderCommentContent(comment.contenido)}</p>
+                      )}
                     </div>
                   </div>
                 </div>
