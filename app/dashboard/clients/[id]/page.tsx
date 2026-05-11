@@ -31,6 +31,8 @@ export default async function ClientPage({ params }: Props) {
     .from('clientes_unidades_de_negocio')
     .select('unidad_de_negocio_id, unidad_de_negocio(id, nombre)')
     .eq('cliente_id', id)
+  
+  console.log('[v0] unidadesDeNegocio para cliente', id, ':', JSON.stringify(unidadesDeNegocio))
 
   // Load all colaboradores (for pm/am lookup)
   const { data: colaboradores } = await supabase
