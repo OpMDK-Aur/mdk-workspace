@@ -55,25 +55,28 @@ export async function updateSession(request: NextRequest) {
   }
 
   // If user is logged in, check onboarding status
-  if (user) {
-    // Skip onboarding check for certain paths
-    const skipOnboardingCheck = ['/onboarding', '/auth/confirm', '/api'].some(path =>
-      request.nextUrl.pathname.startsWith(path)
-    )
+  // Only check onboarding for dashboard routes to minimize DB calls
+  if (user && request.nextUrl.pathname.startsWith('/dashboard')) {
+    // Skip onboarding check for API routes
+    if (!request.nextUrl.pathname.startsWith('/api')) {
+      try {
+        // Check if user has completed onboarding with timeout
+        const { data: colaborador } = await supabase
+          .from('colaboradores')
+          .select('onboarding_completado')
+          .eq('id', user.id)
+          .single()
+          .abortSignal(AbortSignal.timeout(3000)) // 3 second timeout
 
-    if (!skipOnboardingCheck) {
-      // Check if user has completed onboarding
-      const { data: colaborador } = await supabase
-        .from('colaboradores')
-        .select('onboarding_completado')
-        .eq('id', user.id)
-        .single()
-
-      // Redirect to onboarding if not completed
-      if (colaborador && !colaborador.onboarding_completado) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/onboarding'
-        return NextResponse.redirect(url)
+        // Redirect to onboarding if not completed
+        if (colaborador && !colaborador.onboarding_completado) {
+          const url = request.nextUrl.clone()
+          url.pathname = '/onboarding'
+          return NextResponse.redirect(url)
+        }
+      } catch {
+        // If query times out or fails, allow access to avoid blocking user
+        console.error('[middleware] Onboarding check failed, allowing access')
       }
     }
   }

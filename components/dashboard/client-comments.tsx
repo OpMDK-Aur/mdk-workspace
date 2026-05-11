@@ -14,7 +14,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar } from 'lucide-react'
+import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign } from 'lucide-react'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import Link from 'next/link'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { cn } from '@/lib/utils'
@@ -34,6 +48,19 @@ interface ComentarioCliente {
   autor: string
   creado_en: string
   actualizado_en: string
+}
+
+interface TareaCliente {
+  id: string
+  titulo: string
+  estado: string
+  shortId: string // Generated from id
+}
+
+interface Colaborador {
+  id: string
+  nombre: string
+  avatar_url?: string | null
 }
 
 interface CurrentUser {
@@ -61,6 +88,17 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   const [authorFilter, setAuthorFilter] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState<string>('all')
   const [showFilters, setShowFilters] = useState(false)
+  
+  // Task mentions
+  const [clientTasks, setClientTasks] = useState<TareaCliente[]>([])
+  const [showTaskPopover, setShowTaskPopover] = useState(false)
+  const [taskSearchQuery, setTaskSearchQuery] = useState('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  
+  // Collaborator mentions
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
+  const [showColabPopover, setShowColabPopover] = useState(false)
+  const [colabSearchQuery, setColabSearchQuery] = useState('')
 
   const supabase = createClient()
   const chatContainerRef = useRef<HTMLDivElement>(null)
@@ -87,29 +125,55 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     }
   }, [messages])
 
-  // Fetch comments
+  // Fetch comments, tasks and collaborators
   useEffect(() => {
-    async function fetchComments() {
+    async function fetchData() {
       setLoading(true)
       setError(null)
 
-      const { data, error: fetchError } = await supabase
-        .from('comentarios_clientes')
-        .select('*')
-        .eq('cliente_id', clientId)
-        .order('creado_en', { ascending: false })
+      const [commentsRes, tasksRes, colabRes] = await Promise.all([
+        supabase
+          .from('comentarios_clientes')
+          .select('*')
+          .eq('cliente_id', clientId)
+          .order('creado_en', { ascending: false }),
+        // Get tasks for this client
+        supabase
+          .from('tareas')
+          .select('id, titulo, estado, cliente_id')
+          .eq('cliente_id', clientId)
+          .order('created_at', { ascending: false })
+          .limit(50),
+        supabase
+          .from('colaboradores')
+          .select('id, nombre, avatar_url')
+          .order('nombre')
+      ])
 
-      if (fetchError) {
+      if (commentsRes.error) {
         setError('Error al cargar comentarios')
-        console.error('[v0] Error fetching comments:', fetchError)
+        console.error('[v0] Error fetching comments:', commentsRes.error)
       } else {
-        setComments(data || [])
+        setComments(commentsRes.data || [])
+      }
+      
+      // Map tasks with short IDs
+      if (!tasksRes.error && tasksRes.data) {
+        const tasksWithShortId = tasksRes.data.map(task => ({
+          ...task,
+          shortId: task.id.slice(0, 6).toUpperCase()
+        }))
+        setClientTasks(tasksWithShortId)
+      }
+      
+      if (!colabRes.error && colabRes.data) {
+        setColaboradores(colabRes.data)
       }
 
       setLoading(false)
     }
 
-    fetchComments()
+    fetchData()
   }, [clientId, supabase])
 
   // Get unique authors for filter
@@ -157,6 +221,23 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     })
   }, [comments, searchQuery, authorFilter, dateFilter])
 
+  // Extract mentioned collaborator IDs from comment
+  const extractMentionedColaboradores = (content: string): string[] => {
+    const mentionRegex = /@([\w\sáéíóúñÁÉÍÓÚÑ]+?)(?=\s|$|[.,;:!?])/g
+    const mentionedIds: string[] = []
+    let match
+    
+    while ((match = mentionRegex.exec(content)) !== null) {
+      const mentionName = match[1].trim()
+      const colab = colaboradores.find(c => c.nombre.toLowerCase() === mentionName.toLowerCase())
+      if (colab && colab.id !== currentUser?.id) {
+        mentionedIds.push(colab.id)
+      }
+    }
+    
+    return [...new Set(mentionedIds)] // Remove duplicates
+  }
+
   // Add comment
   const handleAddComment = async () => {
     if (!newComment.trim() || !currentUser || sending) return
@@ -165,12 +246,13 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     setError(null)
 
     const autorName = `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
+    const commentContent = newComment.trim()
 
     const { data, error: insertError } = await supabase
       .from('comentarios_clientes')
       .insert({
         cliente_id: clientId,
-        contenido: newComment.trim(),
+        contenido: commentContent,
         autor: autorName,
       })
       .select()
@@ -182,6 +264,27 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     } else if (data) {
       setComments(prev => [data, ...prev])
       setNewComment('')
+      
+      // Create notifications for mentioned collaborators
+      const mentionedIds = extractMentionedColaboradores(commentContent)
+      if (mentionedIds.length > 0) {
+        const notifications = mentionedIds.map(colabId => ({
+          usuario_id: colabId,
+          tipo: 'mencion',
+          titulo: `${autorName} te mencionó en un comentario`,
+          contenido: commentContent.slice(0, 100) + (commentContent.length > 100 ? '...' : ''),
+          leida: false,
+          enlace: `/dashboard/clients/${clientId}`,
+        }))
+        
+        const { error: notifError } = await supabase
+          .from('notificaciones')
+          .insert(notifications)
+        
+        if (notifError) {
+          console.error('[v0] Error creating notifications:', notifError)
+        }
+      }
     }
 
     setSending(false)
@@ -231,6 +334,102 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   }
 
   const hasActiveFilters = searchQuery || authorFilter !== 'all' || dateFilter !== 'all'
+  
+  // Insert task mention
+  const insertTaskMention = (task: TareaCliente) => {
+    const mention = `#${task.shortId}`
+    setNewComment(prev => prev + mention + ' ')
+    setShowTaskPopover(false)
+    setTaskSearchQuery('')
+    textareaRef.current?.focus()
+  }
+  
+  // Filter tasks for search
+  const filteredTasks = useMemo(() => {
+    if (!taskSearchQuery) return clientTasks.slice(0, 10)
+    const query = taskSearchQuery.toLowerCase()
+    return clientTasks
+      .filter(t => 
+        t.titulo.toLowerCase().includes(query) || 
+        t.shortId.toLowerCase().includes(query)
+      )
+      .slice(0, 10)
+  }, [clientTasks, taskSearchQuery])
+  
+  // Insert collaborator mention
+  const insertColabMention = (colab: Colaborador) => {
+    const mention = `@${colab.nombre}`
+    setNewComment(prev => prev + mention + ' ')
+    setShowColabPopover(false)
+    setColabSearchQuery('')
+    textareaRef.current?.focus()
+  }
+  
+  // Filter collaborators for search
+  const filteredColabs = useMemo(() => {
+    if (!colabSearchQuery) return colaboradores.slice(0, 10)
+    const query = colabSearchQuery.toLowerCase()
+    return colaboradores
+      .filter(c => c.nombre.toLowerCase().includes(query))
+      .slice(0, 10)
+  }, [colaboradores, colabSearchQuery])
+  
+  // Render comment content with task and collaborator links
+  const renderCommentContent = (content: string) => {
+    // Combined regex for #SHORTID (6 char hex) and @Name patterns
+    const mentionRegex = /(#([A-F0-9]{6}))|(@[\w\sáéíóúñÁÉÍÓÚÑ]+?)(?=\s|$|[.,;:!?])/gi
+    const parts: React.ReactNode[] = []
+    let lastIndex = 0
+    let match
+    
+    while ((match = mentionRegex.exec(content)) !== null) {
+      // Add text before the match
+      if (match.index > lastIndex) {
+        parts.push(content.slice(lastIndex, match.index))
+      }
+      
+      if (match[1]) {
+        // Task mention #SHORTID
+        const shortId = match[2].toUpperCase()
+        const linkedTask = clientTasks.find(t => t.shortId === shortId)
+        
+        parts.push(
+          <Link
+            key={`task-${match.index}`}
+            href={`/dashboard/tasks?task=${linkedTask?.id || ''}`}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors max-w-[250px]"
+            onClick={(e) => e.stopPropagation()}
+            title={linkedTask?.titulo}
+          >
+            <CheckSquare className="h-3 w-3 shrink-0" />
+            <span className="truncate">{linkedTask?.titulo || `#${shortId}`}</span>
+          </Link>
+        )
+      } else if (match[3]) {
+        // Collaborator mention @Name
+        const mentionName = match[3].slice(1).trim() // Remove @
+        const colab = colaboradores.find(c => c.nombre.toLowerCase() === mentionName.toLowerCase())
+        
+        parts.push(
+          <span
+            key={`colab-${match.index}`}
+            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 text-xs font-medium"
+          >
+            @{colab?.nombre || mentionName}
+          </span>
+        )
+      }
+      
+      lastIndex = match.index + match[0].length
+    }
+    
+    // Add remaining text
+    if (lastIndex < content.length) {
+      parts.push(content.slice(lastIndex))
+    }
+    
+    return parts.length > 0 ? parts : content
+  }
 
   return (
     <div className="space-y-4">
@@ -334,7 +533,8 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
               </Avatar>
               <div className="flex-1 space-y-2">
                 <Textarea
-                  placeholder="Escribe un comentario..."
+                  ref={textareaRef}
+                  placeholder="Escribe un comentario... Usa # para mencionar tareas"
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   className="min-h-[80px] resize-none text-sm"
@@ -342,12 +542,110 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                     if (e.key === 'Enter' && e.metaKey) {
                       handleAddComment()
                     }
+                    // Open task popover on #
+                    if (e.key === '#' || (e.key === '3' && e.shiftKey)) {
+                      setTimeout(() => setShowTaskPopover(true), 50)
+                    }
+                    // Open collaborator popover on @
+                    if (e.key === '@' || (e.key === '2' && e.shiftKey)) {
+                      setTimeout(() => setShowColabPopover(true), 50)
+                    }
                   }}
                 />
                 <div className="flex justify-between items-center">
-                  <span className="text-[10px] text-muted-foreground">
-                    Cmd + Enter para enviar
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <Popover open={showTaskPopover} onOpenChange={setShowTaskPopover}>
+                      <PopoverTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          <Hash className="h-3 w-3" />
+                          Mencionar tarea
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 p-0" align="start">
+                        <Command>
+                          <CommandInput 
+                            placeholder="Buscar tarea..." 
+                            value={taskSearchQuery}
+                            onValueChange={setTaskSearchQuery}
+                            className="h-9"
+                          />
+                          <CommandList>
+                            <CommandEmpty>No se encontraron tareas</CommandEmpty>
+                            <CommandGroup heading="Tareas del cliente">
+                              {filteredTasks.map(task => (
+                                <CommandItem
+                                  key={task.id}
+                                  value={`${task.shortId} ${task.titulo}`}
+                                  onSelect={() => insertTaskMention(task)}
+                                  className="gap-2"
+                                >
+                                  <CheckSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <span className="text-xs font-mono text-primary">
+                                    #{task.shortId}
+                                  </span>
+                                  <span className="text-xs truncate flex-1">
+                                    {task.titulo}
+                                  </span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <Popover open={showColabPopover} onOpenChange={setShowColabPopover}>
+                      <PopoverTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          <AtSign className="h-3 w-3" />
+                          <span className="hidden sm:inline">Mencionar</span>
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 p-0" align="start">
+                        <Command>
+                          <CommandInput 
+                            placeholder="Buscar colaborador..." 
+                            value={colabSearchQuery}
+                            onValueChange={setColabSearchQuery}
+                            className="h-9"
+                          />
+                          <CommandList>
+                            <CommandEmpty>No se encontraron colaboradores</CommandEmpty>
+                            <CommandGroup heading="Colaboradores">
+                              {filteredColabs.map(colab => (
+                                <CommandItem
+                                  key={colab.id}
+                                  value={colab.nombre}
+                                  onSelect={() => insertColabMention(colab)}
+                                  className="gap-2"
+                                >
+                                  <Avatar className="h-5 w-5">
+                                    <AvatarImage src={colab.avatar_url || undefined} />
+                                    <AvatarFallback className="text-[10px]">
+                                      {colab.nombre[0]}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span className="text-xs">
+                                    {colab.nombre}
+                                  </span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <span className="text-[10px] text-muted-foreground hidden sm:inline">
+                      Cmd + Enter para enviar
+                    </span>
+                  </div>
                   <Button
                     size="sm"
                     onClick={handleAddComment}
@@ -427,7 +725,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                           </Button>
                         )}
                       </div>
-                      <p className="text-sm mt-1 whitespace-pre-wrap">{comment.contenido}</p>
+                      <p className="text-sm mt-1 whitespace-pre-wrap">{renderCommentContent(comment.contenido)}</p>
                     </div>
                   </div>
                 </div>

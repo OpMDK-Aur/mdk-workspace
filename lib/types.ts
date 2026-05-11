@@ -39,14 +39,35 @@ export interface Profile {
   updated_at: string
 }
 
+export type ClientEtapa = 'activacion' | '1_3_meses' | '4_6_meses' | '7_mas'
+
+export interface ServicioContratado {
+  id: string
+  nombre: string
+  categoria?: string
+  icono?: string
+  color?: string
+}
+
+export interface SemaforoUnidad {
+  unidad_id: string
+  unidad_nombre: string
+  semaforo: 'verde' | 'amarillo' | 'naranja' | 'rojo'
+}
+
 export interface Client {
   id: string
   nombre_del_negocio: string
   // Alias for compatibility
   business_name?: string
-  contact_name: string | null
-  contact_lastname: string | null
-  phone: string | null
+  // Contact fields - DB uses nombre/apellido/telefono
+  nombre?: string | null
+  apellido?: string | null
+  telefono?: string | null
+  // Legacy aliases
+  contact_name?: string | null
+  contact_lastname?: string | null
+  phone?: string | null
   email?: string | null
   status: ClientStatus | null
   semaforo_id: string | null
@@ -68,6 +89,18 @@ export interface Client {
   project_manager_id: string | null
   account_manager_id: string | null
   landings?: Array<{ nombre: string; url: string; tipo: string }> | null
+  // Nuevos campos
+  servicios_contratados?: ServicioContratado[] | null
+  contacto_nombre?: string | null
+  contacto_email?: string | null
+  contacto_telefono?: string | null
+  contacto_cargo?: string | null
+  fecha_venta?: string | null
+  fecha_activacion?: string | null
+  fecha_inicio_trabajo?: string | null
+  fecha_baja?: string | null
+  etapa?: ClientEtapa | null
+  semaforo_unidades?: Record<string, 'verde' | 'amarillo' | 'naranja' | 'rojo'> | null
   created_at: string
   updated_at: string
 }
