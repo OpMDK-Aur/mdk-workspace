@@ -54,7 +54,7 @@ interface TareaCliente {
   id: string
   titulo: string
   estado: string
-  numero_tarea: number
+  shortId: string // Generated from id
 }
 
 interface Colaborador {
@@ -137,12 +137,13 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
           .select('*')
           .eq('cliente_id', clientId)
           .order('creado_en', { ascending: false }),
-        // Get all tasks that have this client (check both cliente_id and cliente_ids array)
+        // Get tasks for this client
         supabase
           .from('tareas')
-          .select('id, titulo, estado, numero_tarea, cliente_id, cliente_ids')
-          .order('numero_tarea', { ascending: false })
-          .limit(100),
+          .select('id, titulo, estado, cliente_id')
+          .eq('cliente_id', clientId)
+          .order('created_at', { ascending: false })
+          .limit(50),
         supabase
           .from('colaboradores')
           .select('id, nombre, avatar_url')
@@ -156,19 +157,13 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
         setComments(commentsRes.data || [])
       }
       
-      // Filter tasks that belong to this client
+      // Map tasks with short IDs
       if (!tasksRes.error && tasksRes.data) {
-        console.log('[v0] All tasks:', tasksRes.data.length, 'clientId:', clientId)
-        console.log('[v0] Sample task:', tasksRes.data[0])
-        const clientTasksFiltered = tasksRes.data.filter(task => {
-          if (task.cliente_id === clientId) return true
-          if (Array.isArray(task.cliente_ids) && task.cliente_ids.includes(clientId)) return true
-          return false
-        })
-        console.log('[v0] Filtered tasks for client:', clientTasksFiltered.length)
-        setClientTasks(clientTasksFiltered)
-      } else if (tasksRes.error) {
-        console.error('[v0] Error fetching tasks:', tasksRes.error)
+        const tasksWithShortId = tasksRes.data.map(task => ({
+          ...task,
+          shortId: task.id.slice(0, 6).toUpperCase()
+        }))
+        setClientTasks(tasksWithShortId)
       }
       
       if (!colabRes.error && colabRes.data) {
@@ -226,6 +221,23 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     })
   }, [comments, searchQuery, authorFilter, dateFilter])
 
+  // Extract mentioned collaborator IDs from comment
+  const extractMentionedColaboradores = (content: string): string[] => {
+    const mentionRegex = /@([\w\sáéíóúñÁÉÍÓÚÑ]+?)(?=\s|$|[.,;:!?])/g
+    const mentionedIds: string[] = []
+    let match
+    
+    while ((match = mentionRegex.exec(content)) !== null) {
+      const mentionName = match[1].trim()
+      const colab = colaboradores.find(c => c.nombre.toLowerCase() === mentionName.toLowerCase())
+      if (colab && colab.id !== currentUser?.id) {
+        mentionedIds.push(colab.id)
+      }
+    }
+    
+    return [...new Set(mentionedIds)] // Remove duplicates
+  }
+
   // Add comment
   const handleAddComment = async () => {
     if (!newComment.trim() || !currentUser || sending) return
@@ -234,12 +246,13 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     setError(null)
 
     const autorName = `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
+    const commentContent = newComment.trim()
 
     const { data, error: insertError } = await supabase
       .from('comentarios_clientes')
       .insert({
         cliente_id: clientId,
-        contenido: newComment.trim(),
+        contenido: commentContent,
         autor: autorName,
       })
       .select()
@@ -251,6 +264,27 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     } else if (data) {
       setComments(prev => [data, ...prev])
       setNewComment('')
+      
+      // Create notifications for mentioned collaborators
+      const mentionedIds = extractMentionedColaboradores(commentContent)
+      if (mentionedIds.length > 0) {
+        const notifications = mentionedIds.map(colabId => ({
+          usuario_id: colabId,
+          tipo: 'mencion',
+          titulo: `${autorName} te mencionó en un comentario`,
+          contenido: commentContent.slice(0, 100) + (commentContent.length > 100 ? '...' : ''),
+          leida: false,
+          enlace: `/dashboard/clients/${clientId}`,
+        }))
+        
+        const { error: notifError } = await supabase
+          .from('notificaciones')
+          .insert(notifications)
+        
+        if (notifError) {
+          console.error('[v0] Error creating notifications:', notifError)
+        }
+      }
     }
 
     setSending(false)
@@ -303,7 +337,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   
   // Insert task mention
   const insertTaskMention = (task: TareaCliente) => {
-    const mention = `#MDK-${task.numero_tarea}`
+    const mention = `#${task.shortId}`
     setNewComment(prev => prev + mention + ' ')
     setShowTaskPopover(false)
     setTaskSearchQuery('')
@@ -317,7 +351,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     return clientTasks
       .filter(t => 
         t.titulo.toLowerCase().includes(query) || 
-        t.numero_tarea.toString().includes(query)
+        t.shortId.toLowerCase().includes(query)
       )
       .slice(0, 10)
   }, [clientTasks, taskSearchQuery])
@@ -342,8 +376,8 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   
   // Render comment content with task and collaborator links
   const renderCommentContent = (content: string) => {
-    // Combined regex for #MDK-123 and @Name patterns
-    const mentionRegex = /(#MDK-(\d+))|(@[\w\sáéíóúñÁÉÍÓÚÑ]+?)(?=\s|$|[.,;:!?])/g
+    // Combined regex for #SHORTID (6 char hex) and @Name patterns
+    const mentionRegex = /(#([A-F0-9]{6}))|(@[\w\sáéíóúñÁÉÍÓÚÑ]+?)(?=\s|$|[.,;:!?])/gi
     const parts: React.ReactNode[] = []
     let lastIndex = 0
     let match
@@ -355,9 +389,9 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       }
       
       if (match[1]) {
-        // Task mention #MDK-123
-        const taskNumber = parseInt(match[2])
-        const linkedTask = clientTasks.find(t => t.numero_tarea === taskNumber)
+        // Task mention #SHORTID
+        const shortId = match[2].toUpperCase()
+        const linkedTask = clientTasks.find(t => t.shortId === shortId)
         
         parts.push(
           <Link
@@ -367,7 +401,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
             onClick={(e) => e.stopPropagation()}
           >
             <CheckSquare className="h-3 w-3" />
-            {match[1]}
+            #{shortId}
           </Link>
         )
       } else if (match[3]) {
@@ -544,13 +578,13 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                               {filteredTasks.map(task => (
                                 <CommandItem
                                   key={task.id}
-                                  value={`${task.numero_tarea} ${task.titulo}`}
+                                  value={`${task.shortId} ${task.titulo}`}
                                   onSelect={() => insertTaskMention(task)}
                                   className="gap-2"
                                 >
                                   <CheckSquare className="h-3.5 w-3.5 text-muted-foreground" />
                                   <span className="text-xs font-mono text-primary">
-                                    #MDK-{task.numero_tarea}
+                                    #{task.shortId}
                                   </span>
                                   <span className="text-xs truncate flex-1">
                                     {task.titulo}
