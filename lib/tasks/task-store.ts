@@ -1115,9 +1115,10 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
       throw error
     }
 
-    // Get task title for notification
+    // Get task for notification
     const task = get().tasks.find(t => t.id === taskId)
     const taskTitle = task?.title || 'Tarea'
+    const clienteId = task?.clientId || null
 
     // Create notifications for mentioned users
     if (mentionedUserIds.length > 0) {
@@ -1125,12 +1126,13 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
         .filter(id => id !== userId) // Don't notify the author
         .map(mentionedId => ({
           id: crypto.randomUUID(),
-          usuario_id: mentionedId,
-          tipo: 'mencion',
+          colaborador_id: mentionedId,
+          tipo: 'mencion_comentario',
           titulo: `${userName} te mencionó en un comentario`,
-          mensaje: `En la tarea "${taskTitle}"`,
-          tarea_id: taskId,
-          comentario_id: commentId,
+          descripcion: `En la tarea "${taskTitle}"`,
+          referencia_id: taskId,
+          referencia_tipo: 'tarea',
+          cliente_id: clienteId,
           leida: false,
         }))
 
