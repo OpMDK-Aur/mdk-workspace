@@ -48,6 +48,20 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import { X, Plus } from 'lucide-react'
+import {
   Palette,
   Globe,
   TrendingUp,
@@ -216,31 +230,18 @@ const getRandomResponse = (responses: string[]) => responses[Math.floor(Math.ran
 interface ClientContext {
   id: string
   name: string
-  // Future: these will come from the database
-  activeCampaigns?: string[]
-  pendingIntegrations?: string[]
-  lastIssues?: string[]
-  budget?: number
-  platforms?: ('meta' | 'google')[]
-  crmType?: string
-  websites?: string[]
-  formNames?: string[]
+  plan?: string
 }
 
-// Simulated client context - in the future this will come from Supabase
-const getClientContext = (clientId: string): ClientContext | null => {
-  const client = CLIENTS.find(c => c.id === clientId)
+// Get client context from loaded dbClientes
+const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): ClientContext | null => {
+  const client = clientes.find(c => c.id === clientId)
   if (!client) return null
   
-  // TODO: In the future, fetch this from Supabase based on client history
   return {
     id: client.id,
-    name: client.name,
-    activeCampaigns: ['Campana Verano 2024', 'Remarketing'],
-    platforms: ['meta', 'google'],
-    crmType: 'aurelia',
-    websites: ['www.ejemplo.com'],
-    formNames: ['Formulario Contacto', 'Newsletter'],
+    name: client.nombre_del_negocio,
+    plan: client.plan || undefined,
   }
 }
 
@@ -329,27 +330,21 @@ const TASK_TEMPLATES: TaskTemplate[] = [
     ],
   },
   {
-    id: 'placas',
-    label: 'Pedir placas a diseno',
+    id: 'pedido_diseno',
+    label: 'Pedido a Diseno',
     icon: <Palette className="h-4 w-4" />,
-    type: 'meta_ads',
+    type: 'diseno',
     defaultAssignee: 'flor',
     flow: [
       { type: 'select_client' },
-      { type: 'number', key: 'quantity', question: 'Cuantas placas necesitas?' },
-      { type: 'options', key: 'format', question: 'Que formatos?', options: [
-        { label: 'Stories + Feed', value: 'stories_feed', emoji: '📱' },
-        { label: 'Solo Stories', value: 'stories', emoji: '📲' },
-        { label: 'Solo Feed', value: 'feed', emoji: '🖼' },
-        { label: 'Carrusel', value: 'carousel', emoji: '🎠' },
-        { label: 'Todos', value: 'all', emoji: '🎨' },
+      { type: 'options', key: 'designCategory', question: 'Que tipo de pedido es?', options: [
+        { label: 'Placas / Imagenes', value: 'placas', emoji: '🖼' },
+        { label: 'Videos', value: 'videos', emoji: '🎬' },
+        { label: 'Landing / Web', value: 'landing', emoji: '🌐' },
+        { label: 'Tareas operativas web', value: 'operativo', emoji: '🔧' },
       ]},
-      { type: 'input', key: 'concept', question: 'Algun concepto o idea para las placas?', placeholder: 'Ej: Promo verano, colores frescos, mostrar producto...' },
-      { type: 'input', key: 'title', question: 'Como titulamos este pedido?', placeholder: 'Ej: Placas promo Black Friday' },
-      { type: 'select_assignee' },
-      { type: 'priority' },
-      { type: 'select_due_date' },
-      { type: 'confirm' },
+      // Dynamic steps based on designCategory - handled in processStep
+      { type: 'dynamic_design_flow' },
     ],
   },
   {
@@ -621,11 +616,12 @@ interface ChatMessage {
   isDateTime?: boolean
   isMeetingConfirm?: boolean
   taskSummary?: {
-    title: string
-    client: string
-    type: string
-    priority: string
-    assignee: string
+  title: string
+  client: string
+  type: string
+  priority: string
+  assignee: string
+  dueDate?: string
   }
   meetingSummary?: {
     title: string
@@ -692,21 +688,23 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
           {message.content}
         </div>
 
-        {/* Template options - grid layout for initial selection */}
+        {/* Template options - grid layout for initial selection with scroll */}
         {isAssistant && message.options && message.options.length > 6 && isLast && (
-          <div className="grid grid-cols-2 gap-2 w-full">
-            {message.options.map((opt) => (
-              <Button
-                key={opt.value}
-                variant="outline"
-                size="sm"
-                className="h-auto py-2.5 px-3 text-xs gap-2 justify-start hover:bg-primary hover:text-primary-foreground transition-all hover:scale-[1.02]"
-                onClick={() => onSelect?.(opt.value)}
-              >
-                {opt.icon}
-                <span className="truncate">{opt.label}</span>
-              </Button>
-            ))}
+          <div className="max-h-[280px] overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 gap-2 w-full">
+              {message.options.map((opt) => (
+                <Button
+                  key={opt.value}
+                  variant="outline"
+                  size="sm"
+                  className="h-auto py-2.5 px-3 text-xs gap-2 justify-start hover:bg-primary hover:text-primary-foreground transition-all hover:scale-[1.02]"
+                  onClick={() => onSelect?.(opt.value)}
+                >
+                  {opt.icon}
+                  <span className="truncate">{opt.label}</span>
+                </Button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -935,10 +933,10 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
   
   // Quick mode form state
   const [quickTitle, setQuickTitle] = useState('')
-  const [quickClientId, setQuickClientId] = useState('')
+  const [quickClientIds, setQuickClientIds] = useState<string[]>([])
   const [quickType, setQuickType] = useState<string>('')
   const [quickPriority, setQuickPriority] = useState<TaskPriority>('media')
-  const [quickAssigneeId, setQuickAssigneeId] = useState('')
+  const [quickAssigneeIds, setQuickAssigneeIds] = useState<string[]>([])
   const [quickDueDate, setQuickDueDate] = useState(() => 
     initialDueDate ? initialDueDate.toISOString().split('T')[0] : ''
   )
@@ -960,8 +958,8 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
     async function loadData() {
       const supabase = createClient()
       
-      const [clientesRes, colabRes, tiposRes] = await Promise.all([
-        supabase.from('clientes').select('id, nombre_del_negocio, plan').order('nombre_del_negocio'),
+  const [clientesRes, colabRes, tiposRes] = await Promise.all([
+  supabase.from('clientes').select('id, nombre_del_negocio, plan').order('nombre_del_negocio'),
         supabase.from('colaboradores').select('id, nombre, avatar_url').order('nombre'),
         supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
       ])
@@ -1043,6 +1041,197 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
     return null
   }
 
+  // Design subtype configuration with deadlines and requirements
+  const DESIGN_SUBTYPES: Record<string, { 
+    needsQuantity?: boolean
+    needsFiles?: boolean
+    daysMin: number
+    daysMax: number
+    title: string
+    needsIntegration?: boolean
+  }> = {
+    // Placas
+    'placas_material_propio': { needsQuantity: true, daysMin: 1, daysMax: 2, title: 'Placas con material propio' },
+    'placas_ia': { needsQuantity: true, daysMin: 1, daysMax: 2, title: 'Placas con IA' },
+    'placas_modificacion': { needsFiles: true, daysMin: 1, daysMax: 1, title: 'Modificaciones en placas' },
+    // Videos
+    'video_material_propio': { needsQuantity: true, needsFiles: true, daysMin: 2, daysMax: 3, title: 'Edicion de video' },
+    'video_ia': { needsQuantity: true, daysMin: 2, daysMax: 3, title: 'Video con IA' },
+    'video_modificacion': { needsFiles: true, daysMin: 1, daysMax: 2, title: 'Modificacion de video' },
+    'video_plantilla': { needsQuantity: true, daysMin: 1, daysMax: 2, title: 'Videos plantilla' },
+    // Landing
+    'landing_wordpress': { daysMin: 2, daysMax: 3, title: 'Landing Wordpress', needsIntegration: true },
+    'landing_ghl': { daysMin: 2, daysMax: 3, title: 'Landing GoHighLevel', needsIntegration: true },
+    'landing_v0': { daysMin: 2, daysMax: 3, title: 'Landing V0', needsIntegration: true },
+    'landing_banners': { daysMin: 1, daysMax: 2, title: 'Banners para landing' },
+    'landing_modificaciones': { daysMin: 1, daysMax: 2, title: 'Modificaciones de landing' },
+    // Operativo
+    'op_formularios': { daysMin: 0, daysMax: 1, title: 'Formularios' },
+    'op_accesos': { daysMin: 0, daysMax: 1, title: 'Generacion de accesos' },
+    'op_problemas': { daysMin: 2, daysMax: 3, title: 'Revision de problemas' },
+    'op_mantenimiento': { daysMin: 1, daysMax: 2, title: 'Mantenimiento de landing' },
+  }
+
+  // Calculate recommended date (next business day + days offset)
+  const getRecommendedDate = (daysMin: number, daysMax: number): Date => {
+    const today = new Date()
+    let date = new Date(today)
+    date.setDate(date.getDate() + daysMax)
+    
+    // Skip weekends
+    while (date.getDay() === 0 || date.getDay() === 6) {
+      date.setDate(date.getDate() + 1)
+    }
+    
+    return date
+  }
+
+  // Handle design subtype flow
+  const handleDesignSubtypeFlow = async (subtype: string, data: Record<string, string>) => {
+    const config = DESIGN_SUBTYPES[subtype]
+    if (!config) {
+      // If category selected, show subtype options
+      if (['placas', 'videos', 'landing', 'operativo'].includes(subtype)) {
+        // Re-process the dynamic_design_flow step with category set
+        processStep(selectedTemplate!, currentStepIndex, { ...data, designCategory: subtype })
+        return
+      }
+      return
+    }
+
+    const client = dbClientes.find(c => c.id === data.clientId)
+    const florColaborador = dbColaboradores.find(c => c.nombre.toLowerCase().includes('flor'))
+    const ayeColaborador = dbColaboradores.find(c => c.nombre.toLowerCase().includes('aye'))
+    
+    // Store subtype
+    const newData = { ...data, designSubtype: subtype, designTitle: config.title }
+
+    // Ask for quantity if needed
+    if (config.needsQuantity) {
+      addAssistantMessage({
+        content: 'Cuantos necesitas?',
+        isNumber: true,
+      }, 300)
+      setTaskData(newData)
+      setDesignFlowState({ step: 'quantity', config, subtype })
+      return
+    }
+
+    // Ask for files if needed
+    if (config.needsFiles) {
+      addAssistantMessage({
+        content: 'Necesito que me pases los archivos. Podes subir los archivos al crear la tarea o indicarme donde estan.',
+        isInput: true,
+        inputPlaceholder: 'Ej: Te los paso por Drive / Los subo ahora / Estan en el chat de WhatsApp',
+      }, 300)
+      setTaskData(newData)
+      setDesignFlowState({ step: 'files', config, subtype })
+      return
+    }
+
+    // Go to concept/description
+    continueDesignFlow(newData, config, subtype)
+  }
+
+  // Continue design flow after quantity/files
+  const continueDesignFlow = (data: Record<string, string>, config: typeof DESIGN_SUBTYPES[string], subtype: string) => {
+    // Ask for concept/description
+    addAssistantMessage({
+      content: 'Contame un poco mas sobre lo que necesitas. Algun concepto, idea, o referencia?',
+      isInput: true,
+      inputPlaceholder: 'Ej: Promo de verano, colores frescos, estilo minimalista...',
+    }, 300)
+    setTaskData(data)
+    setDesignFlowState({ step: 'concept', config, subtype })
+  }
+
+  // Finish design flow with assignment and date
+  const finishDesignFlow = async (data: Record<string, string>, config: typeof DESIGN_SUBTYPES[string], subtype: string) => {
+    const florColaborador = dbColaboradores.find(c => c.nombre.toLowerCase().includes('flor'))
+    const ayeColaborador = dbColaboradores.find(c => c.nombre.toLowerCase().includes('aye'))
+    const recommendedDate = getRecommendedDate(config.daysMin, config.daysMax)
+    
+    // If needs integration, ask about Aye
+    if (config.needsIntegration && ayeColaborador) {
+      addAssistantMessage({
+        content: `Este trabajo lo asigno a ${florColaborador?.nombre || 'Flor'} para el diseno. Necesitas que agregue a ${ayeColaborador.nombre} para las integraciones?`,
+        options: [
+          { label: `Si, agregar a ${ayeColaborador.nombre}`, value: 'add_aye', emoji: '👥' },
+          { label: 'No, solo diseno por ahora', value: 'only_flor', emoji: '🎨' },
+        ],
+      }, 300)
+      setTaskData({ ...data, recommendedDate: recommendedDate.toISOString() })
+      setDesignFlowState({ step: 'ask_integration', config, subtype })
+      return
+    }
+
+    // Recommend date and ask for confirmation
+    const dateStr = recommendedDate.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
+    addAssistantMessage({
+      content: `Perfecto! Te recomiendo fecha de entrega para el **${dateStr}** (${config.daysMin}-${config.daysMax} dias habiles). Te parece bien o preferis otra fecha?`,
+      options: [
+        { label: `Si, para el ${dateStr}`, value: 'accept_date', emoji: '✅' },
+        { label: 'Prefiero elegir otra fecha', value: 'choose_date', emoji: '📅' },
+        { label: 'Sin fecha limite', value: 'no_date', emoji: '🔓' },
+      ],
+    }, 300)
+    setTaskData({ ...data, recommendedDate: recommendedDate.toISOString(), assigneeId: florColaborador?.id || '' })
+    setDesignFlowState({ step: 'confirm_date', config, subtype })
+  }
+
+  // Design flow state
+  const [designFlowState, setDesignFlowState] = useState<{
+    step: string
+    config: typeof DESIGN_SUBTYPES[string]
+    subtype: string
+  } | null>(null)
+
+  // Show design confirmation
+  const showDesignConfirmation = (data: Record<string, string>) => {
+    const client = dbClientes.find(c => c.id === data.clientId)
+    const florColaborador = dbColaboradores.find(c => c.nombre.toLowerCase().includes('flor'))
+    const ayeColaborador = dbColaboradores.find(c => c.nombre.toLowerCase().includes('aye'))
+    
+    // Build title
+    const subtype = data.designSubtype
+    const config = DESIGN_SUBTYPES[subtype]
+    let title = config?.title || data.designTitle || 'Pedido a Diseno'
+    if (data.quantity) {
+      title = `${data.quantity}x ${title}`
+    }
+    title = `${title} - ${client?.nombre_del_negocio || 'Cliente'}`
+    
+    // Build assignee string
+    let assigneeStr = florColaborador?.nombre || 'Flor'
+    if (data.assigneeIds) {
+      const ids = data.assigneeIds.split(',')
+      if (ids.length > 1 && ayeColaborador && ids.includes(ayeColaborador.id)) {
+        assigneeStr = `${florColaborador?.nombre || 'Flor'} y ${ayeColaborador.nombre}`
+      }
+    }
+    
+    addAssistantMessage({
+      content: 'Perfecto! Te armo el resumen:',
+      isConfirm: true,
+      taskSummary: {
+        title,
+        client: client?.nombre_del_negocio || 'Sin cliente',
+        type: 'diseno',
+        priority: 'Media',
+        assignee: assigneeStr,
+        dueDate: data.dueDate ? new Date(data.dueDate).toLocaleDateString('es-AR') : undefined,
+      },
+    }, 300)
+    
+    // Update taskData for creation
+    setTaskData({
+      ...data,
+      title,
+      assigneeId: florColaborador?.id || '',
+    })
+    setDesignFlowState({ ...designFlowState!, step: 'confirm' })
+  }
+
   // Process flow step
   const processStep = (template: TaskTemplate, stepIndex: number, data: Record<string, string>) => {
     const step = template.flow[stepIndex]
@@ -1051,12 +1240,12 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
     let messageContent: Omit<ChatMessage, 'id' | 'role'> = { content: '' }
 
     switch (step.type) {
-      case 'select_client':
-        messageContent = {
-          content: 'Para que cliente es?',
-          options: dbClientes.map((c) => ({ label: c.nombre_del_negocio, value: c.id })),
-        }
-        break
+  case 'select_client':
+  messageContent = {
+  content: 'Para que cliente es?',
+  options: dbClientes.map((c) => ({ label: c.nombre_del_negocio, value: c.id })),
+  }
+  break
       
       case 'select_assignee':
         messageContent = {
@@ -1140,6 +1329,54 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
         }
         break
 
+      case 'dynamic_design_flow':
+        // Handle dynamic design flow based on designCategory
+        const category = data.designCategory
+        
+        if (category === 'placas') {
+          // Ask for subtype of placas
+          messageContent = {
+            content: 'Que tipo de placas?',
+            options: [
+              { label: 'Placas con material propio', value: 'placas_material_propio', emoji: '📸' },
+              { label: 'Placas con IA', value: 'placas_ia', emoji: '🤖' },
+              { label: 'Modificaciones en placas existentes', value: 'placas_modificacion', emoji: '✏️' },
+            ],
+          }
+        } else if (category === 'videos') {
+          messageContent = {
+            content: 'Que tipo de video?',
+            options: [
+              { label: 'Edicion con material propio', value: 'video_material_propio', emoji: '🎥' },
+              { label: 'Video con IA', value: 'video_ia', emoji: '🤖' },
+              { label: 'Modificaciones en videos existentes', value: 'video_modificacion', emoji: '✏️' },
+              { label: 'Videos plantilla (ej: Almundo)', value: 'video_plantilla', emoji: '📋' },
+            ],
+          }
+        } else if (category === 'landing') {
+          messageContent = {
+            content: 'Que necesitas para la landing?',
+            options: [
+              { label: 'Diseno de landing en Wordpress', value: 'landing_wordpress', emoji: '🔵', hint: '2-3 dias habiles' },
+              { label: 'Diseno de landing en GoHighLevel', value: 'landing_ghl', emoji: '🟢', hint: '2-3 dias habiles' },
+              { label: 'Diseno de landing en V0', value: 'landing_v0', emoji: '⚫', hint: '2-3 dias habiles' },
+              { label: 'Diseno de banners para landing', value: 'landing_banners', emoji: '🖼', hint: '1-2 dias habiles' },
+              { label: 'Modificaciones de estructura', value: 'landing_modificaciones', emoji: '🔧', hint: '1-2 dias habiles' },
+            ],
+          }
+        } else if (category === 'operativo') {
+          messageContent = {
+            content: 'Que tarea operativa?',
+            options: [
+              { label: 'Cambios o generacion de formularios', value: 'op_formularios', emoji: '📝', hint: '0-1 dias habiles' },
+              { label: 'Generacion de accesos', value: 'op_accesos', emoji: '🔑', hint: '0-1 dias habiles' },
+              { label: 'Revision de problemas en landing', value: 'op_problemas', emoji: '🔍', hint: '2-3 dias habiles' },
+              { label: 'Mantenimiento general', value: 'op_mantenimiento', emoji: '🛠', hint: '1-2 dias habiles' },
+            ],
+          }
+        }
+        break
+
       case 'confirm':
         const client = CLIENTS.find((c) => c.id === data.clientId)
         const assignee = template.defaultAssignee 
@@ -1181,24 +1418,39 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
 
   // Handle quick task creation (without Madky)
   const handleQuickCreate = async () => {
-    if (!quickTitle.trim() || !quickClientId) return
+    if (!quickTitle.trim() || quickClientIds.length === 0) return
     
     setIsCreating(true)
-    const client = dbClientes.find(c => c.id === quickClientId)
-    const assignee = dbColaboradores.find(a => a.id === quickAssigneeId)
-    const tipoTarea = dbTiposTarea.find(t => t.id === quickType)
+    
+    // Build clients array
+    const clients = quickClientIds
+      .map(id => dbClientes.find(c => c.id === id))
+      .filter((c): c is DbCliente => c !== undefined)
+      .map(c => ({ id: c.id, nombre_del_negocio: c.nombre_del_negocio }))
+    
+    // Build assignees array
+    const assignees = quickAssigneeIds
+      .map(id => dbColaboradores.find(a => a.id === id))
+      .filter((a): a is DbColaborador => a !== undefined)
+    
+    const firstClient = clients[0]
+    const firstAssignee = assignees[0]
     
     await addTask({
       title: quickTitle,
       description: null,
-      clientId: quickClientId,
-      clientName: client?.nombre_del_negocio || '',
-      assigneeId: assignee?.id || '',
-      assigneeName: assignee?.nombre || '',
-      assigneeAvatar: assignee?.avatar_url || null,
+      clientId: firstClient?.id || '',
+      clientName: firstClient?.nombre_del_negocio || '',
+      clientIds: quickClientIds,
+      clients,
+      assigneeId: firstAssignee?.id || '',
+      assigneeName: firstAssignee?.nombre || '',
+      assigneeAvatar: firstAssignee?.avatar_url || null,
+      assigneeIds: quickAssigneeIds,
+      assignees: assignees.map(a => ({ id: a.id, nombre: a.nombre, avatar_url: a.avatar_url })),
       status: 'pendiente' as TaskStatus,
       priority: quickPriority,
-      type: quickType, // UUID from tipo_de_tareas
+      type: quickType,
       dueDate: quickDueDate ? new Date(quickDueDate) : null,
       customFields: {},
     })
@@ -1206,10 +1458,10 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
     setIsCreating(false)
     // Reset quick mode state
     setQuickTitle('')
-    setQuickClientId('')
+    setQuickClientIds([])
     setQuickType('')
     setQuickPriority('media')
-    setQuickAssigneeId('')
+    setQuickAssigneeIds([])
     setQuickDueDate('')
     setQuickMode(false)
     onOpenChange(false)
@@ -1252,11 +1504,8 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
   const handleOptionSelect = async (value: string) => {
     if (!selectedTemplate) return
 
-    const currentStep = selectedTemplate.flow[currentStepIndex]
-    if (!currentStep) return
-
-    // Handle confirm
-    if (currentStep.type === 'confirm') {
+    // Handle design flow confirm FIRST (before checking currentStep)
+    if (designFlowState?.step === 'confirm') {
       if (value === 'confirm') {
         await handleCreateTask()
       } else {
@@ -1264,6 +1513,80 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
       }
       return
     }
+
+    // Handle design flow options (date confirmation, integration) - check early
+    if (designFlowState && selectedTemplate.id === 'pedido_diseno') {
+      const florColaborador = dbColaboradores.find(c => c.nombre.toLowerCase().includes('flor'))
+      const ayeColaborador = dbColaboradores.find(c => c.nombre.toLowerCase().includes('aye'))
+      
+      // Add user message
+      setMessages((prev) => [...prev, {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: value === 'accept_date' ? 'Si, esa fecha' : value === 'choose_date' ? 'Elegir otra fecha' : value === 'no_date' ? 'Sin fecha limite' : value === 'add_aye' ? `Si, agregar a ${ayeColaborador?.nombre || 'Aye'}` : 'Solo diseno',
+      }])
+      
+      if (designFlowState.step === 'ask_integration') {
+        const newData = { ...taskData }
+        if (value === 'add_aye' && ayeColaborador) {
+          newData.assigneeIds = [florColaborador?.id || '', ayeColaborador.id].filter(Boolean).join(',')
+          addAssistantMessage({ content: `Perfecto! Agrego a ${florColaborador?.nombre || 'Flor'} y a ${ayeColaborador.nombre}.` }, 300)
+        } else {
+          newData.assigneeId = florColaborador?.id || ''
+          addAssistantMessage({ content: `Ok, solo ${florColaborador?.nombre || 'Flor'} entonces.` }, 300)
+        }
+        
+        const recommendedDate = new Date(taskData.recommendedDate || Date.now())
+        const dateStr = recommendedDate.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
+        
+        setTimeout(() => {
+          addAssistantMessage({
+            content: `Te recomiendo fecha de entrega para el **${dateStr}** (${designFlowState.config.daysMin}-${designFlowState.config.daysMax} dias habiles). Te parece bien?`,
+            options: [
+              { label: `Si, para el ${dateStr}`, value: 'accept_date', emoji: '✅' },
+              { label: 'Prefiero elegir otra fecha', value: 'choose_date', emoji: '📅' },
+              { label: 'Sin fecha limite', value: 'no_date', emoji: '🔓' },
+            ],
+          }, 400)
+          setTaskData(newData)
+          setDesignFlowState({ ...designFlowState, step: 'confirm_date' })
+        }, 600)
+        return
+      }
+      
+      if (designFlowState.step === 'confirm_date') {
+        const newData = { ...taskData }
+        if (value === 'accept_date') {
+          newData.dueDate = taskData.recommendedDate
+          addAssistantMessage({ content: 'Perfecto!' }, 300)
+          setTimeout(() => showDesignConfirmation(newData), 600)
+        } else if (value === 'choose_date') {
+          addAssistantMessage({
+            content: 'Dale, decime para cuando lo necesitas:',
+            isDateTime: true,
+          }, 300)
+          setTaskData(newData)
+          setDesignFlowState({ ...designFlowState, step: 'custom_date' })
+        } else {
+          addAssistantMessage({ content: 'Ok, sin fecha limite.' }, 300)
+          setTimeout(() => showDesignConfirmation(newData), 600)
+        }
+        return
+      }
+    }
+
+    const currentStep = selectedTemplate.flow[currentStepIndex]
+    if (!currentStep) return
+
+  // Handle confirm
+  if (currentStep.type === 'confirm') {
+  if (value === 'confirm') {
+  await handleCreateTask()
+  } else {
+  onOpenChange(false)
+  }
+  return
+  }
 
     // Handle meeting confirm
     if (currentStep.type === 'confirm_meeting') {
@@ -1278,11 +1601,11 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
     // Get display label
     let userMessage = value
     if (currentStep.type === 'select_client') {
-      const client = dbClientes.find((c) => c.id === value)
-      userMessage = client?.nombre_del_negocio || value
-      // Load client context
-      setClientContext(getClientContext(value))
-    }
+  const client = dbClientes.find((c) => c.id === value)
+  userMessage = client?.nombre_del_negocio || value
+  // Load client context with real data
+  setClientContext(getClientContextFromDb(value, dbClientes))
+  }
     if (currentStep.type === 'select_assignee') {
       const assignee = dbColaboradores.find((c) => c.id === value)
       userMessage = assignee?.nombre || value
@@ -1304,16 +1627,16 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
     const stepKey = (currentStep as { key?: string }).key || currentStep.type
     const newData = { ...taskData, [stepKey]: value }
     
-if (currentStep.type === 'select_client') {
-      newData.clientId = value
-      // Add personality response for client selection
-      const client = dbClientes.find((c) => c.id === value)
-      if (client) {
-        addAssistantMessage({
-          content: getRandomResponse(PERSONALITY_RESPONSES.client_selected(client.nombre_del_negocio))
-        }, 300)
-      }
-    }
+  if (currentStep.type === 'select_client') {
+  newData.clientId = value
+  // Add personality response for client selection
+  const client = dbClientes.find((c) => c.id === value)
+  if (client) {
+    addAssistantMessage({
+      content: getRandomResponse(PERSONALITY_RESPONSES.client_selected(client.nombre_del_negocio))
+    }, 300)
+  }
+  }
     
     if (currentStep.type === 'select_assignee') {
       newData.assigneeId = value
@@ -1350,6 +1673,14 @@ if (currentStep.type === 'select_client') {
       }
     }
 
+    // Handle dynamic design flow - continue with specific questions based on subtype
+    if (selectedTemplate.id === 'pedido_diseno' && currentStep.type === 'dynamic_design_flow') {
+      setTaskData(newData)
+      // Continue with subtype-specific flow
+      setTimeout(() => handleDesignSubtypeFlow(value, newData), 400)
+      return
+    }
+
     setTaskData(newData)
 
     const delay = currentStep.type === 'select_client' || currentStep.type === 'select_assignee' || currentStep.type === 'priority' || currentStep.type === 'select_due_date' ? 800 : 400
@@ -1361,8 +1692,6 @@ if (currentStep.type === 'select_client') {
     if (!selectedTemplate || !inputValue.trim()) return
 
     const currentStep = selectedTemplate.flow[currentStepIndex]
-    if (!currentStep) return
-
     const value = inputValue.trim()
 
     setMessages((prev) => [...prev, {
@@ -1370,6 +1699,58 @@ if (currentStep.type === 'select_client') {
       role: 'user',
       content: value,
     }])
+    setInputValue('')
+
+    // Handle design flow inputs
+    if (designFlowState && selectedTemplate.id === 'pedido_diseno') {
+      const newData = { ...taskData }
+      
+      if (designFlowState.step === 'quantity') {
+        newData.quantity = value
+        const qty = parseInt(value)
+        if (qty >= 10) {
+          addAssistantMessage({ content: `${qty}! Bastante trabajo, pero Flor se las banca.` }, 300)
+        } else {
+          addAssistantMessage({ content: `${qty}, perfecto!` }, 300)
+        }
+        
+        // If also needs files, ask for them
+        if (designFlowState.config.needsFiles) {
+          setTimeout(() => {
+            addAssistantMessage({
+              content: 'Ahora necesito que me pases los archivos.',
+              isInput: true,
+              inputPlaceholder: 'Ej: Te los paso por Drive / Los subo despues',
+            }, 400)
+            setTaskData(newData)
+            setDesignFlowState({ ...designFlowState, step: 'files' })
+          }, 600)
+          return
+        }
+        
+        // Continue to concept
+        setTimeout(() => continueDesignFlow(newData, designFlowState.config, designFlowState.subtype), 600)
+        return
+      }
+      
+      if (designFlowState.step === 'files') {
+        newData.files = value
+        addAssistantMessage({ content: 'Anotado!' }, 300)
+        setTimeout(() => continueDesignFlow(newData, designFlowState.config, designFlowState.subtype), 600)
+        return
+      }
+      
+      if (designFlowState.step === 'concept') {
+        newData.concept = value
+        addAssistantMessage({ content: 'Excelente, quedo clarisimo!' }, 300)
+        setTimeout(() => finishDesignFlow(newData, designFlowState.config, designFlowState.subtype), 600)
+        return
+      }
+      
+      return
+    }
+
+    if (!currentStep) return
 
     // Quantity response
     if (currentStep.type === 'number') {
@@ -1388,7 +1769,6 @@ if (currentStep.type === 'select_client') {
     
     const newData = { ...taskData, [stepKey]: value }
     setTaskData(newData)
-    setInputValue('')
 
     // Special response for due date
     if (currentStep.type === 'select_due_date') {
@@ -1726,18 +2106,35 @@ setIsCreating(true)
       return false
     })
     
+    // Build clients array (for now single client from IA, but support array)
+    const clientIds = taskData.clientId ? [taskData.clientId] : []
+    const clients = clientIds
+      .map(id => dbClientes.find(c => c.id === id))
+      .filter((c): c is DbCliente => c !== undefined)
+      .map(c => ({ id: c.id, nombre_del_negocio: c.nombre_del_negocio }))
+    
+    // Build assignees array
+    const assigneeIds = taskData.assigneeId ? [taskData.assigneeId] : (assignee ? [assignee.id] : [])
+    const assignees = assigneeIds
+      .map(id => dbColaboradores.find(a => a.id === id))
+      .filter((a): a is DbColaborador => a !== undefined)
+    
     try {
       await addTask({
         title,
-        description: null, // Description now goes to comments
+        description: null,
         clientId: taskData.clientId || '',
         clientName: client?.nombre_del_negocio || '',
+        clientIds,
+        clients,
         assigneeId: assignee?.id || '',
         assigneeName: assignee?.nombre || '',
         assigneeAvatar: assignee?.avatar_url || null,
+        assigneeIds,
+        assignees: assignees.map(a => ({ id: a.id, nombre: a.nombre, avatar_url: a.avatar_url })),
         status: 'pendiente' as TaskStatus,
         priority,
-        type: tipoTarea?.id || '', // UUID from tipo_de_tareas
+        type: tipoTarea?.id || '',
         dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
         customFields: {},
         comments: [initialComment],
@@ -1769,18 +2166,19 @@ setIsCreating(true)
 
   // Go back
   const handleBack = () => {
-    setSelectedTemplate(null)
-    setCurrentStepIndex(0)
-    setTaskData({})
-    setInputValue('')
-    setClientContext(null)
-    setQuickMode(false)
-    setQuickTitle('')
-    setQuickClientId('')
-    setQuickType('')
-    setQuickPriority('media')
-    setQuickAssigneeId('')
-    setQuickDueDate('')
+  setSelectedTemplate(null)
+  setCurrentStepIndex(0)
+  setTaskData({})
+  setInputValue('')
+  setClientContext(null)
+  setDesignFlowState(null)
+  setQuickMode(false)
+  setQuickTitle('')
+  setQuickClientIds([])
+  setQuickType('')
+  setQuickPriority('media')
+  setQuickAssigneeIds([])
+  setQuickDueDate('')
     setMessages([{
       id: 'welcome',
       role: 'assistant',
@@ -1853,17 +2251,53 @@ setIsCreating(true)
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="quick-client">Cliente *</Label>
-              <Select value={quickClientId} onValueChange={setQuickClientId}>
-                <SelectTrigger id="quick-client">
-                  <SelectValue placeholder="Seleccionar cliente" />
-                </SelectTrigger>
-                <SelectContent>
-                  {dbClientes.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.nombre_del_negocio}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Clientes *</Label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {quickClientIds.map(id => {
+                  const client = dbClientes.find(c => c.id === id)
+                  return client ? (
+                    <Badge key={id} variant="secondary" className="gap-1 pr-1">
+                      {client.nombre_del_negocio}
+                      <button
+                        type="button"
+                        onClick={() => setQuickClientIds(prev => prev.filter(cid => cid !== id))}
+                        className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ) : null
+                })}
+              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 gap-1 text-xs">
+                    <Plus className="h-3 w-3" />
+                    Agregar cliente
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar cliente..." className="h-9" />
+                    <CommandList>
+                      <CommandEmpty>No se encontraron clientes</CommandEmpty>
+                      <CommandGroup>
+                        {dbClientes
+                          .filter(c => !quickClientIds.includes(c.id))
+                          .map(c => (
+                            <CommandItem
+                              key={c.id}
+                              value={c.nombre_del_negocio}
+                              onSelect={() => setQuickClientIds(prev => [...prev, c.id])}
+                            >
+                              {c.nombre_del_negocio}
+                            </CommandItem>
+                          ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -1896,31 +2330,65 @@ setIsCreating(true)
               </div>
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="quick-assignee">Asignar a</Label>
-                <Select value={quickAssigneeId} onValueChange={setQuickAssigneeId}>
-                  <SelectTrigger id="quick-assignee">
-                    <SelectValue placeholder="Sin asignar" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {dbColaboradores.map(a => (
-                      <SelectItem key={a.id} value={a.id}>{a.nombre}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="space-y-2">
+              <Label>Asignar a</Label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {quickAssigneeIds.map(id => {
+                  const assignee = dbColaboradores.find(a => a.id === id)
+                  return assignee ? (
+                    <Badge key={id} variant="secondary" className="gap-1 pr-1">
+                      {assignee.nombre}
+                      <button
+                        type="button"
+                        onClick={() => setQuickAssigneeIds(prev => prev.filter(aid => aid !== id))}
+                        className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ) : null
+                })}
               </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="quick-due-date">Fecha limite</Label>
-                <Input
-                  id="quick-due-date"
-                  type="date"
-                  value={quickDueDate}
-                  onChange={(e) => setQuickDueDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
-                />
-              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 gap-1 text-xs">
+                    <Plus className="h-3 w-3" />
+                    Agregar asignado
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar colaborador..." className="h-9" />
+                    <CommandList>
+                      <CommandEmpty>No se encontraron colaboradores</CommandEmpty>
+                      <CommandGroup>
+                        {dbColaboradores
+                          .filter(a => !quickAssigneeIds.includes(a.id))
+                          .map(a => (
+                            <CommandItem
+                              key={a.id}
+                              value={a.nombre}
+                              onSelect={() => setQuickAssigneeIds(prev => [...prev, a.id])}
+                            >
+                              {a.nombre}
+                            </CommandItem>
+                          ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="quick-due-date">Fecha limite</Label>
+              <Input
+                id="quick-due-date"
+                type="date"
+                value={quickDueDate}
+                onChange={(e) => setQuickDueDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+              />
             </div>
             
             <div className="pt-4 space-y-2">
@@ -1931,12 +2399,12 @@ setIsCreating(true)
                   className="w-full gap-2 border-orange-500/50 text-orange-400 hover:bg-orange-500/10" 
                   onClick={() => {
                     // Open Google Calendar to create meeting
-                    const client = dbClientes.find(c => c.id === quickClientId)
-                    const title = encodeURIComponent(quickTitle || `Reunion - ${client?.nombre_del_negocio || 'Cliente'}`)
+                    const clientNames = quickClientIds.map(id => dbClientes.find(c => c.id === id)?.nombre_del_negocio).filter(Boolean).join(', ')
+                    const title = encodeURIComponent(quickTitle || `Reunion - ${clientNames || 'Cliente'}`)
                     const url = `https://calendar.google.com/calendar/u/0/r/eventedit?text=${title}&details=${encodeURIComponent('Creado desde MDK Workspace')}`
                     window.open(url, '_blank')
                   }}
-                  disabled={!quickTitle.trim() || !quickClientId}
+                  disabled={!quickTitle.trim() || quickClientIds.length === 0}
                 >
                   <Video className="h-4 w-4" />
                   Crear reunion en Calendar
@@ -1945,7 +2413,7 @@ setIsCreating(true)
               <Button 
                 className="w-full gap-2" 
                 onClick={handleQuickCreate}
-                disabled={!quickTitle.trim() || !quickClientId || isCreating}
+                disabled={!quickTitle.trim() || quickClientIds.length === 0 || isCreating}
               >
                 {isCreating ? (
                   <>

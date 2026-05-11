@@ -353,7 +353,8 @@ function formatTimeShort(seconds: number): string {
   return `${m}m`
 }
 
-function getInitials(name: string): string {
+function getInitials(name: string | undefined | null): string {
+  if (!name) return '??'
   return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
 }
 
@@ -1784,7 +1785,6 @@ export function TaskDetailPanel() {
                           clients={task.clients || []}
                           availableClients={clientes}
                           onChange={(newClients) => {
-                            console.log('[v0] MultiClientSelect onChange:', newClients)
                             updateTask(task.id, { 
                               clients: newClients,
                               clientIds: newClients.map(c => c.id),
