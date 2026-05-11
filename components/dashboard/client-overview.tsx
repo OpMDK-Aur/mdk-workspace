@@ -351,13 +351,15 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [updatingPM, setUpdatingPM] = useState(false)
   const [updatingAM, setUpdatingAM] = useState(false)
   
-  // Selected unit for dynamic semaphore display
-  const [selectedUnidadId, setSelectedUnidadId] = useState<string | null>(null)
+  // Selected unit for dynamic semaphore display - default to first (highest priority) unit
+  const firstUnidadId = sortedUnidades[0]?.unidad_de_negocio_id || null
+  const [selectedUnidadId, setSelectedUnidadId] = useState<string | null>(firstUnidadId)
   
-  // Get the active semaphore based on selected unit or global
+  // Get the active semaphore based on selected unit
   const getActiveSemaforo = () => {
-    if (selectedUnidadId && client.semaforo_unidades) {
-      const unidadSemaforo = client.semaforo_unidades[selectedUnidadId]
+    const activeUnidadId = selectedUnidadId || firstUnidadId
+    if (activeUnidadId && client.semaforo_unidades) {
+      const unidadSemaforo = client.semaforo_unidades[activeUnidadId]
       if (unidadSemaforo) {
         const semaforoByNombre = getSemaforoByNombre(unidadSemaforo)
         if (semaforoByNombre) return semaforoByNombre
@@ -367,7 +369,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   }
   
   const activeSemaforo = getActiveSemaforo()
-  const selectedUnidad = sortedUnidades.find(u => u.unidad_de_negocio_id === selectedUnidadId)
+  const selectedUnidad = sortedUnidades.find(u => u.unidad_de_negocio_id === (selectedUnidadId || firstUnidadId))
   
   const supabase = createClient()
 
