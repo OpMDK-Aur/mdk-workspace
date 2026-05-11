@@ -13,10 +13,19 @@ import {
 } from '@/lib/tasks/task-store'
 
 // Database types
+interface Landing {
+  nombre: string
+  url: string
+  tipo: string
+}
+
 interface DbCliente {
   id: string
   nombre_del_negocio: string
   plan?: string | null
+  landings?: Landing[] | null
+  crm_url?: string | null
+  sitio_web?: string | null
 }
 
 interface DbColaborador {
@@ -230,31 +239,24 @@ const getRandomResponse = (responses: string[]) => responses[Math.floor(Math.ran
 interface ClientContext {
   id: string
   name: string
-  // Future: these will come from the database
-  activeCampaigns?: string[]
-  pendingIntegrations?: string[]
-  lastIssues?: string[]
-  budget?: number
-  platforms?: ('meta' | 'google')[]
-  crmType?: string
-  websites?: string[]
-  formNames?: string[]
+  landings?: Landing[]
+  crmUrl?: string
+  sitioWeb?: string
+  plan?: string
 }
 
-// Simulated client context - in the future this will come from Supabase
-const getClientContext = (clientId: string): ClientContext | null => {
-  const client = CLIENTS.find(c => c.id === clientId)
+// Get client context from loaded dbClientes
+const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): ClientContext | null => {
+  const client = clientes.find(c => c.id === clientId)
   if (!client) return null
   
-  // TODO: In the future, fetch this from Supabase based on client history
   return {
     id: client.id,
-    name: client.name,
-    activeCampaigns: ['Campana Verano 2024', 'Remarketing'],
-    platforms: ['meta', 'google'],
-    crmType: 'aurelia',
-    websites: ['www.ejemplo.com'],
-    formNames: ['Formulario Contacto', 'Newsletter'],
+    name: client.nombre_del_negocio,
+    landings: client.landings || [],
+    crmUrl: client.crm_url || undefined,
+    sitioWeb: client.sitio_web || undefined,
+    plan: client.plan || undefined,
   }
 }
 
@@ -976,8 +978,8 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
     async function loadData() {
       const supabase = createClient()
       
-      const [clientesRes, colabRes, tiposRes] = await Promise.all([
-        supabase.from('clientes').select('id, nombre_del_negocio, plan').order('nombre_del_negocio'),
+  const [clientesRes, colabRes, tiposRes] = await Promise.all([
+  supabase.from('clientes').select('id, nombre_del_negocio, plan, landings, crm_url, sitio_web').order('nombre_del_negocio'),
         supabase.from('colaboradores').select('id, nombre, avatar_url').order('nombre'),
         supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
       ])
@@ -1082,10 +1084,31 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
         break
 
       case 'input':
-        messageContent = {
-          content: step.question,
-          isInput: true,
-          inputPlaceholder: step.placeholder,
+        // Check if this is a URL/landing input and client has landings
+        const inputKey = (step as { key?: string }).key
+        const isUrlInput = inputKey && ['url', 'webUrl', 'landingUrl', 'formName'].includes(inputKey)
+        const selectedClient = dbClientes.find(c => c.id === data.clientId)
+        const clientLandings = selectedClient?.landings || []
+        
+        if (isUrlInput && clientLandings.length > 0) {
+          // Show landings as options plus an "other" option for custom input
+          messageContent = {
+            content: step.question + `\n\n📋 *${selectedClient?.nombre_del_negocio} tiene estas landings:*`,
+            options: [
+              ...clientLandings.map(l => ({
+                label: l.nombre,
+                value: l.url,
+                emoji: l.tipo === 'landing' ? '🌐' : l.tipo === 'funnel' ? '🎯' : l.tipo === 'ecommerce' ? '🛒' : '📄',
+              })),
+              { label: 'Otra URL (escribir)', value: '__custom__', emoji: '✏️' },
+            ],
+          }
+        } else {
+          messageContent = {
+            content: step.question,
+            isInput: true,
+            inputPlaceholder: step.placeholder,
+          }
         }
         break
 
@@ -1309,11 +1332,11 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
     // Get display label
     let userMessage = value
     if (currentStep.type === 'select_client') {
-      const client = dbClientes.find((c) => c.id === value)
-      userMessage = client?.nombre_del_negocio || value
-      // Load client context
-      setClientContext(getClientContext(value))
-    }
+  const client = dbClientes.find((c) => c.id === value)
+  userMessage = client?.nombre_del_negocio || value
+  // Load client context with real data
+  setClientContext(getClientContextFromDb(value, dbClientes))
+  }
     if (currentStep.type === 'select_assignee') {
       const assignee = dbColaboradores.find((c) => c.id === value)
       userMessage = assignee?.nombre || value
@@ -1335,16 +1358,37 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
     const stepKey = (currentStep as { key?: string }).key || currentStep.type
     const newData = { ...taskData, [stepKey]: value }
     
-if (currentStep.type === 'select_client') {
-      newData.clientId = value
-      // Add personality response for client selection
-      const client = dbClientes.find((c) => c.id === value)
-      if (client) {
-        addAssistantMessage({
-          content: getRandomResponse(PERSONALITY_RESPONSES.client_selected(client.nombre_del_negocio))
-        }, 300)
-      }
+  if (currentStep.type === 'select_client') {
+  newData.clientId = value
+  // Add personality response for client selection with relevant info
+  const client = dbClientes.find((c) => c.id === value)
+  if (client) {
+    let responseContent = getRandomResponse(PERSONALITY_RESPONSES.client_selected(client.nombre_del_negocio))
+    
+    // Add client info summary if available
+    const infoItems: string[] = []
+    if (client.landings && client.landings.length > 0) {
+      infoItems.push(`**Landings:** ${client.landings.map(l => l.nombre).join(', ')}`)
     }
+    if (client.sitio_web) {
+      infoItems.push(`**Sitio web:** ${client.sitio_web}`)
+    }
+    if (client.crm_url) {
+      infoItems.push(`**CRM:** ${client.crm_url}`)
+    }
+    if (client.plan) {
+      infoItems.push(`**Plan:** ${client.plan}`)
+    }
+    
+    if (infoItems.length > 0) {
+      responseContent += `\n\n📋 *Info del cliente:*\n${infoItems.join('\n')}`
+    }
+    
+    addAssistantMessage({
+      content: responseContent
+    }, 300)
+  }
+  }
     
     if (currentStep.type === 'select_assignee') {
       newData.assigneeId = value
@@ -1379,6 +1423,16 @@ if (currentStep.type === 'select_client') {
       } else if (value === 'low_performance') {
         addAssistantMessage({ content: getRandomResponse(PERSONALITY_RESPONSES.optimizar_low) }, 300)
       }
+    }
+
+    // Handle custom URL input selection - show input instead of advancing
+    if (value === '__custom__') {
+      addAssistantMessage({
+        content: 'Dale, escribime la URL:',
+        isInput: true,
+        inputPlaceholder: 'Ej: www.cliente.com/landing',
+      }, 300)
+      return // Don't advance, wait for input
     }
 
     setTaskData(newData)
@@ -1817,18 +1871,18 @@ setIsCreating(true)
 
   // Go back
   const handleBack = () => {
-    setSelectedTemplate(null)
-    setCurrentStepIndex(0)
-    setTaskData({})
-    setInputValue('')
-    setClientContext(null)
-    setQuickMode(false)
-    setQuickTitle('')
-    setQuickClientId('')
-    setQuickType('')
-    setQuickPriority('media')
-    setQuickAssigneeId('')
-    setQuickDueDate('')
+  setSelectedTemplate(null)
+  setCurrentStepIndex(0)
+  setTaskData({})
+  setInputValue('')
+  setClientContext(null)
+  setQuickMode(false)
+  setQuickTitle('')
+  setQuickClientIds([])
+  setQuickType('')
+  setQuickPriority('media')
+  setQuickAssigneeIds([])
+  setQuickDueDate('')
     setMessages([{
       id: 'welcome',
       role: 'assistant',
