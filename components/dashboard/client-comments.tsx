@@ -46,6 +46,12 @@ interface ComentarioCliente {
   cliente_id: string
   contenido: string
   autor: string
+  colaborador_id?: string | null
+  colaborador?: {
+    id: string
+    nombre: string
+    avatar_url?: string | null
+  } | null
   creado_en: string
   actualizado_en: string
 }
@@ -134,7 +140,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       const [commentsRes, tasksRes, colabRes] = await Promise.all([
         supabase
           .from('comentarios_clientes')
-          .select('*')
+          .select('*, colaborador:colaborador_id(id, nombre, avatar_url)')
           .eq('cliente_id', clientId)
           .order('creado_en', { ascending: false }),
         // Get tasks for this client
@@ -254,6 +260,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
         cliente_id: clientId,
         contenido: commentContent,
         autor: autorName,
+        colaborador_id: currentUser.id,
       })
       .select()
       .single()
@@ -696,10 +703,9 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
           {!loading && filteredComments.length > 0 && (
             <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
               {filteredComments.map((comment) => {
-                // Find collaborator by name to get avatar
-                const authorColab = colaboradores.find(c => 
-                  comment.autor.toLowerCase().includes(c.nombre.toLowerCase())
-                )
+                // Use avatar from joined colaborador relation, fallback to search by name
+                const avatarUrl = comment.colaborador?.avatar_url || 
+                  colaboradores.find(c => comment.autor.toLowerCase().includes(c.nombre.toLowerCase()))?.avatar_url
                 return (
                 <div
                   key={comment.id}
@@ -707,7 +713,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                 >
                   <div className="flex items-start gap-3">
                     <Avatar className="h-8 w-8 shrink-0">
-                      <AvatarImage src={authorColab?.avatar_url || undefined} />
+                      <AvatarImage src={avatarUrl || undefined} />
                       <AvatarFallback className="text-xs bg-primary/10 text-primary">
                         {getInitials(comment.autor)}
                       </AvatarFallback>
