@@ -29,7 +29,7 @@ export default async function ClientPage({ params }: Props) {
   // Load unidades de negocio
   const { data: unidadesDeNegocio } = await supabase
     .from('clientes_unidades_de_negocio')
-    .select('unidad_de_negocio_id, unidad_de_negocio:unidades_de_negocio(id, nombre)')
+    .select('unidad_de_negocio_id, unidad_de_negocio(id, nombre)')
     .eq('cliente_id', id)
 
   // Load all colaboradores (for pm/am lookup)
