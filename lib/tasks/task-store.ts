@@ -1121,11 +1121,9 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
     const clienteId = task?.clientId || null
 
     // Create notifications for mentioned users
-    console.log('[v0] addComment - userId:', userId, 'mentionedUserIds:', mentionedUserIds)
     if (mentionedUserIds.length > 0) {
-      const filteredIds = mentionedUserIds.filter(id => id !== userId)
-      console.log('[v0] addComment - after filter:', filteredIds)
-      const notifications = filteredIds
+      const notifications = mentionedUserIds
+        .filter(id => id !== userId) // Don't notify the author
         .map(mentionedId => ({
           id: crypto.randomUUID(),
           colaborador_id: mentionedId,
