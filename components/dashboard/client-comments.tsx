@@ -397,11 +397,12 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
           <Link
             key={`task-${match.index}`}
             href={`/dashboard/tasks?task=${linkedTask?.id || ''}`}
-            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors max-w-[250px]"
             onClick={(e) => e.stopPropagation()}
+            title={linkedTask?.titulo}
           >
-            <CheckSquare className="h-3 w-3" />
-            #{shortId}
+            <CheckSquare className="h-3 w-3 shrink-0" />
+            <span className="truncate">{linkedTask?.titulo || `#${shortId}`}</span>
           </Link>
         )
       } else if (match[3]) {
