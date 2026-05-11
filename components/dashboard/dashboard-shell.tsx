@@ -6,6 +6,7 @@ import type { User } from '@supabase/supabase-js'
 import type { Profile, Client } from '@/lib/types'
 import { Sidebar } from './sidebar'
 import { ActiveTimerBar } from '@/components/time-tracking/active-timer-bar'
+import { NotificationAlertProvider } from './notification-alert'
 
 interface DashboardShellProps {
   user: User
@@ -53,6 +54,7 @@ export function DashboardShell({ user, profile, clients, children }: DashboardSh
           {children}
         </main>
       </div>
+      <NotificationAlertProvider />
     </div>
   )
 }
