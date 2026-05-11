@@ -1008,6 +1008,9 @@ addTask: async (taskData) => {
   // Support both single clientId and multiple clientIds
   const clientIds = taskData.clientIds || (taskData.clientId ? [taskData.clientId] : [])
   
+  // Support both single assigneeId and multiple assigneeIds
+  const assigneeIds = taskData.assigneeIds || (taskData.assigneeId ? [taskData.assigneeId] : [])
+  
   const { error } = await supabase
   .from('tareas')
   .insert({
@@ -1015,9 +1018,10 @@ addTask: async (taskData) => {
   titulo: taskData.title,
   descripcion: taskData.description,
   tipo_tarea_id: taskData.type || null,
-  cliente_id: clientIds[0] || null, // First client for backwards compatibility
+  cliente_id: clientIds[0] || null,
   cliente_ids: clientIds.length > 0 ? clientIds : null,
-  asignado_a: taskData.assigneeId || null,
+  asignado_a: assigneeIds[0] || null,
+  asignados_a: assigneeIds.length > 0 ? assigneeIds : null,
   estado: taskData.status || 'pendiente',
   prioridad: taskData.priority || 'media',
   fecha_vencimiento: taskData.dueDate || null,

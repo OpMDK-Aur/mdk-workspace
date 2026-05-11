@@ -48,6 +48,20 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import { X, Plus } from 'lucide-react'
+import {
   Palette,
   Globe,
   TrendingUp,
@@ -935,10 +949,10 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
   
   // Quick mode form state
   const [quickTitle, setQuickTitle] = useState('')
-  const [quickClientId, setQuickClientId] = useState('')
+  const [quickClientIds, setQuickClientIds] = useState<string[]>([])
   const [quickType, setQuickType] = useState<string>('')
   const [quickPriority, setQuickPriority] = useState<TaskPriority>('media')
-  const [quickAssigneeId, setQuickAssigneeId] = useState('')
+  const [quickAssigneeIds, setQuickAssigneeIds] = useState<string[]>([])
   const [quickDueDate, setQuickDueDate] = useState(() => 
     initialDueDate ? initialDueDate.toISOString().split('T')[0] : ''
   )
@@ -1181,24 +1195,39 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
 
   // Handle quick task creation (without Madky)
   const handleQuickCreate = async () => {
-    if (!quickTitle.trim() || !quickClientId) return
+    if (!quickTitle.trim() || quickClientIds.length === 0) return
     
     setIsCreating(true)
-    const client = dbClientes.find(c => c.id === quickClientId)
-    const assignee = dbColaboradores.find(a => a.id === quickAssigneeId)
-    const tipoTarea = dbTiposTarea.find(t => t.id === quickType)
+    
+    // Build clients array
+    const clients = quickClientIds
+      .map(id => dbClientes.find(c => c.id === id))
+      .filter((c): c is DbCliente => c !== undefined)
+      .map(c => ({ id: c.id, nombre_del_negocio: c.nombre_del_negocio }))
+    
+    // Build assignees array
+    const assignees = quickAssigneeIds
+      .map(id => dbColaboradores.find(a => a.id === id))
+      .filter((a): a is DbColaborador => a !== undefined)
+    
+    const firstClient = clients[0]
+    const firstAssignee = assignees[0]
     
     await addTask({
       title: quickTitle,
       description: null,
-      clientId: quickClientId,
-      clientName: client?.nombre_del_negocio || '',
-      assigneeId: assignee?.id || '',
-      assigneeName: assignee?.nombre || '',
-      assigneeAvatar: assignee?.avatar_url || null,
+      clientId: firstClient?.id || '',
+      clientName: firstClient?.nombre_del_negocio || '',
+      clientIds: quickClientIds,
+      clients,
+      assigneeId: firstAssignee?.id || '',
+      assigneeName: firstAssignee?.nombre || '',
+      assigneeAvatar: firstAssignee?.avatar_url || null,
+      assigneeIds: quickAssigneeIds,
+      assignees: assignees.map(a => ({ id: a.id, nombre: a.nombre, avatar_url: a.avatar_url })),
       status: 'pendiente' as TaskStatus,
       priority: quickPriority,
-      type: quickType, // UUID from tipo_de_tareas
+      type: quickType,
       dueDate: quickDueDate ? new Date(quickDueDate) : null,
       customFields: {},
     })
@@ -1206,10 +1235,10 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
     setIsCreating(false)
     // Reset quick mode state
     setQuickTitle('')
-    setQuickClientId('')
+    setQuickClientIds([])
     setQuickType('')
     setQuickPriority('media')
-    setQuickAssigneeId('')
+    setQuickAssigneeIds([])
     setQuickDueDate('')
     setQuickMode(false)
     onOpenChange(false)
@@ -1726,18 +1755,35 @@ setIsCreating(true)
       return false
     })
     
+    // Build clients array (for now single client from IA, but support array)
+    const clientIds = taskData.clientId ? [taskData.clientId] : []
+    const clients = clientIds
+      .map(id => dbClientes.find(c => c.id === id))
+      .filter((c): c is DbCliente => c !== undefined)
+      .map(c => ({ id: c.id, nombre_del_negocio: c.nombre_del_negocio }))
+    
+    // Build assignees array
+    const assigneeIds = taskData.assigneeId ? [taskData.assigneeId] : (assignee ? [assignee.id] : [])
+    const assignees = assigneeIds
+      .map(id => dbColaboradores.find(a => a.id === id))
+      .filter((a): a is DbColaborador => a !== undefined)
+    
     try {
       await addTask({
         title,
-        description: null, // Description now goes to comments
+        description: null,
         clientId: taskData.clientId || '',
         clientName: client?.nombre_del_negocio || '',
+        clientIds,
+        clients,
         assigneeId: assignee?.id || '',
         assigneeName: assignee?.nombre || '',
         assigneeAvatar: assignee?.avatar_url || null,
+        assigneeIds,
+        assignees: assignees.map(a => ({ id: a.id, nombre: a.nombre, avatar_url: a.avatar_url })),
         status: 'pendiente' as TaskStatus,
         priority,
-        type: tipoTarea?.id || '', // UUID from tipo_de_tareas
+        type: tipoTarea?.id || '',
         dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
         customFields: {},
         comments: [initialComment],
@@ -1853,17 +1899,53 @@ setIsCreating(true)
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="quick-client">Cliente *</Label>
-              <Select value={quickClientId} onValueChange={setQuickClientId}>
-                <SelectTrigger id="quick-client">
-                  <SelectValue placeholder="Seleccionar cliente" />
-                </SelectTrigger>
-                <SelectContent>
-                  {dbClientes.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.nombre_del_negocio}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Clientes *</Label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {quickClientIds.map(id => {
+                  const client = dbClientes.find(c => c.id === id)
+                  return client ? (
+                    <Badge key={id} variant="secondary" className="gap-1 pr-1">
+                      {client.nombre_del_negocio}
+                      <button
+                        type="button"
+                        onClick={() => setQuickClientIds(prev => prev.filter(cid => cid !== id))}
+                        className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ) : null
+                })}
+              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 gap-1 text-xs">
+                    <Plus className="h-3 w-3" />
+                    Agregar cliente
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar cliente..." className="h-9" />
+                    <CommandList>
+                      <CommandEmpty>No se encontraron clientes</CommandEmpty>
+                      <CommandGroup>
+                        {dbClientes
+                          .filter(c => !quickClientIds.includes(c.id))
+                          .map(c => (
+                            <CommandItem
+                              key={c.id}
+                              value={c.nombre_del_negocio}
+                              onSelect={() => setQuickClientIds(prev => [...prev, c.id])}
+                            >
+                              {c.nombre_del_negocio}
+                            </CommandItem>
+                          ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -1896,31 +1978,65 @@ setIsCreating(true)
               </div>
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="quick-assignee">Asignar a</Label>
-                <Select value={quickAssigneeId} onValueChange={setQuickAssigneeId}>
-                  <SelectTrigger id="quick-assignee">
-                    <SelectValue placeholder="Sin asignar" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {dbColaboradores.map(a => (
-                      <SelectItem key={a.id} value={a.id}>{a.nombre}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="space-y-2">
+              <Label>Asignar a</Label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {quickAssigneeIds.map(id => {
+                  const assignee = dbColaboradores.find(a => a.id === id)
+                  return assignee ? (
+                    <Badge key={id} variant="secondary" className="gap-1 pr-1">
+                      {assignee.nombre}
+                      <button
+                        type="button"
+                        onClick={() => setQuickAssigneeIds(prev => prev.filter(aid => aid !== id))}
+                        className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ) : null
+                })}
               </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="quick-due-date">Fecha limite</Label>
-                <Input
-                  id="quick-due-date"
-                  type="date"
-                  value={quickDueDate}
-                  onChange={(e) => setQuickDueDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
-                />
-              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 gap-1 text-xs">
+                    <Plus className="h-3 w-3" />
+                    Agregar asignado
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar colaborador..." className="h-9" />
+                    <CommandList>
+                      <CommandEmpty>No se encontraron colaboradores</CommandEmpty>
+                      <CommandGroup>
+                        {dbColaboradores
+                          .filter(a => !quickAssigneeIds.includes(a.id))
+                          .map(a => (
+                            <CommandItem
+                              key={a.id}
+                              value={a.nombre}
+                              onSelect={() => setQuickAssigneeIds(prev => [...prev, a.id])}
+                            >
+                              {a.nombre}
+                            </CommandItem>
+                          ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="quick-due-date">Fecha limite</Label>
+              <Input
+                id="quick-due-date"
+                type="date"
+                value={quickDueDate}
+                onChange={(e) => setQuickDueDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+              />
             </div>
             
             <div className="pt-4 space-y-2">
@@ -1931,12 +2047,12 @@ setIsCreating(true)
                   className="w-full gap-2 border-orange-500/50 text-orange-400 hover:bg-orange-500/10" 
                   onClick={() => {
                     // Open Google Calendar to create meeting
-                    const client = dbClientes.find(c => c.id === quickClientId)
-                    const title = encodeURIComponent(quickTitle || `Reunion - ${client?.nombre_del_negocio || 'Cliente'}`)
+                    const clientNames = quickClientIds.map(id => dbClientes.find(c => c.id === id)?.nombre_del_negocio).filter(Boolean).join(', ')
+                    const title = encodeURIComponent(quickTitle || `Reunion - ${clientNames || 'Cliente'}`)
                     const url = `https://calendar.google.com/calendar/u/0/r/eventedit?text=${title}&details=${encodeURIComponent('Creado desde MDK Workspace')}`
                     window.open(url, '_blank')
                   }}
-                  disabled={!quickTitle.trim() || !quickClientId}
+                  disabled={!quickTitle.trim() || quickClientIds.length === 0}
                 >
                   <Video className="h-4 w-4" />
                   Crear reunion en Calendar
@@ -1945,7 +2061,7 @@ setIsCreating(true)
               <Button 
                 className="w-full gap-2" 
                 onClick={handleQuickCreate}
-                disabled={!quickTitle.trim() || !quickClientId || isCreating}
+                disabled={!quickTitle.trim() || quickClientIds.length === 0 || isCreating}
               >
                 {isCreating ? (
                   <>
