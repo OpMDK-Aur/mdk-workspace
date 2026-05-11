@@ -704,7 +704,7 @@ function TimeTracker({ task }: { task: Task }) {
   )
 }
 
-// ── Files Section ───────────────────────────────��─��──���────────────────────────
+// ── Files Section ───────────────────────────────���─��──���────────────────────────
 
 function FilesSection({ task }: { task: Task }) {
   const { addFile, deleteFile } = useTaskStore()
@@ -820,11 +820,12 @@ function CommentsSection({ task }: { task: Task }) {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (user?.email) {
-        const { data: colab } = await supabase
+        const { data: colab, error } = await supabase
           .from('colaboradores')
           .select('id, nombre, avatar_url')
           .eq('email', user.email)
           .single()
+        console.log('[v0] CommentsSection - colab:', colab, 'error:', error)
         if (colab) setCurrentUser(colab)
       }
     }

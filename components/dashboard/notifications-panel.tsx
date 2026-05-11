@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -8,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { useTaskStore } from '@/lib/tasks/task-store'
 import { 
   Calendar, 
   CheckSquare, 
@@ -84,6 +86,8 @@ function groupByDate(notifications: Notificacion[]) {
 }
 
 export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
+  const router = useRouter()
+  const setSelectedTask = useTaskStore((s) => s.setSelectedTask)
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'todas' | 'no_leidas'>('todas')
@@ -175,6 +179,22 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
     setNotificaciones((prev) =>
       prev.map((n) => ({ ...n, leida: true }))
     )
+  }
+
+  function handleNotificationClick(notif: Notificacion) {
+    marcarLeida(notif.id)
+    
+    // Navigate to task if it's a task-related notification
+    if (notif.referencia_tipo === 'tarea' && notif.referencia_id) {
+      // Close the panel
+      onClose()
+      // Navigate to tasks page and open the task
+      router.push('/dashboard/tareas')
+      // Set selected task after a small delay to ensure the page has loaded
+      setTimeout(() => {
+        setSelectedTask(notif.referencia_id!)
+      }, 100)
+    }
   }
 
   const filteredNotificaciones = filter === 'no_leidas' 
@@ -283,7 +303,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
                         "px-3 py-2.5 hover:bg-muted/50 cursor-pointer transition-colors",
                         !notif.leida && "bg-muted/30"
                       )}
-                      onClick={() => marcarLeida(notif.id)}
+                      onClick={() => handleNotificationClick(notif)}
                     >
                       <div className="flex items-start gap-2.5">
                         <Avatar className={cn("h-7 w-7 shrink-0", config.bgColor)}>
