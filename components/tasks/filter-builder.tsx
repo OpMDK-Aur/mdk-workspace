@@ -51,6 +51,7 @@ export type FilterField =
   | 'dueDate'
   | 'createdAt'
   | 'isActive'
+  | 'createdBy'
 
 export interface FilterRule {
   id: string
@@ -77,6 +78,7 @@ const FILTER_FIELDS: { value: FilterField; label: string; type: 'select' | 'mult
   { value: 'status', label: 'Estado', type: 'multiselect' },
   { value: 'priority', label: 'Prioridad', type: 'select' },
   { value: 'assignee', label: 'Asignado', type: 'select' },
+  { value: 'createdBy', label: 'Creado por', type: 'select' },
   { value: 'type', label: 'Tipo', type: 'select' },
   { value: 'client', label: 'Cliente', type: 'text' },
   { value: 'title', label: 'Titulo', type: 'text' },
@@ -143,6 +145,11 @@ function getFieldOptions(field: FilterField): { value: string; label: string; co
         color: TYPE_CONFIG[t].color,
       }))
     case 'assignee':
+      return ASSIGNEES.map(a => ({
+        value: a.id,
+        label: a.name,
+      }))
+    case 'createdBy':
       return ASSIGNEES.map(a => ({
         value: a.id,
         label: a.name,

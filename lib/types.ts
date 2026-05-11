@@ -382,6 +382,8 @@ export interface Task {
   comments: TaskComment[]
   files: TaskFile[]
   quotation: TaskQuotation | null
+  createdById: string | null
+  createdByName: string
   createdAt: Date
   updatedAt: Date
 }

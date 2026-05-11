@@ -33,6 +33,7 @@ interface TareaDB {
   clientes?: { id: string; nombre_del_negocio: string } | null
   colaboradores?: { id: string; nombre: string; apellido?: string | null; avatar_url?: string | null } | null
   tipo_de_tareas?: { id: string; nombre: string } | null
+  creador?: { id: string; nombre: string; apellido?: string | null } | null
 }
 
 interface ComentarioDB {
@@ -136,6 +137,10 @@ function mapTareaToTask(
     comments: [],
     files: [],
     quotation: null,
+    createdById: tarea.creado_por || null,
+    createdByName: tarea.creador 
+      ? [tarea.creador.nombre, tarea.creador.apellido].filter(Boolean).join(' ')
+      : 'Sistema',
     createdAt: new Date(tarea.created_at),
     updatedAt: new Date(tarea.updated_at),
   }
@@ -183,6 +188,8 @@ const MOCK_TASKS: Task[] = [
       total: 8 * HOURLY_RATE * (1 + IVA_RATE),
       notes: 'Incluye desarrollo y testing',
     },
+    createdById: 'erika',
+    createdByName: 'Erika Gordillo',
     createdAt: new Date('2026-04-20'),
     updatedAt: new Date('2026-04-20'),
   },
@@ -209,6 +216,8 @@ const MOCK_TASKS: Task[] = [
     comments: [],
     files: [],
     quotation: null,
+    createdById: 'erika',
+    createdByName: 'Erika Gordillo',
     createdAt: new Date('2026-04-18'),
     updatedAt: new Date('2026-04-18'),
   },
@@ -247,6 +256,8 @@ const MOCK_TASKS: Task[] = [
     ],
     files: [],
     quotation: null,
+    createdById: 'ayelen',
+    createdByName: 'Ayelen Suarez',
     createdAt: new Date('2026-04-22'),
     updatedAt: new Date('2026-04-24'),
   },
@@ -283,6 +294,8 @@ const MOCK_TASKS: Task[] = [
       total: 16 * HOURLY_RATE * (1 + IVA_RATE),
       notes: 'Migracion completa con documentacion',
     },
+    createdById: 'ayelen',
+    createdByName: 'Ayelen Suarez',
     createdAt: new Date('2026-04-15'),
     updatedAt: new Date('2026-04-22'),
   },
@@ -319,6 +332,8 @@ const MOCK_TASKS: Task[] = [
     ],
     files: [],
     quotation: null,
+    createdById: 'erika',
+    createdByName: 'Erika Gordillo',
     createdAt: new Date('2026-04-10'),
     updatedAt: new Date('2026-04-21'),
   },
@@ -346,6 +361,8 @@ const MOCK_TASKS: Task[] = [
     comments: [],
     files: [],
     quotation: null,
+    createdById: 'erika',
+    createdByName: 'Erika Gordillo',
     createdAt: new Date('2026-04-12'),
     updatedAt: new Date('2026-04-20'),
   },
@@ -373,6 +390,8 @@ const MOCK_TASKS: Task[] = [
     comments: [],
     files: [],
     quotation: null,
+    createdById: 'erika',
+    createdByName: 'Erika Gordillo',
     createdAt: new Date('2026-04-08'),
     updatedAt: new Date('2026-04-19'),
   },
@@ -414,6 +433,8 @@ const MOCK_TASKS: Task[] = [
       total: 4 * HOURLY_RATE * (1 + IVA_RATE),
       notes: 'Configuracion de automatizaciones',
     },
+    createdById: 'erika',
+    createdByName: 'Erika Gordillo',
     createdAt: new Date('2026-04-14'),
     updatedAt: new Date('2026-04-23'),
   },
@@ -441,6 +462,8 @@ const MOCK_TASKS: Task[] = [
     comments: [],
     files: [],
     quotation: null,
+    createdById: 'erika',
+    createdByName: 'Erika Gordillo',
     createdAt: new Date('2026-04-16'),
     updatedAt: new Date('2026-04-24'),
   },
@@ -595,6 +618,8 @@ function generateSystemTasks(clientes: Array<{ id: string; nombre_del_negocio: s
         comments: [],
         files: [],
         quotation: null,
+        createdById: null,
+        createdByName: 'Sistema',
         createdAt: new Date(),
         updatedAt: new Date(),
       })
@@ -655,6 +680,9 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
       break
     case 'isActive':
       taskValue = task.isActive
+      break
+    case 'createdBy':
+      taskValue = task.createdById
       break
     default:
       return true
@@ -729,7 +757,7 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
 // Advanced filter types
 export interface FilterRule {
   id: string
-  field: 'status' | 'priority' | 'assignee' | 'type' | 'client' | 'title' | 'dueDate' | 'createdAt' | 'isActive'
+  field: 'status' | 'priority' | 'assignee' | 'type' | 'client' | 'title' | 'dueDate' | 'createdAt' | 'isActive' | 'createdBy'
   operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'is_empty' | 'is_not_empty' | 'greater_than' | 'less_than'
   value: string | string[] | boolean | null
 }
@@ -832,7 +860,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             *,
             clientes:cliente_id(id, nombre_del_negocio),
             colaboradores:asignado_a(id, nombre, apellido, avatar_url),
-            tipo_de_tareas:tipo_tarea_id(id, nombre)
+            tipo_de_tareas:tipo_tarea_id(id, nombre),
+            creador:creado_por(id, nombre, apellido)
           `)
           .order('created_at', { ascending: false }),
         supabase

@@ -96,6 +96,14 @@ function TaskRow({ task }: { task: Task }) {
         </div>
       </TableCell>
       <TableCell>
+        <div className="flex items-center gap-2">
+          <Avatar className="h-5 w-5">
+            <AvatarFallback className="text-[9px] bg-muted">{getInitials(task.createdByName)}</AvatarFallback>
+          </Avatar>
+          <span className="text-sm text-muted-foreground truncate max-w-[100px]">{task.createdByName}</span>
+        </div>
+      </TableCell>
+      <TableCell>
         <span className={cn('text-sm', task.dueDate && task.dueDate < new Date() ? 'text-red-400' : 'text-muted-foreground')}>
           {formatDate(task.dueDate)}
         </span>
@@ -191,6 +199,7 @@ export function ListView() {
             </TableHead>
             <TableHead>Tipo</TableHead>
             <TableHead>Asignado</TableHead>
+            <TableHead>Creado por</TableHead>
             <TableHead>
               <SortButton sortKeyProp="dueDate">Vencimiento</SortButton>
             </TableHead>
@@ -205,7 +214,7 @@ export function ListView() {
           ))}
           {sortedTasks.length === 0 && (
             <TableRow>
-              <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+              <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                 No hay tareas que coincidan con los filtros
               </TableCell>
             </TableRow>
