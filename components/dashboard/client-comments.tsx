@@ -52,6 +52,11 @@ interface ComentarioCliente {
     nombre: string
     avatar_url?: string | null
   } | null
+  editado_por?: string | null
+  editor?: {
+    id: string
+    nombre: string
+  } | null
   creado_en: string
   actualizado_en: string
 }
@@ -144,7 +149,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       const [commentsRes, tasksRes, colabRes] = await Promise.all([
         supabase
           .from('comentarios_clientes')
-          .select('*, colaborador:colaborador_id(id, nombre, avatar_url)')
+          .select('*, colaborador:colaborador_id(id, nombre, avatar_url), editor:editado_por(id, nombre)')
           .eq('cliente_id', clientId)
           .order('creado_en', { ascending: false }),
         // Get tasks for this client
@@ -330,13 +335,17 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   
   // Save edited comment
   const handleSaveEdit = async () => {
-    if (!editingCommentId || !editingContent.trim()) return
+    if (!editingCommentId || !editingContent.trim() || !currentUser) return
+    
+    const editorName = `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
+    const now = new Date().toISOString()
     
     const { error: updateError } = await supabase
       .from('comentarios_clientes')
       .update({ 
         contenido: editingContent.trim(),
-        actualizado_en: new Date().toISOString()
+        actualizado_en: now,
+        editado_por: currentUser.id
       })
       .eq('id', editingCommentId)
 
@@ -346,7 +355,13 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     } else {
       setComments(prev => prev.map(c => 
         c.id === editingCommentId 
-          ? { ...c, contenido: editingContent.trim(), actualizado_en: new Date().toISOString() }
+          ? { 
+              ...c, 
+              contenido: editingContent.trim(), 
+              actualizado_en: now,
+              editado_por: currentUser.id,
+              editor: { id: currentUser.id, nombre: editorName }
+            }
           : c
       ))
       setEditingCommentId(null)
@@ -746,10 +761,9 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
             <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
               {filteredComments.map((comment) => {
                 // Use avatar from joined colaborador relation, fallback to search by name
-                console.log('[v0] Comment:', comment.id, 'autor:', comment.autor, 'colaborador_id:', comment.colaborador_id, 'colaborador:', comment.colaborador)
                 const avatarUrl = comment.colaborador?.avatar_url || 
                   colaboradores.find(c => comment.autor.toLowerCase().includes(c.nombre.toLowerCase()))?.avatar_url
-                console.log('[v0] Avatar URL resolved:', avatarUrl)
+                const wasEdited = comment.actualizado_en !== comment.creado_en && comment.editado_por
                 return (
                 <div
                   key={comment.id}
@@ -764,11 +778,16 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-medium">{comment.autor}</span>
                           <span className="text-xs text-muted-foreground">
                             {formatDate(comment.creado_en)}
                           </span>
+                          {wasEdited && (
+                            <span className="text-xs text-muted-foreground italic">
+                              (editado {formatDate(comment.actualizado_en)}{comment.editor ? ` por ${comment.editor.nombre}` : ''})
+                            </span>
+                          )}
                         </div>
                         {currentUser && (
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
