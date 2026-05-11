@@ -81,7 +81,7 @@ export function TaskBoard() {
     initTasks()
   }, [loadTasks])
 
-  const hasSimpleFilters = filters.priority || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery
+  const hasSimpleFilters = filters.priority || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned
   const hasAdvancedFilters = advancedFilters.length > 0
   const hasFilters = hasSimpleFilters || hasAdvancedFilters
 
@@ -210,10 +210,12 @@ export function TaskBoard() {
                   variant="outline"
                   className={cn(
                     'cursor-pointer px-2.5 py-1 h-7 gap-1',
-                    filters.assigneeIds.length > 0 && 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                    (filters.assigneeIds.length > 0 || filters.showUnassigned) && 'bg-blue-500/10 text-blue-400 border-blue-500/30'
                   )}
                 >
-                  {filters.assigneeIds.length === 0
+                  {filters.showUnassigned
+                    ? 'Sin asignar'
+                    : filters.assigneeIds.length === 0
                     ? 'Asignado'
                     : filters.assigneeIds.length === 1
                     ? ASSIGNEES.find((a) => a.id === filters.assigneeIds[0])?.name ?? 'Asignado'
@@ -222,11 +224,38 @@ export function TaskBoard() {
                 </Badge>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
+                {/* Todos option */}
+                <DropdownMenuItem
+                  onClick={() => {
+                    setFilter('assigneeIds', [])
+                    setFilter('showUnassigned', false)
+                  }}
+                  className={cn(
+                    !filters.showUnassigned && filters.assigneeIds.length === 0 && 'bg-muted'
+                  )}
+                >
+                  Todos
+                </DropdownMenuItem>
+                
+                {/* Sin asignar option */}
+                <DropdownMenuCheckboxItem
+                  checked={filters.showUnassigned === true}
+                  onCheckedChange={(checked) => {
+                    setFilter('showUnassigned', checked)
+                    if (checked) setFilter('assigneeIds', [])
+                  }}
+                >
+                  Sin asignar
+                </DropdownMenuCheckboxItem>
+                
+                <DropdownMenuSeparator />
+                
                 {ASSIGNEES.map((a) => (
                   <DropdownMenuCheckboxItem
                     key={a.id}
                     checked={filters.assigneeIds.includes(a.id)}
                     onCheckedChange={(checked) => {
+                      setFilter('showUnassigned', false)
                       const newIds = checked
                         ? [...filters.assigneeIds, a.id]
                         : filters.assigneeIds.filter(id => id !== a.id)
@@ -236,17 +265,6 @@ export function TaskBoard() {
                     {a.name}
                   </DropdownMenuCheckboxItem>
                 ))}
-                {filters.assigneeIds.length > 0 && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="text-muted-foreground text-xs justify-center"
-                      onClick={() => setFilter('assigneeIds', [])}
-                    >
-                      Limpiar seleccion
-                    </DropdownMenuItem>
-                  </>
-                )}
               </DropdownMenuContent>
             </DropdownMenu>
 

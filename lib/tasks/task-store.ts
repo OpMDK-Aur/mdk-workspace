@@ -700,6 +700,7 @@ interface TaskStore {
   filters: {
   priority: TaskPriority | null
   assigneeIds: string[]
+  showUnassigned: boolean
   type: TaskType | null
   dueThisWeek: boolean
   searchQuery: string
@@ -758,6 +759,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   filters: {
   priority: null,
   assigneeIds: [],
+  showUnassigned: false,
   type: null,
   dueThisWeek: false,
   searchQuery: '',
@@ -849,7 +851,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     filters: { ...state.filters, [key]: value },
   })),
   clearFilters: () => set({
-  filters: { priority: null, assigneeIds: [], type: null, dueThisWeek: false, searchQuery: '' },
+  filters: { priority: null, assigneeIds: [], showUnassigned: false, type: null, dueThisWeek: false, searchQuery: '' },
   advancedFilters: [],
   }),
   
@@ -1247,13 +1249,19 @@ export function useFilteredTasks() {
   // Apply simple filters first
   let filteredTasks = tasks.filter((task) => {
   if (filters.priority && task.priority !== filters.priority) return false
+  // Show unassigned filter - only show tasks without assignee
+  if (filters.showUnassigned) {
+    const hasNoAssignee = !task.assigneeId || task.assigneeId === ''
+    const hasNoAdditionalAssignees = !task.assigneeIds || task.assigneeIds.length === 0
+    if (!hasNoAssignee || !hasNoAdditionalAssignees) return false
+  }
   // Multi-assignee filter - check if task's assignee is in the selected list
   if (filters.assigneeIds.length > 0) {
-    // Check primary assignee
-    const hasMatchingAssignee = task.assigneeId && filters.assigneeIds.includes(task.assigneeId)
-    // Check additional assignees if they exist
-    const hasMatchingAdditionalAssignee = task.assigneeIds?.some(id => filters.assigneeIds.includes(id)) ?? false
-    if (!hasMatchingAssignee && !hasMatchingAdditionalAssignee) return false
+  // Check primary assignee
+  const hasMatchingAssignee = task.assigneeId && filters.assigneeIds.includes(task.assigneeId)
+  // Check additional assignees if they exist
+  const hasMatchingAdditionalAssignee = task.assigneeIds?.some(id => filters.assigneeIds.includes(id)) ?? false
+  if (!hasMatchingAssignee && !hasMatchingAdditionalAssignee) return false
   }
   if (filters.type && task.type !== filters.type) return false
   if (filters.dueThisWeek && task.dueDate) {
