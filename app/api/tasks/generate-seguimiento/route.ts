@@ -33,10 +33,10 @@ export async function POST() {
   const supabase = await createClient()
   
   try {
-    // Get clients that have MDK as unidad de negocio
+    // Get clients that have MDK as unidad de negocio, including account_manager_id
     const { data: mdkClients, error: clientsError } = await supabase
       .from('clientes_unidades_de_negocio')
-      .select('cliente_id, clientes(id, nombre_del_negocio)')
+      .select('cliente_id, clientes(id, nombre_del_negocio, account_manager_id)')
       .eq('unidad_de_negocio_id', MDK_UNIDAD_ID)
     
     if (clientsError) {
@@ -54,6 +54,7 @@ export async function POST() {
       descripcion: string
       cliente_id: string
       tipo_tarea_id: string | null
+      asignado_a: string | null
       estado: string
       prioridad: string
       fecha_vencimiento: string
@@ -67,7 +68,7 @@ export async function POST() {
       .single()
     
     for (const mdkClient of mdkClients) {
-      const cliente = mdkClient.clientes as { id: string; nombre_del_negocio: string } | null
+      const cliente = mdkClient.clientes as { id: string; nombre_del_negocio: string; account_manager_id: string | null } | null
       if (!cliente) continue
       
       for (const friday of fridays) {
@@ -100,6 +101,7 @@ export async function POST() {
 </ul>`,
             cliente_id: cliente.id,
             tipo_tarea_id: tipoTarea?.id ?? null,
+            asignado_a: cliente.account_manager_id,
             estado: 'pendiente',
             prioridad: 'media',
             fecha_vencimiento: fechaVencimiento,
