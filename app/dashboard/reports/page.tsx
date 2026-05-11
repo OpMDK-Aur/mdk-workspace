@@ -149,6 +149,42 @@ export default function ReportsPage() {
       .sort((a, b) => b.hours - a.hours)
   }, [clients, filteredEntries])
 
+  // Calculate collaborator summaries from filtered entries
+  const collaboratorSummaries = useMemo(() => {
+    const colabHoursMap: Record<string, { hours: number, billableHours: number }> = {}
+    
+    filteredEntries.forEach((entry) => {
+      if (entry.colaborador_id) {
+        if (!colabHoursMap[entry.colaborador_id]) {
+          colabHoursMap[entry.colaborador_id] = { hours: 0, billableHours: 0 }
+        }
+        const hours = (entry.duracion_seg || 0) / 3600
+        colabHoursMap[entry.colaborador_id].hours += hours
+        if (entry.facturable) {
+          colabHoursMap[entry.colaborador_id].billableHours += hours
+        }
+      }
+    })
+
+    const totalHoursColab = Object.values(colabHoursMap).reduce((acc, c) => acc + c.hours, 0)
+    
+    return users
+      .filter((user) => colabHoursMap[user.id])
+      .map((user) => {
+        const data = colabHoursMap[user.id] || { hours: 0, billableHours: 0 }
+        const userName = `${user.nombre}${user.apellido ? ` ${user.apellido}` : ''}`
+        return {
+          colaborador_id: user.id,
+          colaborador_name: userName,
+          colaborador_color: stringToColor(userName),
+          hours: data.hours,
+          percentage: totalHoursColab > 0 ? (data.hours / totalHoursColab) * 100 : 0,
+          billable_hours: data.billableHours,
+        }
+      })
+      .sort((a, b) => b.hours - a.hours)
+  }, [users, filteredEntries])
+
   // Calculate totals
   const totalHours = filteredEntries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
   const billableHours = filteredEntries.filter((e) => e.facturable).reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
@@ -296,8 +332,9 @@ export default function ReportsPage() {
       {/* Charts and Tables with Tabs */}
       <Tabs defaultValue="by-client" className="w-full">
         <TabsList className="mb-4">
-          <TabsTrigger value="by-client">By Client</TabsTrigger>
-          <TabsTrigger value="by-day">By Day</TabsTrigger>
+          <TabsTrigger value="by-client">Por Cliente</TabsTrigger>
+          <TabsTrigger value="by-collaborator">Por Colaborador</TabsTrigger>
+          <TabsTrigger value="by-day">Por Día</TabsTrigger>
         </TabsList>
         
         <TabsContent value="by-client">
@@ -309,6 +346,102 @@ export default function ReportsPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <ClientDonutChart clientSummaries={clientSummaries} />
               <ClientSummaryTable clientSummaries={clientSummaries} />
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="by-collaborator">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Donut Chart for Collaborators */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Horas por Colaborador</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {collaboratorSummaries.length === 0 ? (
+                    <div className="flex items-center justify-center h-[250px] text-muted-foreground">
+                      Sin datos para el período seleccionado
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {collaboratorSummaries.map((colab) => (
+                        <div key={colab.colaborador_id} className="flex items-center gap-3">
+                          <div 
+                            className="w-3 h-3 rounded-full shrink-0" 
+                            style={{ backgroundColor: colab.colaborador_color }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium truncate">{colab.colaborador_name}</span>
+                              <span className="text-sm text-muted-foreground ml-2">
+                                {colab.hours.toFixed(1)}h ({colab.percentage.toFixed(0)}%)
+                              </span>
+                            </div>
+                            <div className="h-2 bg-muted rounded-full mt-1 overflow-hidden">
+                              <div 
+                                className="h-full rounded-full transition-all"
+                                style={{ 
+                                  width: `${colab.percentage}%`,
+                                  backgroundColor: colab.colaborador_color 
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              {/* Table for Collaborators */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Detalle por Colaborador</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {collaboratorSummaries.length === 0 ? (
+                    <div className="flex items-center justify-center h-[250px] text-muted-foreground">
+                      Sin datos para el período seleccionado
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-2 font-medium">Colaborador</th>
+                            <th className="text-right py-2 font-medium">Horas</th>
+                            <th className="text-right py-2 font-medium">Facturable</th>
+                            <th className="text-right py-2 font-medium">%</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {collaboratorSummaries.map((colab) => (
+                            <tr key={colab.colaborador_id} className="border-b last:border-0">
+                              <td className="py-2">
+                                <div className="flex items-center gap-2">
+                                  <div 
+                                    className="w-2 h-2 rounded-full" 
+                                    style={{ backgroundColor: colab.colaborador_color }}
+                                  />
+                                  <span className="truncate">{colab.colaborador_name}</span>
+                                </div>
+                              </td>
+                              <td className="text-right py-2">{colab.hours.toFixed(1)}h</td>
+                              <td className="text-right py-2">{colab.billable_hours.toFixed(1)}h</td>
+                              <td className="text-right py-2">{colab.percentage.toFixed(0)}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           )}
         </TabsContent>
