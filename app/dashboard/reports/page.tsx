@@ -43,7 +43,8 @@ interface TimeEntry {
 
 interface User {
   id: string
-  full_name: string
+  nombre: string
+  apellido?: string | null
 }
 
 // Generate consistent color from string
@@ -65,6 +66,10 @@ async function fetchReportsData() {
     supabase.from('time_entries').select('*').order('started_at', { ascending: false }),
     supabase.from('colaboradores').select('id, nombre, apellido').order('nombre'),
   ])
+
+  console.log('[v0] Time entries:', entriesRes.data?.length, 'Sample:', entriesRes.data?.[0])
+  console.log('[v0] Colaboradores:', profilesRes.data?.length, 'Sample:', profilesRes.data?.[0])
+  console.log('[v0] Clientes:', clientsRes.data?.length)
 
   return {
     clients: (clientsRes.data || []) as Client[],
@@ -253,10 +258,10 @@ export default function ReportsPage() {
             <SelectValue placeholder="All team members" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All team members</SelectItem>
+            <SelectItem value="all">Todos los colaboradores</SelectItem>
             {users.map((user) => (
               <SelectItem key={user.id} value={user.id}>
-                {user.full_name}
+                {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
               </SelectItem>
             ))}
           </SelectContent>
