@@ -144,7 +144,6 @@ function mapTareaToTask(
         if (creador) {
           return [creador.nombre, creador.apellido].filter(Boolean).join(' ')
         }
-        console.log('[v0] Creador not found in map for creado_por:', tarea.creado_por, 'Map keys:', Array.from(colaboradoresMap.keys()))
       }
       return 'Sistema'
     })(),
@@ -890,17 +889,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const colaboradoresMap = new Map<string, { id: string; nombre: string; apellido?: string | null; avatar_url?: string | null }>()
       if (colaboradoresData) {
         colaboradoresData.forEach(c => colaboradoresMap.set(c.id, c))
-      }
-      
-      // Debug: Log first task's creado_por and map keys
-      if (data && data.length > 0) {
-        const firstTask = data[0]
-        console.log('[v0] Debug creador mapping:', {
-          creado_por: firstTask.creado_por,
-          mapSize: colaboradoresMap.size,
-          mapKeys: Array.from(colaboradoresMap.keys()),
-          foundInMap: firstTask.creado_por ? colaboradoresMap.has(firstTask.creado_por) : false
-        })
       }
 
       if (error) {

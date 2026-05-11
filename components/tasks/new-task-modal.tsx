@@ -75,6 +75,7 @@ import {
 interface NewTaskModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  initialDueDate?: Date | null
 }
 
 // ── Assistant Personality ─────────────────────────────────────────────────────
@@ -922,10 +923,10 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
+export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModalProps) {
   const addTask = useTaskStore((s) => s.addTask)
   const scrollRef = useRef<HTMLDivElement>(null)
-
+  
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
   const [isCreating, setIsCreating] = useState(false)
@@ -938,7 +939,16 @@ export function NewTaskModal({ open, onOpenChange }: NewTaskModalProps) {
   const [quickType, setQuickType] = useState<string>('')
   const [quickPriority, setQuickPriority] = useState<TaskPriority>('media')
   const [quickAssigneeId, setQuickAssigneeId] = useState('')
-  const [quickDueDate, setQuickDueDate] = useState('')
+  const [quickDueDate, setQuickDueDate] = useState(() => 
+    initialDueDate ? initialDueDate.toISOString().split('T')[0] : ''
+  )
+  
+  // Update quickDueDate when initialDueDate changes (e.g., from calendar)
+  useEffect(() => {
+    if (open && initialDueDate) {
+      setQuickDueDate(initialDueDate.toISOString().split('T')[0])
+    }
+  }, [open, initialDueDate])
   
   // Dynamic data from database
   const [dbClientes, setDbClientes] = useState<DbCliente[]>([])
