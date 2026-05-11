@@ -861,7 +861,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             clientes:cliente_id(id, nombre_del_negocio),
             colaboradores:asignado_a(id, nombre, apellido, avatar_url),
             tipo_de_tareas:tipo_tarea_id(id, nombre),
-            creador:creado_por(id, nombre, apellido)
+            creador:colaboradores!creado_por(id, nombre, apellido)
           `)
           .order('created_at', { ascending: false }),
         supabase
