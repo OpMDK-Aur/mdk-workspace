@@ -115,11 +115,12 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
       
       setCurrentUserId(colaborador.id)
       
-      // Generate notifications for tasks due this week
+      // Clean up old notifications and generate new ones for current user's tasks
       try {
+        await fetch('/api/notifications/generate', { method: 'DELETE' })
         await fetch('/api/notifications/generate', { method: 'POST' })
       } catch (e) {
-        console.error('Error generating notifications:', e)
+        console.error('Error with notifications:', e)
       }
       
       loadNotificaciones(colaborador.id)
