@@ -166,12 +166,25 @@ export function Sidebar({
     client.nombre_del_negocio?.toLowerCase().includes(clientSearch.toLowerCase())
   )
 
-  // Fetch unread notification count
+  // Fetch unread notification count for current user
   useEffect(() => {
     async function fetchNotificationCount() {
+      // Get current user's colaborador_id
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (!authUser?.email) return
+      
+      const { data: colaborador } = await supabase
+        .from('colaboradores')
+        .select('id')
+        .eq('email', authUser.email)
+        .single()
+      
+      if (!colaborador) return
+      
       const { count, error } = await supabase
         .from('notificaciones')
         .select('*', { count: 'exact', head: true })
+        .eq('colaborador_id', colaborador.id)
         .eq('leida', false)
       
       if (!error && count !== null) {
