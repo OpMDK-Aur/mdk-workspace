@@ -32,13 +32,13 @@ import { toast } from 'sonner'
 
 interface TimeEntry {
   id: string
-  client_id: string | null
-  description: string
-  started_at: string
-  ended_at: string | null
-  duration_sec: number | null
-  billable: boolean
-  user_id: string | null
+  cliente_id: string | null
+  descripcion: string | null
+  iniciado_en: string
+  finalizado_en: string | null
+  duracion_seg: number | null
+  facturable: boolean
+  colaborador_id: string | null
 }
 
 interface User {
@@ -63,13 +63,9 @@ async function fetchReportsData() {
   
   const [clientsRes, entriesRes, profilesRes] = await Promise.all([
     supabase.from('clientes').select('*').order('nombre_del_negocio'),
-    supabase.from('time_entries').select('*').order('started_at', { ascending: false }),
+    supabase.from('entradas_de_tiempo').select('*').order('iniciado_en', { ascending: false }),
     supabase.from('colaboradores').select('id, nombre, apellido').order('nombre'),
   ])
-
-  console.log('[v0] Time entries:', entriesRes.data?.length, 'Sample:', entriesRes.data?.[0])
-  console.log('[v0] Colaboradores:', profilesRes.data?.length, 'Sample:', profilesRes.data?.[0])
-  console.log('[v0] Clientes:', clientsRes.data?.length)
 
   return {
     clients: (clientsRes.data || []) as Client[],
@@ -95,7 +91,7 @@ export default function ReportsPage() {
   // Filter entries by date range and selected members
   const filteredEntries = useMemo(() => {
     return allEntries.filter((entry) => {
-      const entryDate = new Date(entry.started_at)
+      const entryDate = new Date(entry.iniciado_en)
       
       // Filter by date range
       if (date?.from && date?.to) {
@@ -107,8 +103,8 @@ export default function ReportsPage() {
       }
       
       // Filter by selected members
-      if (selectedMembers.length > 0 && entry.user_id) {
-        if (!selectedMembers.includes(entry.user_id)) return false
+      if (selectedMembers.length > 0 && entry.colaborador_id) {
+        if (!selectedMembers.includes(entry.colaborador_id)) return false
       }
       
       return true
@@ -121,14 +117,14 @@ export default function ReportsPage() {
     const clientHoursMap: Record<string, { hours: number, billableHours: number }> = {}
     
     filteredEntries.forEach((entry) => {
-      if (entry.client_id) {
-        if (!clientHoursMap[entry.client_id]) {
-          clientHoursMap[entry.client_id] = { hours: 0, billableHours: 0 }
+      if (entry.cliente_id) {
+        if (!clientHoursMap[entry.cliente_id]) {
+          clientHoursMap[entry.cliente_id] = { hours: 0, billableHours: 0 }
         }
-        const hours = (entry.duration_sec || 0) / 3600
-        clientHoursMap[entry.client_id].hours += hours
-        if (entry.billable) {
-          clientHoursMap[entry.client_id].billableHours += hours
+        const hours = (entry.duracion_seg || 0) / 3600
+        clientHoursMap[entry.cliente_id].hours += hours
+        if (entry.facturable) {
+          clientHoursMap[entry.cliente_id].billableHours += hours
         }
       }
     })
@@ -170,12 +166,12 @@ export default function ReportsPage() {
       const dayEnd = endOfDay(currentDate)
       
       const dayEntries = filteredEntries.filter((entry) => {
-        const entryDate = new Date(entry.started_at)
+        const entryDate = new Date(entry.iniciado_en)
         return isWithinInterval(entryDate, { start: dayStart, end: dayEnd })
       })
       
-      const hours = dayEntries.reduce((acc, e) => acc + ((e.duration_sec || 0) / 3600), 0)
-      const billable = dayEntries.filter((e) => e.billable).reduce((acc, e) => acc + ((e.duration_sec || 0) / 3600), 0)
+      const hours = dayEntries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
+      const billable = dayEntries.filter((e) => e.facturable).reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
       
       days.push({
         date: format(currentDate, 'EEE'),
