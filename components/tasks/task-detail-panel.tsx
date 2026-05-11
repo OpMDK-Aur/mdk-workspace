@@ -1784,7 +1784,6 @@ export function TaskDetailPanel() {
                           clients={task.clients || []}
                           availableClients={clientes}
                           onChange={(newClients) => {
-                            console.log('[v0] MultiClientSelect onChange:', newClients)
                             updateTask(task.id, { 
                               clients: newClients,
                               clientIds: newClients.map(c => c.id),

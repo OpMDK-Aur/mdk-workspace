@@ -1053,6 +1053,8 @@ addTask: async (taskData) => {
       {
         ...taskData,
         id,
+        clientIds: taskData.clientIds || (taskData.clientId ? [taskData.clientId] : []),
+        clients: taskData.clients || (taskData.clientId ? [{ id: taskData.clientId, nombre_del_negocio: taskData.clientName || '' }] : []),
         createdAt: new Date(),
         updatedAt: new Date(),
         activities: [
