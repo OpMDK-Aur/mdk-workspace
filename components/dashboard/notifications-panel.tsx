@@ -31,7 +31,7 @@ import {
 
 interface Notificacion {
   id: string
-  tipo: 'reunion' | 'tarea_vence' | 'comentario' | 'cpl_alerta' | 'impresiones_cero'
+  tipo: 'reunion' | 'tarea_vence' | 'comentario' | 'cpl_alerta' | 'impresiones_cero' | 'mencion_comentario'
   titulo: string
   descripcion: string | null
   referencia_id: string | null
@@ -49,6 +49,7 @@ const TIPO_CONFIG: Record<string, { icon: typeof Calendar; color: string; bgColo
   reunion: { icon: Calendar, color: 'text-blue-400', bgColor: 'bg-blue-500/10', label: 'Reunión' },
   tarea_vence: { icon: CheckSquare, color: 'text-amber-400', bgColor: 'bg-amber-500/10', label: 'Tarea' },
   comentario: { icon: MessageSquare, color: 'text-green-400', bgColor: 'bg-green-500/10', label: 'Comentario' },
+  mencion_comentario: { icon: MessageSquare, color: 'text-primary', bgColor: 'bg-primary/10', label: 'Mención' },
   cpl_alerta: { icon: TrendingDown, color: 'text-red-400', bgColor: 'bg-red-500/10', label: 'CPL Alerta' },
   impresiones_cero: { icon: AlertTriangle, color: 'text-orange-400', bgColor: 'bg-orange-500/10', label: 'Sin impresiones' },
 }
