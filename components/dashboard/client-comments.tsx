@@ -746,8 +746,10 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
             <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
               {filteredComments.map((comment) => {
                 // Use avatar from joined colaborador relation, fallback to search by name
+                console.log('[v0] Comment:', comment.id, 'autor:', comment.autor, 'colaborador_id:', comment.colaborador_id, 'colaborador:', comment.colaborador)
                 const avatarUrl = comment.colaborador?.avatar_url || 
                   colaboradores.find(c => comment.autor.toLowerCase().includes(c.nombre.toLowerCase()))?.avatar_url
+                console.log('[v0] Avatar URL resolved:', avatarUrl)
                 return (
                 <div
                   key={comment.id}
