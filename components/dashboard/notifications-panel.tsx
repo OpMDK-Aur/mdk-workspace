@@ -87,33 +87,57 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'todas' | 'no_leidas'>('todas')
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   useEffect(() => {
-    // Generate notifications for tasks due this week, then load
+    // Get current user, generate notifications, then load
     async function init() {
-      try {
-        const res = await fetch('/api/notifications/generate', { method: 'POST' })
-        const json = await res.json()
-        console.log('[v0] generate notifications response:', json)
-      } catch (e) {
-        console.error('[v0] Error generating notifications:', e)
+      const supabase = createClient()
+      
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setLoading(false)
+        return
       }
-      loadNotificaciones()
+      
+      // Get colaborador_id from user email
+      const { data: colaborador } = await supabase
+        .from('colaboradores')
+        .select('id')
+        .eq('email', user.email)
+        .single()
+      
+      if (!colaborador) {
+        setLoading(false)
+        return
+      }
+      
+      setCurrentUserId(colaborador.id)
+      
+      // Generate notifications for tasks due this week
+      try {
+        await fetch('/api/notifications/generate', { method: 'POST' })
+      } catch (e) {
+        console.error('Error generating notifications:', e)
+      }
+      
+      loadNotificaciones(colaborador.id)
     }
     init()
   }, [])
 
-  async function loadNotificaciones() {
+  async function loadNotificaciones(userId: string) {
     const supabase = createClient()
     setLoading(true)
 
     const { data, error } = await supabase
       .from('notificaciones')
       .select('*')
+      .eq('colaborador_id', userId)
       .order('created_at', { ascending: false })
       .limit(50)
 
-    console.log('[v0] loadNotificaciones - data:', data?.length, 'error:', error)
     if (!error && data) {
       setNotificaciones(data)
     }
@@ -121,11 +145,13 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
   }
 
   async function marcarLeida(id: string) {
+    if (!currentUserId) return
     const supabase = createClient()
     await supabase
       .from('notificaciones')
       .update({ leida: true })
       .eq('id', id)
+      .eq('colaborador_id', currentUserId)
 
     setNotificaciones((prev) =>
       prev.map((n) => (n.id === id ? { ...n, leida: true } : n))
@@ -133,6 +159,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
   }
 
   async function marcarTodasLeidas() {
+    if (!currentUserId) return
     const supabase = createClient()
     const ids = notificaciones.filter((n) => !n.leida).map((n) => n.id)
     
@@ -142,6 +169,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
       .from('notificaciones')
       .update({ leida: true })
       .in('id', ids)
+      .eq('colaborador_id', currentUserId)
 
     setNotificaciones((prev) =>
       prev.map((n) => ({ ...n, leida: true }))
