@@ -1451,7 +1451,8 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
       status: 'pendiente' as TaskStatus,
       priority: quickPriority,
       type: quickType,
-      dueDate: quickDueDate ? new Date(quickDueDate) : null,
+      // Parse date as local timezone to avoid UTC offset issues
+      dueDate: quickDueDate ? new Date(quickDueDate + 'T12:00:00') : null,
       customFields: {},
     })
     
@@ -2132,13 +2133,14 @@ setIsCreating(true)
         assigneeAvatar: assignee?.avatar_url || null,
         assigneeIds,
         assignees: assignees.map(a => ({ id: a.id, nombre: a.nombre, avatar_url: a.avatar_url })),
-        status: 'pendiente' as TaskStatus,
-        priority,
-        type: tipoTarea?.id || '',
-        dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
-        customFields: {},
-        comments: [initialComment],
-      })
+      status: 'pendiente' as TaskStatus,
+      priority,
+      type: tipoTarea?.id || '',
+      // Parse date as local timezone to avoid UTC offset issues
+      dueDate: taskData.dueDate ? new Date(taskData.dueDate.includes('T') ? taskData.dueDate : taskData.dueDate + 'T12:00:00') : null,
+      customFields: {},
+      comments: [initialComment],
+    })
       } catch (err) {
       console.error('Error creating task:', err)
     }
