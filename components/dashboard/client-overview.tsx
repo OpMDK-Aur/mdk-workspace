@@ -30,6 +30,7 @@ import { ClientAdjuntos } from './client-adjuntos'
 import { ClientCotizaciones } from './client-cotizaciones'
 import { ClientTareas } from './client-tareas'
 import { ClientNPS } from './client-nps'
+import { ClientInfoCard } from './client-info-card'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
@@ -694,6 +695,12 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
               )}
             </CardContent>
           </Card>
+        </div>
+
+        {/* ── Info del Cliente: Servicios, Contacto, Fechas, Etapa, Semaforos ── */}
+        <div>
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Informacion del cliente</h2>
+          <ClientInfoCard client={client} unidadesDeNegocio={unidadesDeNegocio} />
         </div>
 
         {/* ── KPIs del periodo ── */}
