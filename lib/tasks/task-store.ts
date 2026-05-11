@@ -739,7 +739,7 @@ interface TaskStore {
   removeCustomField: (taskId: string, key: string) => void
 
   // Comments
-  addComment: (taskId: string, content: string, userId: string, userName: string, userAvatar?: string | null) => Promise<void>
+  addComment: (taskId: string, content: string, userId: string, userName: string, userAvatar?: string | null, mentionedUserIds?: string[]) => Promise<void>
   updateComment: (taskId: string, commentId: string, content: string) => Promise<void>
   deleteComment: (taskId: string, commentId: string) => Promise<void>
 
@@ -1093,7 +1093,7 @@ addTask: async (taskData) => {
     }),
   })),
 
-addComment: async (taskId, content, userId, userName, userAvatar = null) => {
+addComment: async (taskId, content, userId, userName, userAvatar = null, mentionedUserIds: string[] = []) => {
   const supabase = createClient()
   const commentId = crypto.randomUUID()
   const now = new Date()
@@ -1113,6 +1113,37 @@ addComment: async (taskId, content, userId, userName, userAvatar = null) => {
     if (error) {
       console.error('Error adding comment:', error)
       throw error
+    }
+
+    // Get task title for notification
+    const task = get().tasks.find(t => t.id === taskId)
+    const taskTitle = task?.title || 'Tarea'
+
+    // Create notifications for mentioned users
+    if (mentionedUserIds.length > 0) {
+      const notifications = mentionedUserIds
+        .filter(id => id !== userId) // Don't notify the author
+        .map(mentionedId => ({
+          id: crypto.randomUUID(),
+          usuario_id: mentionedId,
+          tipo: 'mencion',
+          titulo: `${userName} te mencionó en un comentario`,
+          mensaje: `En la tarea "${taskTitle}"`,
+          tarea_id: taskId,
+          comentario_id: commentId,
+          leida: false,
+        }))
+
+      if (notifications.length > 0) {
+        const { error: notifError } = await supabase
+          .from('notificaciones')
+          .insert(notifications)
+
+        if (notifError) {
+          console.error('Error creating notifications:', notifError)
+          // Don't throw, comment was already created successfully
+        }
+      }
     }
 
     set((state) => ({

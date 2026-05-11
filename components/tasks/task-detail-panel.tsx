@@ -9,6 +9,7 @@ import {
   STATUS_CONFIG,
   STATUS_ORDER,
   PRIORITY_CONFIG,
+  ASSIGNEES,
 } from '@/lib/tasks/task-store'
 
 // Database types
@@ -703,7 +704,7 @@ function TimeTracker({ task }: { task: Task }) {
   )
 }
 
-// ── Files Section ────────────────────────────────────���────────────────────────
+// ── Files Section ─────────────────────────────────��──���────────────────────────
 
 function FilesSection({ task }: { task: Task }) {
   const { addFile, deleteFile } = useTaskStore()
@@ -802,6 +803,17 @@ function CommentsSection({ task }: { task: Task }) {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
   const editorRef = useRef<HTMLDivElement>(null)
+  
+  // Mention states
+  const [showMentions, setShowMentions] = useState(false)
+  const [mentionSearch, setMentionSearch] = useState('')
+  const [mentionPosition, setMentionPosition] = useState({ top: 0, left: 0 })
+  const [selectedMentionIndex, setSelectedMentionIndex] = useState(0)
+  const mentionStartRef = useRef<{ node: Node; offset: number } | null>(null)
+  
+  const filteredAssignees = ASSIGNEES.filter(a => 
+    a.name.toLowerCase().includes(mentionSearch.toLowerCase())
+  ).slice(0, 5)
 
   useEffect(() => {
     async function loadUser() {
@@ -862,8 +874,131 @@ function CommentsSection({ task }: { task: Task }) {
     }
   }
 
+  // Handle input for mentions
+  const handleInput = () => {
+    if (!editorRef.current) return
+    
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) return
+    
+    const range = selection.getRangeAt(0)
+    const textNode = range.startContainer
+    
+    if (textNode.nodeType !== Node.TEXT_NODE) {
+      setShowMentions(false)
+      return
+    }
+    
+    const text = textNode.textContent || ''
+    const cursorPos = range.startOffset
+    
+    // Find @ before cursor
+    const textBeforeCursor = text.slice(0, cursorPos)
+    const atIndex = textBeforeCursor.lastIndexOf('@')
+    
+    if (atIndex !== -1) {
+      // Check no space between @ and cursor
+      const textAfterAt = textBeforeCursor.slice(atIndex + 1)
+      if (!textAfterAt.includes(' ')) {
+        setMentionSearch(textAfterAt)
+        mentionStartRef.current = { node: textNode, offset: atIndex }
+        
+        // Get position for dropdown
+        const tempRange = document.createRange()
+        tempRange.setStart(textNode, atIndex)
+        tempRange.setEnd(textNode, atIndex)
+        const rect = tempRange.getBoundingClientRect()
+        const editorRect = editorRef.current.getBoundingClientRect()
+        
+        setMentionPosition({
+          top: rect.bottom - editorRect.top + 5,
+          left: rect.left - editorRect.left
+        })
+        setShowMentions(true)
+        setSelectedMentionIndex(0)
+        return
+      }
+    }
+    
+    setShowMentions(false)
+  }
+
+  // Insert mention
+  const insertMention = (assignee: { id: string; name: string }) => {
+    if (!editorRef.current || !mentionStartRef.current) return
+    
+    const selection = window.getSelection()
+    if (!selection) return
+    
+    const { node, offset } = mentionStartRef.current
+    const range = document.createRange()
+    
+    // Create mention span
+    const mentionSpan = document.createElement('span')
+    mentionSpan.className = 'mention bg-primary/20 text-primary px-1 rounded'
+    mentionSpan.setAttribute('data-mention-id', assignee.id)
+    mentionSpan.setAttribute('data-mention-name', assignee.name)
+    mentionSpan.contentEditable = 'false'
+    mentionSpan.textContent = `@${assignee.name}`
+    
+    // Get current text and cursor position
+    const text = node.textContent || ''
+    const cursorPos = selection.getRangeAt(0).startOffset
+    
+    // Split text
+    const beforeMention = text.slice(0, offset)
+    const afterMention = text.slice(cursorPos)
+    
+    // Create new nodes
+    const beforeText = document.createTextNode(beforeMention)
+    const afterText = document.createTextNode(' ' + afterMention)
+    
+    // Replace content
+    const parent = node.parentNode
+    if (parent) {
+      parent.insertBefore(beforeText, node)
+      parent.insertBefore(mentionSpan, node)
+      parent.insertBefore(afterText, node)
+      parent.removeChild(node)
+      
+      // Set cursor after mention
+      range.setStartAfter(afterText)
+      range.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+    
+    setShowMentions(false)
+    mentionStartRef.current = null
+    editorRef.current.focus()
+  }
+
   // Handle keyboard events
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Handle mention navigation
+    if (showMentions && filteredAssignees.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedMentionIndex(i => Math.min(i + 1, filteredAssignees.length - 1))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedMentionIndex(i => Math.max(i - 1, 0))
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        insertMention(filteredAssignees[selectedMentionIndex])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setShowMentions(false)
+        return
+      }
+    }
+    
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSubmit()
@@ -889,8 +1024,17 @@ function CommentsSection({ task }: { task: Task }) {
     const userId = currentUser?.id || 'system'
     const userName = currentUser?.nombre || 'Usuario'
     
+    // Extract mentioned user IDs
+    const mentionedIds: string[] = []
+    editorRef.current.querySelectorAll('.mention[data-mention-id]').forEach(el => {
+      const id = el.getAttribute('data-mention-id')
+      if (id && !mentionedIds.includes(id)) {
+        mentionedIds.push(id)
+      }
+    })
+    
     try {
-      await addComment(task.id, content, userId, userName, currentUser?.avatar_url)
+      await addComment(task.id, content, userId, userName, currentUser?.avatar_url, mentionedIds)
       editorRef.current.innerHTML = ''
       toast.success('Comentario agregado')
     } catch (err) {
@@ -998,14 +1142,44 @@ function CommentsSection({ task }: { task: Task }) {
           </Avatar>
           <span className="text-sm text-muted-foreground">Nuevo comentario</span>
         </div>
-        <div
-          ref={editorRef}
-          contentEditable
-          onPaste={handlePaste}
-          onKeyDown={handleKeyDown}
-          data-placeholder="Escribe un comentario... (podes pegar imagenes con Ctrl+V)"
-          className="w-full min-h-[80px] p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1"
-        />
+        <div className="relative">
+          <div
+            ref={editorRef}
+            contentEditable
+            onPaste={handlePaste}
+            onKeyDown={handleKeyDown}
+            onInput={handleInput}
+            data-placeholder="Escribe un comentario... usa @ para mencionar (podes pegar imagenes con Ctrl+V)"
+            className="w-full min-h-[80px] p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1 [&_.mention]:bg-primary/20 [&_.mention]:text-primary [&_.mention]:px-1 [&_.mention]:rounded"
+          />
+          
+          {/* Mention dropdown */}
+          {showMentions && filteredAssignees.length > 0 && (
+            <div 
+              className="absolute z-50 bg-popover border rounded-md shadow-lg py-1 min-w-[200px]"
+              style={{ top: mentionPosition.top, left: mentionPosition.left }}
+            >
+              {filteredAssignees.map((assignee, index) => (
+                <button
+                  key={assignee.id}
+                  type="button"
+                  className={cn(
+                    'w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-muted',
+                    index === selectedMentionIndex && 'bg-muted'
+                  )}
+                  onClick={() => insertMention(assignee)}
+                  onMouseEnter={() => setSelectedMentionIndex(index)}
+                >
+                  <Avatar className="h-6 w-6">
+                    {assignee.avatar_url && <AvatarImage src={assignee.avatar_url} />}
+                    <AvatarFallback className="text-xs">{getInitials(assignee.name)}</AvatarFallback>
+                  </Avatar>
+                  <span>{assignee.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         
         <div className="flex items-center justify-end">
           <Button 
