@@ -1780,10 +1780,12 @@ export function TaskDetailPanel() {
                       
                       <div>
                         <Label className="text-xs text-muted-foreground mb-1.5 block">Clientes</Label>
+                        {console.log('[v0] MultiClientSelect - task.clients:', task.clients, 'clientes:', clientes?.length)}
                         <MultiClientSelect
                           clients={task.clients || []}
                           availableClients={clientes}
                           onChange={(newClients) => {
+                            console.log('[v0] MultiClientSelect onChange:', newClients)
                             updateTask(task.id, { 
                               clients: newClients,
                               clientIds: newClients.map(c => c.id),
