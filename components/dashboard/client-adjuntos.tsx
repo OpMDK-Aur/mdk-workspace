@@ -81,20 +81,24 @@ export function ClientAdjuntos({ clientId, currentUserId }: ClientAdjuntosProps)
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
+    console.log('[v0] Files selected:', files?.length, files)
     if (!files || files.length === 0) return
 
     setUploading(true)
 
     for (const file of Array.from(files)) {
       const fileName = `${clientId}/${Date.now()}-${file.name}`
+      console.log('[v0] Uploading file:', fileName, 'size:', file.size)
       
       // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('cliente-adjuntos')
         .upload(fileName, file)
 
+      console.log('[v0] Storage upload result:', { uploadData, uploadError })
+
       if (uploadError) {
-        console.error('Error uploading file:', uploadError)
+        console.error('[v0] Error uploading file:', uploadError)
         continue
       }
 
@@ -102,6 +106,8 @@ export function ClientAdjuntos({ clientId, currentUserId }: ClientAdjuntosProps)
       const { data: { publicUrl } } = supabase.storage
         .from('cliente-adjuntos')
         .getPublicUrl(fileName)
+
+      console.log('[v0] Public URL:', publicUrl)
 
       // Save to database
       const { data, error } = await supabase
@@ -117,8 +123,12 @@ export function ClientAdjuntos({ clientId, currentUserId }: ClientAdjuntosProps)
         .select()
         .single()
 
+      console.log('[v0] DB insert result:', { data, error })
+
       if (!error && data) {
         setAdjuntos(prev => [data, ...prev])
+      } else if (error) {
+        console.error('[v0] DB insert error:', error)
       }
     }
 
