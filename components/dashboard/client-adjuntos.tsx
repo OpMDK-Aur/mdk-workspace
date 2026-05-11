@@ -92,7 +92,13 @@ export function ClientAdjuntos({ clientId, currentUserId }: ClientAdjuntosProps)
     setError(null)
 
     for (const file of Array.from(files)) {
-      const fileName = `${clientId}/${Date.now()}-${file.name}`
+      // Sanitize filename: remove accents, replace spaces with underscores, remove special chars
+      const sanitizedName = file.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Remove accents
+        .replace(/\s+/g, '_') // Replace spaces with underscores
+        .replace(/[^a-zA-Z0-9_.-]/g, '') // Remove special characters
+      const fileName = `${clientId}/${Date.now()}-${sanitizedName}`
       console.log('[v0] Uploading file:', fileName, 'size:', file.size)
       
       try {
