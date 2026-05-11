@@ -51,8 +51,6 @@ export function NotificationAlertProvider() {
 
     const supabase = createClient()
     
-    console.log('[v0] NotificationAlert - subscribing for user:', currentUserId)
-    
     const channel = supabase
       .channel('notification-alerts')
       .on(
@@ -64,7 +62,6 @@ export function NotificationAlertProvider() {
           filter: `colaborador_id=eq.${currentUserId}`,
         },
         (payload) => {
-          console.log('[v0] NotificationAlert - received:', payload)
           const newNotif = payload.new as NotificationAlert
           setAlerts((prev) => [...prev, newNotif])
           
@@ -74,9 +71,7 @@ export function NotificationAlertProvider() {
           }, 20000)
         }
       )
-      .subscribe((status) => {
-        console.log('[v0] NotificationAlert - subscription status:', status)
-      })
+      .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
@@ -107,7 +102,7 @@ export function NotificationAlertProvider() {
               'flex items-start gap-3 p-4 rounded-lg shadow-lg border cursor-pointer',
               'bg-card text-card-foreground border-border',
               'animate-in slide-in-from-left-full duration-300',
-              'hover:bg-muted/50 transition-colors'
+              'hover:bg-muted transition-colors'
             )}
             onClick={() => handleClick(alert)}
           >
