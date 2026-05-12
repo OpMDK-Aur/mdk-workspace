@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator } from 'lucide-react'
+import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator, Pencil, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -35,6 +35,8 @@ interface Cliente {
   id: string
   nombre_del_negocio: string
   fee_mdk: number | null
+  fee_aurelia: number | null
+  fee_consultoria: number | null
 }
 
 interface MetricaColaborador {
@@ -89,6 +91,13 @@ export default function ColaboradoresPage() {
   const [editedRows, setEditedRows] = useState<Set<string>>(new Set())
   const [filterColaborador, setFilterColaborador] = useState<string>('all')
   const [valorHoraGlobal, setValorHoraGlobal] = useState<number>(150000)
+  
+  // Edición de fees del cliente
+  const [editingFeeClientId, setEditingFeeClientId] = useState<string | null>(null)
+  const [editFeeMdk, setEditFeeMdk] = useState<number>(0)
+  const [editFeeAurelia, setEditFeeAurelia] = useState<number>(0)
+  const [editFeeConsultoria, setEditFeeConsultoria] = useState<number>(0)
+  const [savingFee, setSavingFee] = useState(false)
 
   const supabase = createClient()
 
@@ -129,10 +138,10 @@ export default function ColaboradoresPage() {
 
       if (colabs) setColaboradores(colabs)
 
-      // Load clientes with fee_mdk
+      // Load clientes with fees
       const { data: clientesData } = await supabase
         .from('clientes')
-        .select('id, nombre_del_negocio, fee_mdk')
+        .select('id, nombre_del_negocio, fee_mdk, fee_aurelia, fee_consultoria')
         .order('nombre_del_negocio')
 
       if (clientesData) setClientes(clientesData)
@@ -143,7 +152,7 @@ export default function ColaboradoresPage() {
         .select(`
           *,
           colaborador:colaborador_id(id, nombre, apellido, email),
-          cliente:cliente_id(id, nombre_del_negocio, fee_mdk)
+          cliente:cliente_id(id, nombre_del_negocio, fee_mdk, fee_aurelia, fee_consultoria)
         `)
         .eq('mes', selectedMonth)
         .eq('anio', selectedYear)
@@ -280,6 +289,60 @@ export default function ColaboradoresPage() {
     }))
     setEditedRows(new Set(metricas.map(m => m.id)))
     toast.success('Valores recalculados')
+  }
+
+  // Abrir edición de fees del cliente
+  const handleStartEditFee = (cliente: Cliente) => {
+    setEditingFeeClientId(cliente.id)
+    setEditFeeMdk(cliente.fee_mdk || 0)
+    setEditFeeAurelia(cliente.fee_aurelia || 0)
+    setEditFeeConsultoria(cliente.fee_consultoria || 0)
+  }
+
+  // Guardar fees del cliente
+  const handleSaveFee = async () => {
+    if (!editingFeeClientId) return
+    
+    setSavingFee(true)
+    const { error } = await supabase
+      .from('clientes')
+      .update({
+        fee_mdk: editFeeMdk,
+        fee_aurelia: editFeeAurelia,
+        fee_consultoria: editFeeConsultoria,
+      })
+      .eq('id', editingFeeClientId)
+    
+    if (error) {
+      toast.error('Error al guardar fees')
+      console.error('Error saving fees:', error)
+    } else {
+      // Actualizar clientes locales
+      setClientes(clientes.map(c => 
+        c.id === editingFeeClientId 
+          ? { ...c, fee_mdk: editFeeMdk, fee_aurelia: editFeeAurelia, fee_consultoria: editFeeConsultoria }
+          : c
+      ))
+      // Actualizar métricas que usan este cliente
+      setMetricas(metricas.map(m => {
+        if (m.cliente_id === editingFeeClientId) {
+          const totalFee = editFeeMdk + editFeeAurelia + editFeeConsultoria
+          return {
+            ...m,
+            cliente: { ...m.cliente!, fee_mdk: editFeeMdk, fee_aurelia: editFeeAurelia, fee_consultoria: editFeeConsultoria },
+            fee_administrado: totalFee,
+          }
+        }
+        return m
+      }))
+      toast.success('Fees actualizados')
+      setEditingFeeClientId(null)
+    }
+    setSavingFee(false)
+  }
+
+  const handleCancelEditFee = () => {
+    setEditingFeeClientId(null)
   }
 
   const handleDeleteRow = async (id: string) => {
@@ -444,80 +507,6 @@ export default function ColaboradoresPage() {
         </div>
       </div>
 
-      {/* Resumen - todas las filas con colaborador + cliente */}
-      {metricas.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Resumen</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Colaborador</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead className="text-right">Fee MDK</TableHead>
-                    <TableHead className="text-right">H Teóricas</TableHead>
-                    <TableHead className="text-right">Mínimo</TableHead>
-                    <TableHead className="text-right">Objetivo</TableHead>
-                    <TableHead className="text-right">Acumulado</TableHead>
-                    <TableHead className="text-right">% Asignación</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {metricas.map((m) => (
-                    <TableRow key={m.id}>
-                      <TableCell className="font-medium">{m.colaborador?.nombre} {m.colaborador?.apellido || ''}</TableCell>
-                      <TableCell>{m.cliente?.nombre_del_negocio || '-'}</TableCell>
-                      <TableCell className="text-right">${m.fee_administrado.toLocaleString('en-US', { minimumFractionDigits: 2 })}</TableCell>
-                      <TableCell className="text-right">{formatHoursDisplay(m.horas_teoricas_cliente)}</TableCell>
-                      <TableCell className={cn("text-right", getHoursColor(m.minimo_no_negociable_horas, m.horas_objetivo / 2))}>
-                        {formatHoursDisplay(m.minimo_no_negociable_horas)}
-                      </TableCell>
-                      <TableCell className="text-right">{formatHoursDisplay(m.horas_objetivo)}</TableCell>
-                      <TableCell className={cn("text-right", getHoursColor(m.acumulado_mes_asignado, m.horas_objetivo))}>
-                        {formatHoursDisplay(m.acumulado_mes_asignado)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className={cn(
-                          "px-2 py-1 rounded text-sm",
-                          getPercentageColor(m.porcentaje_asignacion)
-                        )}>
-                          {m.porcentaje_asignacion.toFixed(2)}%
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {/* Fila de totales por colaborador */}
-                  {totalesPorColaborador.map((t) => (
-                    <TableRow key={`total-${t.colaborador.id}`} className="bg-muted/50 font-semibold border-t-2">
-                      <TableCell>{t.colaborador.nombre} {t.colaborador.apellido || ''}</TableCell>
-                      <TableCell className="text-muted-foreground">Total ({t.cantidadClientes} clientes)</TableCell>
-                      <TableCell className="text-right">${t.totalFee.toLocaleString('en-US', { minimumFractionDigits: 2 })}</TableCell>
-                      <TableCell className="text-right">{formatHoursDisplay(t.totalHorasTeoricas)}</TableCell>
-                      <TableCell className="text-right">-</TableCell>
-                      <TableCell className="text-right">{formatHoursDisplay(t.totalObjetivo)}</TableCell>
-                      <TableCell className={cn("text-right", getHoursColor(t.totalAcumulado, t.totalObjetivo))}>
-                        {formatHoursDisplay(t.totalAcumulado)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className={cn(
-                          "px-2 py-1 rounded text-sm",
-                          getPercentageColor(t.porcentaje)
-                        )}>
-                          {t.porcentaje.toFixed(2)}%
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Detalle por cliente */}
       <Card>
         <CardHeader className="pb-3">
@@ -573,7 +562,7 @@ export default function ColaboradoresPage() {
                   <TableRow>
                     <TableHead className="w-[160px]">Colaborador</TableHead>
                     <TableHead className="w-[160px]">Cliente</TableHead>
-                    <TableHead className="text-right w-[120px]">Fee MDK</TableHead>
+                    <TableHead className="text-right w-[140px]">Fees (MDK/Aur/Cons)</TableHead>
                     <TableHead className="text-right w-[100px]">Valor Hora</TableHead>
                     <TableHead className="text-right w-[90px]">H Teóricas</TableHead>
                     <TableHead className="text-right w-[90px]">Mínimo</TableHead>
@@ -632,7 +621,79 @@ export default function ColaboradoresPage() {
                           </Select>
                         </TableCell>
                         <TableCell className="text-right">
-                          <span className="text-sm">${m.fee_administrado.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                          {editingFeeClientId === m.cliente_id ? (
+                            <div className="flex flex-col gap-1 items-end">
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-muted-foreground w-8">MDK:</span>
+                                <Input
+                                  type="number"
+                                  value={editFeeMdk}
+                                  onChange={(e) => setEditFeeMdk(Number(e.target.value))}
+                                  className="w-[80px] h-6 text-xs text-right"
+                                />
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-muted-foreground w-8">Aur:</span>
+                                <Input
+                                  type="number"
+                                  value={editFeeAurelia}
+                                  onChange={(e) => setEditFeeAurelia(Number(e.target.value))}
+                                  className="w-[80px] h-6 text-xs text-right"
+                                />
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-muted-foreground w-8">Cons:</span>
+                                <Input
+                                  type="number"
+                                  value={editFeeConsultoria}
+                                  onChange={(e) => setEditFeeConsultoria(Number(e.target.value))}
+                                  className="w-[80px] h-6 text-xs text-right"
+                                />
+                              </div>
+                              <div className="flex gap-1 mt-1">
+                                <Button 
+                                  size="icon" 
+                                  variant="ghost" 
+                                  className="h-5 w-5"
+                                  onClick={handleSaveFee}
+                                  disabled={savingFee}
+                                >
+                                  <Check className="h-3 w-3 text-green-500" />
+                                </Button>
+                                <Button 
+                                  size="icon" 
+                                  variant="ghost" 
+                                  className="h-5 w-5"
+                                  onClick={handleCancelEditFee}
+                                  disabled={savingFee}
+                                >
+                                  <X className="h-3 w-3 text-red-500" />
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-end gap-1">
+                              <div className="flex flex-col items-end text-[10px]">
+                                {(m.cliente?.fee_mdk ?? 0) > 0 && (
+                                  <span>MDK: ${((m.cliente?.fee_mdk || 0) / 1000).toFixed(1)}K</span>
+                                )}
+                                {(m.cliente?.fee_aurelia ?? 0) > 0 && (
+                                  <span>Aur: ${((m.cliente?.fee_aurelia || 0) / 1000).toFixed(1)}K</span>
+                                )}
+                                {(m.cliente?.fee_consultoria ?? 0) > 0 && (
+                                  <span>Cons: ${((m.cliente?.fee_consultoria || 0) / 1000).toFixed(1)}K</span>
+                                )}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5"
+                                onClick={() => m.cliente && handleStartEditFee(m.cliente)}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
                           <Input
