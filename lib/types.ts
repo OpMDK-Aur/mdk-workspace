@@ -74,6 +74,7 @@ export interface Client {
   notion_id: string | null
   fee_mdk: number | null
   fee_aurelia: number | null
+  fee_consultoria?: number | null
   nps_score?: number | null
   google_ads_customer_id: string | null
   meta_ads_account_id: string | null
