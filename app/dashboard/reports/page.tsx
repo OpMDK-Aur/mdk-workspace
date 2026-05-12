@@ -82,6 +82,7 @@ export default function ReportsPage() {
   })
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [selectedMatrixColab, setSelectedMatrixColab] = useState<string>('all')
+  const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
 
   // Fetch data with SWR
   const { data, isLoading } = useSWR('reports-data', fetchReportsData)
@@ -217,9 +218,14 @@ export default function ReportsPage() {
   const billableHours = filteredEntries.filter((e) => e.facturable).reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
   const billablePercentage = totalHours > 0 ? (billableHours / totalHours) * 100 : 0
 
-  // Calculate daily hours for the chart
+  // Calculate daily hours for the chart (with optional collaborator filter)
   const dailyHours = useMemo(() => {
     if (!date?.from || !date?.to) return []
+    
+    // Filter entries by selected collaborator for the day chart
+    const entriesForDayChart = selectedDayColab === 'all' 
+      ? filteredEntries 
+      : filteredEntries.filter(e => e.colaborador_id === selectedDayColab)
     
     const days: { date: string, hours: number, billableHours: number }[] = []
     const currentDate = new Date(date.from)
@@ -229,7 +235,7 @@ export default function ReportsPage() {
       const dayStart = startOfDay(currentDate)
       const dayEnd = endOfDay(currentDate)
       
-      const dayEntries = filteredEntries.filter((entry) => {
+      const dayEntries = entriesForDayChart.filter((entry) => {
         const entryDate = new Date(entry.iniciado_en)
         return isWithinInterval(entryDate, { start: dayStart, end: dayEnd })
       })
@@ -247,7 +253,7 @@ export default function ReportsPage() {
     }
     
     return days
-  }, [date, filteredEntries])
+  }, [date, filteredEntries, selectedDayColab])
 
   const handleExport = () => {
     toast.success('Export started', {
@@ -655,7 +661,32 @@ export default function ReportsPage() {
         </TabsContent>
         
         <TabsContent value="by-day">
-          <div className="grid grid-cols-1 gap-6">
+          <div className="space-y-6">
+            {/* Filtro de colaborador */}
+            <div className="flex items-center gap-4">
+              <Label className="text-sm font-medium">Filtrar por colaborador:</Label>
+              <Select value={selectedDayColab} onValueChange={setSelectedDayColab}>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="Seleccionar colaborador" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los colaboradores</SelectItem>
+                  {users.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedDayColab !== 'all' && (
+                <span className="text-sm text-muted-foreground">
+                  Mostrando horas de: {(() => {
+                    const user = users.find(u => u.id === selectedDayColab)
+                    return user ? `${user.nombre}${user.apellido ? ` ${user.apellido}` : ''}` : ''
+                  })()}
+                </span>
+              )}
+            </div>
             <HoursChart dailyHours={dailyHours} />
           </div>
         </TabsContent>
