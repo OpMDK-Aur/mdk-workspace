@@ -185,6 +185,31 @@ export default function ReportsPage() {
       .sort((a, b) => b.hours - a.hours)
   }, [users, filteredEntries])
 
+  // Calculate collaborator-client matrix
+  const collaboratorClientMatrix = useMemo(() => {
+    const matrix: Record<string, Record<string, number>> = {}
+    
+    filteredEntries.forEach((entry) => {
+      if (entry.colaborador_id && entry.cliente_id) {
+        if (!matrix[entry.colaborador_id]) {
+          matrix[entry.colaborador_id] = {}
+        }
+        const hours = (entry.duracion_seg || 0) / 3600
+        matrix[entry.colaborador_id][entry.cliente_id] = 
+          (matrix[entry.colaborador_id][entry.cliente_id] || 0) + hours
+      }
+    })
+    
+    // Get unique client IDs from entries
+    const clientIds = [...new Set(filteredEntries.filter(e => e.cliente_id).map(e => e.cliente_id!))]
+    
+    return {
+      matrix,
+      clientIds,
+      collaboratorIds: Object.keys(matrix)
+    }
+  }, [filteredEntries])
+
   // Calculate totals
   const totalHours = filteredEntries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
   const billableHours = filteredEntries.filter((e) => e.facturable).reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
@@ -334,6 +359,7 @@ export default function ReportsPage() {
         <TabsList className="mb-4">
           <TabsTrigger value="by-client">Por Cliente</TabsTrigger>
           <TabsTrigger value="by-collaborator">Por Colaborador</TabsTrigger>
+          <TabsTrigger value="by-matrix">Colaborador x Cliente</TabsTrigger>
           <TabsTrigger value="by-day">Por Día</TabsTrigger>
         </TabsList>
         
@@ -443,6 +469,97 @@ export default function ReportsPage() {
                 </CardContent>
               </Card>
             </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="by-matrix">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Horas por Colaborador y Cliente</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {collaboratorClientMatrix.collaboratorIds.length === 0 ? (
+                  <div className="flex items-center justify-center h-[250px] text-muted-foreground">
+                    Sin datos para el período seleccionado
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2 px-2 font-medium sticky left-0 bg-background">Colaborador</th>
+                          {collaboratorClientMatrix.clientIds.map((clientId) => {
+                            const client = clients.find(c => c.id === clientId)
+                            return (
+                              <th key={clientId} className="text-right py-2 px-2 font-medium min-w-[100px]">
+                                <span className="truncate block max-w-[120px]" title={client?.nombre_del_negocio || clientId}>
+                                  {client?.nombre_del_negocio || 'Sin asignar'}
+                                </span>
+                              </th>
+                            )
+                          })}
+                          <th className="text-right py-2 px-2 font-medium bg-muted/50">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {collaboratorClientMatrix.collaboratorIds.map((colabId) => {
+                          const user = users.find(u => u.id === colabId)
+                          const userName = user ? `${user.nombre}${user.apellido ? ` ${user.apellido}` : ''}` : colabId
+                          const rowTotal = Object.values(collaboratorClientMatrix.matrix[colabId] || {}).reduce((a, b) => a + b, 0)
+                          
+                          return (
+                            <tr key={colabId} className="border-b last:border-0 hover:bg-muted/30">
+                              <td className="py-2 px-2 sticky left-0 bg-background">
+                                <div className="flex items-center gap-2">
+                                  <div 
+                                    className="w-2 h-2 rounded-full shrink-0" 
+                                    style={{ backgroundColor: stringToColor(userName) }}
+                                  />
+                                  <span className="truncate">{userName}</span>
+                                </div>
+                              </td>
+                              {collaboratorClientMatrix.clientIds.map((clientId) => {
+                                const hours = collaboratorClientMatrix.matrix[colabId]?.[clientId] || 0
+                                return (
+                                  <td key={clientId} className="text-right py-2 px-2">
+                                    {hours > 0 ? `${hours.toFixed(1)}h` : '-'}
+                                  </td>
+                                )
+                              })}
+                              <td className="text-right py-2 px-2 font-medium bg-muted/50">
+                                {rowTotal.toFixed(1)}h
+                              </td>
+                            </tr>
+                          )
+                        })}
+                        {/* Total row */}
+                        <tr className="border-t-2 font-medium bg-muted/30">
+                          <td className="py-2 px-2 sticky left-0 bg-muted/30">Total</td>
+                          {collaboratorClientMatrix.clientIds.map((clientId) => {
+                            const colTotal = collaboratorClientMatrix.collaboratorIds.reduce((acc, colabId) => {
+                              return acc + (collaboratorClientMatrix.matrix[colabId]?.[clientId] || 0)
+                            }, 0)
+                            return (
+                              <td key={clientId} className="text-right py-2 px-2">
+                                {colTotal > 0 ? `${colTotal.toFixed(1)}h` : '-'}
+                              </td>
+                            )
+                          })}
+                          <td className="text-right py-2 px-2 bg-muted/50">
+                            {totalHours.toFixed(1)}h
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
         
