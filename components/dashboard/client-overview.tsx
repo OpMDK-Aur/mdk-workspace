@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   DollarSign, Target, TrendingDown, MousePointerClick, Eye,
   Users, Megaphone, MessageSquare, Calendar, Clock,
-  ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown,
+  ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown, Pencil, Check, X,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -33,6 +33,7 @@ import { ClientNPS } from './client-nps'
 import { ClientInfoCard } from './client-info-card'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 interface UnidadDeNegocio {
   unidad_de_negocio_id: string
@@ -351,6 +352,12 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [updatingPM, setUpdatingPM] = useState(false)
   const [updatingAM, setUpdatingAM] = useState(false)
   
+  // Fee editing
+  const [editingFee, setEditingFee] = useState(false)
+  const [feeMdk, setFeeMdk] = useState(client.fee_mdk ?? 0)
+  const [feeAurelia, setFeeAurelia] = useState(client.fee_aurelia ?? 0)
+  const [savingFee, setSavingFee] = useState(false)
+  
   // Selected unit for dynamic semaphore display - default to first (highest priority) unit
   const firstUnidadId = sortedUnidades[0]?.unidad_de_negocio_id || null
   const [selectedUnidadId, setSelectedUnidadId] = useState<string | null>(firstUnidadId)
@@ -425,6 +432,35 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     } finally {
       setUpdatingAM(false)
     }
+  }
+
+  const handleSaveFee = async () => {
+    setSavingFee(true)
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .update({ 
+          fee_mdk: feeMdk,
+          fee_aurelia: feeAurelia 
+        })
+        .eq('id', client.id)
+      
+      if (!error) {
+        setEditingFee(false)
+      } else {
+        console.error('Error saving fee:', error)
+      }
+    } catch (e) {
+      console.error('Error saving fee:', e)
+    } finally {
+      setSavingFee(false)
+    }
+  }
+
+  const handleCancelFeeEdit = () => {
+    setFeeMdk(client.fee_mdk ?? 0)
+    setFeeAurelia(client.fee_aurelia ?? 0)
+    setEditingFee(false)
   }
 
   const pm = profiles.find(p => p.id === pmId) ?? null
@@ -674,16 +710,80 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
           <Card>
             <CardContent className="pt-5 pb-5">
-              <p className="text-xs text-muted-foreground font-medium mb-3">Fee mensual</p>
-              <div className="flex items-end gap-2">
-                <p className="text-2xl font-bold text-foreground">{formatCurrency(totalFee)}</p>
-                <p className="text-xs text-muted-foreground mb-1">/ mes</p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs text-muted-foreground font-medium">Fee mensual</p>
+                {!editingFee && (
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                    onClick={() => setEditingFee(true)}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                )}
               </div>
-              {client.fee_mdk != null && client.fee_aurelia != null && (
-                <div className="flex gap-3 mt-2">
-                  <span className="text-[11px] text-muted-foreground">MDK: {formatCurrency(client.fee_mdk)}</span>
-                  <span className="text-[11px] text-muted-foreground">Aurelia: {formatCurrency(client.fee_aurelia)}</span>
+              
+              {editingFee ? (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground">Fee MDK</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                      <Input
+                        type="number"
+                        value={feeMdk}
+                        onChange={(e) => setFeeMdk(Number(e.target.value))}
+                        className="pl-7 h-9"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground">Fee Aurelia</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                      <Input
+                        type="number"
+                        value={feeAurelia}
+                        onChange={(e) => setFeeAurelia(Number(e.target.value))}
+                        className="pl-7 h-9"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button 
+                      size="sm" 
+                      onClick={handleSaveFee}
+                      disabled={savingFee}
+                      className="h-7 text-xs gap-1"
+                    >
+                      <Check className="h-3 w-3" />
+                      Guardar
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={handleCancelFeeEdit}
+                      disabled={savingFee}
+                      className="h-7 text-xs"
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  <div className="flex items-end gap-2">
+                    <p className="text-2xl font-bold text-foreground">{formatCurrency(feeMdk + feeAurelia)}</p>
+                    <p className="text-xs text-muted-foreground mb-1">/ mes</p>
+                  </div>
+                  <div className="flex gap-3 mt-2">
+                    <span className="text-[11px] text-muted-foreground">MDK: {formatCurrency(feeMdk)}</span>
+                    <span className="text-[11px] text-muted-foreground">Aurelia: {formatCurrency(feeAurelia)}</span>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
