@@ -941,9 +941,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
   
   loadSavedFilters: async () => {
+    console.log('[v0] loadSavedFilters called')
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     
+    console.log('[v0] loadSavedFilters user:', user?.id)
     if (!user) return
     
     const { data, error } = await supabase
@@ -951,6 +953,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .select('*')
       .or(`colaborador_id.eq.${user.id},es_global.eq.true`)
       .order('created_at', { ascending: false })
+    
+    console.log('[v0] loadSavedFilters result:', data, 'error:', error)
     
     if (!error && data) {
       set({
