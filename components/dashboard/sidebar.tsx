@@ -224,6 +224,9 @@ export function Sidebar({
   // Get enabled modules for the user
   // Master role sees everything regardless of modulos_habilitados
   const isMaster = userRole === 'master'
+  
+  console.log('[v0] Sidebar - userRole:', userRole, 'isMaster:', isMaster, 'modulos_habilitados:', profile?.modulos_habilitados)
+  
   const enabledModules = isMaster 
     ? Object.values(MODULE_IDS) 
     : (profile?.modulos_habilitados?.length ? profile.modulos_habilitados : ['dashboard'])

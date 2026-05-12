@@ -1,4 +1,4 @@
-export type UserRole = 'direccion' | 'project_manager' | 'account_manager' | 'consultor'
+export type UserRole = 'master' | 'direccion' | 'project_manager' | 'account_manager' | 'consultor' | 'administrador'
 
 export type ClientStatus = 'verde' | 'amarillo' | 'naranja' | 'rojo'
 
