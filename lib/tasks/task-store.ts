@@ -743,9 +743,10 @@ interface TaskStore {
   
   // Advanced filter actions
   setAdvancedFilters: (filters: FilterGroup[]) => void
-  saveFilter: (name: string, groups: FilterGroup[]) => void
+  saveFilter: (name: string, groups: FilterGroup[]) => Promise<void>
   loadSavedFilter: (filter: SavedFilter) => void
-  deleteSavedFilter: (id: string) => void
+  deleteSavedFilter: (id: string) => Promise<void>
+  loadSavedFilters: () => Promise<void>
 
   // Task mutations
   updateTaskStatus: (taskId: string, status: TaskStatus) => Promise<void>
@@ -896,13 +897,71 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   
   // Advanced filters
   setAdvancedFilters: (filters) => set({ advancedFilters: filters }),
-  saveFilter: (name, groups) => set((state) => ({
-    savedFilters: [...state.savedFilters, { id: crypto.randomUUID(), name, groups }],
-  })),
+  
+  saveFilter: async (name, groups) => {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    const { data, error } = await supabase
+      .from('filtros_tareas_guardados')
+      .insert({
+        nombre: name,
+        filtros: groups,
+        colaborador_id: user?.id || null,
+      })
+      .select()
+      .single()
+    
+    if (!error && data) {
+      set((state) => ({
+        savedFilters: [...state.savedFilters, { id: data.id, name: data.nombre, groups: data.filtros as FilterGroup[] }],
+      }))
+    } else {
+      console.error('Error saving filter:', error)
+    }
+  },
+  
   loadSavedFilter: (filter) => set({ advancedFilters: filter.groups }),
-  deleteSavedFilter: (id) => set((state) => ({
-    savedFilters: state.savedFilters.filter(f => f.id !== id),
-  })),
+  
+  deleteSavedFilter: async (id) => {
+    const supabase = createClient()
+    
+    const { error } = await supabase
+      .from('filtros_tareas_guardados')
+      .delete()
+      .eq('id', id)
+    
+    if (!error) {
+      set((state) => ({
+        savedFilters: state.savedFilters.filter(f => f.id !== id),
+      }))
+    } else {
+      console.error('Error deleting saved filter:', error)
+    }
+  },
+  
+  loadSavedFilters: async () => {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) return
+    
+    const { data, error } = await supabase
+      .from('filtros_tareas_guardados')
+      .select('*')
+      .or(`colaborador_id.eq.${user.id},es_global.eq.true`)
+      .order('created_at', { ascending: false })
+    
+    if (!error && data) {
+      set({
+        savedFilters: data.map(f => ({
+          id: f.id,
+          name: f.nombre,
+          groups: f.filtros as FilterGroup[],
+        }))
+      })
+    }
+  },
 
   // Bulk delete tasks
   deleteTasks: async (taskIds: string[]) => {

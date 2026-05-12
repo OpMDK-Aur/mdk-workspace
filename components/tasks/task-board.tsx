@@ -56,6 +56,7 @@ export function TaskBoard() {
     saveFilter,
     loadSavedFilter,
     deleteSavedFilter,
+    loadSavedFilters,
     loadTasks,
     isLoading,
     setSelectedTask,
@@ -76,8 +77,8 @@ export function TaskBoard() {
   // Generate seguimiento tasks for MDK clients on mount, then load all tasks
   useEffect(() => {
     const initTasks = async () => {
-      // Load tasks immediately, generate seguimiento in background
-      const loadPromise = loadTasks()
+      // Load tasks and saved filters in parallel
+      const loadPromise = Promise.all([loadTasks(), loadSavedFilters()])
       
       // Only generate seguimiento once per session (non-blocking)
       if (!seguimientoGenerated.current) {
@@ -91,7 +92,7 @@ export function TaskBoard() {
       await loadPromise
     }
     initTasks()
-  }, [loadTasks])
+  }, [loadTasks, loadSavedFilters])
 
   const hasSimpleFilters = filters.priority || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned
   const hasAdvancedFilters = advancedFilters.length > 0
