@@ -22,7 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { CalendarIcon, Download, Users, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -32,18 +33,19 @@ import { toast } from 'sonner'
 
 interface TimeEntry {
   id: string
-  client_id: string | null
-  description: string
-  started_at: string
-  ended_at: string | null
-  duration_sec: number | null
-  billable: boolean
-  user_id: string | null
+  cliente_id: string | null
+  descripcion: string | null
+  iniciado_en: string
+  finalizado_en: string | null
+  duracion_seg: number | null
+  facturable: boolean
+  colaborador_id: string | null
 }
 
 interface User {
   id: string
-  full_name: string
+  nombre: string
+  apellido?: string | null
 }
 
 // Generate consistent color from string
@@ -62,7 +64,7 @@ async function fetchReportsData() {
   
   const [clientsRes, entriesRes, profilesRes] = await Promise.all([
     supabase.from('clientes').select('*').order('nombre_del_negocio'),
-    supabase.from('time_entries').select('*').order('started_at', { ascending: false }),
+    supabase.from('entradas_de_tiempo').select('*').order('iniciado_en', { ascending: false }),
     supabase.from('colaboradores').select('id, nombre, apellido').order('nombre'),
   ])
 
@@ -79,6 +81,8 @@ export default function ReportsPage() {
     to: new Date(),
   })
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
+  const [selectedMatrixColab, setSelectedMatrixColab] = useState<string>('all')
+  const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
 
   // Fetch data with SWR
   const { data, isLoading } = useSWR('reports-data', fetchReportsData)
@@ -90,7 +94,7 @@ export default function ReportsPage() {
   // Filter entries by date range and selected members
   const filteredEntries = useMemo(() => {
     return allEntries.filter((entry) => {
-      const entryDate = new Date(entry.started_at)
+      const entryDate = new Date(entry.iniciado_en)
       
       // Filter by date range
       if (date?.from && date?.to) {
@@ -102,8 +106,8 @@ export default function ReportsPage() {
       }
       
       // Filter by selected members
-      if (selectedMembers.length > 0 && entry.user_id) {
-        if (!selectedMembers.includes(entry.user_id)) return false
+      if (selectedMembers.length > 0 && entry.colaborador_id) {
+        if (!selectedMembers.includes(entry.colaborador_id)) return false
       }
       
       return true
@@ -116,14 +120,14 @@ export default function ReportsPage() {
     const clientHoursMap: Record<string, { hours: number, billableHours: number }> = {}
     
     filteredEntries.forEach((entry) => {
-      if (entry.client_id) {
-        if (!clientHoursMap[entry.client_id]) {
-          clientHoursMap[entry.client_id] = { hours: 0, billableHours: 0 }
+      if (entry.cliente_id) {
+        if (!clientHoursMap[entry.cliente_id]) {
+          clientHoursMap[entry.cliente_id] = { hours: 0, billableHours: 0 }
         }
-        const hours = (entry.duration_sec || 0) / 3600
-        clientHoursMap[entry.client_id].hours += hours
-        if (entry.billable) {
-          clientHoursMap[entry.client_id].billableHours += hours
+        const hours = (entry.duracion_seg || 0) / 3600
+        clientHoursMap[entry.cliente_id].hours += hours
+        if (entry.facturable) {
+          clientHoursMap[entry.cliente_id].billableHours += hours
         }
       }
     })
@@ -134,10 +138,11 @@ export default function ReportsPage() {
       .filter((client) => clientHoursMap[client.id])
       .map((client) => {
         const data = clientHoursMap[client.id] || { hours: 0, billableHours: 0 }
+        const clientName = client.nombre_del_negocio || client.business_name || 'Sin nombre'
         return {
           client_id: client.id,
-          client_name: client.business_name,
-          client_color: stringToColor(client.business_name),
+          client_name: clientName,
+          client_color: stringToColor(clientName),
           projects_count: 0,
           hours: data.hours,
           percentage: totalHours > 0 ? (data.hours / totalHours) * 100 : 0,
@@ -147,14 +152,80 @@ export default function ReportsPage() {
       .sort((a, b) => b.hours - a.hours)
   }, [clients, filteredEntries])
 
+  // Calculate collaborator summaries from filtered entries
+  const collaboratorSummaries = useMemo(() => {
+    const colabHoursMap: Record<string, { hours: number, billableHours: number }> = {}
+    
+    filteredEntries.forEach((entry) => {
+      if (entry.colaborador_id) {
+        if (!colabHoursMap[entry.colaborador_id]) {
+          colabHoursMap[entry.colaborador_id] = { hours: 0, billableHours: 0 }
+        }
+        const hours = (entry.duracion_seg || 0) / 3600
+        colabHoursMap[entry.colaborador_id].hours += hours
+        if (entry.facturable) {
+          colabHoursMap[entry.colaborador_id].billableHours += hours
+        }
+      }
+    })
+
+    const totalHoursColab = Object.values(colabHoursMap).reduce((acc, c) => acc + c.hours, 0)
+    
+    return users
+      .filter((user) => colabHoursMap[user.id])
+      .map((user) => {
+        const data = colabHoursMap[user.id] || { hours: 0, billableHours: 0 }
+        const userName = `${user.nombre}${user.apellido ? ` ${user.apellido}` : ''}`
+        return {
+          colaborador_id: user.id,
+          colaborador_name: userName,
+          colaborador_color: stringToColor(userName),
+          hours: data.hours,
+          percentage: totalHoursColab > 0 ? (data.hours / totalHoursColab) * 100 : 0,
+          billable_hours: data.billableHours,
+        }
+      })
+      .sort((a, b) => b.hours - a.hours)
+  }, [users, filteredEntries])
+
+  // Calculate collaborator-client matrix
+  const collaboratorClientMatrix = useMemo(() => {
+    const matrix: Record<string, Record<string, number>> = {}
+    
+    filteredEntries.forEach((entry) => {
+      if (entry.colaborador_id && entry.cliente_id) {
+        if (!matrix[entry.colaborador_id]) {
+          matrix[entry.colaborador_id] = {}
+        }
+        const hours = (entry.duracion_seg || 0) / 3600
+        matrix[entry.colaborador_id][entry.cliente_id] = 
+          (matrix[entry.colaborador_id][entry.cliente_id] || 0) + hours
+      }
+    })
+    
+    // Get unique client IDs from entries
+    const clientIds = [...new Set(filteredEntries.filter(e => e.cliente_id).map(e => e.cliente_id!))]
+    
+    return {
+      matrix,
+      clientIds,
+      collaboratorIds: Object.keys(matrix)
+    }
+  }, [filteredEntries])
+
   // Calculate totals
-  const totalHours = filteredEntries.reduce((acc, e) => acc + ((e.duration_sec || 0) / 3600), 0)
-  const billableHours = filteredEntries.filter((e) => e.billable).reduce((acc, e) => acc + ((e.duration_sec || 0) / 3600), 0)
+  const totalHours = filteredEntries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
+  const billableHours = filteredEntries.filter((e) => e.facturable).reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
   const billablePercentage = totalHours > 0 ? (billableHours / totalHours) * 100 : 0
 
-  // Calculate daily hours for the chart
+  // Calculate daily hours for the chart (with optional collaborator filter)
   const dailyHours = useMemo(() => {
     if (!date?.from || !date?.to) return []
+    
+    // Filter entries by selected collaborator for the day chart
+    const entriesForDayChart = selectedDayColab === 'all' 
+      ? filteredEntries 
+      : filteredEntries.filter(e => e.colaborador_id === selectedDayColab)
     
     const days: { date: string, hours: number, billableHours: number }[] = []
     const currentDate = new Date(date.from)
@@ -164,13 +235,13 @@ export default function ReportsPage() {
       const dayStart = startOfDay(currentDate)
       const dayEnd = endOfDay(currentDate)
       
-      const dayEntries = filteredEntries.filter((entry) => {
-        const entryDate = new Date(entry.started_at)
+      const dayEntries = entriesForDayChart.filter((entry) => {
+        const entryDate = new Date(entry.iniciado_en)
         return isWithinInterval(entryDate, { start: dayStart, end: dayEnd })
       })
       
-      const hours = dayEntries.reduce((acc, e) => acc + ((e.duration_sec || 0) / 3600), 0)
-      const billable = dayEntries.filter((e) => e.billable).reduce((acc, e) => acc + ((e.duration_sec || 0) / 3600), 0)
+      const hours = dayEntries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
+      const billable = dayEntries.filter((e) => e.facturable).reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
       
       days.push({
         date: format(currentDate, 'EEE'),
@@ -182,7 +253,7 @@ export default function ReportsPage() {
     }
     
     return days
-  }, [date, filteredEntries])
+  }, [date, filteredEntries, selectedDayColab])
 
   const handleExport = () => {
     toast.success('Export started', {
@@ -253,10 +324,10 @@ export default function ReportsPage() {
             <SelectValue placeholder="All team members" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All team members</SelectItem>
+            <SelectItem value="all">Todos los colaboradores</SelectItem>
             {users.map((user) => (
               <SelectItem key={user.id} value={user.id}>
-                {user.full_name}
+                {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
               </SelectItem>
             ))}
           </SelectContent>
@@ -294,8 +365,10 @@ export default function ReportsPage() {
       {/* Charts and Tables with Tabs */}
       <Tabs defaultValue="by-client" className="w-full">
         <TabsList className="mb-4">
-          <TabsTrigger value="by-client">By Client</TabsTrigger>
-          <TabsTrigger value="by-day">By Day</TabsTrigger>
+          <TabsTrigger value="by-client">Por Cliente</TabsTrigger>
+          <TabsTrigger value="by-collaborator">Por Colaborador</TabsTrigger>
+          <TabsTrigger value="by-matrix">Colaborador x Cliente</TabsTrigger>
+          <TabsTrigger value="by-day">Por Día</TabsTrigger>
         </TabsList>
         
         <TabsContent value="by-client">
@@ -310,9 +383,310 @@ export default function ReportsPage() {
             </div>
           )}
         </TabsContent>
+
+        <TabsContent value="by-collaborator">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Donut Chart for Collaborators */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Horas por Colaborador</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {collaboratorSummaries.length === 0 ? (
+                    <div className="flex items-center justify-center h-[250px] text-muted-foreground">
+                      Sin datos para el período seleccionado
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {collaboratorSummaries.map((colab) => (
+                        <div key={colab.colaborador_id} className="flex items-center gap-3">
+                          <div 
+                            className="w-3 h-3 rounded-full shrink-0" 
+                            style={{ backgroundColor: colab.colaborador_color }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium truncate">{colab.colaborador_name}</span>
+                              <span className="text-sm text-muted-foreground ml-2">
+                                {colab.hours.toFixed(1)}h ({colab.percentage.toFixed(0)}%)
+                              </span>
+                            </div>
+                            <div className="h-2 bg-muted rounded-full mt-1 overflow-hidden">
+                              <div 
+                                className="h-full rounded-full transition-all"
+                                style={{ 
+                                  width: `${colab.percentage}%`,
+                                  backgroundColor: colab.colaborador_color 
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              {/* Table for Collaborators */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Detalle por Colaborador</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {collaboratorSummaries.length === 0 ? (
+                    <div className="flex items-center justify-center h-[250px] text-muted-foreground">
+                      Sin datos para el período seleccionado
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-2 font-medium">Colaborador</th>
+                            <th className="text-right py-2 font-medium">Horas</th>
+                            <th className="text-right py-2 font-medium">Facturable</th>
+                            <th className="text-right py-2 font-medium">%</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {collaboratorSummaries.map((colab) => (
+                            <tr key={colab.colaborador_id} className="border-b last:border-0">
+                              <td className="py-2">
+                                <div className="flex items-center gap-2">
+                                  <div 
+                                    className="w-2 h-2 rounded-full" 
+                                    style={{ backgroundColor: colab.colaborador_color }}
+                                  />
+                                  <span className="truncate">{colab.colaborador_name}</span>
+                                </div>
+                              </td>
+                              <td className="text-right py-2">{colab.hours.toFixed(1)}h</td>
+                              <td className="text-right py-2">{colab.billable_hours.toFixed(1)}h</td>
+                              <td className="text-right py-2">{colab.percentage.toFixed(0)}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="by-matrix">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Filtro de colaborador */}
+              <div className="flex items-center gap-4">
+                <Label className="text-sm font-medium">Filtrar por colaborador:</Label>
+                <Select value={selectedMatrixColab} onValueChange={setSelectedMatrixColab}>
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="Seleccionar colaborador" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los colaboradores</SelectItem>
+                    {users.filter(u => collaboratorClientMatrix.collaboratorIds.includes(u.id)).map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Gráfico de barras cuando hay un colaborador seleccionado */}
+              {selectedMatrixColab !== 'all' && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Distribución de horas por cliente - {(() => {
+                        const user = users.find(u => u.id === selectedMatrixColab)
+                        return user ? `${user.nombre}${user.apellido ? ` ${user.apellido}` : ''}` : ''
+                      })()}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {(() => {
+                      const colabData = collaboratorClientMatrix.matrix[selectedMatrixColab] || {}
+                      const chartData = Object.entries(colabData)
+                        .map(([clientId, hours]) => {
+                          const client = clients.find(c => c.id === clientId)
+                          return {
+                            clientId,
+                            clientName: client?.nombre_del_negocio || 'Sin asignar',
+                            hours,
+                            color: stringToColor(client?.nombre_del_negocio || clientId)
+                          }
+                        })
+                        .sort((a, b) => b.hours - a.hours)
+                      
+                      const maxHours = Math.max(...chartData.map(d => d.hours), 1)
+                      
+                      if (chartData.length === 0) {
+                        return (
+                          <div className="flex items-center justify-center h-[200px] text-muted-foreground">
+                            Sin horas registradas para este colaborador
+                          </div>
+                        )
+                      }
+                      
+                      return (
+                        <div className="space-y-3">
+                          {chartData.map((item) => (
+                            <div key={item.clientId} className="space-y-1">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="truncate max-w-[200px]">{item.clientName}</span>
+                                <span className="font-medium">{item.hours.toFixed(1)}h</span>
+                              </div>
+                              <div className="h-6 bg-muted rounded overflow-hidden">
+                                <div 
+                                  className="h-full rounded transition-all duration-300"
+                                  style={{ 
+                                    width: `${(item.hours / maxHours) * 100}%`,
+                                    backgroundColor: item.color 
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Tabla matriz */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    {selectedMatrixColab === 'all' ? 'Horas por Colaborador y Cliente' : 'Detalle de horas'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {collaboratorClientMatrix.collaboratorIds.length === 0 ? (
+                    <div className="flex items-center justify-center h-[250px] text-muted-foreground">
+                      Sin datos para el período seleccionado
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-2 px-2 font-medium sticky left-0 bg-background">Colaborador</th>
+                            {collaboratorClientMatrix.clientIds.map((clientId) => {
+                              const client = clients.find(c => c.id === clientId)
+                              return (
+                                <th key={clientId} className="text-right py-2 px-2 font-medium min-w-[100px]">
+                                  <span className="truncate block max-w-[120px]" title={client?.nombre_del_negocio || clientId}>
+                                    {client?.nombre_del_negocio || 'Sin asignar'}
+                                  </span>
+                                </th>
+                              )
+                            })}
+                            <th className="text-right py-2 px-2 font-medium bg-muted/50">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {collaboratorClientMatrix.collaboratorIds
+                            .filter(colabId => selectedMatrixColab === 'all' || colabId === selectedMatrixColab)
+                            .map((colabId) => {
+                              const user = users.find(u => u.id === colabId)
+                              const userName = user ? `${user.nombre}${user.apellido ? ` ${user.apellido}` : ''}` : colabId
+                              const rowTotal = Object.values(collaboratorClientMatrix.matrix[colabId] || {}).reduce((a, b) => a + b, 0)
+                              
+                              return (
+                                <tr key={colabId} className="border-b last:border-0 hover:bg-muted/30">
+                                  <td className="py-2 px-2 sticky left-0 bg-background">
+                                    <div className="flex items-center gap-2">
+                                      <div 
+                                        className="w-2 h-2 rounded-full shrink-0" 
+                                        style={{ backgroundColor: stringToColor(userName) }}
+                                      />
+                                      <span className="truncate">{userName}</span>
+                                    </div>
+                                  </td>
+                                  {collaboratorClientMatrix.clientIds.map((clientId) => {
+                                    const hours = collaboratorClientMatrix.matrix[colabId]?.[clientId] || 0
+                                    return (
+                                      <td key={clientId} className="text-right py-2 px-2">
+                                        {hours > 0 ? `${hours.toFixed(1)}h` : '-'}
+                                      </td>
+                                    )
+                                  })}
+                                  <td className="text-right py-2 px-2 font-medium bg-muted/50">
+                                    {rowTotal.toFixed(1)}h
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          {/* Total row - only show when viewing all */}
+                          {selectedMatrixColab === 'all' && (
+                            <tr className="border-t-2 font-medium bg-muted/30">
+                              <td className="py-2 px-2 sticky left-0 bg-muted/30">Total</td>
+                              {collaboratorClientMatrix.clientIds.map((clientId) => {
+                                const colTotal = collaboratorClientMatrix.collaboratorIds.reduce((acc, colabId) => {
+                                  return acc + (collaboratorClientMatrix.matrix[colabId]?.[clientId] || 0)
+                                }, 0)
+                                return (
+                                  <td key={clientId} className="text-right py-2 px-2">
+                                    {colTotal > 0 ? `${colTotal.toFixed(1)}h` : '-'}
+                                  </td>
+                                )
+                              })}
+                              <td className="text-right py-2 px-2 bg-muted/50">
+                                {totalHours.toFixed(1)}h
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
         
         <TabsContent value="by-day">
-          <div className="grid grid-cols-1 gap-6">
+          <div className="space-y-6">
+            {/* Filtro de colaborador */}
+            <div className="flex items-center gap-4">
+              <Label className="text-sm font-medium">Filtrar por colaborador:</Label>
+              <Select value={selectedDayColab} onValueChange={setSelectedDayColab}>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="Seleccionar colaborador" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los colaboradores</SelectItem>
+                  {users.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedDayColab !== 'all' && (
+                <span className="text-sm text-muted-foreground">
+                  Mostrando horas de: {(() => {
+                    const user = users.find(u => u.id === selectedDayColab)
+                    return user ? `${user.nombre}${user.apellido ? ` ${user.apellido}` : ''}` : ''
+                  })()}
+                </span>
+              )}
+            </div>
             <HoursChart dailyHours={dailyHours} />
           </div>
         </TabsContent>

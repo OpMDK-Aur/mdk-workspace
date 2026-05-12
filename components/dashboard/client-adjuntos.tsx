@@ -57,6 +57,7 @@ export function ClientAdjuntos({ clientId, currentUserId }: ClientAdjuntosProps)
   const [adjuntos, setAdjuntos] = useState<Adjunto[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const supabase = createClient()
@@ -81,44 +82,71 @@ export function ClientAdjuntos({ clientId, currentUserId }: ClientAdjuntosProps)
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
-    if (!files || files.length === 0) return
+    console.log('[v0] Files selected:', files?.length, files)
+    if (!files || files.length === 0) {
+      console.log('[v0] No files selected, returning')
+      return
+    }
 
     setUploading(true)
+    setError(null)
 
     for (const file of Array.from(files)) {
-      const fileName = `${clientId}/${Date.now()}-${file.name}`
+      // Sanitize filename: remove accents, replace spaces with underscores, remove special chars
+      const sanitizedName = file.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Remove accents
+        .replace(/\s+/g, '_') // Replace spaces with underscores
+        .replace(/[^a-zA-Z0-9_.-]/g, '') // Remove special characters
+      const fileName = `${clientId}/${Date.now()}-${sanitizedName}`
+      console.log('[v0] Uploading file:', fileName, 'size:', file.size)
       
-      // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('cliente-adjuntos')
-        .upload(fileName, file)
+      try {
+        // Upload to Supabase Storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('cliente-adjuntos')
+          .upload(fileName, file)
 
-      if (uploadError) {
-        console.error('Error uploading file:', uploadError)
-        continue
-      }
+        console.log('[v0] Storage upload result:', { uploadData, uploadError })
 
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('cliente-adjuntos')
-        .getPublicUrl(fileName)
+        if (uploadError) {
+          console.error('[v0] Error uploading file:', uploadError)
+          setError(`Error al subir ${file.name}: ${uploadError.message}`)
+          continue
+        }
 
-      // Save to database
-      const { data, error } = await supabase
-        .from('cliente_adjuntos')
-        .insert({
-          cliente_id: clientId,
-          nombre: file.name,
-          url: publicUrl,
-          tipo: getFileType(file.name),
-          tamanio: file.size,
-          subido_por: currentUserId,
-        })
-        .select()
-        .single()
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('cliente-adjuntos')
+          .getPublicUrl(fileName)
 
-      if (!error && data) {
-        setAdjuntos(prev => [data, ...prev])
+        console.log('[v0] Public URL:', publicUrl)
+
+        // Save to database
+        const { data, error: dbError } = await supabase
+          .from('cliente_adjuntos')
+          .insert({
+            cliente_id: clientId,
+            nombre: file.name,
+            url: publicUrl,
+            tipo: getFileType(file.name),
+            tamanio: file.size,
+            subido_por: currentUserId,
+          })
+          .select()
+          .single()
+
+        console.log('[v0] DB insert result:', { data, dbError })
+
+        if (!dbError && data) {
+          setAdjuntos(prev => [data, ...prev])
+        } else if (dbError) {
+          console.error('[v0] DB insert error:', dbError)
+          setError(`Error al guardar ${file.name}: ${dbError.message}`)
+        }
+      } catch (err) {
+        console.error('[v0] Unexpected error:', err)
+        setError(`Error inesperado al subir ${file.name}`)
       }
     }
 
@@ -177,6 +205,12 @@ export function ClientAdjuntos({ clientId, currentUserId }: ClientAdjuntosProps)
           </Button>
         </div>
       </div>
+
+      {error && (
+        <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+          {error}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-8">

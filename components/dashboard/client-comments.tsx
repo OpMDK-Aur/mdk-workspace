@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign } from 'lucide-react'
+import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign, Pencil, Check, ImagePlus } from 'lucide-react'
 import {
   Popover,
   PopoverContent,
@@ -46,6 +46,18 @@ interface ComentarioCliente {
   cliente_id: string
   contenido: string
   autor: string
+  imagenes?: string[] | null
+  colaborador_id?: string | null
+  colaborador?: {
+    id: string
+    nombre: string
+    avatar_url?: string | null
+  } | null
+  editado_por?: string | null
+  editor?: {
+    id: string
+    nombre: string
+  } | null
   creado_en: string
   actualizado_en: string
 }
@@ -99,6 +111,15 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [showColabPopover, setShowColabPopover] = useState(false)
   const [colabSearchQuery, setColabSearchQuery] = useState('')
+  
+  // Edit comment
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editingContent, setEditingContent] = useState('')
+  
+  // Image upload
+  const [pendingImages, setPendingImages] = useState<string[]>([])
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   const supabase = createClient()
   const chatContainerRef = useRef<HTMLDivElement>(null)
@@ -134,7 +155,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       const [commentsRes, tasksRes, colabRes] = await Promise.all([
         supabase
           .from('comentarios_clientes')
-          .select('*')
+          .select('*, colaborador:colaborador_id(id, nombre, avatar_url), editor:editado_por(id, nombre)')
           .eq('cliente_id', clientId)
           .order('creado_en', { ascending: false }),
         // Get tasks for this client
@@ -238,9 +259,60 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     return [...new Set(mentionedIds)] // Remove duplicates
   }
 
+  // Upload image to Supabase Storage
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    setUploadingImage(true)
+
+    for (const file of Array.from(files)) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setError('Solo se permiten archivos de imagen')
+        continue
+      }
+
+      // Sanitize filename
+      const sanitizedName = file.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9_.-]/g, '')
+      const fileName = `comentarios/${clientId}/${Date.now()}-${sanitizedName}`
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('cliente-adjuntos')
+        .upload(fileName, file)
+
+      if (uploadError) {
+        console.error('[v0] Error uploading image:', uploadError)
+        setError(`Error al subir imagen: ${uploadError.message}`)
+        continue
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('cliente-adjuntos')
+        .getPublicUrl(fileName)
+
+      setPendingImages(prev => [...prev, publicUrl])
+    }
+
+    setUploadingImage(false)
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
+    }
+  }
+
+  // Remove pending image
+  const removePendingImage = (url: string) => {
+    setPendingImages(prev => prev.filter(img => img !== url))
+  }
+
   // Add comment
   const handleAddComment = async () => {
-    if (!newComment.trim() || !currentUser || sending) return
+    if ((!newComment.trim() && pendingImages.length === 0) || !currentUser || sending) return
 
     setSending(true)
     setError(null)
@@ -254,6 +326,8 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
         cliente_id: clientId,
         contenido: commentContent,
         autor: autorName,
+        colaborador_id: currentUser.id,
+        imagenes: pendingImages.length > 0 ? pendingImages : null,
       })
       .select()
       .single()
@@ -264,6 +338,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     } else if (data) {
       setComments(prev => [data, ...prev])
       setNewComment('')
+      setPendingImages([])
       
       // Create notifications for mentioned collaborators
       const mentionedIds = extractMentionedColaboradores(commentContent)
@@ -302,6 +377,54 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       console.error('[v0] Error deleting comment:', deleteError)
     } else {
       setComments(prev => prev.filter(c => c.id !== commentId))
+    }
+  }
+  
+  // Start editing comment
+  const startEditComment = (comment: ComentarioCliente) => {
+    setEditingCommentId(comment.id)
+    setEditingContent(comment.contenido)
+  }
+  
+  // Cancel editing
+  const cancelEditComment = () => {
+    setEditingCommentId(null)
+    setEditingContent('')
+  }
+  
+  // Save edited comment
+  const handleSaveEdit = async () => {
+    if (!editingCommentId || !editingContent.trim() || !currentUser) return
+    
+    const editorName = `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
+    const now = new Date().toISOString()
+    
+    const { error: updateError } = await supabase
+      .from('comentarios_clientes')
+      .update({ 
+        contenido: editingContent.trim(),
+        actualizado_en: now,
+        editado_por: currentUser.id
+      })
+      .eq('id', editingCommentId)
+
+    if (updateError) {
+      setError('Error al actualizar comentario')
+      console.error('[v0] Error updating comment:', updateError)
+    } else {
+      setComments(prev => prev.map(c => 
+        c.id === editingCommentId 
+          ? { 
+              ...c, 
+              contenido: editingContent.trim(), 
+              actualizado_en: now,
+              editado_por: currentUser.id,
+              editor: { id: currentUser.id, nombre: editorName }
+            }
+          : c
+      ))
+      setEditingCommentId(null)
+      setEditingContent('')
     }
   }
 
@@ -534,7 +657,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
               <div className="flex-1 space-y-2">
                 <Textarea
                   ref={textareaRef}
-                  placeholder="Escribe un comentario... Usa # para mencionar tareas"
+                  placeholder="Escribe un comentario... Usa # para mencionar tareas, @ para mencionar colaboradores"
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   className="min-h-[80px] resize-none text-sm"
@@ -552,6 +675,26 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                     }
                   }}
                 />
+                {/* Pending images preview */}
+                {pendingImages.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {pendingImages.map((url, idx) => (
+                      <div key={idx} className="relative group">
+                        <img 
+                          src={url} 
+                          alt={`Imagen ${idx + 1}`} 
+                          className="h-16 w-16 object-cover rounded-md border"
+                        />
+                        <button
+                          onClick={() => removePendingImage(url)}
+                          className="absolute -top-1 -right-1 h-5 w-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <Popover open={showTaskPopover} onOpenChange={setShowTaskPopover}>
@@ -642,6 +785,29 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                         </Command>
                       </PopoverContent>
                     </Popover>
+                    {/* Image upload button */}
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={handleImageUpload}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => imageInputRef.current?.click()}
+                      disabled={uploadingImage}
+                    >
+                      {uploadingImage ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <ImagePlus className="h-3 w-3" />
+                      )}
+                      <span className="hidden sm:inline">Imagen</span>
+                    </Button>
                     <span className="text-[10px] text-muted-foreground hidden sm:inline">
                       Cmd + Enter para enviar
                     </span>
@@ -649,7 +815,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                   <Button
                     size="sm"
                     onClick={handleAddComment}
-                    disabled={!newComment.trim() || sending}
+                    disabled={(!newComment.trim() && pendingImages.length === 0) || sending}
                     className="gap-1.5"
                   >
                     {sending ? (
@@ -695,41 +861,116 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
 
           {!loading && filteredComments.length > 0 && (
             <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
-              {filteredComments.map((comment) => (
+              {filteredComments.map((comment) => {
+                // Use avatar from joined colaborador relation, fallback to search by name
+                const avatarUrl = comment.colaborador?.avatar_url || 
+                  colaboradores.find(c => comment.autor.toLowerCase().includes(c.nombre.toLowerCase()))?.avatar_url
+                const wasEdited = comment.actualizado_en !== comment.creado_en && comment.editado_por
+                return (
                 <div
                   key={comment.id}
                   className="group rounded-lg border bg-muted/30 p-3"
                 >
                   <div className="flex items-start gap-3">
                     <Avatar className="h-8 w-8 shrink-0">
+                      <AvatarImage src={avatarUrl || undefined} />
                       <AvatarFallback className="text-xs bg-primary/10 text-primary">
                         {getInitials(comment.autor)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-medium">{comment.autor}</span>
                           <span className="text-xs text-muted-foreground">
                             {formatDate(comment.creado_en)}
                           </span>
+                          {wasEdited && (
+                            <span className="text-xs text-muted-foreground italic">
+                              (editado {formatDate(comment.actualizado_en)}{comment.editor ? ` por ${comment.editor.nombre}` : ''})
+                            </span>
+                          )}
                         </div>
                         {currentUser && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                            onClick={() => handleDeleteComment(comment.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-muted-foreground hover:text-primary"
+                              onClick={() => startEditComment(comment)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleDeleteComment(comment.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         )}
                       </div>
-                      <p className="text-sm mt-1 whitespace-pre-wrap">{renderCommentContent(comment.contenido)}</p>
+                      {editingCommentId === comment.id ? (
+                        <div className="mt-2 space-y-2">
+                          <Textarea
+                            value={editingContent}
+                            onChange={(e) => setEditingContent(e.target.value)}
+                            className="min-h-[60px] text-sm"
+                            autoFocus
+                          />
+                          <div className="flex items-center gap-2 justify-end">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={cancelEditComment}
+                              className="h-7 text-xs"
+                            >
+                              Cancelar
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={handleSaveEdit}
+                              className="h-7 text-xs gap-1"
+                              disabled={!editingContent.trim()}
+                            >
+                              <Check className="h-3 w-3" />
+                              Guardar
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {comment.contenido && (
+                            <p className="text-sm mt-1 whitespace-pre-wrap">{renderCommentContent(comment.contenido)}</p>
+                          )}
+                          {/* Render images */}
+                          {comment.imagenes && comment.imagenes.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {comment.imagenes.map((imgUrl, idx) => (
+                                <a 
+                                  key={idx} 
+                                  href={imgUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="block"
+                                >
+                                  <img 
+                                    src={imgUrl} 
+                                    alt={`Imagen ${idx + 1}`}
+                                    className="max-h-48 max-w-xs rounded-md border hover:opacity-90 transition-opacity cursor-pointer"
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           )}
         </TabsContent>
