@@ -356,6 +356,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [editingFee, setEditingFee] = useState(false)
   const [feeMdk, setFeeMdk] = useState(client.fee_mdk ?? 0)
   const [feeAurelia, setFeeAurelia] = useState(client.fee_aurelia ?? 0)
+  const [feeConsultoria, setFeeConsultoria] = useState(client.fee_consultoria ?? 0)
   const [savingFee, setSavingFee] = useState(false)
   
   // Selected unit for dynamic semaphore display - default to first (highest priority) unit
@@ -441,7 +442,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         .from('clientes')
         .update({ 
           fee_mdk: feeMdk,
-          fee_aurelia: feeAurelia 
+          fee_aurelia: feeAurelia,
+          fee_consultoria: feeConsultoria
         })
         .eq('id', client.id)
       
@@ -460,6 +462,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const handleCancelFeeEdit = () => {
     setFeeMdk(client.fee_mdk ?? 0)
     setFeeAurelia(client.fee_aurelia ?? 0)
+    setFeeConsultoria(client.fee_consultoria ?? 0)
     setEditingFee(false)
   }
 
@@ -752,6 +755,19 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                       />
                     </div>
                   </div>
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground">Fee Consultoría</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                      <Input
+                        type="number"
+                        value={feeConsultoria}
+                        onChange={(e) => setFeeConsultoria(Number(e.target.value))}
+                        className="pl-7 h-9"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2 pt-1">
                     <Button 
                       size="sm" 
@@ -776,12 +792,13 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
               ) : (
                 <>
                   <div className="flex items-end gap-2">
-                    <p className="text-2xl font-bold text-foreground">{formatCurrency(feeMdk + feeAurelia)}</p>
+                    <p className="text-2xl font-bold text-foreground">{formatCurrency(feeMdk + feeAurelia + feeConsultoria)}</p>
                     <p className="text-xs text-muted-foreground mb-1">/ mes</p>
                   </div>
-                  <div className="flex gap-3 mt-2">
-                    <span className="text-[11px] text-muted-foreground">MDK: {formatCurrency(feeMdk)}</span>
-                    <span className="text-[11px] text-muted-foreground">Aurelia: {formatCurrency(feeAurelia)}</span>
+                  <div className="flex flex-wrap gap-3 mt-2">
+                    {feeMdk > 0 && <span className="text-[11px] text-muted-foreground">MDK: {formatCurrency(feeMdk)}</span>}
+                    {feeAurelia > 0 && <span className="text-[11px] text-muted-foreground">Aurelia: {formatCurrency(feeAurelia)}</span>}
+                    {feeConsultoria > 0 && <span className="text-[11px] text-muted-foreground">Consultoría: {formatCurrency(feeConsultoria)}</span>}
                   </div>
                 </>
               )}
