@@ -206,7 +206,7 @@ export default function ColaboradoresPage() {
     loadData()
   }, [hasAccess, selectedMonth, selectedYear, supabase])
 
-  // Calculate horas teoricas based on formula: ((fee * %) / valor_hora) / 24
+  // Calculate horas teoricas based on formula: ((fee * %) / valor_hora)
   // PM (Project Manager) uses 7.5%, AC (Account Manager) uses 20%
   // Consultor: no automatic calculation (returns 0)
   const calcularHorasTeoricas = (fee: number, valorHora: number, colaborador?: Colaborador | null): number => {
@@ -222,7 +222,7 @@ export default function ColaboradoresPage() {
     const isAccountManager = rolNombre.includes('account') || rolNombre === 'account_manager' || rolNombre === 'account manager'
     const porcentaje = isAccountManager ? 0.20 : 0.075 // 20% for AC, 7.5% for PM and others
     
-    return ((fee * porcentaje) / valorHora) / 24
+    return (fee * porcentaje) / valorHora
   }
 
   const handleAddRow = () => {
