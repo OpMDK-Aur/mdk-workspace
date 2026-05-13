@@ -29,6 +29,8 @@ interface Colaborador {
   nombre: string
   apellido: string | null
   email: string | null
+  rol_id: string | null
+  roles?: { id: string; nombre: string } | null
 }
 
 interface Cliente {
@@ -129,10 +131,10 @@ export default function ColaboradoresPage() {
     async function loadData() {
       setIsLoading(true)
 
-      // Load colaboradores
+      // Load colaboradores with their roles
       const { data: colabs } = await supabase
         .from('colaboradores')
-        .select('id, nombre, apellido, email')
+        .select('id, nombre, apellido, email, rol_id, roles(id, nombre)')
         .eq('activo', true)
         .order('nombre')
 
@@ -176,10 +178,17 @@ export default function ColaboradoresPage() {
     loadData()
   }, [hasAccess, selectedMonth, selectedYear, supabase])
 
-  // Calculate horas teoricas based on formula: ((fee_mdk * 7.5%) / valor_hora) / 24
-  const calcularHorasTeoricas = (feeMdk: number, valorHora: number): number => {
+  // Calculate horas teoricas based on formula: ((fee * %) / valor_hora) / 24
+  // PM (Project Manager) uses 7.5%, AC (Account Manager) uses 20%
+  const calcularHorasTeoricas = (fee: number, valorHora: number, colaborador?: Colaborador | null): number => {
     if (valorHora === 0) return 0
-    return ((feeMdk * 0.075) / valorHora) / 24
+    
+    // Determine percentage based on role
+    const rolNombre = colaborador?.roles?.nombre?.toLowerCase() || ''
+    const isAccountManager = rolNombre.includes('account') || rolNombre === 'account_manager' || rolNombre === 'account manager'
+    const porcentaje = isAccountManager ? 0.20 : 0.075 // 20% for AC, 7.5% for PM and others
+    
+    return ((fee * porcentaje) / valorHora) / 24
   }
 
   const handleAddRow = () => {
@@ -189,14 +198,15 @@ export default function ColaboradoresPage() {
     }
 
     const cliente = clientes[0]
+    const colaborador = colaboradores[0]
     const feeMdk = cliente.fee_mdk || 0
-    const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHoraGlobal)
+    const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHoraGlobal, colaborador)
 
     const newMetrica: MetricaColaborador = {
       id: crypto.randomUUID(),
-      colaborador_id: colaboradores[0].id,
+      colaborador_id: colaborador.id,
       cliente_id: cliente.id,
-      colaborador: colaboradores[0],
+      colaborador: colaborador,
       cliente: cliente,
       fee_administrado: feeMdk,
       valor_hora: valorHoraGlobal,
@@ -240,11 +250,21 @@ export default function ColaboradoresPage() {
   const handleChangeColaborador = (metricaId: string, colaboradorId: string) => {
     const colab = colaboradores.find(c => c.id === colaboradorId)
     if (colab) {
-      setMetricas(metricas.map(m => 
-        m.id === metricaId 
-          ? { ...m, colaborador_id: colaboradorId, colaborador: colab }
-          : m
-      ))
+      setMetricas(metricas.map(m => {
+        if (m.id === metricaId) {
+          const feeMdk = m.cliente?.fee_mdk || m.fee_administrado || 0
+          const horasTeoricas = calcularHorasTeoricas(feeMdk, m.valor_hora, colab)
+          return { 
+            ...m, 
+            colaborador_id: colaboradorId, 
+            colaborador: colab,
+            horas_teoricas_cliente: horasTeoricas,
+            horas_objetivo: horasTeoricas,
+            minimo_no_negociable_horas: horasTeoricas / 2,
+          }
+        }
+        return m
+      }))
       setEditedRows(new Set([...editedRows, metricaId]))
     }
   }
@@ -255,7 +275,7 @@ export default function ColaboradoresPage() {
       const feeMdk = cliente.fee_mdk || 0
       setMetricas(metricas.map(m => {
         if (m.id === metricaId) {
-          const horasTeoricas = calcularHorasTeoricas(feeMdk, m.valor_hora)
+          const horasTeoricas = calcularHorasTeoricas(feeMdk, m.valor_hora, m.colaborador)
           return { 
             ...m, 
             cliente_id: clienteId, 
@@ -275,7 +295,7 @@ export default function ColaboradoresPage() {
   const handleRecalcularTodo = () => {
     setMetricas(metricas.map(m => {
       const feeMdk = m.cliente?.fee_mdk || m.fee_administrado || 0
-      const horasTeoricas = calcularHorasTeoricas(feeMdk, m.valor_hora)
+      const horasTeoricas = calcularHorasTeoricas(feeMdk, m.valor_hora, m.colaborador)
       const porcentaje = horasTeoricas > 0 ? (m.acumulado_mes_asignado * 100) / horasTeoricas : 0
       
       return {
@@ -514,7 +534,7 @@ export default function ColaboradoresPage() {
             <div>
               <CardTitle>Detalle por Cliente</CardTitle>
               <CardDescription>
-                {months[selectedMonth - 1]} {selectedYear} - Fórmulas: H.Teóricas = ((Fee×7.5%)/ValorHora)/24 | Mínimo = Objetivo/2 | % = (Acumulado×100)/Objetivo
+                {months[selectedMonth - 1]} {selectedYear} - Fórmulas: H.Teóricas = ((Fee×%)/ValorHora)/24 (PM: 7.5%, AC: 20%) | Mínimo = Objetivo/2 | % = (Acumulado×100)/Objetivo
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
