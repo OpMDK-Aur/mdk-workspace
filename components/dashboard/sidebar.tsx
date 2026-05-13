@@ -513,7 +513,8 @@ export function Sidebar({
               </Button>
             </div>
 
-            <ScrollArea className="flex-1 min-h-0">
+            <div className="flex-1 min-h-0 overflow-hidden">
+          <ScrollArea className="h-full">
           <div className="p-4 space-y-6">
             {/* Areas */}
             {filteredAreas.length > 0 && (
@@ -716,6 +717,7 @@ export function Sidebar({
             </div>
           </div>
         </ScrollArea>
+        </div>
 
         {/* User section — fixed at bottom */}
         <div className="p-4 border-t border-border shrink-0">
