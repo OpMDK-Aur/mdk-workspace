@@ -13,6 +13,13 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -50,6 +57,8 @@ export function EntriesList() {
   const { entries, continueEntry, deleteEntry, updateEntry, isLoading, loadEntries, isRunning, startedAt, getElapsedSeconds } = useTimerStore()
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [editDescription, setEditDescription] = useState('')
+  const [editClienteId, setEditClienteId] = useState<string | null>(null)
+  const [editDuracionMin, setEditDuracionMin] = useState<number>(0)
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
   const [runningElapsed, setRunningElapsed] = useState(0)
@@ -119,9 +128,21 @@ export function EntriesList() {
     return result
   }, [completedEntries])
 
+  const handleStartEdit = (entry: TimeEntry) => {
+    setEditingEntry(entry)
+    setEditDescription(entry.descripcion)
+    setEditClienteId(entry.cliente_id)
+    setEditDuracionMin(Math.round((entry.duracion_seg || 0) / 60))
+  }
+
   const handleSaveEdit = async () => {
     if (editingEntry) {
-      await updateEntry(editingEntry.id, { descripcion: editDescription })
+      const duracionSeg = editDuracionMin * 60
+      await updateEntry(editingEntry.id, { 
+        descripcion: editDescription,
+        cliente_id: editClienteId,
+        duracion_seg: duracionSeg,
+      })
       setEditingEntry(null)
       toast.success('Entrada actualizada')
     }
@@ -167,7 +188,7 @@ export function EntriesList() {
             cliente={getCliente(runningEntry.cliente_id)}
             tipoTarea={getTipoTarea(runningEntry.tipo_tarea_id)}
             elapsedSeconds={runningElapsed}
-            onEdit={() => { setEditingEntry(runningEntry); setEditDescription(runningEntry.descripcion) }}
+            onEdit={() => handleStartEdit(runningEntry)}
           />
         </div>
       )}
@@ -187,7 +208,7 @@ export function EntriesList() {
                 cliente={getCliente(entry.cliente_id)}
                 tipoTarea={getTipoTarea(entry.tipo_tarea_id)}
                 onContinue={() => { continueEntry(entry); toast.success('Timer iniciado') }}
-                onEdit={() => { setEditingEntry(entry); setEditDescription(entry.descripcion) }}
+                onEdit={() => handleStartEdit(entry)}
                 onDelete={() => { deleteEntry(entry.id); toast.success('Entrada eliminada') }}
               />
             ))}
@@ -209,6 +230,34 @@ export function EntriesList() {
                 onChange={(e) => setEditDescription(e.target.value)}
                 className="mt-1.5"
               />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground">Cliente</label>
+              <Select value={editClienteId || ''} onValueChange={(val) => setEditClienteId(val || null)}>
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue placeholder="Seleccionar cliente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clientes.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.nombre_del_negocio}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground">Duración (minutos)</label>
+              <Input
+                type="number"
+                value={editDuracionMin}
+                onChange={(e) => setEditDuracionMin(Number(e.target.value))}
+                className="mt-1.5"
+                min={0}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {Math.floor(editDuracionMin / 60)}h {editDuracionMin % 60}m
+              </p>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setEditingEntry(null)}>Cancelar</Button>
