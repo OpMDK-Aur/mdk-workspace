@@ -1496,6 +1496,8 @@ export function TaskDetailPanel() {
   const task = tasks.find((t) => t.id === selectedTaskId)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [activeTab, setActiveTab] = useState('detalles')
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [tempTitle, setTempTitle] = useState('')
   
   // Dynamic data from Supabase
   const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
@@ -1569,7 +1571,39 @@ export function TaskDetailPanel() {
           <div className="flex items-start gap-3 pr-10">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <SheetTitle className="text-lg leading-tight">{task.title}</SheetTitle>
+                {isEditingTitle ? (
+                  <Input
+                    value={tempTitle}
+                    onChange={(e) => setTempTitle(e.target.value)}
+                    onBlur={() => {
+                      if (tempTitle.trim() && tempTitle !== task.title) {
+                        updateTask(task.id, { title: tempTitle.trim() })
+                      }
+                      setIsEditingTitle(false)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        if (tempTitle.trim() && tempTitle !== task.title) {
+                          updateTask(task.id, { title: tempTitle.trim() })
+                        }
+                        setIsEditingTitle(false)
+                      }
+                      if (e.key === 'Escape') setIsEditingTitle(false)
+                    }}
+                    className="h-8 text-lg font-semibold"
+                    autoFocus
+                  />
+                ) : (
+                  <SheetTitle 
+                    className="text-lg leading-tight cursor-text hover:text-primary"
+                    onClick={() => {
+                      setTempTitle(task.title)
+                      setIsEditingTitle(true)
+                    }}
+                  >
+                    {task.title}
+                  </SheetTitle>
+                )}
                 {task.isSystemTask && (
                   <Badge className="bg-teal-500/20 text-teal-400 border-teal-500/30 text-[10px]">
                     Recurrente
