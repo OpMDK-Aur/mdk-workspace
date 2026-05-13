@@ -127,6 +127,8 @@ export function ActiveTimerBar() {
         .select('*')
         .order('nombre_del_negocio')
 
+      console.log('[v0] Clientes cargados:', clientesData?.length, 'Error:', error)
+      
       if (!error && clientesData) {
         setClientes(clientesData)
       }
