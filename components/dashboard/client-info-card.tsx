@@ -554,6 +554,22 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
                     </CommandGroup>
                   </CommandList>
                 </Command>
+                {isMaster && (
+                  <div className="border-t p-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full justify-start gap-2 text-xs"
+                      onClick={() => {
+                        setShowServiceSelect(false)
+                        setShowAdminDialog(true)
+                      }}
+                    >
+                      <Settings className="h-3 w-3" />
+                      Administrar servicios
+                    </Button>
+                  </div>
+                )}
               </PopoverContent>
             </Popover>
           </div>
