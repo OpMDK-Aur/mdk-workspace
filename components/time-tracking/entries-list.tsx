@@ -58,7 +58,8 @@ export function EntriesList() {
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [editDescription, setEditDescription] = useState('')
   const [editClienteId, setEditClienteId] = useState<string | null>(null)
-  const [editDuracionMin, setEditDuracionMin] = useState<number>(0)
+  const [editIniciadoEn, setEditIniciadoEn] = useState<string>('')
+  const [editFinalizadoEn, setEditFinalizadoEn] = useState<string>('')
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
   const [runningElapsed, setRunningElapsed] = useState(0)
@@ -132,16 +133,38 @@ export function EntriesList() {
     setEditingEntry(entry)
     setEditDescription(entry.descripcion)
     setEditClienteId(entry.cliente_id)
-    setEditDuracionMin(Math.round((entry.duracion_seg || 0) / 60))
+    // Formatear fechas para input datetime-local (YYYY-MM-DDTHH:MM)
+    const formatForInput = (isoString: string | null) => {
+      if (!isoString) return ''
+      const date = new Date(isoString)
+      const offset = date.getTimezoneOffset()
+      const localDate = new Date(date.getTime() - offset * 60000)
+      return localDate.toISOString().slice(0, 16)
+    }
+    setEditIniciadoEn(formatForInput(entry.iniciado_en))
+    setEditFinalizadoEn(formatForInput(entry.finalizado_en))
   }
 
   const handleSaveEdit = async () => {
     if (editingEntry) {
-      const duracionSeg = editDuracionMin * 60
+      // Convertir datetime-local a ISO string
+      const iniciado_en = editIniciadoEn ? new Date(editIniciadoEn).toISOString() : editingEntry.iniciado_en
+      const finalizado_en = editFinalizadoEn ? new Date(editFinalizadoEn).toISOString() : editingEntry.finalizado_en
+      
+      // Calcular duración en segundos
+      let duracion_seg = editingEntry.duracion_seg
+      if (iniciado_en && finalizado_en) {
+        const start = new Date(iniciado_en).getTime()
+        const end = new Date(finalizado_en).getTime()
+        duracion_seg = Math.floor((end - start) / 1000)
+      }
+      
       await updateEntry(editingEntry.id, { 
         descripcion: editDescription,
         cliente_id: editClienteId,
-        duracion_seg: duracionSeg,
+        iniciado_en,
+        finalizado_en,
+        duracion_seg,
       })
       setEditingEntry(null)
       toast.success('Entrada actualizada')
@@ -218,7 +241,7 @@ export function EntriesList() {
 
       {/* Dialog de edición */}
       <Dialog open={!!editingEntry} onOpenChange={() => setEditingEntry(null)}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Editar entrada</DialogTitle>
           </DialogHeader>
@@ -246,19 +269,37 @@ export function EntriesList() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <label className="text-sm font-medium text-foreground">Duración (minutos)</label>
-              <Input
-                type="number"
-                value={editDuracionMin}
-                onChange={(e) => setEditDuracionMin(Number(e.target.value))}
-                className="mt-1.5"
-                min={0}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                {Math.floor(editDuracionMin / 60)}h {editDuracionMin % 60}m
-              </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-foreground">Inicio</label>
+                <Input
+                  type="datetime-local"
+                  value={editIniciadoEn}
+                  onChange={(e) => setEditIniciadoEn(e.target.value)}
+                  className="mt-1.5"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Fin</label>
+                <Input
+                  type="datetime-local"
+                  value={editFinalizadoEn}
+                  onChange={(e) => setEditFinalizadoEn(e.target.value)}
+                  className="mt-1.5"
+                />
+              </div>
             </div>
+            {editIniciadoEn && editFinalizadoEn && (
+              <p className="text-xs text-muted-foreground">
+                Duración: {(() => {
+                  const start = new Date(editIniciadoEn).getTime()
+                  const end = new Date(editFinalizadoEn).getTime()
+                  const mins = Math.floor((end - start) / 60000)
+                  if (mins < 0) return 'Hora de fin debe ser posterior a inicio'
+                  return `${Math.floor(mins / 60)}h ${mins % 60}m`
+                })()}
+              </p>
+            )}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setEditingEntry(null)}>Cancelar</Button>
               <Button onClick={handleSaveEdit}>Guardar cambios</Button>
