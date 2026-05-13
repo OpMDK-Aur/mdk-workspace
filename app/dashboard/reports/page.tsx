@@ -58,32 +58,13 @@ interface MetricaColaborador {
   id: string
   colaborador_id: string
   cliente_id: string
-  colaborador?: { id: string; nombre: string; apellido: string | null; rol_id?: string; roles?: { id: string; nombre: string } | null }
-  cliente?: { id: string; nombre_del_negocio: string; fee_mdk?: number }
+  colaborador?: { id: string; nombre: string; apellido: string | null }
+  cliente?: { id: string; nombre_del_negocio: string }
   horas_teoricas_cliente: number
   minimo_no_negociable_horas: number
   horas_objetivo: number
-  valor_hora: number
   mes: number
   anio: number
-}
-
-// Calculate horas teoricas based on formula: ((fee * %) / valor_hora)
-// PM (Project Manager) uses 7.5%, AC (Account Manager) uses 20%
-// Consultor: no automatic calculation (returns 0)
-const calcularHorasTeoricas = (fee: number, valorHora: number, colaborador?: MetricaColaborador['colaborador']): number => {
-  if (valorHora === 0) return 0
-  
-  const rolNombre = colaborador?.roles?.nombre?.toLowerCase() || ''
-  
-  // Consultores don't have automatic calculation
-  const isConsultor = rolNombre.includes('consultor') || rolNombre === 'consultant'
-  if (isConsultor) return 0
-  
-  const isAccountManager = rolNombre.includes('account') || rolNombre === 'account_manager' || rolNombre === 'account manager'
-  const porcentaje = isAccountManager ? 0.20 : 0.075 // 20% for AC, 7.5% for PM and others
-  
-  return (fee * porcentaje) / valorHora
 }
 
 // Convert decimal hours to HH:MM:SS format
@@ -121,8 +102,8 @@ async function fetchReportsData() {
     supabase.from('colaboradores').select('id, nombre, apellido').order('nombre'),
     supabase.from('metricas_colaboradores').select(`
       *,
-      colaborador:colaborador_id(id, nombre, apellido, rol_id, roles(id, nombre)),
-      cliente:cliente_id(id, nombre_del_negocio, fee_mdk)
+      colaborador:colaborador_id(id, nombre, apellido),
+      cliente:cliente_id(id, nombre_del_negocio)
     `).eq('mes', currentMonth).eq('anio', currentYear),
   ])
 
@@ -334,12 +315,9 @@ export default function ReportsPage() {
       if (!m.colaborador) return
       const colabId = m.colaborador_id
       
-      // Recalculate horas teoricas based on role and fee
-      const feeMdk = m.cliente?.fee_mdk || 0
-      const valorHora = Number(m.valor_hora) || 150000
-      const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHora, m.colaborador)
-      const objetivo = horasTeoricas
-      const minimo = horasTeoricas / 2
+      // Use values from database columns (horas_objetivo and minimo_no_negociable_horas)
+      const objetivo = Number(m.horas_objetivo) || 0
+      const minimo = Number(m.minimo_no_negociable_horas) || 0
       
       if (!byColab[colabId]) {
         byColab[colabId] = {
@@ -386,12 +364,9 @@ export default function ReportsPage() {
       if (!m.cliente) return
       const clienteId = m.cliente_id
       
-      // Recalculate horas teoricas based on role and fee
-      const feeMdk = m.cliente?.fee_mdk || 0
-      const valorHora = Number(m.valor_hora) || 150000
-      const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHora, m.colaborador)
-      const objetivo = horasTeoricas
-      const minimo = horasTeoricas / 2
+      // Use values from database columns (horas_objetivo and minimo_no_negociable_horas)
+      const objetivo = Number(m.horas_objetivo) || 0
+      const minimo = Number(m.minimo_no_negociable_horas) || 0
       
       if (!byCliente[clienteId]) {
         byCliente[clienteId] = {
