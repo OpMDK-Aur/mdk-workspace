@@ -58,13 +58,32 @@ interface MetricaColaborador {
   id: string
   colaborador_id: string
   cliente_id: string
-  colaborador?: { id: string; nombre: string; apellido: string | null }
-  cliente?: { id: string; nombre_del_negocio: string }
+  colaborador?: { id: string; nombre: string; apellido: string | null; rol_id?: string; roles?: { id: string; nombre: string } | null }
+  cliente?: { id: string; nombre_del_negocio: string; fee_mdk?: number }
   horas_teoricas_cliente: number
   minimo_no_negociable_horas: number
   horas_objetivo: number
+  valor_hora: number
   mes: number
   anio: number
+}
+
+// Calculate horas teoricas based on formula: ((fee * %) / valor_hora)
+// PM (Project Manager) uses 7.5%, AC (Account Manager) uses 20%
+// Consultor: no automatic calculation (returns 0)
+const calcularHorasTeoricas = (fee: number, valorHora: number, colaborador?: MetricaColaborador['colaborador']): number => {
+  if (valorHora === 0) return 0
+  
+  const rolNombre = colaborador?.roles?.nombre?.toLowerCase() || ''
+  
+  // Consultores don't have automatic calculation
+  const isConsultor = rolNombre.includes('consultor') || rolNombre === 'consultant'
+  if (isConsultor) return 0
+  
+  const isAccountManager = rolNombre.includes('account') || rolNombre === 'account_manager' || rolNombre === 'account manager'
+  const porcentaje = isAccountManager ? 0.20 : 0.075 // 20% for AC, 7.5% for PM and others
+  
+  return (fee * porcentaje) / valorHora
 }
 
 // Convert decimal hours to HH:MM:SS format
@@ -102,8 +121,8 @@ async function fetchReportsData() {
     supabase.from('colaboradores').select('id, nombre, apellido').order('nombre'),
     supabase.from('metricas_colaboradores').select(`
       *,
-      colaborador:colaborador_id(id, nombre, apellido),
-      cliente:cliente_id(id, nombre_del_negocio)
+      colaborador:colaborador_id(id, nombre, apellido, rol_id, roles(id, nombre)),
+      cliente:cliente_id(id, nombre_del_negocio, fee_mdk)
     `).eq('mes', currentMonth).eq('anio', currentYear),
   ])
 
@@ -315,6 +334,13 @@ export default function ReportsPage() {
       if (!m.colaborador) return
       const colabId = m.colaborador_id
       
+      // Recalculate horas teoricas based on role and fee
+      const feeMdk = m.cliente?.fee_mdk || 0
+      const valorHora = Number(m.valor_hora) || 150000
+      const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHora, m.colaborador)
+      const objetivo = horasTeoricas
+      const minimo = horasTeoricas / 2
+      
       if (!byColab[colabId]) {
         byColab[colabId] = {
           colaborador: m.colaborador,
@@ -327,15 +353,15 @@ export default function ReportsPage() {
       
       const marcadas = horasMaracadasPorColabCliente[colabId]?.[m.cliente_id] || 0
       
-      byColab[colabId].totalObjetivo += m.horas_objetivo || 0
-      byColab[colabId].totalMinimo += m.minimo_no_negociable_horas || 0
+      byColab[colabId].totalObjetivo += objetivo
+      byColab[colabId].totalMinimo += minimo
       byColab[colabId].totalMarcadas += marcadas
       
       if (m.cliente) {
         byColab[colabId].clientes.push({
           cliente: m.cliente,
-          objetivo: m.horas_objetivo || 0,
-          minimo: m.minimo_no_negociable_horas || 0,
+          objetivo,
+          minimo,
           marcadas
         })
       }
@@ -360,6 +386,13 @@ export default function ReportsPage() {
       if (!m.cliente) return
       const clienteId = m.cliente_id
       
+      // Recalculate horas teoricas based on role and fee
+      const feeMdk = m.cliente?.fee_mdk || 0
+      const valorHora = Number(m.valor_hora) || 150000
+      const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHora, m.colaborador)
+      const objetivo = horasTeoricas
+      const minimo = horasTeoricas / 2
+      
       if (!byCliente[clienteId]) {
         byCliente[clienteId] = {
           cliente: m.cliente,
@@ -371,8 +404,8 @@ export default function ReportsPage() {
       
       const marcadas = horasMaracadasPorColabCliente[m.colaborador_id]?.[clienteId] || 0
       
-      byCliente[clienteId].totalObjetivo += m.horas_objetivo || 0
-      byCliente[clienteId].totalMinimo += m.minimo_no_negociable_horas || 0
+      byCliente[clienteId].totalObjetivo += objetivo
+      byCliente[clienteId].totalMinimo += minimo
       byCliente[clienteId].totalMarcadas += marcadas
     })
 
