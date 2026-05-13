@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { useTaskStore, STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG } from '@/lib/tasks/task-store'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Input } from '@/components/ui/input'
 import { 
   Users, 
   Megaphone, 
@@ -96,6 +97,9 @@ const DEFAULT_TYPE_CONFIG = { label: 'Tarea', color: 'bg-gray-500/20 text-gray-4
 
 export function TaskCard({ task, onClick }: TaskCardProps) {
   const [liveTime, setLiveTime] = useState(task.totalTimeSec)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [tempTitle, setTempTitle] = useState(task.title)
+  const updateTask = useTaskStore((s) => s.updateTask)
   const priorityConfig = PRIORITY_CONFIG[task.priority] || { label: 'Media', color: 'text-yellow-400', bgColor: 'bg-yellow-500/20' }
   // Use TYPE_CONFIG if type is a known key, try typeName lowercase, otherwise fallback
   const typeNameKey = task.typeName?.toLowerCase().replace(/ /g, '_') || ''
@@ -120,6 +124,19 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
     return () => clearInterval(interval)
   }, [task.isTimerRunning, task.timerStartedAt, task.totalTimeSec])
 
+  const handleStartEditTitle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setTempTitle(task.title)
+    setIsEditingTitle(true)
+  }
+
+  const handleSaveTitle = async () => {
+    if (tempTitle.trim() && tempTitle !== task.title) {
+      await updateTask(task.id, { title: tempTitle.trim() })
+    }
+    setIsEditingTitle(false)
+  }
+
   return (
     <div
       onClick={onClick}
@@ -142,9 +159,27 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
       </div>
 
       {/* Title */}
-      <h4 className="text-sm font-medium text-foreground leading-snug mb-2 line-clamp-2">
-        {task.title}
-      </h4>
+      {isEditingTitle ? (
+        <Input
+          value={tempTitle}
+          onChange={(e) => setTempTitle(e.target.value)}
+          onBlur={handleSaveTitle}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSaveTitle()
+            if (e.key === 'Escape') setIsEditingTitle(false)
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="h-7 text-sm mb-2"
+          autoFocus
+        />
+      ) : (
+        <h4 
+          className="text-sm font-medium text-foreground leading-snug mb-2 line-clamp-2 cursor-text hover:text-primary"
+          onClick={handleStartEditTitle}
+        >
+          {task.title}
+        </h4>
+      )}
 
       {/* Badges row */}
       <div className="flex flex-wrap gap-1.5 mb-2">
