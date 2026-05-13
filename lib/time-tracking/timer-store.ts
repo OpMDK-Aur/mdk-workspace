@@ -73,7 +73,7 @@ export const useTimerStore = create<TimerState>()(
         const { data: { user } } = await supabase.auth.getUser()
 
         const { data: newEntry, error } = await supabase
-          .from('registros_de_tiempo')
+          .from('entradas_de_tiempo')
           .insert({
             colaborador_id: user?.id ?? null,
             cliente_id: state.clientId,
@@ -118,7 +118,7 @@ export const useTimerStore = create<TimerState>()(
 
         if (!entryIdToUpdate) {
           const { data: runningEntries } = await supabase
-            .from('registros_de_tiempo')
+            .from('entradas_de_tiempo')
             .select('id')
             .is('finalizado_en', null)
             .order('iniciado_en', { ascending: false })
@@ -131,7 +131,7 @@ export const useTimerStore = create<TimerState>()(
 
         if (entryIdToUpdate) {
           const { error } = await supabase
-            .from('registros_de_tiempo')
+            .from('entradas_de_tiempo')
             .update({
               finalizado_en,
               duracion_seg,
@@ -174,7 +174,7 @@ export const useTimerStore = create<TimerState>()(
         if (state.isRunning && state.currentEntryId) {
           const supabase = createClient()
           await supabase
-            .from('registros_de_tiempo')
+            .from('entradas_de_tiempo')
             .update({ tipo_tarea_id: id })
             .eq('id', state.currentEntryId)
         }
@@ -188,7 +188,7 @@ export const useTimerStore = create<TimerState>()(
         if (state.isRunning && state.currentEntryId && id !== state.clientId) {
           const supabase = createClient()
           await supabase
-            .from('registros_de_tiempo')
+            .from('entradas_de_tiempo')
             .update({ cliente_id: id })
             .eq('id', state.currentEntryId)
         }
@@ -223,7 +223,7 @@ export const useTimerStore = create<TimerState>()(
         const { data: { user } } = await supabase.auth.getUser()
 
         const { data: newEntry, error } = await supabase
-          .from('registros_de_tiempo')
+          .from('entradas_de_tiempo')
           .insert({
             colaborador_id: user?.id ?? null,
             cliente_id: clientId,
@@ -258,7 +258,7 @@ export const useTimerStore = create<TimerState>()(
       deleteEntry: async (id) => {
         set((s) => ({ entries: s.entries.filter((e) => e.id !== id) }))
         const supabase = createClient()
-        await supabase.from('registros_de_tiempo').delete().eq('id', id)
+        await supabase.from('entradas_de_tiempo').delete().eq('id', id)
       },
 
       updateEntry: async (id, updates) => {
@@ -266,7 +266,7 @@ export const useTimerStore = create<TimerState>()(
           entries: s.entries.map((e) => (e.id === id ? { ...e, ...updates } : e)),
         }))
         const supabase = createClient()
-        await supabase.from('registros_de_tiempo').update(updates).eq('id', id)
+        await supabase.from('entradas_de_tiempo').update(updates).eq('id', id)
       },
 
       loadEntries: async () => {
@@ -283,7 +283,7 @@ export const useTimerStore = create<TimerState>()(
           
           // Only load entries for the current user
           const { data, error } = await supabase
-            .from('registros_de_tiempo')
+            .from('entradas_de_tiempo')
             .select('*')
             .eq('colaborador_id', user.id)
             .order('iniciado_en', { ascending: false })
