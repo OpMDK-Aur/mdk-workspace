@@ -36,7 +36,7 @@ interface TimerState {
   stopTimer: () => Promise<void>
   setDescription: (desc: string) => void
   setClientId: (id: string | null) => Promise<void>
-  setTipoTareaId: (id: string | null) => void
+  setTipoTareaId: (id: string | null) => Promise<void>
   toggleBillable: () => void
   continueEntry: (entry: TimeEntry) => Promise<void>
   deleteEntry: (id: string) => Promise<void>
@@ -166,16 +166,31 @@ export const useTimerStore = create<TimerState>()(
 
       setDescription: (desc) => set({ description: desc }),
 
-      setTipoTareaId: (id) => set({ tipoTareaId: id }),
+      setTipoTareaId: async (id) => {
+        const state = get()
+        set({ tipoTareaId: id })
+        
+        // Si el timer está corriendo, actualizar la entrada activa en la BD
+        if (state.isRunning && state.currentEntryId) {
+          const supabase = createClient()
+          await supabase
+            .from('registros_de_tiempo')
+            .update({ tipo_tarea_id: id })
+            .eq('id', state.currentEntryId)
+        }
+      },
 
       setClientId: async (id) => {
         const state = get()
+        set({ clientId: id })
+        
+        // Si el timer está corriendo, actualizar la entrada activa en la BD
         if (state.isRunning && state.currentEntryId && id !== state.clientId) {
-          await get().stopTimer()
-          set({ clientId: id })
-          await get().startTimer()
-        } else {
-          set({ clientId: id })
+          const supabase = createClient()
+          await supabase
+            .from('registros_de_tiempo')
+            .update({ cliente_id: id })
+            .eq('id', state.currentEntryId)
         }
       },
 
