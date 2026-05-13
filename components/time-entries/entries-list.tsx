@@ -188,12 +188,11 @@ export function EntriesList() {
             </div>
             <h3 className="font-medium text-foreground">En progreso</h3>
           </div>
-          <RunningEntryRow
-            entry={runningEntry}
-            cliente={getCliente(runningEntry.cliente_id)}
-            tipoTarea={getTipoTarea(runningEntry.tipo_tarea_id)}
-            elapsedSeconds={runningElapsed}
-            onEdit={() => handleEdit(runningEntry)}
+<RunningEntryRow
+  entry={runningEntry}
+  cliente={getCliente(runningEntry.cliente_id)}
+  tipoTarea={getTipoTarea(runningEntry.tipo_tarea_id)}
+  elapsedSeconds={runningElapsed}
           />
         </div>
       )}
@@ -237,10 +236,9 @@ interface RunningEntryRowProps {
   cliente?: Cliente
   tipoTarea?: TipoDeTarea
   elapsedSeconds: number
-  onEdit: () => void
 }
 
-function RunningEntryRow({ entry, cliente, tipoTarea, elapsedSeconds, onEdit }: RunningEntryRowProps) {
+function RunningEntryRow({ entry, cliente, tipoTarea, elapsedSeconds }: RunningEntryRowProps) {
   return (
     <div className="flex items-center gap-4 p-3 rounded-lg bg-status-verde/10 border border-status-verde/30">
       {/* Client Color Dot */}
@@ -281,16 +279,6 @@ function RunningEntryRow({ entry, cliente, tipoTarea, elapsedSeconds, onEdit }: 
         />
       </div>
 
-      {/* Edit Button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 shrink-0"
-        onClick={onEdit}
-        title="Editar entrada"
-      >
-        <Pencil className="h-3.5 w-3.5" />
-      </Button>
     </div>
   )
 }
