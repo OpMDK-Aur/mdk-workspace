@@ -180,11 +180,17 @@ export default function ColaboradoresPage() {
 
   // Calculate horas teoricas based on formula: ((fee * %) / valor_hora) / 24
   // PM (Project Manager) uses 7.5%, AC (Account Manager) uses 20%
+  // Consultor: no automatic calculation (returns 0)
   const calcularHorasTeoricas = (fee: number, valorHora: number, colaborador?: Colaborador | null): number => {
     if (valorHora === 0) return 0
     
     // Determine percentage based on role
     const rolNombre = colaborador?.roles?.nombre?.toLowerCase() || ''
+    
+    // Consultores don't have automatic calculation
+    const isConsultor = rolNombre.includes('consultor') || rolNombre === 'consultant'
+    if (isConsultor) return 0
+    
     const isAccountManager = rolNombre.includes('account') || rolNombre === 'account_manager' || rolNombre === 'account manager'
     const porcentaje = isAccountManager ? 0.20 : 0.075 // 20% for AC, 7.5% for PM and others
     
@@ -534,7 +540,7 @@ export default function ColaboradoresPage() {
             <div>
               <CardTitle>Detalle por Cliente</CardTitle>
               <CardDescription>
-                {months[selectedMonth - 1]} {selectedYear} - Fórmulas: H.Teóricas = ((Fee×%)/ValorHora)/24 (PM: 7.5%, AC: 20%) | Mínimo = Objetivo/2 | % = (Acumulado×100)/Objetivo
+                {months[selectedMonth - 1]} {selectedYear} - Fórmulas: H.Teóricas = ((Fee×%)/ValorHora)/24 (PM: 7.5%, AC: 20%, Consultor: manual) | Mínimo = Objetivo/2 | % = (Acumulado×100)/Objetivo
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
