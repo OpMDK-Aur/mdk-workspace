@@ -88,13 +88,13 @@ function stringToColor(str: string): string {
 }
 
 // Fetcher for SWR
-async function fetchReportsData() {
+async function fetchReportsData(key: string) {
   const supabase = createClient()
   
-  // Get current month and year for metricas
-  const now = new Date()
-  const currentMonth = now.getMonth() + 1
-  const currentYear = now.getFullYear()
+  // Parse month/year from key (format: "reports-data-MM-YYYY")
+  const parts = key.split('-')
+  const month = parts.length >= 4 ? parseInt(parts[2]) : new Date().getMonth() + 1
+  const year = parts.length >= 4 ? parseInt(parts[3]) : new Date().getFullYear()
   
   const [clientsRes, entriesRes, profilesRes, metricasRes] = await Promise.all([
     supabase.from('clientes').select('*').order('nombre_del_negocio'),
@@ -104,7 +104,7 @@ async function fetchReportsData() {
       *,
       colaborador:colaborador_id(id, nombre, apellido),
       cliente:cliente_id(id, nombre_del_negocio)
-    `).eq('mes', currentMonth).eq('anio', currentYear),
+    `).eq('mes', month).eq('anio', year),
   ])
 
   return {
@@ -112,8 +112,8 @@ async function fetchReportsData() {
     entries: (entriesRes.data || []) as TimeEntry[],
     users: (profilesRes.data || []) as User[],
     metricas: (metricasRes.data || []) as MetricaColaborador[],
-    currentMonth,
-    currentYear,
+    currentMonth: month,
+    currentYear: year,
   }
 }
 
@@ -126,9 +126,11 @@ export default function ReportsPage() {
   const [selectedMatrixColab, setSelectedMatrixColab] = useState<string>('all')
   const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
   const [expandedColaboradores, setExpandedColaboradores] = useState<Set<string>>(new Set())
+  const [teamHoursMonth, setTeamHoursMonth] = useState(new Date().getMonth() + 1)
+  const [teamHoursYear, setTeamHoursYear] = useState(new Date().getFullYear())
 
-  // Fetch data with SWR
-  const { data, isLoading } = useSWR('reports-data', fetchReportsData)
+  // Fetch data with SWR - include month/year in key to refetch when changed
+  const { data, isLoading } = useSWR(`reports-data-${teamHoursMonth}-${teamHoursYear}`, fetchReportsData)
 
   const clients = data?.clients || []
   const allEntries = data?.entries || []
@@ -277,15 +279,15 @@ export default function ReportsPage() {
   const billableHours = filteredEntries.filter((e) => e.facturable).reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
   const billablePercentage = totalHours > 0 ? (billableHours / totalHours) * 100 : 0
 
-  // Calculate hours marked per colaborador and client for current month
+  // Calculate hours marked per colaborador and client for selected month
   const horasMaracadasPorColabCliente = useMemo(() => {
-    const currentMonthEntries = allEntries.filter(entry => {
+    const selectedMonthEntries = allEntries.filter(entry => {
       const entryDate = new Date(entry.iniciado_en)
-      return entryDate.getMonth() + 1 === reportMonth && entryDate.getFullYear() === reportYear
+      return entryDate.getMonth() + 1 === teamHoursMonth && entryDate.getFullYear() === teamHoursYear
     })
     
     const map: Record<string, Record<string, number>> = {}
-    currentMonthEntries.forEach(entry => {
+    selectedMonthEntries.forEach(entry => {
       if (entry.colaborador_id && entry.cliente_id) {
         if (!map[entry.colaborador_id]) map[entry.colaborador_id] = {}
         const hours = (entry.duracion_seg || 0) / 3600
@@ -293,7 +295,7 @@ export default function ReportsPage() {
       }
     })
     return map
-  }, [allEntries, reportMonth, reportYear])
+  }, [allEntries, teamHoursMonth, teamHoursYear])
 
   // Team hours summary by colaborador
   const teamHoursByColaborador = useMemo(() => {
@@ -545,6 +547,31 @@ export default function ReportsPage() {
         
         {/* Team Hours Tab */}
         <TabsContent value="team-hours">
+          {/* Month/Year selectors */}
+          <div className="flex items-center gap-2 mb-4">
+            <Select value={String(teamHoursMonth)} onValueChange={(v) => setTeamHoursMonth(Number(v))}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'].map((m, i) => (
+                  <SelectItem key={i + 1} value={String(i + 1)}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={String(teamHoursYear)} onValueChange={(v) => setTeamHoursYear(Number(v))}>
+              <SelectTrigger className="w-[100px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[2024, 2025, 2026].map(y => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          </div>
+          
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -556,7 +583,7 @@ export default function ReportsPage() {
                 <CardHeader>
                   <CardTitle className="text-base">Horas por Colaborador</CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(reportYear, reportMonth - 1).toLocaleString('es', { month: 'long', year: 'numeric' })}
+                    {new Date(teamHoursYear, teamHoursMonth - 1).toLocaleString('es', { month: 'long', year: 'numeric' })}
                   </p>
                 </CardHeader>
                 <CardContent>
@@ -682,7 +709,7 @@ export default function ReportsPage() {
                 <CardHeader>
                   <CardTitle className="text-base">Horas por Cliente</CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(reportYear, reportMonth - 1).toLocaleString('es', { month: 'long', year: 'numeric' })} - Total de horas de todos los colaboradores
+                    {new Date(teamHoursYear, teamHoursMonth - 1).toLocaleString('es', { month: 'long', year: 'numeric' })} - Total de horas de todos los colaboradores
                   </p>
                 </CardHeader>
                 <CardContent>
