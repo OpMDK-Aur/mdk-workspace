@@ -590,19 +590,19 @@ export default function ReportsPage() {
                                       {porcentaje.toFixed(0)}%
                                     </span>
                                   </div>
-                                  <div className="grid grid-cols-3 gap-2 text-xs">
-                                    <div className="text-left">
-                                      <span className="text-muted-foreground">Objetivo:</span>
-                                      <span className="ml-1 font-mono">{formatHoursToTime(item.totalObjetivo)}</span>
+                                  <div className="grid grid-cols-3 gap-1 text-xs mt-1">
+                                    <div className="flex flex-col items-start">
+                                      <span className="text-muted-foreground text-[10px]">Objetivo</span>
+                                      <span className="font-mono text-sm">{formatHoursToTime(item.totalObjetivo)}</span>
                                     </div>
-                                    <div className="text-center">
-                                      <span className="text-muted-foreground">Mínimo:</span>
-                                      <span className="ml-1 font-mono">{formatHoursToTime(item.totalMinimo)}</span>
+                                    <div className="flex flex-col items-center">
+                                      <span className="text-muted-foreground text-[10px]">Mínimo</span>
+                                      <span className="font-mono text-sm">{formatHoursToTime(item.totalMinimo)}</span>
                                     </div>
-                                    <div className="text-right">
-                                      <span className="text-muted-foreground">Marcadas:</span>
+                                    <div className="flex flex-col items-end">
+                                      <span className="text-muted-foreground text-[10px]">Marcadas</span>
                                       <span className={cn(
-                                        "ml-1 font-mono",
+                                        "font-mono text-sm",
                                         item.totalMarcadas >= item.totalObjetivo ? "text-green-400" :
                                         item.totalMarcadas >= item.totalMinimo ? "text-yellow-400" :
                                         "text-red-400"
@@ -620,33 +620,40 @@ export default function ReportsPage() {
                                   {item.clientes.map((cliente) => {
                                     const clientePorcentaje = cliente.objetivo > 0 ? (cliente.marcadas / cliente.objetivo) * 100 : 0
                                     return (
-                                      <div key={cliente.cliente.id} className="flex items-center justify-between text-xs p-2 rounded bg-background/50">
-                                        <span className="truncate max-w-[120px]" title={cliente.cliente.nombre_del_negocio}>
-                                          {cliente.cliente.nombre_del_negocio}
-                                        </span>
-                                        <div className="flex items-center gap-3">
-                                          <span className="text-muted-foreground">
-                                            Obj: <span className="font-mono">{formatHoursToTime(cliente.objetivo)}</span>
-                                          </span>
-                                          <span className="text-muted-foreground">
-                                            Mín: <span className="font-mono">{formatHoursToTime(cliente.minimo)}</span>
+                                      <div key={cliente.cliente.id} className="p-2 rounded bg-background/50 text-xs">
+                                        <div className="flex items-center justify-between mb-1">
+                                          <span className="truncate font-medium" title={cliente.cliente.nombre_del_negocio}>
+                                            {cliente.cliente.nombre_del_negocio}
                                           </span>
                                           <span className={cn(
-                                            "font-mono",
-                                            cliente.marcadas >= cliente.objetivo ? "text-green-400" :
-                                            cliente.marcadas >= cliente.minimo ? "text-yellow-400" :
-                                            "text-red-400"
-                                          )}>
-                                            {formatHoursToTime(cliente.marcadas)}
-                                          </span>
-                                          <span className={cn(
-                                            "text-xs px-1.5 py-0.5 rounded",
+                                            "text-[10px] px-1.5 py-0.5 rounded",
                                             clientePorcentaje >= 100 ? "bg-green-500/20 text-green-400" :
                                             clientePorcentaje >= 70 ? "bg-yellow-500/20 text-yellow-400" :
                                             "bg-red-500/20 text-red-400"
                                           )}>
                                             {clientePorcentaje.toFixed(0)}%
                                           </span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-1">
+                                          <div className="flex flex-col">
+                                            <span className="text-muted-foreground text-[10px]">Obj</span>
+                                            <span className="font-mono">{formatHoursToTime(cliente.objetivo)}</span>
+                                          </div>
+                                          <div className="flex flex-col items-center">
+                                            <span className="text-muted-foreground text-[10px]">Mín</span>
+                                            <span className="font-mono">{formatHoursToTime(cliente.minimo)}</span>
+                                          </div>
+                                          <div className="flex flex-col items-end">
+                                            <span className="text-muted-foreground text-[10px]">Marcadas</span>
+                                            <span className={cn(
+                                              "font-mono",
+                                              cliente.marcadas >= cliente.objetivo ? "text-green-400" :
+                                              cliente.marcadas >= cliente.minimo ? "text-yellow-400" :
+                                              "text-red-400"
+                                            )}>
+                                              {formatHoursToTime(cliente.marcadas)}
+                                            </span>
+                                          </div>
                                         </div>
                                       </div>
                                     )
@@ -695,19 +702,19 @@ export default function ReportsPage() {
                                 {porcentaje.toFixed(0)}%
                               </span>
                             </div>
-                            <div className="grid grid-cols-3 gap-2 text-xs">
-                              <div className="text-left">
-                                <span className="text-muted-foreground">Objetivo:</span>
-                                <span className="ml-1 font-mono">{formatHoursToTime(item.totalObjetivo)}</span>
+                            <div className="grid grid-cols-3 gap-1 text-xs mt-1">
+                              <div className="flex flex-col items-start">
+                                <span className="text-muted-foreground text-[10px]">Objetivo</span>
+                                <span className="font-mono text-sm">{formatHoursToTime(item.totalObjetivo)}</span>
                               </div>
-                              <div className="text-center">
-                                <span className="text-muted-foreground">Mínimo:</span>
-                                <span className="ml-1 font-mono">{formatHoursToTime(item.totalMinimo)}</span>
+                              <div className="flex flex-col items-center">
+                                <span className="text-muted-foreground text-[10px]">Mínimo</span>
+                                <span className="font-mono text-sm">{formatHoursToTime(item.totalMinimo)}</span>
                               </div>
-                              <div className="text-right">
-                                <span className="text-muted-foreground">Marcadas:</span>
+                              <div className="flex flex-col items-end">
+                                <span className="text-muted-foreground text-[10px]">Marcadas</span>
                                 <span className={cn(
-                                  "ml-1 font-mono",
+                                  "font-mono text-sm",
                                   item.totalMarcadas >= item.totalObjetivo ? "text-green-400" :
                                   item.totalMarcadas >= item.totalMinimo ? "text-yellow-400" :
                                   "text-red-400"
