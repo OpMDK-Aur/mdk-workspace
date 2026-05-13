@@ -18,6 +18,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { Play, Pencil, Trash2, DollarSign, Clock, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -51,6 +58,9 @@ export function EntriesList() {
   const { entries, continueEntry, deleteEntry, updateEntry, isLoading, loadEntries, isRunning, startedAt, getElapsedSeconds } = useTimerStore()
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [editDescription, setEditDescription] = useState('')
+  const [editClienteId, setEditClienteId] = useState<string | null>(null)
+  const [editIniciadoEn, setEditIniciadoEn] = useState<string>('')
+  const [editFinalizadoEn, setEditFinalizadoEn] = useState<string>('')
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
   const [runningElapsed, setRunningElapsed] = useState(0)
@@ -154,11 +164,40 @@ export function EntriesList() {
   const handleEdit = (entry: TimeEntry) => {
     setEditingEntry(entry)
     setEditDescription(entry.descripcion)
+    setEditClienteId(entry.cliente_id)
+    // Formatear fechas para input datetime-local (YYYY-MM-DDTHH:MM)
+    const formatForInput = (isoString: string | null) => {
+      if (!isoString) return ''
+      const date = new Date(isoString)
+      const offset = date.getTimezoneOffset()
+      const localDate = new Date(date.getTime() - offset * 60000)
+      return localDate.toISOString().slice(0, 16)
+    }
+    setEditIniciadoEn(formatForInput(entry.iniciado_en))
+    setEditFinalizadoEn(formatForInput(entry.finalizado_en))
   }
 
   const handleSaveEdit = async () => {
     if (editingEntry) {
-      await updateEntry(editingEntry.id, { descripcion: editDescription })
+      // Convertir datetime-local a ISO string
+      const iniciado_en = editIniciadoEn ? new Date(editIniciadoEn).toISOString() : editingEntry.iniciado_en
+      const finalizado_en = editFinalizadoEn ? new Date(editFinalizadoEn).toISOString() : editingEntry.finalizado_en
+      
+      // Calcular duración en segundos
+      let duracion_seg = editingEntry.duracion_seg
+      if (iniciado_en && finalizado_en) {
+        const start = new Date(iniciado_en).getTime()
+        const end = new Date(finalizado_en).getTime()
+        duracion_seg = Math.floor((end - start) / 1000)
+      }
+      
+      await updateEntry(editingEntry.id, { 
+        descripcion: editDescription,
+        cliente_id: editClienteId,
+        iniciado_en,
+        finalizado_en,
+        duracion_seg,
+      })
       setEditingEntry(null)
       toast.success('Entrada actualizada')
     }
@@ -241,7 +280,7 @@ export function EntriesList() {
 
       {/* Edit Dialog */}
       <Dialog open={!!editingEntry} onOpenChange={() => setEditingEntry(null)}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Editar entrada</DialogTitle>
           </DialogHeader>
@@ -256,6 +295,52 @@ export function EntriesList() {
                 className="mt-1.5"
               />
             </div>
+            <div>
+              <label className="text-sm font-medium text-foreground">Cliente</label>
+              <Select value={editClienteId || ''} onValueChange={(val) => setEditClienteId(val || null)}>
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue placeholder="Seleccionar cliente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clientes.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.nombre_del_negocio}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-foreground">Inicio</label>
+                <Input
+                  type="datetime-local"
+                  value={editIniciadoEn}
+                  onChange={(e) => setEditIniciadoEn(e.target.value)}
+                  className="mt-1.5"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Fin</label>
+                <Input
+                  type="datetime-local"
+                  value={editFinalizadoEn}
+                  onChange={(e) => setEditFinalizadoEn(e.target.value)}
+                  className="mt-1.5"
+                />
+              </div>
+            </div>
+            {editIniciadoEn && editFinalizadoEn && (
+              <p className="text-xs text-muted-foreground">
+                Duración: {(() => {
+                  const start = new Date(editIniciadoEn).getTime()
+                  const end = new Date(editFinalizadoEn).getTime()
+                  const mins = Math.floor((end - start) / 60000)
+                  if (mins < 0) return 'Hora de fin debe ser posterior a inicio'
+                  return `${Math.floor(mins / 60)}h ${mins % 60}m`
+                })()}
+              </p>
+            )}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setEditingEntry(null)}>
                 Cancelar
