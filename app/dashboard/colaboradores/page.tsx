@@ -24,6 +24,24 @@ import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator, Pencil, Check, 
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
+// Convert decimal hours to HH:MM:SS format
+const formatHoursToTime = (hours: number): string => {
+  if (!hours || isNaN(hours) || hours === 0) return '00:00:00'
+  const totalSeconds = Math.round(hours * 3600)
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  const s = totalSeconds % 60
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+}
+
+// Parse HH:MM:SS to decimal hours
+const parseTimeToHours = (timeStr: string): number => {
+  const parts = timeStr.split(':').map(Number)
+  if (parts.length !== 3 || parts.some(isNaN)) return 0
+  const [h, m, s] = parts
+  return h + m / 60 + s / 3600
+}
+
 interface Colaborador {
   id: string
   nombre: string
@@ -741,42 +759,42 @@ export default function ColaboradoresPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <Input
-                            type="number"
-                            step="0.5"
-                            value={m.horas_teoricas_cliente}
-                            onChange={(e) => handleUpdateField(m.id, 'horas_teoricas_cliente', Number(e.target.value))}
-                            className="w-[80px] h-8 text-xs text-right"
+                            type="text"
+                            value={formatHoursToTime(m.horas_teoricas_cliente)}
+                            onChange={(e) => handleUpdateField(m.id, 'horas_teoricas_cliente', parseTimeToHours(e.target.value))}
+                            placeholder="HH:MM:SS"
+                            className="w-[90px] h-8 text-xs text-right font-mono"
                           />
                         </TableCell>
                         <TableCell className="text-right">
                           <Input
-                            type="number"
-                            step="0.5"
-                            value={m.minimo_no_negociable_horas}
-                            onChange={(e) => handleUpdateField(m.id, 'minimo_no_negociable_horas', Number(e.target.value))}
+                            type="text"
+                            value={formatHoursToTime(m.minimo_no_negociable_horas)}
+                            onChange={(e) => handleUpdateField(m.id, 'minimo_no_negociable_horas', parseTimeToHours(e.target.value))}
+                            placeholder="HH:MM:SS"
                             className={cn(
-                              "w-[80px] h-8 text-xs text-right",
+                              "w-[90px] h-8 text-xs text-right font-mono",
                               getHoursColor(m.minimo_no_negociable_horas, m.horas_objetivo / 2)
                             )}
                           />
                         </TableCell>
                         <TableCell className="text-right">
                           <Input
-                            type="number"
-                            step="0.5"
-                            value={m.horas_objetivo}
-                            onChange={(e) => handleUpdateField(m.id, 'horas_objetivo', Number(e.target.value))}
-                            className="w-[80px] h-8 text-xs text-right"
+                            type="text"
+                            value={formatHoursToTime(m.horas_objetivo)}
+                            onChange={(e) => handleUpdateField(m.id, 'horas_objetivo', parseTimeToHours(e.target.value))}
+                            placeholder="HH:MM:SS"
+                            className="w-[90px] h-8 text-xs text-right font-mono"
                           />
                         </TableCell>
                         <TableCell className={cn("text-right", getHoursColor(m.acumulado_mes_asignado, m.horas_objetivo))}>
                           <Input
-                            type="number"
-                            step="0.5"
-                            value={m.acumulado_mes_asignado}
-                            onChange={(e) => handleUpdateField(m.id, 'acumulado_mes_asignado', Number(e.target.value))}
+                            type="text"
+                            value={formatHoursToTime(m.acumulado_mes_asignado)}
+                            onChange={(e) => handleUpdateField(m.id, 'acumulado_mes_asignado', parseTimeToHours(e.target.value))}
+                            placeholder="HH:MM:SS"
                             className={cn(
-                              "w-[80px] h-8 text-xs text-right",
+                              "w-[90px] h-8 text-xs text-right font-mono",
                               getHoursColor(m.acumulado_mes_asignado, m.horas_objetivo)
                             )}
                           />
