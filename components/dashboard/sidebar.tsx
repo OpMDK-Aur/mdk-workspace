@@ -514,8 +514,8 @@ export function Sidebar({
             </div>
 
             <div className="flex-1 min-h-0 overflow-hidden">
-          <ScrollArea className="h-full">
-          <div className="p-4 space-y-6">
+              <ScrollArea className="h-full">
+                <div className="p-4 space-y-6">
             {/* Areas */}
             {filteredAreas.length > 0 && (
               <div>
