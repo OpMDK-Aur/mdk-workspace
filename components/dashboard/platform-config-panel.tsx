@@ -20,6 +20,7 @@ import {
   Unlink,
   ChevronDown,
   ChevronUp,
+  Search,
 } from 'lucide-react'
 import {
   Select,
@@ -127,7 +128,145 @@ function serializeIds(ids: string[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Sub-component: Google multi-select checkboxes
+// Sub-component: Meta multi-select with search
+// ---------------------------------------------------------------------------
+
+interface MetaMultiSelectProps {
+  accounts: MetaAccount[]
+  selectedIds: string[]
+  matchResult: ClientMatchResult | undefined
+  onChange: (ids: string[]) => void
+  loading: boolean
+}
+
+function MetaMultiSelect({ accounts, selectedIds, matchResult, onChange, loading }: MetaMultiSelectProps) {
+  const [expanded, setExpanded] = useState(false)
+  const [search, setSearch] = useState('')
+
+  const toggleId = (id: string) => {
+    const next = selectedIds.includes(id)
+      ? selectedIds.filter(x => x !== id)
+      : [...selectedIds, id]
+    onChange(next)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        Cargando cuentas de Meta...
+      </div>
+    )
+  }
+
+  if (accounts.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground italic py-1">
+        Hacé clic en &quot;Cuentas Meta&quot; para cargar las cuentas publicitarias.
+      </p>
+    )
+  }
+
+  // Filter by search
+  const searchLower = search.toLowerCase()
+  const filteredAccounts = search
+    ? accounts.filter(acc => 
+        acc.name.toLowerCase().includes(searchLower) || 
+        acc.id.includes(searchLower)
+      )
+    : accounts
+
+  // Show candidates first if match found
+  const displayAccounts = (matchResult?.status === 'multiple' || matchResult?.status === 'matched') && !search
+    ? (matchResult.candidates as MetaAccount[])
+    : filteredAccounts
+
+  const visibleAccounts = expanded || search ? displayAccounts : displayAccounts.slice(0, 5)
+  const hasMore = displayAccounts.length > 5 && !search
+
+  return (
+    <div className="space-y-2">
+      {/* Search input */}
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+        <Input
+          placeholder="Buscar cuenta..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-8 pl-8 text-sm"
+        />
+      </div>
+
+      {/* Accounts list */}
+      <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border overflow-hidden max-h-[280px] overflow-y-auto">
+        {visibleAccounts.length === 0 ? (
+          <p className="text-xs text-muted-foreground p-3 text-center">
+            No se encontraron cuentas
+          </p>
+        ) : (
+          visibleAccounts.map(acc => (
+            <label
+              key={acc.id}
+              className={cn(
+                'flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/60 transition-colors',
+                selectedIds.includes(acc.id) && 'bg-primary/5'
+              )}
+            >
+              <Checkbox
+                checked={selectedIds.includes(acc.id)}
+                onCheckedChange={() => toggleId(acc.id)}
+                className="mt-0.5 shrink-0"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium leading-tight">{acc.name}</span>
+                  {!acc.is_active && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-amber-600 border-amber-400/40">
+                      {acc.status_label}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                  ID: {acc.id} · {acc.currency}
+                </p>
+              </div>
+            </label>
+          ))
+        )}
+      </div>
+
+      {hasMore && (
+        <button
+          type="button"
+          onClick={() => setExpanded(e => !e)}
+          className="flex items-center gap-1 text-xs text-primary hover:underline"
+        >
+          {expanded ? (
+            <><ChevronUp className="h-3 w-3" />Ver menos</>
+          ) : (
+            <><ChevronDown className="h-3 w-3" />Ver {displayAccounts.length - 5} más</>
+          )}
+        </button>
+      )}
+
+      {selectedIds.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {selectedIds.length} cuenta{selectedIds.length !== 1 ? 's' : ''} seleccionada{selectedIds.length !== 1 ? 's' : ''}
+        </p>
+      )}
+
+      {matchResult?.status === 'not_found' && !search && (
+        <p className="text-xs text-amber-600 flex items-center gap-1">
+          <AlertCircle className="h-3 w-3 shrink-0" />
+          Ninguna cuenta de Meta coincide con el nombre del cliente.
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Sub-component: Google multi-select checkboxes with search
 // ---------------------------------------------------------------------------
 
 interface GoogleMultiSelectProps {
@@ -140,11 +279,7 @@ interface GoogleMultiSelectProps {
 
 function GoogleMultiSelect({ accounts, selectedIds, matchResult, onChange, loading }: GoogleMultiSelectProps) {
   const [expanded, setExpanded] = useState(false)
-
-  // Show candidates first if match found, else all accounts
-  const displayAccounts = (matchResult?.status === 'multiple' || matchResult?.status === 'matched')
-    ? (matchResult.candidates as GoogleAccount[])
-    : accounts
+  const [search, setSearch] = useState('')
 
   const toggleId = (id: string) => {
     const next = selectedIds.includes(id)
@@ -170,45 +305,77 @@ function GoogleMultiSelect({ accounts, selectedIds, matchResult, onChange, loadi
     )
   }
 
-  const visibleAccounts = expanded ? displayAccounts : displayAccounts.slice(0, 4)
-  const hasMore = displayAccounts.length > 4
+  // Filter by search
+  const searchLower = search.toLowerCase()
+  const filteredAccounts = search
+    ? accounts.filter(acc => 
+        acc.name.toLowerCase().includes(searchLower) || 
+        acc.id.includes(searchLower)
+      )
+    : accounts
+
+  // Show candidates first if match found, else filtered accounts
+  const displayAccounts = (matchResult?.status === 'multiple' || matchResult?.status === 'matched') && !search
+    ? (matchResult.candidates as GoogleAccount[])
+    : filteredAccounts
+
+  const visibleAccounts = expanded || search ? displayAccounts : displayAccounts.slice(0, 5)
+  const hasMore = displayAccounts.length > 5 && !search
 
   return (
-    <div className="space-y-1.5">
-      <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border overflow-hidden">
-        {visibleAccounts.map(acc => (
-          <label
-            key={acc.id}
-            className={cn(
-              'flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/60 transition-colors',
-              selectedIds.includes(acc.id) && 'bg-primary/5'
-            )}
-          >
-            <Checkbox
-              checked={selectedIds.includes(acc.id)}
-              onCheckedChange={() => toggleId(acc.id)}
-              className="mt-0.5 shrink-0"
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-medium leading-tight">{acc.name}</span>
-                {!acc.is_active && (
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-amber-600 border-amber-400/40">
-                    {acc.status}
-                  </Badge>
-                )}
-                {acc.is_test && (
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
-                    Test
-                  </Badge>
-                )}
+    <div className="space-y-2">
+      {/* Search input */}
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+        <Input
+          placeholder="Buscar cuenta..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-8 pl-8 text-sm"
+        />
+      </div>
+
+      {/* Accounts list */}
+      <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border overflow-hidden max-h-[280px] overflow-y-auto">
+        {visibleAccounts.length === 0 ? (
+          <p className="text-xs text-muted-foreground p-3 text-center">
+            No se encontraron cuentas
+          </p>
+        ) : (
+          visibleAccounts.map(acc => (
+            <label
+              key={acc.id}
+              className={cn(
+                'flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/60 transition-colors',
+                selectedIds.includes(acc.id) && 'bg-primary/5'
+              )}
+            >
+              <Checkbox
+                checked={selectedIds.includes(acc.id)}
+                onCheckedChange={() => toggleId(acc.id)}
+                className="mt-0.5 shrink-0"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium leading-tight">{acc.name}</span>
+                  {!acc.is_active && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-amber-600 border-amber-400/40">
+                      {acc.status}
+                    </Badge>
+                  )}
+                  {acc.is_test && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+                      Test
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                  ID: {acc.id} · {acc.currency}
+                </p>
               </div>
-              <p className="text-[11px] text-muted-foreground font-mono mt-0.5">
-                ID: {acc.id} · {acc.currency}
-              </p>
-            </div>
-          </label>
-        ))}
+            </label>
+          ))
+        )}
       </div>
 
       {hasMore && (
@@ -220,7 +387,7 @@ function GoogleMultiSelect({ accounts, selectedIds, matchResult, onChange, loadi
           {expanded ? (
             <><ChevronUp className="h-3 w-3" />Ver menos</>
           ) : (
-            <><ChevronDown className="h-3 w-3" />Ver {displayAccounts.length - 4} mas</>
+            <><ChevronDown className="h-3 w-3" />Ver {displayAccounts.length - 5} más</>
           )}
         </button>
       )}
@@ -231,7 +398,7 @@ function GoogleMultiSelect({ accounts, selectedIds, matchResult, onChange, loadi
         </p>
       )}
 
-      {matchResult?.status === 'not_found' && (
+      {matchResult?.status === 'not_found' && !search && (
         <p className="text-xs text-amber-600 flex items-center gap-1">
           <AlertCircle className="h-3 w-3 shrink-0" />
           Ninguna cuenta de Google coincide con el nombre del cliente.
@@ -250,7 +417,6 @@ interface ClientsPlatformConfigProps {
 }
 
 export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
-  console.log('[v0] ClientsPlatformConfig received clients:', clients)
   const [metaAccounts, setMetaAccounts] = useState<MetaAccount[]>([])
   const [loadingAccounts, setLoadingAccounts] = useState(false)
   const [accountsError, setAccountsError] = useState<string | null>(null)
@@ -410,8 +576,8 @@ export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
     if (field === 'google') setGoogleMatchResults(prev => ({ ...prev, [clientId]: { status: 'manual', candidates: [] } }))
   }
 
-  function selectMetaAccount(clientId: string, accountId: string) {
-    setConfigs(prev => ({ ...prev, [clientId]: { ...prev[clientId], meta: accountId } }))
+  function handleMetaIdsChange(clientId: string, ids: string[]) {
+    setConfigs(prev => ({ ...prev, [clientId]: { ...prev[clientId], meta: serializeIds(ids) } }))
     setSaved(prev => ({ ...prev, [clientId]: false }))
     setMatchResults(prev => ({ ...prev, [clientId]: { status: 'manual', candidates: [] } }))
   }
@@ -493,6 +659,7 @@ export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
 
         const match = matchResults[client.id]
         const googleMatch = googleMatchResults[client.id]
+        const selectedMetaIds = parseIds(config.meta)
         const selectedGoogleIds = parseIds(config.google)
 
         const hasChanges =
@@ -569,66 +736,24 @@ export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
             <CardContent className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
 
-                {/* ── Meta Ads ── */}
+                {/* ── Meta Ads (multi-select) ── */}
                 <div className="space-y-2">
                   <Label className="text-sm flex items-center gap-2">
                     <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-blue-600 text-white text-[10px] font-bold shrink-0">f</span>
                     Meta Ads
+                    {selectedMetaIds.length > 0 && (
+                      <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5">
+                        {selectedMetaIds.length}
+                      </Badge>
+                    )}
                   </Label>
-
-                  {(match?.status === 'multiple' || (metaAccounts.length > 0 && match?.status !== 'saved')) ? (
-                    <div className="space-y-1.5">
-                      <Select
-                        value={config.meta || '__none__'}
-                        onValueChange={val => selectMetaAccount(client.id, val === '__none__' ? '' : val)}
-                      >
-                        <SelectTrigger className="h-9 text-sm font-mono">
-                          <SelectValue placeholder="Seleccionar cuenta..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">
-                            <span className="text-muted-foreground">Sin asignar</span>
-                          </SelectItem>
-                          {(match?.status === 'multiple' ? match.candidates : metaAccounts).map(acc => (
-                            <SelectItem key={acc.id} value={acc.id}>
-                              <div className="flex flex-col gap-0.5 py-0.5">
-                                <span className="font-medium text-sm">{acc.name}</span>
-                                <span className="text-xs text-muted-foreground font-mono">
-                                  {acc.id}
-                                  {!(acc as MetaAccount).is_active && <span className="ml-2 text-amber-500">· {(acc as MetaAccount).status_label}</span>}
-                                </span>
-              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {match?.status === 'multiple' && (
-                        <p className="text-xs text-amber-600 flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3 shrink-0" />
-                          {match.candidates.length} cuentas con nombre similar.
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <Input
-                        placeholder="ej: 703723247173991"
-                        value={config.meta}
-                        onChange={e => updateField(client.id, 'meta', e.target.value)}
-                        className="h-9 font-mono text-sm pr-8"
-                      />
-                      {config.meta && (
-                        <a
-                          href={`https://business.facebook.com/adsmanager/manage/campaigns?act=${config.meta}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      )}
-                    </div>
-                  )}
+                  <MetaMultiSelect
+                    accounts={metaAccounts}
+                    selectedIds={selectedMetaIds}
+                    matchResult={match}
+                    onChange={(ids) => handleMetaIdsChange(client.id, ids)}
+                    loading={loadingAccounts}
+                  />
                 </div>
 
                 {/* ── Google Ads (multi-select) ── */}
