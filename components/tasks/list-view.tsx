@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/table'
 import { ArrowUpDown, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   AlertDialog,
@@ -54,7 +55,10 @@ type SortDir = 'asc' | 'desc'
 
 function TaskRow({ task, isSelected, onSelect }: { task: Task; isSelected: boolean; onSelect: (id: string, checked: boolean) => void }) {
   const setSelectedTask = useTaskStore((s) => s.setSelectedTask)
+  const updateTask = useTaskStore((s) => s.updateTask)
   const [liveTime, setLiveTime] = useState(task.totalTimeSec)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [tempTitle, setTempTitle] = useState(task.title)
   const statusConfig = STATUS_CONFIG[task.status] || { label: task.status, color: 'text-gray-400', bgColor: 'bg-gray-500/20' }
   const priorityConfig = PRIORITY_CONFIG[task.priority] || { label: 'Media', color: 'text-yellow-400', bgColor: 'bg-yellow-500/20' }
   const typeNameKey = task.typeName?.toLowerCase().replace(/ /g, '_') || ''
@@ -72,6 +76,19 @@ function TaskRow({ task, isSelected, onSelect }: { task: Task; isSelected: boole
     return () => clearInterval(interval)
   }, [task.isTimerRunning, task.timerStartedAt, task.totalTimeSec])
 
+  const handleStartEditTitle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setTempTitle(task.title)
+    setIsEditingTitle(true)
+  }
+
+  const handleSaveTitle = async () => {
+    if (tempTitle.trim() && tempTitle !== task.title) {
+      await updateTask(task.id, { title: tempTitle.trim() })
+    }
+    setIsEditingTitle(false)
+  }
+
   return (
     <TableRow
       className="cursor-pointer hover:bg-muted/50 transition-colors"
@@ -83,8 +100,27 @@ function TaskRow({ task, isSelected, onSelect }: { task: Task; isSelected: boole
           onCheckedChange={(checked) => onSelect(task.id, checked === true)}
         />
       </TableCell>
-      <TableCell className="max-w-[300px]">
-        <p className="font-medium text-sm truncate">{task.title}</p>
+      <TableCell className="max-w-[300px]" onClick={(e) => e.stopPropagation()}>
+        {isEditingTitle ? (
+          <Input
+            value={tempTitle}
+            onChange={(e) => setTempTitle(e.target.value)}
+            onBlur={handleSaveTitle}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSaveTitle()
+              if (e.key === 'Escape') setIsEditingTitle(false)
+            }}
+            className="h-7 text-sm"
+            autoFocus
+          />
+        ) : (
+          <p 
+            className="font-medium text-sm truncate cursor-text hover:text-primary"
+            onClick={handleStartEditTitle}
+          >
+            {task.title}
+          </p>
+        )}
       </TableCell>
       <TableCell>
         <span className="text-sm text-muted-foreground">{task.clientName}</span>
