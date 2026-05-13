@@ -47,10 +47,16 @@ export default async function ClientPage({ params }: Props) {
     avatar_url: c.avatar_url,
   }))
 
-  // Get current user colaborador
-  const { data: currentProfile } = user
-    ? await supabase.from('colaboradores').select('*').eq('id', user.id).single()
+  // Get current user colaborador with role
+  const { data: currentColaborador } = user
+    ? await supabase.from('colaboradores').select('*, roles(id, nombre)').eq('id', user.id).single()
     : { data: null }
+  
+  // Map to Profile format with role
+  const currentProfile = currentColaborador ? {
+    ...currentColaborador,
+    role: (currentColaborador.roles as { id: string; nombre: string } | null)?.nombre?.toLowerCase().replace(/ /g, '_') || '',
+  } : null
 
   // Current month range for time tracking
   const now = new Date()

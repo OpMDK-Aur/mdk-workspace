@@ -319,7 +319,7 @@ function sortUnidades(unidades: UnidadDeNegocio[]): UnidadDeNegocio[] {
 // Status options for the semaphore (UUIDs from semaforo table)
 const SEMAFORO_OPTIONS = [
   { id: 'd3f4361f-477e-4f7a-9f98-9868cddef57f', nombre: 'verde', label: 'Activo', color: '#22c55e', bgClass: 'bg-status-verde' },
-  { id: '04dca848-a17e-4626-b83a-5377aef062ec', nombre: 'amarillo', label: 'Atención', color: '#eab308', bgClass: 'bg-status-amarillo' },
+  { id: '04dca848-a17e-4626-b83a-5377aef062ec', nombre: 'amarillo', label: 'Atenci��n', color: '#eab308', bgClass: 'bg-status-amarillo' },
   { id: 'c19b9591-862e-49a8-898c-b29ed35fcd3b', nombre: 'naranja', label: 'En riesgo', color: '#f97316', bgClass: 'bg-status-naranja' },
   { id: '753e6c36-5a9f-4b4b-b5fa-aac7d6f281af', nombre: 'rojo', label: 'Crítico', color: '#ef4444', bgClass: 'bg-status-rojo' },
   { id: '3876a424-6749-4205-b5b2-a59c49ca8eb9', nombre: 'inhabilitado', label: 'Inhabilitado por mora', color: '#7f1d1d', bgClass: 'bg-red-900' },
@@ -867,7 +867,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         {/* ── Info del Cliente: Servicios, Contacto, Fechas, Etapa, Semaforos ── */}
         <div>
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Informacion del cliente</h2>
-          <ClientInfoCard client={client} unidadesDeNegocio={unidadesDeNegocio} />
+          <ClientInfoCard client={client} unidadesDeNegocio={unidadesDeNegocio} userRole={currentProfile?.role} />
         </div>
 
         {/* ── KPIs del periodo ── */}

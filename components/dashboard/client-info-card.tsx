@@ -29,10 +29,19 @@ import {
 } from '@/components/ui/command'
 import { Calendar } from '@/components/ui/calendar'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import {
   Briefcase, User, Mail, Phone, Calendar as CalendarIcon,
   Plus, X, CheckCircle2, Circle, Edit2, Save, Loader2,
   Megaphone, Search, TrendingUp, Users, Palette, Code,
-  MessageCircle, Database, FileText,
+  MessageCircle, Database, FileText, Settings, Trash2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -55,6 +64,7 @@ interface ServicioDisponible {
 interface ClientInfoCardProps {
   client: Client
   unidadesDeNegocio?: { unidad_de_negocio_id: string; unidad_de_negocio: { id: string; nombre: string } | null }[]
+  userRole?: string
 }
 
 const ETAPA_OPTIONS: { value: ClientEtapa; label: string; description: string }[] = [
@@ -96,14 +106,25 @@ const SERVICE_COLORS: Record<string, string> = {
   'gray': 'bg-gray-500/10 text-gray-500 border-gray-500/20',
 }
 
-export function ClientInfoCard({ client, unidadesDeNegocio = [] }: ClientInfoCardProps) {
+export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: ClientInfoCardProps) {
   const supabase = createClient()
+  const isMaster = userRole === 'master'
   
   // Services state - using servicio_id (array of UUIDs)
   const [servicioIds, setServicioIds] = useState<string[]>(client.servicio_id || [])
   const [serviciosDisponibles, setServiciosDisponibles] = useState<ServicioDisponible[]>([])
   const [showServiceSelect, setShowServiceSelect] = useState(false)
   const [savingServices, setSavingServices] = useState(false)
+  
+  // Admin services state (only for master role)
+  const [showAdminDialog, setShowAdminDialog] = useState(false)
+  const [editingService, setEditingService] = useState<ServicioDisponible | null>(null)
+  const [newServiceName, setNewServiceName] = useState('')
+  const [newServiceCategoria, setNewServiceCategoria] = useState('')
+  const [newServiceIcono, setNewServiceIcono] = useState('')
+  const [newServiceColor, setNewServiceColor] = useState('')
+  const [savingService, setSavingService] = useState(false)
+  const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null)
   
   // Contact state - using existing fields from clientes table (nombre, apellido, telefono)
   const [contactNombre, setContactNombre] = useState(client.nombre || '')
@@ -140,6 +161,77 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [] }: ClientInfoCar
     }
     loadServices()
   }, [supabase])
+  
+  // Reload services after admin changes
+  const reloadServices = async () => {
+    const { data } = await supabase
+      .from('servicios_disponibles')
+      .select('*')
+      .order('nombre')
+    if (data) setServiciosDisponibles(data)
+  }
+  
+  // Reset form for new/edit service
+  const resetServiceForm = () => {
+    setEditingService(null)
+    setNewServiceName('')
+    setNewServiceCategoria('')
+    setNewServiceIcono('')
+    setNewServiceColor('')
+  }
+  
+  // Open edit dialog for a service
+  const openEditService = (service: ServicioDisponible) => {
+    setEditingService(service)
+    setNewServiceName(service.nombre)
+    setNewServiceCategoria(service.categoria || '')
+    setNewServiceIcono(service.icono || '')
+    setNewServiceColor(service.color || '')
+  }
+  
+  // Create or update service
+  const saveServiceAdmin = async () => {
+    if (!newServiceName.trim()) return
+    setSavingService(true)
+    
+    if (editingService) {
+      // Update existing service
+      await supabase
+        .from('servicios_disponibles')
+        .update({
+          nombre: newServiceName.trim(),
+          categoria: newServiceCategoria.trim() || null,
+          icono: newServiceIcono || null,
+          color: newServiceColor || null,
+        })
+        .eq('id', editingService.id)
+    } else {
+      // Create new service
+      await supabase
+        .from('servicios_disponibles')
+        .insert({
+          nombre: newServiceName.trim(),
+          categoria: newServiceCategoria.trim() || null,
+          icono: newServiceIcono || null,
+          color: newServiceColor || null,
+        })
+    }
+    
+    await reloadServices()
+    resetServiceForm()
+    setSavingService(false)
+  }
+  
+  // Delete service
+  const deleteServiceAdmin = async (serviceId: string) => {
+    setDeletingServiceId(serviceId)
+    await supabase
+      .from('servicios_disponibles')
+      .delete()
+      .eq('id', serviceId)
+    await reloadServices()
+    setDeletingServiceId(null)
+  }
   
   // Add service by ID
   const addService = async (service: ServicioDisponible) => {
@@ -236,7 +328,168 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [] }: ClientInfoCar
               <Briefcase className="h-4 w-4 text-primary" />
               Servicios contratados
             </CardTitle>
-            {savingServices && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+            <div className="flex items-center gap-2">
+              {savingServices && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              {isMaster && (
+                <Dialog open={showAdminDialog} onOpenChange={setShowAdminDialog}>
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" title="Administrar servicios">
+                      <Settings className="h-3 w-3" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle>Administrar servicios disponibles</DialogTitle>
+                      <DialogDescription>
+                        Agrega, edita o elimina servicios que pueden ser asignados a clientes.
+                      </DialogDescription>
+                    </DialogHeader>
+                    
+                    {/* Form to add/edit service */}
+                    <div className="space-y-4 py-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="col-span-2">
+                          <Label className="text-xs">Nombre del servicio *</Label>
+                          <Input
+                            value={newServiceName}
+                            onChange={(e) => setNewServiceName(e.target.value)}
+                            placeholder="Ej: Meta Ads"
+                            className="h-9"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Categoria</Label>
+                          <Input
+                            value={newServiceCategoria}
+                            onChange={(e) => setNewServiceCategoria(e.target.value)}
+                            placeholder="Ej: Marketing"
+                            className="h-9"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Icono</Label>
+                          <Select value={newServiceIcono} onValueChange={setNewServiceIcono}>
+                            <SelectTrigger className="h-9">
+                              <SelectValue placeholder="Seleccionar" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(SERVICE_ICONS).map(([key, icon]) => (
+                                <SelectItem key={key} value={key}>
+                                  <span className="flex items-center gap-2">{icon} {key}</span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="col-span-2">
+                          <Label className="text-xs">Color</Label>
+                          <Select value={newServiceColor} onValueChange={setNewServiceColor}>
+                            <SelectTrigger className="h-9">
+                              <SelectValue placeholder="Seleccionar color" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.keys(SERVICE_COLORS).map((color) => (
+                                <SelectItem key={color} value={color}>
+                                  <span className="flex items-center gap-2">
+                                    <span className={cn('h-3 w-3 rounded-full', `bg-${color}-500`)} />
+                                    {color}
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <Button 
+                          onClick={saveServiceAdmin} 
+                          disabled={!newServiceName.trim() || savingService}
+                          size="sm"
+                          className="flex-1"
+                        >
+                          {savingService ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : editingService ? (
+                            'Actualizar servicio'
+                          ) : (
+                            'Agregar servicio'
+                          )}
+                        </Button>
+                        {editingService && (
+                          <Button variant="outline" size="sm" onClick={resetServiceForm}>
+                            Cancelar
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* List of existing services */}
+                    <div className="border-t pt-4">
+                      <Label className="text-xs text-muted-foreground mb-2 block">Servicios existentes</Label>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {serviciosDisponibles.map(service => (
+                          <div 
+                            key={service.id} 
+                            className={cn(
+                              "flex items-center justify-between p-2 rounded-lg border",
+                              editingService?.id === service.id && "border-primary bg-primary/5"
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                variant="outline"
+                                className={cn('gap-1', SERVICE_COLORS[service.color || 'gray'])}
+                              >
+                                {service.icono && SERVICE_ICONS[service.icono]}
+                                {service.nombre}
+                              </Badge>
+                              {service.categoria && (
+                                <span className="text-xs text-muted-foreground">{service.categoria}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-7 w-7"
+                                onClick={() => openEditService(service)}
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-7 w-7 text-destructive hover:text-destructive"
+                                onClick={() => deleteServiceAdmin(service.id)}
+                                disabled={deletingServiceId === service.id}
+                              >
+                                {deletingServiceId === service.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3 w-3" />
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                        {serviciosDisponibles.length === 0 && (
+                          <p className="text-xs text-muted-foreground text-center py-4">
+                            No hay servicios disponibles
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setShowAdminDialog(false)}>
+                        Cerrar
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
