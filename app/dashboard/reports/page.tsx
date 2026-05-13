@@ -25,7 +25,13 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { CalendarIcon, Download, Users, Loader2 } from 'lucide-react'
+import { CalendarIcon, Download, Users, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import { Progress } from '@/components/ui/progress'
 import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/lib/types'
 import type { ClientSummary } from '@/lib/time-tracking/types'
@@ -48,6 +54,29 @@ interface User {
   apellido?: string | null
 }
 
+interface MetricaColaborador {
+  id: string
+  colaborador_id: string
+  cliente_id: string
+  colaborador?: { id: string; nombre: string; apellido: string | null }
+  cliente?: { id: string; nombre_del_negocio: string }
+  horas_teoricas_cliente: number
+  minimo_no_negociable_horas: number
+  horas_objetivo: number
+  mes: number
+  anio: number
+}
+
+// Convert decimal hours to HH:MM:SS format
+const formatHoursToTime = (hours: number): string => {
+  if (!hours || isNaN(hours) || hours === 0) return '00:00:00'
+  const totalSeconds = Math.round(hours * 3600)
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  const s = totalSeconds % 60
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+}
+
 // Generate consistent color from string
 function stringToColor(str: string): string {
   const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
@@ -62,16 +91,29 @@ function stringToColor(str: string): string {
 async function fetchReportsData() {
   const supabase = createClient()
   
-  const [clientsRes, entriesRes, profilesRes] = await Promise.all([
+  // Get current month and year for metricas
+  const now = new Date()
+  const currentMonth = now.getMonth() + 1
+  const currentYear = now.getFullYear()
+  
+  const [clientsRes, entriesRes, profilesRes, metricasRes] = await Promise.all([
     supabase.from('clientes').select('*').order('nombre_del_negocio'),
     supabase.from('entradas_de_tiempo').select('*').order('iniciado_en', { ascending: false }),
     supabase.from('colaboradores').select('id, nombre, apellido').order('nombre'),
+    supabase.from('metricas_colaboradores').select(`
+      *,
+      colaborador:colaborador_id(id, nombre, apellido),
+      cliente:cliente_id(id, nombre_del_negocio)
+    `).eq('mes', currentMonth).eq('anio', currentYear),
   ])
 
   return {
     clients: (clientsRes.data || []) as Client[],
     entries: (entriesRes.data || []) as TimeEntry[],
     users: (profilesRes.data || []) as User[],
+    metricas: (metricasRes.data || []) as MetricaColaborador[],
+    currentMonth,
+    currentYear,
   }
 }
 
@@ -83,6 +125,7 @@ export default function ReportsPage() {
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [selectedMatrixColab, setSelectedMatrixColab] = useState<string>('all')
   const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
+  const [expandedColaboradores, setExpandedColaboradores] = useState<Set<string>>(new Set())
 
   // Fetch data with SWR
   const { data, isLoading } = useSWR('reports-data', fetchReportsData)
@@ -90,6 +133,22 @@ export default function ReportsPage() {
   const clients = data?.clients || []
   const allEntries = data?.entries || []
   const users = data?.users || []
+  const metricas = data?.metricas || []
+  const reportMonth = data?.currentMonth || new Date().getMonth() + 1
+  const reportYear = data?.currentYear || new Date().getFullYear()
+
+  // Toggle expanded colaborador
+  const toggleColaborador = (colabId: string) => {
+    setExpandedColaboradores(prev => {
+      const next = new Set(prev)
+      if (next.has(colabId)) {
+        next.delete(colabId)
+      } else {
+        next.add(colabId)
+      }
+      return next
+    })
+  }
 
   // Filter entries by date range and selected members
   const filteredEntries = useMemo(() => {
@@ -217,6 +276,110 @@ export default function ReportsPage() {
   const totalHours = filteredEntries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
   const billableHours = filteredEntries.filter((e) => e.facturable).reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
   const billablePercentage = totalHours > 0 ? (billableHours / totalHours) * 100 : 0
+
+  // Calculate hours marked per colaborador and client for current month
+  const horasMaracadasPorColabCliente = useMemo(() => {
+    const currentMonthEntries = allEntries.filter(entry => {
+      const entryDate = new Date(entry.iniciado_en)
+      return entryDate.getMonth() + 1 === reportMonth && entryDate.getFullYear() === reportYear
+    })
+    
+    const map: Record<string, Record<string, number>> = {}
+    currentMonthEntries.forEach(entry => {
+      if (entry.colaborador_id && entry.cliente_id) {
+        if (!map[entry.colaborador_id]) map[entry.colaborador_id] = {}
+        const hours = (entry.duracion_seg || 0) / 3600
+        map[entry.colaborador_id][entry.cliente_id] = (map[entry.colaborador_id][entry.cliente_id] || 0) + hours
+      }
+    })
+    return map
+  }, [allEntries, reportMonth, reportYear])
+
+  // Team hours summary by colaborador
+  const teamHoursByColaborador = useMemo(() => {
+    // Group metricas by colaborador
+    const byColab: Record<string, {
+      colaborador: { id: string; nombre: string; apellido: string | null }
+      totalObjetivo: number
+      totalMinimo: number
+      totalMarcadas: number
+      clientes: Array<{
+        cliente: { id: string; nombre_del_negocio: string }
+        objetivo: number
+        minimo: number
+        marcadas: number
+      }>
+    }> = {}
+
+    metricas.forEach(m => {
+      if (!m.colaborador) return
+      const colabId = m.colaborador_id
+      
+      if (!byColab[colabId]) {
+        byColab[colabId] = {
+          colaborador: m.colaborador,
+          totalObjetivo: 0,
+          totalMinimo: 0,
+          totalMarcadas: 0,
+          clientes: []
+        }
+      }
+      
+      const marcadas = horasMaracadasPorColabCliente[colabId]?.[m.cliente_id] || 0
+      
+      byColab[colabId].totalObjetivo += m.horas_objetivo || 0
+      byColab[colabId].totalMinimo += m.minimo_no_negociable_horas || 0
+      byColab[colabId].totalMarcadas += marcadas
+      
+      if (m.cliente) {
+        byColab[colabId].clientes.push({
+          cliente: m.cliente,
+          objetivo: m.horas_objetivo || 0,
+          minimo: m.minimo_no_negociable_horas || 0,
+          marcadas
+        })
+      }
+    })
+
+    return Object.values(byColab).sort((a, b) => 
+      a.colaborador.nombre.localeCompare(b.colaborador.nombre)
+    )
+  }, [metricas, horasMaracadasPorColabCliente])
+
+  // Team hours summary by client
+  const teamHoursByCliente = useMemo(() => {
+    // Group metricas by cliente
+    const byCliente: Record<string, {
+      cliente: { id: string; nombre_del_negocio: string }
+      totalObjetivo: number
+      totalMinimo: number
+      totalMarcadas: number
+    }> = {}
+
+    metricas.forEach(m => {
+      if (!m.cliente) return
+      const clienteId = m.cliente_id
+      
+      if (!byCliente[clienteId]) {
+        byCliente[clienteId] = {
+          cliente: m.cliente,
+          totalObjetivo: 0,
+          totalMinimo: 0,
+          totalMarcadas: 0
+        }
+      }
+      
+      const marcadas = horasMaracadasPorColabCliente[m.colaborador_id]?.[clienteId] || 0
+      
+      byCliente[clienteId].totalObjetivo += m.horas_objetivo || 0
+      byCliente[clienteId].totalMinimo += m.minimo_no_negociable_horas || 0
+      byCliente[clienteId].totalMarcadas += marcadas
+    })
+
+    return Object.values(byCliente).sort((a, b) => 
+      a.cliente.nombre_del_negocio.localeCompare(b.cliente.nombre_del_negocio)
+    )
+  }, [metricas, horasMaracadasPorColabCliente])
 
   // Calculate daily hours for the chart (with optional collaborator filter)
   const dailyHours = useMemo(() => {
@@ -363,14 +526,209 @@ export default function ReportsPage() {
       </div>
 
       {/* Charts and Tables with Tabs */}
-      <Tabs defaultValue="by-client" className="w-full">
+      <Tabs defaultValue="team-hours" className="w-full">
         <TabsList className="mb-4">
+          <TabsTrigger value="team-hours">Horas del Equipo</TabsTrigger>
           <TabsTrigger value="by-client">Por Cliente</TabsTrigger>
           <TabsTrigger value="by-collaborator">Por Colaborador</TabsTrigger>
           <TabsTrigger value="by-matrix">Colaborador x Cliente</TabsTrigger>
           <TabsTrigger value="by-day">Por Día</TabsTrigger>
         </TabsList>
         
+        {/* Team Hours Tab */}
+        <TabsContent value="team-hours">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Por Colaborador */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Horas por Colaborador</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(reportYear, reportMonth - 1).toLocaleString('es', { month: 'long', year: 'numeric' })}
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  {teamHoursByColaborador.length === 0 ? (
+                    <div className="flex items-center justify-center h-[200px] text-muted-foreground text-sm">
+                      No hay métricas configuradas para este mes
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {teamHoursByColaborador.map((item) => {
+                        const colabName = `${item.colaborador.nombre}${item.colaborador.apellido ? ` ${item.colaborador.apellido}` : ''}`
+                        const isExpanded = expandedColaboradores.has(item.colaborador.id)
+                        const porcentaje = item.totalObjetivo > 0 ? (item.totalMarcadas / item.totalObjetivo) * 100 : 0
+                        
+                        return (
+                          <Collapsible 
+                            key={item.colaborador.id} 
+                            open={isExpanded}
+                            onOpenChange={() => toggleColaborador(item.colaborador.id)}
+                          >
+                            <div className="border rounded-lg">
+                              <CollapsibleTrigger className="w-full">
+                                <div className="p-3 hover:bg-muted/50 transition-colors">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                      {isExpanded ? (
+                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                      ) : (
+                                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                      )}
+                                      <span className="font-medium text-sm">{colabName}</span>
+                                    </div>
+                                    <span className={cn(
+                                      "text-xs px-2 py-0.5 rounded-full",
+                                      porcentaje >= 100 ? "bg-green-500/20 text-green-400" :
+                                      porcentaje >= 70 ? "bg-yellow-500/20 text-yellow-400" :
+                                      "bg-red-500/20 text-red-400"
+                                    )}>
+                                      {porcentaje.toFixed(0)}%
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-2 text-xs">
+                                    <div className="text-left">
+                                      <span className="text-muted-foreground">Objetivo:</span>
+                                      <span className="ml-1 font-mono">{formatHoursToTime(item.totalObjetivo)}</span>
+                                    </div>
+                                    <div className="text-center">
+                                      <span className="text-muted-foreground">Mínimo:</span>
+                                      <span className="ml-1 font-mono">{formatHoursToTime(item.totalMinimo)}</span>
+                                    </div>
+                                    <div className="text-right">
+                                      <span className="text-muted-foreground">Marcadas:</span>
+                                      <span className={cn(
+                                        "ml-1 font-mono",
+                                        item.totalMarcadas >= item.totalObjetivo ? "text-green-400" :
+                                        item.totalMarcadas >= item.totalMinimo ? "text-yellow-400" :
+                                        "text-red-400"
+                                      )}>{formatHoursToTime(item.totalMarcadas)}</span>
+                                    </div>
+                                  </div>
+                                  <Progress 
+                                    value={Math.min(porcentaje, 100)} 
+                                    className="h-1.5 mt-2"
+                                  />
+                                </div>
+                              </CollapsibleTrigger>
+                              <CollapsibleContent>
+                                <div className="border-t bg-muted/30 p-2 space-y-1">
+                                  {item.clientes.map((cliente) => {
+                                    const clientePorcentaje = cliente.objetivo > 0 ? (cliente.marcadas / cliente.objetivo) * 100 : 0
+                                    return (
+                                      <div key={cliente.cliente.id} className="flex items-center justify-between text-xs p-2 rounded bg-background/50">
+                                        <span className="truncate max-w-[120px]" title={cliente.cliente.nombre_del_negocio}>
+                                          {cliente.cliente.nombre_del_negocio}
+                                        </span>
+                                        <div className="flex items-center gap-3">
+                                          <span className="text-muted-foreground">
+                                            Obj: <span className="font-mono">{formatHoursToTime(cliente.objetivo)}</span>
+                                          </span>
+                                          <span className="text-muted-foreground">
+                                            Mín: <span className="font-mono">{formatHoursToTime(cliente.minimo)}</span>
+                                          </span>
+                                          <span className={cn(
+                                            "font-mono",
+                                            cliente.marcadas >= cliente.objetivo ? "text-green-400" :
+                                            cliente.marcadas >= cliente.minimo ? "text-yellow-400" :
+                                            "text-red-400"
+                                          )}>
+                                            {formatHoursToTime(cliente.marcadas)}
+                                          </span>
+                                          <span className={cn(
+                                            "text-xs px-1.5 py-0.5 rounded",
+                                            clientePorcentaje >= 100 ? "bg-green-500/20 text-green-400" :
+                                            clientePorcentaje >= 70 ? "bg-yellow-500/20 text-yellow-400" :
+                                            "bg-red-500/20 text-red-400"
+                                          )}>
+                                            {clientePorcentaje.toFixed(0)}%
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </CollapsibleContent>
+                            </div>
+                          </Collapsible>
+                        )
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Por Cliente */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Horas por Cliente</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(reportYear, reportMonth - 1).toLocaleString('es', { month: 'long', year: 'numeric' })} - Total de horas de todos los colaboradores
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  {teamHoursByCliente.length === 0 ? (
+                    <div className="flex items-center justify-center h-[200px] text-muted-foreground text-sm">
+                      No hay métricas configuradas para este mes
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {teamHoursByCliente.map((item) => {
+                        const porcentaje = item.totalObjetivo > 0 ? (item.totalMarcadas / item.totalObjetivo) * 100 : 0
+                        
+                        return (
+                          <div key={item.cliente.id} className="border rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-medium text-sm truncate max-w-[200px]" title={item.cliente.nombre_del_negocio}>
+                                {item.cliente.nombre_del_negocio}
+                              </span>
+                              <span className={cn(
+                                "text-xs px-2 py-0.5 rounded-full",
+                                porcentaje >= 100 ? "bg-green-500/20 text-green-400" :
+                                porcentaje >= 70 ? "bg-yellow-500/20 text-yellow-400" :
+                                "bg-red-500/20 text-red-400"
+                              )}>
+                                {porcentaje.toFixed(0)}%
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-xs">
+                              <div className="text-left">
+                                <span className="text-muted-foreground">Objetivo:</span>
+                                <span className="ml-1 font-mono">{formatHoursToTime(item.totalObjetivo)}</span>
+                              </div>
+                              <div className="text-center">
+                                <span className="text-muted-foreground">Mínimo:</span>
+                                <span className="ml-1 font-mono">{formatHoursToTime(item.totalMinimo)}</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-muted-foreground">Marcadas:</span>
+                                <span className={cn(
+                                  "ml-1 font-mono",
+                                  item.totalMarcadas >= item.totalObjetivo ? "text-green-400" :
+                                  item.totalMarcadas >= item.totalMinimo ? "text-yellow-400" :
+                                  "text-red-400"
+                                )}>{formatHoursToTime(item.totalMarcadas)}</span>
+                              </div>
+                            </div>
+                            <Progress 
+                              value={Math.min(porcentaje, 100)} 
+                              className="h-1.5 mt-2"
+                            />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
+
         <TabsContent value="by-client">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
