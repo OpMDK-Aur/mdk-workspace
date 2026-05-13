@@ -12,14 +12,16 @@ import {
 } from '@/lib/time-tracking/mock-data'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { Play, Pencil, Trash2, DollarSign, Clock, Loader2 } from 'lucide-react'
+import { Play, Trash2, DollarSign, Clock, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 // Generate a color from client id for visual distinction
@@ -49,8 +51,6 @@ interface GroupedEntries {
 
 export function EntriesList() {
   const { entries, continueEntry, deleteEntry, updateEntry, isLoading, loadEntries, isRunning, startedAt, getElapsedSeconds } = useTimerStore()
-  const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
-  const [editDescription, setEditDescription] = useState('')
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
   const [runningElapsed, setRunningElapsed] = useState(0)
@@ -151,19 +151,6 @@ export function EntriesList() {
     toast.success('Entrada eliminada')
   }
 
-  const handleEdit = (entry: TimeEntry) => {
-    setEditingEntry(entry)
-    setEditDescription(entry.descripcion)
-  }
-
-  const handleSaveEdit = async () => {
-    if (editingEntry) {
-      await updateEntry(editingEntry.id, { descripcion: editDescription })
-      setEditingEntry(null)
-      toast.success('Entrada actualizada')
-    }
-  }
-
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 px-4">
@@ -201,12 +188,11 @@ export function EntriesList() {
             </div>
             <h3 className="font-medium text-foreground">En progreso</h3>
           </div>
-          <RunningEntryRow
-            entry={runningEntry}
-            cliente={getCliente(runningEntry.cliente_id)}
-            tipoTarea={getTipoTarea(runningEntry.tipo_tarea_id)}
-            elapsedSeconds={runningElapsed}
-            onEdit={() => handleEdit(runningEntry)}
+<RunningEntryRow
+  entry={runningEntry}
+  cliente={getCliente(runningEntry.cliente_id)}
+  tipoTarea={getTipoTarea(runningEntry.tipo_tarea_id)}
+  elapsedSeconds={runningElapsed}
           />
         </div>
       )}
@@ -230,8 +216,9 @@ export function EntriesList() {
                 entry={entry}
                 cliente={getCliente(entry.cliente_id)}
                 tipoTarea={getTipoTarea(entry.tipo_tarea_id)}
+                clientes={clientes}
                 onContinue={() => handleContinue(entry)}
-                onEdit={() => handleEdit(entry)}
+                onUpdate={updateEntry}
                 onDelete={() => handleDelete(entry.id)}
               />
             ))}
@@ -239,32 +226,7 @@ export function EntriesList() {
         </div>
       ))}
 
-      {/* Edit Dialog */}
-      <Dialog open={!!editingEntry} onOpenChange={() => setEditingEntry(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar entrada</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <label className="text-sm font-medium text-foreground">
-                Descripción
-              </label>
-              <Input
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                className="mt-1.5"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setEditingEntry(null)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleSaveEdit}>Guardar cambios</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+
     </div>
   )
 }
@@ -274,10 +236,9 @@ interface RunningEntryRowProps {
   cliente?: Cliente
   tipoTarea?: TipoDeTarea
   elapsedSeconds: number
-  onEdit: () => void
 }
 
-function RunningEntryRow({ entry, cliente, tipoTarea, elapsedSeconds, onEdit }: RunningEntryRowProps) {
+function RunningEntryRow({ entry, cliente, tipoTarea, elapsedSeconds }: RunningEntryRowProps) {
   return (
     <div className="flex items-center gap-4 p-3 rounded-lg bg-status-verde/10 border border-status-verde/30">
       {/* Client Color Dot */}
@@ -318,16 +279,6 @@ function RunningEntryRow({ entry, cliente, tipoTarea, elapsedSeconds, onEdit }: 
         />
       </div>
 
-      {/* Edit Button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 shrink-0"
-        onClick={onEdit}
-        title="Editar entrada"
-      >
-        <Pencil className="h-3.5 w-3.5" />
-      </Button>
     </div>
   )
 }
@@ -336,40 +287,191 @@ interface EntryRowProps {
   entry: TimeEntry
   cliente?: Cliente
   tipoTarea?: TipoDeTarea
+  clientes: Cliente[]
   onContinue: () => void
-  onEdit: () => void
+  onUpdate: (id: string, updates: Partial<TimeEntry>) => Promise<void>
   onDelete: () => void
 }
 
-function EntryRow({ entry, cliente, tipoTarea, onContinue, onEdit, onDelete }: EntryRowProps) {
-  return (
-    <div className="group flex items-center gap-4 p-3 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors">
-      {/* Client Color Dot */}
-      <div
-        className="h-3 w-3 rounded-full shrink-0"
-        style={{ backgroundColor: cliente ? getClientColor(cliente.id) : '#9ca3af' }}
-      />
+function EntryRow({ entry, cliente, tipoTarea, clientes, onContinue, onUpdate, onDelete }: EntryRowProps) {
+  const [editingField, setEditingField] = useState<'description' | 'client' | 'start' | 'end' | null>(null)
+  const [tempDescription, setTempDescription] = useState(entry.descripcion)
+  const [tempClienteId, setTempClienteId] = useState(entry.cliente_id)
+  const [tempStart, setTempStart] = useState('')
+  const [tempEnd, setTempEnd] = useState('')
 
-      {/* Description & Client */}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">
-          {entry.descripcion}
-        </p>
-        <div className="flex items-center gap-2 mt-0.5">
-          {cliente && (
-            <p className="text-xs text-muted-foreground truncate">
-              {cliente.nombre_del_negocio}
-            </p>
-          )}
-          {tipoTarea && (
-            <span className="text-xs text-primary">{tipoTarea.nombre}</span>
-          )}
-        </div>
+  // Format time for input (HH:MM)
+  const formatTimeForInput = (isoString: string | null) => {
+    if (!isoString) return ''
+    const date = new Date(isoString)
+    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+  }
+
+  // Get just the time portion for display
+  const getTimeDisplay = (isoString: string | null) => {
+    if (!isoString) return '--:--'
+    const date = new Date(isoString)
+    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+  }
+
+  const handleStartEditDescription = () => {
+    setTempDescription(entry.descripcion)
+    setEditingField('description')
+  }
+
+  const handleStartEditClient = () => {
+    setTempClienteId(entry.cliente_id)
+    setEditingField('client')
+  }
+
+  const handleStartEditStart = () => {
+    setTempStart(formatTimeForInput(entry.iniciado_en))
+    setEditingField('start')
+  }
+
+  const handleStartEditEnd = () => {
+    setTempEnd(formatTimeForInput(entry.finalizado_en))
+    setEditingField('end')
+  }
+
+  const handleSaveDescription = async () => {
+    if (tempDescription !== entry.descripcion) {
+      await onUpdate(entry.id, { descripcion: tempDescription })
+    }
+    setEditingField(null)
+  }
+
+  const handleSaveClient = async (newClientId: string) => {
+    if (newClientId !== entry.cliente_id) {
+      await onUpdate(entry.id, { cliente_id: newClientId })
+    }
+    setEditingField(null)
+  }
+
+  const handleSaveTime = async (field: 'start' | 'end', timeValue: string) => {
+    const [hours, minutes] = timeValue.split(':').map(Number)
+    const baseDate = new Date(field === 'start' ? entry.iniciado_en : (entry.finalizado_en || entry.iniciado_en))
+    baseDate.setHours(hours, minutes, 0, 0)
+    
+    const updates: Partial<TimeEntry> = {}
+    if (field === 'start') {
+      updates.iniciado_en = baseDate.toISOString()
+      // Recalculate duration
+      if (entry.finalizado_en) {
+        const endTime = new Date(entry.finalizado_en).getTime()
+        updates.duracion_seg = Math.floor((endTime - baseDate.getTime()) / 1000)
+      }
+    } else {
+      updates.finalizado_en = baseDate.toISOString()
+      // Recalculate duration
+      const startTime = new Date(entry.iniciado_en).getTime()
+      updates.duracion_seg = Math.floor((baseDate.getTime() - startTime) / 1000)
+    }
+    
+    await onUpdate(entry.id, updates)
+    setEditingField(null)
+  }
+
+  return (
+    <div className="group flex items-center gap-3 p-3 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors">
+      {/* Client Color Dot + Client Selector */}
+      <div className="flex items-center gap-2 min-w-[180px]">
+        <div
+          className="h-3 w-3 rounded-full shrink-0 cursor-pointer"
+          style={{ backgroundColor: cliente ? getClientColor(cliente.id) : '#9ca3af' }}
+          onClick={handleStartEditClient}
+        />
+        {editingField === 'client' ? (
+          <Select 
+            value={tempClienteId || ''} 
+            onValueChange={(val) => handleSaveClient(val)}
+            open={true}
+            onOpenChange={(open) => !open && setEditingField(null)}
+          >
+            <SelectTrigger className="h-7 text-xs w-[150px]">
+              <SelectValue placeholder="Cliente" />
+            </SelectTrigger>
+            <SelectContent>
+              {clientes.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.nombre_del_negocio}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <span 
+            className="text-xs text-muted-foreground truncate cursor-pointer hover:text-foreground"
+            onClick={handleStartEditClient}
+          >
+            {cliente?.nombre_del_negocio || 'Sin cliente'}
+          </span>
+        )}
       </div>
 
-      {/* Time Range */}
-      <div className="text-sm text-muted-foreground shrink-0">
-        {formatTimeRange(entry.iniciado_en, entry.finalizado_en)}
+      {/* Description - Editable */}
+      <div className="flex-1 min-w-0">
+        {editingField === 'description' ? (
+          <Input
+            value={tempDescription}
+            onChange={(e) => setTempDescription(e.target.value)}
+            onBlur={handleSaveDescription}
+            onKeyDown={(e) => e.key === 'Enter' && handleSaveDescription()}
+            className="h-7 text-sm"
+            autoFocus
+          />
+        ) : (
+          <p 
+            className="text-sm font-medium text-foreground truncate cursor-pointer hover:text-primary"
+            onClick={handleStartEditDescription}
+          >
+            {entry.descripcion || 'Añadir descripción'}
+          </p>
+        )}
+        {tipoTarea && (
+          <span className="text-xs text-primary">{tipoTarea.nombre}</span>
+        )}
+      </div>
+
+      {/* Time Range - Editable */}
+      <div className="flex items-center gap-1 text-sm shrink-0">
+        {editingField === 'start' ? (
+          <Input
+            type="time"
+            value={tempStart}
+            onChange={(e) => setTempStart(e.target.value)}
+            onBlur={() => handleSaveTime('start', tempStart)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSaveTime('start', tempStart)}
+            className="h-7 w-20 text-xs"
+            autoFocus
+          />
+        ) : (
+          <span 
+            className="cursor-pointer hover:text-primary px-1 rounded hover:bg-muted"
+            onClick={handleStartEditStart}
+          >
+            {getTimeDisplay(entry.iniciado_en)}
+          </span>
+        )}
+        <span className="text-muted-foreground">-</span>
+        {editingField === 'end' ? (
+          <Input
+            type="time"
+            value={tempEnd}
+            onChange={(e) => setTempEnd(e.target.value)}
+            onBlur={() => handleSaveTime('end', tempEnd)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSaveTime('end', tempEnd)}
+            className="h-7 w-20 text-xs"
+            autoFocus
+          />
+        ) : (
+          <span 
+            className="cursor-pointer hover:text-primary px-1 rounded hover:bg-muted"
+            onClick={handleStartEditEnd}
+          >
+            {getTimeDisplay(entry.finalizado_en)}
+          </span>
+        )}
       </div>
 
       {/* Duration */}
@@ -392,7 +494,7 @@ function EntryRow({ entry, cliente, tipoTarea, onContinue, onEdit, onDelete }: E
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8"
+          className="h-7 w-7"
           onClick={onContinue}
           title="Continuar timer"
         >
@@ -401,16 +503,7 @@ function EntryRow({ entry, cliente, tipoTarea, onContinue, onEdit, onDelete }: E
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8"
-          onClick={onEdit}
-          title="Editar entrada"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-destructive hover:text-destructive"
+          className="h-7 w-7 text-destructive hover:text-destructive"
           onClick={onDelete}
           title="Eliminar entrada"
         >

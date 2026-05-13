@@ -212,7 +212,7 @@ export function ActiveTimerBar() {
         {/* Tipo de tarea */}
         <Select
           value={tipoTareaId || ''}
-          onValueChange={(val) => setTipoTareaId(val || null)}
+          onValueChange={async (val) => await setTipoTareaId(val || null)}
           disabled={tiposTarea.length === 0}
         >
           <SelectTrigger className="w-[200px] shrink-0">
