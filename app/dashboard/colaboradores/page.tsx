@@ -153,7 +153,7 @@ export default function ColaboradoresPage() {
         .from('metricas_colaboradores')
         .select(`
           *,
-          colaborador:colaborador_id(id, nombre, apellido, email),
+          colaborador:colaborador_id(id, nombre, apellido, email, rol_id, roles(id, nombre)),
           cliente:cliente_id(id, nombre_del_negocio, fee_mdk, fee_aurelia, fee_consultoria)
         `)
         .eq('mes', selectedMonth)
@@ -161,16 +161,26 @@ export default function ColaboradoresPage() {
         .order('created_at')
 
       if (mets) {
-        setMetricas(mets.map(m => ({
-          ...m,
-          colaborador: m.colaborador as Colaborador,
-          cliente: m.cliente as Cliente,
-          horas_teoricas_cliente: Number(m.horas_teoricas_cliente) || 0,
-          minimo_no_negociable_horas: Number(m.minimo_no_negociable_horas) || 0,
-          horas_objetivo: Number(m.horas_objetivo) || 0,
-          acumulado_mes_asignado: Number(m.acumulado_mes_asignado) || 0,
-          valor_hora: Number(m.valor_hora) || 150000,
-        })))
+        setMetricas(mets.map(m => {
+          const colaborador = m.colaborador as Colaborador
+          const cliente = m.cliente as Cliente
+          const valorHora = Number(m.valor_hora) || 150000
+          const feeMdk = cliente?.fee_mdk || 0
+          
+          // Recalculate horas teoricas with correct role
+          const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHora, colaborador)
+          
+          return {
+            ...m,
+            colaborador,
+            cliente,
+            horas_teoricas_cliente: horasTeoricas,
+            minimo_no_negociable_horas: horasTeoricas / 2,
+            horas_objetivo: horasTeoricas,
+            acumulado_mes_asignado: Number(m.acumulado_mes_asignado) || 0,
+            valor_hora: valorHora,
+          }
+        }))
       }
 
       setIsLoading(false)
