@@ -20,7 +20,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
 import { Label } from '@/components/ui/label'
 import { Loader2, AlertTriangle, CheckCircle2, XCircle, Users, Building2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -124,6 +123,133 @@ function StatusIcon({ status }: { status: 'ok' | 'warning' | 'danger' }) {
     return <AlertTriangle className="w-4 h-4 text-amber-500" />
   }
   return <XCircle className="w-4 h-4 text-red-500" />
+}
+
+// Custom progress bar with min/max markers and color logic
+// - Gray: 0 to min (below minimum)
+// - Green: min to max (within range)
+// - Red: exceeds max (over limit)
+function HoursProgressBar({ 
+  asignado, 
+  minimo, 
+  maximo,
+  showLabels = true,
+  height = 'h-3'
+}: { 
+  asignado: number
+  minimo: number
+  maximo: number
+  showLabels?: boolean
+  height?: string
+}) {
+  // Calculate percentages relative to max
+  const minPercent = maximo > 0 ? (minimo / maximo) * 100 : 50
+  const progressPercent = maximo > 0 ? (asignado / maximo) * 100 : 0
+  const isOverMax = asignado > maximo
+  const isAtOrAboveMin = asignado >= minimo
+  
+  // Determine color based on progress
+  const getProgressColor = () => {
+    if (isOverMax) return 'bg-red-500'
+    if (isAtOrAboveMin) return 'bg-emerald-500'
+    return 'bg-zinc-400'
+  }
+
+  return (
+    <div className="space-y-1">
+      {showLabels && (
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">
+            Asignadas: <span className={`font-medium ${isOverMax ? 'text-red-500' : isAtOrAboveMin ? 'text-emerald-500' : 'text-foreground'}`}>
+              {asignado.toFixed(1)}h
+            </span>
+          </span>
+          <span className="text-muted-foreground">
+            Máx: <span className="font-medium text-foreground">{maximo.toFixed(1)}h</span>
+          </span>
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <div className={`relative flex-1 ${height} bg-zinc-800 rounded-full overflow-hidden`}>
+          {/* Progress fill */}
+          <div 
+            className={`absolute inset-y-0 left-0 ${getProgressColor()} transition-all duration-300 rounded-full`}
+            style={{ width: `${Math.min(progressPercent, 100)}%` }}
+          />
+          {/* Min marker (50% point) */}
+          <div 
+            className="absolute top-0 bottom-0 w-0.5 bg-white/60"
+            style={{ left: `${minPercent}%` }}
+          />
+        </div>
+        {/* Show percentage if over max */}
+        {isOverMax && (
+          <span className="text-sm font-medium text-red-500 min-w-[50px] text-right">
+            {progressPercent.toFixed(0)}%
+          </span>
+        )}
+      </div>
+      {showLabels && (
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>Mín: {minimo.toFixed(1)}h</span>
+          {isOverMax ? (
+            <span className="text-red-500">Excede {(asignado - maximo).toFixed(1)}h</span>
+          ) : !isAtOrAboveMin ? (
+            <span className="text-zinc-400">Faltan {(minimo - asignado).toFixed(1)}h para el mínimo</span>
+          ) : (
+            <span className="text-emerald-500">Dentro del rango</span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Compact progress bar for table rows
+function CompactProgressBar({ 
+  asignado, 
+  minimo, 
+  maximo 
+}: { 
+  asignado: number
+  minimo: number
+  maximo: number
+}) {
+  const minPercent = maximo > 0 ? (minimo / maximo) * 100 : 50
+  const progressPercent = maximo > 0 ? (asignado / maximo) * 100 : 0
+  const isOverMax = asignado > maximo
+  const isAtOrAboveMin = asignado >= minimo
+  
+  const getProgressColor = () => {
+    if (isOverMax) return 'bg-red-500'
+    if (isAtOrAboveMin) return 'bg-emerald-500'
+    return 'bg-zinc-400'
+  }
+
+  return (
+    <div className="flex items-center gap-2 min-w-[160px]">
+      <div className="relative flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+        <div 
+          className={`absolute inset-y-0 left-0 ${getProgressColor()} transition-all duration-300 rounded-full`}
+          style={{ width: `${Math.min(progressPercent, 100)}%` }}
+        />
+        <div 
+          className="absolute top-0 bottom-0 w-0.5 bg-white/50"
+          style={{ left: `${minPercent}%` }}
+        />
+      </div>
+      <span className={`text-xs font-medium min-w-[40px] text-right ${
+        isOverMax ? 'text-red-500' : isAtOrAboveMin ? 'text-emerald-500' : 'text-zinc-400'
+      }`}>
+        {asignado.toFixed(1)}h
+      </span>
+      {isOverMax && (
+        <span className="text-xs font-medium text-red-500">
+          ({progressPercent.toFixed(0)}%)
+        </span>
+      )}
+    </div>
+  )
 }
 
 async function fetchMetricas(mes: number, anio: number) {
@@ -525,74 +651,35 @@ export function HoursControlPanel() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      {/* Progress bar with min marker */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">
-                            Asignadas: <span className="font-medium text-foreground">{item.totalAsignado.toFixed(1)}h</span>
-                          </span>
-                          <span className="text-muted-foreground">
-                            Máx: <span className="font-medium text-foreground">{item.totalMaximo.toFixed(1)}h</span>
-                          </span>
-                        </div>
-                        <div className="relative">
-                          <Progress 
-                            value={progressPercent} 
-                            className="h-3"
-                          />
-                          {/* Min marker */}
-                          {minPercent > 0 && minPercent < 100 && (
-                            <div 
-                              className="absolute top-0 h-3 w-0.5 bg-foreground/50"
-                              style={{ left: `${minPercent}%` }}
-                            />
-                          )}
-                        </div>
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>Mín: {item.totalMinimo.toFixed(1)}h</span>
-                          <span className={status.status === 'ok' ? 'text-emerald-600' : status.status === 'warning' ? 'text-amber-600' : 'text-red-600'}>
-                            {status.message}
-                          </span>
-                        </div>
-                      </div>
+                      {/* Progress bar general del colaborador */}
+                      <HoursProgressBar 
+                        asignado={item.totalAsignado}
+                        minimo={item.totalMinimo}
+                        maximo={item.totalMaximo}
+                      />
 
-                      {/* Breakdown by client */}
-                      <div className="border rounded-lg overflow-hidden">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="bg-muted/50">
-                              <TableHead className="text-xs">Cliente</TableHead>
-                              <TableHead className="text-xs text-right">Mín</TableHead>
-                              <TableHead className="text-xs text-right">Máx</TableHead>
-                              <TableHead className="text-xs text-right">Asignadas</TableHead>
-                              <TableHead className="text-xs text-center">Estado</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {item.clientes.map((c) => {
-                              const clientStatus = getHoursStatus(c.asignado, c.minimo, c.maximo)
-                              return (
-                                <TableRow key={c.cliente.id}>
-                                  <TableCell className="text-sm font-medium">
-                                    {c.cliente.nombre_del_negocio}
-                                  </TableCell>
-                                  <TableCell className="text-sm text-right text-muted-foreground">
-                                    {c.minimo.toFixed(1)}h
-                                  </TableCell>
-                                  <TableCell className="text-sm text-right text-muted-foreground">
-                                    {c.maximo.toFixed(1)}h
-                                  </TableCell>
-                                  <TableCell className="text-sm text-right font-medium">
-                                    {c.asignado.toFixed(1)}h
-                                  </TableCell>
-                                  <TableCell className="text-center">
-                                    <StatusIcon status={clientStatus.status} />
-                                  </TableCell>
-                                </TableRow>
-                              )
-                            })}
-                          </TableBody>
-                        </Table>
+                      {/* Breakdown by client with progress bars */}
+                      <div className="space-y-3">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Desglose por Cliente</h4>
+                        <div className="space-y-2">
+                          {item.clientes.map((c) => (
+                            <div key={c.cliente.id} className="flex items-center gap-4 py-2 px-3 bg-muted/30 rounded-lg">
+                              <div className="min-w-[140px]">
+                                <span className="text-sm font-medium">{c.cliente.nombre_del_negocio}</span>
+                                <div className="text-xs text-muted-foreground">
+                                  {c.minimo.toFixed(1)}h - {c.maximo.toFixed(1)}h
+                                </div>
+                              </div>
+                              <div className="flex-1">
+                                <CompactProgressBar 
+                                  asignado={c.asignado}
+                                  minimo={c.minimo}
+                                  maximo={c.maximo}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -634,12 +721,6 @@ export function HoursControlPanel() {
             <div className="grid gap-4">
               {byCliente.map((item) => {
                 const status = getHoursStatus(item.totalAsignado, item.totalMinimo, item.totalMaximo)
-                const progressPercent = item.totalMaximo > 0 
-                  ? Math.min((item.totalAsignado / item.totalMaximo) * 100, 100) 
-                  : 0
-                const minPercent = item.totalMaximo > 0 
-                  ? (item.totalMinimo / item.totalMaximo) * 100 
-                  : 0
 
                 return (
                   <Card key={item.cliente.id}>
@@ -660,74 +741,37 @@ export function HoursControlPanel() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      {/* Progress bar with min marker */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">
-                            Asignadas: <span className="font-medium text-foreground">{item.totalAsignado.toFixed(1)}h</span>
-                          </span>
-                          <span className="text-muted-foreground">
-                            Máx: <span className="font-medium text-foreground">{item.totalMaximo.toFixed(1)}h</span>
-                          </span>
-                        </div>
-                        <div className="relative">
-                          <Progress 
-                            value={progressPercent} 
-                            className="h-3"
-                          />
-                          {/* Min marker */}
-                          {minPercent > 0 && minPercent < 100 && (
-                            <div 
-                              className="absolute top-0 h-3 w-0.5 bg-foreground/50"
-                              style={{ left: `${minPercent}%` }}
-                            />
-                          )}
-                        </div>
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>Mín: {item.totalMinimo.toFixed(1)}h</span>
-                          <span className={status.status === 'ok' ? 'text-emerald-600' : status.status === 'warning' ? 'text-amber-600' : 'text-red-600'}>
-                            {status.message}
-                          </span>
-                        </div>
-                      </div>
+                      {/* Progress bar general del cliente */}
+                      <HoursProgressBar 
+                        asignado={item.totalAsignado}
+                        minimo={item.totalMinimo}
+                        maximo={item.totalMaximo}
+                      />
 
-                      {/* Breakdown by colaborador */}
-                      <div className="border rounded-lg overflow-hidden">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="bg-muted/50">
-                              <TableHead className="text-xs">Colaborador</TableHead>
-                              <TableHead className="text-xs text-right">Mín</TableHead>
-                              <TableHead className="text-xs text-right">Máx</TableHead>
-                              <TableHead className="text-xs text-right">Asignadas</TableHead>
-                              <TableHead className="text-xs text-center">Estado</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {item.colaboradores.map((c) => {
-                              const colabStatus = getHoursStatus(c.asignado, c.minimo, c.maximo)
-                              return (
-                                <TableRow key={c.colaborador.id}>
-                                  <TableCell className="text-sm font-medium">
-                                    {c.colaborador.nombre}{c.colaborador.apellido ? ` ${c.colaborador.apellido}` : ''}
-                                  </TableCell>
-                                  <TableCell className="text-sm text-right text-muted-foreground">
-                                    {c.minimo.toFixed(1)}h
-                                  </TableCell>
-                                  <TableCell className="text-sm text-right text-muted-foreground">
-                                    {c.maximo.toFixed(1)}h
-                                  </TableCell>
-                                  <TableCell className="text-sm text-right font-medium">
-                                    {c.asignado.toFixed(1)}h
-                                  </TableCell>
-                                  <TableCell className="text-center">
-                                    <StatusIcon status={colabStatus.status} />
-                                  </TableCell>
-                                </TableRow>
-                              )
-                            })}
-                          </TableBody>
-                        </Table>
+                      {/* Breakdown by colaborador with progress bars */}
+                      <div className="space-y-3">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Desglose por Colaborador</h4>
+                        <div className="space-y-2">
+                          {item.colaboradores.map((c) => (
+                            <div key={c.colaborador.id} className="flex items-center gap-4 py-2 px-3 bg-muted/30 rounded-lg">
+                              <div className="min-w-[140px]">
+                                <span className="text-sm font-medium">
+                                  {c.colaborador.nombre}{c.colaborador.apellido ? ` ${c.colaborador.apellido}` : ''}
+                                </span>
+                                <div className="text-xs text-muted-foreground">
+                                  {c.minimo.toFixed(1)}h - {c.maximo.toFixed(1)}h
+                                </div>
+                              </div>
+                              <div className="flex-1">
+                                <CompactProgressBar 
+                                  asignado={c.asignado}
+                                  minimo={c.minimo}
+                                  maximo={c.maximo}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
