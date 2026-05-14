@@ -213,13 +213,19 @@ export default function ColaboradoresPage() {
           // Get actual hours from entradas_tiempo
           const acumuladoReal = hoursMap.get(`${m.colaborador_id}-${m.cliente_id}`) || 0
           
+          // Use stored values from DB if they exist, otherwise calculate
+          const storedObjetivo = Number(m.horas_objetivo) || 0
+          const storedMinimo = Number(m.minimo_no_negociable_horas) || 0
+          const finalObjetivo = storedObjetivo > 0 ? storedObjetivo : horasTeoricas
+          const finalMinimo = storedMinimo > 0 ? storedMinimo : horasTeoricas / 2
+          
           return {
             ...m,
             colaborador,
             cliente,
             horas_teoricas_cliente: horasTeoricas,
-            minimo_no_negociable_horas: horasTeoricas / 2,
-            horas_objetivo: horasTeoricas,
+            minimo_no_negociable_horas: finalMinimo,
+            horas_objetivo: finalObjetivo,
             acumulado_mes_asignado: acumuladoReal,
             valor_hora: valorHora,
           }
