@@ -1,0 +1,710 @@
+'use client'
+
+import { useState, useMemo } from 'react'
+import useSWR from 'swr'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { Label } from '@/components/ui/label'
+import { Loader2, AlertTriangle, CheckCircle2, XCircle, Users, Building2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+
+interface MetricaColaborador {
+  id: string
+  colaborador_id: string
+  cliente_id: string
+  minimo_no_negociable_horas: number | null
+  horas_objetivo: number | null
+  acumulado_mes_asignado: number | null
+  mes: number
+  anio: number
+  colaborador: {
+    id: string
+    nombre: string
+    apellido: string | null
+  } | null
+  cliente: {
+    id: string
+    nombre_del_negocio: string
+  } | null
+}
+
+interface HoursStatus {
+  status: 'ok' | 'warning' | 'danger'
+  message: string
+}
+
+function getHoursStatus(
+  asignadas: number,
+  minimo: number,
+  maximo: number
+): HoursStatus {
+  if (asignadas < minimo) {
+    return {
+      status: 'danger',
+      message: `Faltan ${(minimo - asignadas).toFixed(1)}h para el mínimo`,
+    }
+  }
+  if (asignadas > maximo) {
+    return {
+      status: 'danger',
+      message: `Excede ${(asignadas - maximo).toFixed(1)}h el máximo`,
+    }
+  }
+  if (asignadas >= maximo * 0.9) {
+    return {
+      status: 'warning',
+      message: `Cerca del límite máximo (${((asignadas / maximo) * 100).toFixed(0)}%)`,
+    }
+  }
+  if (asignadas < minimo * 1.1) {
+    return {
+      status: 'warning',
+      message: `Cerca del mínimo (${((asignadas / minimo) * 100).toFixed(0)}%)`,
+    }
+  }
+  return {
+    status: 'ok',
+    message: 'Dentro del rango permitido',
+  }
+}
+
+function StatusBadge({ status }: { status: HoursStatus }) {
+  if (status.status === 'ok') {
+    return (
+      <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
+        <CheckCircle2 className="w-3 h-3 mr-1" />
+        OK
+      </Badge>
+    )
+  }
+  if (status.status === 'warning') {
+    return (
+      <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30">
+        <AlertTriangle className="w-3 h-3 mr-1" />
+        Atención
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/30">
+      <XCircle className="w-3 h-3 mr-1" />
+      Fuera de rango
+    </Badge>
+  )
+}
+
+function StatusIcon({ status }: { status: 'ok' | 'warning' | 'danger' }) {
+  if (status === 'ok') {
+    return <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+  }
+  if (status === 'warning') {
+    return <AlertTriangle className="w-4 h-4 text-amber-500" />
+  }
+  return <XCircle className="w-4 h-4 text-red-500" />
+}
+
+async function fetchMetricas(mes: number, anio: number) {
+  const supabase = createClient()
+  
+  const { data, error } = await supabase
+    .from('metricas_colaboradores')
+    .select(`
+      *,
+      colaborador:colaborador_id(id, nombre, apellido),
+      cliente:cliente_id(id, nombre_del_negocio)
+    `)
+    .eq('mes', mes)
+    .eq('anio', anio)
+  
+  if (error) throw error
+  return data as MetricaColaborador[]
+}
+
+export function HoursControlPanel() {
+  const currentDate = new Date()
+  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1)
+  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
+  const [filterColaborador, setFilterColaborador] = useState<string>('all')
+  const [filterCliente, setFilterCliente] = useState<string>('all')
+
+  const { data: metricas, isLoading, error } = useSWR(
+    `metricas-${selectedMonth}-${selectedYear}`,
+    () => fetchMetricas(selectedMonth, selectedYear)
+  )
+
+  // Get unique colaboradores and clientes for filters
+  const colaboradores = useMemo(() => {
+    if (!metricas) return []
+    const unique = new Map<string, { id: string; nombre: string; apellido: string | null }>()
+    metricas.forEach(m => {
+      if (m.colaborador) {
+        unique.set(m.colaborador.id, m.colaborador)
+      }
+    })
+    return Array.from(unique.values()).sort((a, b) => a.nombre.localeCompare(b.nombre))
+  }, [metricas])
+
+  const clientes = useMemo(() => {
+    if (!metricas) return []
+    const unique = new Map<string, { id: string; nombre_del_negocio: string }>()
+    metricas.forEach(m => {
+      if (m.cliente) {
+        unique.set(m.cliente.id, m.cliente)
+      }
+    })
+    return Array.from(unique.values()).sort((a, b) => a.nombre_del_negocio.localeCompare(b.nombre_del_negocio))
+  }, [metricas])
+
+  // Aggregate by colaborador
+  const byColaborador = useMemo(() => {
+    if (!metricas) return []
+    
+    const grouped = new Map<string, {
+      colaborador: { id: string; nombre: string; apellido: string | null }
+      totalMinimo: number
+      totalMaximo: number
+      totalAsignado: number
+      clientes: Array<{
+        cliente: { id: string; nombre_del_negocio: string }
+        minimo: number
+        maximo: number
+        asignado: number
+      }>
+    }>()
+
+    metricas.forEach(m => {
+      if (!m.colaborador) return
+      
+      const existing = grouped.get(m.colaborador.id)
+      const clienteData = {
+        cliente: m.cliente || { id: m.cliente_id, nombre_del_negocio: 'Sin nombre' },
+        minimo: m.minimo_no_negociable_horas || 0,
+        maximo: m.horas_objetivo || 0,
+        asignado: m.acumulado_mes_asignado || 0,
+      }
+
+      if (existing) {
+        existing.totalMinimo += clienteData.minimo
+        existing.totalMaximo += clienteData.maximo
+        existing.totalAsignado += clienteData.asignado
+        existing.clientes.push(clienteData)
+      } else {
+        grouped.set(m.colaborador.id, {
+          colaborador: m.colaborador,
+          totalMinimo: clienteData.minimo,
+          totalMaximo: clienteData.maximo,
+          totalAsignado: clienteData.asignado,
+          clientes: [clienteData],
+        })
+      }
+    })
+
+    return Array.from(grouped.values())
+      .filter(item => filterColaborador === 'all' || item.colaborador.id === filterColaborador)
+      .sort((a, b) => a.colaborador.nombre.localeCompare(b.colaborador.nombre))
+  }, [metricas, filterColaborador])
+
+  // Aggregate by cliente
+  const byCliente = useMemo(() => {
+    if (!metricas) return []
+    
+    const grouped = new Map<string, {
+      cliente: { id: string; nombre_del_negocio: string }
+      totalMinimo: number
+      totalMaximo: number
+      totalAsignado: number
+      colaboradores: Array<{
+        colaborador: { id: string; nombre: string; apellido: string | null }
+        minimo: number
+        maximo: number
+        asignado: number
+      }>
+    }>()
+
+    metricas.forEach(m => {
+      if (!m.cliente) return
+      
+      const existing = grouped.get(m.cliente.id)
+      const colaboradorData = {
+        colaborador: m.colaborador || { id: m.colaborador_id, nombre: 'Sin nombre', apellido: null },
+        minimo: m.minimo_no_negociable_horas || 0,
+        maximo: m.horas_objetivo || 0,
+        asignado: m.acumulado_mes_asignado || 0,
+      }
+
+      if (existing) {
+        existing.totalMinimo += colaboradorData.minimo
+        existing.totalMaximo += colaboradorData.maximo
+        existing.totalAsignado += colaboradorData.asignado
+        existing.colaboradores.push(colaboradorData)
+      } else {
+        grouped.set(m.cliente.id, {
+          cliente: m.cliente,
+          totalMinimo: colaboradorData.minimo,
+          totalMaximo: colaboradorData.maximo,
+          totalAsignado: colaboradorData.asignado,
+          colaboradores: [colaboradorData],
+        })
+      }
+    })
+
+    return Array.from(grouped.values())
+      .filter(item => filterCliente === 'all' || item.cliente.id === filterCliente)
+      .sort((a, b) => a.cliente.nombre_del_negocio.localeCompare(b.cliente.nombre_del_negocio))
+  }, [metricas, filterCliente])
+
+  // Summary stats
+  const summary = useMemo(() => {
+    const totalOk = byColaborador.filter(c => {
+      const status = getHoursStatus(c.totalAsignado, c.totalMinimo, c.totalMaximo)
+      return status.status === 'ok'
+    }).length
+
+    const totalWarning = byColaborador.filter(c => {
+      const status = getHoursStatus(c.totalAsignado, c.totalMinimo, c.totalMaximo)
+      return status.status === 'warning'
+    }).length
+
+    const totalDanger = byColaborador.filter(c => {
+      const status = getHoursStatus(c.totalAsignado, c.totalMinimo, c.totalMaximo)
+      return status.status === 'danger'
+    }).length
+
+    return { totalOk, totalWarning, totalDanger, total: byColaborador.length }
+  }, [byColaborador])
+
+  const months = [
+    { value: 1, label: 'Enero' },
+    { value: 2, label: 'Febrero' },
+    { value: 3, label: 'Marzo' },
+    { value: 4, label: 'Abril' },
+    { value: 5, label: 'Mayo' },
+    { value: 6, label: 'Junio' },
+    { value: 7, label: 'Julio' },
+    { value: 8, label: 'Agosto' },
+    { value: 9, label: 'Septiembre' },
+    { value: 10, label: 'Octubre' },
+    { value: 11, label: 'Noviembre' },
+    { value: 12, label: 'Diciembre' },
+  ]
+
+  const years = Array.from({ length: 5 }, (_, i) => currentDate.getFullYear() - 2 + i)
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="py-12">
+          <div className="text-center text-destructive">
+            Error al cargar las métricas. Por favor, intenta de nuevo.
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Period selector and summary */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="flex items-center gap-4">
+          <div className="space-y-1">
+            <Label className="text-sm font-medium">Mes</Label>
+            <Select 
+              value={selectedMonth.toString()} 
+              onValueChange={(v) => setSelectedMonth(parseInt(v))}
+            >
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {months.map(m => (
+                  <SelectItem key={m.value} value={m.value.toString()}>
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-sm font-medium">Año</Label>
+            <Select 
+              value={selectedYear.toString()} 
+              onValueChange={(v) => setSelectedYear(parseInt(v))}
+            >
+              <SelectTrigger className="w-[100px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {years.map(y => (
+                  <SelectItem key={y} value={y.toString()}>
+                    {y}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Quick summary */}
+        <div className="flex items-center gap-4">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/30">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  <span className="font-medium text-emerald-600">{summary.totalOk}</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Colaboradores dentro del rango</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/30">
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  <span className="font-medium text-amber-600">{summary.totalWarning}</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Colaboradores cerca del límite</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-red-500/10 border border-red-500/30">
+                  <XCircle className="w-4 h-4 text-red-500" />
+                  <span className="font-medium text-red-600">{summary.totalDanger}</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Colaboradores fuera de rango</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </div>
+
+      {/* Main tabs */}
+      <Tabs defaultValue="by-colaborador" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="by-colaborador" className="gap-2">
+            <Users className="w-4 h-4" />
+            Por Colaborador
+          </TabsTrigger>
+          <TabsTrigger value="by-cliente" className="gap-2">
+            <Building2 className="w-4 h-4" />
+            Por Cliente
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="by-colaborador" className="space-y-4">
+          {/* Filter */}
+          <div className="flex items-center gap-4">
+            <Label className="text-sm font-medium">Filtrar:</Label>
+            <Select value={filterColaborador} onValueChange={setFilterColaborador}>
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="Seleccionar colaborador" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los colaboradores</SelectItem>
+                {colaboradores.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.nombre}{c.apellido ? ` ${c.apellido}` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Cards for each colaborador */}
+          {byColaborador.length === 0 ? (
+            <Card>
+              <CardContent className="py-12">
+                <div className="text-center text-muted-foreground">
+                  No hay datos de métricas para el período seleccionado.
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {byColaborador.map((item) => {
+                const status = getHoursStatus(item.totalAsignado, item.totalMinimo, item.totalMaximo)
+                const progressPercent = item.totalMaximo > 0 
+                  ? Math.min((item.totalAsignado / item.totalMaximo) * 100, 100) 
+                  : 0
+                const minPercent = item.totalMaximo > 0 
+                  ? (item.totalMinimo / item.totalMaximo) * 100 
+                  : 0
+
+                return (
+                  <Card key={item.colaborador.id}>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <StatusIcon status={status.status} />
+                          <div>
+                            <CardTitle className="text-base">
+                              {item.colaborador.nombre}{item.colaborador.apellido ? ` ${item.colaborador.apellido}` : ''}
+                            </CardTitle>
+                            <CardDescription>
+                              {item.clientes.length} cliente{item.clientes.length !== 1 ? 's' : ''} asignado{item.clientes.length !== 1 ? 's' : ''}
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <StatusBadge status={status} />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Progress bar with min marker */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">
+                            Asignadas: <span className="font-medium text-foreground">{item.totalAsignado.toFixed(1)}h</span>
+                          </span>
+                          <span className="text-muted-foreground">
+                            Máx: <span className="font-medium text-foreground">{item.totalMaximo.toFixed(1)}h</span>
+                          </span>
+                        </div>
+                        <div className="relative">
+                          <Progress 
+                            value={progressPercent} 
+                            className="h-3"
+                          />
+                          {/* Min marker */}
+                          {minPercent > 0 && minPercent < 100 && (
+                            <div 
+                              className="absolute top-0 h-3 w-0.5 bg-foreground/50"
+                              style={{ left: `${minPercent}%` }}
+                            />
+                          )}
+                        </div>
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Mín: {item.totalMinimo.toFixed(1)}h</span>
+                          <span className={status.status === 'ok' ? 'text-emerald-600' : status.status === 'warning' ? 'text-amber-600' : 'text-red-600'}>
+                            {status.message}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Breakdown by client */}
+                      <div className="border rounded-lg overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-muted/50">
+                              <TableHead className="text-xs">Cliente</TableHead>
+                              <TableHead className="text-xs text-right">Mín</TableHead>
+                              <TableHead className="text-xs text-right">Máx</TableHead>
+                              <TableHead className="text-xs text-right">Asignadas</TableHead>
+                              <TableHead className="text-xs text-center">Estado</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {item.clientes.map((c) => {
+                              const clientStatus = getHoursStatus(c.asignado, c.minimo, c.maximo)
+                              return (
+                                <TableRow key={c.cliente.id}>
+                                  <TableCell className="text-sm font-medium">
+                                    {c.cliente.nombre_del_negocio}
+                                  </TableCell>
+                                  <TableCell className="text-sm text-right text-muted-foreground">
+                                    {c.minimo.toFixed(1)}h
+                                  </TableCell>
+                                  <TableCell className="text-sm text-right text-muted-foreground">
+                                    {c.maximo.toFixed(1)}h
+                                  </TableCell>
+                                  <TableCell className="text-sm text-right font-medium">
+                                    {c.asignado.toFixed(1)}h
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <StatusIcon status={clientStatus.status} />
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="by-cliente" className="space-y-4">
+          {/* Filter */}
+          <div className="flex items-center gap-4">
+            <Label className="text-sm font-medium">Filtrar:</Label>
+            <Select value={filterCliente} onValueChange={setFilterCliente}>
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="Seleccionar cliente" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los clientes</SelectItem>
+                {clientes.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.nombre_del_negocio}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Cards for each cliente */}
+          {byCliente.length === 0 ? (
+            <Card>
+              <CardContent className="py-12">
+                <div className="text-center text-muted-foreground">
+                  No hay datos de métricas para el período seleccionado.
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {byCliente.map((item) => {
+                const status = getHoursStatus(item.totalAsignado, item.totalMinimo, item.totalMaximo)
+                const progressPercent = item.totalMaximo > 0 
+                  ? Math.min((item.totalAsignado / item.totalMaximo) * 100, 100) 
+                  : 0
+                const minPercent = item.totalMaximo > 0 
+                  ? (item.totalMinimo / item.totalMaximo) * 100 
+                  : 0
+
+                return (
+                  <Card key={item.cliente.id}>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <StatusIcon status={status.status} />
+                          <div>
+                            <CardTitle className="text-base">
+                              {item.cliente.nombre_del_negocio}
+                            </CardTitle>
+                            <CardDescription>
+                              {item.colaboradores.length} colaborador{item.colaboradores.length !== 1 ? 'es' : ''} asignado{item.colaboradores.length !== 1 ? 's' : ''}
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <StatusBadge status={status} />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Progress bar with min marker */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">
+                            Asignadas: <span className="font-medium text-foreground">{item.totalAsignado.toFixed(1)}h</span>
+                          </span>
+                          <span className="text-muted-foreground">
+                            Máx: <span className="font-medium text-foreground">{item.totalMaximo.toFixed(1)}h</span>
+                          </span>
+                        </div>
+                        <div className="relative">
+                          <Progress 
+                            value={progressPercent} 
+                            className="h-3"
+                          />
+                          {/* Min marker */}
+                          {minPercent > 0 && minPercent < 100 && (
+                            <div 
+                              className="absolute top-0 h-3 w-0.5 bg-foreground/50"
+                              style={{ left: `${minPercent}%` }}
+                            />
+                          )}
+                        </div>
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Mín: {item.totalMinimo.toFixed(1)}h</span>
+                          <span className={status.status === 'ok' ? 'text-emerald-600' : status.status === 'warning' ? 'text-amber-600' : 'text-red-600'}>
+                            {status.message}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Breakdown by colaborador */}
+                      <div className="border rounded-lg overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-muted/50">
+                              <TableHead className="text-xs">Colaborador</TableHead>
+                              <TableHead className="text-xs text-right">Mín</TableHead>
+                              <TableHead className="text-xs text-right">Máx</TableHead>
+                              <TableHead className="text-xs text-right">Asignadas</TableHead>
+                              <TableHead className="text-xs text-center">Estado</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {item.colaboradores.map((c) => {
+                              const colabStatus = getHoursStatus(c.asignado, c.minimo, c.maximo)
+                              return (
+                                <TableRow key={c.colaborador.id}>
+                                  <TableCell className="text-sm font-medium">
+                                    {c.colaborador.nombre}{c.colaborador.apellido ? ` ${c.colaborador.apellido}` : ''}
+                                  </TableCell>
+                                  <TableCell className="text-sm text-right text-muted-foreground">
+                                    {c.minimo.toFixed(1)}h
+                                  </TableCell>
+                                  <TableCell className="text-sm text-right text-muted-foreground">
+                                    {c.maximo.toFixed(1)}h
+                                  </TableCell>
+                                  <TableCell className="text-sm text-right font-medium">
+                                    {c.asignado.toFixed(1)}h
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <StatusIcon status={colabStatus.status} />
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}
