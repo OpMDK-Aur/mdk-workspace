@@ -83,19 +83,19 @@ function formatHoursDisplay(hours: number): string {
   return `${h}:${String(m).padStart(2, '0')}`
 }
 
-// Get color class based on percentage
+// Get color class based on percentage vs objetivo
+// Verde: >= 50% del objetivo (cumple mínimo), Amarillo: > 0%, Rojo: 0%
 function getPercentageColor(value: number): string {
-  if (value >= 100) return 'bg-green-500/20 text-green-400'
-  if (value >= 70) return 'bg-yellow-500/20 text-yellow-400'
+  if (value >= 50) return 'bg-green-500/20 text-green-400'
+  if (value > 0) return 'bg-yellow-500/20 text-yellow-400'
   return 'bg-red-500/20 text-red-400'
 }
 
-// Get color for hours comparison
-function getHoursColor(actual: number, target: number): string {
-  if (target === 0) return ''
-  const percentage = (actual / target) * 100
-  if (percentage >= 100) return 'bg-green-500/20 text-green-400'
-  if (percentage >= 70) return 'bg-yellow-500/20 text-yellow-400'
+// Get color for hours: verde cuando supera el mínimo, amarillo cuando hay algo, rojo en 0
+function getHoursColor(actual: number, minimo: number): string {
+  if (minimo === 0) return ''
+  if (actual >= minimo) return 'bg-green-500/20 text-green-400'
+  if (actual > 0) return 'bg-yellow-500/20 text-yellow-400'
   return 'bg-red-500/20 text-red-400'
 }
 
@@ -812,7 +812,7 @@ export default function ColaboradoresPage() {
                             className="w-[90px] h-8 text-xs text-right font-mono"
                           />
                         </TableCell>
-                        <TableCell className={cn("text-right", getHoursColor(m.acumulado_mes_asignado, m.horas_objetivo))}>
+                        <TableCell className={cn("text-right", getHoursColor(m.acumulado_mes_asignado, m.minimo_no_negociable_horas))}>
                           <Input
                             type="text"
                             value={formatHoursToTime(m.acumulado_mes_asignado)}
@@ -820,17 +820,24 @@ export default function ColaboradoresPage() {
                             placeholder="HH:MM:SS"
                             className={cn(
                               "w-[90px] h-8 text-xs text-right font-mono",
-                              getHoursColor(m.acumulado_mes_asignado, m.horas_objetivo)
+                              getHoursColor(m.acumulado_mes_asignado, m.minimo_no_negociable_horas)
                             )}
                           />
                         </TableCell>
                         <TableCell className="text-right">
-                          <span className={cn(
-                            "px-2 py-1 rounded text-xs",
-                            getPercentageColor(m.porcentaje_asignacion)
-                          )}>
-                            {m.porcentaje_asignacion.toFixed(1)}%
-                          </span>
+                          {(() => {
+                            const pct = m.horas_objetivo > 0
+                              ? (m.acumulado_mes_asignado * 100) / m.horas_objetivo
+                              : 0
+                            return (
+                              <span className={cn(
+                                "px-2 py-1 rounded text-xs",
+                                getPercentageColor(pct)
+                              )}>
+                                {pct.toFixed(1)}%
+                              </span>
+                            )
+                          })()}
                         </TableCell>
                         <TableCell>
                           <Button
