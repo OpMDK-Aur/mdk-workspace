@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator, Pencil, Check, X } from 'lucide-react'
+import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator, Pencil, Check, X, Download, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -120,6 +120,7 @@ export default function ColaboradoresPage() {
   const [savingFee, setSavingFee] = useState(false)
 
   const supabase = createClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Check access
   useEffect(() => {
@@ -478,6 +479,160 @@ export default function ColaboradoresPage() {
     ? metricas 
     : metricas.filter(m => m.colaborador_id === filterColaborador)
 
+  // Export to CSV
+  const handleExportCSV = () => {
+    const headers = [
+      'Colaborador',
+      'Colaborador Email',
+      'Cliente',
+      'Fee MDK',
+      'Fee Aurelia',
+      'Fee Consultoria',
+      'Valor Hora',
+      'H Teoricas',
+      'Minimo',
+      'Objetivo',
+      'Acumulado',
+      'Porcentaje'
+    ]
+    
+    const rows = filteredMetricas.map(m => [
+      `${m.colaborador?.nombre || ''} ${m.colaborador?.apellido || ''}`.trim(),
+      m.colaborador?.email || '',
+      m.cliente?.nombre_del_negocio || '',
+      m.cliente?.fee_mdk || 0,
+      m.cliente?.fee_aurelia || 0,
+      m.cliente?.fee_consultoria || 0,
+      m.valor_hora,
+      m.horas_teoricas_cliente.toFixed(4),
+      m.minimo_no_negociable_horas.toFixed(4),
+      m.horas_objetivo.toFixed(4),
+      m.acumulado_mes_asignado.toFixed(4),
+      m.porcentaje_asignacion.toFixed(2)
+    ])
+    
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n')
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `colaboradores_${months[selectedMonth - 1]}_${selectedYear}.csv`
+    link.click()
+    URL.revokeObjectURL(link.href)
+    toast.success('CSV exportado correctamente')
+  }
+
+  // Import from CSV
+  const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string
+        const lines = text.split('\n').filter(line => line.trim())
+        
+        if (lines.length < 2) {
+          toast.error('El archivo CSV está vacío o no tiene datos')
+          return
+        }
+
+        // Skip header row
+        const dataRows = lines.slice(1)
+        let updatedCount = 0
+        let notFoundCount = 0
+
+        const updatedMetricas = [...metricas]
+        const newEditedRows = new Set(editedRows)
+
+        dataRows.forEach(row => {
+          // Parse CSV row (handle quoted values)
+          const values: string[] = []
+          let current = ''
+          let inQuotes = false
+          
+          for (let i = 0; i < row.length; i++) {
+            const char = row[i]
+            if (char === '"') {
+              inQuotes = !inQuotes
+            } else if (char === ',' && !inQuotes) {
+              values.push(current.trim())
+              current = ''
+            } else {
+              current += char
+            }
+          }
+          values.push(current.trim())
+
+          const [
+            colaboradorNombre,
+            colaboradorEmail,
+            clienteNombre,
+            feeMdk,
+            feeAurelia,
+            feeConsultoria,
+            valorHora,
+            horasTeoricas,
+            minimo,
+            objetivo,
+            acumulado,
+          ] = values
+
+          // Find matching metrica by colaborador email and cliente name
+          const metricaIndex = updatedMetricas.findIndex(m => {
+            const emailMatch = m.colaborador?.email?.toLowerCase() === colaboradorEmail?.toLowerCase()
+            const clienteMatch = m.cliente?.nombre_del_negocio?.toLowerCase() === clienteNombre?.toLowerCase()
+            return emailMatch && clienteMatch
+          })
+
+          if (metricaIndex !== -1) {
+            const m = updatedMetricas[metricaIndex]
+            updatedMetricas[metricaIndex] = {
+              ...m,
+              valor_hora: parseFloat(valorHora) || m.valor_hora,
+              horas_teoricas_cliente: parseFloat(horasTeoricas) || m.horas_teoricas_cliente,
+              minimo_no_negociable_horas: parseFloat(minimo) || m.minimo_no_negociable_horas,
+              horas_objetivo: parseFloat(objetivo) || m.horas_objetivo,
+              acumulado_mes_asignado: parseFloat(acumulado) || m.acumulado_mes_asignado,
+            }
+            // Recalculate percentage
+            if (updatedMetricas[metricaIndex].horas_objetivo > 0) {
+              updatedMetricas[metricaIndex].porcentaje_asignacion = 
+                (updatedMetricas[metricaIndex].acumulado_mes_asignado * 100) / updatedMetricas[metricaIndex].horas_objetivo
+            }
+            newEditedRows.add(m.id)
+            updatedCount++
+          } else {
+            notFoundCount++
+          }
+        })
+
+        setMetricas(updatedMetricas)
+        setEditedRows(newEditedRows)
+        
+        if (updatedCount > 0) {
+          toast.success(`${updatedCount} registros actualizados. Presiona "Guardar" para confirmar los cambios.`)
+        }
+        if (notFoundCount > 0) {
+          toast.warning(`${notFoundCount} filas no encontraron coincidencia (colaborador+cliente)`)
+        }
+      } catch (error) {
+        console.error('Error parsing CSV:', error)
+        toast.error('Error al procesar el archivo CSV')
+      }
+    }
+    reader.readAsText(file)
+    
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
   // Group metricas by colaborador for totals
   const totalesPorColaborador = colaboradores.map(colab => {
     const metricasColab = metricas.filter(m => m.colaborador_id === colab.id)
@@ -589,6 +744,21 @@ export default function ColaboradoresPage() {
                 <Calculator className="h-4 w-4 mr-1" />
                 Recalcular
               </Button>
+              <Button variant="outline" size="sm" onClick={handleExportCSV}>
+                <Download className="h-4 w-4 mr-1" />
+                Exportar
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                <Upload className="h-4 w-4 mr-1" />
+                Importar
+              </Button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept=".csv"
+                onChange={handleImportCSV}
+                className="hidden"
+              />
               <Button variant="outline" size="sm" onClick={handleAddRow}>
                 <Plus className="h-4 w-4 mr-1" />
                 Agregar
