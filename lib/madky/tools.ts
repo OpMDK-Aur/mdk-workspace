@@ -492,13 +492,14 @@ export const madkyTools = {
     description: 'Crea una nueva tarea en el sistema. Usa esta herramienta cuando el usuario pida crear una tarea, solicite un trabajo, reporte un problema, o necesite que se haga algo. Incluye un resumen del contexto del chat como primer comentario.',
     parameters: z.object({
       titulo: z.string().describe('Título breve y descriptivo de la tarea'),
-      descripcion: z.string().describe('Descripción detallada de lo que se necesita hacer'),
+      descripcion: z.string().describe('Descripción detallada de lo que se necesita hacer. DEBE incluir: **Fecha de entrega:** [fecha acordada]'),
       clienteId: z.string().describe('ID del cliente relacionado con la tarea'),
       prioridad: z.enum(['alta', 'media', 'baja']).optional().default('media').describe('Prioridad de la tarea'),
-      contextoChat: z.string().describe('Resumen del contexto de la conversación que llevó a crear esta tarea. Incluye los puntos clave discutidos, el problema identificado, y cualquier información relevante del chat.'),
-      tipoTareaSugerido: z.string().optional().describe('Nombre del tipo de tarea sugerido (ej: "Desarrollo", "Soporte", "Integración"). Se buscará un tipo similar en la base de datos.'),
+      contextoChat: z.string().describe('Resumen del contexto de la conversación que llevó a crear esta tarea. DEBE incluir: la fecha de entrega acordada, el problema/solicitud original, datos relevantes, y decisiones tomadas.'),
+      tipoTareaSugerido: z.string().optional().describe('Nombre del tipo de tarea sugerido (ej: "Desarrollo", "Soporte", "Integración", "Diseño"). Se buscará un tipo similar en la base de datos.'),
+      fechaEntrega: z.string().optional().describe('Fecha de entrega en formato ISO (YYYY-MM-DDTHH:mm:ss) o "próximo viernes", "2026-05-16", etc. Se usará para actualizar fecha_vencimiento si está disponible en la tabla.'),
     }),
-    execute: async ({ titulo, descripcion, clienteId, prioridad, contextoChat, tipoTareaSugerido }): Promise<{ success: boolean; taskId?: string; error?: string }> => {
+    execute: async ({ titulo, descripcion, clienteId, prioridad, contextoChat, tipoTareaSugerido, fechaEntrega }): Promise<{ success: boolean; taskId?: string; fechaRegistrada?: string; error?: string }> => {
       try {
         const supabase = await createClient()
         
@@ -517,18 +518,44 @@ export const madkyTools = {
           }
         }
         
+        // Parse fecha_vencimiento if provided
+        let fechaVencimiento: string | null = null
+        if (fechaEntrega) {
+          try {
+            // If it's already ISO format, use it directly
+            if (fechaEntrega.includes('T') && fechaEntrega.includes('-')) {
+              fechaVencimiento = new Date(fechaEntrega).toISOString()
+            } else {
+              // Try to parse as a date string
+              const parsed = new Date(fechaEntrega)
+              if (!isNaN(parsed.getTime())) {
+                fechaVencimiento = parsed.toISOString()
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing fecha_entrega:', e)
+          }
+        }
+        
         // Create the task
+        const insertData: any = {
+          titulo,
+          descripcion,
+          cliente_id: clienteId,
+          tipo_tarea_id: tipoTareaId,
+          prioridad,
+          estado: 'pendiente',
+          contexto_chat: contextoChat,
+        }
+        
+        // Add fecha_vencimiento if available
+        if (fechaVencimiento) {
+          insertData.fecha_vencimiento = fechaVencimiento
+        }
+        
         const { data: tarea, error: tareaError } = await supabase
           .from('tareas')
-          .insert({
-            titulo,
-            descripcion,
-            cliente_id: clienteId,
-            tipo_tarea_id: tipoTareaId,
-            prioridad,
-            estado: 'pendiente',
-            contexto_chat: contextoChat,
-          })
+          .insert(insertData)
           .select('id')
           .single()
         
@@ -551,7 +578,7 @@ export const madkyTools = {
           // Don't fail the task creation if comment fails
         }
         
-        return { success: true, taskId: tarea.id }
+        return { success: true, taskId: tarea.id, fechaRegistrada: fechaVencimiento || 'Sin especificar' }
       } catch (error) {
         return { success: false, error: `Error inesperado: ${error}` }
       }
