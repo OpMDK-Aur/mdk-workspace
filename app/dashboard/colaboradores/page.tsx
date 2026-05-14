@@ -172,12 +172,12 @@ export default function ColaboradoresPage() {
       const startDateStr = startDate.toISOString().split('T')[0]
       const endDateStr = endDate.toISOString().split('T')[0]
 
-      // Fetch actual hours from entradas_tiempo for the selected month
+      // Fetch actual hours from entradas_de_tiempo for the selected month
       const { data: entries } = await supabase
-        .from('entradas_tiempo')
+        .from('entradas_de_tiempo')
         .select('colaborador_id, cliente_id, duracion_seg')
-        .gte('fecha', startDateStr)
-        .lte('fecha', endDateStr)
+        .gte('iniciado_en', `${startDateStr}T00:00:00`)
+        .lte('iniciado_en', `${endDateStr}T23:59:59`)
 
       // Calculate hours per colaborador-cliente pair
       const hoursMap = new Map<string, number>()
