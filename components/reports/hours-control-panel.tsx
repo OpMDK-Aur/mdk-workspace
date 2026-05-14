@@ -129,7 +129,8 @@ function StatusIcon({ status }: { status: 'ok' | 'warning' | 'danger' }) {
 async function fetchMetricas(mes: number, anio: number) {
   const supabase = createClient()
   
-  const { data, error } = await supabase
+  // Fetch metricas_colaboradores
+  const { data: metricas, error: metricasError } = await supabase
     .from('metricas_colaboradores')
     .select(`
       *,
@@ -139,8 +140,39 @@ async function fetchMetricas(mes: number, anio: number) {
     .eq('mes', mes)
     .eq('anio', anio)
   
-  if (error) throw error
-  return data as MetricaColaborador[]
+  if (metricasError) throw metricasError
+  
+  // Calculate the date range for the selected month
+  const startDate = new Date(anio, mes - 1, 1)
+  const endDate = new Date(anio, mes, 0) // Last day of the month
+  const startDateStr = startDate.toISOString().split('T')[0]
+  const endDateStr = endDate.toISOString().split('T')[0]
+  
+  // Fetch actual hours from entradas_tiempo for the selected month
+  const { data: entries, error: entriesError } = await supabase
+    .from('entradas_tiempo')
+    .select('user_id, cliente_id, duracion_seg')
+    .gte('fecha', startDateStr)
+    .lte('fecha', endDateStr)
+  
+  if (entriesError) throw entriesError
+  
+  // Calculate hours per colaborador-cliente pair
+  const hoursMap = new Map<string, number>()
+  entries?.forEach(entry => {
+    if (entry.user_id && entry.cliente_id && entry.duracion_seg) {
+      const key = `${entry.user_id}-${entry.cliente_id}`
+      hoursMap.set(key, (hoursMap.get(key) || 0) + (entry.duracion_seg / 3600))
+    }
+  })
+  
+  // Merge hours into metricas
+  const metricasWithHours = (metricas || []).map(m => ({
+    ...m,
+    acumulado_mes_asignado: hoursMap.get(`${m.colaborador_id}-${m.cliente_id}`) || 0
+  }))
+  
+  return metricasWithHours as MetricaColaborador[]
 }
 
 export function HoursControlPanel() {
