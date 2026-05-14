@@ -166,6 +166,28 @@ export default function ColaboradoresPage() {
 
       if (clientesData) setClientes(clientesData)
 
+      // Calculate date range for selected month
+      const startDate = new Date(selectedYear, selectedMonth - 1, 1)
+      const endDate = new Date(selectedYear, selectedMonth, 0)
+      const startDateStr = startDate.toISOString().split('T')[0]
+      const endDateStr = endDate.toISOString().split('T')[0]
+
+      // Fetch actual hours from entradas_tiempo for the selected month
+      const { data: entries } = await supabase
+        .from('entradas_tiempo')
+        .select('colaborador_id, cliente_id, duracion_seg')
+        .gte('fecha', startDateStr)
+        .lte('fecha', endDateStr)
+
+      // Calculate hours per colaborador-cliente pair
+      const hoursMap = new Map<string, number>()
+      entries?.forEach(entry => {
+        if (entry.colaborador_id && entry.cliente_id && entry.duracion_seg) {
+          const key = `${entry.colaborador_id}-${entry.cliente_id}`
+          hoursMap.set(key, (hoursMap.get(key) || 0) + (entry.duracion_seg / 3600))
+        }
+      })
+
       // Load metricas for selected period
       const { data: mets } = await supabase
         .from('metricas_colaboradores')
@@ -188,6 +210,9 @@ export default function ColaboradoresPage() {
           // Recalculate horas teoricas with correct role
           const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHora, colaborador)
           
+          // Get actual hours from entradas_tiempo
+          const acumuladoReal = hoursMap.get(`${m.colaborador_id}-${m.cliente_id}`) || 0
+          
           return {
             ...m,
             colaborador,
@@ -195,7 +220,7 @@ export default function ColaboradoresPage() {
             horas_teoricas_cliente: horasTeoricas,
             minimo_no_negociable_horas: horasTeoricas / 2,
             horas_objetivo: horasTeoricas,
-            acumulado_mes_asignado: Number(m.acumulado_mes_asignado) || 0,
+            acumulado_mes_asignado: acumuladoReal,
             valor_hora: valorHora,
           }
         }))

@@ -151,7 +151,7 @@ async function fetchMetricas(mes: number, anio: number) {
   // Fetch actual hours from entradas_tiempo for the selected month
   const { data: entries, error: entriesError } = await supabase
     .from('entradas_tiempo')
-    .select('user_id, cliente_id, duracion_seg')
+    .select('colaborador_id, cliente_id, duracion_seg')
     .gte('fecha', startDateStr)
     .lte('fecha', endDateStr)
   
@@ -160,8 +160,8 @@ async function fetchMetricas(mes: number, anio: number) {
   // Calculate hours per colaborador-cliente pair
   const hoursMap = new Map<string, number>()
   entries?.forEach(entry => {
-    if (entry.user_id && entry.cliente_id && entry.duracion_seg) {
-      const key = `${entry.user_id}-${entry.cliente_id}`
+    if (entry.colaborador_id && entry.cliente_id && entry.duracion_seg) {
+      const key = `${entry.colaborador_id}-${entry.cliente_id}`
       hoursMap.set(key, (hoursMap.get(key) || 0) + (entry.duracion_seg / 3600))
     }
   })
