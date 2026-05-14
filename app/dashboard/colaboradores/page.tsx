@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator, Pencil, Check, X } from 'lucide-react'
+import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator, Pencil, Check, X, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -585,6 +585,16 @@ export default function ColaboradoresPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => {
+                  window.open(`/api/colaboradores/export-csv?mes=${selectedMonth}&anio=${selectedYear}`, '_blank')
+                }}
+              >
+                <Download className="h-4 w-4 mr-1" />
+                Exportar CSV
+              </Button>
               <Button variant="outline" size="sm" onClick={handleRecalcularTodo}>
                 <Calculator className="h-4 w-4 mr-1" />
                 Recalcular
