@@ -231,9 +231,9 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
             <>
               {task.assignees.slice(0, 3).map((a, i) => (
                 <Avatar key={a.id} className="h-5 w-5 border-2 border-card" style={{ zIndex: 3 - i }}>
-                  {a.avatarUrl && <AvatarImage src={a.avatarUrl} alt={a.name} />}
+                  {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
                   <AvatarFallback className="text-[8px] bg-muted text-muted-foreground">
-                    {getInitials(a.name)}
+                    {getInitials(a.nombre)}
                   </AvatarFallback>
                 </Avatar>
               ))}

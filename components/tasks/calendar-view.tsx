@@ -154,8 +154,8 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                     <>
                       {task.assignees.slice(0, 2).map((a, i) => (
                         <Avatar key={a.id} className="h-4 w-4 border border-card" style={{ zIndex: 2 - i }}>
-                          {a.avatarUrl && <AvatarImage src={a.avatarUrl} alt={a.name} />}
-                          <AvatarFallback className="text-[6px]">{getInitials(a.name)}</AvatarFallback>
+                          {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
+                          <AvatarFallback className="text-[6px]">{getInitials(a.nombre)}</AvatarFallback>
                         </Avatar>
                       ))}
                       {task.assignees.length > 2 && (
@@ -381,8 +381,8 @@ export function CalendarView() {
                             <>
                               {task.assignees.slice(0, 2).map((a, i) => (
                                 <Avatar key={a.id} className="h-4 w-4 border border-card" style={{ zIndex: 2 - i }}>
-                                  {a.avatarUrl && <AvatarImage src={a.avatarUrl} alt={a.name} />}
-                                  <AvatarFallback className="text-[6px]">{getInitials(a.name)}</AvatarFallback>
+                                  {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
+                                  <AvatarFallback className="text-[6px]">{getInitials(a.nombre)}</AvatarFallback>
                                 </Avatar>
                               ))}
                               {task.assignees.length > 2 && (
