@@ -174,6 +174,15 @@ function mapTareaToTask(
       }
       return 'Sistema'
     })(),
+    createdByAvatar: (() => {
+      if (tarea.creado_por && colaboradoresMap) {
+        const creador = colaboradoresMap.get(tarea.creado_por)
+        if (creador) {
+          return creador.avatar_url || undefined
+        }
+      }
+      return undefined
+    })(),
     createdAt: new Date(tarea.created_at),
     updatedAt: new Date(tarea.updated_at),
   }
@@ -1179,6 +1188,7 @@ addTask: async (taskData) => {
         clients: taskData.clients || (taskData.clientId ? [{ id: taskData.clientId, nombre_del_negocio: taskData.clientName || '' }] : []),
         createdById: taskData.createdById || null,
         createdByName: taskData.createdByName || 'Sistema',
+        createdByAvatar: taskData.createdByAvatar || undefined,
         createdAt: new Date(),
         updatedAt: new Date(),
         activities: [

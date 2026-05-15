@@ -211,6 +211,7 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
         customFields: {},
         createdById: submittingUser.id,
         createdByName: fullName,
+        createdByAvatar: submittingUser.avatar_url || undefined,
         comments: [{
           id: `comment-${Date.now()}`,
           content: meetingComment,

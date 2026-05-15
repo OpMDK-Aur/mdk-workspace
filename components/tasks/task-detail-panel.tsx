@@ -1904,6 +1904,7 @@ export function TaskDetailPanel() {
   <Label className="text-xs text-muted-foreground mb-1.5 block">Creado por</Label>
   <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/30">
     <Avatar className="h-5 w-5">
+      {task.createdByAvatar && <AvatarImage src={task.createdByAvatar} alt={task.createdByName} />}
       <AvatarFallback className="text-[9px]">{getInitials(task.createdByName)}</AvatarFallback>
     </Avatar>
     <span className="text-sm">{task.createdByName}</span>

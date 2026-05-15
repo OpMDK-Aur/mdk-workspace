@@ -1470,6 +1470,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       customFields: {},
       createdById: currentUser?.id || null,
       createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
+      createdByAvatar: currentUser?.avatar_url || undefined,
     })
     
     setIsCreating(false)
@@ -1864,6 +1865,7 @@ setIsCreating(true)
           customFields: {},
           createdById: currentUser?.id || null,
           createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
+          createdByAvatar: currentUser?.avatar_url || undefined,
           comments: [{
             id: `comment-${Date.now()}`,
             content: meetingComment,
@@ -2159,6 +2161,7 @@ setIsCreating(true)
       customFields: {},
       createdById: currentUser?.id || null,
       createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
+      createdByAvatar: currentUser?.avatar_url || undefined,
       comments: [initialComment],
     })
       } catch (err) {
