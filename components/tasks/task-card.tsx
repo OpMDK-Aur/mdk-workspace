@@ -225,12 +225,33 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
             )
           })()}
         </div>
-        <Avatar className="h-5 w-5 border border-border">
-          {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
-          <AvatarFallback className="text-[9px] bg-muted text-muted-foreground">
-            {getInitials(task.assigneeName)}
-          </AvatarFallback>
-        </Avatar>
+        {/* Assignees stack */}
+        <div className="flex -space-x-1.5">
+          {task.assignees && task.assignees.length > 0 ? (
+            <>
+              {task.assignees.slice(0, 3).map((a, i) => (
+                <Avatar key={a.id} className="h-5 w-5 border-2 border-card" style={{ zIndex: 3 - i }}>
+                  {a.avatarUrl && <AvatarImage src={a.avatarUrl} alt={a.name} />}
+                  <AvatarFallback className="text-[8px] bg-muted text-muted-foreground">
+                    {getInitials(a.name)}
+                  </AvatarFallback>
+                </Avatar>
+              ))}
+              {task.assignees.length > 3 && (
+                <div className="h-5 w-5 rounded-full bg-muted border-2 border-card flex items-center justify-center text-[8px] font-medium text-muted-foreground" style={{ zIndex: 0 }}>
+                  +{task.assignees.length - 3}
+                </div>
+              )}
+            </>
+          ) : (
+            <Avatar className="h-5 w-5 border border-border">
+              {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
+              <AvatarFallback className="text-[9px] bg-muted text-muted-foreground">
+                {getInitials(task.assigneeName)}
+              </AvatarFallback>
+            </Avatar>
+          )}
+        </div>
       </div>
     </div>
   )
