@@ -184,11 +184,11 @@ function HoursProgressBar({
         }`}>
           {formatHoursToTime(asignado)}
         </span>
-        {isOverMax && (
-          <span className="text-xs font-medium text-red-500">
-            ({progressPercent.toFixed(0)}%)
-          </span>
-        )}
+        <span className={`text-xs font-medium min-w-[45px] text-right ${
+          isOverMax ? 'text-red-500' : isAtOrAboveMin ? 'text-emerald-500' : 'text-zinc-400'
+        }`}>
+          ({progressPercent.toFixed(0)}%)
+        </span>
       </div>
       {/* Min at start, Max at end - below the bar */}
       <div className="flex justify-between text-xs text-muted-foreground">
@@ -237,11 +237,11 @@ function CompactProgressBar({
       }`}>
         {formatHoursToTime(asignado)}
       </span>
-      {isOverMax && (
-        <span className="text-xs font-medium text-red-500">
-          ({progressPercent.toFixed(0)}%)
-        </span>
-      )}
+      <span className={`text-xs font-medium min-w-[40px] text-right ${
+        isOverMax ? 'text-red-500' : isAtOrAboveMin ? 'text-emerald-500' : 'text-zinc-400'
+      }`}>
+        ({progressPercent.toFixed(0)}%)
+      </span>
     </div>
   )
 }
