@@ -6,65 +6,65 @@
 /* ─── LIGHT MODE ───────────────────────────────────────────────────────────── */
 :root {
   /* Surfaces */
-  --background:          oklch(0.975 0.004 60);   /* warm off-white, never pure white */
-  --foreground:          oklch(0.13 0.01 50);      /* very dark warm brown */
+  --background:          oklch(0.98 0.003 60);    /* warm off-white */
+  --foreground:          oklch(0.10 0.03 40);     /* very dark - almost black */
   --card:                oklch(1 0 0);
-  --card-foreground:     oklch(0.13 0.01 50);
+  --card-foreground:     oklch(0.10 0.03 40);
   --popover:             oklch(1 0 0);
-  --popover-foreground:  oklch(0.13 0.01 50);
+  --popover-foreground:  oklch(0.10 0.03 40);
 
-  /* Brand primary — warm orange */
-  --primary:             oklch(0.68 0.19 48);
+  /* Brand primary — warm orange, darker for readability */
+  --primary:             oklch(0.50 0.20 40);
   --primary-foreground:  oklch(1 0 0);
 
   /* Secondary / subtle fills */
-  --secondary:           oklch(0.96 0.008 55);
-  --secondary-foreground:oklch(0.25 0.01 50);
+  --secondary:           oklch(0.94 0.008 55);
+  --secondary-foreground:oklch(0.20 0.03 40);
 
-  /* Muted — warm light gray */
-  --muted:               oklch(0.95 0.006 55);
-  --muted-foreground:    oklch(0.48 0.01 50);
+  /* Muted — better contrast for labels */
+  --muted:               oklch(0.94 0.006 55);
+  --muted-foreground:    oklch(0.30 0.03 45);     /* darker for readability */
 
   /* Accent = primary */
-  --accent:              oklch(0.68 0.19 48);
+  --accent:              oklch(0.50 0.20 40);
   --accent-foreground:   oklch(1 0 0);
 
   /* Semantic */
-  --destructive:         oklch(0.56 0.22 25);
+  --destructive:         oklch(0.45 0.22 20);
   --destructive-foreground: oklch(1 0 0);
 
   /* Structure */
-  --border:              oklch(0.88 0.006 55);
-  --input:               oklch(0.91 0.005 55);
-  --ring:                oklch(0.68 0.19 48);
+  --border:              oklch(0.85 0.008 55);
+  --input:               oklch(0.88 0.006 55);
+  --ring:                oklch(0.50 0.20 40);
   --radius:              0.625rem;
 
-  /* Charts */
-  --chart-1: oklch(0.68 0.19 48);
-  --chart-2: oklch(0.58 0.15 145);
-  --chart-3: oklch(0.55 0.13 250);
-  --chart-4: oklch(0.62 0.18 30);
-  --chart-5: oklch(0.52 0.12 310);
+  /* Charts - darker for light mode */
+  --chart-1: oklch(0.50 0.20 40);
+  --chart-2: oklch(0.40 0.16 145);
+  --chart-3: oklch(0.38 0.14 250);
+  --chart-4: oklch(0.45 0.19 30);
+  --chart-5: oklch(0.35 0.13 310);
 
   /* Sidebar */
-  --sidebar:                  oklch(0.99 0.003 55);
-  --sidebar-foreground:       oklch(0.13 0.01 50);
-  --sidebar-primary:          oklch(0.68 0.19 48);
+  --sidebar:                  oklch(0.97 0.004 55);
+  --sidebar-foreground:       oklch(0.10 0.03 40);
+  --sidebar-primary:          oklch(0.50 0.20 40);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent:           oklch(0.95 0.014 50);
-  --sidebar-accent-foreground: oklch(0.68 0.19 48);
-  --sidebar-border:           oklch(0.90 0.005 55);
-  --sidebar-ring:             oklch(0.68 0.19 48);
+  --sidebar-accent:           oklch(0.92 0.014 50);
+  --sidebar-accent-foreground: oklch(0.50 0.20 40);
+  --sidebar-border:           oklch(0.88 0.006 55);
+  --sidebar-ring:             oklch(0.50 0.20 40);
 
-  /* MDK Status */
-  --status-verde:    oklch(0.57 0.15 148);
-  --status-amarillo: oklch(0.72 0.17 88);
-  --status-naranja:  oklch(0.68 0.19 48);
-  --status-rojo:     oklch(0.54 0.21 24);
+  /* MDK Status - darker for light mode readability */
+  --status-verde:    oklch(0.40 0.16 148);
+  --status-amarillo: oklch(0.50 0.18 88);
+  --status-naranja:  oklch(0.50 0.20 40);
+  --status-rojo:     oklch(0.40 0.22 20);
 
   /* Surface elevation tokens */
-  --surface-1: oklch(0.975 0.004 60);
-  --surface-2: oklch(0.99 0.002 55);
+  --surface-1: oklch(0.98 0.003 60);
+  --surface-2: oklch(0.96 0.003 55);
   --surface-3: oklch(1 0 0);
 }
 
@@ -212,7 +212,7 @@
   }
 }
 
-/* ─── STATUS BADGE STYLES ──────────────────────────────────────────────────── */
+/* ─── STATUS BADGE STYLES ───────────────��──────────────────────────────────── */
 .status-verde    { @apply bg-status-verde/10    text-status-verde    border-status-verde/25; }
 .status-amarillo { @apply bg-status-amarillo/10 text-status-amarillo border-status-amarillo/25; }
 .status-naranja  { @apply bg-status-naranja/10  text-status-naranja  border-status-naranja/25; }

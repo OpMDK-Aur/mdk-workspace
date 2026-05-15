@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -68,7 +68,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { Check, ChevronsUpDown, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
+import { Check, ChevronsUpDown, ChevronLeft, ChevronRight, Pencil, ArrowUpDown } from 'lucide-react'
 import {
   Play,
   RotateCcw,
@@ -888,6 +888,8 @@ function CommentsSection({ task }: { task: Task }) {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
   const editorRef = useRef<HTMLDivElement>(null)
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
   
   // Mention states
   const [showMentions, setShowMentions] = useState(false)
@@ -899,6 +901,15 @@ function CommentsSection({ task }: { task: Task }) {
   const filteredAssignees = ASSIGNEES.filter(a => 
     a.name.toLowerCase().includes(mentionSearch.toLowerCase())
   ).slice(0, 5)
+
+  // Sort comments by date
+  const sortedComments = useMemo(() => {
+    return [...task.comments].sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime()
+      const dateB = new Date(b.createdAt).getTime()
+      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB
+    })
+  }, [task.comments, sortOrder])
 
   useEffect(() => {
     async function loadUser() {
@@ -1130,17 +1141,39 @@ function CommentsSection({ task }: { task: Task }) {
     }
   }
 
+  // Handle image click for lightbox
+  const handleImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement
+    if (target.tagName === 'IMG') {
+      const imgSrc = (target as HTMLImageElement).src
+      setLightboxImage(imgSrc)
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <p className="text-sm font-medium">Comentarios ({task.comments.length})</p>
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium">Comentarios ({task.comments.length})</p>
+        {task.comments.length > 1 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-xs h-7"
+            onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
+          >
+            <ArrowUpDown className="h-3 w-3" />
+            {sortOrder === 'newest' ? 'Más recientes' : 'Más antiguos'}
+          </Button>
+        )}
+      </div>
 
       {task.comments.length > 0 && (
-        <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
-          {task.comments.map((c) => (
-            <div key={c.id} className="group rounded-lg border bg-muted/30 p-3">
-              <div className="flex items-start gap-3">
+        <div className="space-y-4 max-h-[400px] overflow-y-auto overflow-x-hidden pr-1 w-full">
+          {sortedComments.map((c) => (
+            <div key={c.id} className="group rounded-lg border bg-muted/30 p-3 w-full overflow-hidden">
+              <div className="flex items-start gap-3 min-w-0 w-full">
                 <Avatar className="h-8 w-8 shrink-0">
-                  {c.userAvatar && <AvatarImage src={c.userAvatar} alt={c.userName} />}
+                  <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
                   <AvatarFallback className="text-xs">{getInitials(c.userName)}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
@@ -1186,8 +1219,9 @@ function CommentsSection({ task }: { task: Task }) {
                     </div>
                   ) : (
                     <div 
-                      className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block"
+                      className="text-sm text-foreground/80 mt-2 break-words whitespace-pre-wrap [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_em]:italic [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block [&_img]:cursor-pointer [&_img]:hover:opacity-90 [&_img]:transition-opacity"
                       dangerouslySetInnerHTML={{ __html: c.content }}
+                      onClick={handleImageClick}
                     />
                   )}
                 </div>
@@ -1278,6 +1312,27 @@ function CommentsSection({ task }: { task: Task }) {
           </Button>
         </div>
       </div>
+
+      {/* Lightbox for images */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setLightboxImage(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors"
+            onClick={() => setLightboxImage(null)}
+          >
+            <X className="h-8 w-8" />
+          </button>
+          <img 
+            src={lightboxImage} 
+            alt="Imagen ampliada"
+            className="max-w-full max-h-[90vh] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   )
 }

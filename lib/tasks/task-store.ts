@@ -1,6 +1,8 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskComment, TaskFile, TaskQuotation } from '@/lib/types'
 
@@ -46,6 +48,9 @@ interface ComentarioDB {
   es_sistema: boolean
   created_at: string
   updated_at: string
+  colaboradores?: {
+    avatar_url: string | null
+  } | null
 }
 
 function mapComentarioToComment(comentario: ComentarioDB): TaskComment {
@@ -54,7 +59,7 @@ function mapComentarioToComment(comentario: ComentarioDB): TaskComment {
     content: comentario.contenido,
     userId: comentario.autor_id || 'system',
     userName: comentario.autor_nombre,
-    userAvatar: null,
+    userAvatar: comentario.colaboradores?.avatar_url || null,
     createdAt: new Date(comentario.created_at),
   }
 }
@@ -502,34 +507,33 @@ const MOCK_TASKS: Task[] = [
 // ── Status Configuration ──────────────────────────────────────────────────────
 
 export const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; bgColor: string; borderColor: string }> = {
-  pendiente: { label: 'Pendiente', color: 'text-gray-400', bgColor: 'bg-gray-500/10', borderColor: 'border-gray-500/30' },
-  resolviendo: { label: 'Resolviendo', color: 'text-blue-400', bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500/30' },
-  demorada: { label: 'Demorada', color: 'text-orange-400', bgColor: 'bg-orange-500/10', borderColor: 'border-orange-500/30' },
-  pausada: { label: 'Pausada', color: 'text-amber-400', bgColor: 'bg-amber-500/10', borderColor: 'border-amber-500/30' },
-  pendiente_aprobacion: { label: 'Pendiente aprobacion', color: 'text-purple-400', bgColor: 'bg-purple-500/10', borderColor: 'border-purple-500/30' },
-  resuelto: { label: 'Resuelto', color: 'text-green-400', bgColor: 'bg-green-500/10', borderColor: 'border-green-500/30' },
+  pendiente:            { label: 'Pendiente',           color: 'text-gray-600 dark:text-gray-400',     bgColor: 'bg-gray-200/60 dark:bg-gray-500/10',     borderColor: 'border-gray-400/40 dark:border-gray-500/30' },
+  resolviendo:          { label: 'Resolviendo',         color: 'text-blue-700 dark:text-blue-400',     bgColor: 'bg-blue-100 dark:bg-blue-500/10',         borderColor: 'border-blue-400/40 dark:border-blue-500/30' },
+  demorada:             { label: 'Demorada',            color: 'text-orange-700 dark:text-orange-400', bgColor: 'bg-orange-100 dark:bg-orange-500/10',     borderColor: 'border-orange-400/40 dark:border-orange-500/30' },
+  pausada:              { label: 'Pausada',             color: 'text-amber-700 dark:text-amber-400',   bgColor: 'bg-amber-100 dark:bg-amber-500/10',       borderColor: 'border-amber-400/40 dark:border-amber-500/30' },
+  pendiente_aprobacion: { label: 'Pendiente aprobacion',color: 'text-purple-700 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-500/10',     borderColor: 'border-purple-400/40 dark:border-purple-500/30' },
+  resuelto:             { label: 'Resuelto',            color: 'text-green-700 dark:text-green-400',   bgColor: 'bg-green-100 dark:bg-green-500/10',       borderColor: 'border-green-400/40 dark:border-green-500/30' },
 }
 
 export const STATUS_ORDER: TaskStatus[] = ['pendiente_aprobacion', 'pendiente', 'resolviendo', 'demorada', 'pausada', 'resuelto']
 
 export const PRIORITY_CONFIG: Record<TaskPriority, { label: string; color: string; bgColor: string }> = {
-  alta: { label: 'Alta', color: 'text-red-400', bgColor: 'bg-red-500/15' },
-  media: { label: 'Media', color: 'text-amber-400', bgColor: 'bg-amber-500/15' },
-  baja: { label: 'Baja', color: 'text-green-400', bgColor: 'bg-green-500/15' },
+  alta: { label: 'Alta', color: 'text-red-700 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-500/15' },
+  media: { label: 'Media', color: 'text-amber-700 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-500/15' },
+  baja: { label: 'Baja', color: 'text-green-700 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-500/15' },
 }
 
 export const TYPE_CONFIG: Record<string, { label: string; color: string; icon?: string }> = {
-  crm: { label: 'CRM', color: 'bg-cyan-500/20 text-cyan-400', icon: 'users' },
-  meta_ads: { label: 'Meta Ads', color: 'bg-blue-500/20 text-blue-400', icon: 'megaphone' },
-  soporte: { label: 'Soporte', color: 'bg-emerald-500/20 text-emerald-400', icon: 'headphones' },
-  integracion: { label: 'Integracion', color: 'bg-violet-500/20 text-violet-400', icon: 'link' },
-  reportes: { label: 'Reportes', color: 'bg-pink-500/20 text-pink-400', icon: 'file-text' },
-  desarrollo: { label: 'Desarrollo', color: 'bg-indigo-500/20 text-indigo-400', icon: 'code' },
-  reunion: { label: 'Reunion', color: 'bg-orange-500/20 text-orange-400', icon: 'video' },
-  // Hitos del Mapa de Servicio - color dorado distintivo
-  seguimiento: { label: 'Seguimiento', color: 'bg-amber-500/30 text-amber-300 border border-amber-500/50', icon: 'send' },
-  'mapa de servicio': { label: 'Mapa de Servicio', color: 'bg-amber-500/30 text-amber-300 border border-amber-500/50', icon: 'map' },
-  mapa_de_servicio: { label: 'Mapa de Servicio', color: 'bg-amber-500/30 text-amber-300 border border-amber-500/50', icon: 'map' },
+  crm:              { label: 'CRM',              color: 'bg-cyan-100 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-400',           icon: 'users' },
+  meta_ads:         { label: 'Meta Ads',         color: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400',           icon: 'megaphone' },
+  soporte:          { label: 'Soporte',          color: 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400', icon: 'headphones' },
+  integracion:      { label: 'Integracion',      color: 'bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-400',   icon: 'link' },
+  reportes:         { label: 'Reportes',         color: 'bg-pink-100 dark:bg-pink-500/20 text-pink-700 dark:text-pink-400',           icon: 'file-text' },
+  desarrollo:       { label: 'Desarrollo',       color: 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400',   icon: 'code' },
+  reunion:          { label: 'Reunion',          color: 'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400',   icon: 'video' },
+  seguimiento:      { label: 'Seguimiento',      color: 'bg-amber-100 dark:bg-amber-500/30 text-amber-700 dark:text-amber-300 border border-amber-400/50 dark:border-amber-500/50', icon: 'send' },
+  'mapa de servicio': { label: 'Mapa de Servicio', color: 'bg-amber-100 dark:bg-amber-500/30 text-amber-700 dark:text-amber-300 border border-amber-400/50 dark:border-amber-500/50', icon: 'map' },
+  mapa_de_servicio: { label: 'Mapa de Servicio', color: 'bg-amber-100 dark:bg-amber-500/30 text-amber-700 dark:text-amber-300 border border-amber-400/50 dark:border-amber-500/50', icon: 'map' },
 }
 
 // Will be populated dynamically from colaboradores table
@@ -692,7 +696,7 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
   }
 }
 
-// ── Store ─────────────────────────────────────────────────────────────────────
+// ���─ Store ─────────────────────────────────────────────────────────────────────
 
 // Advanced filter types
 export interface FilterRule {
@@ -752,7 +756,7 @@ interface TaskStore {
   updateTaskStatus: (taskId: string, status: TaskStatus) => Promise<void>
   updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>
   addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'activities' | 'timeSessions' | 'totalTimeSec' | 'isTimerRunning' | 'timerStartedAt' | 'files' | 'quotation'> & { comments?: TaskComment[] }) => Promise<void>
-  deleteTask: (taskId: string) => void
+  deleteTask: (taskId: string) => Promise<void>
   toggleTaskActive: (taskId: string) => void
 
   // Timer
@@ -776,7 +780,9 @@ interface TaskStore {
   updateQuotation: (taskId: string, quotation: TaskQuotation | null) => void
 }
 
-export const useTaskStore = create<TaskStore>((set, get) => ({
+export const useTaskStore = create<TaskStore>()(
+  persist(
+    (set, get) => ({
   tasks: [],
   isLoading: false,
   selectedTaskId: null,
@@ -869,17 +875,46 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Only load if comments haven't been loaded yet
       if (task && task.comments.length === 0) {
         const supabase = createClient()
-        const { data: comentarios } = await supabase
+        const { data: comentarios, error: commError } = await supabase
           .from('comentarios_tareas')
           .select('*')
           .eq('tarea_id', id)
           .order('created_at', { ascending: true })
         
+        if (commError) {
+          console.error('[v0] Error loading comments:', commError)
+          return
+        }
+        
         if (comentarios && comentarios.length > 0) {
+          // Enrich comments with user avatars from colaboradores table
+          const userIds = [...new Set(comentarios.map(c => c.autor_id).filter(Boolean))] as string[]
+          
+          let avatarMap: Record<string, string | null> = {}
+          if (userIds.length > 0) {
+            const { data: colaboradores, error: colabError } = await supabase
+              .from('colaboradores')
+              .select('id, avatar_url')
+              .in('id', userIds)
+            
+            if (colabError) {
+              console.error('[v0] Error loading colaboradores:', colabError)
+            } else if (colaboradores) {
+              colaboradores.forEach(c => {
+                avatarMap[c.id] = c.avatar_url
+              })
+            }
+          }
+          
+          const enrichedComments = comentarios.map(c => ({
+            ...c,
+            colaboradores: c.autor_id ? { avatar_url: avatarMap[c.autor_id] || null } : null
+          } as ComentarioDB))
+          
           set((state) => ({
             tasks: state.tasks.map(t => 
               t.id === id 
-                ? { ...t, comments: comentarios.map(c => mapComentarioToComment(c as ComentarioDB)) }
+                ? { ...t, comments: enrichedComments.map(mapComentarioToComment) }
                 : t
             )
           }))
@@ -1084,6 +1119,7 @@ addTask: async (taskData) => {
   estado: taskData.status || 'pendiente',
   prioridad: taskData.priority || 'media',
   fecha_vencimiento: taskData.dueDate || null,
+  creado_por: taskData.createdById || null,
   })
   
   if (error) {
@@ -1094,15 +1130,19 @@ addTask: async (taskData) => {
   // Also insert initial comment if there are comments
   if (taskData.comments && taskData.comments.length > 0) {
     for (const comment of taskData.comments) {
-      await supabase
-        .from('tarea_comentarios')
+      const isSystem = comment.userId === 'system' || !comment.userId
+      const { error: commentError } = await supabase
+        .from('comentarios_tareas')
         .insert({
           tarea_id: id,
           contenido: comment.content,
-          autor_id: comment.userId === 'madky' ? null : comment.userId,
+          autor_id: isSystem ? null : comment.userId,
           autor_nombre: comment.userName,
-          es_sistema: comment.userId === 'madky',
+          es_sistema: isSystem,
         })
+      if (commentError) {
+        console.error('[v0] Error creating comment:', commentError)
+      }
     }
   }
   
@@ -1114,10 +1154,12 @@ addTask: async (taskData) => {
         id,
         clientIds: taskData.clientIds || (taskData.clientId ? [taskData.clientId] : []),
         clients: taskData.clients || (taskData.clientId ? [{ id: taskData.clientId, nombre_del_negocio: taskData.clientName || '' }] : []),
+        createdById: taskData.createdById || null,
+        createdByName: taskData.createdByName || 'Usuario',
         createdAt: new Date(),
         updatedAt: new Date(),
         activities: [
-          { id: crypto.randomUUID(), action: 'Tarea creada', timestamp: new Date(), userId: 'current', userName: 'Usuario' },
+          { id: crypto.randomUUID(), action: 'Tarea creada', timestamp: new Date(), userId: taskData.createdById || 'current', userName: taskData.createdByName || 'Usuario' },
         ],
         timeSessions: [],
         totalTimeSec: 0,
@@ -1132,10 +1174,24 @@ addTask: async (taskData) => {
   }))
 },
 
-  deleteTask: (taskId) => set((state) => ({
-    tasks: state.tasks.filter((t) => t.id !== taskId),
-    selectedTaskId: state.selectedTaskId === taskId ? null : state.selectedTaskId,
-  })),
+  deleteTask: async (taskId) => {
+    const supabase = createClient()
+    
+    const { error } = await supabase
+      .from('tareas')
+      .delete()
+      .eq('id', taskId)
+    
+    if (error) {
+      console.error('Error deleting task:', error)
+      return
+    }
+    
+    set((state) => ({
+      tasks: state.tasks.filter((t) => t.id !== taskId),
+      selectedTaskId: state.selectedTaskId === taskId ? null : state.selectedTaskId,
+    }))
+  },
 
   toggleTaskActive: (taskId) => set((state) => ({
     tasks: state.tasks.map((t) =>
@@ -1381,9 +1437,34 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
         : t
     ),
   })),
-}))
+    }),
+    {
+      name: 'mdk-task-filters',
+      partialize: (state) => ({
+        view: state.view,
+        filters: state.filters,
+        advancedFilters: state.advancedFilters,
+      }),
+    }
+  )
+)
 
-// ── Selectors ─────────────────────────────────────────────────────────────────
+// ── Hydration Hook ────────────────────────────────────────────────────────────
+/**
+ * Hook to ensure store is hydrated before using persisted state.
+ * Use this in components to prevent hydration mismatches.
+ */
+export function useTaskStoreHydrated() {
+  const [hydrated, setHydrated] = useState(false)
+  
+  useEffect(() => {
+    setHydrated(true)
+  }, [])
+  
+  return hydrated
+}
+
+// ── Selectors ────────────────────────────────────────���────────────────────────
 
 export function useFilteredTasks() {
   const tasks = useTaskStore((s) => s.tasks)
@@ -1452,7 +1533,7 @@ export function useTasksByStatus() {
   return grouped
 }
 
-// ── Quotation Helpers ─────────────────────────────────────────────────────────
+// ── Quotation Helpers ─────���───────────────────────────────────────────────────
 
 export function calculateQuotation(hours: number, notes: string = ''): TaskQuotation {
   const subtotal = hours * HOURLY_RATE

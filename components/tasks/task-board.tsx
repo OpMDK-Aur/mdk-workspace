@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { TaskPriority, TaskType } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { useTaskStore, PRIORITY_CONFIG, TYPE_CONFIG, ASSIGNEES } from '@/lib/tasks/task-store'
+import { useTaskStore, useTaskStoreHydrated, PRIORITY_CONFIG, TYPE_CONFIG, ASSIGNEES } from '@/lib/tasks/task-store'
 
 // Lazy load heavy components
 const KanbanView = dynamic(() => import('./kanban-view').then(m => ({ default: m.KanbanView })), {
@@ -20,6 +20,7 @@ const CalendarView = dynamic(() => import('./calendar-view').then(m => ({ defaul
 const TaskDetailPanel = dynamic(() => import('./task-detail-panel').then(m => ({ default: m.TaskDetailPanel })))
 const NewTaskModal = dynamic(() => import('./new-task-modal').then(m => ({ default: m.NewTaskModal })))
 const FilterBuilder = dynamic(() => import('./filter-builder').then(m => ({ default: m.FilterBuilder })))
+const ScheduleMeetingModal = dynamic(() => import('./schedule-meeting-modal').then(m => ({ default: m.ScheduleMeetingModal })))
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -44,6 +45,7 @@ import { Input } from '@/components/ui/input'
 
 export function TaskBoard() {
   const searchParams = useSearchParams()
+  const hydrated = useTaskStoreHydrated()
   const { 
     view, 
     setView, 
@@ -62,6 +64,8 @@ export function TaskBoard() {
     setSelectedTask,
   } = useTaskStore()
   const [newTaskOpen, setNewTaskOpen] = useState(false)
+  const [newTaskMode, setNewTaskMode] = useState<'manual' | 'ai'>('manual')
+  const [meetingOpen, setMeetingOpen] = useState(false)
   
   // Track if seguimiento was already generated this session
   const seguimientoGenerated = useRef(false)
@@ -100,15 +104,28 @@ export function TaskBoard() {
   const hasAdvancedFilters = advancedFilters.length > 0
   const hasFilters = hasSimpleFilters || hasAdvancedFilters
 
+  // Don't render until hydrated from localStorage
+  if (!hydrated) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="animate-pulse text-muted-foreground">Cargando filtros...</div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-4 p-4 border-b bg-card">
         <div className="flex items-center gap-2">
           {/* New Task */}
-          <Button className="gap-1.5" onClick={() => setNewTaskOpen(true)}>
+          <Button className="gap-1.5" onClick={() => { setNewTaskMode('manual'); setNewTaskOpen(true) }}>
             <Plus className="h-4 w-4" />
             Nueva tarea
+          </Button>
+          <Button variant="outline" className="gap-1.5" onClick={() => setMeetingOpen(true)}>
+            <Calendar className="h-4 w-4" />
+            Agendar reunion
           </Button>
 
           {/* View Toggle */}
@@ -354,7 +371,8 @@ export function TaskBoard() {
       <TaskDetailPanel />
 
       {/* New task modal */}
-      <NewTaskModal open={newTaskOpen} onOpenChange={setNewTaskOpen} />
+      <NewTaskModal open={newTaskOpen} onOpenChange={setNewTaskOpen} initialMode={newTaskMode} />
+      <ScheduleMeetingModal open={meetingOpen} onOpenChange={setMeetingOpen} />
     </div>
   )
 }
