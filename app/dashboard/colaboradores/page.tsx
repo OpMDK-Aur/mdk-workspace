@@ -190,7 +190,7 @@ export default function ColaboradoresPage() {
 
       // Load metricas for selected period
       const { data: mets } = await supabase
-        .from('metricas_colaboradores')
+        .from('metricas_colaborador')
         .select(`
           *,
           colaborador:colaborador_id(id, nombre, apellido, email, rol_id, roles(id, nombre)),
@@ -435,14 +435,14 @@ export default function ColaboradoresPage() {
     if (!metrica) return
 
     const { data } = await supabase
-      .from('metricas_colaboradores')
+      .from('metricas_colaborador')
       .select('id')
       .eq('id', id)
       .single()
 
     if (data) {
       const { error } = await supabase
-        .from('metricas_colaboradores')
+        .from('metricas_colaborador')
         .delete()
         .eq('id', id)
 
@@ -483,7 +483,7 @@ export default function ColaboradoresPage() {
         }
 
         const { error } = await supabase
-          .from('metricas_colaboradores')
+          .from('metricas_colaborador')
           .upsert(payload, { onConflict: 'colaborador_id,cliente_id,mes,anio' })
 
         if (error) {
