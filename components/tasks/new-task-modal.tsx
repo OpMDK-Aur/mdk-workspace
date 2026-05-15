@@ -995,13 +995,6 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
         supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
       ])
       
-      console.log('[v0] NewTaskModal loadData:', {
-        clientes: clientesRes.data?.length,
-        clientesError: clientesRes.error,
-        colaboradores: colabRes.data?.length,
-        tipos: tiposRes.data?.length,
-      })
-      
       if (clientesRes.data) setDbClientes(clientesRes.data)
       if (colabRes.data) setDbColaboradores(colabRes.data)
       if (tiposRes.data) setDbTiposTarea(tiposRes.data)
@@ -2388,12 +2381,16 @@ setIsCreating(true)
                 {quickAssigneeIds.map(id => {
                   const assignee = dbColaboradores.find(a => a.id === id)
                   return assignee ? (
-                    <Badge key={id} variant="secondary" className="gap-1 pr-1">
+                    <Badge key={id} variant="secondary" className="gap-1.5 pr-1 pl-1">
+                      <Avatar className="h-4 w-4 shrink-0">
+                        {assignee.avatar_url && <AvatarImage src={assignee.avatar_url} alt={assignee.nombre} />}
+                        <AvatarFallback className="text-[8px]">{assignee.nombre[0].toUpperCase()}</AvatarFallback>
+                      </Avatar>
                       {assignee.nombre}
                       <button
                         type="button"
                         onClick={() => setQuickAssigneeIds(prev => prev.filter(aid => aid !== id))}
-                        className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
+                        className="ml-0.5 hover:bg-destructive/20 rounded-full p-0.5"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -2421,7 +2418,12 @@ setIsCreating(true)
                               key={a.id}
                               value={a.nombre}
                               onSelect={() => setQuickAssigneeIds(prev => [...prev, a.id])}
+                              className="gap-2"
                             >
+                              <Avatar className="h-6 w-6 shrink-0">
+                                {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
+                                <AvatarFallback className="text-[10px]">{a.nombre[0].toUpperCase()}</AvatarFallback>
+                              </Avatar>
                               {a.nombre}
                             </CommandItem>
                           ))}
