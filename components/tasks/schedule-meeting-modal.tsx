@@ -127,6 +127,21 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
     setError(null)
 
     try {
+      const supabase = createClient()
+      
+      // Get current user at time of submission
+      const { data: { user } } = await supabase.auth.getUser()
+      let submittingUser = currentUser
+      if (user && !submittingUser) {
+        const { data: colab } = await supabase
+          .from('colaboradores')
+          .select('id, nombre, avatar_url')
+          .eq('user_id', user.id)
+          .single()
+        if (colab) submittingUser = colab
+      }
+      console.log('[v0] Submitting with user:', submittingUser)
+      
       const client = dbClientes.find((c) => c.id === clientId)
       const assignee = dbColaboradores.find((c) => c.id === assigneeId) || dbColaboradores[0]
       const meetingTitle = `${title.trim()} - ${client?.nombre_del_negocio || 'Cliente'}`
@@ -175,7 +190,7 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
         result.event?.htmlLink ? `<p><a href="${result.event.htmlLink}" target="_blank">Ver en Calendar</a></p>` : '',
       ].join('')
 
-      console.log('[v0] Creating task with currentUser:', currentUser)
+      console.log('[v0] Creating task with user:', submittingUser)
       
       await addTask({
         title: meetingTitle,
@@ -190,14 +205,14 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
         type: reunionTipo?.id || '',
         dueDate: startDateTime,
         customFields: {},
-        createdById: currentUser?.id || null,
-        createdByName: currentUser?.nombre || 'Usuario',
+        createdById: submittingUser?.id || null,
+        createdByName: submittingUser?.nombre || 'Usuario',
         comments: [{
           id: `comment-${Date.now()}`,
           content: meetingComment,
-          userId: currentUser?.id || 'system',
-          userName: currentUser?.nombre || 'Sistema',
-          userAvatar: currentUser?.avatar_url || '',
+          userId: submittingUser?.id || 'system',
+          userName: submittingUser?.nombre || 'Sistema',
+          userAvatar: submittingUser?.avatar_url || '',
           createdAt: new Date(),
         }],
       })
