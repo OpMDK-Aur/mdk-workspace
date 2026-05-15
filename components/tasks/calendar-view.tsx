@@ -30,7 +30,9 @@ import {
   AlertCircle,
   MessageCircle,
   RotateCcw,
-  Plus
+  Plus,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 import { NewTaskModal } from './new-task-modal'
 
@@ -175,6 +177,7 @@ export function CalendarView() {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [newTaskModalOpen, setNewTaskModalOpen] = useState(false)
   const [selectedDateForTask, setSelectedDateForTask] = useState<Date | null>(null)
+  const [isNoDateCollapsed, setIsNoDateCollapsed] = useState(false)
   
   const handleAddTask = (date: Date) => {
     setSelectedDateForTask(date)
@@ -292,7 +295,7 @@ export function CalendarView() {
       
       {/* Sidebar - Tasks without due date */}
       <div className="w-72 border-l bg-card/50 flex flex-col">
-        <div className="px-4 py-3 border-b">
+        <div className="px-4 py-3 border-b flex items-center justify-between cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setIsNoDateCollapsed(!isNoDateCollapsed)}>
           <div className="flex items-center gap-2">
             <CalendarIcon className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-medium">Sin fecha</h3>
@@ -300,68 +303,75 @@ export function CalendarView() {
               {tasksWithoutDate.length}
             </Badge>
           </div>
+          {isNoDateCollapsed ? (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+          )}
         </div>
         
-        <ScrollArea className="flex-1">
-          <div className="p-3 space-y-2">
-            {tasksWithoutDate.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                Todas las tareas tienen fecha de vencimiento
-              </p>
-            ) : (
-              tasksWithoutDate.map((task) => {
-                const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
-                const statusConfig = STATUS_CONFIG[task.status] || STATUS_CONFIG.pendiente
-                
-                return (
-                  <button
-                    key={task.id}
-                    onClick={() => setSelectedTask(task.id)}
-                    className={cn(
-                      'w-full text-left rounded-lg border p-3 transition-colors hover:border-primary/50',
-                      'bg-card'
-                    )}
-                  >
-                    <p className="text-sm font-medium truncate">{task.title}</p>
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">
-                      {task.clientName}
-                    </p>
-                    <div className="flex items-center justify-between mt-2">
-                      <div className="flex items-center gap-1.5">
-                        <Badge 
-                          variant="outline" 
-                          className={cn(
-                            'h-5 px-1.5 text-[10px] border-0',
-                            statusConfig.bgColor,
-                            statusConfig.color
-                          )}
-                        >
-                          {statusConfig.label}
-                        </Badge>
-                        <Badge 
-                          variant="outline" 
-                          className={cn(
-                            'h-5 px-1.5 text-[10px] border-0',
-                            priorityConfig.bgColor,
-                            priorityConfig.color
-                          )}
-                        >
-                          {priorityConfig.label}
-                        </Badge>
+        {!isNoDateCollapsed && (
+          <ScrollArea className="flex-1">
+            <div className="p-3 space-y-2">
+              {tasksWithoutDate.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  Todas las tareas tienen fecha de vencimiento
+                </p>
+              ) : (
+                tasksWithoutDate.map((task) => {
+                  const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
+                  const statusConfig = STATUS_CONFIG[task.status] || STATUS_CONFIG.pendiente
+                  
+                  return (
+                    <button
+                      key={task.id}
+                      onClick={() => setSelectedTask(task.id)}
+                      className={cn(
+                        'w-full text-left rounded-lg border p-3 transition-colors hover:border-primary/50',
+                        'bg-card'
+                      )}
+                    >
+                      <p className="text-sm font-medium truncate">{task.title}</p>
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">
+                        {task.clientName}
+                      </p>
+                      <div className="flex items-center justify-between mt-2">
+                        <div className="flex items-center gap-1.5">
+                          <Badge 
+                            variant="outline" 
+                            className={cn(
+                              'h-5 px-1.5 text-[10px] border-0',
+                              statusConfig.bgColor,
+                              statusConfig.color
+                            )}
+                          >
+                            {statusConfig.label}
+                          </Badge>
+                          <Badge 
+                            variant="outline" 
+                            className={cn(
+                              'h-5 px-1.5 text-[10px] border-0',
+                              priorityConfig.bgColor,
+                              priorityConfig.color
+                            )}
+                          >
+                            {priorityConfig.label}
+                          </Badge>
+                        </div>
+                        {task.assigneeAvatar || task.assigneeName ? (
+                          <Avatar className="h-5 w-5">
+                            {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
+                            <AvatarFallback className="text-[9px]">{getInitials(task.assigneeName)}</AvatarFallback>
+                          </Avatar>
+                        ) : null}
                       </div>
-                      {task.assigneeAvatar || task.assigneeName ? (
-                        <Avatar className="h-5 w-5">
-                          {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
-                          <AvatarFallback className="text-[9px]">{getInitials(task.assigneeName)}</AvatarFallback>
-                        </Avatar>
-                      ) : null}
-                    </div>
-                  </button>
-                )
-              })
-            )}
-          </div>
-        </ScrollArea>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          </ScrollArea>
+        )}
       </div>
       
       {/* New Task Modal */}
