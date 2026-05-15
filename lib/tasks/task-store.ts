@@ -48,7 +48,7 @@ interface ComentarioDB {
   es_sistema: boolean
   created_at: string
   updated_at: string
-  profiles?: {
+  colaboradores?: {
     avatar_url: string | null
   } | null
 }
@@ -59,7 +59,7 @@ function mapComentarioToComment(comentario: ComentarioDB): TaskComment {
     content: comentario.contenido,
     userId: comentario.autor_id || 'system',
     userName: comentario.autor_nombre,
-    userAvatar: comentario.profiles?.avatar_url || null,
+    userAvatar: comentario.colaboradores?.avatar_url || null,
     createdAt: new Date(comentario.created_at),
   }
 }
@@ -888,33 +888,29 @@ export const useTaskStore = create<TaskStore>()(
         }
         
         if (comentarios && comentarios.length > 0) {
-          // Enrich comments with user avatars
+          // Enrich comments with user avatars from colaboradores table
           const userIds = [...new Set(comentarios.map(c => c.autor_id).filter(Boolean))] as string[]
-          console.log('[v0] Loading avatars for user IDs:', userIds)
           
           let avatarMap: Record<string, string | null> = {}
           if (userIds.length > 0) {
-            const { data: profiles, error: profileError } = await supabase
-              .from('profiles')
+            const { data: colaboradores, error: colabError } = await supabase
+              .from('colaboradores')
               .select('id, avatar_url')
               .in('id', userIds)
             
-            if (profileError) {
-              console.error('[v0] Error loading profiles:', profileError)
-            } else if (profiles) {
-              console.log('[v0] Loaded profiles:', profiles)
-              profiles.forEach(p => {
-                avatarMap[p.id] = p.avatar_url
+            if (colabError) {
+              console.error('[v0] Error loading colaboradores:', colabError)
+            } else if (colaboradores) {
+              colaboradores.forEach(c => {
+                avatarMap[c.id] = c.avatar_url
               })
             }
           }
           
           const enrichedComments = comentarios.map(c => ({
             ...c,
-            profiles: c.autor_id ? { avatar_url: avatarMap[c.autor_id] || null } : null
+            colaboradores: c.autor_id ? { avatar_url: avatarMap[c.autor_id] || null } : null
           } as ComentarioDB))
-          
-          console.log('[v0] Enriched comments:', enrichedComments)
           
           set((state) => ({
             tasks: state.tasks.map(t => 
