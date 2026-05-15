@@ -143,17 +143,18 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
       className={cn(
         'group relative rounded-lg border bg-card p-3 cursor-pointer transition-all duration-200',
         'hover:border-primary/40 hover:shadow-md hover:shadow-primary/5',
-        'active:scale-[0.98]'
+        'active:scale-[0.98]',
+        'w-full min-w-0 overflow-hidden'
       )}
     >
       {/* Client badge + avatar row */}
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-2 min-w-0">
         <Avatar className={cn('h-5 w-5 shrink-0', getClientColor(task.clientId))}>
           <AvatarFallback className="text-[9px] font-semibold text-white bg-transparent">
             {getInitials(task.clientName)}
           </AvatarFallback>
         </Avatar>
-        <span className="text-[11px] text-muted-foreground font-medium truncate">
+        <span className="text-[11px] text-muted-foreground font-medium truncate min-w-0">
           {task.clientName}
         </span>
       </div>
@@ -174,7 +175,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         />
       ) : (
         <h4 
-          className="text-sm font-medium text-foreground leading-snug mb-2 line-clamp-2 cursor-text hover:text-primary"
+          className="text-sm font-medium text-foreground leading-snug mb-2 line-clamp-2 break-words overflow-hidden cursor-text hover:text-primary"
           onClick={handleStartEditTitle}
         >
           {task.title}
@@ -182,19 +183,19 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
       )}
 
       {/* Badges row */}
-      <div className="flex flex-wrap gap-1.5 mb-2">
+      <div className="flex flex-wrap gap-1.5 mb-2 min-w-0">
         <Badge
           variant="outline"
-          className={cn('text-[10px] px-1.5 py-0 h-5 font-medium border-0', priorityConfig.bgColor, priorityConfig.color)}
+          className={cn('text-[10px] px-1.5 py-0 h-5 font-medium border-0 shrink-0', priorityConfig.bgColor, priorityConfig.color)}
         >
           {priorityConfig.label}
         </Badge>
         <Badge
           variant="outline"
-          className={cn('text-[10px] px-1.5 py-0 h-5 font-medium border-0 gap-1 flex items-center', typeConfig.color)}
+          className={cn('text-[10px] px-1.5 py-0 h-5 font-medium border-0 gap-1 flex items-center shrink-0 max-w-[140px] truncate', typeConfig.color)}
         >
-          {typeConfig.icon && TYPE_ICONS[typeConfig.icon] ? TYPE_ICONS[typeConfig.icon] : <HelpCircle className="h-3 w-3" />}
-          {typeConfig.label}
+          {typeConfig.icon && TYPE_ICONS[typeConfig.icon] ? TYPE_ICONS[typeConfig.icon] : <HelpCircle className="h-3 w-3 shrink-0" />}
+          <span className="truncate">{typeConfig.label}</span>
         </Badge>
       </div>
 
