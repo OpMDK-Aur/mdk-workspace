@@ -1077,6 +1077,12 @@ updateTask: async (taskId, updates) => {
   if (updates.description !== undefined) dbUpdates.descripcion = updates.description
   if (updates.clientId !== undefined) dbUpdates.cliente_id = updates.clientId || null
   if (updates.assigneeId !== undefined) dbUpdates.asignado_a = updates.assigneeId || null
+  if (updates.assignees !== undefined) {
+    const ids = updates.assignees.map(a => a.id)
+    dbUpdates.asignados_a = ids.length > 0 ? ids : null
+    // Keep legacy single-assignee field in sync
+    if (updates.assigneeId === undefined) dbUpdates.asignado_a = ids[0] || null
+  }
   if (updates.status !== undefined) dbUpdates.estado = updates.status
   if (updates.priority !== undefined) dbUpdates.prioridad = updates.priority
   if (updates.type !== undefined) dbUpdates.tipo_tarea_id = updates.type || null
