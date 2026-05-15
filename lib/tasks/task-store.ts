@@ -1120,6 +1120,7 @@ addTask: async (taskData) => {
   estado: taskData.status || 'pendiente',
   prioridad: taskData.priority || 'media',
   fecha_vencimiento: taskData.dueDate || null,
+  creado_por: taskData.createdById || null,
   })
   
   if (error) {
@@ -1150,10 +1151,12 @@ addTask: async (taskData) => {
         id,
         clientIds: taskData.clientIds || (taskData.clientId ? [taskData.clientId] : []),
         clients: taskData.clients || (taskData.clientId ? [{ id: taskData.clientId, nombre_del_negocio: taskData.clientName || '' }] : []),
+        createdById: taskData.createdById || null,
+        createdByName: taskData.createdByName || 'Usuario',
         createdAt: new Date(),
         updatedAt: new Date(),
         activities: [
-          { id: crypto.randomUUID(), action: 'Tarea creada', timestamp: new Date(), userId: 'current', userName: 'Usuario' },
+          { id: crypto.randomUUID(), action: 'Tarea creada', timestamp: new Date(), userId: taskData.createdById || 'current', userName: taskData.createdByName || 'Usuario' },
         ],
         timeSessions: [],
         totalTimeSec: 0,

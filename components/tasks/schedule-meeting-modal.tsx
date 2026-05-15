@@ -64,17 +64,30 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
   const [dbClientes, setDbClientes] = useState<DbCliente[]>([])
   const [dbColaboradores, setDbColaboradores] = useState<DbColaborador[]>([])
   const [dbTiposTarea, setDbTiposTarea] = useState<DbTipoTarea[]>([])
+  const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; avatar_url: string | null } | null>(null)
 
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [successLink, setSuccessLink] = useState<{ hangout?: string; calendar?: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Load DB data on open
+  // Load DB data and current user on open
   useEffect(() => {
     if (!open) return
     async function loadData() {
       const supabase = createClient()
+      
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: colab } = await supabase
+          .from('colaboradores')
+          .select('id, nombre, avatar_url')
+          .eq('user_id', user.id)
+          .single()
+        if (colab) setCurrentUser(colab)
+      }
+      
       const [clientesRes, colabRes, tiposRes] = await Promise.all([
         supabase.from('clientes').select('id, nombre_del_negocio').order('nombre_del_negocio'),
         supabase.from('colaboradores').select('id, nombre, avatar_url').order('nombre'),
@@ -173,12 +186,14 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
         type: reunionTipo?.id || '',
         dueDate: startDateTime,
         customFields: {},
+        createdById: currentUser?.id || null,
+        createdByName: currentUser?.nombre || 'Usuario',
         comments: [{
           id: `comment-${Date.now()}`,
           content: meetingComment,
-          userId: 'system',
-          userName: 'Sistema',
-          userAvatar: '',
+          userId: currentUser?.id || 'system',
+          userName: currentUser?.nombre || 'Sistema',
+          userAvatar: currentUser?.avatar_url || '',
           createdAt: new Date(),
         }],
       })
