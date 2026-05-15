@@ -631,21 +631,17 @@ function TimeTracker({ task }: { task: Task }) {
   const [isStarting, setIsStarting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
 
-  // Check if THIS task's timer is running
   const isThisTaskRunning = globalIsRunning && globalTaskId === task.id
 
-  // Update elapsed time every second when this task's timer is running
   useEffect(() => {
     if (!isThisTaskRunning) {
       setElapsedSeconds(0)
       return
     }
-
     setElapsedSeconds(getElapsedSeconds())
     const interval = setInterval(() => {
       setElapsedSeconds(getElapsedSeconds())
     }, 1000)
-
     return () => clearInterval(interval)
   }, [isThisTaskRunning, globalStartedAt, getElapsedSeconds])
 
@@ -654,10 +650,9 @@ function TimeTracker({ task }: { task: Task }) {
   const handleStart = async () => {
     setIsStarting(true)
     try {
-      // Use the task's clientId directly
       await startTimerForTask(task.id, task.title, task.clientId || null)
       toast.success('Timer iniciado para esta tarea')
-    } catch (error) {
+    } catch {
       toast.error('Error al iniciar el timer')
     } finally {
       setIsStarting(false)
@@ -667,25 +662,20 @@ function TimeTracker({ task }: { task: Task }) {
   const handleStop = async () => {
     setIsStopping(true)
     try {
-      // Calculate duration and save to task
       const durationSec = getElapsedSeconds()
       await globalStopTimer()
-      
-      // Add the session to the task
       const newSession = {
         id: `session-${Date.now()}`,
         startedAt: new Date(globalStartedAt!),
         endedAt: new Date(),
         durationSec,
       }
-      
       updateTask(task.id, {
         totalTimeSec: task.totalTimeSec + durationSec,
         timeSessions: [...task.timeSessions, newSession],
       })
-      
       toast.success('Tiempo guardado correctamente')
-    } catch (error) {
+    } catch {
       toast.error('Error al guardar el tiempo')
     } finally {
       setIsStopping(false)
@@ -693,103 +683,61 @@ function TimeTracker({ task }: { task: Task }) {
   }
 
   const handleReset = () => {
-    if (isThisTaskRunning) {
-      globalStopTimer()
-    }
+    if (isThisTaskRunning) globalStopTimer()
     updateTask(task.id, { totalTimeSec: 0, timeSessions: [] })
   }
 
-  // Check if another task's timer is running
   const isOtherTaskRunning = globalIsRunning && globalTaskId && globalTaskId !== task.id
 
+  // ── Compact inline version for header ──────────────────────────────────────
   return (
-    <div className="rounded-lg border bg-muted/30 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Clock className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium">Time Tracker</span>
-        {isThisTaskRunning && (
-          <Badge variant="outline" className="ml-auto text-green-400 border-green-400/30 text-xs">
-            En curso
-          </Badge>
-        )}
-      </div>
+    <div className="flex items-center gap-1.5">
+      <span className={cn(
+        'font-mono text-sm font-medium tabular-nums tracking-tight',
+        isThisTaskRunning && 'text-green-400 dark:text-green-400'
+      )}>
+        {formatTime(totalDisplay)}
+      </span>
 
-      <div className="flex items-center justify-center mb-4">
-        <span
-          className={cn(
-            'text-4xl font-mono tabular-nums tracking-tight',
-            isThisTaskRunning && 'text-green-400'
-          )}
+      {isThisTaskRunning ? (
+        <Button
+          size="sm"
+          variant="destructive"
+          className="h-7 px-2 gap-1 text-xs"
+          onClick={handleStop}
+          disabled={isStopping}
         >
-          {formatTime(totalDisplay)}
-        </span>
-      </div>
-
-      <div className="flex items-center justify-center gap-2 mb-4">
-        {isThisTaskRunning ? (
-          <Button
-            size="sm"
-            variant="destructive"
-            className="gap-1.5"
-            onClick={handleStop}
-            disabled={isStopping}
-          >
-            {isStopping ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Square className="h-4 w-4 fill-current" />
-            )}
-            Detener
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            className="gap-1.5 bg-green-600 hover:bg-green-700"
-            onClick={handleStart}
-            disabled={isStarting || isOtherTaskRunning}
-          >
-            {isStarting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="h-4 w-4" />
-            )}
-            Iniciar
-          </Button>
-        )}
-        <Button size="sm" variant="outline" className="gap-1.5" onClick={handleReset}>
-          <RotateCcw className="h-4 w-4" />
-          Reset
+          {isStopping ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3 fill-current" />}
+          Parar
         </Button>
-      </div>
-
-      {isOtherTaskRunning && (
-        <p className="text-xs text-center text-yellow-500 mb-3">
-          Hay otro timer en curso. Detenlo para iniciar este.
-        </p>
+      ) : (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 px-2 gap-1 text-xs"
+          onClick={handleStart}
+          disabled={isStarting || !!isOtherTaskRunning}
+          title={isOtherTaskRunning ? 'Hay otro timer activo' : 'Iniciar timer'}
+        >
+          {isStarting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-current" />}
+          Iniciar
+        </Button>
       )}
 
-      {task.timeSessions.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-xs text-muted-foreground font-medium">Sesiones anteriores</p>
-          <div className="max-h-24 overflow-y-auto space-y-1">
-            {task.timeSessions.slice(-3).map((session) => (
-              <div key={session.id} className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{format(new Date(session.startedAt), 'dd/MM HH:mm', { locale: es })}</span>
-                <span className="font-mono">{formatTimeShort(session.durationSec)}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-between text-xs pt-1 border-t border-border">
-            <span className="font-medium">Total acumulado</span>
-            <span className="font-mono font-medium">{formatTimeShort(task.totalTimeSec)}</span>
-          </div>
-        </div>
-      )}
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-7 w-7 p-0"
+        onClick={handleReset}
+        title="Resetear tiempo"
+      >
+        <RotateCcw className="h-3 w-3" />
+      </Button>
     </div>
   )
 }
 
-// ── Files Section ───────────────────────────────�����─��──���────────────────────────
+// ── Files Section ─────────────────────────────────────────────────────────────
 
 function FilesSection({ task }: { task: Task }) {
   const { addFile, deleteFile } = useTaskStore()
@@ -1708,19 +1656,14 @@ export function TaskDetailPanel() {
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {/* Active Toggle */}
-              <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-muted/50">
-                <Power className={cn('h-3.5 w-3.5', task.isActive ? 'text-green-400' : 'text-muted-foreground')} />
-                <span className="text-xs">{task.isActive ? 'Activa' : 'Inactiva'}</span>
-                <Switch
-                  checked={task.isActive}
-                  onCheckedChange={() => toggleTaskActive(task.id)}
-                  className="scale-75"
-                />
-              </div>
-              
+              {/* Compact Time Tracker in header */}
+              <TimeTracker task={task} />
+
+              {/* Separator */}
+              <div className="w-px h-5 bg-border" />
+
               {/* Navigation buttons */}
-              <div className="flex items-center gap-1 border-l pl-2 ml-1">
+              <div className="flex items-center gap-1">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -1867,6 +1810,20 @@ export function TaskDetailPanel() {
                           </Select>
                         </div>
                       </div>
+
+                      {/* Active Toggle */}
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs text-muted-foreground">Estado de actividad</Label>
+                        <div className="flex items-center gap-2">
+                          <Power className={cn('h-3.5 w-3.5', task.isActive ? 'text-green-500' : 'text-muted-foreground')} />
+                          <span className="text-xs">{task.isActive ? 'Activa' : 'Inactiva'}</span>
+                          <Switch
+                            checked={task.isActive}
+                            onCheckedChange={() => toggleTaskActive(task.id)}
+                            className="scale-75"
+                          />
+                        </div>
+                      </div>
                       
                       <div>
                         <Label className="text-xs text-muted-foreground mb-1.5 block">Clientes</Label>
@@ -1940,11 +1897,6 @@ export function TaskDetailPanel() {
                           </Popover>
                         </div>
                       </div>
-                    </div>
-                    
-                    {/* Time Tracker */}
-                    <div className="rounded-xl border bg-card/50 p-4">
-                      <TimeTracker task={task} />
                     </div>
                     
                     {/* Custom Fields */}
@@ -2027,6 +1979,20 @@ export function TaskDetailPanel() {
                     </div>
                   </div>
 
+                  {/* Active Toggle */}
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs text-muted-foreground">Estado de actividad</Label>
+                    <div className="flex items-center gap-2">
+                      <Power className={cn('h-3.5 w-3.5', task.isActive ? 'text-green-500' : 'text-muted-foreground')} />
+                      <span className="text-xs">{task.isActive ? 'Activa' : 'Inactiva'}</span>
+                      <Switch
+                        checked={task.isActive}
+                        onCheckedChange={() => toggleTaskActive(task.id)}
+                        className="scale-75"
+                      />
+                    </div>
+                  </div>
+
                   {/* Client & Assignee */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -2101,11 +2067,6 @@ export function TaskDetailPanel() {
                       </Popover>
                     </div>
                   </div>
-
-                  <Separator />
-
-                  {/* Time Tracker */}
-                  <TimeTracker task={task} />
 
                   <Separator />
 
