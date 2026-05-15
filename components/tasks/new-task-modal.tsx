@@ -978,16 +978,14 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     async function loadData() {
       const supabase = createClient()
       
-      // Get logged-in collaborator
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      console.log('[v0] NewTaskModal auth user:', user?.id, user?.email, 'error:', authError)
-      if (user) {
-        const { data: colab, error: colabError } = await supabase
+      // Get logged-in collaborator by email (colaboradores has no user_id column)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.email) {
+        const { data: colab } = await supabase
           .from('colaboradores')
           .select('id, nombre, apellido, avatar_url')
-          .eq('user_id', user.id)
+          .eq('email', user.email)
           .single()
-        console.log('[v0] NewTaskModal currentUser lookup:', colab, 'error:', colabError)
         if (colab) setCurrentUser(colab)
       }
       

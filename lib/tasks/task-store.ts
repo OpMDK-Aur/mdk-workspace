@@ -1114,11 +1114,11 @@ addTask: async (taskData) => {
 
   if (!resolvedCreatedById) {
     const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
+    if (user?.email) {
       const { data: colab } = await supabase
         .from('colaboradores')
         .select('id, nombre, apellido, avatar_url')
-        .eq('user_id', user.id)
+        .eq('email', user.email)
         .single()
       if (colab) {
         resolvedCreatedById = colab.id
