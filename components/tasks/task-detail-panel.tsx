@@ -1955,9 +1955,12 @@ export function TaskDetailPanel() {
                     <Button
                       variant="ghost"
                       className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => {
-                        deleteTask(task.id)
-                        handleClose()
+                      onClick={async () => {
+                        const confirmed = confirm(`¿Eliminar tarea "${task.title}"? Esta acción no se puede deshacer.`)
+                        if (confirmed) {
+                          await deleteTask(task.id)
+                          handleClose()
+                        }
                       }}
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
@@ -2145,9 +2148,12 @@ export function TaskDetailPanel() {
                   <Button
                     variant="ghost"
                     className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => {
-                      deleteTask(task.id)
-                      handleClose()
+                    onClick={async () => {
+                      const confirmed = confirm(`¿Eliminar tarea "${task.title}"? Esta acción no se puede deshacer.`)
+                      if (confirmed) {
+                        await deleteTask(task.id)
+                        handleClose()
+                      }
                     }}
                   >
                     <Trash2 className="h-4 w-4 mr-2" />
