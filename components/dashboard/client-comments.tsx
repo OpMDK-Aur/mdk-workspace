@@ -571,31 +571,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     
     return parts.length > 0 ? parts : content
   }
-      } else if (match[3]) {
-        // Collaborator mention @Name
-        const mentionName = match[3].slice(1).trim() // Remove @
-        const colab = colaboradores.find(c => c.nombre.toLowerCase() === mentionName.toLowerCase())
-        
-        parts.push(
-          <span
-            key={`colab-${match.index}`}
-            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 text-xs font-medium"
-          >
-            @{colab?.nombre || mentionName}
-          </span>
-        )
-      }
-      
-      lastIndex = match.index + match[0].length
-    }
-    
-    // Add remaining text
-    if (lastIndex < content.length) {
-      parts.push(content.slice(lastIndex))
-    }
-    
-    return parts.length > 0 ? parts : content
-  }
 
   return (
     <div className="space-y-4">
