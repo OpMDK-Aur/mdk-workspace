@@ -1106,6 +1106,27 @@ updateTask: async (taskId, updates) => {
 addTask: async (taskData) => {
   const supabase = createClient()
   const id = crypto.randomUUID()
+
+  // Always resolve the logged-in collaborator at insert time
+  let resolvedCreatedById = taskData.createdById || null
+  let resolvedCreatedByName = taskData.createdByName || 'Sistema'
+  let resolvedCreatedByAvatar = taskData.createdByAvatar || undefined
+
+  if (!resolvedCreatedById) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data: colab } = await supabase
+        .from('colaboradores')
+        .select('id, nombre, apellido, avatar_url')
+        .eq('user_id', user.id)
+        .single()
+      if (colab) {
+        resolvedCreatedById = colab.id
+        resolvedCreatedByName = [colab.nombre, colab.apellido].filter(Boolean).join(' ')
+        resolvedCreatedByAvatar = colab.avatar_url || undefined
+      }
+    }
+  }
   
   // Insert into tareas table
   // Support both single clientId and multiple clientIds
@@ -1128,7 +1149,7 @@ addTask: async (taskData) => {
   estado: taskData.status || 'pendiente',
   prioridad: taskData.priority || 'media',
   fecha_vencimiento: taskData.dueDate || null,
-  creado_por: taskData.createdById || null,
+  creado_por: resolvedCreatedById,
   })
   
   if (error) {
@@ -1186,9 +1207,9 @@ addTask: async (taskData) => {
         id,
         clientIds: taskData.clientIds || (taskData.clientId ? [taskData.clientId] : []),
         clients: taskData.clients || (taskData.clientId ? [{ id: taskData.clientId, nombre_del_negocio: taskData.clientName || '' }] : []),
-        createdById: taskData.createdById || null,
-        createdByName: taskData.createdByName || 'Sistema',
-        createdByAvatar: taskData.createdByAvatar || undefined,
+        createdById: resolvedCreatedById,
+        createdByName: resolvedCreatedByName,
+        createdByAvatar: resolvedCreatedByAvatar,
         createdAt: new Date(),
         updatedAt: new Date(),
         activities: [
