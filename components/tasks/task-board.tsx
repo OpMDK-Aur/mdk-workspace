@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { TaskPriority, TaskType } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { useTaskStore, PRIORITY_CONFIG, TYPE_CONFIG, ASSIGNEES } from '@/lib/tasks/task-store'
+import { useTaskStore, useTaskStoreHydrated, PRIORITY_CONFIG, TYPE_CONFIG, ASSIGNEES } from '@/lib/tasks/task-store'
 
 // Lazy load heavy components
 const KanbanView = dynamic(() => import('./kanban-view').then(m => ({ default: m.KanbanView })), {
@@ -44,6 +44,7 @@ import { Input } from '@/components/ui/input'
 
 export function TaskBoard() {
   const searchParams = useSearchParams()
+  const hydrated = useTaskStoreHydrated()
   const { 
     view, 
     setView, 
@@ -99,6 +100,15 @@ export function TaskBoard() {
   const hasSimpleFilters = filters.priority || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned
   const hasAdvancedFilters = advancedFilters.length > 0
   const hasFilters = hasSimpleFilters || hasAdvancedFilters
+
+  // Don't render until hydrated from localStorage
+  if (!hydrated) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="animate-pulse text-muted-foreground">Cargando filtros...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full">

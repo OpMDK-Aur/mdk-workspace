@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { createClient } from '@/lib/supabase/client'
@@ -1395,6 +1396,21 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
     }
   )
 )
+
+// ── Hydration Hook ────────────────────────────────────────────────────────────
+/**
+ * Hook to ensure store is hydrated before using persisted state.
+ * Use this in components to prevent hydration mismatches.
+ */
+export function useTaskStoreHydrated() {
+  const [hydrated, setHydrated] = useState(false)
+  
+  useEffect(() => {
+    setHydrated(true)
+  }, [])
+  
+  return hydrated
+}
 
 // ── Selectors ─────────────────────────────────────────────────────────────────
 
