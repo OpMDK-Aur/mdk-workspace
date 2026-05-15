@@ -251,7 +251,7 @@ async function fetchMetricas(mes: number, anio: number) {
   
   // Fetch metricas_colaboradores
   const { data: metricas, error: metricasError } = await supabase
-    .from('metricas_colaboradores')
+    .from('metricas_colaborador')
     .select(`
       *,
       colaborador:colaborador_id(id, nombre, apellido),
