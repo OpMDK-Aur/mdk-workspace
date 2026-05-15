@@ -130,13 +130,18 @@ export const useTimerStore = create<TimerState>()(
         }
 
         if (entryIdToUpdate) {
+          const updateData = {
+            finalizado_en,
+            duracion_seg,
+            descripcion: state.description || 'Sin descripción',
+            cliente_id: state.clientId,
+            tipo_tarea_id: state.tipoTareaId,
+            facturable: state.billable,
+          }
+          
           const { error } = await supabase
             .from('entradas_de_tiempo')
-            .update({
-              finalizado_en,
-              duracion_seg,
-              descripcion: state.description || 'Sin descripción',
-            })
+            .update(updateData)
             .eq('id', entryIdToUpdate)
 
           if (error) {
@@ -146,7 +151,7 @@ export const useTimerStore = create<TimerState>()(
           set((s) => ({
             entries: s.entries.map((e) =>
               e.id === entryIdToUpdate
-                ? { ...e, finalizado_en, duracion_seg, descripcion: state.description || 'Sin descripción' }
+                ? { ...e, ...updateData }
                 : e
             ),
           }))
