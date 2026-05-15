@@ -1839,7 +1839,9 @@ export function TaskDetailPanel() {
                             tiposTarea={tiposTarea}
                             value={task.type}
                             onValueChange={(v) => {
+                              console.log('[v0] Changing task type to:', v)
                               const tipo = tiposTarea.find(t => t.id === v)
+                              console.log('[v0] Found tipo:', tipo)
                               updateTask(task.id, { type: v as TaskType, typeName: tipo?.nombre || '' })
                             }}
                           />
@@ -1998,7 +2000,9 @@ export function TaskDetailPanel() {
                         tiposTarea={tiposTarea}
                         value={task.type}
                         onValueChange={(v) => {
+                          console.log('[v0] Changing task type to:', v)
                           const tipo = tiposTarea.find(t => t.id === v)
+                          console.log('[v0] Found tipo:', tipo)
                           updateTask(task.id, { type: v as TaskType, typeName: tipo?.nombre || '' })
                         }}
                       />
