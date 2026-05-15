@@ -689,50 +689,57 @@ function TimeTracker({ task }: { task: Task }) {
 
   const isOtherTaskRunning = globalIsRunning && globalTaskId && globalTaskId !== task.id
 
-  // ── Compact inline version for header ──────────────────────────────────────
+  // ── Compact bar layout: [ ■ Parar ]  00:00:15  [ ↺ ] ──────────────────────
   return (
-    <div className="flex items-center gap-1.5">
-      <span className={cn(
-        'font-mono text-sm font-medium tabular-nums tracking-tight',
-        isThisTaskRunning && 'text-green-400 dark:text-green-400'
-      )}>
-        {formatTime(totalDisplay)}
-      </span>
-
+    <div className="flex items-center gap-2 w-full">
       {isThisTaskRunning ? (
         <Button
           size="sm"
-          variant="destructive"
-          className="h-7 px-2 gap-1 text-xs"
+          className="h-7 px-2.5 gap-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded-md"
           onClick={handleStop}
           disabled={isStopping}
         >
-          {isStopping ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3 fill-current" />}
+          {isStopping
+            ? <Loader2 className="h-3 w-3 animate-spin" />
+            : <Square className="h-3 w-3 fill-current" />}
           Parar
         </Button>
       ) : (
         <Button
           size="sm"
           variant="outline"
-          className="h-7 px-2 gap-1 text-xs"
+          className="h-7 px-2.5 gap-1.5 text-xs rounded-md"
           onClick={handleStart}
           disabled={isStarting || !!isOtherTaskRunning}
           title={isOtherTaskRunning ? 'Hay otro timer activo' : 'Iniciar timer'}
         >
-          {isStarting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-current" />}
+          {isStarting
+            ? <Loader2 className="h-3 w-3 animate-spin" />
+            : <Play className="h-3 w-3 fill-current" />}
           Iniciar
         </Button>
       )}
 
+      <span className={cn(
+        'font-mono text-sm font-medium tabular-nums tracking-tight',
+        isThisTaskRunning ? 'text-green-500 dark:text-green-400' : 'text-foreground'
+      )}>
+        {formatTime(totalDisplay)}
+      </span>
+
       <Button
         size="sm"
         variant="ghost"
-        className="h-7 w-7 p-0"
+        className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
         onClick={handleReset}
         title="Resetear tiempo"
       >
-        <RotateCcw className="h-3 w-3" />
+        <RotateCcw className="h-3.5 w-3.5" />
       </Button>
+
+      {isOtherTaskRunning && (
+        <span className="text-xs text-amber-500 ml-1">Otro timer activo</span>
+      )}
     </div>
   )
 }
@@ -1570,8 +1577,9 @@ export function TaskDetailPanel() {
         side="right"
       >
         {/* Header */}
-        <SheetHeader className="p-4 pb-3 border-b shrink-0">
-          <div className="flex items-start gap-3 pr-10">
+        <SheetHeader className="px-4 pt-4 pb-3 border-b shrink-0">
+          {/* Línea 1: título + acciones */}
+          <div className="flex items-center gap-2 pr-10">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 {isEditingTitle ? (
@@ -1593,12 +1601,12 @@ export function TaskDetailPanel() {
                       }
                       if (e.key === 'Escape') setIsEditingTitle(false)
                     }}
-                    className="h-8 text-lg font-semibold"
+                    className="h-8 text-base font-medium"
                     autoFocus
                   />
                 ) : (
-                  <SheetTitle 
-                    className="text-lg leading-tight cursor-text hover:text-primary"
+                  <SheetTitle
+                    className="text-base font-medium leading-tight cursor-text hover:text-primary truncate"
                     onClick={() => {
                       setTempTitle(task.title)
                       setIsEditingTitle(true)
@@ -1608,98 +1616,67 @@ export function TaskDetailPanel() {
                   </SheetTitle>
                 )}
                 {task.isSystemTask && (
-                  <Badge className="bg-teal-500/20 text-teal-400 border-teal-500/30 text-[10px]">
+                  <Badge className="bg-teal-500/20 text-teal-400 border-teal-500/30 text-[10px] shrink-0">
                     Recurrente
                   </Badge>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {task.clients && task.clients.length > 0 
-                  ? task.clients.map(c => c.nombre_del_negocio).join(', ')
-                  : task.clientName}
-              </p>
-              
-              {/* WhatsApp button for system tasks */}
-              {task.isSystemTask && task.systemTaskMeta?.whatsappLink && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 h-8 gap-2 border-green-500/50 text-green-400 hover:bg-green-500/10 hover:text-green-300"
-                  onClick={() => window.open(task.systemTaskMeta?.whatsappLink, '_blank')}
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                  </svg>
-                  Enviar por WhatsApp
-                </Button>
-              )}
-              
-              {/* WhatsApp button for Seguimiento tasks */}
-              {(task.typeName?.toLowerCase().includes('seguimiento') || task.title?.toLowerCase().includes('seguimiento')) && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 h-8 gap-2 border-green-500/50 text-green-400 hover:bg-green-500/10 hover:text-green-300"
-                  onClick={() => {
-                    // Copy description to clipboard and open WhatsApp web
-                    const text = task.description?.replace(/<[^>]*>/g, '') || ''
-                    navigator.clipboard.writeText(text)
-                    toast.success('Mensaje copiado al portapapeles')
-                    window.open('https://web.whatsapp.com', '_blank')
-                  }}
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                  </svg>
-                  Enviar por WhatsApp
-                </Button>
-              )}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Compact Time Tracker in header */}
-              <TimeTracker task={task} />
 
-              {/* Separator */}
-              <div className="w-px h-5 bg-border" />
-
-              {/* Navigation buttons */}
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={goToPrevious}
-                  disabled={!hasPrevious}
-                  title="Tarea anterior"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span className="text-xs text-muted-foreground min-w-[3rem] text-center">
-                  {currentIndex + 1} / {tasks.length}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={goToNext}
-                  disabled={!hasNext}
-                  title="Siguiente tarea"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-              
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setIsFullscreen(!isFullscreen)}
-              >
-                {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {/* Navigation + expand */}
+            <div className="flex items-center gap-1 shrink-0">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToPrevious} disabled={!hasPrevious} title="Tarea anterior">
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <span className="text-xs text-muted-foreground tabular-nums min-w-[3.5rem] text-center">
+                {currentIndex + 1} / {tasks.length}
+              </span>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToNext} disabled={!hasNext} title="Siguiente tarea">
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsFullscreen(!isFullscreen)}>
+                {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
               </Button>
             </div>
           </div>
+
+          {/* Línea 2: cliente */}
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {task.clients && task.clients.length > 0
+              ? task.clients.map(c => c.nombre_del_negocio).join(', ')
+              : task.clientName}
+          </p>
+
+          {/* WhatsApp buttons */}
+          {task.isSystemTask && task.systemTaskMeta?.whatsappLink && (
+            <Button variant="outline" size="sm" className="mt-2 h-8 gap-2 border-green-500/50 text-green-400 hover:bg-green-500/10 hover:text-green-300 self-start"
+              onClick={() => window.open(task.systemTaskMeta?.whatsappLink, '_blank')}>
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+              Enviar por WhatsApp
+            </Button>
+          )}
+          {(task.typeName?.toLowerCase().includes('seguimiento') || task.title?.toLowerCase().includes('seguimiento')) && (
+            <Button variant="outline" size="sm" className="mt-2 h-8 gap-2 border-green-500/50 text-green-400 hover:bg-green-500/10 hover:text-green-300 self-start"
+              onClick={() => {
+                const text = task.description?.replace(/<[^>]*>/g, '') || ''
+                navigator.clipboard.writeText(text)
+                toast.success('Mensaje copiado al portapapeles')
+                window.open('https://web.whatsapp.com', '_blank')
+              }}>
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+              Enviar por WhatsApp
+            </Button>
+          )}
         </SheetHeader>
+
+        {/* Time Tracker bar — debajo del header, antes de los tabs */}
+        <div className="flex items-center gap-3 px-4 h-9 bg-muted/40 border-b shrink-0">
+          <TimeTracker task={task} />
+        </div>
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
