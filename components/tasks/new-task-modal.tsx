@@ -90,6 +90,7 @@ interface NewTaskModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   initialDueDate?: Date | null
+  initialMode?: 'manual' | 'ai'
 }
 
 // ── Assistant Personality ─────────────────────────────────────────────────────
@@ -921,7 +922,7 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModalProps) {
+export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode = 'ai' }: NewTaskModalProps) {
   const addTask = useTaskStore((s) => s.addTask)
   const scrollRef = useRef<HTMLDivElement>(null)
   
@@ -929,7 +930,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
   const [inputValue, setInputValue] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
-  const [quickMode, setQuickMode] = useState(false)
+  const [quickMode, setQuickMode] = useState(initialMode === 'manual')
   
   // Quick mode form state
   const [quickTitle, setQuickTitle] = useState('')
@@ -987,6 +988,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
   // Reset on open
   useEffect(() => {
     if (open) {
+      setQuickMode(initialMode === 'manual')
       setMessages([{
         id: 'welcome',
         role: 'assistant',
@@ -1003,7 +1005,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate }: NewTaskModa
       setInputValue('')
       setClientContext(null)
     }
-  }, [open])
+  }, [open, initialMode])
 
   // Auto scroll
   useEffect(() => {
@@ -2225,15 +2227,24 @@ setIsCreating(true)
               </div>
             </div>
           </div>
-          {!quickMode && !selectedTemplate && (
+          {!selectedTemplate && (
             <Button 
               variant="outline" 
               size="sm" 
               className="gap-1.5 text-xs"
-              onClick={() => setQuickMode(true)}
+              onClick={() => setQuickMode(!quickMode)}
             >
-              <PenLine className="h-3.5 w-3.5" />
-              Crear rapido
+              {quickMode ? (
+                <>
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Crear con IA
+                </>
+              ) : (
+                <>
+                  <PenLine className="h-3.5 w-3.5" />
+                  Crear manual
+                </>
+              )}
             </Button>
           )}
         </div>

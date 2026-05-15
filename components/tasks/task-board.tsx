@@ -39,6 +39,7 @@ import {
   FileText,
   X,
   Search,
+  Sparkles,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 
@@ -63,6 +64,7 @@ export function TaskBoard() {
     setSelectedTask,
   } = useTaskStore()
   const [newTaskOpen, setNewTaskOpen] = useState(false)
+  const [newTaskMode, setNewTaskMode] = useState<'manual' | 'ai'>('manual')
   
   // Track if seguimiento was already generated this session
   const seguimientoGenerated = useRef(false)
@@ -116,9 +118,13 @@ export function TaskBoard() {
       <div className="flex items-center justify-between gap-4 p-4 border-b bg-card">
         <div className="flex items-center gap-2">
           {/* New Task */}
-          <Button className="gap-1.5" onClick={() => setNewTaskOpen(true)}>
+          <Button className="gap-1.5" onClick={() => { setNewTaskMode('manual'); setNewTaskOpen(true) }}>
             <Plus className="h-4 w-4" />
             Nueva tarea
+          </Button>
+          <Button variant="outline" className="gap-1.5" onClick={() => { setNewTaskMode('ai'); setNewTaskOpen(true) }}>
+            <Sparkles className="h-4 w-4" />
+            Crear con IA
           </Button>
 
           {/* View Toggle */}
@@ -364,7 +370,7 @@ export function TaskBoard() {
       <TaskDetailPanel />
 
       {/* New task modal */}
-      <NewTaskModal open={newTaskOpen} onOpenChange={setNewTaskOpen} />
+      <NewTaskModal open={newTaskOpen} onOpenChange={setNewTaskOpen} initialMode={newTaskMode} />
     </div>
   )
 }
