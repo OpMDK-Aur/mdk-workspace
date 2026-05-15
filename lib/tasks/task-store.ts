@@ -878,15 +878,37 @@ export const useTaskStore = create<TaskStore>()(
         const supabase = createClient()
         const { data: comentarios } = await supabase
           .from('comentarios_tareas')
-          .select('*, profiles(avatar_url)')
+          .select('*')
           .eq('tarea_id', id)
           .order('created_at', { ascending: true })
         
         if (comentarios && comentarios.length > 0) {
+          // Enrich comments with user avatars
+          const userIds = [...new Set(comentarios.map(c => c.autor_id).filter(Boolean))] as string[]
+          
+          let avatarMap: Record<string, string | null> = {}
+          if (userIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from('profiles')
+              .select('id, avatar_url')
+              .in('id', userIds)
+            
+            if (profiles) {
+              profiles.forEach(p => {
+                avatarMap[p.id] = p.avatar_url
+              })
+            }
+          }
+          
+          const enrichedComments = comentarios.map(c => ({
+            ...c,
+            profiles: c.autor_id ? { avatar_url: avatarMap[c.autor_id] || null } : null
+          }))
+          
           set((state) => ({
             tasks: state.tasks.map(t => 
               t.id === id 
-                ? { ...t, comments: comentarios.map(c => mapComentarioToComment(c as ComentarioDB)) }
+                ? { ...t, comments: enrichedComments.map(c => mapComentarioToComment(c as ComentarioDB)) }
                 : t
             )
           }))
