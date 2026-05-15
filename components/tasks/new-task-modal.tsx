@@ -971,19 +971,23 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   const [dbTiposTarea, setDbTiposTarea] = useState<DbTipoTarea[]>([])
   const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; apellido?: string; avatar_url?: string | null } | null>(null)
   
-  // Load dynamic data
+  // Load dynamic data when modal opens
   useEffect(() => {
+    if (!open) return
+    
     async function loadData() {
       const supabase = createClient()
       
       // Get logged-in collaborator
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      console.log('[v0] NewTaskModal auth user:', user?.id, user?.email, 'error:', authError)
       if (user) {
-        const { data: colab } = await supabase
+        const { data: colab, error: colabError } = await supabase
           .from('colaboradores')
           .select('id, nombre, apellido, avatar_url')
           .eq('user_id', user.id)
           .single()
+        console.log('[v0] NewTaskModal currentUser lookup:', colab, 'error:', colabError)
         if (colab) setCurrentUser(colab)
       }
       
@@ -1006,7 +1010,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     }
     
     loadData()
-  }, [])
+  }, [open])
   
   const [selectedTemplate, setSelectedTemplate] = useState<TaskTemplate | null>(null)
   const [currentStepIndex, setCurrentStepIndex] = useState(0)
