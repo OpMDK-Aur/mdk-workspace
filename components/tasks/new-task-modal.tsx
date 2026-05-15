@@ -37,7 +37,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Label } from '@/components/ui/label'
 import {
@@ -820,6 +820,22 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
                 <span className="text-muted-foreground">Asignado:</span>
                 <span>{message.taskSummary.assignee}</span>
               </div>
+              {currentUser && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Creado por:</span>
+                  <div className="flex items-center gap-1.5">
+                    <Avatar className="h-5 w-5">
+                      {currentUser.avatar_url && (
+                        <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />
+                      )}
+                      <AvatarFallback className="text-[9px]">
+                        {[currentUser.nombre, currentUser.apellido].filter(Boolean).map(n => n![0]).join('').toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm">{[currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ')}</span>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
               <Button
@@ -2424,7 +2440,36 @@ setIsCreating(true)
                 min={new Date().toISOString().split('T')[0]}
               />
             </div>
-            
+
+            {/* Creado por */}
+            <div className="space-y-2">
+              <Label>Creado por</Label>
+              {currentUser ? (
+                <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/40">
+                  <Avatar className="h-6 w-6 shrink-0">
+                    {currentUser.avatar_url && (
+                      <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />
+                    )}
+                    <AvatarFallback className="text-[10px]">
+                      {[currentUser.nombre, currentUser.apellido]
+                        .filter(Boolean)
+                        .map(n => n![0])
+                        .join('')
+                        .toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm text-foreground">
+                    {[currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ')}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/40">
+                  <div className="h-6 w-6 rounded-full bg-muted animate-pulse shrink-0" />
+                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                </div>
+              )}
+            </div>
+
             <div className="pt-4 space-y-2">
               {/* Show create meeting button if type is "reunion" */}
               {dbTiposTarea.find(t => t.id === quickType)?.nombre?.toLowerCase().includes('reuni') && (

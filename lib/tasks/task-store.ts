@@ -1114,14 +1114,12 @@ addTask: async (taskData) => {
 
   if (!resolvedCreatedById) {
     const { data: { user } } = await supabase.auth.getUser()
-    console.log('[v0] addTask auth.getUser:', user?.id, user?.email)
     if (user) {
-      const { data: colab, error: colabError } = await supabase
+      const { data: colab } = await supabase
         .from('colaboradores')
         .select('id, nombre, apellido, avatar_url')
         .eq('user_id', user.id)
         .single()
-      console.log('[v0] addTask colaborador lookup:', colab, 'error:', colabError)
       if (colab) {
         resolvedCreatedById = colab.id
         resolvedCreatedByName = [colab.nombre, colab.apellido].filter(Boolean).join(' ')
@@ -1129,7 +1127,6 @@ addTask: async (taskData) => {
       }
     }
   }
-  console.log('[v0] addTask final createdBy:', resolvedCreatedById, resolvedCreatedByName)
   
   // Insert into tareas table
   // Support both single clientId and multiple clientIds
