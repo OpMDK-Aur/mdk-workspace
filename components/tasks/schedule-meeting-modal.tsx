@@ -33,6 +33,7 @@ interface DbCliente {
 interface DbColaborador {
   id: string
   nombre: string
+  apellido?: string
   avatar_url: string | null
 }
 
@@ -79,20 +80,18 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
       
       // Get current user
       const { data: { user } } = await supabase.auth.getUser()
-      console.log('[v0] Auth user:', user)
       if (user) {
-        const { data: colab, error: colabError } = await supabase
+        const { data: colab } = await supabase
           .from('colaboradores')
-          .select('id, nombre, avatar_url')
+          .select('id, nombre, apellido, avatar_url')
           .eq('user_id', user.id)
           .single()
-        console.log('[v0] Colaborador found:', colab, 'error:', colabError)
-        if (colab) setCurrentUser(colab)
+        if (colab) setCurrentUser(colab as any)
       }
       
       const [clientesRes, colabRes, tiposRes] = await Promise.all([
         supabase.from('clientes').select('id, nombre_del_negocio').order('nombre_del_negocio'),
-        supabase.from('colaboradores').select('id, nombre, avatar_url').order('nombre'),
+        supabase.from('colaboradores').select('id, nombre, apellido, avatar_url').order('nombre'),
         supabase.from('tipo_de_tareas').select('id, nombre').eq('activo', true).order('nombre'),
       ])
       if (clientesRes.data) setDbClientes(clientesRes.data)
@@ -135,12 +134,12 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
       if (user && !submittingUser) {
         const { data: colab } = await supabase
           .from('colaboradores')
-          .select('id, nombre, avatar_url')
+          .select('id, nombre, apellido, avatar_url')
           .eq('user_id', user.id)
           .single()
-        if (colab) submittingUser = colab
+        if (colab) submittingUser = colab as any
       }
-      console.log('[v0] Submitting with user:', submittingUser)
+      const fullName = submittingUser ? [submittingUser.nombre, submittingUser.apellido].filter(Boolean).join(' ') : 'Usuario'
       
       const client = dbClientes.find((c) => c.id === clientId)
       const assignee = dbColaboradores.find((c) => c.id === assigneeId) || dbColaboradores[0]
@@ -190,7 +189,7 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
         result.event?.htmlLink ? `<p><a href="${result.event.htmlLink}" target="_blank">Ver en Calendar</a></p>` : '',
       ].join('')
 
-      console.log('[v0] Creating task with user:', submittingUser)
+      console.log('[v0] Creating task with user:', fullName)
       
       await addTask({
         title: meetingTitle,
@@ -206,12 +205,12 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
         dueDate: startDateTime,
         customFields: {},
         createdById: submittingUser?.id || null,
-        createdByName: submittingUser?.nombre || 'Usuario',
+        createdByName: fullName,
         comments: [{
           id: `comment-${Date.now()}`,
           content: meetingComment,
           userId: submittingUser?.id || 'system',
-          userName: submittingUser?.nombre || 'Sistema',
+          userName: fullName,
           userAvatar: submittingUser?.avatar_url || '',
           createdAt: new Date(),
         }],
