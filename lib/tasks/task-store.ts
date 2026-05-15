@@ -1131,15 +1131,19 @@ addTask: async (taskData) => {
   // Also insert initial comment if there are comments
   if (taskData.comments && taskData.comments.length > 0) {
     for (const comment of taskData.comments) {
-      await supabase
-        .from('tarea_comentarios')
+      const isSystem = comment.userId === 'system' || !comment.userId
+      const { error: commentError } = await supabase
+        .from('comentarios_tareas')
         .insert({
           tarea_id: id,
           contenido: comment.content,
-          autor_id: comment.userId === 'madky' ? null : comment.userId,
+          autor_id: isSystem ? null : comment.userId,
           autor_nombre: comment.userName,
-          es_sistema: comment.userId === 'madky',
+          es_sistema: isSystem,
         })
+      if (commentError) {
+        console.error('[v0] Error creating comment:', commentError)
+      }
     }
   }
   

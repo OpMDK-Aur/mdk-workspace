@@ -79,12 +79,14 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
       
       // Get current user
       const { data: { user } } = await supabase.auth.getUser()
+      console.log('[v0] Auth user:', user)
       if (user) {
-        const { data: colab } = await supabase
+        const { data: colab, error: colabError } = await supabase
           .from('colaboradores')
           .select('id, nombre, avatar_url')
           .eq('user_id', user.id)
           .single()
+        console.log('[v0] Colaborador found:', colab, 'error:', colabError)
         if (colab) setCurrentUser(colab)
       }
       
@@ -173,6 +175,8 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
         result.event?.htmlLink ? `<p><a href="${result.event.htmlLink}" target="_blank">Ver en Calendar</a></p>` : '',
       ].join('')
 
+      console.log('[v0] Creating task with currentUser:', currentUser)
+      
       await addTask({
         title: meetingTitle,
         description: null,
