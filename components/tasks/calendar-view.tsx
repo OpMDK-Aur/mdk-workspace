@@ -294,21 +294,35 @@ export function CalendarView() {
       </div>
       
       {/* Sidebar - Tasks without due date */}
-      <div className="w-72 border-l bg-card/50 flex flex-col">
-        <div className="px-4 py-3 border-b flex items-center justify-between cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setIsNoDateCollapsed(!isNoDateCollapsed)}>
-          <div className="flex items-center gap-2">
-            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">Sin fecha</h3>
-            <Badge variant="secondary" className="ml-auto">
-              {tasksWithoutDate.length}
-            </Badge>
-          </div>
-          {isNoDateCollapsed ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+      <div className={cn(
+        "border-l bg-card/50 flex flex-col transition-all duration-300",
+        isNoDateCollapsed ? "w-12" : "w-72"
+      )}>
+        <button
+          onClick={() => setIsNoDateCollapsed(!isNoDateCollapsed)}
+          className={cn(
+            "px-4 py-3 border-b flex items-center justify-between cursor-pointer hover:bg-muted/50 transition-colors",
+            isNoDateCollapsed ? "w-12 h-auto flex-col gap-2 p-2" : "w-full"
           )}
-        </div>
+        >
+          {isNoDateCollapsed ? (
+            <div className="flex flex-col items-center gap-2">
+              <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+              <span className="text-[10px] font-medium text-muted-foreground rotate-90 whitespace-nowrap h-4 flex items-center">
+                {tasksWithoutDate.length}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 w-full">
+              <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-medium">Sin fecha</h3>
+              <Badge variant="secondary" className="ml-auto">
+                {tasksWithoutDate.length}
+              </Badge>
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            </div>
+          )}
+        </button>
         
         {!isNoDateCollapsed && (
           <ScrollArea className="flex-1">
