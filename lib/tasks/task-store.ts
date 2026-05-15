@@ -48,6 +48,9 @@ interface ComentarioDB {
   es_sistema: boolean
   created_at: string
   updated_at: string
+  profiles?: {
+    avatar_url: string | null
+  } | null
 }
 
 function mapComentarioToComment(comentario: ComentarioDB): TaskComment {
@@ -56,7 +59,7 @@ function mapComentarioToComment(comentario: ComentarioDB): TaskComment {
     content: comentario.contenido,
     userId: comentario.autor_id || 'system',
     userName: comentario.autor_nombre,
-    userAvatar: null,
+    userAvatar: comentario.profiles?.avatar_url || null,
     createdAt: new Date(comentario.created_at),
   }
 }
@@ -875,7 +878,7 @@ export const useTaskStore = create<TaskStore>()(
         const supabase = createClient()
         const { data: comentarios } = await supabase
           .from('comentarios_tareas')
-          .select('*')
+          .select('*, profiles(avatar_url)')
           .eq('tarea_id', id)
           .order('created_at', { ascending: true })
         
