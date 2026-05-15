@@ -1818,27 +1818,30 @@ export function TaskDetailPanel() {
                               assigneeAvatar: newAssignees[0]?.avatar_url || null,
                             })
                           }}
-  />
-  </div>
+                        />
+                      </div>
 
-  <div>
-  <Label className="text-xs text-muted-foreground mb-1.5 block">Creado por</Label>
-  <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/30">
-    <Avatar className="h-5 w-5">
-      {task.createdByAvatar && <AvatarImage src={task.createdByAvatar} alt={task.createdByName} />}
-      <AvatarFallback className="text-[9px]">{getInitials(task.createdByName)}</AvatarFallback>
-    </Avatar>
-    <span className="text-sm">{task.createdByName}</span>
-  </div>
-  </div>
-  
-  <div className="space-y-3">
-  <div>
-  <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo de tarea</Label>
+                      <div>
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">Creado por</Label>
+                        <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/30">
+                          <Avatar className="h-5 w-5">
+                            {task.createdByAvatar && <AvatarImage src={task.createdByAvatar} alt={task.createdByName} />}
+                            <AvatarFallback className="text-[9px]">{getInitials(task.createdByName)}</AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm">{task.createdByName}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo de tarea</Label>
                           <SearchableTaskTypeSelect 
                             tiposTarea={tiposTarea}
                             value={task.type}
-                            onValueChange={(v) => updateTask(task.id, { type: v as TaskType })}
+                            onValueChange={(v) => {
+                              const tipo = tiposTarea.find(t => t.id === v)
+                              updateTask(task.id, { type: v as TaskType, typeName: tipo?.nombre || '' })
+                            }}
                           />
                         </div>
                         <div>
@@ -1994,7 +1997,10 @@ export function TaskDetailPanel() {
                       <SearchableTaskTypeSelect 
                         tiposTarea={tiposTarea}
                         value={task.type}
-                        onValueChange={(v) => updateTask(task.id, { type: v as TaskType })}
+                        onValueChange={(v) => {
+                          const tipo = tiposTarea.find(t => t.id === v)
+                          updateTask(task.id, { type: v as TaskType, typeName: tipo?.nombre || '' })
+                        }}
                       />
                     </div>
                     <div>

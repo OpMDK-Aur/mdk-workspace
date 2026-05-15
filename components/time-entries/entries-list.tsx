@@ -217,6 +217,7 @@ export function EntriesList() {
                 cliente={getCliente(entry.cliente_id)}
                 tipoTarea={getTipoTarea(entry.tipo_tarea_id)}
                 clientes={clientes}
+                tiposTarea={tiposTarea}
                 onContinue={() => handleContinue(entry)}
                 onUpdate={updateEntry}
                 onDelete={() => handleDelete(entry.id)}
@@ -293,10 +294,22 @@ interface EntryRowProps {
   onDelete: () => void
 }
 
-function EntryRow({ entry, cliente, tipoTarea, clientes, onContinue, onUpdate, onDelete }: EntryRowProps) {
-  const [editingField, setEditingField] = useState<'description' | 'client' | 'start' | 'end' | null>(null)
+interface EntryRowProps {
+  entry: TimeEntry
+  cliente?: Cliente
+  tipoTarea?: TipoDeTarea
+  clientes: Cliente[]
+  tiposTarea?: TipoDeTarea[]
+  onContinue: () => void
+  onUpdate: (id: string, updates: Partial<TimeEntry>) => Promise<void>
+  onDelete: () => void
+}
+
+function EntryRow({ entry, cliente, tipoTarea, clientes, tiposTarea = [], onContinue, onUpdate, onDelete }: EntryRowProps) {
+  const [editingField, setEditingField] = useState<'description' | 'client' | 'type' | 'start' | 'end' | null>(null)
   const [tempDescription, setTempDescription] = useState(entry.descripcion)
   const [tempClienteId, setTempClienteId] = useState(entry.cliente_id)
+  const [tempTipoTareaId, setTempTipoTareaId] = useState(entry.tipo_tarea_id)
   const [tempStart, setTempStart] = useState('')
   const [tempEnd, setTempEnd] = useState('')
 
@@ -330,6 +343,11 @@ function EntryRow({ entry, cliente, tipoTarea, clientes, onContinue, onUpdate, o
     setEditingField('client')
   }
 
+  const handleStartEditType = () => {
+    setTempTipoTareaId(entry.tipo_tarea_id)
+    setEditingField('type')
+  }
+
   const handleStartEditStart = () => {
     setTempStart(formatDateTimeForInput(entry.iniciado_en))
     setEditingField('start')
@@ -350,6 +368,13 @@ function EntryRow({ entry, cliente, tipoTarea, clientes, onContinue, onUpdate, o
   const handleSaveClient = async (newClientId: string) => {
     if (newClientId !== entry.cliente_id) {
       await onUpdate(entry.id, { cliente_id: newClientId })
+    }
+    setEditingField(null)
+  }
+
+  const handleSaveType = async (newTipoId: string) => {
+    if (newTipoId !== entry.tipo_tarea_id) {
+      await onUpdate(entry.id, { tipo_tarea_id: newTipoId || null })
     }
     setEditingField(null)
   }
@@ -429,8 +454,31 @@ function EntryRow({ entry, cliente, tipoTarea, clientes, onContinue, onUpdate, o
             {entry.descripcion || 'Añadir descripción'}
           </p>
         )}
-        {tipoTarea && (
-          <span className="text-xs text-primary">{tipoTarea.nombre}</span>
+        {editingField === 'type' ? (
+          <Select 
+            value={tempTipoTareaId || ''} 
+            onValueChange={(val) => handleSaveType(val)}
+            open={true}
+            onOpenChange={(open) => !open && setEditingField(null)}
+          >
+            <SelectTrigger className="h-6 text-xs w-full mt-1">
+              <SelectValue placeholder="Tipo de tarea" />
+            </SelectTrigger>
+            <SelectContent>
+              {tiposTarea.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.nombre}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <p 
+            className="text-xs text-primary cursor-pointer hover:text-primary/80 mt-0.5"
+            onClick={handleStartEditType}
+          >
+            {tipoTarea?.nombre || 'Añadir tipo'}
+          </p>
         )}
       </div>
 

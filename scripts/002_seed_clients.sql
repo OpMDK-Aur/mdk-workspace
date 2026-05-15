@@ -1,6 +1,7 @@
 -- Seed clients data from CSV
 INSERT INTO clients (business_name, contact_name, contact_lastname, phone, status, notion_id, fee_mdk, fee_aurelia, google_ads_customer_id, meta_ads_account_id, plan)
 VALUES
+  ('Interno', NULL, NULL, NULL, 'verde', NULL, NULL, NULL, NULL, NULL, 'Esencial'),
   ('ADT', 'Ignacio', NULL, '+5493513336638', 'verde', '11328c1c148d807298d4d22d05dacbe2', 2293905.80, 744804.30, '8445440084', '1043470857039136', 'Estratégico'),
   ('Al mundo viajes', 'Guillermo', 'Reynoso', '+5492644980972', 'verde', '31a28c1c148d808c9b5bc020592645a7', 1250000.00, 993080.00, NULL, NULL, 'Estratégico'),
   ('Augusto Daghero Prevención', 'Augusto', 'Daghero', '+5493515225169', 'amarillo', '2fc28c1c148d8070a1eefc0d9196faa8', 1200000.00, NULL, '9484516958', NULL, 'Esencial'),

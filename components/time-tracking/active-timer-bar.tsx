@@ -68,6 +68,7 @@ export function ActiveTimerBar() {
   const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
   const [colaborador, setColaborador] = useState<ColaboradorInfo | null>(null)
   const [isLoadingClients, setIsLoadingClients] = useState(true)
+  const [isLoadingTipos, setIsLoadingTipos] = useState(true)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [isStarting, setIsStarting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
@@ -119,6 +120,7 @@ export function ActiveTimerBar() {
           .order('nombre')
         
         if (tipos) setTiposTarea(tipos)
+        setIsLoadingTipos(false)
       }
 
       // Cargar clientes
@@ -213,10 +215,10 @@ export function ActiveTimerBar() {
         <Select
           value={tipoTareaId || ''}
           onValueChange={async (val) => await setTipoTareaId(val || null)}
-          disabled={tiposTarea.length === 0}
+          disabled={isLoadingTipos}
         >
           <SelectTrigger className="w-[200px] shrink-0">
-            <SelectValue placeholder="Tipo de tarea">
+            <SelectValue placeholder={isLoadingTipos ? 'Cargando...' : 'Tipo de tarea'}>
               {selectedTipo && (
                 <div className="flex items-center gap-2">
                   {selectedTipo.color && (
