@@ -31,7 +31,7 @@ import {
 import Link from 'next/link'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import { cn } from '@/lib/utils'
+import { cn, linkifyText } from '@/lib/utils'
 
 function getMessageText(parts: Array<{ type: string; text?: string }> | undefined): string {
   if (!parts || !Array.isArray(parts)) return ''
@@ -499,8 +499,8 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   
   // Render comment content with task and collaborator links
   const renderCommentContent = (content: string) => {
-    // Combined regex for #SHORTID (6 char hex) and @Name patterns
-    const mentionRegex = /(#([A-F0-9]{6}))|(@[\w\sáéíóúñÁÉÍÓÚÑ]+?)(?=\s|$|[.,;:!?])/gi
+    // Combined regex for #SHORTID (6 char hex), @Name patterns, and URLs
+    const mentionRegex = /(#([A-F0-9]{6}))|(@[\w\sáéíóúñÁÉÍÓÚÑ]+?)(?=\s|$|[.,;:!?])|((?:https?:\/\/|www\.)[^\s<>"{}|\\^`\[\]]*[^\s<>"{}|\\^`\[\].,;:!?()"'])/gi
     const parts: React.ReactNode[] = []
     let lastIndex = 0
     let match
@@ -528,6 +528,49 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
             <span className="truncate">{linkedTask?.titulo || `#${shortId}`}</span>
           </Link>
         )
+      } else if (match[3]) {
+        // User mention @Name
+        const mentionName = match[3].trim()
+        const colab = currentUser?.nombre === mentionName ? currentUser : undefined
+        
+        parts.push(
+          <span
+            key={`mention-${match.index}`}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-medium"
+          >
+            <AtSign className="h-3 w-3 shrink-0" />
+            @{colab?.nombre || mentionName}
+          </span>
+        )
+      } else if (match[4]) {
+        // URL link
+        const url = match[4]
+        const href = url.startsWith('www.') ? `https://${url}` : url
+        
+        parts.push(
+          <a
+            key={`url-${match.index}`}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline text-primary underline hover:opacity-80 transition-opacity break-all"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {url}
+          </a>
+        )
+      }
+      
+      lastIndex = match.index + match[0].length
+    }
+    
+    // Add remaining text
+    if (lastIndex < content.length) {
+      parts.push(content.slice(lastIndex))
+    }
+    
+    return parts.length > 0 ? parts : content
+  }
       } else if (match[3]) {
         // Collaborator mention @Name
         const mentionName = match[3].slice(1).trim() // Remove @

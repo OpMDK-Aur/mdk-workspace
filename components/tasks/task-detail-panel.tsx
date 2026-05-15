@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import { cn, linkifyText } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import {
   useTaskStore,
@@ -1175,7 +1175,7 @@ function CommentsSection({ task }: { task: Task }) {
                   ) : (
                     <div 
                       className="text-sm text-foreground/80 mt-2 break-words whitespace-pre-wrap [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_em]:italic [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block [&_img]:cursor-pointer [&_img]:hover:opacity-90 [&_img]:transition-opacity"
-                      dangerouslySetInnerHTML={{ __html: c.content }}
+                      dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
                       onClick={handleImageClick}
                     />
                   )}
