@@ -168,6 +168,7 @@ function mapTareaToTask(
     createdByName: (() => {
       if (tarea.creado_por && colaboradoresMap) {
         const creador = colaboradoresMap.get(tarea.creado_por)
+        console.log('[v0] mapTareaToTask creado_por:', tarea.creado_por, 'creador:', creador)
         if (creador) {
           return [creador.nombre, creador.apellido].filter(Boolean).join(' ')
         }
@@ -1143,6 +1144,29 @@ addTask: async (taskData) => {
       if (commentError) {
         console.error('[v0] Error creating comment:', commentError)
       }
+    }
+  }
+  
+  // Notify assigned users about the new task
+  const assignedUserIds = assigneeIds.filter(uid => uid && uid !== taskData.createdById)
+  if (assignedUserIds.length > 0) {
+    const notifications = assignedUserIds.map(userId => ({
+      usuario_id: userId,
+      tipo: 'tarea_asignada',
+      titulo: 'Nueva tarea asignada',
+      descripcion: taskData.title,
+      referencia_id: id,
+      referencia_tipo: 'tarea',
+      cliente_id: clientIds[0] || null,
+      leida: false,
+    }))
+    
+    const { error: notifError } = await supabase
+      .from('notificaciones')
+      .insert(notifications)
+    
+    if (notifError) {
+      console.error('[v0] Error creating task assignment notifications:', notifError)
     }
   }
   
