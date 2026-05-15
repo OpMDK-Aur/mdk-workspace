@@ -1838,7 +1838,10 @@ export function TaskDetailPanel() {
                           <SearchableTaskTypeSelect 
                             tiposTarea={tiposTarea}
                             value={task.type}
-                            onValueChange={(v) => updateTask(task.id, { type: v as TaskType })}
+                            onValueChange={(v) => {
+                              const tipo = tiposTarea.find(t => t.id === v)
+                              updateTask(task.id, { type: v as TaskType, typeName: tipo?.nombre || '' })
+                            }}
                           />
                         </div>
                         <div>
@@ -1994,7 +1997,10 @@ export function TaskDetailPanel() {
                       <SearchableTaskTypeSelect 
                         tiposTarea={tiposTarea}
                         value={task.type}
-                        onValueChange={(v) => updateTask(task.id, { type: v as TaskType })}
+                        onValueChange={(v) => {
+                          const tipo = tiposTarea.find(t => t.id === v)
+                          updateTask(task.id, { type: v as TaskType, typeName: tipo?.nombre || '' })
+                        }}
                       />
                     </div>
                     <div>
