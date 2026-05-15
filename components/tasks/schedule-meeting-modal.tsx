@@ -139,7 +139,14 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
           .single()
         if (colab) submittingUser = colab as any
       }
-      const fullName = submittingUser ? [submittingUser.nombre, submittingUser.apellido].filter(Boolean).join(' ') : 'Usuario'
+      
+      if (!submittingUser) {
+        setError('No se pudo obtener el usuario logueado.')
+        setIsSubmitting(false)
+        return
+      }
+      
+      const fullName = [submittingUser.nombre, submittingUser.apellido].filter(Boolean).join(' ')
       
       const client = dbClientes.find((c) => c.id === clientId)
       const assignee = dbColaboradores.find((c) => c.id === assigneeId) || dbColaboradores[0]
@@ -188,8 +195,6 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
         result.event?.hangoutLink ? `<p><a href="${result.event.hangoutLink}" target="_blank">Link de Google Meet</a></p>` : '',
         result.event?.htmlLink ? `<p><a href="${result.event.htmlLink}" target="_blank">Ver en Calendar</a></p>` : '',
       ].join('')
-
-      console.log('[v0] Creating task with user:', fullName)
       
       await addTask({
         title: meetingTitle,
@@ -204,14 +209,14 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
         type: reunionTipo?.id || '',
         dueDate: startDateTime,
         customFields: {},
-        createdById: submittingUser?.id || null,
+        createdById: submittingUser.id,
         createdByName: fullName,
         comments: [{
           id: `comment-${Date.now()}`,
           content: meetingComment,
-          userId: submittingUser?.id || 'system',
+          userId: submittingUser.id,
           userName: fullName,
-          userAvatar: submittingUser?.avatar_url || '',
+          userAvatar: submittingUser.avatar_url || '',
           createdAt: new Date(),
         }],
       })
