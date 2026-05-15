@@ -300,18 +300,24 @@ function EntryRow({ entry, cliente, tipoTarea, clientes, onContinue, onUpdate, o
   const [tempStart, setTempStart] = useState('')
   const [tempEnd, setTempEnd] = useState('')
 
-  // Format time for input (HH:MM)
-  const formatTimeForInput = (isoString: string | null) => {
+  // Format datetime for input (YYYY-MM-DDTHH:MM)
+  const formatDateTimeForInput = (isoString: string | null) => {
     if (!isoString) return ''
     const date = new Date(isoString)
-    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+    const offset = date.getTimezoneOffset()
+    const local = new Date(date.getTime() - offset * 60000)
+    return local.toISOString().slice(0, 16)
   }
 
-  // Get just the time portion for display
-  const getTimeDisplay = (isoString: string | null) => {
-    if (!isoString) return '--:--'
+  // Display: DD/MM HH:MM
+  const getDateTimeDisplay = (isoString: string | null) => {
+    if (!isoString) return '--'
     const date = new Date(isoString)
-    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+    const day = date.getDate().toString().padStart(2, '0')
+    const month = (date.getMonth() + 1).toString().padStart(2, '0')
+    const hours = date.getHours().toString().padStart(2, '0')
+    const mins = date.getMinutes().toString().padStart(2, '0')
+    return `${day}/${month} ${hours}:${mins}`
   }
 
   const handleStartEditDescription = () => {
@@ -325,12 +331,12 @@ function EntryRow({ entry, cliente, tipoTarea, clientes, onContinue, onUpdate, o
   }
 
   const handleStartEditStart = () => {
-    setTempStart(formatTimeForInput(entry.iniciado_en))
+    setTempStart(formatDateTimeForInput(entry.iniciado_en))
     setEditingField('start')
   }
 
   const handleStartEditEnd = () => {
-    setTempEnd(formatTimeForInput(entry.finalizado_en))
+    setTempEnd(formatDateTimeForInput(entry.finalizado_en))
     setEditingField('end')
   }
 
@@ -348,26 +354,21 @@ function EntryRow({ entry, cliente, tipoTarea, clientes, onContinue, onUpdate, o
     setEditingField(null)
   }
 
-  const handleSaveTime = async (field: 'start' | 'end', timeValue: string) => {
-    const [hours, minutes] = timeValue.split(':').map(Number)
-    const baseDate = new Date(field === 'start' ? entry.iniciado_en : (entry.finalizado_en || entry.iniciado_en))
-    baseDate.setHours(hours, minutes, 0, 0)
-    
+  const handleSaveDateTime = async (field: 'start' | 'end', value: string) => {
+    if (!value) { setEditingField(null); return }
+    const newDate = new Date(value)
     const updates: Partial<TimeEntry> = {}
     if (field === 'start') {
-      updates.iniciado_en = baseDate.toISOString()
-      // Recalculate duration
+      updates.iniciado_en = newDate.toISOString()
       if (entry.finalizado_en) {
-        const endTime = new Date(entry.finalizado_en).getTime()
-        updates.duracion_seg = Math.floor((endTime - baseDate.getTime()) / 1000)
+        const endMs = new Date(entry.finalizado_en).getTime()
+        updates.duracion_seg = Math.max(0, Math.floor((endMs - newDate.getTime()) / 1000))
       }
     } else {
-      updates.finalizado_en = baseDate.toISOString()
-      // Recalculate duration
-      const startTime = new Date(entry.iniciado_en).getTime()
-      updates.duracion_seg = Math.floor((baseDate.getTime() - startTime) / 1000)
+      updates.finalizado_en = newDate.toISOString()
+      const startMs = new Date(entry.iniciado_en).getTime()
+      updates.duracion_seg = Math.max(0, Math.floor((newDate.getTime() - startMs) / 1000))
     }
-    
     await onUpdate(entry.id, updates)
     setEditingField(null)
   }
@@ -433,43 +434,43 @@ function EntryRow({ entry, cliente, tipoTarea, clientes, onContinue, onUpdate, o
         )}
       </div>
 
-      {/* Time Range - Editable */}
+      {/* DateTime Range - Editable (fecha + hora) */}
       <div className="flex items-center gap-1 text-sm shrink-0">
         {editingField === 'start' ? (
           <Input
-            type="time"
+            type="datetime-local"
             value={tempStart}
             onChange={(e) => setTempStart(e.target.value)}
-            onBlur={() => handleSaveTime('start', tempStart)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSaveTime('start', tempStart)}
-            className="h-7 w-20 text-xs"
+            onBlur={() => handleSaveDateTime('start', tempStart)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSaveDateTime('start', tempStart)}
+            className="h-7 w-36 text-xs"
             autoFocus
           />
         ) : (
           <span 
-            className="cursor-pointer hover:text-primary px-1 rounded hover:bg-muted"
+            className="cursor-pointer hover:text-primary px-1 rounded hover:bg-muted text-xs"
             onClick={handleStartEditStart}
           >
-            {getTimeDisplay(entry.iniciado_en)}
+            {getDateTimeDisplay(entry.iniciado_en)}
           </span>
         )}
         <span className="text-muted-foreground">-</span>
         {editingField === 'end' ? (
           <Input
-            type="time"
+            type="datetime-local"
             value={tempEnd}
             onChange={(e) => setTempEnd(e.target.value)}
-            onBlur={() => handleSaveTime('end', tempEnd)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSaveTime('end', tempEnd)}
-            className="h-7 w-20 text-xs"
+            onBlur={() => handleSaveDateTime('end', tempEnd)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSaveDateTime('end', tempEnd)}
+            className="h-7 w-36 text-xs"
             autoFocus
           />
         ) : (
           <span 
-            className="cursor-pointer hover:text-primary px-1 rounded hover:bg-muted"
+            className="cursor-pointer hover:text-primary px-1 rounded hover:bg-muted text-xs"
             onClick={handleStartEditEnd}
           >
-            {getTimeDisplay(entry.finalizado_en)}
+            {getDateTimeDisplay(entry.finalizado_en)}
           </span>
         )}
       </div>
