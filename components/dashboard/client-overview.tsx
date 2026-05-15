@@ -40,6 +40,24 @@ interface UnidadDeNegocio {
   unidad_de_negocio: { id: string; nombre: string } | null
 }
 
+interface MetricaColaborador {
+  id: string
+  colaborador_id: string
+  fee_administrado: number
+  valor_hora: number
+  horas_teoricas_cliente: number
+  minimo_no_negociable_horas: number
+  horas_objetivo: number
+  acumulado_mes_asignado: number
+  porcentaje_asignacion: number
+  colaboradores: {
+    id: string
+    nombre: string
+    apellido: string
+    avatar_url: string | null
+  } | null
+}
+
 interface ClientOverviewProps {
   client: Client
   profiles: Profile[]
@@ -50,6 +68,7 @@ interface ClientOverviewProps {
   horasEquipo?: number // total team hours this month for this client
   misHoras?: number // current user's hours this month for this client
   unidadesDeNegocio?: UnidadDeNegocio[]
+  metricasColaborador?: MetricaColaborador[]
 }
 
 type DedicationStatus = 'normal' | 'baja' | 'exceso' | 'sin_datos'
@@ -197,7 +216,7 @@ function MiniKPI({ label, value, sub }: { label: string; value: string; sub?: st
   )
 }
 
-// ── Person chip (editable) ────────────────────────────────────────────────────
+// ── Person chip (editable) ──────────────────────────────────────────────────��─
 function EditablePersonChip({ 
   profile, 
   label, 
@@ -338,7 +357,7 @@ const getSemaforoByNombre = (nombre: string | null) => {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0, unidadesDeNegocio = [] }: ClientOverviewProps) {
+export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0, unidadesDeNegocio = [], metricasColaborador = [] }: ClientOverviewProps) {
   const sortedUnidades = sortUnidades(unidadesDeNegocio)
   const [preset, setPreset]           = useState('last_30d')
   const [rows, setRows]               = useState<ScorecardRow[]>([])
@@ -805,23 +824,106 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             </CardContent>
           </Card>
 
-          {/* Hours Card - Objetivo vs Acumuladas */}
-          <Card>
+          {/* Hours Card - Metricas por colaborador */}
+          <Card className="row-span-2">
             <CardContent className="pt-5 pb-5">
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-2 mb-4">
                 <Clock className="h-4 w-4 text-primary" />
                 <p className="text-xs text-muted-foreground font-medium">Horas del equipo</p>
               </div>
-              <div className="space-y-2">
+              
+              {/* Totales del equipo */}
+              <div className="space-y-2 mb-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">Horas objetivo</span>
-                  <span className="text-sm font-semibold text-foreground">{horasObjetivo}h / semana</span>
+                  <span className="text-xs text-muted-foreground">Total horas objetivo</span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {metricasColaborador.reduce((acc, m) => acc + (m.horas_objetivo || 0), 0).toFixed(1)}h
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">Horas acumuladas</span>
-                  <span className="text-sm font-semibold text-foreground">{formatHours(horasEquipo)}</span>
+                  <span className="text-xs text-muted-foreground">Total horas acumuladas</span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {metricasColaborador.reduce((acc, m) => acc + (m.acumulado_mes_asignado || 0), 0).toFixed(1)}h
+                  </span>
                 </div>
               </div>
+              
+              {/* Lista de colaboradores con sus metricas */}
+              {metricasColaborador.length > 0 ? (
+                <div className="space-y-3 border-t border-border pt-4">
+                  <p className="text-xs text-muted-foreground font-medium">Detalle por colaborador</p>
+                  <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                    {metricasColaborador.map((metrica) => {
+                      const colaborador = metrica.colaboradores
+                      const nombre = colaborador 
+                        ? `${colaborador.nombre || ''} ${colaborador.apellido || ''}`.trim() 
+                        : 'Sin nombre'
+                      const iniciales = nombre.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+                      const progreso = metrica.horas_objetivo > 0 
+                        ? Math.min((metrica.acumulado_mes_asignado / metrica.horas_objetivo) * 100, 100) 
+                        : 0
+                      const colorProgreso = progreso >= 100 
+                        ? 'bg-status-verde' 
+                        : progreso >= 70 
+                          ? 'bg-status-amarillo' 
+                          : 'bg-status-naranja'
+                      
+                      return (
+                        <div key={metrica.id} className="p-3 rounded-lg bg-muted/30 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-7 w-7 shrink-0">
+                              {colaborador?.avatar_url && <AvatarImage src={colaborador.avatar_url} alt={nombre} />}
+                              <AvatarFallback className="bg-primary/20 text-primary text-[10px]">
+                                {iniciales}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm font-medium text-foreground truncate">{nombre}</span>
+                          </div>
+                          
+                          {/* Barra de progreso */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-muted-foreground">
+                                {metrica.acumulado_mes_asignado.toFixed(1)}h / {metrica.horas_objetivo.toFixed(1)}h objetivo
+                              </span>
+                              <span className={cn(
+                                'font-medium',
+                                progreso >= 100 ? 'text-status-verde' : progreso >= 70 ? 'text-status-amarillo' : 'text-status-naranja'
+                              )}>
+                                {progreso.toFixed(0)}%
+                              </span>
+                            </div>
+                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div 
+                                className={cn('h-full rounded-full transition-all', colorProgreso)}
+                                style={{ width: `${progreso}%` }}
+                              />
+                            </div>
+                          </div>
+                          
+                          {/* Detalle de horas */}
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Minimo:</span>
+                              <span className="font-medium">{metrica.minimo_no_negociable_horas.toFixed(1)}h</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Valor/hora:</span>
+                              <span className="font-medium">{formatCurrency(metrica.valor_hora)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="border-t border-border pt-4">
+                  <p className="text-xs text-muted-foreground text-center py-4">
+                    Sin metricas asignadas para este mes
+                  </p>
+                </div>
+              )}
               
               {/* Mis horas (colaborador actual) */}
               <div className="mt-4 pt-3 border-t border-border">

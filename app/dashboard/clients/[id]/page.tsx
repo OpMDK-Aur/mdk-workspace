@@ -86,6 +86,33 @@ export default async function ClientPage({ params }: Props) {
 
   const horasEquipo = (allEntries ?? []).reduce((acc, e) => acc + ((e.duracion_seg ?? 0) / 3600), 0)
 
+  // Get metricas_colaborador for this client (current month/year)
+  const currentMonth = now.getMonth() + 1
+  const currentYear = now.getFullYear()
+  
+  const { data: metricasColaborador } = await supabase
+    .from('metricas_colaborador')
+    .select(`
+      id,
+      colaborador_id,
+      fee_administrado,
+      valor_hora,
+      horas_teoricas_cliente,
+      minimo_no_negociable_horas,
+      horas_objetivo,
+      acumulado_mes_asignado,
+      porcentaje_asignacion,
+      colaboradores:colaborador_id (
+        id,
+        nombre,
+        apellido,
+        avatar_url
+      )
+    `)
+    .eq('cliente_id', id)
+    .eq('mes', currentMonth)
+    .eq('anio', currentYear)
+
   // Get current user's tracked hours this month for this client (my hours)
   const { data: myEntries } = user
     ? await supabase
@@ -116,6 +143,7 @@ export default async function ClientPage({ params }: Props) {
       horasEquipo={horasEquipo}
       misHoras={misHoras}
       unidadesDeNegocio={unidadesDeNegocio ?? []}
+      metricasColaborador={metricasColaborador ?? []}
     />
   )
 }
