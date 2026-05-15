@@ -1219,9 +1219,10 @@ function CommentsSection({ task }: { task: Task }) {
                     </div>
                   ) : (
                     <div 
-                      className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block [&_img]:cursor-pointer [&_img]:hover:opacity-90 [&_img]:transition-opacity"
+                      className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block [&_img]:cursor-pointer [&_img]:hover:opacity-90 [&_img]:transition-opacity [&]:break-words [&]:overflow-wrap-break-word"
                       dangerouslySetInnerHTML={{ __html: c.content }}
                       onClick={handleImageClick}
+                      style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
                     />
                   )}
                 </div>
