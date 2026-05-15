@@ -953,11 +953,23 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   const [dbClientes, setDbClientes] = useState<DbCliente[]>([])
   const [dbColaboradores, setDbColaboradores] = useState<DbColaborador[]>([])
   const [dbTiposTarea, setDbTiposTarea] = useState<DbTipoTarea[]>([])
+  const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; apellido?: string } | null>(null)
   
   // Load dynamic data
   useEffect(() => {
     async function loadData() {
       const supabase = createClient()
+      
+      // Get logged-in collaborator
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: colab } = await supabase
+          .from('colaboradores')
+          .select('id, nombre, apellido')
+          .eq('user_id', user.id)
+          .single()
+        if (colab) setCurrentUser(colab)
+      }
       
   const [clientesRes, colabRes, tiposRes] = await Promise.all([
   supabase.from('clientes').select('id, nombre_del_negocio, plan').order('nombre_del_negocio'),
@@ -1456,6 +1468,8 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       // Parse date as local timezone to avoid UTC offset issues
       dueDate: quickDueDate ? new Date(quickDueDate + 'T12:00:00') : null,
       customFields: {},
+      createdById: currentUser?.id || null,
+      createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
     })
     
     setIsCreating(false)
@@ -1848,11 +1862,13 @@ setIsCreating(true)
           type: reunionTipo?.id || '', // UUID from tipo_de_tareas
           dueDate: startDateTime,
           customFields: {},
+          createdById: currentUser?.id || null,
+          createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
           comments: [{
             id: `comment-${Date.now()}`,
             content: meetingComment,
-            userId: 'madky',
-            userName: 'Madky (IA)',
+            userId: currentUser?.id || 'system',
+            userName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
             userAvatar: '',
             createdAt: new Date(),
           }],
@@ -2141,6 +2157,8 @@ setIsCreating(true)
       // Parse date as local timezone to avoid UTC offset issues
       dueDate: taskData.dueDate ? new Date(taskData.dueDate.includes('T') ? taskData.dueDate : taskData.dueDate + 'T12:00:00') : null,
       customFields: {},
+      createdById: currentUser?.id || null,
+      createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
       comments: [initialComment],
     })
       } catch (err) {
