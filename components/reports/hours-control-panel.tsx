@@ -363,6 +363,16 @@ export function HoursControlPanel() {
         maximo: m.horas_objetivo || 0,
         asignado: m.acumulado_mes_asignado || 0,
       }
+      
+      console.log("[v0] Datos de métrica:", {
+        cliente: clienteData.cliente.nombre_del_negocio,
+        colaborador: m.colaborador?.nombre,
+        minimo: clienteData.minimo,
+        maximo: clienteData.maximo,
+        asignado: clienteData.asignado,
+        minimo_raw: m.minimo_no_negociable_horas,
+        maximo_raw: m.horas_objetivo
+      })
 
       if (existing) {
         existing.totalMinimo += clienteData.minimo
