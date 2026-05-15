@@ -70,22 +70,20 @@ export function TaskBoard() {
   // Track if seguimiento was already generated this session
   const seguimientoGenerated = useRef(false)
   
-  // Open task from URL parameter (e.g., from notification click)
-  useEffect(() => {
-    const taskId = searchParams.get('task')
-    if (taskId) {
-      setSelectedTask(taskId)
-    }
-  }, [searchParams, setSelectedTask])
-  
   // Generate seguimiento tasks for MDK clients on mount, then load all tasks
   useEffect(() => {
     const initTasks = async () => {
-      // Load tasks 
-      loadTasks()
+      // Load tasks and wait for them to be ready
+      await loadTasks()
       
       // Load saved filters from database
       loadSavedFilters()
+      
+      // Open task from URL parameter (e.g., from notification click) AFTER tasks are loaded
+      const taskId = searchParams.get('task')
+      if (taskId) {
+        setSelectedTask(taskId)
+      }
       
       // Only generate seguimiento once per session (non-blocking)
       if (!seguimientoGenerated.current) {
@@ -98,7 +96,7 @@ export function TaskBoard() {
     }
     initTasks()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [searchParams])
 
   const hasSimpleFilters = filters.priority || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned
   const hasAdvancedFilters = advancedFilters.length > 0

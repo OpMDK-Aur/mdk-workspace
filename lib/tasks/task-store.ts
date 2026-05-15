@@ -174,6 +174,15 @@ function mapTareaToTask(
       }
       return 'Sistema'
     })(),
+    createdByAvatar: (() => {
+      if (tarea.creado_por && colaboradoresMap) {
+        const creador = colaboradoresMap.get(tarea.creado_por)
+        if (creador) {
+          return creador.avatar_url || undefined
+        }
+      }
+      return undefined
+    })(),
     createdAt: new Date(tarea.created_at),
     updatedAt: new Date(tarea.updated_at),
   }
@@ -518,9 +527,9 @@ export const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; b
 export const STATUS_ORDER: TaskStatus[] = ['pendiente_aprobacion', 'pendiente', 'resolviendo', 'demorada', 'pausada', 'resuelto']
 
 export const PRIORITY_CONFIG: Record<TaskPriority, { label: string; color: string; bgColor: string }> = {
-  alta: { label: 'Alta', color: 'text-red-700 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-500/15' },
-  media: { label: 'Media', color: 'text-amber-700 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-500/15' },
-  baja: { label: 'Baja', color: 'text-green-700 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-500/15' },
+  alta:  { label: 'Alta',  color: 'text-red-800 dark:text-red-300',    bgColor: 'bg-red-100 dark:bg-red-900/50' },
+  media: { label: 'Media', color: 'text-amber-900 dark:text-amber-300', bgColor: 'bg-amber-100 dark:bg-amber-900/50' },
+  baja:  { label: 'Baja',  color: 'text-green-900 dark:text-green-300', bgColor: 'bg-green-100 dark:bg-green-900/50' },
 }
 
 export const TYPE_CONFIG: Record<string, { label: string; color: string; icon?: string }> = {
@@ -871,7 +880,15 @@ export const useTaskStore = create<TaskStore>()(
     
     // Load comments on demand when task is selected
     if (id) {
-      const task = get().tasks.find(t => t.id === id)
+      // Wait for task to be available (may not be loaded yet if navigating via URL)
+      let task = get().tasks.find(t => t.id === id)
+      
+      // If task not found, wait a bit for loadTasks to finish and retry
+      if (!task) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        task = get().tasks.find(t => t.id === id)
+      }
+      
       // Only load if comments haven't been loaded yet
       if (task && task.comments.length === 0) {
         const supabase = createClient()
@@ -1097,6 +1114,27 @@ updateTask: async (taskId, updates) => {
 addTask: async (taskData) => {
   const supabase = createClient()
   const id = crypto.randomUUID()
+
+  // Always resolve the logged-in collaborator at insert time
+  let resolvedCreatedById = taskData.createdById || null
+  let resolvedCreatedByName = taskData.createdByName || 'Sistema'
+  let resolvedCreatedByAvatar = taskData.createdByAvatar || undefined
+
+  if (!resolvedCreatedById) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user?.email) {
+      const { data: colab } = await supabase
+        .from('colaboradores')
+        .select('id, nombre, apellido, avatar_url')
+        .eq('email', user.email)
+        .single()
+      if (colab) {
+        resolvedCreatedById = colab.id
+        resolvedCreatedByName = [colab.nombre, colab.apellido].filter(Boolean).join(' ')
+        resolvedCreatedByAvatar = colab.avatar_url || undefined
+      }
+    }
+  }
   
   // Insert into tareas table
   // Support both single clientId and multiple clientIds
@@ -1119,7 +1157,7 @@ addTask: async (taskData) => {
   estado: taskData.status || 'pendiente',
   prioridad: taskData.priority || 'media',
   fecha_vencimiento: taskData.dueDate || null,
-  creado_por: taskData.createdById || null,
+  creado_por: resolvedCreatedById,
   })
   
   if (error) {
@@ -1146,6 +1184,29 @@ addTask: async (taskData) => {
     }
   }
   
+  // Notify assigned users about the new task
+  const assignedColabIds = assigneeIds.filter(uid => uid && uid !== taskData.createdById)
+  if (assignedColabIds.length > 0) {
+    const notifications = assignedColabIds.map(colaboradorId => ({
+      colaborador_id: colaboradorId,
+      tipo: 'tarea_asignada',
+      titulo: 'Nueva tarea asignada',
+      descripcion: taskData.title,
+      referencia_id: id,
+      referencia_tipo: 'tarea',
+      cliente_id: clientIds[0] || null,
+      leida: false,
+    }))
+    
+    const { error: notifError } = await supabase
+      .from('notificaciones')
+      .insert(notifications)
+    
+    if (notifError) {
+      console.error('[v0] Error creating task assignment notifications:', notifError)
+    }
+  }
+  
   // Update local state
   set((state) => ({
     tasks: [
@@ -1154,8 +1215,9 @@ addTask: async (taskData) => {
         id,
         clientIds: taskData.clientIds || (taskData.clientId ? [taskData.clientId] : []),
         clients: taskData.clients || (taskData.clientId ? [{ id: taskData.clientId, nombre_del_negocio: taskData.clientName || '' }] : []),
-        createdById: taskData.createdById || null,
-        createdByName: taskData.createdByName || 'Usuario',
+        createdById: resolvedCreatedById,
+        createdByName: resolvedCreatedByName,
+        createdByAvatar: resolvedCreatedByAvatar,
         createdAt: new Date(),
         updatedAt: new Date(),
         activities: [

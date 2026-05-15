@@ -21,6 +21,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { ChevronsUpDown } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Calendar, Clock, Users, Video, Loader2, CheckCircle2, ExternalLink } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -78,13 +82,13 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
     async function loadData() {
       const supabase = createClient()
       
-      // Get current user
+      // Get current user by email (colaboradores has no user_id column)
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
+      if (user?.email) {
         const { data: colab } = await supabase
           .from('colaboradores')
           .select('id, nombre, apellido, avatar_url')
-          .eq('user_id', user.id)
+          .eq('email', user.email)
           .single()
         if (colab) setCurrentUser(colab as any)
       }
@@ -128,14 +132,14 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
     try {
       const supabase = createClient()
       
-      // Get current user at time of submission
+      // Get current user at time of submission by email
       const { data: { user } } = await supabase.auth.getUser()
       let submittingUser = currentUser
-      if (user && !submittingUser) {
+      if (user?.email && !submittingUser) {
         const { data: colab } = await supabase
           .from('colaboradores')
           .select('id, nombre, apellido, avatar_url')
-          .eq('user_id', user.id)
+          .eq('email', user.email)
           .single()
         if (colab) submittingUser = colab as any
       }
@@ -211,6 +215,7 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
         customFields: {},
         createdById: submittingUser.id,
         createdByName: fullName,
+        createdByAvatar: submittingUser.avatar_url || undefined,
         comments: [{
           id: `comment-${Date.now()}`,
           content: meetingComment,
@@ -360,11 +365,34 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
               </Label>
               <Select value={assigneeId} onValueChange={setAssigneeId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar responsable..." />
+                  {assigneeId ? (
+                    (() => {
+                      const selected = dbColaboradores.find(c => c.id === assigneeId)
+                      return selected ? (
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-5 w-5 shrink-0">
+                            {selected.avatar_url && <AvatarImage src={selected.avatar_url} alt={selected.nombre} />}
+                            <AvatarFallback className="text-[9px]">{selected.nombre?.[0]?.toUpperCase() || '?'}</AvatarFallback>
+                          </Avatar>
+                          <span>{selected.nombre}</span>
+                        </div>
+                      ) : <SelectValue placeholder="Seleccionar responsable..." />
+                    })()
+                  ) : (
+                    <SelectValue placeholder="Seleccionar responsable..." />
+                  )}
                 </SelectTrigger>
                 <SelectContent>
                   {dbColaboradores.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+                    <SelectItem key={c.id} value={c.id}>
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-5 w-5 shrink-0">
+                          {c.avatar_url && <AvatarImage src={c.avatar_url} alt={c.nombre} />}
+                          <AvatarFallback className="text-[9px]">{c.nombre?.[0]?.toUpperCase() || '?'}</AvatarFallback>
+                        </Avatar>
+                        {c.nombre}
+                      </div>
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

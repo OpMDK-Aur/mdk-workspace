@@ -37,7 +37,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Label } from '@/components/ui/label'
 import {
@@ -820,6 +820,22 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
                 <span className="text-muted-foreground">Asignado:</span>
                 <span>{message.taskSummary.assignee}</span>
               </div>
+              {currentUser && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Creado por:</span>
+                  <div className="flex items-center gap-1.5">
+                    <Avatar className="h-5 w-5">
+                      {currentUser.avatar_url && (
+                        <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />
+                      )}
+                      <AvatarFallback className="text-[9px]">
+                        {[currentUser.nombre, currentUser.apellido].filter(Boolean).map(n => n![0]).join('').toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm">{[currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ')}</span>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
               <Button
@@ -953,11 +969,25 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   const [dbClientes, setDbClientes] = useState<DbCliente[]>([])
   const [dbColaboradores, setDbColaboradores] = useState<DbColaborador[]>([])
   const [dbTiposTarea, setDbTiposTarea] = useState<DbTipoTarea[]>([])
+  const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; apellido?: string; avatar_url?: string | null } | null>(null)
   
-  // Load dynamic data
+  // Load dynamic data when modal opens
   useEffect(() => {
+    if (!open) return
+    
     async function loadData() {
       const supabase = createClient()
+      
+      // Get logged-in collaborator by email (colaboradores has no user_id column)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.email) {
+        const { data: colab } = await supabase
+          .from('colaboradores')
+          .select('id, nombre, apellido, avatar_url')
+          .eq('email', user.email)
+          .single()
+        if (colab) setCurrentUser(colab)
+      }
       
   const [clientesRes, colabRes, tiposRes] = await Promise.all([
   supabase.from('clientes').select('id, nombre_del_negocio, plan').order('nombre_del_negocio'),
@@ -965,20 +995,13 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
         supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
       ])
       
-      console.log('[v0] NewTaskModal loadData:', {
-        clientes: clientesRes.data?.length,
-        clientesError: clientesRes.error,
-        colaboradores: colabRes.data?.length,
-        tipos: tiposRes.data?.length,
-      })
-      
       if (clientesRes.data) setDbClientes(clientesRes.data)
       if (colabRes.data) setDbColaboradores(colabRes.data)
       if (tiposRes.data) setDbTiposTarea(tiposRes.data)
     }
     
     loadData()
-  }, [])
+  }, [open])
   
   const [selectedTemplate, setSelectedTemplate] = useState<TaskTemplate | null>(null)
   const [currentStepIndex, setCurrentStepIndex] = useState(0)
@@ -1456,6 +1479,9 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       // Parse date as local timezone to avoid UTC offset issues
       dueDate: quickDueDate ? new Date(quickDueDate + 'T12:00:00') : null,
       customFields: {},
+      createdById: currentUser?.id || null,
+      createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
+      createdByAvatar: currentUser?.avatar_url || undefined,
     })
     
     setIsCreating(false)
@@ -1848,11 +1874,14 @@ setIsCreating(true)
           type: reunionTipo?.id || '', // UUID from tipo_de_tareas
           dueDate: startDateTime,
           customFields: {},
+          createdById: currentUser?.id || null,
+          createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
+          createdByAvatar: currentUser?.avatar_url || undefined,
           comments: [{
             id: `comment-${Date.now()}`,
             content: meetingComment,
-            userId: 'madky',
-            userName: 'Madky (IA)',
+            userId: currentUser?.id || 'system',
+            userName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
             userAvatar: '',
             createdAt: new Date(),
           }],
@@ -2141,6 +2170,9 @@ setIsCreating(true)
       // Parse date as local timezone to avoid UTC offset issues
       dueDate: taskData.dueDate ? new Date(taskData.dueDate.includes('T') ? taskData.dueDate : taskData.dueDate + 'T12:00:00') : null,
       customFields: {},
+      createdById: currentUser?.id || null,
+      createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
+      createdByAvatar: currentUser?.avatar_url || undefined,
       comments: [initialComment],
     })
       } catch (err) {
@@ -2349,12 +2381,16 @@ setIsCreating(true)
                 {quickAssigneeIds.map(id => {
                   const assignee = dbColaboradores.find(a => a.id === id)
                   return assignee ? (
-                    <Badge key={id} variant="secondary" className="gap-1 pr-1">
+                    <Badge key={id} variant="secondary" className="gap-1.5 pr-1 pl-1">
+                      <Avatar className="h-4 w-4 shrink-0">
+                        {assignee.avatar_url && <AvatarImage src={assignee.avatar_url} alt={assignee.nombre} />}
+                        <AvatarFallback className="text-[8px]">{assignee.nombre?.[0]?.toUpperCase() || '?'}</AvatarFallback>
+                      </Avatar>
                       {assignee.nombre}
                       <button
                         type="button"
                         onClick={() => setQuickAssigneeIds(prev => prev.filter(aid => aid !== id))}
-                        className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
+                        className="ml-0.5 hover:bg-destructive/20 rounded-full p-0.5"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -2382,7 +2418,12 @@ setIsCreating(true)
                               key={a.id}
                               value={a.nombre}
                               onSelect={() => setQuickAssigneeIds(prev => [...prev, a.id])}
+                              className="gap-2"
                             >
+                              <Avatar className="h-6 w-6 shrink-0">
+                                {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
+                                <AvatarFallback className="text-[10px]">{a.nombre?.[0]?.toUpperCase() || '?'}</AvatarFallback>
+                              </Avatar>
                               {a.nombre}
                             </CommandItem>
                           ))}
@@ -2403,7 +2444,36 @@ setIsCreating(true)
                 min={new Date().toISOString().split('T')[0]}
               />
             </div>
-            
+
+            {/* Creado por */}
+            <div className="space-y-2">
+              <Label>Creado por</Label>
+              {currentUser ? (
+                <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/40">
+                  <Avatar className="h-6 w-6 shrink-0">
+                    {currentUser.avatar_url && (
+                      <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />
+                    )}
+                    <AvatarFallback className="text-[10px]">
+                      {[currentUser.nombre, currentUser.apellido]
+                        .filter(Boolean)
+                        .map(n => n![0])
+                        .join('')
+                        .toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm text-foreground">
+                    {[currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ')}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/40">
+                  <div className="h-6 w-6 rounded-full bg-muted animate-pulse shrink-0" />
+                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                </div>
+              )}
+            </div>
+
             <div className="pt-4 space-y-2">
               {/* Show create meeting button if type is "reunion" */}
               {dbTiposTarea.find(t => t.id === quickType)?.nombre?.toLowerCase().includes('reuni') && (

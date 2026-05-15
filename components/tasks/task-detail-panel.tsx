@@ -631,21 +631,17 @@ function TimeTracker({ task }: { task: Task }) {
   const [isStarting, setIsStarting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
 
-  // Check if THIS task's timer is running
   const isThisTaskRunning = globalIsRunning && globalTaskId === task.id
 
-  // Update elapsed time every second when this task's timer is running
   useEffect(() => {
     if (!isThisTaskRunning) {
       setElapsedSeconds(0)
       return
     }
-
     setElapsedSeconds(getElapsedSeconds())
     const interval = setInterval(() => {
       setElapsedSeconds(getElapsedSeconds())
     }, 1000)
-
     return () => clearInterval(interval)
   }, [isThisTaskRunning, globalStartedAt, getElapsedSeconds])
 
@@ -654,10 +650,9 @@ function TimeTracker({ task }: { task: Task }) {
   const handleStart = async () => {
     setIsStarting(true)
     try {
-      // Use the task's clientId directly
       await startTimerForTask(task.id, task.title, task.clientId || null)
       toast.success('Timer iniciado para esta tarea')
-    } catch (error) {
+    } catch {
       toast.error('Error al iniciar el timer')
     } finally {
       setIsStarting(false)
@@ -667,25 +662,20 @@ function TimeTracker({ task }: { task: Task }) {
   const handleStop = async () => {
     setIsStopping(true)
     try {
-      // Calculate duration and save to task
       const durationSec = getElapsedSeconds()
       await globalStopTimer()
-      
-      // Add the session to the task
       const newSession = {
         id: `session-${Date.now()}`,
         startedAt: new Date(globalStartedAt!),
         endedAt: new Date(),
         durationSec,
       }
-      
       updateTask(task.id, {
         totalTimeSec: task.totalTimeSec + durationSec,
         timeSessions: [...task.timeSessions, newSession],
       })
-      
       toast.success('Tiempo guardado correctamente')
-    } catch (error) {
+    } catch {
       toast.error('Error al guardar el tiempo')
     } finally {
       setIsStopping(false)
@@ -693,103 +683,68 @@ function TimeTracker({ task }: { task: Task }) {
   }
 
   const handleReset = () => {
-    if (isThisTaskRunning) {
-      globalStopTimer()
-    }
+    if (isThisTaskRunning) globalStopTimer()
     updateTask(task.id, { totalTimeSec: 0, timeSessions: [] })
   }
 
-  // Check if another task's timer is running
   const isOtherTaskRunning = globalIsRunning && globalTaskId && globalTaskId !== task.id
 
+  // ── Compact bar layout: [ ■ Parar ]  00:00:15  [ ↺ ] ──────────────────────
   return (
-    <div className="rounded-lg border bg-muted/30 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Clock className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium">Time Tracker</span>
-        {isThisTaskRunning && (
-          <Badge variant="outline" className="ml-auto text-green-400 border-green-400/30 text-xs">
-            En curso
-          </Badge>
-        )}
-      </div>
-
-      <div className="flex items-center justify-center mb-4">
-        <span
-          className={cn(
-            'text-4xl font-mono tabular-nums tracking-tight',
-            isThisTaskRunning && 'text-green-400'
-          )}
+    <div className="flex items-center gap-2 w-full">
+      {isThisTaskRunning ? (
+        <Button
+          size="sm"
+          className="h-7 px-2.5 gap-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded-md"
+          onClick={handleStop}
+          disabled={isStopping}
         >
-          {formatTime(totalDisplay)}
-        </span>
-      </div>
-
-      <div className="flex items-center justify-center gap-2 mb-4">
-        {isThisTaskRunning ? (
-          <Button
-            size="sm"
-            variant="destructive"
-            className="gap-1.5"
-            onClick={handleStop}
-            disabled={isStopping}
-          >
-            {isStopping ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Square className="h-4 w-4 fill-current" />
-            )}
-            Detener
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            className="gap-1.5 bg-green-600 hover:bg-green-700"
-            onClick={handleStart}
-            disabled={isStarting || isOtherTaskRunning}
-          >
-            {isStarting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="h-4 w-4" />
-            )}
-            Iniciar
-          </Button>
-        )}
-        <Button size="sm" variant="outline" className="gap-1.5" onClick={handleReset}>
-          <RotateCcw className="h-4 w-4" />
-          Reset
+          {isStopping
+            ? <Loader2 className="h-3 w-3 animate-spin" />
+            : <Square className="h-3 w-3 fill-current" />}
+          Parar
         </Button>
-      </div>
-
-      {isOtherTaskRunning && (
-        <p className="text-xs text-center text-yellow-500 mb-3">
-          Hay otro timer en curso. Detenlo para iniciar este.
-        </p>
+      ) : (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 px-2.5 gap-1.5 text-xs rounded-md"
+          onClick={handleStart}
+          disabled={isStarting || !!isOtherTaskRunning}
+          title={isOtherTaskRunning ? 'Hay otro timer activo' : 'Iniciar timer'}
+        >
+          {isStarting
+            ? <Loader2 className="h-3 w-3 animate-spin" />
+            : <Play className="h-3 w-3 fill-current" />}
+          Iniciar
+        </Button>
       )}
 
-      {task.timeSessions.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-xs text-muted-foreground font-medium">Sesiones anteriores</p>
-          <div className="max-h-24 overflow-y-auto space-y-1">
-            {task.timeSessions.slice(-3).map((session) => (
-              <div key={session.id} className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{format(new Date(session.startedAt), 'dd/MM HH:mm', { locale: es })}</span>
-                <span className="font-mono">{formatTimeShort(session.durationSec)}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-between text-xs pt-1 border-t border-border">
-            <span className="font-medium">Total acumulado</span>
-            <span className="font-mono font-medium">{formatTimeShort(task.totalTimeSec)}</span>
-          </div>
-        </div>
+      <span className={cn(
+        'font-mono text-sm font-medium tabular-nums tracking-tight',
+        isThisTaskRunning ? 'text-green-500 dark:text-green-400' : 'text-foreground'
+      )}>
+        {formatTime(totalDisplay)}
+      </span>
+
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+        onClick={handleReset}
+        title="Resetear tiempo"
+      >
+        <RotateCcw className="h-3.5 w-3.5" />
+      </Button>
+
+      {isOtherTaskRunning && (
+        <span className="text-xs text-amber-500 ml-1">Otro timer activo</span>
       )}
     </div>
   )
 }
 
-// ── Files Section ───────────────────────────────�����─��──���────────────────────────
+// ── Files Section ─────────────────────────────────────────────────────────────
 
 function FilesSection({ task }: { task: Task }) {
   const { addFile, deleteFile } = useTaskStore()
@@ -1622,8 +1577,9 @@ export function TaskDetailPanel() {
         side="right"
       >
         {/* Header */}
-        <SheetHeader className="p-4 pb-3 border-b shrink-0">
-          <div className="flex items-start gap-3 pr-10">
+        <SheetHeader className="px-4 pt-4 pb-3 border-b shrink-0">
+          {/* Línea 1: título + acciones */}
+          <div className="flex items-center gap-2 pr-10">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 {isEditingTitle ? (
@@ -1645,12 +1601,12 @@ export function TaskDetailPanel() {
                       }
                       if (e.key === 'Escape') setIsEditingTitle(false)
                     }}
-                    className="h-8 text-lg font-semibold"
+                    className="h-8 text-base font-medium"
                     autoFocus
                   />
                 ) : (
-                  <SheetTitle 
-                    className="text-lg leading-tight cursor-text hover:text-primary"
+                  <SheetTitle
+                    className="text-base font-medium leading-tight cursor-text hover:text-primary truncate"
                     onClick={() => {
                       setTempTitle(task.title)
                       setIsEditingTitle(true)
@@ -1660,103 +1616,67 @@ export function TaskDetailPanel() {
                   </SheetTitle>
                 )}
                 {task.isSystemTask && (
-                  <Badge className="bg-teal-500/20 text-teal-400 border-teal-500/30 text-[10px]">
+                  <Badge className="bg-teal-500/20 text-teal-400 border-teal-500/30 text-[10px] shrink-0">
                     Recurrente
                   </Badge>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {task.clients && task.clients.length > 0 
-                  ? task.clients.map(c => c.nombre_del_negocio).join(', ')
-                  : task.clientName}
-              </p>
-              
-              {/* WhatsApp button for system tasks */}
-              {task.isSystemTask && task.systemTaskMeta?.whatsappLink && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 h-8 gap-2 border-green-500/50 text-green-400 hover:bg-green-500/10 hover:text-green-300"
-                  onClick={() => window.open(task.systemTaskMeta?.whatsappLink, '_blank')}
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                  </svg>
-                  Enviar por WhatsApp
-                </Button>
-              )}
-              
-              {/* WhatsApp button for Seguimiento tasks */}
-              {(task.typeName?.toLowerCase().includes('seguimiento') || task.title?.toLowerCase().includes('seguimiento')) && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 h-8 gap-2 border-green-500/50 text-green-400 hover:bg-green-500/10 hover:text-green-300"
-                  onClick={() => {
-                    // Copy description to clipboard and open WhatsApp web
-                    const text = task.description?.replace(/<[^>]*>/g, '') || ''
-                    navigator.clipboard.writeText(text)
-                    toast.success('Mensaje copiado al portapapeles')
-                    window.open('https://web.whatsapp.com', '_blank')
-                  }}
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                  </svg>
-                  Enviar por WhatsApp
-                </Button>
-              )}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Active Toggle */}
-              <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-muted/50">
-                <Power className={cn('h-3.5 w-3.5', task.isActive ? 'text-green-400' : 'text-muted-foreground')} />
-                <span className="text-xs">{task.isActive ? 'Activa' : 'Inactiva'}</span>
-                <Switch
-                  checked={task.isActive}
-                  onCheckedChange={() => toggleTaskActive(task.id)}
-                  className="scale-75"
-                />
-              </div>
-              
-              {/* Navigation buttons */}
-              <div className="flex items-center gap-1 border-l pl-2 ml-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={goToPrevious}
-                  disabled={!hasPrevious}
-                  title="Tarea anterior"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span className="text-xs text-muted-foreground min-w-[3rem] text-center">
-                  {currentIndex + 1} / {tasks.length}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={goToNext}
-                  disabled={!hasNext}
-                  title="Siguiente tarea"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-              
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setIsFullscreen(!isFullscreen)}
-              >
-                {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+
+            {/* Navigation + expand */}
+            <div className="flex items-center gap-1 shrink-0">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToPrevious} disabled={!hasPrevious} title="Tarea anterior">
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <span className="text-xs text-muted-foreground tabular-nums min-w-[3.5rem] text-center">
+                {currentIndex + 1} / {tasks.length}
+              </span>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToNext} disabled={!hasNext} title="Siguiente tarea">
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsFullscreen(!isFullscreen)}>
+                {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
               </Button>
             </div>
           </div>
+
+          {/* Línea 2: cliente */}
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {task.clients && task.clients.length > 0
+              ? task.clients.map(c => c.nombre_del_negocio).join(', ')
+              : task.clientName}
+          </p>
+
+          {/* WhatsApp buttons */}
+          {task.isSystemTask && task.systemTaskMeta?.whatsappLink && (
+            <Button variant="outline" size="sm" className="mt-2 h-8 gap-2 border-green-500/50 text-green-400 hover:bg-green-500/10 hover:text-green-300 self-start"
+              onClick={() => window.open(task.systemTaskMeta?.whatsappLink, '_blank')}>
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+              Enviar por WhatsApp
+            </Button>
+          )}
+          {(task.typeName?.toLowerCase().includes('seguimiento') || task.title?.toLowerCase().includes('seguimiento')) && (
+            <Button variant="outline" size="sm" className="mt-2 h-8 gap-2 border-green-500/50 text-green-400 hover:bg-green-500/10 hover:text-green-300 self-start"
+              onClick={() => {
+                const text = task.description?.replace(/<[^>]*>/g, '') || ''
+                navigator.clipboard.writeText(text)
+                toast.success('Mensaje copiado al portapapeles')
+                window.open('https://web.whatsapp.com', '_blank')
+              }}>
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+              Enviar por WhatsApp
+            </Button>
+          )}
         </SheetHeader>
+
+        {/* Time Tracker bar — debajo del header, antes de los tabs */}
+        <div className="flex items-center gap-3 px-4 h-9 bg-muted/40 border-b shrink-0">
+          <TimeTracker task={task} />
+        </div>
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
@@ -1867,6 +1787,7 @@ export function TaskDetailPanel() {
                           </Select>
                         </div>
                       </div>
+
                       
                       <div>
                         <Label className="text-xs text-muted-foreground mb-1.5 block">Clientes</Label>
@@ -1904,6 +1825,7 @@ export function TaskDetailPanel() {
   <Label className="text-xs text-muted-foreground mb-1.5 block">Creado por</Label>
   <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/30">
     <Avatar className="h-5 w-5">
+      {task.createdByAvatar && <AvatarImage src={task.createdByAvatar} alt={task.createdByName} />}
       <AvatarFallback className="text-[9px]">{getInitials(task.createdByName)}</AvatarFallback>
     </Avatar>
     <span className="text-sm">{task.createdByName}</span>
@@ -1939,11 +1861,6 @@ export function TaskDetailPanel() {
                           </Popover>
                         </div>
                       </div>
-                    </div>
-                    
-                    {/* Time Tracker */}
-                    <div className="rounded-xl border bg-card/50 p-4">
-                      <TimeTracker task={task} />
                     </div>
                     
                     {/* Custom Fields */}
@@ -2100,11 +2017,6 @@ export function TaskDetailPanel() {
                       </Popover>
                     </div>
                   </div>
-
-                  <Separator />
-
-                  {/* Time Tracker */}
-                  <TimeTracker task={task} />
 
                   <Separator />
 

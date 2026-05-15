@@ -428,6 +428,7 @@ export interface Task {
   quotation: TaskQuotation | null
   createdById: string | null
   createdByName: string
+  createdByAvatar?: string | null
   createdAt: Date
   updatedAt: Date
 }
