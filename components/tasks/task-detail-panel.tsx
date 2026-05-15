@@ -1168,10 +1168,10 @@ function CommentsSection({ task }: { task: Task }) {
       </div>
 
       {task.comments.length > 0 && (
-        <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
+        <div className="space-y-4 max-h-[400px] overflow-y-auto overflow-x-hidden pr-1 w-full">
           {sortedComments.map((c) => (
-            <div key={c.id} className="group rounded-lg border bg-muted/30 p-3 max-w-full overflow-hidden">
-              <div className="flex items-start gap-3 min-w-0">
+            <div key={c.id} className="group rounded-lg border bg-muted/30 p-3 w-full overflow-hidden">
+              <div className="flex items-start gap-3 min-w-0 w-full">
                 <Avatar className="h-8 w-8 shrink-0">
                   <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
                   <AvatarFallback className="text-xs">{getInitials(c.userName)}</AvatarFallback>
