@@ -876,24 +876,33 @@ export const useTaskStore = create<TaskStore>()(
       // Only load if comments haven't been loaded yet
       if (task && task.comments.length === 0) {
         const supabase = createClient()
-        const { data: comentarios } = await supabase
+        const { data: comentarios, error: commError } = await supabase
           .from('comentarios_tareas')
           .select('*')
           .eq('tarea_id', id)
           .order('created_at', { ascending: true })
         
+        if (commError) {
+          console.error('[v0] Error loading comments:', commError)
+          return
+        }
+        
         if (comentarios && comentarios.length > 0) {
           // Enrich comments with user avatars
           const userIds = [...new Set(comentarios.map(c => c.autor_id).filter(Boolean))] as string[]
+          console.log('[v0] Loading avatars for user IDs:', userIds)
           
           let avatarMap: Record<string, string | null> = {}
           if (userIds.length > 0) {
-            const { data: profiles } = await supabase
+            const { data: profiles, error: profileError } = await supabase
               .from('profiles')
               .select('id, avatar_url')
               .in('id', userIds)
             
-            if (profiles) {
+            if (profileError) {
+              console.error('[v0] Error loading profiles:', profileError)
+            } else if (profiles) {
+              console.log('[v0] Loaded profiles:', profiles)
               profiles.forEach(p => {
                 avatarMap[p.id] = p.avatar_url
               })
@@ -903,12 +912,14 @@ export const useTaskStore = create<TaskStore>()(
           const enrichedComments = comentarios.map(c => ({
             ...c,
             profiles: c.autor_id ? { avatar_url: avatarMap[c.autor_id] || null } : null
-          }))
+          } as ComentarioDB))
+          
+          console.log('[v0] Enriched comments:', enrichedComments)
           
           set((state) => ({
             tasks: state.tasks.map(t => 
               t.id === id 
-                ? { ...t, comments: enrichedComments.map(c => mapComentarioToComment(c as ComentarioDB)) }
+                ? { ...t, comments: enrichedComments.map(mapComentarioToComment) }
                 : t
             )
           }))
