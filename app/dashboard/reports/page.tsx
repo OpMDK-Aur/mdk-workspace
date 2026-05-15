@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import useSWR from 'swr'
 import { format, subDays, isWithinInterval, startOfDay, endOfDay } from 'date-fns'
 import { DateRange } from 'react-day-picker'
@@ -77,13 +77,20 @@ async function fetchReportsData() {
 }
 
 export default function ReportsPage() {
-  const [date, setDate] = useState<DateRange | undefined>({
-    from: subDays(new Date(), 6),
-    to: new Date(),
-  })
+  const [date, setDate] = useState<DateRange | undefined>(undefined)
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [selectedMatrixColab, setSelectedMatrixColab] = useState<string>('all')
   const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
+  const [isClient, setIsClient] = useState(false)
+
+  // Set date only on client to avoid hydration mismatch
+  useEffect(() => {
+    setDate({
+      from: subDays(new Date(), 6),
+      to: new Date(),
+    })
+    setIsClient(true)
+  }, [])
 
   // Fetch data with SWR
   const { data, isLoading } = useSWR('reports-data', fetchReportsData)
