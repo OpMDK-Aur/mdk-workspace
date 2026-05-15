@@ -1788,19 +1788,6 @@ export function TaskDetailPanel() {
                         </div>
                       </div>
 
-                      {/* Active Toggle */}
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs text-muted-foreground">Estado de actividad</Label>
-                        <div className="flex items-center gap-2">
-                          <Power className={cn('h-3.5 w-3.5', task.isActive ? 'text-green-500' : 'text-muted-foreground')} />
-                          <span className="text-xs">{task.isActive ? 'Activa' : 'Inactiva'}</span>
-                          <Switch
-                            checked={task.isActive}
-                            onCheckedChange={() => toggleTaskActive(task.id)}
-                            className="scale-75"
-                          />
-                        </div>
-                      </div>
                       
                       <div>
                         <Label className="text-xs text-muted-foreground mb-1.5 block">Clientes</Label>
@@ -1953,20 +1940,6 @@ export function TaskDetailPanel() {
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
-                  </div>
-
-                  {/* Active Toggle */}
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs text-muted-foreground">Estado de actividad</Label>
-                    <div className="flex items-center gap-2">
-                      <Power className={cn('h-3.5 w-3.5', task.isActive ? 'text-green-500' : 'text-muted-foreground')} />
-                      <span className="text-xs">{task.isActive ? 'Activa' : 'Inactiva'}</span>
-                      <Switch
-                        checked={task.isActive}
-                        onCheckedChange={() => toggleTaskActive(task.id)}
-                        className="scale-75"
-                      />
                     </div>
                   </div>
 
