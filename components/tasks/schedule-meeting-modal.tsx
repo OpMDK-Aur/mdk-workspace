@@ -82,13 +82,13 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
     async function loadData() {
       const supabase = createClient()
       
-      // Get current user
+      // Get current user by email (colaboradores has no user_id column)
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
+      if (user?.email) {
         const { data: colab } = await supabase
           .from('colaboradores')
           .select('id, nombre, apellido, avatar_url')
-          .eq('user_id', user.id)
+          .eq('email', user.email)
           .single()
         if (colab) setCurrentUser(colab as any)
       }
@@ -132,14 +132,14 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
     try {
       const supabase = createClient()
       
-      // Get current user at time of submission
+      // Get current user at time of submission by email
       const { data: { user } } = await supabase.auth.getUser()
       let submittingUser = currentUser
-      if (user && !submittingUser) {
+      if (user?.email && !submittingUser) {
         const { data: colab } = await supabase
           .from('colaboradores')
           .select('id, nombre, apellido, avatar_url')
-          .eq('user_id', user.id)
+          .eq('email', user.email)
           .single()
         if (colab) submittingUser = colab as any
       }
@@ -372,7 +372,7 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
                         <div className="flex items-center gap-2">
                           <Avatar className="h-5 w-5 shrink-0">
                             {selected.avatar_url && <AvatarImage src={selected.avatar_url} alt={selected.nombre} />}
-                            <AvatarFallback className="text-[9px]">{selected.nombre[0].toUpperCase()}</AvatarFallback>
+                            <AvatarFallback className="text-[9px]">{selected.nombre?.[0]?.toUpperCase() || '?'}</AvatarFallback>
                           </Avatar>
                           <span>{selected.nombre}</span>
                         </div>
@@ -388,7 +388,7 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
                       <div className="flex items-center gap-2">
                         <Avatar className="h-5 w-5 shrink-0">
                           {c.avatar_url && <AvatarImage src={c.avatar_url} alt={c.nombre} />}
-                          <AvatarFallback className="text-[9px]">{c.nombre[0].toUpperCase()}</AvatarFallback>
+                          <AvatarFallback className="text-[9px]">{c.nombre?.[0]?.toUpperCase() || '?'}</AvatarFallback>
                         </Avatar>
                         {c.nombre}
                       </div>

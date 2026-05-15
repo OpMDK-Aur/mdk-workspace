@@ -2384,7 +2384,7 @@ setIsCreating(true)
                     <Badge key={id} variant="secondary" className="gap-1.5 pr-1 pl-1">
                       <Avatar className="h-4 w-4 shrink-0">
                         {assignee.avatar_url && <AvatarImage src={assignee.avatar_url} alt={assignee.nombre} />}
-                        <AvatarFallback className="text-[8px]">{assignee.nombre[0].toUpperCase()}</AvatarFallback>
+                        <AvatarFallback className="text-[8px]">{assignee.nombre?.[0]?.toUpperCase() || '?'}</AvatarFallback>
                       </Avatar>
                       {assignee.nombre}
                       <button
@@ -2422,7 +2422,7 @@ setIsCreating(true)
                             >
                               <Avatar className="h-6 w-6 shrink-0">
                                 {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
-                                <AvatarFallback className="text-[10px]">{a.nombre[0].toUpperCase()}</AvatarFallback>
+                                <AvatarFallback className="text-[10px]">{a.nombre?.[0]?.toUpperCase() || '?'}</AvatarFallback>
                               </Avatar>
                               {a.nombre}
                             </CommandItem>
