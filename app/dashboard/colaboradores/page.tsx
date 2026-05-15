@@ -83,19 +83,19 @@ function formatHoursDisplay(hours: number): string {
   return `${h}:${String(m).padStart(2, '0')}`
 }
 
-// Get color class based on percentage
+// Get color class based on percentage vs objetivo
+// Verde: >= 50% del objetivo (cumple mínimo), Amarillo: > 0%, Rojo: 0%
 function getPercentageColor(value: number): string {
-  if (value >= 100) return 'bg-green-500/20 text-green-400'
-  if (value >= 70) return 'bg-yellow-500/20 text-yellow-400'
+  if (value >= 50) return 'bg-green-500/20 text-green-400'
+  if (value > 0) return 'bg-yellow-500/20 text-yellow-400'
   return 'bg-red-500/20 text-red-400'
 }
 
-// Get color for hours comparison
-function getHoursColor(actual: number, target: number): string {
-  if (target === 0) return ''
-  const percentage = (actual / target) * 100
-  if (percentage >= 100) return 'bg-green-500/20 text-green-400'
-  if (percentage >= 70) return 'bg-yellow-500/20 text-yellow-400'
+// Get color for hours: verde cuando supera el mínimo, amarillo cuando hay algo, rojo en 0
+function getHoursColor(actual: number, minimo: number): string {
+  if (minimo === 0) return ''
+  if (actual >= minimo) return 'bg-green-500/20 text-green-400'
+  if (actual > 0) return 'bg-yellow-500/20 text-yellow-400'
   return 'bg-red-500/20 text-red-400'
 }
 
@@ -166,6 +166,28 @@ export default function ColaboradoresPage() {
 
       if (clientesData) setClientes(clientesData)
 
+      // Calculate date range for selected month
+      const startDate = new Date(selectedYear, selectedMonth - 1, 1)
+      const endDate = new Date(selectedYear, selectedMonth, 0)
+      const startDateStr = startDate.toISOString().split('T')[0]
+      const endDateStr = endDate.toISOString().split('T')[0]
+
+      // Fetch actual hours from entradas_de_tiempo for the selected month
+      const { data: entries } = await supabase
+        .from('entradas_de_tiempo')
+        .select('colaborador_id, cliente_id, duracion_seg')
+        .gte('iniciado_en', `${startDateStr}T00:00:00`)
+        .lte('iniciado_en', `${endDateStr}T23:59:59`)
+
+      // Calculate hours per colaborador-cliente pair
+      const hoursMap = new Map<string, number>()
+      entries?.forEach(entry => {
+        if (entry.colaborador_id && entry.cliente_id && entry.duracion_seg) {
+          const key = `${entry.colaborador_id}-${entry.cliente_id}`
+          hoursMap.set(key, (hoursMap.get(key) || 0) + (entry.duracion_seg / 3600))
+        }
+      })
+
       // Load metricas for selected period
       const { data: mets } = await supabase
         .from('metricas_colaboradores')
@@ -188,14 +210,23 @@ export default function ColaboradoresPage() {
           // Recalculate horas teoricas with correct role
           const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHora, colaborador)
           
+          // Get actual hours from entradas_tiempo
+          const acumuladoReal = hoursMap.get(`${m.colaborador_id}-${m.cliente_id}`) || 0
+          
+          // Use stored values from DB if they exist, otherwise calculate
+          const storedObjetivo = Number(m.horas_objetivo) || 0
+          const storedMinimo = Number(m.minimo_no_negociable_horas) || 0
+          const finalObjetivo = storedObjetivo > 0 ? storedObjetivo : horasTeoricas
+          const finalMinimo = storedMinimo > 0 ? storedMinimo : horasTeoricas / 2
+          
           return {
             ...m,
             colaborador,
             cliente,
             horas_teoricas_cliente: horasTeoricas,
-            minimo_no_negociable_horas: horasTeoricas / 2,
-            horas_objetivo: horasTeoricas,
-            acumulado_mes_asignado: Number(m.acumulado_mes_asignado) || 0,
+            minimo_no_negociable_horas: finalMinimo,
+            horas_objetivo: finalObjetivo,
+            acumulado_mes_asignado: acumuladoReal,
             valor_hora: valorHora,
           }
         }))
@@ -787,7 +818,7 @@ export default function ColaboradoresPage() {
                             className="w-[90px] h-8 text-xs text-right font-mono"
                           />
                         </TableCell>
-                        <TableCell className={cn("text-right", getHoursColor(m.acumulado_mes_asignado, m.horas_objetivo))}>
+                        <TableCell className={cn("text-right", getHoursColor(m.acumulado_mes_asignado, m.minimo_no_negociable_horas))}>
                           <Input
                             type="text"
                             value={formatHoursToTime(m.acumulado_mes_asignado)}
@@ -795,17 +826,24 @@ export default function ColaboradoresPage() {
                             placeholder="HH:MM:SS"
                             className={cn(
                               "w-[90px] h-8 text-xs text-right font-mono",
-                              getHoursColor(m.acumulado_mes_asignado, m.horas_objetivo)
+                              getHoursColor(m.acumulado_mes_asignado, m.minimo_no_negociable_horas)
                             )}
                           />
                         </TableCell>
                         <TableCell className="text-right">
-                          <span className={cn(
-                            "px-2 py-1 rounded text-xs",
-                            getPercentageColor(m.porcentaje_asignacion)
-                          )}>
-                            {m.porcentaje_asignacion.toFixed(1)}%
-                          </span>
+                          {(() => {
+                            const pct = m.horas_objetivo > 0
+                              ? (m.acumulado_mes_asignado * 100) / m.horas_objetivo
+                              : 0
+                            return (
+                              <span className={cn(
+                                "px-2 py-1 rounded text-xs",
+                                getPercentageColor(pct)
+                              )}>
+                                {pct.toFixed(1)}%
+                              </span>
+                            )
+                          })()}
                         </TableCell>
                         <TableCell>
                           <Button

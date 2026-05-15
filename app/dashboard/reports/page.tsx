@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import useSWR from 'swr'
 import { format, subDays, isWithinInterval, startOfDay, endOfDay } from 'date-fns'
 import { DateRange } from 'react-day-picker'
 import { HoursChart } from '@/components/reports/hours-chart'
 import { ClientDonutChart } from '@/components/reports/client-donut-chart'
 import { ClientSummaryTable } from '@/components/reports/client-summary-table'
+import { HoursControlPanel } from '@/components/reports/hours-control-panel'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
@@ -25,7 +26,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { CalendarIcon, Download, Users, Loader2 } from 'lucide-react'
+import { CalendarIcon, Download, Users, Loader2, ClipboardCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/lib/types'
 import type { ClientSummary } from '@/lib/time-tracking/types'
@@ -76,13 +77,20 @@ async function fetchReportsData() {
 }
 
 export default function ReportsPage() {
-  const [date, setDate] = useState<DateRange | undefined>({
-    from: subDays(new Date(), 6),
-    to: new Date(),
-  })
+  const [date, setDate] = useState<DateRange | undefined>(undefined)
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [selectedMatrixColab, setSelectedMatrixColab] = useState<string>('all')
   const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
+  const [isClient, setIsClient] = useState(false)
+
+  // Set date only on client to avoid hydration mismatch
+  useEffect(() => {
+    setDate({
+      from: subDays(new Date(), 6),
+      to: new Date(),
+    })
+    setIsClient(true)
+  }, [])
 
   // Fetch data with SWR
   const { data, isLoading } = useSWR('reports-data', fetchReportsData)
@@ -369,6 +377,10 @@ export default function ReportsPage() {
           <TabsTrigger value="by-collaborator">Por Colaborador</TabsTrigger>
           <TabsTrigger value="by-matrix">Colaborador x Cliente</TabsTrigger>
           <TabsTrigger value="by-day">Por Día</TabsTrigger>
+          <TabsTrigger value="hours-control" className="gap-2">
+            <ClipboardCheck className="w-4 h-4" />
+            Control de Horas
+          </TabsTrigger>
         </TabsList>
         
         <TabsContent value="by-client">
@@ -689,6 +701,10 @@ export default function ReportsPage() {
             </div>
             <HoursChart dailyHours={dailyHours} />
           </div>
+        </TabsContent>
+
+        <TabsContent value="hours-control">
+          <HoursControlPanel />
         </TabsContent>
       </Tabs>
     </div>
