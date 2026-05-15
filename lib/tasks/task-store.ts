@@ -880,7 +880,15 @@ export const useTaskStore = create<TaskStore>()(
     
     // Load comments on demand when task is selected
     if (id) {
-      const task = get().tasks.find(t => t.id === id)
+      // Wait for task to be available (may not be loaded yet if navigating via URL)
+      let task = get().tasks.find(t => t.id === id)
+      
+      // If task not found, wait a bit for loadTasks to finish and retry
+      if (!task) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        task = get().tasks.find(t => t.id === id)
+      }
+      
       // Only load if comments haven't been loaded yet
       if (task && task.comments.length === 0) {
         const supabase = createClient()
