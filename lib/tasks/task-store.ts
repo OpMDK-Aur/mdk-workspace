@@ -694,7 +694,7 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
   }
 }
 
-// ── Store ─────────────────────────────────────────────────────────────────────
+// ���─ Store ─────────────────────────────────────────────────────────────────────
 
 // Advanced filter types
 export interface FilterRule {
@@ -754,7 +754,7 @@ interface TaskStore {
   updateTaskStatus: (taskId: string, status: TaskStatus) => Promise<void>
   updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>
   addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'activities' | 'timeSessions' | 'totalTimeSec' | 'isTimerRunning' | 'timerStartedAt' | 'files' | 'quotation'> & { comments?: TaskComment[] }) => Promise<void>
-  deleteTask: (taskId: string) => void
+  deleteTask: (taskId: string) => Promise<void>
   toggleTaskActive: (taskId: string) => void
 
   // Timer
@@ -1136,10 +1136,24 @@ addTask: async (taskData) => {
   }))
 },
 
-  deleteTask: (taskId) => set((state) => ({
-    tasks: state.tasks.filter((t) => t.id !== taskId),
-    selectedTaskId: state.selectedTaskId === taskId ? null : state.selectedTaskId,
-  })),
+  deleteTask: async (taskId) => {
+    const supabase = createClient()
+    
+    const { error } = await supabase
+      .from('tareas')
+      .delete()
+      .eq('id', taskId)
+    
+    if (error) {
+      console.error('Error deleting task:', error)
+      return
+    }
+    
+    set((state) => ({
+      tasks: state.tasks.filter((t) => t.id !== taskId),
+      selectedTaskId: state.selectedTaskId === taskId ? null : state.selectedTaskId,
+    }))
+  },
 
   toggleTaskActive: (taskId) => set((state) => ({
     tasks: state.tasks.map((t) =>
