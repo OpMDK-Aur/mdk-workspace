@@ -168,7 +168,6 @@ function mapTareaToTask(
     createdByName: (() => {
       if (tarea.creado_por && colaboradoresMap) {
         const creador = colaboradoresMap.get(tarea.creado_por)
-        console.log('[v0] mapTareaToTask creado_por:', tarea.creado_por, 'creador:', creador)
         if (creador) {
           return [creador.nombre, creador.apellido].filter(Boolean).join(' ')
         }
@@ -1148,10 +1147,10 @@ addTask: async (taskData) => {
   }
   
   // Notify assigned users about the new task
-  const assignedUserIds = assigneeIds.filter(uid => uid && uid !== taskData.createdById)
-  if (assignedUserIds.length > 0) {
-    const notifications = assignedUserIds.map(userId => ({
-      usuario_id: userId,
+  const assignedColabIds = assigneeIds.filter(uid => uid && uid !== taskData.createdById)
+  if (assignedColabIds.length > 0) {
+    const notifications = assignedColabIds.map(colaboradorId => ({
+      colaborador_id: colaboradorId,
       tipo: 'tarea_asignada',
       titulo: 'Nueva tarea asignada',
       descripcion: taskData.title,
@@ -1179,7 +1178,7 @@ addTask: async (taskData) => {
         clientIds: taskData.clientIds || (taskData.clientId ? [taskData.clientId] : []),
         clients: taskData.clients || (taskData.clientId ? [{ id: taskData.clientId, nombre_del_negocio: taskData.clientName || '' }] : []),
         createdById: taskData.createdById || null,
-        createdByName: taskData.createdByName || 'Usuario',
+        createdByName: taskData.createdByName || 'Sistema',
         createdAt: new Date(),
         updatedAt: new Date(),
         activities: [
