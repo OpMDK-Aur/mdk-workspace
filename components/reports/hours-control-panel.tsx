@@ -125,6 +125,15 @@ function StatusIcon({ status }: { status: 'ok' | 'warning' | 'danger' }) {
   return <XCircle className="w-4 h-4 text-red-500" />
 }
 
+// Format hours (decimal) to HH:MM:SS
+function formatHoursToTime(hours: number): string {
+  const totalSeconds = Math.round(hours * 3600)
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  const s = totalSeconds % 60
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+}
+
 // Custom progress bar with min/max markers and color logic
 // - Gray: 0 to min (below minimum)
 // - Green: min to max (within range)
@@ -133,13 +142,11 @@ function HoursProgressBar({
   asignado, 
   minimo, 
   maximo,
-  showLabels = true,
   height = 'h-3'
 }: { 
   asignado: number
   minimo: number
   maximo: number
-  showLabels?: boolean
   height?: string
 }) {
   // Calculate percentages relative to max
@@ -157,50 +164,37 @@ function HoursProgressBar({
 
   return (
     <div className="space-y-1">
-      {showLabels && (
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">
-            Asignadas: <span className={`font-medium ${isOverMax ? 'text-red-500' : isAtOrAboveMin ? 'text-emerald-500' : 'text-foreground'}`}>
-              {asignado.toFixed(1)}h
-            </span>
-          </span>
-          <span className="text-muted-foreground">
-            Máx: <span className="font-medium text-foreground">{maximo.toFixed(1)}h</span>
-          </span>
-        </div>
-      )}
-      <div className="flex items-center gap-2">
+      {/* Progress bar with accumulated at the end */}
+      <div className="flex items-center gap-3">
         <div className={`relative flex-1 ${height} bg-zinc-800 rounded-full overflow-hidden`}>
           {/* Progress fill */}
           <div 
             className={`absolute inset-y-0 left-0 ${getProgressColor()} transition-all duration-300 rounded-full`}
             style={{ width: `${Math.min(progressPercent, 100)}%` }}
           />
-          {/* Min marker (50% point) */}
+          {/* Min marker */}
           <div 
             className="absolute top-0 bottom-0 w-0.5 bg-white/60"
             style={{ left: `${minPercent}%` }}
           />
         </div>
-        {/* Show percentage if over max */}
+        {/* Accumulated hours at the end */}
+        <span className={`text-sm font-mono font-medium min-w-[70px] text-right ${
+          isOverMax ? 'text-red-500' : isAtOrAboveMin ? 'text-emerald-500' : 'text-zinc-400'
+        }`}>
+          {formatHoursToTime(asignado)}
+        </span>
         {isOverMax && (
-          <span className="text-sm font-medium text-red-500 min-w-[50px] text-right">
-            {progressPercent.toFixed(0)}%
+          <span className="text-xs font-medium text-red-500">
+            ({progressPercent.toFixed(0)}%)
           </span>
         )}
       </div>
-      {showLabels && (
-        <div className="flex justify-between text-xs text-muted-foreground">
-          <span>Mín: {minimo.toFixed(1)}h</span>
-          {isOverMax ? (
-            <span className="text-red-500">Excede {(asignado - maximo).toFixed(1)}h</span>
-          ) : !isAtOrAboveMin ? (
-            <span className="text-zinc-400">Faltan {(minimo - asignado).toFixed(1)}h para el mínimo</span>
-          ) : (
-            <span className="text-emerald-500">Dentro del rango</span>
-          )}
-        </div>
-      )}
+      {/* Min at start, Max at end - below the bar */}
+      <div className="flex justify-between text-xs text-muted-foreground">
+        <span>Mín: <span className="font-mono">{formatHoursToTime(minimo)}</span></span>
+        <span>Máx: <span className="font-mono">{formatHoursToTime(maximo)}</span></span>
+      </div>
     </div>
   )
 }
@@ -227,7 +221,7 @@ function CompactProgressBar({
   }
 
   return (
-    <div className="flex items-center gap-2 min-w-[160px]">
+    <div className="flex items-center gap-2 min-w-[200px]">
       <div className="relative flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
         <div 
           className={`absolute inset-y-0 left-0 ${getProgressColor()} transition-all duration-300 rounded-full`}
@@ -238,10 +232,10 @@ function CompactProgressBar({
           style={{ left: `${minPercent}%` }}
         />
       </div>
-      <span className={`text-xs font-medium min-w-[40px] text-right ${
+      <span className={`text-xs font-mono font-medium min-w-[60px] text-right ${
         isOverMax ? 'text-red-500' : isAtOrAboveMin ? 'text-emerald-500' : 'text-zinc-400'
       }`}>
-        {asignado.toFixed(1)}h
+        {formatHoursToTime(asignado)}
       </span>
       {isOverMax && (
         <span className="text-xs font-medium text-red-500">
@@ -363,16 +357,6 @@ export function HoursControlPanel() {
         maximo: m.horas_objetivo || 0,
         asignado: m.acumulado_mes_asignado || 0,
       }
-      
-      console.log("[v0] Datos de métrica:", {
-        cliente: clienteData.cliente.nombre_del_negocio,
-        colaborador: m.colaborador?.nombre,
-        minimo: clienteData.minimo,
-        maximo: clienteData.maximo,
-        asignado: clienteData.asignado,
-        minimo_raw: m.minimo_no_negociable_horas,
-        maximo_raw: m.horas_objetivo
-      })
 
       if (existing) {
         existing.totalMinimo += clienteData.minimo
@@ -674,10 +658,10 @@ export function HoursControlPanel() {
                         <div className="space-y-2">
                           {item.clientes.map((c) => (
                             <div key={c.cliente.id} className="flex items-center gap-4 py-2 px-3 bg-muted/30 rounded-lg">
-                              <div className="min-w-[140px]">
+                              <div className="min-w-[160px]">
                                 <span className="text-sm font-medium">{c.cliente.nombre_del_negocio}</span>
-                                <div className="text-xs text-muted-foreground">
-                                  {c.minimo.toFixed(1)}h - {c.maximo.toFixed(1)}h
+                                <div className="text-xs text-muted-foreground font-mono">
+                                  {formatHoursToTime(c.minimo)} - {formatHoursToTime(c.maximo)}
                                 </div>
                               </div>
                               <div className="flex-1">
@@ -764,12 +748,12 @@ export function HoursControlPanel() {
                         <div className="space-y-2">
                           {item.colaboradores.map((c) => (
                             <div key={c.colaborador.id} className="flex items-center gap-4 py-2 px-3 bg-muted/30 rounded-lg">
-                              <div className="min-w-[140px]">
+                              <div className="min-w-[160px]">
                                 <span className="text-sm font-medium">
                                   {c.colaborador.nombre}{c.colaborador.apellido ? ` ${c.colaborador.apellido}` : ''}
                                 </span>
-                                <div className="text-xs text-muted-foreground">
-                                  {c.minimo.toFixed(1)}h - {c.maximo.toFixed(1)}h
+                                <div className="text-xs text-muted-foreground font-mono">
+                                  {formatHoursToTime(c.minimo)} - {formatHoursToTime(c.maximo)}
                                 </div>
                               </div>
                               <div className="flex-1">
