@@ -1,6 +1,7 @@
 'use client'
 
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskComment, TaskFile, TaskQuotation } from '@/lib/types'
 
@@ -776,7 +777,9 @@ interface TaskStore {
   updateQuotation: (taskId: string, quotation: TaskQuotation | null) => void
 }
 
-export const useTaskStore = create<TaskStore>((set, get) => ({
+export const useTaskStore = create<TaskStore>()(
+  persist(
+    (set, get) => ({
   tasks: [],
   isLoading: false,
   selectedTaskId: null,
@@ -1381,7 +1384,17 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
         : t
     ),
   })),
-}))
+    }),
+    {
+      name: 'mdk-task-filters',
+      partialize: (state) => ({
+        view: state.view,
+        filters: state.filters,
+        advancedFilters: state.advancedFilters,
+      }),
+    }
+  )
+)
 
 // ── Selectors ─────────────────────────────────────────────────────────────────
 
@@ -1452,7 +1465,7 @@ export function useTasksByStatus() {
   return grouped
 }
 
-// ── Quotation Helpers ─────────────────────────────────────────────────────────
+// ── Quotation Helpers ─────���───────────────────────────────────────────────────
 
 export function calculateQuotation(hours: number, notes: string = ''): TaskQuotation {
   const subtotal = hours * HOURLY_RATE
