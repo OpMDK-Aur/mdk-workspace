@@ -824,120 +824,6 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             </CardContent>
           </Card>
 
-          {/* Hours Card - Metricas por colaborador */}
-          <Card className="row-span-2">
-            <CardContent className="pt-5 pb-5">
-              <div className="flex items-center gap-2 mb-4">
-                <Clock className="h-4 w-4 text-primary" />
-                <p className="text-xs text-muted-foreground font-medium">Horas del equipo</p>
-              </div>
-              
-              {/* Totales del equipo */}
-              <div className="space-y-2 mb-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">Total horas objetivo</span>
-                  <span className="text-sm font-semibold text-foreground">
-                    {metricasColaborador.reduce((acc, m) => acc + (m.horas_objetivo || 0), 0).toFixed(1)}h
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">Total horas acumuladas</span>
-                  <span className="text-sm font-semibold text-foreground">
-                    {metricasColaborador.reduce((acc, m) => acc + (m.acumulado_mes_asignado || 0), 0).toFixed(1)}h
-                  </span>
-                </div>
-              </div>
-              
-              {/* Lista de colaboradores con sus metricas */}
-              {metricasColaborador.length > 0 ? (
-                <div className="space-y-3 border-t border-border pt-4">
-                  <p className="text-xs text-muted-foreground font-medium">Detalle por colaborador</p>
-                  <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-                    {metricasColaborador.map((metrica) => {
-                      const colaborador = metrica.colaboradores
-                      const nombre = colaborador 
-                        ? `${colaborador.nombre || ''} ${colaborador.apellido || ''}`.trim() 
-                        : 'Sin nombre'
-                      const iniciales = nombre.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-                      const progreso = metrica.horas_objetivo > 0 
-                        ? Math.min((metrica.acumulado_mes_asignado / metrica.horas_objetivo) * 100, 100) 
-                        : 0
-                      const colorProgreso = progreso >= 100 
-                        ? 'bg-status-verde' 
-                        : progreso >= 70 
-                          ? 'bg-status-amarillo' 
-                          : 'bg-status-naranja'
-                      
-                      return (
-                        <div key={metrica.id} className="p-3 rounded-lg bg-muted/30 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-7 w-7 shrink-0">
-                              {colaborador?.avatar_url && <AvatarImage src={colaborador.avatar_url} alt={nombre} />}
-                              <AvatarFallback className="bg-primary/20 text-primary text-[10px]">
-                                {iniciales}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="text-sm font-medium text-foreground truncate">{nombre}</span>
-                          </div>
-                          
-                          {/* Barra de progreso */}
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-[10px]">
-                              <span className="text-muted-foreground">
-                                {metrica.acumulado_mes_asignado.toFixed(1)}h / {metrica.horas_objetivo.toFixed(1)}h objetivo
-                              </span>
-                              <span className={cn(
-                                'font-medium',
-                                progreso >= 100 ? 'text-status-verde' : progreso >= 70 ? 'text-status-amarillo' : 'text-status-naranja'
-                              )}>
-                                {progreso.toFixed(0)}%
-                              </span>
-                            </div>
-                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                              <div 
-                                className={cn('h-full rounded-full transition-all', colorProgreso)}
-                                style={{ width: `${progreso}%` }}
-                              />
-                            </div>
-                          </div>
-                          
-                          {/* Detalle de horas */}
-                          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Minimo:</span>
-                              <span className="font-medium">{metrica.minimo_no_negociable_horas.toFixed(1)}h</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Valor/hora:</span>
-                              <span className="font-medium">{formatCurrency(metrica.valor_hora)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ) : (
-                <div className="border-t border-border pt-4">
-                  <p className="text-xs text-muted-foreground text-center py-4">
-                    Sin metricas asignadas para este mes
-                  </p>
-                </div>
-              )}
-              
-              {/* Mis horas (colaborador actual) */}
-              <div className="mt-4 pt-3 border-t border-border">
-                <p className="text-xs text-muted-foreground font-medium mb-2">Mis horas este mes</p>
-                <div className="flex items-end gap-2">
-                  <span className="text-xl font-bold text-foreground">{formatHours(misHoras)}</span>
-                  {assignment && (
-                    <span className="text-xs text-muted-foreground mb-0.5">/ {assignment.max_hours}h asignadas</span>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
           <Card>
             <CardContent className="pt-5 pb-5">
               <p className="text-xs text-muted-foreground font-medium mb-3">Plataformas activas</p>
@@ -961,6 +847,149 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">Sin plataformas</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ── Horas del Equipo ── */}
+        <div>
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Horas del equipo</h2>
+          <Card>
+            <CardContent className="pt-5 pb-5">
+              {/* Resumen general */}
+              <div className="flex flex-wrap items-center gap-6 mb-5">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Clock className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-foreground">
+                      {metricasColaborador.reduce((acc, m) => acc + (m.acumulado_mes_asignado || 0), 0).toFixed(1)}h
+                    </p>
+                    <p className="text-xs text-muted-foreground">Horas acumuladas</p>
+                  </div>
+                </div>
+                <div className="h-8 w-px bg-border hidden sm:block" />
+                <div>
+                  <p className="text-lg font-semibold text-foreground">
+                    {metricasColaborador.reduce((acc, m) => acc + (m.horas_objetivo || 0), 0).toFixed(1)}h
+                  </p>
+                  <p className="text-xs text-muted-foreground">Objetivo mensual</p>
+                </div>
+                <div className="h-8 w-px bg-border hidden sm:block" />
+                <div>
+                  <p className="text-lg font-semibold text-foreground">
+                    {metricasColaborador.reduce((acc, m) => acc + (m.minimo_no_negociable_horas || 0), 0).toFixed(1)}h
+                  </p>
+                  <p className="text-xs text-muted-foreground">Minimo requerido</p>
+                </div>
+                <div className="h-8 w-px bg-border hidden sm:block" />
+                <div>
+                  <p className="text-lg font-semibold text-foreground">{metricasColaborador.length}</p>
+                  <p className="text-xs text-muted-foreground">Colaboradores asignados</p>
+                </div>
+              </div>
+              
+              {/* Lista de colaboradores */}
+              {metricasColaborador.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {metricasColaborador.map((metrica) => {
+                    const colaborador = metrica.colaboradores
+                    const nombre = colaborador 
+                      ? `${colaborador.nombre || ''} ${colaborador.apellido || ''}`.trim() 
+                      : 'Sin nombre'
+                    const iniciales = nombre.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+                    const progreso = metrica.horas_objetivo > 0 
+                      ? Math.min((metrica.acumulado_mes_asignado / metrica.horas_objetivo) * 100, 100) 
+                      : 0
+                    const colorProgreso = progreso >= 100 
+                      ? 'bg-status-verde' 
+                      : progreso >= 70 
+                        ? 'bg-status-amarillo' 
+                        : 'bg-status-naranja'
+                    
+                    return (
+                      <div key={metrica.id} className="p-4 rounded-xl bg-muted/30 border border-border/50 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9 shrink-0">
+                            {colaborador?.avatar_url && <AvatarImage src={colaborador.avatar_url} alt={nombre} />}
+                            <AvatarFallback className="bg-primary/20 text-primary text-xs">
+                              {iniciales}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-foreground truncate">{nombre}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {metrica.porcentaje_asignacion > 0 ? `${metrica.porcentaje_asignacion}% dedicacion` : 'Sin asignacion'}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {/* Barra de progreso */}
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">
+                              {metrica.acumulado_mes_asignado.toFixed(1)}h / {metrica.horas_objetivo.toFixed(1)}h
+                            </span>
+                            <span className={cn(
+                              'font-semibold',
+                              progreso >= 100 ? 'text-status-verde' : progreso >= 70 ? 'text-status-amarillo' : 'text-status-naranja'
+                            )}>
+                              {progreso.toFixed(0)}%
+                            </span>
+                          </div>
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div 
+                              className={cn('h-full rounded-full transition-all', colorProgreso)}
+                              style={{ width: `${progreso}%` }}
+                            />
+                          </div>
+                        </div>
+                        
+                        {/* Detalle */}
+                        <div className="flex justify-between text-xs pt-1 border-t border-border/50">
+                          <div>
+                            <span className="text-muted-foreground">Minimo: </span>
+                            <span className="font-medium">{metrica.minimo_no_negociable_horas.toFixed(1)}h</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Valor/h: </span>
+                            <span className="font-medium">{formatCurrency(metrica.valor_hora)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Clock className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+                  <p className="text-sm text-muted-foreground">Sin metricas asignadas para este mes</p>
+                  <p className="text-xs text-muted-foreground mt-1">Asigna colaboradores en la seccion de Metricas por Colaborador</p>
+                </div>
+              )}
+              
+              {/* Mis horas */}
+              {assignment && (
+                <div className="mt-5 pt-4 border-t border-border flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-8 w-8">
+                      {currentProfile?.avatar_url && <AvatarImage src={currentProfile.avatar_url} />}
+                      <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                        {currentProfile?.nombre?.[0]}{currentProfile?.apellido?.[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Mis horas este mes</p>
+                      <p className="text-xs text-muted-foreground">{currentProfile?.nombre} {currentProfile?.apellido}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-bold text-foreground">{formatHours(misHoras)}</p>
+                    <p className="text-xs text-muted-foreground">de {assignment.max_hours}h asignadas</p>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>
