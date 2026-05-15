@@ -953,7 +953,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   const [dbClientes, setDbClientes] = useState<DbCliente[]>([])
   const [dbColaboradores, setDbColaboradores] = useState<DbColaborador[]>([])
   const [dbTiposTarea, setDbTiposTarea] = useState<DbTipoTarea[]>([])
-  const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; apellido?: string } | null>(null)
+  const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; apellido?: string; avatar_url?: string | null } | null>(null)
   
   // Load dynamic data
   useEffect(() => {
@@ -965,7 +965,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       if (user) {
         const { data: colab } = await supabase
           .from('colaboradores')
-          .select('id, nombre, apellido')
+          .select('id, nombre, apellido, avatar_url')
           .eq('user_id', user.id)
           .single()
         if (colab) setCurrentUser(colab)
