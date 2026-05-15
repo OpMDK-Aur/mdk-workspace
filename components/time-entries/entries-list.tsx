@@ -289,16 +289,6 @@ interface EntryRowProps {
   cliente?: Cliente
   tipoTarea?: TipoDeTarea
   clientes: Cliente[]
-  onContinue: () => void
-  onUpdate: (id: string, updates: Partial<TimeEntry>) => Promise<void>
-  onDelete: () => void
-}
-
-interface EntryRowProps {
-  entry: TimeEntry
-  cliente?: Cliente
-  tipoTarea?: TipoDeTarea
-  clientes: Cliente[]
   tiposTarea?: TipoDeTarea[]
   onContinue: () => void
   onUpdate: (id: string, updates: Partial<TimeEntry>) => Promise<void>
