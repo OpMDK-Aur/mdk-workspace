@@ -1170,8 +1170,8 @@ function CommentsSection({ task }: { task: Task }) {
       {task.comments.length > 0 && (
         <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
           {sortedComments.map((c) => (
-            <div key={c.id} className="group rounded-lg border bg-muted/30 p-3">
-              <div className="flex items-start gap-3">
+            <div key={c.id} className="group rounded-lg border bg-muted/30 p-3 max-w-full overflow-hidden">
+              <div className="flex items-start gap-3 min-w-0">
                 <Avatar className="h-8 w-8 shrink-0">
                   <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
                   <AvatarFallback className="text-xs">{getInitials(c.userName)}</AvatarFallback>
@@ -1219,10 +1219,9 @@ function CommentsSection({ task }: { task: Task }) {
                     </div>
                   ) : (
                     <div 
-                      className="text-sm text-foreground/80 mt-2 prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block [&_img]:cursor-pointer [&_img]:hover:opacity-90 [&_img]:transition-opacity [&]:break-words [&]:overflow-wrap-break-word"
+                      className="text-sm text-foreground/80 mt-2 break-words whitespace-pre-wrap [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_em]:italic [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block [&_img]:cursor-pointer [&_img]:hover:opacity-90 [&_img]:transition-opacity"
                       dangerouslySetInnerHTML={{ __html: c.content }}
                       onClick={handleImageClick}
-                      style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
                     />
                   )}
                 </div>
