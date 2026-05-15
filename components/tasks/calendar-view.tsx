@@ -71,9 +71,10 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
         <span 
           className={cn(
             'text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full',
-            today && 'bg-primary text-primary-foreground',
-            !isCurrentMonth && 'text-muted-foreground/50',
-            pastDay && isCurrentMonth && 'text-muted-foreground'
+            today && 'bg-blue-600 text-white font-bold',
+            !today && !isCurrentMonth && 'text-muted-foreground/50',
+            !today && pastDay && isCurrentMonth && 'text-muted-foreground',
+            !today && isCurrentMonth && !pastDay && 'text-foreground'
           )}
         >
           {format(date, 'd')}
@@ -114,36 +115,32 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
               key={task.id}
               onClick={() => onTaskClick(task.id)}
               className={cn(
-                'w-full text-left rounded px-1.5 py-1 text-xs transition-colors hover:ring-1 hover:ring-primary/50',
-                isSystemTask 
-                  ? 'bg-gradient-to-r from-teal-500/20 to-cyan-500/20 border border-teal-500/30' 
-                  : statusConfig.bgColor,
-                isOverdue && !isSystemTask && 'ring-1 ring-red-500/50'
+                'w-full text-left rounded px-1.5 py-1 text-xs transition-colors',
+                'bg-white dark:bg-card border border-gray-200 dark:border-border',
+                'hover:border-primary/50 hover:shadow-sm',
+                isOverdue && !isSystemTask && 'ring-1 ring-red-400/60'
               )}
             >
               <div className="flex items-center gap-1">
-                {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-400 shrink-0" />}
-                {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />}
-                <span className={cn(
-                  'truncate flex-1',
-                  isSystemTask ? 'text-teal-300' : statusConfig.color
-                )}>
+                {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-500 shrink-0" />}
+                {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-500 shrink-0" />}
+                <span className="truncate flex-1 text-[11px] font-medium text-gray-900 dark:text-foreground leading-tight">
                   {task.title}
                 </span>
               </div>
               <div className="flex items-center justify-between mt-0.5">
                 {isSystemTask ? (
-                  <Badge 
-                    variant="outline" 
-                    className="h-4 px-1 text-[9px] border-0 bg-teal-500/20 text-teal-400"
+                  <Badge
+                    variant="outline"
+                    className="h-3.5 px-1 text-[9px] border-0 bg-teal-100 dark:bg-teal-900/40 text-teal-800 dark:text-teal-300 font-medium"
                   >
                     Semanal
                   </Badge>
                 ) : (
-                  <Badge 
-                    variant="outline" 
+                  <Badge
+                    variant="outline"
                     className={cn(
-                      'h-4 px-1 text-[9px] border-0',
+                      'h-3.5 px-1 text-[9px] border-0 font-medium',
                       priorityConfig.bgColor,
                       priorityConfig.color
                     )}
@@ -151,18 +148,18 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                     {priorityConfig.label}
                   </Badge>
                 )}
-                {task.assigneeAvatar || task.assigneeName ? (
-                  <Avatar className="h-4 w-4">
+                {(task.assigneeAvatar || task.assigneeName) && (
+                  <Avatar className="h-4 w-4 shrink-0">
                     {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
-                    <AvatarFallback className="text-[8px]">{getInitials(task.assigneeName)}</AvatarFallback>
+                    <AvatarFallback className="text-[7px]">{getInitials(task.assigneeName)}</AvatarFallback>
                   </Avatar>
-                ) : null}
+                )}
               </div>
             </button>
           )
         })}
         {tasks.length > 3 && (
-          <p className="text-[10px] text-muted-foreground text-center">
+          <p className="text-[11px] text-gray-500 dark:text-muted-foreground text-center py-0.5">
             +{tasks.length - 3} mas
           </p>
         )}
@@ -340,44 +337,33 @@ export function CalendarView() {
                     <button
                       key={task.id}
                       onClick={() => setSelectedTask(task.id)}
-                      className={cn(
-                        'w-full text-left rounded-lg border p-3 transition-colors hover:border-primary/50',
-                        'bg-card'
-                      )}
+                      className="w-full text-left rounded-lg border border-gray-200 dark:border-border bg-white dark:bg-card p-3 transition-colors hover:border-primary/50 hover:shadow-sm"
                     >
-                      <p className="text-sm font-medium truncate">{task.title}</p>
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      <p className="text-sm font-medium text-gray-900 dark:text-foreground truncate">{task.title}</p>
+                      <p className="text-xs text-gray-500 dark:text-muted-foreground truncate mt-0.5">
                         {task.clientName}
                       </p>
                       <div className="flex items-center justify-between mt-2">
                         <div className="flex items-center gap-1.5">
-                          <Badge 
-                            variant="outline" 
-                            className={cn(
-                              'h-5 px-1.5 text-[10px] border-0',
-                              statusConfig.bgColor,
-                              statusConfig.color
-                            )}
+                          <Badge
+                            variant="outline"
+                            className={cn('h-5 px-1.5 text-[10px] border-0 font-medium', statusConfig.bgColor, statusConfig.color)}
                           >
                             {statusConfig.label}
                           </Badge>
-                          <Badge 
-                            variant="outline" 
-                            className={cn(
-                              'h-5 px-1.5 text-[10px] border-0',
-                              priorityConfig.bgColor,
-                              priorityConfig.color
-                            )}
+                          <Badge
+                            variant="outline"
+                            className={cn('h-5 px-1.5 text-[10px] border-0 font-medium', priorityConfig.bgColor, priorityConfig.color)}
                           >
                             {priorityConfig.label}
                           </Badge>
                         </div>
-                        {task.assigneeAvatar || task.assigneeName ? (
-                          <Avatar className="h-5 w-5">
+                        {(task.assigneeAvatar || task.assigneeName) && (
+                          <Avatar className="h-4 w-4">
                             {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
-                            <AvatarFallback className="text-[9px]">{getInitials(task.assigneeName)}</AvatarFallback>
+                            <AvatarFallback className="text-[7px]">{getInitials(task.assigneeName)}</AvatarFallback>
                           </Avatar>
-                        ) : null}
+                        )}
                       </div>
                     </button>
                   )

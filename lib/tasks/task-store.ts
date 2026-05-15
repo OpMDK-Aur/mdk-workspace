@@ -527,9 +527,9 @@ export const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; b
 export const STATUS_ORDER: TaskStatus[] = ['pendiente_aprobacion', 'pendiente', 'resolviendo', 'demorada', 'pausada', 'resuelto']
 
 export const PRIORITY_CONFIG: Record<TaskPriority, { label: string; color: string; bgColor: string }> = {
-  alta: { label: 'Alta', color: 'text-red-700 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-500/15' },
-  media: { label: 'Media', color: 'text-amber-700 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-500/15' },
-  baja: { label: 'Baja', color: 'text-green-700 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-500/15' },
+  alta:  { label: 'Alta',  color: 'text-red-800 dark:text-red-300',    bgColor: 'bg-red-100 dark:bg-red-900/50' },
+  media: { label: 'Media', color: 'text-amber-900 dark:text-amber-300', bgColor: 'bg-amber-100 dark:bg-amber-900/50' },
+  baja:  { label: 'Baja',  color: 'text-green-900 dark:text-green-300', bgColor: 'bg-green-100 dark:bg-green-900/50' },
 }
 
 export const TYPE_CONFIG: Record<string, { label: string; color: string; icon?: string }> = {
