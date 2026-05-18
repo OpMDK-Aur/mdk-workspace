@@ -366,6 +366,7 @@ export async function getClientServiceMap(
 
 /**
  * Get aggregated KPIs for service map report
+ * Generates instances for clients that don't have them yet
  */
 export async function getServiceMapKPIs(filters?: {
   mes?: number
@@ -381,25 +382,53 @@ export async function getServiceMapKPIs(filters?: {
     const mes = filters?.mes ?? now.getMonth() + 1
     const anio = filters?.anio ?? now.getFullYear()
 
-    // Fetch all instances for the month with client data
-    let query = supabase
+    // 1. First fetch ALL active clients
+    const { data: allClientes, error: clientesError } = await supabase
+      .from('clientes')
+      .select('id, nombre_del_negocio, plan, project_manager_id, account_manager_id, activo')
+      .or('activo.is.null,activo.eq.true')
+      .order('nombre_del_negocio')
+
+    if (clientesError) throw clientesError
+    if (!allClientes || allClientes.length === 0) return { data: [] }
+
+    // 2. Generate instances for each client that doesn't have them yet
+    // (only for current month to avoid generating future data)
+    const isCurrentMonth = mes === now.getMonth() + 1 && anio === now.getFullYear()
+    if (isCurrentMonth) {
+      for (const cliente of allClientes) {
+        // Check if client already has instances for this month
+        const { count } = await supabase
+          .from('mapa_servicio_instancias')
+          .select('*', { count: 'exact', head: true })
+          .eq('cliente_id', cliente.id)
+          .eq('mes', mes)
+          .eq('anio', anio)
+
+        if (count === 0) {
+          // Generate instances for this client
+          await generateMonthInstances(cliente.id, mes, anio, cliente.plan || 'Esencial')
+        }
+      }
+    }
+
+    // 3. Now fetch all instances for the month with client data
+    const { data, error } = await supabase
       .from('mapa_servicio_instancias')
       .select(
         `
         *,
-        hito:hitos_catalogo(nombre),
+        hito:hitos_catalogo(nombre, tipo_servicio),
         cliente:clientes(id, nombre_del_negocio, plan, project_manager_id, account_manager_id)
       `
       )
       .eq('mes', mes)
       .eq('anio', anio)
 
-    const { data, error } = await query
-
     if (error) throw error
     if (!data) return { data: [] }
 
-    // Group by client and calculate KPIs
+    // 4. Group by client and calculate KPIs
     const clientMap = new Map<string, ServiceMapKPIs>()
 
     for (const row of data) {
@@ -410,11 +439,15 @@ export async function getServiceMapKPIs(filters?: {
         project_manager_id: string | null
         account_manager_id: string | null
       }
+      const hito = row.hito as { nombre: string; tipo_servicio: string } | null
 
       if (!cliente) continue
 
-    // Apply filters (normalize plan comparison)
-    if (filters?.planFilter && normalizePlan(cliente.plan) !== normalizePlan(filters.planFilter)) continue
+      // Filter instances by client plan (Esencial only sees esencial hitos)
+      if (isEsencial(cliente.plan) && hito?.tipo_servicio !== 'esencial') continue
+
+      // Apply filters (normalize plan comparison)
+      if (filters?.planFilter && normalizePlan(cliente.plan) !== normalizePlan(filters.planFilter)) continue
       if (filters?.pmFilter && cliente.project_manager_id !== filters.pmFilter) continue
       if (filters?.amFilter && cliente.account_manager_id !== filters.amFilter) continue
 
@@ -448,7 +481,7 @@ export async function getServiceMapKPIs(filters?: {
         // Track last completed hito
         if (!kpi.ultimaFecha || (row.fecha_completado && row.fecha_completado > kpi.ultimaFecha)) {
           kpi.ultimaFecha = row.fecha_completado
-          kpi.ultimoHito = (row.hito as { nombre: string })?.nombre || null
+          kpi.ultimoHito = hito?.nombre || null
         }
       }
     }
