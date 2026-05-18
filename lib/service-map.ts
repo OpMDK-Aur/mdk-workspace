@@ -285,7 +285,6 @@ export async function createMissingTasks(
       const hito = instancia.hito as HitoCatalogo | null
       if (!hito) continue
 
-      // Create the task
       const insertPayload = {
         titulo: `[Hito] ${hito.nombre}`,
         descripcion: hito.descripcion || null,
@@ -295,7 +294,6 @@ export async function createMissingTasks(
         hito_poe: hito.id,
         es_tarea_sistema: true,
       }
-      console.log('[v0] createMissingTasks - inserting task:', JSON.stringify(insertPayload))
 
       const { data: newTask, error: taskError } = await supabase
         .from('tareas')
@@ -304,31 +302,23 @@ export async function createMissingTasks(
         .single()
 
       if (taskError || !newTask) {
-        console.error('[v0] createMissingTasks - task insert error:', {
-          message: taskError?.message,
-          code: taskError?.code,
-          details: taskError?.details,
-          hint: taskError?.hint,
-        })
+        console.error('[service-map] Task insert error:', taskError?.message)
         continue
       }
 
-      console.log('[v0] createMissingTasks - task created:', newTask.id)
-
-      // Link the task back to the instance
       const { error: updateError } = await supabase
         .from('mapa_servicio_instancias')
         .update({ tarea_id: newTask.id })
         .eq('id', instancia.id)
 
       if (updateError) {
-        console.error('[v0] createMissingTasks - update instance error:', updateError.message)
+        console.error('[service-map] Update instance error:', updateError.message)
       }
 
       created++
     }
 
-    console.log('[v0] createMissingTasks - done, created:', created)
+    return { success: true, created }
   } catch (error) {
     console.error('[service-map] Error in createMissingTasks:', error)
     return { success: false, created: 0, error: error instanceof Error ? error.message : 'Unknown error' }
@@ -388,14 +378,8 @@ export async function completeInstance(
     const hitoNombre = (instancia.hito as HitoCatalogo)?.nombre || 'Hito'
     const tipo = checklistCompleto ? 'hito_completado' : 'hito_incompleto'
     const mensaje = checklistCompleto
-      ? `✅ Hito completado: ${hitoNombre} · Checklist completo`
-      : `⚠️ Hito cerrado con checklist incompleto: ${hitoNombre}`
-
-    console.log('[v0] completeInstance - creating comment:', {
-      cliente_id: instancia.cliente_id,
-      tipo,
-      colaborador_id: completadoPorValue,
-    })
+      ? `Hito completado: ${hitoNombre} - Checklist completo`
+      : `Hito cerrado con checklist incompleto: ${hitoNombre}`
 
     const { error: commentError } = await supabase.from('comentarios_clientes').insert({
       cliente_id: instancia.cliente_id,
@@ -406,14 +390,8 @@ export async function completeInstance(
     })
 
     if (commentError) {
-      console.error('[v0] Error creating comment:', {
-        message: commentError.message,
-        code: commentError.code,
-        details: commentError.details,
-      })
+      console.error('[service-map] Error creating comment:', commentError.message)
       // Non-critical error, don't fail the operation
-    } else {
-      console.log('[v0] Comment created successfully')
     }
 
     return { success: true }

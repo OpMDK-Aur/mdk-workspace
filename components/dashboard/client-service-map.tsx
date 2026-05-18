@@ -77,13 +77,13 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
 
   // Fetch instances for selected month
   useEffect(() => {
+    const supabase = createClient()
+
     async function fetchAndGenerate() {
       setLoading(true)
       setError(null)
 
       try {
-        // First check if hitos_catalogo has data
-        const supabase = createClient()
         const { data: catalogCheck, error: catalogError } = await supabase
           .from('hitos_catalogo')
           .select('id')
@@ -101,7 +101,6 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
           return
         }
 
-        // First try to generate instances for current month if needed
         const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
         if (isCurrentMonth) {
           setGenerating(true)
@@ -112,7 +111,6 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
           setGenerating(false)
         }
 
-        // Fetch instances (filtered by client plan)
         const result = await getClientServiceMap(clientId, selectedMonth, selectedYear, clientPlan)
         if (result.error) {
           setError(result.error)
@@ -127,6 +125,28 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
     }
 
     fetchAndGenerate()
+
+    // Subscribe to realtime changes on mapa_servicio_instancias for this client
+    const channel = supabase
+      .channel(`service_map_${clientId}_${selectedMonth}_${selectedYear}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'mapa_servicio_instancias',
+          filter: `cliente_id=eq.${clientId}`,
+        },
+        () => {
+          // Refetch when any instance is updated
+          fetchAndGenerate()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [clientId, clientPlan, selectedMonth, selectedYear])
 
   // Group instances by hito (some hitos have multiple instances per month)
