@@ -21,6 +21,7 @@ import {
   ChevronDown,
   ChevronUp,
   Search,
+  Map,
 } from 'lucide-react'
 import {
   Select,
@@ -30,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import Link from 'next/link'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -414,9 +416,10 @@ function GoogleMultiSelect({ accounts, selectedIds, matchResult, onChange, loadi
 
 interface ClientsPlatformConfigProps {
   clients: ClientItem[]
+  isMaster?: boolean
 }
 
-export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
+export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlatformConfigProps) {
   const [metaAccounts, setMetaAccounts] = useState<MetaAccount[]>([])
   const [loadingAccounts, setLoadingAccounts] = useState(false)
   const [accountsError, setAccountsError] = useState<string | null>(null)
@@ -620,6 +623,18 @@ export function ClientsPlatformConfig({ clients }: ClientsPlatformConfigProps) {
           </Button>
         </div>
       </div>
+
+      {/* Service Map Config Link (Master only) */}
+      {isMaster && (
+        <Link 
+          href="/dashboard/config/hitos"
+          className="flex items-center gap-2 px-4 py-3 rounded-lg border border-border bg-muted/30 hover:bg-muted/50 transition-colors text-sm"
+        >
+          <Map className="h-4 w-4 text-primary" />
+          <span className="font-medium">Configuración del Mapa de Servicio</span>
+          <span className="text-muted-foreground ml-auto">Administrar hitos y checklists</span>
+        </Link>
+      )}
 
       {/* Auto-save progress banner */}
       {autoSaving && (

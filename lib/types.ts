@@ -293,6 +293,87 @@ export interface ClientBudgetAlert {
   meta_ads: BudgetPlatformSummary | null
 }
 
+// ── Service Map (Mapa de Servicio) ────────────────────────────────────────────
+
+export type TipoServicio = 'esencial' | 'estrategico'
+
+export type FrecuenciaHito = 'Mensual' | 'Bimestral' | 'Semanal' | 'Semanal (Lun)' | 'Semanal (Vie)' | '2 Veces x Sem'
+
+export type EstadoInstancia = 'pendiente' | 'en_curso' | 'listo' | 'no_aplica'
+
+export type TipoMinuta = 'reunion_cierre_mes' | 'reunion_scorecard' | 'reunion_alineacion' | 'otra'
+
+export interface ChecklistItem {
+  id: string
+  texto: string
+}
+
+export interface ChecklistItemSnapshot {
+  id: string
+  texto: string
+  completado: boolean
+}
+
+export interface HitoCatalogo {
+  id: string
+  nombre: string
+  descripcion: string | null
+  orden: number
+  tipo_servicio: TipoServicio
+  frecuencia: FrecuenciaHito
+  genera_tarea: boolean
+  requiere_link_drive: boolean
+  checklist_esencial: ChecklistItem[] | null
+  checklist_estrategico: ChecklistItem[] | null
+}
+
+export interface MapaServicioInstancia {
+  id: string
+  cliente_id: string
+  hito_id: string
+  mes: number
+  anio: number
+  semana_del_mes: number | null
+  estado: EstadoInstancia
+  completado_por: string | null
+  fecha_completado: string | null // DATE as string
+  link_drive: string | null
+  tarea_id: string | null
+  checklist_snapshot: ChecklistItemSnapshot[] | null
+  checklist_completo: boolean | null
+  tipo_servicio_cliente: TipoServicio | null
+  // Joined fields
+  hito?: HitoCatalogo
+}
+
+export interface MinutaCliente {
+  id: string
+  cliente_id: string
+  titulo: string
+  contenido: string | null
+  fecha: string // DATE as string
+  tipo: TipoMinuta
+  autor: string | null
+  colaborador_id: string | null
+  creado_en: string
+  actualizado_en: string
+}
+
+export interface ServiceMapKPIs {
+  clientId: string
+  clientName: string
+  plan: ClientPlan
+  totalHitos: number
+  completados: number
+  progresoPercent: number
+  checklistsCompletos: number
+  checklistCompletoPercent: number
+  ultimoHito: string | null
+  ultimaFecha: string | null
+  projectManagerId: string | null
+  accountManagerId: string | null
+}
+
 // ── Task Management ───────────────────────────────────────────────────────────
 
 export interface Cliente {
@@ -426,6 +507,8 @@ export interface Task {
   comments: TaskComment[]
   files: TaskFile[]
   quotation: TaskQuotation | null
+  // Service Map integration
+  hitoPoe: string | null // UUID reference to hitos_catalogo
   createdById: string | null
   createdByName: string
   createdByAvatar?: string | null

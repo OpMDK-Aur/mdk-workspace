@@ -8,6 +8,7 @@ import { HoursChart } from '@/components/reports/hours-chart'
 import { ClientDonutChart } from '@/components/reports/client-donut-chart'
 import { ClientSummaryTable } from '@/components/reports/client-summary-table'
 import { HoursControlPanel } from '@/components/reports/hours-control-panel'
+import { ServiceMapReport } from '@/components/reports/service-map-report'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
@@ -26,7 +27,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { CalendarIcon, Download, Users, Loader2, ClipboardCheck } from 'lucide-react'
+import { CalendarIcon, Download, Users, Loader2, ClipboardCheck, Map } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/lib/types'
 import type { ClientSummary } from '@/lib/time-tracking/types'
@@ -377,11 +378,15 @@ export default function ReportsPage() {
           <TabsTrigger value="by-collaborator">Por Colaborador</TabsTrigger>
           <TabsTrigger value="by-matrix">Colaborador x Cliente</TabsTrigger>
           <TabsTrigger value="by-day">Por Día</TabsTrigger>
-          <TabsTrigger value="hours-control" className="gap-2">
-            <ClipboardCheck className="w-4 h-4" />
-            Control de Horas
-          </TabsTrigger>
-        </TabsList>
+            <TabsTrigger value="hours-control" className="gap-2">
+              <ClipboardCheck className="w-4 h-4" />
+              Control de Horas
+            </TabsTrigger>
+            <TabsTrigger value="service-map" className="gap-2">
+              <Map className="w-4 h-4" />
+              Mapa de Servicio
+            </TabsTrigger>
+          </TabsList>
         
         <TabsContent value="by-client">
           {isLoading ? (
@@ -703,10 +708,14 @@ export default function ReportsPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="hours-control">
-          <HoursControlPanel />
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="hours-control">
+            <HoursControlPanel />
+          </TabsContent>
+
+          <TabsContent value="service-map">
+            <ServiceMapReport />
+          </TabsContent>
+        </Tabs>
     </div>
   )
 }

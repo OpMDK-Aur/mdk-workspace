@@ -195,6 +195,29 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     }
 
     fetchData()
+
+    // Subscribe to changes in comentarios_clientes for this client
+    const channel = supabase
+      .channel(`comentarios_${clientId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'comentarios_clientes',
+          filter: `cliente_id=eq.${clientId}`
+        },
+        (payload) => {
+          // Refetch comments when a new one is inserted
+          console.log('[v0] New comment detected, refetching...')
+          fetchData()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [clientId, supabase])
 
   // Get unique authors for filter

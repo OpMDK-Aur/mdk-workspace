@@ -164,6 +164,7 @@ function mapTareaToTask(
     comments: [],
     files: [],
     quotation: null,
+    hitoPoe: tarea.hito_poe || null,
     createdById: tarea.creado_por || null,
     createdByName: (() => {
       if (tarea.creado_por && colaboradoresMap) {
@@ -818,10 +819,13 @@ export const useTaskStore = create<TaskStore>()(
           .from('tareas')
           .select(`
             *,
+            hito_poe,
+            es_tarea_sistema,
             clientes:cliente_id(id, nombre_del_negocio),
             colaboradores:asignado_a(id, nombre, apellido, avatar_url),
             tipo_de_tareas:tipo_tarea_id(id, nombre)
           `)
+          .or('es_tarea_sistema.is.null,es_tarea_sistema.eq.false')
           .order('created_at', { ascending: false }),
         supabase
           .from('clientes')
@@ -864,12 +868,14 @@ export const useTaskStore = create<TaskStore>()(
           task.comments = [] // Loaded on demand
           return task
         })
+        console.log('[v0] Tasks mapped:', dbTasks.length)
         set({ tasks: dbTasks, isLoading: false })
       } else {
+        console.log('[v0] No tasks found')
         set({ tasks: [], isLoading: false })
       }
     } catch (error) {
-      console.error('Error loading tasks:', error)
+      console.error('[v0] Error loading tasks:', error)
       set({ tasks: MOCK_TASKS, isLoading: false })
     }
   },
