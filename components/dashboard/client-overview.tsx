@@ -24,6 +24,7 @@ import { computeClientBudgetAlerts } from './budget-alerts-shared'
 import { ClientMemoria } from './client-memoria'
 import { DiscordChat } from './discord-chat'
 import { ClientComments } from './client-comments'
+import { ClientActivityTabs } from './client-activity-tabs'
 import { ClientLandings } from './client-landings'
 import { ClientCRMs } from './client-crms'
 import { ClientAdjuntos } from './client-adjuntos'
@@ -1143,15 +1144,26 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         <ClientAdjuntos clientId={client.id} currentUserId={currentProfile?.id} />
 
         {/* ── Comentarios del Cliente ── */}
-        <ClientComments 
-          clientId={client.id} 
+        <ClientActivityTabs
+          clientId={client.id}
+          clientPlan={client.plan}
           currentUser={currentProfile ? {
             id: currentProfile.id,
             nombre: currentProfile.nombre,
             apellido: currentProfile.apellido,
             avatar_url: currentProfile.avatar_url,
           } : null}
-        />
+        >
+          <ClientComments 
+            clientId={client.id} 
+            currentUser={currentProfile ? {
+              id: currentProfile.id,
+              nombre: currentProfile.nombre,
+              apellido: currentProfile.apellido,
+              avatar_url: currentProfile.avatar_url,
+            } : null}
+          />
+        </ClientActivityTabs>
 
         {/* ── Memoria del Cliente ── */}
         <ClientMemoria clienteId={client.id} />

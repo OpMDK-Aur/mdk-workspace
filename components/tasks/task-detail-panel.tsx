@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation } from '@/lib/types'
+import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation, ClientPlan } from '@/lib/types'
 import { cn, linkifyText } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -28,6 +28,7 @@ interface Colaborador {
 interface Cliente {
   id: string
   nombre_del_negocio: string
+  plan?: ClientPlan
 }
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
@@ -40,6 +41,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { HitoCompletionModal } from './hito-completion-modal'
 import {
   Select,
   SelectContent,
@@ -1514,6 +1516,28 @@ export function TaskDetailPanel() {
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
 
+  // Hito completion modal state
+  const [hitoModalOpen, setHitoModalOpen] = useState(false)
+  const [pendingStatus, setPendingStatus] = useState<TaskStatus | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
+  // Load current user ID
+  useEffect(() => {
+    async function loadCurrentUser() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: colab } = await supabase
+          .from('colaboradores')
+          .select('id')
+          .eq('user_id', user.id)
+          .single()
+        if (colab) setCurrentUserId(colab.id)
+      }
+    }
+    loadCurrentUser()
+  }, [])
+
   // Load dynamic data on mount
   useEffect(() => {
     async function loadData() {
@@ -1522,7 +1546,7 @@ export function TaskDetailPanel() {
       const [tiposRes, colabRes, clientesRes] = await Promise.all([
         supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
         supabase.from('colaboradores').select('id, nombre, avatar_url').order('nombre'),
-        supabase.from('clientes').select('id, nombre_del_negocio').order('nombre_del_negocio'),
+        supabase.from('clientes').select('id, nombre_del_negocio, plan').order('nombre_del_negocio'),
       ])
 
       if (tiposRes.data) setTiposTarea(tiposRes.data)
@@ -1542,6 +1566,38 @@ export function TaskDetailPanel() {
   }
 
   const statusConfig = STATUS_CONFIG[task.status]
+
+  // Get client plan for the task's primary client
+  const taskClient = clientes.find(c => c.id === task.clientId)
+  const clientPlan: ClientPlan = taskClient?.plan || 'Esencial'
+
+  // Handle status change with hito_poe interception
+  const handleStatusChange = (newStatus: TaskStatus) => {
+    // If changing to 'resuelto' and task has hito_poe, show modal
+    if (newStatus === 'resuelto' && task.hitoPoe) {
+      setPendingStatus(newStatus)
+      setHitoModalOpen(true)
+      return
+    }
+    // Otherwise, update normally
+    updateTask(task.id, { status: newStatus })
+  }
+
+  // Called after hito modal completion
+  const handleHitoComplete = () => {
+    setHitoModalOpen(false)
+    // Now complete the task
+    if (pendingStatus) {
+      updateTask(task.id, { status: pendingStatus })
+    }
+    setPendingStatus(null)
+  }
+
+  // Called if hito modal is cancelled
+  const handleHitoCancel = () => {
+    setHitoModalOpen(false)
+    setPendingStatus(null)
+  }
 
   const handleClose = () => {
     setIsFullscreen(false)
@@ -1749,7 +1805,7 @@ export function TaskDetailPanel() {
                           <Label className="text-xs text-muted-foreground mb-1.5 block">Estado</Label>
                           <Select
                             value={task.status}
-                            onValueChange={(v) => updateTask(task.id, { status: v as TaskStatus })}
+                          onValueChange={(v) => handleStatusChange(v as TaskStatus)}
                           >
                             <SelectTrigger className={cn('h-9', statusConfig.bgColor, statusConfig.color)}>
                               <SelectValue />
@@ -1907,7 +1963,7 @@ export function TaskDetailPanel() {
                       <Label className="text-xs text-muted-foreground mb-1.5 block">Estado</Label>
                       <Select
                         value={task.status}
-                        onValueChange={(v) => updateTask(task.id, { status: v as TaskStatus })}
+                        onValueChange={(v) => handleStatusChange(v as TaskStatus)}
                       >
                         <SelectTrigger className={cn('h-9', statusConfig.bgColor, statusConfig.color)}>
                           <SelectValue />
@@ -2091,6 +2147,20 @@ export function TaskDetailPanel() {
           </div>
         </Tabs>
       </SheetContent>
+
+      {/* Hito Completion Modal */}
+      {task.hitoPoe && (
+        <HitoCompletionModal
+          open={hitoModalOpen}
+          onOpenChange={setHitoModalOpen}
+          tareaId={task.id}
+          hitoPoeId={task.hitoPoe}
+          clientPlan={clientPlan}
+          completadoPor={currentUserId || ''}
+          onComplete={handleHitoComplete}
+          onCancel={handleHitoCancel}
+        />
+      )}
     </Sheet>
   )
 }

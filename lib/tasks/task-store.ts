@@ -164,6 +164,7 @@ function mapTareaToTask(
     comments: [],
     files: [],
     quotation: null,
+    hitoPoe: tarea.hito_poe || null,
     createdById: tarea.creado_por || null,
     createdByName: (() => {
       if (tarea.creado_por && colaboradoresMap) {
