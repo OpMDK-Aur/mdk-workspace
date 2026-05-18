@@ -184,51 +184,28 @@ export async function generateMonthInstances(
       return { success: true, generated: 0 }
     }
 
-    console.log('[v0] Instances to insert:', instanciasToInsert.length, instanciasToInsert)
+    console.log('[v0] Instances to insert:', instanciasToInsert.length)
 
-    // 3. Check which instances already exist
-    const { data: existingInstances } = await supabase
-      .from('mapa_servicio_instancias')
-      .select('hito_id, semana_del_mes')
-      .eq('cliente_id', clienteId)
-      .eq('mes', mes)
-      .eq('anio', anio)
-
-    console.log('[v0] Existing instances:', existingInstances)
-
-    // Filter out instances that already exist
-    const existingKeys = new Set(
-      (existingInstances || []).map(i => `${i.hito_id}-${i.semana_del_mes ?? 0}`)
-    )
-    const newInstances = instanciasToInsert.filter(
-      i => !existingKeys.has(`${i.hito_id}-${i.semana_del_mes ?? 0}`)
-    )
-
-    console.log('[v0] New instances to insert (after filtering existing):', newInstances.length)
-
-    if (newInstances.length === 0) {
-      return { success: true, generated: 0 }
+    // 3. Insert instances one by one, ignoring duplicates
+    let insertedCount = 0
+    for (const instancia of instanciasToInsert) {
+      const { error: insertError } = await supabase
+        .from('mapa_servicio_instancias')
+        .insert(instancia)
+      
+      if (insertError) {
+        // Ignore duplicate key errors (code 23505)
+        if (insertError.code === '23505') {
+          console.log('[v0] Instance already exists, skipping:', instancia.hito_id, instancia.semana_del_mes)
+          continue
+        }
+        console.error('[v0] Insert error:', insertError.message)
+        throw new Error(`Insert failed: ${insertError.message}`)
+      }
+      insertedCount++
     }
 
-    // 4. Insert only new instances
-    console.log('[v0] Attempting insert with first instance:', JSON.stringify(newInstances[0], null, 2))
-    
-    const { data: inserted, error: insertError } = await supabase
-      .from('mapa_servicio_instancias')
-      .insert(newInstances)
-      .select()
-    
-    console.log('[v0] Insert result:', { insertedCount: inserted?.length, error: insertError })
-
-    if (insertError) {
-      console.error('[v0] Insert error full details:', {
-        message: insertError.message,
-        details: insertError.details,
-        hint: insertError.hint,
-        code: insertError.code,
-      })
-      throw new Error(`Insert failed: ${insertError.message} - ${insertError.details || ''} - hint: ${insertError.hint || ''}`)
-    }
+    console.log('[v0] Successfully inserted:', insertedCount, 'instances')
 
     // 4. For hitos with genera_tarea = true, create tasks
     const hitosConTarea = (hitos as HitoCatalogo[]).filter((h) => h.genera_tarea)
