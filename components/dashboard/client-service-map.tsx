@@ -101,8 +101,8 @@ export function ClientServiceMap({ clientId, clientPlan }: ClientServiceMapProps
           setGenerating(false)
         }
 
-        // Fetch instances
-        const result = await getClientServiceMap(clientId, selectedMonth, selectedYear)
+        // Fetch instances (filtered by client plan)
+        const result = await getClientServiceMap(clientId, selectedMonth, selectedYear, clientPlan)
         console.log('[v0] getClientServiceMap result:', result)
         if (result.error) {
           setError(result.error)

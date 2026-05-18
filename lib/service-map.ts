@@ -331,11 +331,13 @@ export async function completeInstance(
 
 /**
  * Get all service map instances for a client for a given month/year
+ * Filters by client plan: Esencial only sees 'esencial' hitos, Estratégico sees all
  */
 export async function getClientServiceMap(
   clienteId: string,
   mes?: number,
-  anio?: number
+  anio?: number,
+  clientPlan?: ClientPlan
 ): Promise<{ data: MapaServicioInstancia[] | null; error?: string }> {
   const supabase = createClient()
 
@@ -359,7 +361,16 @@ export async function getClientServiceMap(
 
     if (error) throw error
 
-    return { data: data as MapaServicioInstancia[] }
+    // Filter by client plan if provided
+    let filteredData = data as MapaServicioInstancia[]
+    if (clientPlan && isEsencial(clientPlan)) {
+      // Esencial clients only see 'esencial' hitos
+      filteredData = filteredData.filter(
+        (instance) => (instance.hito as HitoCatalogo)?.tipo_servicio === 'esencial'
+      )
+    }
+
+    return { data: filteredData }
   } catch (error) {
     console.error('[service-map] Error fetching client service map:', error)
     return { data: null, error: error instanceof Error ? error.message : 'Unknown error' }
