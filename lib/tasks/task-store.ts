@@ -825,7 +825,9 @@ export const useTaskStore = create<TaskStore>()(
             colaboradores:asignado_a(id, nombre, apellido, avatar_url),
             tipo_de_tareas:tipo_tarea_id(id, nombre)
           `)
-          .order('created_at', { ascending: false }),
+          .or('es_tarea_sistema.is.null,es_tarea_sistema.eq.false')
+          .order('created_at', { ascending: false })
+          .range(0, 9999),
         supabase
           .from('clientes')
           .select('id, nombre_del_negocio')
