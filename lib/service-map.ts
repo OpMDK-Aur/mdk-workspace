@@ -15,8 +15,10 @@ import type {
 /**
  * Normalize plan string for comparison (removes accents, lowercase)
  * 'Esencial' -> 'esencial', 'Estratégico' -> 'estrategico'
+ * Defaults to 'esencial' if plan is null/undefined
  */
-function normalizePlan(plan: string): TipoServicio {
+function normalizePlan(plan: string | null | undefined): TipoServicio {
+  if (!plan) return 'esencial'
   const normalized = plan.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   return normalized === 'esencial' ? 'esencial' : 'estrategico'
 }
@@ -24,7 +26,7 @@ function normalizePlan(plan: string): TipoServicio {
 /**
  * Check if client plan is Esencial (case/accent insensitive)
  */
-function isEsencial(plan: ClientPlan): boolean {
+function isEsencial(plan: ClientPlan | null | undefined): boolean {
   return normalizePlan(plan) === 'esencial'
 }
 
