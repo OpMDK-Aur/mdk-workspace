@@ -578,10 +578,34 @@ export async function getAllHitos(): Promise<{ data: HitoCatalogo[] | null; erro
     return { data: null, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }
-
+  
 /**
- * Update a hito in catalog and regenerate affected instances
+ * Check if a hito has future (non-completed) instances
  */
+export async function checkHitoHasFutureInstances(hitoId: string): Promise<boolean> {
+  const supabase = createClient()
+  const now = new Date()
+  const currentMonth = now.getMonth() + 1
+  const currentYear = now.getFullYear()
+
+  const { count, error } = await supabase
+    .from('mapa_servicio_instancias')
+    .select('*', { count: 'exact', head: true })
+    .eq('hito_id', hitoId)
+    .neq('estado', 'listo')
+    .or(`anio.gt.${currentYear},and(anio.eq.${currentYear},mes.gte.${currentMonth})`)
+
+  if (error) {
+    console.error('Error checking future instances:', error)
+    return false
+  }
+
+  return (count ?? 0) > 0
+}
+  
+/**
+* Update a hito in catalog and regenerate affected instances
+*/
 export async function updateCatalogHito(
   hitoId: string,
   updates: Partial<HitoCatalogo>
