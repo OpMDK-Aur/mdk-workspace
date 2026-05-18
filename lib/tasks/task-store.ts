@@ -860,6 +860,8 @@ export const useTaskStore = create<TaskStore>()(
         return
       }
       
+      console.log('[v0] Tasks loaded from DB:', data?.length)
+      
       if (data && data.length > 0) {
         // Map tasks without comments - comments will be loaded on demand when task is selected
         const dbTasks = data.map((tarea) => {
