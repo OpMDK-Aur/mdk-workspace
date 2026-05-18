@@ -13,6 +13,22 @@ import type {
 // ── Utility Functions ─────────────────────────────────────────────────────────
 
 /**
+ * Normalize plan string for comparison (removes accents, lowercase)
+ * 'Esencial' -> 'esencial', 'Estratégico' -> 'estrategico'
+ */
+function normalizePlan(plan: string): TipoServicio {
+  const normalized = plan.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  return normalized === 'esencial' ? 'esencial' : 'estrategico'
+}
+
+/**
+ * Check if client plan is Esencial (case/accent insensitive)
+ */
+function isEsencial(plan: ClientPlan): boolean {
+  return normalizePlan(plan) === 'esencial'
+}
+
+/**
  * Calculate which week of the month a hito should appear in based on frecuencia
  */
 function calculateSemanaDelMes(frecuencia: string, instanceIndex: number = 0): number {
@@ -80,13 +96,13 @@ export async function generateMonthInstances(
   const supabase = createClient()
 
   try {
-    // 1. Fetch catalog filtered by plan
-    const tipoServicioFilter: TipoServicio = planCliente === 'Esencial' ? 'esencial' : 'estrategico'
-
+    // 1. Fetch catalog filtered by plan (normalized comparison)
+    const tipoServicioNormalized = normalizePlan(planCliente)
+    
     let query = supabase.from('hitos_catalogo').select('*').order('orden', { ascending: true })
-
+    
     // Esencial clients only see 'esencial' hitos, Estrategico/Premium see all
-    if (planCliente === 'Esencial') {
+    if (isEsencial(planCliente)) {
       query = query.eq('tipo_servicio', 'esencial')
     }
 
@@ -122,7 +138,7 @@ export async function generateMonthInstances(
           anio,
           semana_del_mes: calculateSemanaDelMes(hito.frecuencia, i),
           estado: 'pendiente',
-          tipo_servicio_cliente: planCliente === 'Esencial' ? 'esencial' : 'estrategico',
+          tipo_servicio_cliente: normalizePlan(planCliente),
         })
       }
     }
@@ -348,8 +364,8 @@ export async function getServiceMapKPIs(filters?: {
 
       if (!cliente) continue
 
-      // Apply filters
-      if (filters?.planFilter && cliente.plan !== filters.planFilter) continue
+    // Apply filters (normalize plan comparison)
+    if (filters?.planFilter && normalizePlan(cliente.plan) !== normalizePlan(filters.planFilter)) continue
       if (filters?.pmFilter && cliente.project_manager_id !== filters.pmFilter) continue
       if (filters?.amFilter && cliente.account_manager_id !== filters.amFilter) continue
 
