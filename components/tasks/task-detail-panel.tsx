@@ -1511,18 +1511,6 @@ export function TaskDetailPanel() {
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [tempTitle, setTempTitle] = useState('')
   
-  // Debug: Check if hitoPoe is loaded
-  useEffect(() => {
-    if (task) {
-      console.log('[v0] TaskDetailPanel - task:', {
-        id: task.id,
-        title: task.title,
-        hitoPoe: task.hitoPoe,
-        status: task.status
-      })
-    }
-  }, [task?.id, task?.hitoPoe, task?.status])
-  
   // Dynamic data from Supabase
   const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
@@ -1584,13 +1572,35 @@ export function TaskDetailPanel() {
   const clientPlan: ClientPlan = taskClient?.plan || 'Esencial'
 
   // Handle status change with hito_poe interception
-  const handleStatusChange = (newStatus: TaskStatus) => {
-    // If changing to 'resuelto' and task has hito_poe, show modal
-    if (newStatus === 'resuelto' && task.hitoPoe) {
-      setPendingStatus(newStatus)
-      setHitoModalOpen(true)
-      return
+  const handleStatusChange = async (newStatus: TaskStatus) => {
+    // If changing to 'resuelto', check if task has hito_poe
+    if (newStatus === 'resuelto') {
+      // First check if we already have hitoPoe in memory
+      if (task.hitoPoe) {
+        setPendingStatus(newStatus)
+        setHitoModalOpen(true)
+        return
+      }
+      
+      // If not, query Supabase directly
+      try {
+        const supabase = createClient()
+        const { data: taskData } = await supabase
+          .from('tareas')
+          .select('hito_poe, cliente_id')
+          .eq('id', task.id)
+          .single()
+
+        if (taskData?.hito_poe) {
+          setPendingStatus(newStatus)
+          setHitoModalOpen(true)
+          return
+        }
+      } catch (error) {
+        console.error('[task-detail] Error checking hito_poe:', error)
+      }
     }
+    
     // Otherwise, update normally
     updateTask(task.id, { status: newStatus })
   }
