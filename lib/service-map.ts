@@ -367,12 +367,14 @@ export async function completeInstance(
 
     // 2. Update the instance
     const today = new Date().toISOString().split('T')[0] // DATE format YYYY-MM-DD
+    // Handle empty string as null for UUID fields
+    const completadoPorValue = completadoPor && completadoPor.trim() !== '' ? completadoPor : null
 
     const { error: updateError } = await supabase
       .from('mapa_servicio_instancias')
       .update({
         estado: 'listo',
-        completado_por: completadoPor,
+        completado_por: completadoPorValue,
         fecha_completado: today,
         checklist_snapshot: checklistSnapshot,
         checklist_completo: checklistCompleto,
@@ -392,14 +394,14 @@ export async function completeInstance(
     console.log('[v0] completeInstance - creating comment:', {
       cliente_id: instancia.cliente_id,
       tipo,
-      colaborador_id: completadoPor,
+      colaborador_id: completadoPorValue,
     })
 
     const { error: commentError } = await supabase.from('comentarios_clientes').insert({
       cliente_id: instancia.cliente_id,
       contenido: mensaje,
       tipo,
-      colaborador_id: completadoPor,
+      colaborador_id: completadoPorValue,
       autor: 'Sistema',
     })
 
