@@ -825,7 +825,8 @@ export const useTaskStore = create<TaskStore>()(
             colaboradores:asignado_a(id, nombre, apellido, avatar_url),
             tipo_de_tareas:tipo_tarea_id(id, nombre)
           `)
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .limit(5000),
         supabase
           .from('clientes')
           .select('id, nombre_del_negocio')
@@ -859,8 +860,6 @@ export const useTaskStore = create<TaskStore>()(
         set({ tasks: [], isLoading: false })
         return
       }
-      
-      console.log('[v0] Tasks loaded from DB:', data?.length)
       
       if (data && data.length > 0) {
         // Map tasks without comments - comments will be loaded on demand when task is selected
