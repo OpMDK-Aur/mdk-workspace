@@ -246,6 +246,83 @@ export async function generateMonthInstances(
 }
 
 /**
+ * Create tasks for existing instances that are missing them (tarea_id IS NULL)
+ * Runs retroactively for all clients for a given month/year
+ */
+export async function createMissingTasks(
+  mes: number,
+  anio: number
+): Promise<{ success: boolean; created: number; error?: string }> {
+  const supabase = createClient()
+
+  try {
+    // Fetch all instances missing a task where hito genera_tarea = true
+    const { data: instanciasSinTarea, error } = await supabase
+      .from('mapa_servicio_instancias')
+      .select(`
+        id,
+        cliente_id,
+        hito_id,
+        hito:hitos_catalogo(id, nombre, descripcion, genera_tarea)
+      `)
+      .eq('mes', mes)
+      .eq('anio', anio)
+      .is('tarea_id', null)
+
+    if (error) throw error
+    if (!instanciasSinTarea || instanciasSinTarea.length === 0) {
+      return { success: true, created: 0 }
+    }
+
+    // Filter only those where hito.genera_tarea = true
+    const pendientes = instanciasSinTarea.filter(
+      (i) => (i.hito as HitoCatalogo | null)?.genera_tarea === true
+    )
+
+    let created = 0
+
+    for (const instancia of pendientes) {
+      const hito = instancia.hito as HitoCatalogo | null
+      if (!hito) continue
+
+      // Create the task
+      const { data: newTask, error: taskError } = await supabase
+        .from('tareas')
+        .insert({
+          titulo: `[Hito] ${hito.nombre}`,
+          descripcion: hito.descripcion,
+          cliente_id: instancia.cliente_id,
+          estado: 'pendiente',
+          prioridad: 'media',
+          hito_poe: hito.id,
+          es_tarea_sistema: true,
+        })
+        .select('id')
+        .single()
+
+      if (taskError || !newTask) {
+        console.error('[service-map] Error creating task for instance', instancia.id, taskError?.message)
+        continue
+      }
+
+      // Link the task back to the instance
+      await supabase
+        .from('mapa_servicio_instancias')
+        .update({ tarea_id: newTask.id })
+        .eq('id', instancia.id)
+
+      created++
+    }
+
+    return { success: true, created }
+  } catch (error) {
+    console.error('[service-map] Error in createMissingTasks:', error)
+    return { success: false, created: 0, error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
+
+
+/**
  * Complete a service map instance when a task with hito_poe is resolved
  */
 export async function completeInstance(

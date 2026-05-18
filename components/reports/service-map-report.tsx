@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/table'
 import { Loader2, Download, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getServiceMapKPIs } from '@/lib/service-map'
+import { getServiceMapKPIs, createMissingTasks } from '@/lib/service-map'
 import type { ServiceMapKPIs, ClientPlan } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 
@@ -81,6 +81,13 @@ export function ServiceMapReport() {
     async function fetchKPIs() {
       setLoading(true)
       setError(null)
+
+      // For current month, retroactively create any missing tasks
+      const now = new Date()
+      const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
+      if (isCurrentMonth) {
+        await createMissingTasks(selectedMonth, selectedYear)
+      }
 
       const result = await getServiceMapKPIs({
         mes: selectedMonth,
