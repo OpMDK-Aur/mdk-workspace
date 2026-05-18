@@ -86,7 +86,13 @@ export function ServiceMapReport() {
       const now = new Date()
       const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
       if (isCurrentMonth) {
-        await createMissingTasks(selectedMonth, selectedYear)
+        try {
+          console.log('[v0] Calling createMissingTasks for', { selectedMonth, selectedYear })
+          const taskResult = await createMissingTasks(selectedMonth, selectedYear)
+          console.log('[v0] createMissingTasks result:', taskResult)
+        } catch (err) {
+          console.error('[v0] createMissingTasks error:', err)
+        }
       }
 
       const result = await getServiceMapKPIs({
