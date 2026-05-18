@@ -95,9 +95,12 @@ export async function generateMonthInstances(
 ): Promise<{ success: boolean; error?: string; generated?: number }> {
   const supabase = createClient()
 
+  console.log('[v0] generateMonthInstances called with:', { clienteId, mes, anio, planCliente })
+
   try {
     // 1. Fetch catalog filtered by plan (normalized comparison)
     const tipoServicioNormalized = normalizePlan(planCliente)
+    console.log('[v0] Normalized plan:', tipoServicioNormalized, 'isEsencial:', isEsencial(planCliente))
     
     let query = supabase.from('hitos_catalogo').select('*').order('orden', { ascending: true })
     
@@ -107,9 +110,14 @@ export async function generateMonthInstances(
     }
 
     const { data: hitos, error: hitosError } = await query
+    
+    console.log('[v0] Fetched hitos from catalog:', { count: hitos?.length, error: hitosError, hitos })
 
     if (hitosError) throw hitosError
-    if (!hitos || hitos.length === 0) return { success: true, generated: 0 }
+    if (!hitos || hitos.length === 0) {
+      console.log('[v0] No hitos found in catalog!')
+      return { success: true, generated: 0 }
+    }
 
     // 2. Generate instances for each hito
     const instanciasToInsert: Array<{
@@ -143,7 +151,12 @@ export async function generateMonthInstances(
       }
     }
 
-    if (instanciasToInsert.length === 0) return { success: true, generated: 0 }
+    if (instanciasToInsert.length === 0) {
+      console.log('[v0] No instances to insert after filtering by frecuencia')
+      return { success: true, generated: 0 }
+    }
+
+    console.log('[v0] Instances to insert:', instanciasToInsert.length, instanciasToInsert)
 
     // 3. Insert with ON CONFLICT DO NOTHING (using upsert with ignoreDuplicates)
     const { data: inserted, error: insertError } = await supabase
@@ -153,6 +166,8 @@ export async function generateMonthInstances(
         ignoreDuplicates: true,
       })
       .select()
+    
+    console.log('[v0] Insert result:', { inserted, error: insertError })
 
     if (insertError) throw insertError
 
