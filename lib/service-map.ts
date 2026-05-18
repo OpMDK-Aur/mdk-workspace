@@ -249,7 +249,7 @@ export async function generateMonthInstances(
       }
     }
 
-    return { success: true, generated: inserted?.length ?? instanciasToInsert.length }
+    return { success: true, generated: insertedCount }
   } catch (error) {
     console.error('[service-map] Error generating instances:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
