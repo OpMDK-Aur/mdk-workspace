@@ -286,35 +286,49 @@ export async function createMissingTasks(
       if (!hito) continue
 
       // Create the task
+      const insertPayload = {
+        titulo: `[Hito] ${hito.nombre}`,
+        descripcion: hito.descripcion || null,
+        cliente_id: instancia.cliente_id,
+        estado: 'pendiente',
+        prioridad: 'media',
+        hito_poe: hito.id,
+        es_tarea_sistema: true,
+      }
+      console.log('[v0] createMissingTasks - inserting task:', JSON.stringify(insertPayload))
+
       const { data: newTask, error: taskError } = await supabase
         .from('tareas')
-        .insert({
-          titulo: `[Hito] ${hito.nombre}`,
-          descripcion: hito.descripcion,
-          cliente_id: instancia.cliente_id,
-          estado: 'pendiente',
-          prioridad: 'media',
-          hito_poe: hito.id,
-          es_tarea_sistema: true,
-        })
+        .insert(insertPayload)
         .select('id')
         .single()
 
       if (taskError || !newTask) {
-        console.error('[service-map] Error creating task for instance', instancia.id, taskError?.message)
+        console.error('[v0] createMissingTasks - task insert error:', {
+          message: taskError?.message,
+          code: taskError?.code,
+          details: taskError?.details,
+          hint: taskError?.hint,
+        })
         continue
       }
 
+      console.log('[v0] createMissingTasks - task created:', newTask.id)
+
       // Link the task back to the instance
-      await supabase
+      const { error: updateError } = await supabase
         .from('mapa_servicio_instancias')
         .update({ tarea_id: newTask.id })
         .eq('id', instancia.id)
 
+      if (updateError) {
+        console.error('[v0] createMissingTasks - update instance error:', updateError.message)
+      }
+
       created++
     }
 
-    return { success: true, created }
+    console.log('[v0] createMissingTasks - done, created:', created)
   } catch (error) {
     console.error('[service-map] Error in createMissingTasks:', error)
     return { success: false, created: 0, error: error instanceof Error ? error.message : 'Unknown error' }
