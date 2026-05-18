@@ -1573,16 +1573,13 @@ export function TaskDetailPanel() {
 
   // Handle status change with hito_poe interception
   const handleStatusChange = (newStatus: TaskStatus) => {
-    console.log('[v0] handleStatusChange called:', { newStatus, hitoPoe: task.hitoPoe, taskId: task.id })
     // If changing to 'resuelto' and task has hito_poe, show modal
     if (newStatus === 'resuelto' && task.hitoPoe) {
-      console.log('[v0] Opening hito modal for task:', task.hitoPoe)
       setPendingStatus(newStatus)
       setHitoModalOpen(true)
       return
     }
     // Otherwise, update normally
-    console.log('[v0] Updating task status normally')
     updateTask(task.id, { status: newStatus })
   }
 
