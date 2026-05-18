@@ -1147,6 +1147,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         <ClientActivityTabs
           clientId={client.id}
           clientPlan={client.plan}
+          unidadNegocio={client.unidad_negocio}
           currentUser={currentProfile ? {
             id: currentProfile.id,
             nombre: currentProfile.nombre,

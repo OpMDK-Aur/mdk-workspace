@@ -467,11 +467,12 @@ export async function getServiceMapKPIs(filters?: {
     const mes = filters?.mes ?? now.getMonth() + 1
     const anio = filters?.anio ?? now.getFullYear()
 
-    // 1. First fetch ALL active clients
+    // 1. First fetch ALL active clients with unidad_negocio = 'MDK'
     const { data: allClientes, error: clientesError } = await supabase
       .from('clientes')
-      .select('id, nombre_del_negocio, plan, project_manager_id, account_manager_id, activo')
+      .select('id, nombre_del_negocio, plan, project_manager_id, account_manager_id, activo, unidad_negocio')
       .or('activo.is.null,activo.eq.true')
+      .eq('unidad_negocio', 'MDK')
       .order('nombre_del_negocio')
 
     if (clientesError) throw clientesError
@@ -497,18 +498,19 @@ export async function getServiceMapKPIs(filters?: {
       }
     }
 
-    // 3. Now fetch all instances for the month with client data
+    // 3. Now fetch all instances for the month with client data (only MDK clients)
     const { data, error } = await supabase
       .from('mapa_servicio_instancias')
       .select(
         `
         *,
         hito:hitos_catalogo(nombre, tipo_servicio),
-        cliente:clientes(id, nombre_del_negocio, plan, project_manager_id, account_manager_id)
+        cliente:clientes!inner(id, nombre_del_negocio, plan, project_manager_id, account_manager_id, unidad_negocio)
       `
       )
       .eq('mes', mes)
       .eq('anio', anio)
+      .eq('cliente.unidad_negocio', 'MDK')
 
     if (error) throw error
     if (!data) return { data: [] }

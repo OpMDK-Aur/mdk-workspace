@@ -4,6 +4,8 @@ export type ClientStatus = 'verde' | 'amarillo' | 'naranja' | 'rojo'
 
 export type ClientPlan = 'Esencial' | 'Estrategico' | 'Premium'
 
+export type UnidadNegocio = 'MDK' | 'Aurelia' | 'Consultoría' | 'Tecnología'
+
 export type Platform = 'all' | 'meta' | 'google'
 
 export type DateRangePreset = 'last_30d' | 'last_14d' | 'last_7d' | 'daily' | 'monthly' | 'yearly' | 'custom'
@@ -103,6 +105,7 @@ export interface Client {
   fecha_baja?: string | null
   etapa?: ClientEtapa | null
   semaforo_unidades?: Record<string, 'verde' | 'amarillo' | 'naranja' | 'rojo'> | null
+  unidad_negocio?: UnidadNegocio | null
   created_at: string
   updated_at: string
 }
