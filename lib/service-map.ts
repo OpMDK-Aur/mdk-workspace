@@ -158,16 +158,37 @@ export async function generateMonthInstances(
 
     console.log('[v0] Instances to insert:', instanciasToInsert.length, instanciasToInsert)
 
-    // 3. Insert with ON CONFLICT DO NOTHING (using upsert with ignoreDuplicates)
+    // 3. Check which instances already exist
+    const { data: existingInstances } = await supabase
+      .from('mapa_servicio_instancias')
+      .select('hito_id, semana_del_mes')
+      .eq('cliente_id', clienteId)
+      .eq('mes', mes)
+      .eq('anio', anio)
+
+    console.log('[v0] Existing instances:', existingInstances)
+
+    // Filter out instances that already exist
+    const existingKeys = new Set(
+      (existingInstances || []).map(i => `${i.hito_id}-${i.semana_del_mes ?? 0}`)
+    )
+    const newInstances = instanciasToInsert.filter(
+      i => !existingKeys.has(`${i.hito_id}-${i.semana_del_mes ?? 0}`)
+    )
+
+    console.log('[v0] New instances to insert (after filtering existing):', newInstances.length)
+
+    if (newInstances.length === 0) {
+      return { success: true, generated: 0 }
+    }
+
+    // 4. Insert only new instances
     const { data: inserted, error: insertError } = await supabase
       .from('mapa_servicio_instancias')
-      .upsert(instanciasToInsert, {
-        onConflict: 'cliente_id,hito_id,mes,anio,semana_del_mes',
-        ignoreDuplicates: true,
-      })
+      .insert(newInstances)
       .select()
     
-    console.log('[v0] Insert result:', { inserted, error: insertError })
+    console.log('[v0] Insert result:', { insertedCount: inserted?.length, error: insertError })
 
     if (insertError) throw insertError
 
