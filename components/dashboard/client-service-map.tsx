@@ -65,26 +65,53 @@ export function ClientServiceMap({ clientId, clientPlan }: ClientServiceMapProps
 
       console.log('[v0] ClientServiceMap: Fetching for', { clientId, clientPlan, selectedMonth, selectedYear })
 
-      // First try to generate instances for current month if needed
-      const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
-      if (isCurrentMonth) {
-        setGenerating(true)
-        console.log('[v0] Generating instances for current month')
-        const genResult = await generateMonthInstances(clientId, selectedMonth, selectedYear, clientPlan)
-        console.log('[v0] Generation result:', genResult)
-        if (!genResult.success) {
-          console.error('[service-map] Generation error:', genResult.error)
+      try {
+        // First check if hitos_catalogo has data
+        const supabase = createClient()
+        const { data: catalogCheck, error: catalogError } = await supabase
+          .from('hitos_catalogo')
+          .select('id')
+          .limit(1)
+        
+        console.log('[v0] Catalog check:', { catalogCheck, catalogError })
+        
+        if (catalogError) {
+          setError(`Error accediendo al catálogo: ${catalogError.message}`)
+          setLoading(false)
+          return
         }
-        setGenerating(false)
-      }
+        
+        if (!catalogCheck || catalogCheck.length === 0) {
+          setError('El catálogo de hitos está vacío. Por favor, agregue los hitos en la configuración.')
+          setLoading(false)
+          return
+        }
 
-      // Fetch instances
-      const result = await getClientServiceMap(clientId, selectedMonth, selectedYear)
-      console.log('[v0] getClientServiceMap result:', result)
-      if (result.error) {
-        setError(result.error)
-      } else {
-        setInstances(result.data || [])
+        // First try to generate instances for current month if needed
+        const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
+        if (isCurrentMonth) {
+          setGenerating(true)
+          console.log('[v0] Generating instances for current month')
+          const genResult = await generateMonthInstances(clientId, selectedMonth, selectedYear, clientPlan)
+          console.log('[v0] Generation result:', genResult)
+          if (!genResult.success) {
+            console.error('[service-map] Generation error:', genResult.error)
+            setError(`Error generando: ${genResult.error}`)
+          }
+          setGenerating(false)
+        }
+
+        // Fetch instances
+        const result = await getClientServiceMap(clientId, selectedMonth, selectedYear)
+        console.log('[v0] getClientServiceMap result:', result)
+        if (result.error) {
+          setError(result.error)
+        } else {
+          setInstances(result.data || [])
+        }
+      } catch (e) {
+        console.error('[v0] ClientServiceMap error:', e)
+        setError(`Error: ${e instanceof Error ? e.message : String(e)}`)
       }
 
       setLoading(false)
@@ -160,8 +187,11 @@ export function ClientServiceMap({ clientId, clientPlan }: ClientServiceMapProps
 
   if (error) {
     return (
-      <div className="text-center py-8 text-sm text-destructive">
-        Error: {error}
+      <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-center">
+        <p className="text-sm text-destructive font-medium">{error}</p>
+        <p className="text-xs text-muted-foreground mt-2">
+          Si este error persiste, contacte al administrador.
+        </p>
       </div>
     )
   }
