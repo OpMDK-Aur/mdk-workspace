@@ -183,6 +183,8 @@ export async function generateMonthInstances(
     }
 
     // 4. Insert only new instances
+    console.log('[v0] Attempting insert with first instance:', JSON.stringify(newInstances[0], null, 2))
+    
     const { data: inserted, error: insertError } = await supabase
       .from('mapa_servicio_instancias')
       .insert(newInstances)
@@ -190,7 +192,15 @@ export async function generateMonthInstances(
     
     console.log('[v0] Insert result:', { insertedCount: inserted?.length, error: insertError })
 
-    if (insertError) throw insertError
+    if (insertError) {
+      console.error('[v0] Insert error full details:', {
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
+        code: insertError.code,
+      })
+      throw new Error(`Insert failed: ${insertError.message} - ${insertError.details || ''} - hint: ${insertError.hint || ''}`)
+    }
 
     // 4. For hitos with genera_tarea = true, create tasks
     const hitosConTarea = (hitos as HitoCatalogo[]).filter((h) => h.genera_tarea)
