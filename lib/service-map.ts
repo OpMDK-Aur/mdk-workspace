@@ -29,6 +29,28 @@ function isEsencial(plan: ClientPlan): boolean {
 }
 
 /**
+ * Calculate fecha_vencimiento based on year, month, and week number
+ * Returns the last day of that week (Friday) or end of month if later
+ */
+function calculateFechaVencimiento(anio: number, mes: number, semana: number): string {
+  // Get the last day of the month
+  const lastDayOfMonth = new Date(anio, mes, 0).getDate()
+  
+  // Calculate approximate day based on week (7 days per week)
+  // Week 1 = days 1-7, Week 2 = days 8-14, etc.
+  let targetDay = semana * 7
+  
+  // Cap at last day of month
+  if (targetDay > lastDayOfMonth) {
+    targetDay = lastDayOfMonth
+  }
+  
+  // Format as YYYY-MM-DD
+  const date = new Date(anio, mes - 1, targetDay)
+  return date.toISOString().split('T')[0]
+}
+
+/**
  * Calculate which week of the month a hito should appear in based on frecuencia
  */
 function calculateSemanaDelMes(frecuencia: string, instanceIndex: number = 0): number {
@@ -128,6 +150,7 @@ export async function generateMonthInstances(
       semana_del_mes: number
       estado: string
       tipo_servicio_cliente: TipoServicio
+      fecha_vencimiento: string
     }> = []
 
     for (const hito of hitos as HitoCatalogo[]) {
@@ -139,14 +162,19 @@ export async function generateMonthInstances(
       const instancesCount = getInstancesPerMonth(hito.frecuencia)
 
       for (let i = 0; i < instancesCount; i++) {
+        const semana = calculateSemanaDelMes(hito.frecuencia, i)
+        // Calculate fecha_vencimiento: last day of the week within the month
+        const fechaVencimiento = calculateFechaVencimiento(anio, mes, semana)
+        
         instanciasToInsert.push({
           cliente_id: clienteId,
           hito_id: hito.id,
           mes,
           anio,
-          semana_del_mes: calculateSemanaDelMes(hito.frecuencia, i),
+          semana_del_mes: semana,
           estado: 'pendiente',
           tipo_servicio_cliente: normalizePlan(planCliente),
+          fecha_vencimiento: fechaVencimiento,
         })
       }
     }
