@@ -868,12 +868,14 @@ export const useTaskStore = create<TaskStore>()(
           task.comments = [] // Loaded on demand
           return task
         })
+        console.log('[v0] Tasks mapped:', dbTasks.length)
         set({ tasks: dbTasks, isLoading: false })
       } else {
+        console.log('[v0] No tasks found')
         set({ tasks: [], isLoading: false })
       }
     } catch (error) {
-      console.error('Error loading tasks:', error)
+      console.error('[v0] Error loading tasks:', error)
       set({ tasks: MOCK_TASKS, isLoading: false })
     }
   },
