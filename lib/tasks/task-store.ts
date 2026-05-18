@@ -825,7 +825,6 @@ export const useTaskStore = create<TaskStore>()(
             colaboradores:asignado_a(id, nombre, apellido, avatar_url),
             tipo_de_tareas:tipo_tarea_id(id, nombre)
           `)
-          .or('es_tarea_sistema.is.null,es_tarea_sistema.eq.false')
           .order('created_at', { ascending: false }),
         supabase
           .from('clientes')
@@ -868,14 +867,12 @@ export const useTaskStore = create<TaskStore>()(
           task.comments = [] // Loaded on demand
           return task
         })
-        console.log('[v0] Tasks mapped:', dbTasks.length)
         set({ tasks: dbTasks, isLoading: false })
       } else {
-        console.log('[v0] No tasks found')
         set({ tasks: [], isLoading: false })
       }
     } catch (error) {
-      console.error('[v0] Error loading tasks:', error)
+      console.error('Error loading tasks:', error)
       set({ tasks: MOCK_TASKS, isLoading: false })
     }
   },
