@@ -819,6 +819,8 @@ export const useTaskStore = create<TaskStore>()(
           .from('tareas')
           .select(`
             *,
+            hito_poe,
+            es_tarea_sistema,
             clientes:cliente_id(id, nombre_del_negocio),
             colaboradores:asignado_a(id, nombre, apellido, avatar_url),
             tipo_de_tareas:tipo_tarea_id(id, nombre)
