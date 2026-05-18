@@ -876,6 +876,8 @@ export const useTaskStore = create<TaskStore>()(
       // Also update ASSIGNEES global
       loadAssignees()
       
+      console.log('[v0] Total tasks loaded:', allTasks.length)
+      
       if (allTasks.length > 0) {
         // Map tasks without comments - comments will be loaded on demand when task is selected
         const dbTasks = allTasks.map((tarea) => {
