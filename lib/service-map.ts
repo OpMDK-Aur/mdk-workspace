@@ -389,6 +389,12 @@ export async function completeInstance(
       ? `✅ Hito completado: ${hitoNombre} · Checklist completo`
       : `⚠️ Hito cerrado con checklist incompleto: ${hitoNombre}`
 
+    console.log('[v0] completeInstance - creating comment:', {
+      cliente_id: instancia.cliente_id,
+      tipo,
+      colaborador_id: completadoPor,
+    })
+
     const { error: commentError } = await supabase.from('comentarios_clientes').insert({
       cliente_id: instancia.cliente_id,
       contenido: mensaje,
@@ -398,8 +404,14 @@ export async function completeInstance(
     })
 
     if (commentError) {
-      console.error('[service-map] Error creating comment:', commentError)
+      console.error('[v0] Error creating comment:', {
+        message: commentError.message,
+        code: commentError.code,
+        details: commentError.details,
+      })
       // Non-critical error, don't fail the operation
+    } else {
+      console.log('[v0] Comment created successfully')
     }
 
     return { success: true }
