@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import type { Client, ClientEtapa, ServicioContratado } from '@/lib/types'
+import type { Client, ClientEtapa, ServicioContratado, ClientPlan } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -41,7 +41,7 @@ import {
   Briefcase, User, Mail, Phone, Calendar as CalendarIcon,
   Plus, X, CheckCircle2, Circle, Edit2, Save, Loader2,
   Megaphone, Search, TrendingUp, Users, Palette, Code,
-  MessageCircle, Database, FileText, Settings, Trash2,
+  MessageCircle, Database, FileText, Settings, Trash2, Star,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -80,6 +80,11 @@ const SEMAFORO_OPTIONS = [
   { value: 'naranja', label: 'En riesgo', color: '#f97316' },
   { value: 'rojo', label: 'Critico', color: '#ef4444' },
 ] as const
+
+const PLAN_OPTIONS: { value: ClientPlan; label: string }[] = [
+  { value: 'Esencial', label: 'Esencial' },
+  { value: 'Estratégico', label: 'Estratégico' },
+]
 
 const SERVICE_ICONS: Record<string, React.ReactNode> = {
   'megaphone': <Megaphone className="h-3 w-3" />,
@@ -149,6 +154,10 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
     client.semaforo_unidades || {}
   )
   const [savingSemaforo, setSavingSemaforo] = useState(false)
+  
+  // Plan state
+  const [plan, setPlan] = useState<ClientPlan>(client.plan || 'Esencial')
+  const [savingPlan, setSavingPlan] = useState(false)
   
   // Load available services
   useEffect(() => {
@@ -308,6 +317,17 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
       .update({ semaforo_unidades: newSemaforo })
       .eq('id', client.id)
     setSavingSemaforo(false)
+  }
+  
+  // Save plan
+  const savePlan = async (newPlan: ClientPlan) => {
+    setSavingPlan(true)
+    setPlan(newPlan)
+    await supabase
+      .from('clientes')
+      .update({ plan: newPlan })
+      .eq('id', client.id)
+    setSavingPlan(false)
   }
   
   const availableServicesFiltered = serviciosDisponibles.filter(
@@ -622,6 +642,39 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
               )}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Plan del Cliente */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Star className="h-4 w-4 text-primary" />
+            Plan de servicio
+            {savingPlan && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Select value={plan} onValueChange={(v) => savePlan(v as ClientPlan)}>
+            <SelectTrigger className="h-9">
+              <SelectValue placeholder="Seleccionar plan" />
+            </SelectTrigger>
+            <SelectContent>
+              {PLAN_OPTIONS.map(option => (
+                <SelectItem key={option.value} value={option.value}>
+                  <span className="flex items-center gap-2">
+                    {option.value === 'Estratégico' && <Star className="h-3 w-3 text-amber-500 fill-amber-500" />}
+                    {option.label}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground mt-2">
+            {plan === 'Estratégico' 
+              ? 'Acceso a todos los hitos del mapa de servicio' 
+              : 'Acceso a hitos esenciales del mapa de servicio'}
+          </p>
         </CardContent>
       </Card>
 
