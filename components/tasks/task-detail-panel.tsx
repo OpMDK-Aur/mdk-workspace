@@ -1511,6 +1511,18 @@ export function TaskDetailPanel() {
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [tempTitle, setTempTitle] = useState('')
   
+  // Debug: Check if hitoPoe is loaded
+  useEffect(() => {
+    if (task) {
+      console.log('[v0] TaskDetailPanel - task:', {
+        id: task.id,
+        title: task.title,
+        hitoPoe: task.hitoPoe,
+        status: task.status
+      })
+    }
+  }, [task?.id, task?.hitoPoe, task?.status])
+  
   // Dynamic data from Supabase
   const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
