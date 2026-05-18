@@ -52,7 +52,7 @@ export function ClientActivityTabs({
       </TabsContent>
 
       <TabsContent value="service-map" className="mt-4">
-        <ClientServiceMap clientId={clientId} clientPlan={clientPlan} />
+        <ClientServiceMap clientId={clientId} clientPlan={clientPlan} currentUserId={currentUser?.id} />
       </TabsContent>
     </Tabs>
   )

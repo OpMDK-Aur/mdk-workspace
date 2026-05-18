@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -18,14 +18,26 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { Loader2, CheckCircle2, Clock, Circle, Ban, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Loader2, CheckCircle2, Clock, Circle, Ban, ExternalLink, ChevronLeft, ChevronRight, ClipboardCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { generateMonthInstances, getClientServiceMap } from '@/lib/service-map'
-import type { MapaServicioInstancia, ClientPlan, HitoCatalogo, EstadoInstancia } from '@/lib/types'
+import { generateMonthInstances, getClientServiceMap, completeInstance } from '@/lib/service-map'
+import type { MapaServicioInstancia, ClientPlan, HitoCatalogo, EstadoInstancia, ChecklistItem, ChecklistItemSnapshot } from '@/lib/types'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 interface ClientServiceMapProps {
   clientId: string
   clientPlan: ClientPlan
+  currentUserId?: string | null
 }
 
 const MONTHS = [
@@ -40,11 +52,17 @@ const ESTADO_CONFIG: Record<EstadoInstancia, { icon: typeof CheckCircle2; color:
   no_aplica: { icon: Ban, color: 'text-muted-foreground/50', label: 'No aplica' },
 }
 
-export function ClientServiceMap({ clientId, clientPlan }: ClientServiceMapProps) {
+export function ClientServiceMap({ clientId, clientPlan, currentUserId }: ClientServiceMapProps) {
   const [instances, setInstances] = useState<MapaServicioInstancia[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Modal state for completing hitos directly
+  const [completingInstance, setCompletingInstance] = useState<MapaServicioInstancia | null>(null)
+  const [checklistState, setChecklistState] = useState<Record<string, boolean>>({})
+  const [linkDrive, setLinkDrive] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Current month/year state
   const now = new Date()
@@ -63,8 +81,6 @@ export function ClientServiceMap({ clientId, clientPlan }: ClientServiceMapProps
       setLoading(true)
       setError(null)
 
-      console.log('[v0] ClientServiceMap: Fetching for', { clientId, clientPlan, selectedMonth, selectedYear })
-
       try {
         // First check if hitos_catalogo has data
         const supabase = createClient()
@@ -72,8 +88,6 @@ export function ClientServiceMap({ clientId, clientPlan }: ClientServiceMapProps
           .from('hitos_catalogo')
           .select('id')
           .limit(1)
-        
-        console.log('[v0] Catalog check:', { catalogCheck, catalogError })
         
         if (catalogError) {
           setError(`Error accediendo al catálogo: ${catalogError.message}`)
@@ -91,11 +105,8 @@ export function ClientServiceMap({ clientId, clientPlan }: ClientServiceMapProps
         const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
         if (isCurrentMonth) {
           setGenerating(true)
-          console.log('[v0] Generating instances for current month')
           const genResult = await generateMonthInstances(clientId, selectedMonth, selectedYear, clientPlan)
-          console.log('[v0] Generation result:', genResult)
           if (!genResult.success) {
-            console.error('[service-map] Generation error:', genResult.error)
             setError(`Error generando: ${genResult.error}`)
           }
           setGenerating(false)
@@ -103,14 +114,12 @@ export function ClientServiceMap({ clientId, clientPlan }: ClientServiceMapProps
 
         // Fetch instances (filtered by client plan)
         const result = await getClientServiceMap(clientId, selectedMonth, selectedYear, clientPlan)
-        console.log('[v0] getClientServiceMap result:', result)
         if (result.error) {
           setError(result.error)
         } else {
           setInstances(result.data || [])
         }
       } catch (e) {
-        console.error('[v0] ClientServiceMap error:', e)
         setError(`Error: ${e instanceof Error ? e.message : String(e)}`)
       }
 
@@ -173,6 +182,86 @@ export function ClientServiceMap({ clientId, clientPlan }: ClientServiceMapProps
   }
 
   const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
+
+  // Get checklist items for the hito based on client plan
+  const getChecklistItems = useCallback((hito: HitoCatalogo): ChecklistItem[] => {
+    const normalizedPlan = clientPlan.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    if (normalizedPlan === 'estrategico' && hito.checklist_estrategico?.length) {
+      return hito.checklist_estrategico
+    }
+    return hito.checklist_esencial || []
+  }, [clientPlan])
+
+  // Open completion modal for an instance
+  const openCompletionModal = (instance: MapaServicioInstancia) => {
+    const hito = instance.hito as HitoCatalogo | undefined
+    if (!hito) return
+
+    const items = getChecklistItems(hito)
+    const initialState: Record<string, boolean> = {}
+    items.forEach(item => {
+      initialState[item.id] = false
+    })
+    
+    setChecklistState(initialState)
+    setLinkDrive('')
+    setCompletingInstance(instance)
+  }
+
+  // Handle checklist item toggle
+  const toggleChecklistItem = (itemId: string) => {
+    setChecklistState(prev => ({
+      ...prev,
+      [itemId]: !prev[itemId]
+    }))
+  }
+
+  // Submit completion
+  const handleCompleteHito = async () => {
+    if (!completingInstance || !currentUserId) return
+
+    const hito = completingInstance.hito as HitoCatalogo | undefined
+    if (!hito) return
+
+    setIsSubmitting(true)
+
+    try {
+      const items = getChecklistItems(hito)
+      const checklistSnapshot: ChecklistItemSnapshot[] = items.map(item => ({
+        id: item.id,
+        texto: item.texto,
+        completado: checklistState[item.id] || false
+      }))
+      
+      const allChecked = Object.values(checklistState).every(v => v)
+
+      const result = await completeInstance(
+        completingInstance.id,
+        currentUserId,
+        checklistSnapshot,
+        allChecked,
+        hito.requiere_link_drive ? linkDrive : undefined,
+        clientId
+      )
+
+      if (!result.success) {
+        throw new Error(result.error || 'Error al completar')
+      }
+
+      // Refresh instances
+      const refreshResult = await getClientServiceMap(clientId, selectedMonth, selectedYear, clientPlan)
+      if (refreshResult.data) {
+        setInstances(refreshResult.data)
+      }
+
+      setCompletingInstance(null)
+    } catch (e) {
+      console.error('[service-map] Error completing instance:', e)
+      alert(`Error: ${e instanceof Error ? e.message : 'Error desconocido'}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -345,6 +434,39 @@ export function ClientServiceMap({ clientId, clientPlan }: ClientServiceMapProps
                           </TooltipContent>
                         </Tooltip>
                       )}
+
+                      {/* Complete button - only for hitos without linked task and not completed */}
+                      {!primaryInstance.tarea_id && primaryInstance.estado !== 'listo' && currentUserId && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-emerald-500"
+                              onClick={() => openCompletionModal(primaryInstance)}
+                            >
+                              <ClipboardCheck className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Marcar como completado</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+
+                      {/* Indicator if has linked task */}
+                      {primaryInstance.tarea_id && primaryInstance.estado !== 'listo' && (
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Badge variant="outline" className="text-[10px] h-5 bg-blue-500/10 text-blue-500 border-blue-500/30">
+                              Tarea
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Este hito se completa resolviendo la tarea vinculada</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
                     </div>
                   </div>
 
@@ -398,6 +520,107 @@ export function ClientServiceMap({ clientId, clientPlan }: ClientServiceMapProps
           })}
         </div>
       </TooltipProvider>
+
+      {/* Completion Modal */}
+      <Dialog open={!!completingInstance} onOpenChange={(open) => !open && setCompletingInstance(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5 text-primary" />
+              Completar Hito
+            </DialogTitle>
+            <DialogDescription>
+              {(completingInstance?.hito as HitoCatalogo)?.nombre}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Checklist items */}
+            {completingInstance && (() => {
+              const hito = completingInstance.hito as HitoCatalogo | undefined
+              if (!hito) return null
+              const items = getChecklistItems(hito)
+
+              if (items.length === 0) {
+                return (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Este hito no tiene checklist configurado.
+                  </p>
+                )
+              }
+
+              return (
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Checklist</Label>
+                  {items.map((item) => (
+                    <div key={item.id} className="flex items-start gap-3">
+                      <Checkbox
+                        id={item.id}
+                        checked={checklistState[item.id] || false}
+                        onCheckedChange={() => toggleChecklistItem(item.id)}
+                      />
+                      <label
+                        htmlFor={item.id}
+                        className={cn(
+                          "text-sm cursor-pointer leading-tight",
+                          checklistState[item.id] && "text-muted-foreground line-through"
+                        )}
+                      >
+                        {item.texto}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
+
+            {/* Link Drive field if required */}
+            {completingInstance && (completingInstance.hito as HitoCatalogo)?.requiere_link_drive && (
+              <div className="space-y-2">
+                <Label htmlFor="link-drive" className="text-sm font-medium">
+                  Link de Google Drive <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="link-drive"
+                  type="url"
+                  placeholder="https://drive.google.com/..."
+                  value={linkDrive}
+                  onChange={(e) => setLinkDrive(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Este hito requiere un enlace de Drive para ser completado.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setCompletingInstance(null)}
+              disabled={isSubmitting}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleCompleteHito}
+              disabled={
+                isSubmitting ||
+                ((completingInstance?.hito as HitoCatalogo)?.requiere_link_drive && !linkDrive)
+              }
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Completando...
+                </>
+              ) : (
+                'Marcar como completado'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

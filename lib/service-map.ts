@@ -117,12 +117,9 @@ export async function generateMonthInstances(
 ): Promise<{ success: boolean; error?: string; generated?: number }> {
   const supabase = createClient()
 
-  console.log('[v0] generateMonthInstances called with:', { clienteId, mes, anio, planCliente })
-
   try {
     // 1. Fetch catalog filtered by plan (normalized comparison)
     const tipoServicioNormalized = normalizePlan(planCliente)
-    console.log('[v0] Normalized plan:', tipoServicioNormalized, 'isEsencial:', isEsencial(planCliente))
     
     let query = supabase.from('hitos_catalogo').select('*').order('orden', { ascending: true })
     
@@ -132,12 +129,9 @@ export async function generateMonthInstances(
     }
 
     const { data: hitos, error: hitosError } = await query
-    
-    console.log('[v0] Fetched hitos from catalog:', { count: hitos?.length, error: hitosError, hitos })
 
     if (hitosError) throw hitosError
     if (!hitos || hitos.length === 0) {
-      console.log('[v0] No hitos found in catalog!')
       return { success: true, generated: 0 }
     }
 
@@ -180,11 +174,8 @@ export async function generateMonthInstances(
     }
 
     if (instanciasToInsert.length === 0) {
-      console.log('[v0] No instances to insert after filtering by frecuencia')
       return { success: true, generated: 0 }
     }
-
-    console.log('[v0] Instances to insert:', instanciasToInsert.length)
 
     // 3. Insert instances one by one, ignoring duplicates
     let insertedCount = 0
@@ -196,16 +187,12 @@ export async function generateMonthInstances(
       if (insertError) {
         // Ignore duplicate key errors (code 23505)
         if (insertError.code === '23505') {
-          console.log('[v0] Instance already exists, skipping:', instancia.hito_id, instancia.semana_del_mes)
           continue
         }
-        console.error('[v0] Insert error:', insertError.message)
         throw new Error(`Insert failed: ${insertError.message}`)
       }
       insertedCount++
     }
-
-    console.log('[v0] Successfully inserted:', insertedCount, 'instances')
 
     // 4. For hitos with genera_tarea = true, create tasks
     const hitosConTarea = (hitos as HitoCatalogo[]).filter((h) => h.genera_tarea)
