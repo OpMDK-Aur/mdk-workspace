@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import type { TaskStatus, TaskPriority, TaskType } from '@/lib/types'
+import type { TaskStatus, TaskPriority, TaskType, TaskComment, TaskFile } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -1466,12 +1466,13 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     const assignees = quickAssigneeIds
       .map(id => dbColaboradores.find(a => a.id === id))
       .filter((a): a is DbColaborador => a !== undefined)
+      .map(a => ({ id: a.id, nombre: a.nombre, avatar_url: a.avatar_url }))
     
     const firstClient = clients[0]
     const firstAssignee = assignees[0]
     
     // Build initial comment if provided
-    const initialComments: Array<{ id: string; content: string; userId: string; userName: string; userAvatar: string | null; createdAt: Date }> = []
+    const initialComments: TaskComment[] = []
     if (quickComment.trim()) {
       initialComments.push({
         id: `comment-${Date.now()}`,
@@ -1484,7 +1485,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     }
     
     // Upload files to Supabase Storage and collect URLs
-    const uploadedFiles: Array<{ name: string; url: string; mimeType: string; size: number }> = []
+    const uploadedFiles: TaskFile[] = []
     if (quickFiles.length > 0) {
       setUploadingFiles(true)
       for (const { file } of quickFiles) {
@@ -1506,10 +1507,14 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
             .getPublicUrl(fileName)
           
           uploadedFiles.push({
+            id: crypto.randomUUID(),
             name: file.name,
             url: publicUrl,
             mimeType: file.type,
             size: file.size,
+            uploadedBy: currentUser?.id || 'system',
+            uploadedByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
+            createdAt: new Date(),
           })
         }
       }
@@ -1526,8 +1531,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       assigneeId: firstAssignee?.id || '',
       assigneeName: firstAssignee?.nombre || '',
       assigneeAvatar: firstAssignee?.avatar_url || null,
-      assigneeIds: quickAssigneeIds,
-      assignees: assignees.map(a => ({ id: a.id, nombre: a.nombre, avatar_url: a.avatar_url })),
+      assignees,
       status: 'pendiente' as TaskStatus,
       priority: quickPriority,
       type: quickType,
@@ -1538,16 +1542,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
       createdByAvatar: currentUser?.avatar_url || undefined,
       comments: initialComments,
-      files: uploadedFiles.map(f => ({
-        id: crypto.randomUUID(),
-        name: f.name,
-        url: f.url,
-        mimeType: f.mimeType,
-        size: f.size,
-        uploadedBy: currentUser?.id || 'system',
-        uploadedByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
-        createdAt: new Date(),
-      })),
+      files: uploadedFiles,
     })
     
     setIsCreating(false)
