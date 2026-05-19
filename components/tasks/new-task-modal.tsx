@@ -247,7 +247,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ─────────────────────────────────────────────
+// ── Seguimiento Templates by Plan ──────────────────────────────────────────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -1521,29 +1521,24 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       setUploadingFiles(false)
     }
     
-    await addTask({
+    const taskPayload = {
       title: quickTitle,
       description: null,
       clientId: firstClient?.id || '',
-      clientName: firstClient?.nombre_del_negocio || '',
       clientIds: quickClientIds,
-      clients,
       assigneeId: firstAssignee?.id || '',
-      assigneeName: firstAssignee?.nombre || '',
-      assigneeAvatar: firstAssignee?.avatar_url || null,
       assignees,
       status: 'pendiente' as TaskStatus,
       priority: quickPriority,
       type: quickType,
-      // Parse date as local timezone to avoid UTC offset issues
       dueDate: quickDueDate ? new Date(quickDueDate + 'T12:00:00') : null,
       customFields: {},
       createdById: currentUser?.id || null,
-      createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
-      createdByAvatar: currentUser?.avatar_url || undefined,
       comments: initialComments,
       files: uploadedFiles,
-    })
+    }
+    
+    await addTask(taskPayload as any)
     
     setIsCreating(false)
     // Reset quick mode state
