@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import type { Client, ClientEtapa, ServicioContratado, ClientPlan } from '@/lib/types'
+import type { Client, ClientEtapa, ServicioContratado, ClientPlan, UnidadNegocio } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -86,6 +86,13 @@ const PLAN_OPTIONS: { value: ClientPlan; label: string }[] = [
   { value: 'Estratégico', label: 'Estratégico' },
 ]
 
+const UNIDAD_NEGOCIO_OPTIONS: { value: UnidadNegocio; label: string }[] = [
+  { value: 'MDK', label: 'MDK' },
+  { value: 'Aurelia', label: 'Aurelia' },
+  { value: 'Consultoría', label: 'Consultoría' },
+  { value: 'Tecnología', label: 'Tecnología' },
+]
+
 const SERVICE_ICONS: Record<string, React.ReactNode> = {
   'megaphone': <Megaphone className="h-3 w-3" />,
   'search': <Search className="h-3 w-3" />,
@@ -158,6 +165,10 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
   // Plan state
   const [plan, setPlan] = useState<ClientPlan>(client.plan || 'Esencial')
   const [savingPlan, setSavingPlan] = useState(false)
+  
+  // Unidad de negocio state
+  const [unidadNegocio, setUnidadNegocio] = useState<UnidadNegocio | null>(client.unidad_negocio || null)
+  const [savingUnidad, setSavingUnidad] = useState(false)
   
   // Load available services
   useEffect(() => {
@@ -328,6 +339,17 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
       .update({ plan: newPlan })
       .eq('id', client.id)
     setSavingPlan(false)
+  }
+  
+  // Save unidad de negocio
+  const saveUnidadNegocio = async (newUnidad: UnidadNegocio) => {
+    setSavingUnidad(true)
+    setUnidadNegocio(newUnidad)
+    await supabase
+      .from('clientes')
+      .update({ unidad_negocio: newUnidad })
+      .eq('id', client.id)
+    setSavingUnidad(false)
   }
   
   const availableServicesFiltered = serviciosDisponibles.filter(
@@ -650,31 +672,54 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Star className="h-4 w-4 text-primary" />
-            Plan de servicio
-            {savingPlan && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
+            Plan y unidad de negocio
+            {(savingPlan || savingUnidad) && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <Select value={plan} onValueChange={(v) => savePlan(v as ClientPlan)}>
-            <SelectTrigger className="h-9">
-              <SelectValue placeholder="Seleccionar plan" />
-            </SelectTrigger>
-            <SelectContent>
-              {PLAN_OPTIONS.map(option => (
-                <SelectItem key={option.value} value={option.value}>
-                  <span className="flex items-center gap-2">
-                    {option.value === 'Estratégico' && <Star className="h-3 w-3 text-amber-500 fill-amber-500" />}
+        <CardContent className="space-y-4">
+          {/* Unidad de Negocio */}
+          <div>
+            <Label className="text-xs text-muted-foreground mb-2 block">Unidad de negocio</Label>
+            <Select value={unidadNegocio || ''} onValueChange={(v) => saveUnidadNegocio(v as UnidadNegocio)}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Seleccionar unidad" />
+              </SelectTrigger>
+              <SelectContent>
+                {UNIDAD_NEGOCIO_OPTIONS.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
                     {option.label}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground mt-2">
-            {plan === 'Estratégico' 
-              ? 'Acceso a todos los hitos del mapa de servicio' 
-              : 'Acceso a hitos esenciales del mapa de servicio'}
-          </p>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {/* Plan de servicio - solo visible para MDK */}
+          {unidadNegocio === 'MDK' && (
+            <div>
+              <Label className="text-xs text-muted-foreground mb-2 block">Plan de servicio</Label>
+              <Select value={plan} onValueChange={(v) => savePlan(v as ClientPlan)}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Seleccionar plan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PLAN_OPTIONS.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      <span className="flex items-center gap-2">
+                        {option.value === 'Estratégico' && <Star className="h-3 w-3 text-amber-500 fill-amber-500" />}
+                        {option.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-2">
+                {plan === 'Estratégico' 
+                  ? 'Acceso a todos los hitos del mapa de servicio' 
+                  : 'Acceso a hitos esenciales del mapa de servicio'}
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

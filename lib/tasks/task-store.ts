@@ -813,20 +813,8 @@ export const useTaskStore = create<TaskStore>()(
     try {
       const supabase = createClient()
       
-      // Load tasks, clients and colaboradores in parallel
-      const [tasksResult, clientesResult, colaboradoresResult] = await Promise.all([
-        supabase
-          .from('tareas')
-          .select(`
-            *,
-            hito_poe,
-            es_tarea_sistema,
-            clientes:cliente_id(id, nombre_del_negocio),
-            colaboradores:asignado_a(id, nombre, apellido, avatar_url),
-            tipo_de_tareas:tipo_tarea_id(id, nombre)
-          `)
-          .or('es_tarea_sistema.is.null,es_tarea_sistema.eq.false')
-          .order('created_at', { ascending: false }),
+      // Load clientes and colaboradores first
+      const [clientesResult, colaboradoresResult] = await Promise.all([
         supabase
           .from('clientes')
           .select('id, nombre_del_negocio')
@@ -836,10 +824,6 @@ export const useTaskStore = create<TaskStore>()(
           .select('id, nombre, apellido, avatar_url'),
       ])
       
-      // Also update ASSIGNEES global
-      loadAssignees()
-
-      const { data, error } = tasksResult
       const { data: clientesData } = clientesResult
       const { data: colaboradoresData } = colaboradoresResult
       
@@ -855,27 +839,56 @@ export const useTaskStore = create<TaskStore>()(
         clientesData.forEach(c => clientesMap.set(c.id, c))
       }
 
-      if (error) {
-        console.error('Error loading tasks:', error)
-        set({ tasks: [], isLoading: false })
-        return
+      // Load ALL tasks with pagination (Supabase limits to 1000 per request)
+      const PAGE_SIZE = 1000
+      let allTasks: TareaDB[] = []
+      let from = 0
+      let hasMore = true
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('tareas')
+          .select(`
+            *,
+            hito_poe,
+            es_tarea_sistema,
+            clientes:cliente_id(id, nombre_del_negocio),
+            colaboradores:asignado_a(id, nombre, apellido, avatar_url),
+            tipo_de_tareas:tipo_tarea_id(id, nombre)
+          `)
+          .order('created_at', { ascending: false })
+          .range(from, from + PAGE_SIZE - 1)
+
+        if (error) {
+          console.error('Error loading tasks page:', error)
+          break
+        }
+
+        if (data && data.length > 0) {
+          allTasks = [...allTasks, ...(data as TareaDB[])]
+          from += PAGE_SIZE
+          hasMore = data.length === PAGE_SIZE
+        } else {
+          hasMore = false
+        }
       }
       
-      if (data && data.length > 0) {
+      // Also update ASSIGNEES global
+      loadAssignees()
+      
+      if (allTasks.length > 0) {
         // Map tasks without comments - comments will be loaded on demand when task is selected
-        const dbTasks = data.map((tarea) => {
-          const task = mapTareaToTask(tarea as TareaDB, colaboradoresMap, clientesMap)
+        const dbTasks = allTasks.map((tarea) => {
+          const task = mapTareaToTask(tarea, colaboradoresMap, clientesMap)
           task.comments = [] // Loaded on demand
           return task
         })
-        console.log('[v0] Tasks mapped:', dbTasks.length)
         set({ tasks: dbTasks, isLoading: false })
       } else {
-        console.log('[v0] No tasks found')
         set({ tasks: [], isLoading: false })
       }
     } catch (error) {
-      console.error('[v0] Error loading tasks:', error)
+      console.error('Error loading tasks:', error)
       set({ tasks: MOCK_TASKS, isLoading: false })
     }
   },
