@@ -60,7 +60,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { X, Plus } from 'lucide-react'
+import { X, Plus, Paperclip, MessageSquare, Upload, Trash2, FileText as FileIcon, Image as ImageIcon, File } from 'lucide-react'
 import {
   Palette,
   Globe,
@@ -85,6 +85,7 @@ import {
   Video,
   PenLine,
 } from 'lucide-react'
+import { Textarea } from '@/components/ui/textarea'
 
 interface NewTaskModalProps {
   open: boolean
@@ -958,6 +959,12 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     initialDueDate ? initialDueDate.toISOString().split('T')[0] : ''
   )
   
+  // Quick mode - comments and attachments
+  const [quickComment, setQuickComment] = useState('')
+  const [quickFiles, setQuickFiles] = useState<Array<{ file: File; preview?: string }>>([])
+  const [uploadingFiles, setUploadingFiles] = useState(false)
+  const quickFileInputRef = useRef<HTMLInputElement>(null)
+  
   // Update quickDueDate when initialDueDate changes (e.g., from calendar)
   useEffect(() => {
     if (open && initialDueDate) {
@@ -1447,6 +1454,8 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     
     setIsCreating(true)
     
+    const supabase = createClient()
+    
     // Build clients array
     const clients = quickClientIds
       .map(id => dbClientes.find(c => c.id === id))
@@ -1460,6 +1469,52 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     
     const firstClient = clients[0]
     const firstAssignee = assignees[0]
+    
+    // Build initial comment if provided
+    const initialComments: Array<{ id: string; content: string; userId: string; userName: string; userAvatar: string | null; createdAt: Date }> = []
+    if (quickComment.trim()) {
+      initialComments.push({
+        id: `comment-${Date.now()}`,
+        content: quickComment.trim(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
+        userAvatar: currentUser?.avatar_url || null,
+        createdAt: new Date(),
+      })
+    }
+    
+    // Upload files to Supabase Storage and collect URLs
+    const uploadedFiles: Array<{ name: string; url: string; mimeType: string; size: number }> = []
+    if (quickFiles.length > 0) {
+      setUploadingFiles(true)
+      for (const { file } of quickFiles) {
+        // Sanitize filename
+        const sanitizedName = file.name
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/\s+/g, '_')
+          .replace(/[^a-zA-Z0-9_.-]/g, '')
+        const fileName = `tareas/${Date.now()}-${sanitizedName}`
+        
+        const { error: uploadError } = await supabase.storage
+          .from('cliente-adjuntos')
+          .upload(fileName, file)
+        
+        if (!uploadError) {
+          const { data: { publicUrl } } = supabase.storage
+            .from('cliente-adjuntos')
+            .getPublicUrl(fileName)
+          
+          uploadedFiles.push({
+            name: file.name,
+            url: publicUrl,
+            mimeType: file.type,
+            size: file.size,
+          })
+        }
+      }
+      setUploadingFiles(false)
+    }
     
     await addTask({
       title: quickTitle,
@@ -1482,6 +1537,17 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       createdById: currentUser?.id || null,
       createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
       createdByAvatar: currentUser?.avatar_url || undefined,
+      comments: initialComments,
+      files: uploadedFiles.map(f => ({
+        id: crypto.randomUUID(),
+        name: f.name,
+        url: f.url,
+        mimeType: f.mimeType,
+        size: f.size,
+        uploadedBy: currentUser?.id || 'system',
+        uploadedByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
+        createdAt: new Date(),
+      })),
     })
     
     setIsCreating(false)
@@ -1492,8 +1558,54 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     setQuickPriority('media')
     setQuickAssigneeIds([])
     setQuickDueDate('')
+    setQuickComment('')
+    setQuickFiles([])
     setQuickMode(false)
     onOpenChange(false)
+  }
+  
+  // Handle file selection for quick mode
+  const handleQuickFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    
+    const newFiles = Array.from(files).map(file => ({
+      file,
+      preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
+    }))
+    
+    setQuickFiles(prev => [...prev, ...newFiles])
+    
+    if (quickFileInputRef.current) {
+      quickFileInputRef.current.value = ''
+    }
+  }
+  
+  // Remove a pending file
+  const removeQuickFile = (index: number) => {
+    setQuickFiles(prev => {
+      const newFiles = [...prev]
+      // Revoke object URL to free memory
+      if (newFiles[index].preview) {
+        URL.revokeObjectURL(newFiles[index].preview!)
+      }
+      newFiles.splice(index, 1)
+      return newFiles
+    })
+  }
+  
+  // Get file icon based on type
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType.startsWith('image/')) return ImageIcon
+    if (mimeType.includes('pdf')) return FileIcon
+    return File
+  }
+  
+  // Format file size
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
   // Handle template selection
@@ -2215,6 +2327,8 @@ setIsCreating(true)
   setQuickPriority('media')
   setQuickAssigneeIds([])
   setQuickDueDate('')
+  setQuickComment('')
+  setQuickFiles([])
     setMessages([{
       id: 'welcome',
       role: 'assistant',
@@ -2280,9 +2394,10 @@ setIsCreating(true)
             </Button>
           )}
         </div>
-
+        
         {/* Quick Mode Form */}
         {quickMode ? (
+          <ScrollArea className="h-[520px]">
           <div className="p-4 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="quick-title">Titulo de la tarea *</Label>
@@ -2474,6 +2589,98 @@ setIsCreating(true)
               )}
             </div>
 
+            {/* Comentario inicial */}
+            <div className="space-y-2">
+              <Label htmlFor="quick-comment" className="flex items-center gap-1.5">
+                <MessageSquare className="h-3.5 w-3.5" />
+                Comentario inicial
+              </Label>
+              <Textarea
+                id="quick-comment"
+                placeholder="Agregar notas o contexto sobre la tarea..."
+                value={quickComment}
+                onChange={(e) => setQuickComment(e.target.value)}
+                className="min-h-[80px] resize-none"
+              />
+            </div>
+            
+            {/* Adjuntos */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Paperclip className="h-3.5 w-3.5" />
+                Adjuntos
+              </Label>
+              <input
+                type="file"
+                ref={quickFileInputRef}
+                onChange={handleQuickFileSelect}
+                multiple
+                className="hidden"
+              />
+              
+              {quickFiles.length > 0 && (
+                <div className="space-y-2 mb-2">
+                  {quickFiles.map((item, index) => {
+                    const Icon = getFileIcon(item.file.type)
+                    return (
+                      <div
+                        key={index}
+                        className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 group"
+                      >
+                        {item.preview ? (
+                          <div className="h-10 w-10 rounded overflow-hidden shrink-0">
+                            <img 
+                              src={item.preview} 
+                              alt={item.file.name}
+                              className="h-full w-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className="h-10 w-10 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                            <Icon className="h-5 w-5 text-primary" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{item.file.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatFileSize(item.file.size)}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => removeQuickFile(index)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full gap-1.5 border-dashed"
+                onClick={() => quickFileInputRef.current?.click()}
+                disabled={uploadingFiles}
+              >
+                {uploadingFiles ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Subiendo...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    Agregar archivos
+                  </>
+                )}
+              </Button>
+            </div>
+
             <div className="pt-4 space-y-2">
               {/* Show create meeting button if type is "reunion" */}
               {dbTiposTarea.find(t => t.id === quickType)?.nombre?.toLowerCase().includes('reuni') && (
@@ -2512,6 +2719,7 @@ setIsCreating(true)
               </Button>
             </div>
           </div>
+          </ScrollArea>
         ) : (
           /* Chat area */
           <ScrollArea className="h-[420px] p-4" ref={scrollRef}>
