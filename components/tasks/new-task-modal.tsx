@@ -1478,134 +1478,489 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   
   // Handle template selection
 
+  // Slash command menu state
+  const [showSlashMenu, setShowSlashMenu] = useState(false)
+  const [slashMenuPosition, setSlashMenuPosition] = useState({ top: 0, left: 0 })
+  const descriptionRef = useRef<HTMLDivElement>(null)
+  
+  // Slash commands definition
+  const SLASH_COMMANDS = {
+    sugerencias: [
+      { icon: Sparkles, label: 'Escribe con IA', value: 'ai' },
+      { icon: Palette, label: 'Banners', value: 'banners' },
+      { icon: Check, label: 'Lista de control', value: 'checklist' },
+      { icon: FileText, label: 'Plantilla', value: 'template' },
+    ],
+    texto: [
+      { icon: FileText, label: 'Texto normal', value: 'text' },
+      { icon: FileText, label: 'Titulo 1', value: 'h1' },
+      { icon: FileText, label: 'Titulo 2', value: 'h2' },
+      { icon: FileText, label: 'Titulo 3', value: 'h3' },
+      { icon: FileText, label: 'Titulo 4', value: 'h4' },
+      { icon: FileText, label: 'Lista numerada', value: 'ol' },
+      { icon: FileText, label: 'Lista contraible', value: 'collapsible' },
+      { icon: FileText, label: 'Bloque de codigo', value: 'code' },
+      { icon: FileText, label: 'Bloquear cita', value: 'quote' },
+    ],
+    clickup: [
+      { icon: FileText, label: 'Lista de ClickUp (tabla)', value: 'table' },
+      { icon: FileText, label: 'Lista contraible', value: 'collapsible' },
+      { icon: FileText, label: 'Boton', value: 'button' },
+    ],
+  }
+
+  const handleDescriptionKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === '/' && !showSlashMenu) {
+      const selection = window.getSelection()
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0)
+        const rect = range.getBoundingClientRect()
+        const containerRect = descriptionRef.current?.getBoundingClientRect()
+        if (containerRect) {
+          setSlashMenuPosition({
+            top: rect.bottom - containerRect.top + 8,
+            left: rect.left - containerRect.left,
+          })
+        }
+      }
+      setTimeout(() => setShowSlashMenu(true), 0)
+    }
+    if (e.key === 'Escape') {
+      setShowSlashMenu(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[680px] p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-[680px] p-0 gap-0 overflow-hidden bg-[#1a1a2e] border-[#2d2d44]">
         {/* Header with Tabs */}
-        <div className="border-b">
-          <div className="flex items-center justify-between px-4 pt-3 pb-0">
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-full">
-              <TabsList className="bg-transparent h-auto p-0 gap-0">
-                <TabsTrigger 
-                  value="tarea" 
-                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2 text-sm"
-                >
-                  Tarea
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="documento" 
-                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2 text-sm"
-                >
-                  Documento
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="recordatorio" 
-                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2 text-sm"
-                >
-                  Recordatorio
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+        <div className="flex items-center justify-between px-2 border-b border-[#2d2d44]">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="flex-1">
+            <TabsList className="bg-transparent h-auto p-0 gap-0">
+              <TabsTrigger 
+                value="tarea" 
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-purple-500 data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:text-foreground"
+              >
+                Tarea
+              </TabsTrigger>
+              <TabsTrigger 
+                value="recordatorio" 
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-purple-500 data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:text-foreground"
+              >
+                Recordatorio
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <div className="flex items-center gap-1 pr-2">
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+              <ChevronDown className="h-4 w-4" />
+            </Button>
           </div>
         </div>
         
-        <div className="flex-1 overflow-auto p-4">
-          {activeTab === 'tarea' && (
-            <div className="space-y-4">
+        {/* Content */}
+        {activeTab === 'tarea' && (
+          <div className="flex flex-col">
+            {/* Type selectors row */}
+            <div className="flex items-center gap-2 px-5 py-3 border-b border-[#2d2d44]">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs bg-transparent border-[#3d3d5c] hover:bg-[#2d2d44]">
+                    <FileText className="h-3.5 w-3.5" />
+                    Epica 1
+                    <ChevronDown className="h-3 w-3 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-1 bg-[#1a1a2e] border-[#2d2d44]" align="start">
+                  <div className="text-xs text-muted-foreground px-2 py-1.5">Proximamente</div>
+                </PopoverContent>
+              </Popover>
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs bg-transparent border-[#3d3d5c] hover:bg-[#2d2d44]">
+                    <span className="h-2 w-2 rounded-full bg-white/60" />
+                    Tarea
+                    <ChevronDown className="h-3 w-3 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-2 bg-[#1a1a2e] border-[#2d2d44]" align="start">
+                  <div className="text-xs text-muted-foreground px-2 py-1 mb-1">Tipos de tarea</div>
+                  {dbTiposTarea.map((tipo) => (
+                    <Button
+                      key={tipo.id}
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-xs h-8 hover:bg-[#2d2d44]"
+                      onClick={() => setQuickType(tipo.id)}
+                    >
+                      <span className="h-2 w-2 rounded-full bg-white/60 mr-2" />
+                      {tipo.nombre}
+                      {quickType === tipo.id && <Check className="h-3 w-3 ml-auto text-purple-400" />}
+                    </Button>
+                  ))}
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Title input */}
+            <div className="px-5 pt-4">
               <input
                 type="text"
                 placeholder="Nombre de Tarea"
                 value={quickTitle}
                 onChange={(e) => setQuickTitle(e.target.value)}
-                className="w-full text-2xl font-light border-0 outline-none bg-transparent"
+                className="w-full text-2xl font-light border-0 outline-none bg-transparent placeholder:text-muted-foreground/50"
                 autoFocus
               />
-              <textarea
-                placeholder="Descripción..."
-                value={quickDescription}
-                onChange={(e) => setQuickDescription(e.target.value)}
-                className="w-full min-h-[100px] border rounded p-2 text-sm"
+            </div>
+
+            {/* Description with slash commands */}
+            <div className="px-5 py-3 relative" ref={descriptionRef}>
+              <div
+                contentEditable
+                suppressContentEditableWarning
+                onKeyDown={handleDescriptionKeyDown}
+                onInput={(e) => {
+                  const text = (e.target as HTMLDivElement).textContent || ''
+                  setQuickDescription(text)
+                  if (!text.includes('/')) {
+                    setShowSlashMenu(false)
+                  }
+                }}
+                className={cn(
+                  "min-h-[60px] text-sm outline-none text-muted-foreground",
+                  "empty:before:content-['/Escribe_el_comando...'] empty:before:text-muted-foreground/40 empty:before:pointer-events-none"
+                )}
+                data-placeholder="/Escribe el comando..."
               />
-              <div className="grid grid-cols-2 gap-2">
-                <Select value={quickStatus} onValueChange={setQuickStatus}>
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Estado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pendiente">BACKLOG</SelectItem>
-                    <SelectItem value="resolviendo">EN PROGRESO</SelectItem>
-                    <SelectItem value="bloqueado">BLOQUEADO</SelectItem>
-                    <SelectItem value="en_revision">EN REVISIÓN</SelectItem>
-                    <SelectItem value="completada">COMPLETADA</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={quickPriority} onValueChange={(v) => setQuickPriority(v as TaskPriority)}>
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Prioridad" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="alta">Alta</SelectItem>
-                    <SelectItem value="media">Media</SelectItem>
-                    <SelectItem value="baja">Baja</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="flex-1 h-8 text-xs" onClick={() => setQuickClientIds([])}>
-                  Cliente
+              
+              {/* Slash command menu */}
+              {showSlashMenu && (
+                <div 
+                  className="absolute z-50 bg-[#1a1a2e] border border-[#2d2d44] rounded-lg shadow-xl w-[500px] max-h-[400px] overflow-auto"
+                  style={{ top: slashMenuPosition.top, left: 0 }}
+                >
+                  <div className="grid grid-cols-2 gap-0">
+                    {/* Left column */}
+                    <div className="border-r border-[#2d2d44]">
+                      <div className="px-3 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Sugerencias
+                      </div>
+                      {SLASH_COMMANDS.sugerencias.map((cmd) => (
+                        <button
+                          key={cmd.value}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-[#2d2d44] text-left"
+                          onClick={() => {
+                            setShowSlashMenu(false)
+                            // Handle command
+                          }}
+                        >
+                          <cmd.icon className="h-4 w-4 text-muted-foreground" />
+                          {cmd.label}
+                        </button>
+                      ))}
+                      
+                      <div className="px-3 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider mt-2">
+                        Texto
+                      </div>
+                      {SLASH_COMMANDS.texto.slice(0, 5).map((cmd) => (
+                        <button
+                          key={cmd.value}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-[#2d2d44] text-left"
+                          onClick={() => {
+                            setShowSlashMenu(false)
+                          }}
+                        >
+                          <cmd.icon className="h-4 w-4 text-muted-foreground" />
+                          {cmd.label}
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {/* Right column */}
+                    <div>
+                      <div className="px-3 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                        ClickUp
+                      </div>
+                      {SLASH_COMMANDS.clickup.map((cmd) => (
+                        <button
+                          key={cmd.value}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-[#2d2d44] text-left"
+                          onClick={() => {
+                            setShowSlashMenu(false)
+                          }}
+                        >
+                          <cmd.icon className="h-4 w-4 text-muted-foreground" />
+                          {cmd.label}
+                        </button>
+                      ))}
+                      
+                      <div className="px-3 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider mt-2">
+                        Mas texto
+                      </div>
+                      {SLASH_COMMANDS.texto.slice(5).map((cmd) => (
+                        <button
+                          key={cmd.value}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-[#2d2d44] text-left"
+                          onClick={() => {
+                            setShowSlashMenu(false)
+                          }}
+                        >
+                          <cmd.icon className="h-4 w-4 text-muted-foreground" />
+                          {cmd.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Property chips row */}
+            <div className="flex items-center gap-2 px-5 py-3 border-t border-[#2d2d44]">
+              {/* Status chip */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs bg-[#2d2d44] border-0 hover:bg-[#3d3d5c]">
+                    <span className={cn(
+                      "h-2 w-2 rounded-full",
+                      quickStatus === 'pendiente' && "bg-gray-400",
+                      quickStatus === 'resolviendo' && "bg-blue-400",
+                      quickStatus === 'bloqueado' && "bg-red-400",
+                      quickStatus === 'en_revision' && "bg-yellow-400",
+                      quickStatus === 'completada' && "bg-green-400",
+                    )} />
+                    {quickStatus === 'pendiente' ? 'TO DO' : quickStatus.toUpperCase().replace('_', ' ')}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-40 p-1 bg-[#1a1a2e] border-[#2d2d44]" align="start">
+                  {['pendiente', 'resolviendo', 'bloqueado', 'en_revision', 'completada'].map(status => (
+                    <Button
+                      key={status}
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-xs h-8 hover:bg-[#2d2d44]"
+                      onClick={() => setQuickStatus(status)}
+                    >
+                      <span className={cn(
+                        "h-2 w-2 rounded-full mr-2",
+                        status === 'pendiente' && "bg-gray-400",
+                        status === 'resolviendo' && "bg-blue-400",
+                        status === 'bloqueado' && "bg-red-400",
+                        status === 'en_revision' && "bg-yellow-400",
+                        status === 'completada' && "bg-green-400",
+                      )} />
+                      {status === 'pendiente' ? 'TO DO' : status.toUpperCase().replace('_', ' ')}
+                    </Button>
+                  ))}
+                </PopoverContent>
+              </Popover>
+
+              {/* Assignee chip */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs bg-transparent border-[#3d3d5c] hover:bg-[#2d2d44]">
+                    <User className="h-3.5 w-3.5" />
+                    {quickAssigneeIds.length > 0 
+                      ? dbColaboradores.find(c => c.id === quickAssigneeIds[0])?.nombre || 'Persona asignada'
+                      : 'Persona asignada'
+                    }
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-1 bg-[#1a1a2e] border-[#2d2d44]" align="start">
+                  <Command className="bg-transparent">
+                    <CommandInput placeholder="Buscar..." className="h-8 text-xs" />
+                    <CommandList>
+                      <CommandEmpty>Sin resultados</CommandEmpty>
+                      <CommandGroup>
+                        {dbColaboradores.map((colab) => (
+                          <CommandItem
+                            key={colab.id}
+                            value={colab.nombre}
+                            onSelect={() => setQuickAssigneeIds([colab.id])}
+                            className="text-xs"
+                          >
+                            <Avatar className="h-5 w-5 mr-2">
+                              {colab.avatar_url && <AvatarImage src={colab.avatar_url} />}
+                              <AvatarFallback className="text-[9px]">{colab.nombre[0]}</AvatarFallback>
+                            </Avatar>
+                            {colab.nombre}
+                            {quickAssigneeIds.includes(colab.id) && <Check className="h-3 w-3 ml-auto" />}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+
+              {/* Due date chip */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs bg-transparent border-[#3d3d5c] hover:bg-[#2d2d44]">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {quickDueDate 
+                      ? new Date(quickDueDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+                      : 'Fecha limite'
+                    }
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-3 bg-[#1a1a2e] border-[#2d2d44]" align="start">
+                  <input
+                    type="date"
+                    value={quickDueDate}
+                    onChange={(e) => setQuickDueDate(e.target.value)}
+                    className="bg-transparent border border-[#3d3d5c] rounded px-2 py-1 text-sm"
+                  />
+                </PopoverContent>
+              </Popover>
+
+              {/* Client chip */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs bg-transparent border-[#3d3d5c] hover:bg-[#2d2d44]">
+                    <Building2 className="h-3.5 w-3.5" />
+                    {quickClientIds.length > 0 
+                      ? dbClientes.find(c => c.id === quickClientIds[0])?.nombre_del_negocio || 'Cliente'
+                      : 'Cliente'
+                    }
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-1 bg-[#1a1a2e] border-[#2d2d44]" align="start">
+                  <Command className="bg-transparent">
+                    <CommandInput placeholder="Buscar cliente..." className="h-8 text-xs" />
+                    <CommandList>
+                      <CommandEmpty>Sin resultados</CommandEmpty>
+                      <CommandGroup>
+                        {dbClientes.map((cliente) => (
+                          <CommandItem
+                            key={cliente.id}
+                            value={cliente.nombre_del_negocio}
+                            onSelect={() => setQuickClientIds([cliente.id])}
+                            className="text-xs"
+                          >
+                            <Building2 className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+                            {cliente.nombre_del_negocio}
+                            {quickClientIds.includes(cliente.id) && <Check className="h-3 w-3 ml-auto" />}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+
+              {/* More options */}
+              <Button variant="outline" size="sm" className="h-7 w-7 p-0 bg-transparent border-[#3d3d5c] hover:bg-[#2d2d44]">
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between px-5 py-3 border-t border-[#2d2d44]">
+              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs bg-transparent border-[#3d3d5c] hover:bg-[#2d2d44]">
+                <FileText className="h-3.5 w-3.5" />
+                Plantillas
+              </Button>
+              
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Paperclip className="h-4 w-4" />
                 </Button>
-                <Button size="sm" variant="outline" className="flex-1 h-8 text-xs" onClick={() => setQuickAssigneeIds([])}>
-                  Persona
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Bell className="h-4 w-4" />
+                  <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-purple-500 text-[10px] flex items-center justify-center">1</span>
                 </Button>
-              </div>
-              <div className="flex gap-2 pt-2">
-                <Button variant="outline" size="sm" className="text-xs" onClick={() => onOpenChange(false)}>
-                  Cancelar
-                </Button>
-                <Button size="sm" className="ml-auto text-xs" onClick={handleQuickCreate} disabled={!quickTitle.trim() || isCreating}>
+                <Button 
+                  className="h-8 px-4 bg-purple-600 hover:bg-purple-700 text-white"
+                  onClick={handleQuickCreate}
+                  disabled={!quickTitle.trim() || isCreating}
+                >
                   {isCreating ? 'Creando...' : 'Crear Tarea'}
+                  <ChevronDown className="h-3 w-3 ml-1" />
                 </Button>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {activeTab === 'documento' && (
-            <div className="space-y-4">
+        {activeTab === 'recordatorio' && (
+          <div className="flex flex-col">
+            {/* Title input */}
+            <div className="px-5 pt-5">
               <input
                 type="text"
-                placeholder="Nombre del documento..."
-                className="w-full text-xl font-light border-0 outline-none bg-transparent"
-              />
-              <p className="text-sm text-muted-foreground">Función de documentos próximamente</p>
-            </div>
-          )}
-
-          {activeTab === 'recordatorio' && (
-            <div className="space-y-4">
-              <input
-                type="text"
-                placeholder="Nombre del recordatorio..."
+                placeholder={'Escribe el nombre del recordatorio o "/" para los comandos'}
                 value={reminderName}
                 onChange={(e) => setReminderName(e.target.value)}
-                className="w-full text-xl font-light border-0 outline-none bg-transparent"
+                className="w-full text-base border-0 outline-none bg-transparent placeholder:text-muted-foreground/50"
+                autoFocus
               />
-              <input
-                type="date"
-                value={reminderDate}
-                onChange={(e) => setReminderDate(e.target.value)}
-                className="w-full border rounded p-2"
-              />
-              <div className="flex gap-2 pt-2">
-                <Button variant="outline" size="sm" className="text-xs" onClick={() => onOpenChange(false)}>
-                  Cancelar
+            </div>
+
+            {/* Add description toggle */}
+            <div className="px-5 py-3">
+              <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+                <FileText className="h-4 w-4" />
+                Agregar descripcion
+              </button>
+            </div>
+
+            {/* Property chips row */}
+            <div className="flex items-center gap-2 px-5 py-3">
+              {/* Date chip */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs bg-transparent border-[#3d3d5c] hover:bg-[#2d2d44]">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {reminderDate 
+                      ? new Date(reminderDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+                      : 'Hoy'
+                    }
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-3 bg-[#1a1a2e] border-[#2d2d44]" align="start">
+                  <input
+                    type="date"
+                    value={reminderDate}
+                    onChange={(e) => setReminderDate(e.target.value)}
+                    className="bg-transparent border border-[#3d3d5c] rounded px-2 py-1 text-sm"
+                  />
+                </PopoverContent>
+              </Popover>
+
+              {/* For me chip */}
+              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs bg-transparent border-[#3d3d5c] hover:bg-[#2d2d44]">
+                <Avatar className="h-4 w-4">
+                  <AvatarFallback className="text-[8px] bg-purple-600">E</AvatarFallback>
+                </Avatar>
+                Para mi
+              </Button>
+
+              {/* Notify me chip */}
+              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs bg-transparent border-[#3d3d5c] hover:bg-[#2d2d44]">
+                <Bell className="h-3.5 w-3.5" />
+                Notificarme
+              </Button>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end px-5 py-3 border-t border-[#2d2d44] mt-4">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Paperclip className="h-4 w-4" />
                 </Button>
-                <Button size="sm" className="ml-auto text-xs" disabled={!reminderName.trim()}>
+                <Button 
+                  className="h-8 px-4 bg-purple-600 hover:bg-purple-700 text-white"
+                  disabled={!reminderName.trim()}
+                >
                   Crear recordatorio
                 </Button>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )
