@@ -285,8 +285,8 @@ type FlowStep =
   | { type: 'input'; key: string; question: string; placeholder?: string; followUp?: string }
   | { type: 'number'; key: string; question: string; min?: number; max?: number }
   | { type: 'options'; key: string; question: string; options: { label: string; value: string; emoji?: string }[] }
-  | { type: 'multi_input'; key: string; question: string; placeholder?: string; hint?: string }
-  | { type: 'date_time'; key: string; question: string; hint?: string }
+| { type: 'multi_input'; key: string; question: string; placeholder?: string }
+    | { type: 'date_time'; key: string; question: string }
   | { type: 'priority' }
   | { type: 'select_due_date' }
   | { type: 'confirm' }
@@ -323,7 +323,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
         { label: 'Tareas operativas web', value: 'operativo', emoji: '🔧' },
       ]},
       // Dynamic steps based on designCategory - handled in processStep
-      { type: 'dynamic_design_flow' },
+  
     ],
   },
   {
@@ -538,7 +538,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
     flow: [
       { type: 'select_client' },
       { type: 'input', key: 'title', question: 'Dale, contame que necesitas!', placeholder: 'Describime la tarea...' },
-      { type: 'multi_input', key: 'details', question: 'Algun detalle extra que me quieras contar?', placeholder: 'Links, contexto, urgencia...', hint: 'Podes dejarlo vacio si no hay nada mas' },
+      { type: 'multi_input', key: 'details', question: 'Algun detalle extra que me quieras contar?', placeholder: 'Links, contexto, urgencia...' },
       { type: 'priority' },
       { type: 'select_due_date' },
       { type: 'confirm' },
@@ -573,7 +573,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
         { label: 'Si, agregar Meet', value: 'yes', emoji: '📹' },
         { label: 'No, es presencial', value: 'no', emoji: '🏢' },
       ]},
-      { type: 'input', key: 'attendees', question: 'Emails de los participantes (separados por coma)', placeholder: 'cliente@email.com, otro@email.com', hint: 'Podes dejarlo vacio' },
+      { type: 'input', key: 'attendees', question: 'Emails de los participantes (separados por coma)', placeholder: 'cliente@email.com, otro@email.com' },
       { type: 'priority' },
       { type: 'confirm_meeting' },
     ],
@@ -798,22 +798,7 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
                 <span className="text-muted-foreground">Asignado:</span>
                 <span>{message.taskSummary.assignee}</span>
               </div>
-              {currentUser && (
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Creado por:</span>
-                  <div className="flex items-center gap-1.5">
-                    <Avatar className="h-5 w-5">
-                      {currentUser.avatar_url && (
-                        <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />
-                      )}
-                      <AvatarFallback className="text-[9px]">
-                        {[currentUser.nombre, currentUser.apellido].filter(Boolean).map(n => n![0]).join('').toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm">{[currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ')}</span>
-                  </div>
-                </div>
-              )}
+
             </div>
             <div className="flex gap-2">
               <Button
@@ -1101,7 +1086,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     if (!config) {
       // If category selected, show subtype options
       if (['placas', 'videos', 'landing', 'operativo'].includes(subtype)) {
-        // Re-process the dynamic_design_flow step with category set
+        // Re-process the step with category set
         processStep(selectedTemplate!, currentStepIndex, { ...data, designCategory: subtype })
         return
       }
@@ -1287,7 +1272,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
 
       case 'multi_input':
         messageContent = {
-          content: step.question + (step.hint ? ` (${step.hint})` : ''),
+          content: step.question,
           isInput: true,
           inputPlaceholder: step.placeholder,
         }
