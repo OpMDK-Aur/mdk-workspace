@@ -1108,9 +1108,10 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">Comentarios ({task.comments.length})</p>
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3.5 border-b shrink-0">
+        <p className="text-sm font-semibold">Comentarios ({task.comments.length})</p>
         {task.comments.length > 1 && (
           <Button
             variant="ghost"
@@ -1124,99 +1125,82 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
         )}
       </div>
 
-      {task.comments.length > 0 && (
-        <div className="space-y-4 max-h-[400px] overflow-y-auto overflow-x-hidden pr-1 w-full">
-          {sortedComments.map((c) => (
-            <div key={c.id} className="group rounded-lg border p-3 w-full overflow-hidden">
-              <div className="flex items-start gap-3 min-w-0 w-full">
-                <Avatar className="h-8 w-8 shrink-0">
-                  <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
-                  <AvatarFallback className="text-xs">{getInitials(c.userName)}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium">{c.userName}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {format(new Date(c.createdAt), 'dd/MM/yyyy HH:mm', { locale: es })}
-                    </span>
-                  </div>
-                  {editingCommentId === c.id ? (
-                    <div className="mt-2 space-y-2">
-                      <textarea
-                        value={editingContent}
-                        onChange={(e) => setEditingContent(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault()
-                            handleEditComment(c.id)
-                          }
-                          if (e.key === 'Escape') {
-                            setEditingCommentId(null)
-                            setEditingContent('')
-                          }
-                        }}
-                        className="w-full min-h-[60px] p-2 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-                        autoFocus
-                      />
-                      <div className="flex gap-2">
-                        <Button size="sm" onClick={() => handleEditComment(c.id)}>
-                          Guardar
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          onClick={() => { setEditingCommentId(null); setEditingContent('') }}
-                        >
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div 
-                      className="text-sm text-foreground/80 mt-2 break-words whitespace-pre-wrap [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_em]:italic [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block [&_img]:cursor-pointer [&_img]:hover:opacity-90 [&_img]:transition-opacity"
-                      dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
-                      onClick={handleImageClick}
-                    />
-                  )}
-                </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content.replace(/<[^>]*>/g, '')) }}
-                    title="Editar"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => deleteComment(task.id, c.id)}
-                    title="Eliminar"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
+      {/* Comments list */}
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        {task.comments.length === 0 && (
+          <div className="flex items-center justify-center h-16">
+            <p className="text-xs text-muted-foreground">Sin comentarios aun</p>
+          </div>
+        )}
+        {sortedComments.map((c) => (
+          <div key={c.id} className="group flex items-start gap-3 w-full">
+            <Avatar className="h-8 w-8 shrink-0 mt-0.5">
+              <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
+              <AvatarFallback className="text-xs">{getInitials(c.userName)}</AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <span className="text-sm font-medium">{c.userName}</span>
+                <span className="text-xs text-muted-foreground">
+                  {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
+                </span>
+                <span className="text-xs text-muted-foreground/60">
+                  {format(new Date(c.createdAt), 'dd/MM/yyyy HH:mm', { locale: es })}
+                </span>
               </div>
+              {editingCommentId === c.id ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={editingContent}
+                    onChange={(e) => setEditingContent(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        handleEditComment(c.id)
+                      }
+                      if (e.key === 'Escape') {
+                        setEditingCommentId(null)
+                        setEditingContent('')
+                      }
+                    }}
+                    className="w-full min-h-[60px] p-2.5 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => handleEditComment(c.id)}>Guardar</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setEditingCommentId(null); setEditingContent('') }}>Cancelar</Button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="text-sm text-foreground/80 break-words whitespace-pre-wrap [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_em]:italic [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block [&_img]:cursor-pointer [&_img]:hover:opacity-90 [&_img]:transition-opacity"
+                  dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
+                  onClick={handleImageClick}
+                />
+              )}
             </div>
-          ))}
-        </div>
-      )}
+            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content.replace(/<[^>]*>/g, '')) }} title="Editar">
+                <Pencil className="h-3 w-3" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => deleteComment(task.id, c.id)} title="Eliminar">
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
+      {/* New comment composer */}
+      <div className="border-t px-5 py-4 space-y-3 shrink-0">
+        <div className="flex items-center gap-2.5">
           <Avatar className="h-7 w-7 shrink-0">
             {currentUser?.avatar_url && <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />}
             <AvatarFallback className="text-xs">
               {currentUser ? getInitials(currentUser.nombre) : 'US'}
             </AvatarFallback>
           </Avatar>
-          <span className="text-sm text-muted-foreground">Nuevo comentario</span>
+          <span className="text-sm font-medium">{currentUser?.nombre || 'Nuevo comentario'}</span>
         </div>
         <div className="relative">
           <div
@@ -1226,7 +1210,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
             onKeyDown={handleKeyDown}
             onInput={handleInput}
             data-placeholder="Escribe un comentario... usa @ para mencionar (podes pegar imagenes con Ctrl+V)"
-            className="w-full min-h-[80px] p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1 [&_.mention]:bg-primary/20 [&_.mention]:text-primary [&_.mention]:px-1 [&_.mention]:rounded"
+            className="w-full min-h-[88px] p-3.5 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/50 [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1 [&_.mention]:bg-primary/20 [&_.mention]:text-primary [&_.mention]:px-1 [&_.mention]:rounded"
           />
           
           {/* Mention dropdown */}
@@ -1256,12 +1240,11 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
             </div>
           )}
         </div>
-        
         <div className="flex items-center justify-end">
-          <Button 
-            size="sm" 
-            className="gap-1.5" 
-            onClick={handleSubmit} 
+          <Button
+            size="sm"
+            className="gap-2 px-4"
+            onClick={handleSubmit}
             disabled={isSubmitting}
           >
             <Send className="h-3.5 w-3.5" />
@@ -2049,30 +2032,30 @@ export function TaskDetailPanel() {
                   </div>
 
                   {/* Activity feed */}
-                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                  <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
                     {task.activities.length > 0 ? (
                       task.activities.slice(0, 20).map((activity) => (
-                        <div key={activity.id} className="flex items-start gap-2 text-xs">
-                          <Avatar className="h-5 w-5 mt-0.5 shrink-0">
-                            <AvatarFallback className="text-[8px]">{getInitials(activity.userName)}</AvatarFallback>
+                        <div key={activity.id} className="flex items-start gap-3 text-xs">
+                          <Avatar className="h-6 w-6 mt-0.5 shrink-0">
+                            <AvatarFallback className="text-[9px]">{getInitials(activity.userName)}</AvatarFallback>
                           </Avatar>
                           <div className="flex-1 min-w-0">
                             <span className="text-muted-foreground leading-relaxed">{activity.action}</span>
-                            <p className="text-muted-foreground/50 mt-0.5">
+                            <p className="text-muted-foreground/50 mt-1">
                               {format(new Date(activity.timestamp), "dd MMM 'a las' HH:mm", { locale: es })}
                             </p>
                           </div>
                         </div>
                       ))
                     ) : (
-                      <div className="text-center py-8">
+                      <div className="flex items-center justify-center h-24">
                         <p className="text-xs text-muted-foreground">Sin actividad aun</p>
                       </div>
                     )}
                   </div>
 
                   {/* Comment input at bottom */}
-                  <div className="border-t shrink-0">
+                  <div className="border-t shrink-0 flex-1 overflow-hidden flex flex-col">
                     <CommentsSection task={task} compact />
                   </div>
                 </div>
