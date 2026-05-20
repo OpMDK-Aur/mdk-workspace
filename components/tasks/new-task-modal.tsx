@@ -60,32 +60,9 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { X, Plus, MessageSquare, User, CalendarDays, Building2, MoreHorizontal, Paperclip, Bell, Clock, ChevronDown } from 'lucide-react'
+import { X, Plus, MessageSquare, User, CalendarDays, Building2, MoreHorizontal, Paperclip, Bell, Clock, ChevronDown, FileText, Palette, Globe, TrendingUp, Link, Search, AlertTriangle, Mail, BarChart3, HelpCircle, Calculator, Sparkles, ArrowLeft, Check, Loader2, Zap, Coffee, PartyPopper, Flame, Calendar, Video, PenLine } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Palette,
-  Globe,
-  TrendingUp,
-  Link,
-  Search,
-  AlertTriangle,
-  Mail,
-  FileText,
-  BarChart3,
-  HelpCircle,
-  Calculator,
-  Sparkles,
-  ArrowLeft,
-  Check,
-  Loader2,
-  Zap,
-  Coffee,
-  PartyPopper,
-  Flame,
-  Calendar,
-  Video,
-  PenLine,
-} from 'lucide-react'
+import { Textarea } from '@/components/ui/textarea'
 
 interface NewTaskModalProps {
   open: boolean
