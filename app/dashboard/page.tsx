@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { DashboardContent } from '@/components/dashboard/dashboard-content'
 
+// Force chunk rebuild v3
 export default async function DashboardPage() {
   const supabase = await createClient()
 

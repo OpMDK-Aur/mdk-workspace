@@ -4,8 +4,9 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell'
 import type { Client, ClientStatus } from '@/lib/types'
 
 // Cache revalidation
-export const revalidate = 60 // Revalidate every 60 seconds
+export const revalidate = 60
 
+// Force chunk rebuild v3
 export default async function DashboardLayout({
   children,
 }: {
