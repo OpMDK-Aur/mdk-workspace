@@ -1700,10 +1700,10 @@ export function TaskDetailPanel() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="mx-4 mt-3 mb-0 shrink-0">
-            <TabsTrigger value="detalles" className="text-xs">Detalles</TabsTrigger>
-            <TabsTrigger value="archivos" className="text-xs">Archivos ({task.files.length})</TabsTrigger>
-            <TabsTrigger value="cotizacion" className="text-xs">Cotizacion</TabsTrigger>
+          <TabsList className="mx-4 mt-4 mb-0 shrink-0 bg-muted/50 p-1 h-auto">
+            <TabsTrigger value="detalles" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Detalles</TabsTrigger>
+            <TabsTrigger value="archivos" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Archivos ({task.files.length})</TabsTrigger>
+            <TabsTrigger value="cotizacion" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Cotizacion</TabsTrigger>
           </TabsList>
 
           <div className="flex-1 overflow-hidden">
@@ -1716,29 +1716,29 @@ export function TaskDetailPanel() {
                 <div className="flex-1 overflow-y-auto flex flex-col min-w-0">
 
                   {/* Title area */}
-                  <div className="px-6 pt-5 pb-2">
+                  <div className="px-6 pt-6 pb-4">
                     {/* Type selector pill + actions */}
-                    <div className="flex items-center gap-2 mb-4">
+                    <div className="flex items-center gap-2 mb-5">
                       <Popover>
                         <PopoverTrigger asChild>
-                          <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs rounded-full px-3">
-                            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                          <Button variant="outline" size="sm" className="h-7 gap-2 text-xs rounded-full px-3.5 bg-primary/10 border-primary/20 text-primary hover:bg-primary/20">
+                            <span className="h-2 w-2 rounded-full bg-primary" />
                             {tiposTarea.find(t => t.id === task.type)?.nombre || 'Tarea'}
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-52 p-1" align="start">
-                          <div className="px-2 py-1 text-xs text-muted-foreground font-medium">Tipo de tarea</div>
+                        <PopoverContent className="w-56 p-1.5" align="start">
+                          <div className="px-2 py-1.5 text-xs text-muted-foreground font-medium">Tipo de tarea</div>
                           {tiposTarea.map(t => (
                             <Button
                               key={t.id}
                               variant="ghost"
                               size="sm"
-                              className="w-full justify-start text-xs h-8 gap-2"
+                              className="w-full justify-start text-sm h-9 gap-2.5"
                               onClick={() => updateTask(task.id, { type: t.id as TaskType, typeName: t.nombre })}
                             >
-                              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                              <span className="h-2 w-2 rounded-full bg-primary" />
                               {t.nombre}
-                              {task.type === t.id && <Check className="h-3 w-3 ml-auto" />}
+                              {task.type === t.id && <Check className="h-3.5 w-3.5 ml-auto text-primary" />}
                             </Button>
                           ))}
                         </PopoverContent>
@@ -1770,7 +1770,7 @@ export function TaskDetailPanel() {
                       />
                     ) : (
                       <h1
-                        className="text-2xl font-semibold cursor-text hover:text-foreground/80 leading-tight mb-4"
+                        className="text-2xl font-bold cursor-text hover:text-foreground/80 leading-tight transition-colors"
                         onClick={() => { setTempTitle(task.title); setIsEditingTitle(true) }}
                       >
                         {task.title}
@@ -1779,28 +1779,28 @@ export function TaskDetailPanel() {
                   </div>
 
                   {/* Metadata rows - ClickUp style */}
-                  <div className="px-6 pb-4 space-y-0 border-b">
+                  <div className="px-6 pb-5 space-y-1">
                     {/* Estado row */}
-                    <div className="flex items-center min-h-[36px] group">
-                      <div className="w-36 shrink-0 flex items-center gap-2 text-xs text-muted-foreground">
-                        <div className="h-3.5 w-3.5 rounded-full border border-muted-foreground/40 flex items-center justify-center">
-                          <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
+                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
+                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                        <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 flex items-center justify-center">
+                          <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
                         </div>
                         Estado
                       </div>
                       <Select value={task.status} onValueChange={(v) => handleStatusChange(v as TaskStatus)}>
                         <SelectTrigger className={cn(
-                          'h-7 w-auto border-0 bg-transparent shadow-none px-2 text-xs font-semibold gap-1.5 hover:bg-accent',
+                          'h-8 w-auto border-0 bg-transparent shadow-none px-2.5 text-sm font-medium gap-2 hover:bg-accent rounded-md',
                           statusConfig.color
                         )}>
-                          <div className={cn('h-2 w-2 rounded-sm', statusConfig.bgColor.replace('/10', ''))} />
+                          <div className={cn('h-2.5 w-2.5 rounded-sm', statusConfig.bgColor.replace('/10', '').replace('/20', ''))} />
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           {STATUS_ORDER.map((s) => (
                             <SelectItem key={s} value={s}>
                               <div className="flex items-center gap-2">
-                                <div className={cn('w-2 h-2 rounded-full', STATUS_CONFIG[s].bgColor.replace('/10', ''))} />
+                                <div className={cn('w-2.5 h-2.5 rounded-sm', STATUS_CONFIG[s].bgColor.replace('/10', '').replace('/20', ''))} />
                                 {STATUS_CONFIG[s].label}
                               </div>
                             </SelectItem>
@@ -1810,9 +1810,9 @@ export function TaskDetailPanel() {
                     </div>
 
                     {/* Personas asignadas row */}
-                    <div className="flex items-center min-h-[36px] group">
-                      <div className="w-36 shrink-0 flex items-center gap-2 text-xs text-muted-foreground">
-                        <User className="h-3.5 w-3.5" />
+                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
+                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                        <User className="h-4 w-4 opacity-60" />
                         Personas asignadas
                       </div>
                       <MultiAssigneeSelect
@@ -1830,16 +1830,16 @@ export function TaskDetailPanel() {
                     </div>
 
                     {/* Fechas row */}
-                    <div className="flex items-center min-h-[36px] group">
-                      <div className="w-36 shrink-0 flex items-center gap-2 text-xs text-muted-foreground">
-                        <CalendarIcon className="h-3.5 w-3.5" />
+                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
+                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                        <CalendarIcon className="h-4 w-4 opacity-60" />
                         Fechas
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <Popover>
                           <PopoverTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs px-2 text-muted-foreground hover:text-foreground">
-                              <CalendarIcon className="h-3 w-3" />
+                            <Button variant="ghost" size="sm" className="h-8 gap-2 text-sm px-2.5 text-muted-foreground hover:text-foreground rounded-md">
+                              <CalendarIcon className="h-3.5 w-3.5" />
                               Inicio
                             </Button>
                           </PopoverTrigger>
@@ -1852,11 +1852,11 @@ export function TaskDetailPanel() {
                             />
                           </PopoverContent>
                         </Popover>
-                        <span className="text-muted-foreground/40 text-xs">→</span>
+                        <span className="text-muted-foreground/30 text-sm font-light">—</span>
                         <Popover>
                           <PopoverTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs px-2 text-muted-foreground hover:text-foreground">
-                              <CalendarIcon className="h-3 w-3" />
+                            <Button variant="ghost" size="sm" className="h-8 gap-2 text-sm px-2.5 text-muted-foreground hover:text-foreground rounded-md">
+                              <CalendarIcon className="h-3.5 w-3.5" />
                               {task.dueDate
                                 ? format(task.dueDate, 'dd MMM yyyy', { locale: es })
                                 : 'Fecha limite'}
@@ -1875,19 +1875,19 @@ export function TaskDetailPanel() {
                     </div>
 
                     {/* Prioridad row */}
-                    <div className="flex items-center min-h-[36px] group">
-                      <div className="w-36 shrink-0 flex items-center gap-2 text-xs text-muted-foreground">
-                        <ArrowUpDown className="h-3.5 w-3.5" />
+                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
+                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                        <ArrowUpDown className="h-4 w-4 opacity-60" />
                         Prioridad
                       </div>
                       <Select value={task.priority} onValueChange={(v) => updateTask(task.id, { priority: v as TaskPriority })}>
-                        <SelectTrigger className="h-7 w-auto border-0 bg-transparent shadow-none px-2 text-xs hover:bg-accent gap-1.5">
+                        <SelectTrigger className="h-8 w-auto border-0 bg-transparent shadow-none px-2.5 text-sm hover:bg-accent gap-2 rounded-md">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           {(['alta', 'media', 'baja'] as TaskPriority[]).map((p) => (
                             <SelectItem key={p} value={p}>
-                              <Badge variant="outline" className={cn('text-xs border-0', PRIORITY_CONFIG[p].bgColor, PRIORITY_CONFIG[p].color)}>
+                              <Badge variant="outline" className={cn('text-xs border-0 font-medium', PRIORITY_CONFIG[p].bgColor, PRIORITY_CONFIG[p].color)}>
                                 {PRIORITY_CONFIG[p].label}
                               </Badge>
                             </SelectItem>
@@ -1897,9 +1897,9 @@ export function TaskDetailPanel() {
                     </div>
 
                     {/* Clientes row */}
-                    <div className="flex items-center min-h-[36px] group">
-                      <div className="w-36 shrink-0 flex items-center gap-2 text-xs text-muted-foreground">
-                        <Building2 className="h-3.5 w-3.5" />
+                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
+                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                        <Building2 className="h-4 w-4 opacity-60" />
                         Clientes
                       </div>
                       <MultiClientSelect
@@ -1917,23 +1917,23 @@ export function TaskDetailPanel() {
                     </div>
 
                     {/* Creado por row */}
-                    <div className="flex items-center min-h-[36px] group">
-                      <div className="w-36 shrink-0 flex items-center gap-2 text-xs text-muted-foreground">
-                        <User className="h-3.5 w-3.5" />
+                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
+                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                        <User className="h-4 w-4 opacity-60" />
                         Creado por
                       </div>
-                      <div className="flex items-center gap-1.5 px-2">
-                        <Avatar className="h-5 w-5">
+                      <div className="flex items-center gap-2 px-2.5">
+                        <Avatar className="h-6 w-6 ring-2 ring-background">
                           {task.createdByAvatar && <AvatarImage src={task.createdByAvatar} alt={task.createdByName} />}
-                          <AvatarFallback className="text-[9px]">{getInitials(task.createdByName)}</AvatarFallback>
+                          <AvatarFallback className="text-[10px] font-medium">{getInitials(task.createdByName)}</AvatarFallback>
                         </Avatar>
-                        <span className="text-xs text-muted-foreground">{task.createdByName || 'Sin asignar'}</span>
+                        <span className="text-sm">{task.createdByName || 'Sin asignar'}</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Description area */}
-                  <div className="px-6 py-4 border-b flex-shrink-0">
+                  <div className="px-6 py-5 border-y bg-accent/20 flex-shrink-0">
                     <div
                       ref={descriptionRef}
                       contentEditable
@@ -1950,10 +1950,10 @@ export function TaskDetailPanel() {
                         // No-op for now, save on blur
                       }}
                       className={cn(
-                        "min-h-[80px] text-sm outline-none",
+                        "min-h-[100px] text-sm outline-none",
                         "prose prose-sm prose-invert max-w-none",
-                        "[&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1",
-                        "empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/50 empty:before:pointer-events-none"
+                        "[&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5",
+                        "empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/40 empty:before:pointer-events-none"
                       )}
                       data-placeholder="Añade una descripcion o escribe con / para comandos..."
                       dangerouslySetInnerHTML={{ __html: task.description || '' }}
@@ -1961,39 +1961,39 @@ export function TaskDetailPanel() {
                   </div>
 
                   {/* Quick actions */}
-                  <div className="px-6 py-3 space-y-0.5">
-                    <button className="flex items-center gap-2.5 w-full py-1.5 text-sm text-muted-foreground hover:text-foreground rounded group">
-                      <Plus className="h-4 w-4 opacity-50 group-hover:opacity-100" />
+                  <div className="px-6 py-4 space-y-1">
+                    <button className="flex items-center gap-3 w-full py-2 px-2 -mx-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-md transition-colors group">
+                      <Plus className="h-4 w-4 opacity-40 group-hover:opacity-100 transition-opacity" />
                       Agregar subtarea
                     </button>
-                    <button className="flex items-center gap-2.5 w-full py-1.5 text-sm text-muted-foreground hover:text-foreground rounded group">
-                      <ArrowUpDown className="h-4 w-4 opacity-50 group-hover:opacity-100" />
+                    <button className="flex items-center gap-3 w-full py-2 px-2 -mx-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-md transition-colors group">
+                      <ArrowUpDown className="h-4 w-4 opacity-40 group-hover:opacity-100 transition-opacity" />
                       Relacionar elementos o agregar dependencias
                     </button>
-                    <button className="flex items-center gap-2.5 w-full py-1.5 text-sm text-muted-foreground hover:text-foreground rounded group">
-                      <Check className="h-4 w-4 opacity-50 group-hover:opacity-100" />
+                    <button className="flex items-center gap-3 w-full py-2 px-2 -mx-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-md transition-colors group">
+                      <Check className="h-4 w-4 opacity-40 group-hover:opacity-100 transition-opacity" />
                       Crear lista de control
                     </button>
                     <button
-                      className="flex items-center gap-2.5 w-full py-1.5 text-sm text-muted-foreground hover:text-foreground rounded group"
+                      className="flex items-center gap-3 w-full py-2 px-2 -mx-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-md transition-colors group"
                       onClick={() => fileInputRef.current?.click()}
                     >
-                      <Paperclip className="h-4 w-4 opacity-50 group-hover:opacity-100" />
+                      <Paperclip className="h-4 w-4 opacity-40 group-hover:opacity-100 transition-opacity" />
                       Adjuntar archivo
                     </button>
                   </div>
 
                   {/* Time tracker compact */}
-                  <div className="px-6 pb-3 mt-auto">
+                  <div className="px-6 pb-4 mt-auto">
                     <TimeTracker task={task} />
                   </div>
 
                   {/* Delete */}
-                  <div className="px-6 pb-4 border-t pt-3">
+                  <div className="px-6 py-4 border-t">
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10 text-xs"
+                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 text-sm gap-2"
                       onClick={async () => {
                         const confirmed = confirm(`¿Eliminar tarea "${task.title}"?`)
                         if (confirmed) {
@@ -2002,7 +2002,7 @@ export function TaskDetailPanel() {
                         }
                       }}
                     >
-                      <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                      <Trash2 className="h-4 w-4" />
                       Eliminar tarea
                     </Button>
                   </div>
@@ -2010,12 +2010,12 @@ export function TaskDetailPanel() {
 
                 {/* RIGHT COLUMN - Activity */}
                 <div className={cn(
-                  "border-l flex flex-col overflow-hidden bg-card/30",
-                  isFullscreen ? "w-[380px]" : "w-[260px]"
+                  "border-l flex flex-col overflow-hidden bg-muted/30",
+                  isFullscreen ? "w-[400px]" : "w-[280px]"
                 )}>
                   {/* Activity header with filters */}
-                  <div className="px-4 py-3 border-b flex items-center justify-between shrink-0">
-                    <span className="text-sm font-medium">Activity</span>
+                  <div className="px-4 py-3.5 border-b flex items-center justify-between shrink-0 bg-background/50">
+                    <span className="text-sm font-semibold">Activity</span>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="icon" className="h-6 w-6">
                         <Search className="h-3.5 w-3.5" />
