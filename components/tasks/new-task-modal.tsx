@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import type { TaskStatus, TaskPriority, TaskType } from '@/lib/types'
+import type { TaskStatus, TaskPriority, TaskType, TaskComment, TaskFile } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -10,6 +10,8 @@ import {
   TYPE_CONFIG,
   ASSIGNEES,
   CLIENTS,
+  STATUS_CONFIG,
+  STATUS_ORDER,
 } from '@/lib/tasks/task-store'
 
 // Database types
@@ -60,31 +62,9 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { X, Plus } from 'lucide-react'
-import {
-  Palette,
-  Globe,
-  TrendingUp,
-  Link,
-  Search,
-  AlertTriangle,
-  Mail,
-  FileText,
-  BarChart3,
-  HelpCircle,
-  Calculator,
-  Sparkles,
-  ArrowLeft,
-  Check,
-  Loader2,
-  Zap,
-  Coffee,
-  PartyPopper,
-  Flame,
-  Calendar,
-  Video,
-  PenLine,
-} from 'lucide-react'
+import { X, Plus, MessageSquare, User, CalendarDays, Building2, MoreHorizontal, Paperclip, Bell, Clock, ChevronDown, FileText, Palette, Globe, TrendingUp, Link, Search, AlertTriangle, Mail, BarChart3, HelpCircle, Calculator, Sparkles, ArrowLeft, Check, Loader2, Zap, Coffee, PartyPopper, Flame, Calendar, Video, PenLine, Flag, Tag, Link2 } from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 
 interface NewTaskModalProps {
   open: boolean
@@ -246,7 +226,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ─────────────────────────────────────────────
+// ── Seguimiento Templates by Plan ───────────────────────────────���──�����───────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -307,8 +287,8 @@ type FlowStep =
   | { type: 'input'; key: string; question: string; placeholder?: string; followUp?: string }
   | { type: 'number'; key: string; question: string; min?: number; max?: number }
   | { type: 'options'; key: string; question: string; options: { label: string; value: string; emoji?: string }[] }
-  | { type: 'multi_input'; key: string; question: string; placeholder?: string; hint?: string }
-  | { type: 'date_time'; key: string; question: string; hint?: string }
+| { type: 'multi_input'; key: string; question: string; placeholder?: string }
+    | { type: 'date_time'; key: string; question: string }
   | { type: 'priority' }
   | { type: 'select_due_date' }
   | { type: 'confirm' }
@@ -345,7 +325,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
         { label: 'Tareas operativas web', value: 'operativo', emoji: '🔧' },
       ]},
       // Dynamic steps based on designCategory - handled in processStep
-      { type: 'dynamic_design_flow' },
+  
     ],
   },
   {
@@ -438,7 +418,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
         { label: 'No llegan los leads', value: 'no_leads', emoji: '🚫' },
         { label: 'Llegan duplicados', value: 'duplicates', emoji: '👯' },
         { label: 'Faltan campos/datos', value: 'missing_data', emoji: '❓' },
-        { label: 'Error en la conexion', value: 'connection_error', emoji: '⚡' },
+        { label: 'Error en la conexion', value: 'connection_error', emoji: '��' },
         { label: 'Revision preventiva', value: 'preventive', emoji: '🔍' },
       ]},
       { type: 'input', key: 'formName', question: 'Que formulario o integracion hay que revisar?', placeholder: 'Ej: Formulario de Meta Leads' },
@@ -560,7 +540,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
     flow: [
       { type: 'select_client' },
       { type: 'input', key: 'title', question: 'Dale, contame que necesitas!', placeholder: 'Describime la tarea...' },
-      { type: 'multi_input', key: 'details', question: 'Algun detalle extra que me quieras contar?', placeholder: 'Links, contexto, urgencia...', hint: 'Podes dejarlo vacio si no hay nada mas' },
+      { type: 'multi_input', key: 'details', question: 'Algun detalle extra que me quieras contar?', placeholder: 'Links, contexto, urgencia...' },
       { type: 'priority' },
       { type: 'select_due_date' },
       { type: 'confirm' },
@@ -595,7 +575,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
         { label: 'Si, agregar Meet', value: 'yes', emoji: '📹' },
         { label: 'No, es presencial', value: 'no', emoji: '🏢' },
       ]},
-      { type: 'input', key: 'attendees', question: 'Emails de los participantes (separados por coma)', placeholder: 'cliente@email.com, otro@email.com', hint: 'Podes dejarlo vacio' },
+      { type: 'input', key: 'attendees', question: 'Emails de los participantes (separados por coma)', placeholder: 'cliente@email.com, otro@email.com' },
       { type: 'priority' },
       { type: 'confirm_meeting' },
     ],
@@ -820,22 +800,7 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
                 <span className="text-muted-foreground">Asignado:</span>
                 <span>{message.taskSummary.assignee}</span>
               </div>
-              {currentUser && (
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Creado por:</span>
-                  <div className="flex items-center gap-1.5">
-                    <Avatar className="h-5 w-5">
-                      {currentUser.avatar_url && (
-                        <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />
-                      )}
-                      <AvatarFallback className="text-[9px]">
-                        {[currentUser.nombre, currentUser.apellido].filter(Boolean).map(n => n![0]).join('').toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm">{[currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ')}</span>
-                  </div>
-                </div>
-              )}
+
             </div>
             <div className="flex gap-2">
               <Button
@@ -957,6 +922,12 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   const [quickDueDate, setQuickDueDate] = useState(() => 
     initialDueDate ? initialDueDate.toISOString().split('T')[0] : ''
   )
+  const [quickComment, setQuickComment] = useState('')
+  const [quickDescription, setQuickDescription] = useState('')
+  const [quickStatus, setQuickStatus] = useState<string>('pendiente')
+  const [activeTab, setActiveTab] = useState<'tarea' | 'documento' | 'recordatorio'>('tarea')
+  const [reminderName, setReminderName] = useState('')
+  const [reminderDate, setReminderDate] = useState<string>('')
   
   // Update quickDueDate when initialDueDate changes (e.g., from calendar)
   useEffect(() => {
@@ -1117,7 +1088,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     if (!config) {
       // If category selected, show subtype options
       if (['placas', 'videos', 'landing', 'operativo'].includes(subtype)) {
-        // Re-process the dynamic_design_flow step with category set
+        // Re-process the step with category set
         processStep(selectedTemplate!, currentStepIndex, { ...data, designCategory: subtype })
         return
       }
@@ -1303,7 +1274,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
 
       case 'multi_input':
         messageContent = {
-          content: step.question + (step.hint ? ` (${step.hint})` : ''),
+          content: step.question,
           isInput: true,
           inputPlaceholder: step.placeholder,
         }
@@ -1457,1094 +1428,442 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     const assignees = quickAssigneeIds
       .map(id => dbColaboradores.find(a => a.id === id))
       .filter((a): a is DbColaborador => a !== undefined)
+      .map(a => ({ id: a.id, nombre: a.nombre, avatar_url: a.avatar_url }))
     
     const firstClient = clients[0]
     const firstAssignee = assignees[0]
     
+    // Build initial comment if provided
+    const comments: TaskComment[] = []
+    if (quickComment.trim()) {
+      comments.push({
+        id: `comment-${Date.now()}`,
+        content: quickComment.trim(),
+        userId: currentUser?.id || 'system',
+        userName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
+        userAvatar: currentUser?.avatar_url || null,
+        createdAt: new Date(),
+      })
+    }
+    
     await addTask({
       title: quickTitle,
-      description: null,
+      description: quickDescription || null,
       clientId: firstClient?.id || '',
-      clientName: firstClient?.nombre_del_negocio || '',
       clientIds: quickClientIds,
-      clients,
       assigneeId: firstAssignee?.id || '',
-      assigneeName: firstAssignee?.nombre || '',
-      assigneeAvatar: firstAssignee?.avatar_url || null,
-      assigneeIds: quickAssigneeIds,
-      assignees: assignees.map(a => ({ id: a.id, nombre: a.nombre, avatar_url: a.avatar_url })),
-      status: 'pendiente' as TaskStatus,
+      assignees,
+      status: quickStatus as TaskStatus,
       priority: quickPriority,
       type: quickType,
-      // Parse date as local timezone to avoid UTC offset issues
       dueDate: quickDueDate ? new Date(quickDueDate + 'T12:00:00') : null,
       customFields: {},
       createdById: currentUser?.id || null,
-      createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
-      createdByAvatar: currentUser?.avatar_url || undefined,
-    })
+      comments,
+    } as any)
     
     setIsCreating(false)
     // Reset quick mode state
     setQuickTitle('')
+    setQuickDescription('')
     setQuickClientIds([])
     setQuickType('')
     setQuickPriority('media')
+    setQuickStatus('pendiente')
     setQuickAssigneeIds([])
     setQuickDueDate('')
+    setQuickComment('')
+    setActiveTab('tarea')
     setQuickMode(false)
     onOpenChange(false)
   }
 
-  // Handle template selection
-  const handleTemplateSelect = (templateId: string) => {
-    const template = TASK_TEMPLATES.find((t) => t.id === templateId)
-    if (!template) return
+  const handleCreateReminder = async () => {
+    if (!reminderName.trim()) return
 
-    setSelectedTemplate(template)
-    
-    setMessages((prev) => [...prev, {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: template.label,
-    }])
-
-    // Special intro messages based on template
-    let introMessage: string | null = null
-    if (template.id === 'falta_datos') {
-      introMessage = getRandomResponse(PERSONALITY_RESPONSES.falta_datos_calm)
-    } else if (template.id === 'integrar' || template.id === 'revisar_integraciones') {
-      introMessage = getRandomResponse(PERSONALITY_RESPONSES.integraciones_intro)
-    } else if (template.id === 'otro') {
-      introMessage = getRandomResponse(PERSONALITY_RESPONSES.otro_intro)
-    } else if (template.id === 'reunion') {
-      introMessage = getRandomResponse(PERSONALITY_RESPONSES.reunion_intro)
-    }
-
-    if (introMessage) {
-      addAssistantMessage({ content: introMessage }, 300)
-      setTimeout(() => processStep(template, 0, {}), 800)
-    } else {
-      setTimeout(() => processStep(template, 0, {}), 300)
-    }
-  }
-
-  // Handle option selection
-  const handleOptionSelect = async (value: string) => {
-    if (!selectedTemplate) return
-
-    // Handle design flow confirm FIRST (before checking currentStep)
-    if (designFlowState?.step === 'confirm') {
-      if (value === 'confirm') {
-        await handleCreateTask()
-      } else {
-        onOpenChange(false)
-      }
-      return
-    }
-
-    // Handle design flow options (date confirmation, integration) - check early
-    if (designFlowState && selectedTemplate.id === 'pedido_diseno') {
-      const florColaborador = dbColaboradores.find(c => c.nombre.toLowerCase().includes('flor'))
-      const ayeColaborador = dbColaboradores.find(c => c.nombre.toLowerCase().includes('aye'))
-      
-      // Add user message
-      setMessages((prev) => [...prev, {
-        id: `user-${Date.now()}`,
-        role: 'user',
-        content: value === 'accept_date' ? 'Si, esa fecha' : value === 'choose_date' ? 'Elegir otra fecha' : value === 'no_date' ? 'Sin fecha limite' : value === 'add_aye' ? `Si, agregar a ${ayeColaborador?.nombre || 'Aye'}` : 'Solo diseno',
-      }])
-      
-      if (designFlowState.step === 'ask_integration') {
-        const newData = { ...taskData }
-        if (value === 'add_aye' && ayeColaborador) {
-          newData.assigneeIds = [florColaborador?.id || '', ayeColaborador.id].filter(Boolean).join(',')
-          addAssistantMessage({ content: `Perfecto! Agrego a ${florColaborador?.nombre || 'Flor'} y a ${ayeColaborador.nombre}.` }, 300)
-        } else {
-          newData.assigneeId = florColaborador?.id || ''
-          addAssistantMessage({ content: `Ok, solo ${florColaborador?.nombre || 'Flor'} entonces.` }, 300)
-        }
-        
-        const recommendedDate = new Date(taskData.recommendedDate || Date.now())
-        const dateStr = recommendedDate.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
-        
-        setTimeout(() => {
-          addAssistantMessage({
-            content: `Te recomiendo fecha de entrega para el **${dateStr}** (${designFlowState.config.daysMin}-${designFlowState.config.daysMax} dias habiles). Te parece bien?`,
-            options: [
-              { label: `Si, para el ${dateStr}`, value: 'accept_date', emoji: '✅' },
-              { label: 'Prefiero elegir otra fecha', value: 'choose_date', emoji: '📅' },
-              { label: 'Sin fecha limite', value: 'no_date', emoji: '🔓' },
-            ],
-          }, 400)
-          setTaskData(newData)
-          setDesignFlowState({ ...designFlowState, step: 'confirm_date' })
-        }, 600)
-        return
-      }
-      
-      if (designFlowState.step === 'confirm_date') {
-        const newData = { ...taskData }
-        if (value === 'accept_date') {
-          newData.dueDate = taskData.recommendedDate
-          addAssistantMessage({ content: 'Perfecto!' }, 300)
-          setTimeout(() => showDesignConfirmation(newData), 600)
-        } else if (value === 'choose_date') {
-          addAssistantMessage({
-            content: 'Dale, decime para cuando lo necesitas:',
-            isDateTime: true,
-          }, 300)
-          setTaskData(newData)
-          setDesignFlowState({ ...designFlowState, step: 'custom_date' })
-        } else {
-          addAssistantMessage({ content: 'Ok, sin fecha limite.' }, 300)
-          setTimeout(() => showDesignConfirmation(newData), 600)
-        }
-        return
-      }
-    }
-
-    const currentStep = selectedTemplate.flow[currentStepIndex]
-    if (!currentStep) return
-
-  // Handle confirm
-  if (currentStep.type === 'confirm') {
-  if (value === 'confirm') {
-  await handleCreateTask()
-  } else {
-  onOpenChange(false)
-  }
-  return
-  }
-
-    // Handle meeting confirm
-    if (currentStep.type === 'confirm_meeting') {
-      if (value === 'confirm_meeting') {
-        await handleCreateMeeting()
-      } else {
-        onOpenChange(false)
-      }
-      return
-    }
-
-    // Get display label
-    let userMessage = value
-    if (currentStep.type === 'select_client') {
-  const client = dbClientes.find((c) => c.id === value)
-  userMessage = client?.nombre_del_negocio || value
-  // Load client context with real data
-  setClientContext(getClientContextFromDb(value, dbClientes))
-  }
-    if (currentStep.type === 'select_assignee') {
-      const assignee = dbColaboradores.find((c) => c.id === value)
-      userMessage = assignee?.nombre || value
-    }
-    if (currentStep.type === 'options') {
-      const opt = (currentStep as { options: { label: string; value: string }[] }).options.find((o) => o.value === value)
-      userMessage = opt?.label || value
-    }
-    if (currentStep.type === 'priority') {
-      userMessage = PRIORITY_CONFIG[value as TaskPriority]?.label || value
-    }
-
-    setMessages((prev) => [...prev, {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: userMessage,
-    }])
-
-    const stepKey = (currentStep as { key?: string }).key || currentStep.type
-    const newData = { ...taskData, [stepKey]: value }
-    
-  if (currentStep.type === 'select_client') {
-  newData.clientId = value
-  // Add personality response for client selection
-  const client = dbClientes.find((c) => c.id === value)
-  if (client) {
-    addAssistantMessage({
-      content: getRandomResponse(PERSONALITY_RESPONSES.client_selected(client.nombre_del_negocio))
-    }, 300)
-  }
-  }
-    
-    if (currentStep.type === 'select_assignee') {
-      newData.assigneeId = value
-      const assignee = dbColaboradores.find((c) => c.id === value)
-      if (assignee) {
-        addAssistantMessage({
-          content: `Perfecto! Se lo asigno a ${assignee.nombre}`
-        }, 300)
-      }
-    }
-
-    // Special responses for priority
-    if (currentStep.type === 'priority') {
-      let response: string
-      if (value === 'alta') response = getRandomResponse(PERSONALITY_RESPONSES.priority_alta)
-      else if (value === 'media') response = getRandomResponse(PERSONALITY_RESPONSES.priority_media)
-      else response = getRandomResponse(PERSONALITY_RESPONSES.priority_baja)
-      
-      addAssistantMessage({ content: response }, 300)
-    }
-
-    // Special responses based on selection
-    if (selectedTemplate.id === 'falta_datos' && stepKey === 'area' && value === 'everything') {
-      addAssistantMessage({ 
-        content: getRandomResponse(PERSONALITY_RESPONSES.falta_datos_everything) 
-      }, 300)
-    }
-
-    if (selectedTemplate.id === 'optimizar' && stepKey === 'issue') {
-      if (value === 'high_cpa') {
-        addAssistantMessage({ content: getRandomResponse(PERSONALITY_RESPONSES.optimizar_cpa) }, 300)
-      } else if (value === 'low_performance') {
-        addAssistantMessage({ content: getRandomResponse(PERSONALITY_RESPONSES.optimizar_low) }, 300)
-      }
-    }
-
-    // Handle dynamic design flow - continue with specific questions based on subtype
-    if (selectedTemplate.id === 'pedido_diseno' && currentStep.type === 'dynamic_design_flow') {
-      setTaskData(newData)
-      // Continue with subtype-specific flow
-      setTimeout(() => handleDesignSubtypeFlow(value, newData), 400)
-      return
-    }
-
-    setTaskData(newData)
-
-    const delay = currentStep.type === 'select_client' || currentStep.type === 'select_assignee' || currentStep.type === 'priority' || currentStep.type === 'select_due_date' ? 800 : 400
-    setTimeout(() => processStep(selectedTemplate, currentStepIndex + 1, newData), delay)
-  }
-
-  // Handle input submit
-  const handleInputSubmit = () => {
-    if (!selectedTemplate || !inputValue.trim()) return
-
-    const currentStep = selectedTemplate.flow[currentStepIndex]
-    const value = inputValue.trim()
-
-    setMessages((prev) => [...prev, {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: value,
-    }])
-    setInputValue('')
-
-    // Handle design flow inputs
-    if (designFlowState && selectedTemplate.id === 'pedido_diseno') {
-      const newData = { ...taskData }
-      
-      if (designFlowState.step === 'quantity') {
-        newData.quantity = value
-        const qty = parseInt(value)
-        if (qty >= 10) {
-          addAssistantMessage({ content: `${qty}! Bastante trabajo, pero Flor se las banca.` }, 300)
-        } else {
-          addAssistantMessage({ content: `${qty}, perfecto!` }, 300)
-        }
-        
-        // If also needs files, ask for them
-        if (designFlowState.config.needsFiles) {
-          setTimeout(() => {
-            addAssistantMessage({
-              content: 'Ahora necesito que me pases los archivos.',
-              isInput: true,
-              inputPlaceholder: 'Ej: Te los paso por Drive / Los subo despues',
-            }, 400)
-            setTaskData(newData)
-            setDesignFlowState({ ...designFlowState, step: 'files' })
-          }, 600)
-          return
-        }
-        
-        // Continue to concept
-        setTimeout(() => continueDesignFlow(newData, designFlowState.config, designFlowState.subtype), 600)
-        return
-      }
-      
-      if (designFlowState.step === 'files') {
-        newData.files = value
-        addAssistantMessage({ content: 'Anotado!' }, 300)
-        setTimeout(() => continueDesignFlow(newData, designFlowState.config, designFlowState.subtype), 600)
-        return
-      }
-      
-      if (designFlowState.step === 'concept') {
-        newData.concept = value
-        addAssistantMessage({ content: 'Excelente, quedo clarisimo!' }, 300)
-        setTimeout(() => finishDesignFlow(newData, designFlowState.config, designFlowState.subtype), 600)
-        return
-      }
-      
-      return
-    }
-
-    if (!currentStep) return
-
-    // Quantity response
-    if (currentStep.type === 'number') {
-      const numValue = parseInt(value)
-      const response = getQuantityResponse(selectedTemplate, numValue)
-      if (response) {
-        addAssistantMessage({ content: response }, 400)
-      }
-    }
-
-    // Map step type to correct data key
-    let stepKey = (currentStep as { key?: string }).key || currentStep.type
-    if (currentStep.type === 'select_due_date') {
-      stepKey = 'dueDate'
-    }
-    
-    const newData = { ...taskData, [stepKey]: value }
-    setTaskData(newData)
-
-    // Special response for due date
-    if (currentStep.type === 'select_due_date') {
-      const dueDate = new Date(value)
-      addAssistantMessage({ 
-        content: `Listo, fecha limite: ${dueDate.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}` 
-      }, 300)
-    }
-
-    const delay = currentStep.type === 'number' || currentStep.type === 'select_due_date' ? 1000 : 400
-    setTimeout(() => processStep(selectedTemplate, currentStepIndex + 1, newData), delay)
-  }
-
-  // Create task
-  // Create meeting in Google Calendar
-  const handleCreateMeeting = async () => {
-    if (!selectedTemplate) return
-    
-setIsCreating(true)
-    
-    const client = dbClientes.find((c) => c.id === taskData.clientId)
-    const meetingTitle = `${taskData.title || 'Reunion'} - ${client?.nombre_del_negocio || 'Cliente'}`
-    const startDateTime = new Date(taskData.meetingDateTime)
-    const duration = parseInt(taskData.meetingDuration || '30')
-    const endDateTime = new Date(startDateTime.getTime() + duration * 60000)
-    const addMeet = taskData.addMeet === 'yes'
-    const attendees = taskData.attendees?.split(',').map(e => e.trim()).filter(Boolean) || []
-
-    // Create the event using the token from database
-    try {
-      const response = await fetch('/api/google/calendar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: {
-            title: meetingTitle,
-            description: `Reunion con ${client?.nombre_del_negocio || 'cliente'}.\n\nCreado desde MDK Workspace.`,
-            startDateTime: startDateTime.toISOString(),
-            endDateTime: endDateTime.toISOString(),
-            addMeet,
-            attendees,
-          },
-        }),
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        // Also create a task for the meeting
-        const priority = (taskData.priority || 'media') as TaskPriority
-        
-        const meetingComment = `
-          <p><strong>Reunion agendada en Google Calendar</strong></p>
-          <p>Fecha: ${startDateTime.toLocaleString('es-AR', { dateStyle: 'full', timeStyle: 'short' })}</p>
-          <p>Duracion: ${duration} minutos</p>
-          ${result.event.hangoutLink ? `<p><a href="${result.event.hangoutLink}" target="_blank">Link de Google Meet</a></p>` : ''}
-          ${result.event.htmlLink ? `<p><a href="${result.event.htmlLink}" target="_blank">Ver en Calendar</a></p>` : ''}
-        `
-
-        const firstAssignee = dbColaboradores[0]
-        // Find "Reunión con cliente" type from DB
-        const reunionTipo = dbTiposTarea.find(t => t.nombre.toLowerCase().includes('reuni'))
-        
-        await addTask({
-          title: meetingTitle,
-          description: null,
-          clientId: taskData.clientId || '',
-          clientName: client?.nombre_del_negocio || '',
-          assigneeId: firstAssignee?.id || '',
-          assigneeName: firstAssignee?.nombre || '',
-          assigneeAvatar: firstAssignee?.avatar_url || null,
-          status: 'pendiente' as TaskStatus,
-          priority,
-          type: reunionTipo?.id || '', // UUID from tipo_de_tareas
-          dueDate: startDateTime,
-          customFields: {},
-          createdById: currentUser?.id || null,
-          createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
-          createdByAvatar: currentUser?.avatar_url || undefined,
-          comments: [{
-            id: `comment-${Date.now()}`,
-            content: meetingComment,
-            userId: currentUser?.id || 'system',
-            userName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
-            userAvatar: '',
-            createdAt: new Date(),
-          }],
-        })
-
-        addAssistantMessage({ 
-          content: getRandomResponse(PERSONALITY_RESPONSES.reunion_calendar_success) + 
-            (result.event.hangoutLink ? ` Link de Meet: ${result.event.hangoutLink}` : '')
-        }, 300)
-
-        setTimeout(() => {
-          onOpenChange(false)
-        }, 2000)
-      } else if (result.needsReauth) {
-        addAssistantMessage({ 
-          content: 'Necesitas reconectar Google con permisos de Calendar. Anda a Plataformas y hace click en "Reconectar".' 
-        }, 300)
-      } else {
-        addAssistantMessage({ 
-          content: `Error al crear la reunion: ${result.error || 'Error desconocido'}` 
-        }, 300)
-      }
-    } catch (err) {
-      addAssistantMessage({ 
-        content: `Hubo un error al crear la reunion: ${err instanceof Error ? err.message : 'Error desconocido'}` 
-      }, 300)
-    }
-
-    setIsCreating(false)
-  }
-
-  // Create task
-  const handleCreateTask = async () => {
-    if (!selectedTemplate) return
-    
     setIsCreating(true)
 
-    const client = dbClientes.find((c) => c.id === taskData.clientId)
-    const assignee = dbColaboradores.find((a) => a.id === taskData.assigneeId) || dbColaboradores[0]
-
-    let title = taskData.title || selectedTemplate.label
-    if (selectedTemplate.id === 'placas' && taskData.quantity) {
-      title = `${taskData.quantity} placas - ${taskData.title || taskData.concept || client?.nombre_del_negocio}`
-    }
-    if (selectedTemplate.id === 'falta_datos') {
-      title = `URGENTE: ${taskData.title || 'Falta de datos'}`
-    }
-    if (selectedTemplate.id === 'seguimiento') {
-      const dayName = new Date().toLocaleDateString('es-AR', { weekday: 'long' })
-      title = `Seguimiento semanal - ${client?.nombre_del_negocio || 'Cliente'} (${dayName})`
-    }
-
-    const priority = (taskData.priority || selectedTemplate.defaultPriority || 'media') as TaskPriority
-
-    // Build initial comment from collected data AND the conversation
-    const buildInitialComment = (): string => {
-      const lines: string[] = []
-      
-      // For seguimiento tasks, add the template message first
-      if (selectedTemplate.id === 'seguimiento') {
-        const clientName = client?.contact_name || client?.nombre_del_negocio || 'equipo'
-        const templateMessage = getSeguimientoTemplate(client?.plan, clientName)
-        lines.push(`<p><strong>📋 Plantilla de mensaje (Plan ${client?.plan || 'Sin plan'}):</strong></p>`)
-        lines.push(`<div style="background:#0f172a; border-radius:8px; padding:16px; margin:8px 0; border-left:3px solid #a855f7; white-space:pre-wrap; font-family:inherit;">${templateMessage}</div>`)
-        lines.push('<hr style="border-color:#333; margin:16px 0;" />')
-      }
-      
-      // Then add the full chat conversation
-      lines.push(`<p><strong>Conversacion con Madky:</strong></p>`)
-      lines.push('<div style="background:#1a1a2e; border-radius:8px; padding:12px; margin:8px 0;">')
-      
-      messages.forEach((msg) => {
-        if (msg.role === 'assistant') {
-          lines.push(`<p style="margin:8px 0;"><span style="color:#a855f7; font-weight:500;">Madky:</span> ${msg.content}</p>`)
-        } else if (msg.role === 'user') {
-          lines.push(`<p style="margin:8px 0;"><span style="color:#22c55e; font-weight:500;">Usuario:</span> ${msg.content}</p>`)
-        }
-      })
-      
-      lines.push('</div>')
-      
-      // Then add structured data summary
-      lines.push(`<p style="margin-top:16px;"><strong>Resumen de datos:</strong></p>`)
-      
-      // Add all collected data as structured info
-      const dataEntries: { label: string; value: string }[] = []
-      
-      if (taskData.format) {
-        const formatLabels: Record<string, string> = {
-          'stories_feed': 'Stories + Feed',
-          'stories': 'Solo Stories',
-          'feed': 'Solo Feed',
-          'carousel': 'Carrusel',
-          'all': 'Todos los formatos',
-        }
-        dataEntries.push({ label: 'Formato', value: formatLabels[taskData.format] || taskData.format })
-      }
-      if (taskData.quantity) dataEntries.push({ label: 'Cantidad', value: taskData.quantity })
-      if (taskData.concept) dataEntries.push({ label: 'Concepto/Idea', value: taskData.concept })
-      if (taskData.platform) {
-        const platformLabels: Record<string, string> = {
-          'meta': 'Meta Ads',
-          'google': 'Google Ads',
-          'both': 'Meta + Google',
-        }
-        dataEntries.push({ label: 'Plataforma', value: platformLabels[taskData.platform] || taskData.platform })
-      }
-      if (taskData.issue) {
-        const issueLabels: Record<string, string> = {
-          'low_performance': 'Bajo rendimiento general',
-          'high_cpa': 'CPA muy alto',
-          'low_conversions': 'Pocas conversiones',
-          'general': 'Revision general',
-        }
-        dataEntries.push({ label: 'Problema', value: issueLabels[taskData.issue] || taskData.issue })
-      }
-      if (taskData.source) {
-        const sourceLabels: Record<string, string> = {
-          'landing': 'Landing web',
-          'meta_leads': 'Meta Lead Ads',
-          'google_leads': 'Google Lead Forms',
-          'whatsapp': 'WhatsApp',
-          'other': 'Otro',
-        }
-        dataEntries.push({ label: 'Origen de leads', value: sourceLabels[taskData.source] || taskData.source })
-      }
-      if (taskData.destination) {
-        const destLabels: Record<string, string> = {
-          'aurelia': 'CRM Aurelia',
-          'client_crm': 'CRM del cliente',
-          'sheets': 'Google Sheets',
-          'whatsapp': 'WhatsApp',
-          'email': 'Email',
-        }
-        dataEntries.push({ label: 'Destino', value: destLabels[taskData.destination] || taskData.destination })
-      }
-      if (taskData.problem) {
-        const problemLabels: Record<string, string> = {
-          'no_leads': 'No llegan los leads',
-          'duplicates': 'Llegan duplicados',
-          'missing_data': 'Faltan campos/datos',
-          'connection_error': 'Error en la conexion',
-          'preventive': 'Revision preventiva',
-        }
-        dataEntries.push({ label: 'Problema', value: problemLabels[taskData.problem] || taskData.problem })
-      }
-      if (taskData.area) {
-        const areaLabels: Record<string, string> = {
-          'integrations': 'Integraciones',
-          'campaign': 'Campanas',
-          'tracking': 'Tracking/Pixel',
-          'everything': 'Todo',
-          'unknown': 'Por investigar',
-        }
-        dataEntries.push({ label: 'Area afectada', value: areaLabels[taskData.area] || taskData.area })
-      }
-      if (taskData.formName) dataEntries.push({ label: 'Formulario', value: taskData.formName })
-      if (taskData.webUrl) dataEntries.push({ label: 'URL', value: taskData.webUrl })
-      if (taskData.url) dataEntries.push({ label: 'URL/Dominio', value: taskData.url })
-      if (taskData.hasDesign) {
-        const designLabels: Record<string, string> = {
-          'yes': 'Si, esta listo',
-          'no': 'No, hay que disenarlo',
-          'references': 'Tienen referencias',
-        }
-        dataEntries.push({ label: 'Diseno', value: designLabels[taskData.hasDesign] || taskData.hasDesign })
-      }
-      if (taskData.hasForm) {
-        const formLabels: Record<string, string> = {
-          'contact': 'Formulario de contacto',
-          'crm': 'Con integracion a CRM',
-          'no': 'Solo informativa',
-        }
-        dataEntries.push({ label: 'Formulario', value: formLabels[taskData.hasForm] || taskData.hasForm })
-      }
-      if (taskData.reason) {
-        const reasonLabels: Record<string, string> = {
-          'performance': 'Revisar performance',
-          'renewal': 'Renovacion contrato',
-          'proposal': 'Propuesta comercial',
-          'complaint': 'Reclamo del cliente',
-          'monthly': 'Check-in mensual',
-          'good_news': 'Buenas noticias',
-        }
-        dataEntries.push({ label: 'Motivo', value: reasonLabels[taskData.reason] || taskData.reason })
-      }
-      if (taskData.reportType) {
-        const reportLabels: Record<string, string> = {
-          'monthly': 'Mensual de resultados',
-          'campaign': 'Analisis de campana',
-          'comparative': 'Comparativo periodos',
-          'special': 'Informe especial',
-        }
-        dataEntries.push({ label: 'Tipo de informe', value: reportLabels[taskData.reportType] || taskData.reportType })
-      }
-      if (taskData.trackingType) {
-        const trackingLabels: Record<string, string> = {
-          'meta_pixel': 'Configurar pixel Meta',
-          'google_tag': 'Configurar Google Tag',
-          'conversions': 'Eventos de conversion',
-          'review': 'Revisar tracking actual',
-          'full_setup': 'Configurar todo desde cero',
-        }
-        dataEntries.push({ label: 'Tipo de tracking', value: trackingLabels[taskData.trackingType] || taskData.trackingType })
-      }
-      if (taskData.dataSource) {
-        const dataSourceLabels: Record<string, string> = {
-          'meta_crm': 'Meta vs CRM',
-          'google_crm': 'Google vs CRM',
-          'landing_crm': 'Landing vs CRM',
-          'meta_google': 'Meta vs Google',
-          'other': 'Otro',
-        }
-        dataEntries.push({ label: 'Fuentes', value: dataSourceLabels[taskData.dataSource] || taskData.dataSource })
-      }
-      if (taskData.details) dataEntries.push({ label: 'Detalles', value: taskData.details })
-      if (taskData.lastData) dataEntries.push({ label: 'Ultimo dato recibido', value: taskData.lastData })
-      if (taskData.hours && parseInt(taskData.hours) > 0) dataEntries.push({ label: 'Horas estimadas', value: taskData.hours })
-      if (taskData.period) dataEntries.push({ label: 'Periodo', value: taskData.period })
-      if (taskData.notes) dataEntries.push({ label: 'Notas', value: taskData.notes })
-
-      if (dataEntries.length > 0) {
-        lines.push('<table style="width:100%; border-collapse:collapse; margin:8px 0;">')
-        lines.push('<tbody>')
-        dataEntries.forEach(entry => {
-          lines.push(`<tr><td style="border:1px solid #333; padding:8px; background:#1a1a2e; font-weight:500; width:30%;">${entry.label}</td><td style="border:1px solid #333; padding:8px;">${entry.value}</td></tr>`)
-        })
-        lines.push('</tbody>')
-        lines.push('</table>')
-      }
-
-      lines.push(`<p style="margin-top:12px; font-size:12px; color:#888;"><em>Creado via asistente Madky</em></p>`)
-      
-      return lines.join('')
-    }
-
-    const initialComment = {
-      id: `comment-${Date.now()}`,
-      content: buildInitialComment(),
-      userId: 'madky',
-      userName: 'Madky (IA)',
-      userAvatar: '',
-      createdAt: new Date(),
-    }
-
-    // Find matching type from DB based on template type
-    const tipoTarea = dbTiposTarea.find(t => {
-      const nombre = t.nombre.toLowerCase()
-      if (selectedTemplate.type === 'integracion') return nombre.includes('integraci')
-      if (selectedTemplate.type === 'desarrollo') return nombre.includes('desarrollo')
-      if (selectedTemplate.type === 'reportes') return nombre.includes('informe') || nombre.includes('reporte')
-      if (selectedTemplate.type === 'meta_ads') return nombre.includes('campana') || nombre.includes('pauta')
-      if (selectedTemplate.type === 'soporte') return nombre.includes('soporte')
-      return false
-    })
-    
-    // Build clients array (for now single client from IA, but support array)
-    const clientIds = taskData.clientId ? [taskData.clientId] : []
-    const clients = clientIds
-      .map(id => dbClientes.find(c => c.id === id))
-      .filter((c): c is DbCliente => c !== undefined)
-      .map(c => ({ id: c.id, nombre_del_negocio: c.nombre_del_negocio }))
-    
-    // Build assignees array
-    const assigneeIds = taskData.assigneeId ? [taskData.assigneeId] : (assignee ? [assignee.id] : [])
-    const assignees = assigneeIds
-      .map(id => dbColaboradores.find(a => a.id === id))
-      .filter((a): a is DbColaborador => a !== undefined)
-    
     try {
-      await addTask({
-        title,
-        description: null,
-        clientId: taskData.clientId || '',
-        clientName: client?.nombre_del_negocio || '',
-        clientIds,
-        clients,
-        assigneeId: assignee?.id || '',
-        assigneeName: assignee?.nombre || '',
-        assigneeAvatar: assignee?.avatar_url || null,
-        assigneeIds,
-        assignees: assignees.map(a => ({ id: a.id, nombre: a.nombre, avatar_url: a.avatar_url })),
-      status: 'pendiente' as TaskStatus,
-      priority,
-      type: tipoTarea?.id || '',
-      // Parse date as local timezone to avoid UTC offset issues
-      dueDate: taskData.dueDate ? new Date(taskData.dueDate.includes('T') ? taskData.dueDate : taskData.dueDate + 'T12:00:00') : null,
-      customFields: {},
-      createdById: currentUser?.id || null,
-      createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
-      createdByAvatar: currentUser?.avatar_url || undefined,
-      comments: [initialComment],
-    })
-      } catch (err) {
-      console.error('Error creating task:', err)
+      console.log('[v0] Creating reminder:', { reminderName, reminderDate })
+      
+      // TODO: Implement reminder creation in database
+      // For now, just log the reminder
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      setReminderName('')
+      setReminderDate('')
+      onOpenChange(false)
+    } catch (error) {
+      console.error('[v0] Error:', error)
+    } finally {
+      setIsCreating(false)
     }
-
-    // Success message
-    let successMsg: string
-    if (selectedTemplate.id === 'falta_datos') {
-      successMsg = getRandomResponse(PERSONALITY_RESPONSES.success_urgent)
-    } else if (selectedTemplate.id === 'placas') {
-      successMsg = getRandomResponse(PERSONALITY_RESPONSES.success_placas)
-    } else {
-      successMsg = getRandomResponse(PERSONALITY_RESPONSES.success_normal)
-    }
-
-    setMessages((prev) => [...prev, {
-      id: `success-${Date.now()}`,
-      role: 'assistant',
-      content: successMsg,
-    }])
-
-    setIsCreating(false)
-
-    setTimeout(() => onOpenChange(false), 1800)
-  }
-
-  // Go back
-  const handleBack = () => {
-  setSelectedTemplate(null)
-  setCurrentStepIndex(0)
-  setTaskData({})
-  setInputValue('')
-  setClientContext(null)
-  setDesignFlowState(null)
-  setQuickMode(false)
-  setQuickTitle('')
-  setQuickClientIds([])
-  setQuickType('')
-  setQuickPriority('media')
-  setQuickAssigneeIds([])
-  setQuickDueDate('')
-    setMessages([{
-      id: 'welcome',
-      role: 'assistant',
-      content: getRandomGreeting(),
-      options: TASK_TEMPLATES.map((t) => ({
-        label: t.label,
-        value: t.id,
-        icon: t.icon,
-      })),
-    }])
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] p-0 gap-0 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-violet-500/10 to-fuchsia-500/10">
-          <div className="flex items-center gap-3">
-            {(selectedTemplate || quickMode) && (
-              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => {
-                if (quickMode) {
-                  setQuickMode(false)
-                } else {
-                  handleBack()
-                }
-              }}>
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            )}
-            <div className="flex items-center gap-3">
-              <div className={cn(
-                "h-10 w-10 rounded-full flex items-center justify-center shadow-lg",
-                quickMode 
-                  ? "bg-gradient-to-br from-emerald-500 to-teal-500" 
-                  : "bg-gradient-to-br from-violet-500 to-fuchsia-500"
-              )}>
-                {quickMode ? <PenLine className="h-5 w-5 text-white" /> : <Sparkles className="h-5 w-5 text-white" />}
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold">{quickMode ? 'Tarea rapida' : ASSISTANT_NAME}</h3>
-                <p className="text-xs text-muted-foreground">{quickMode ? 'Crear sin asistente' : 'Asistente de tareas MDK'}</p>
-              </div>
-            </div>
-          </div>
-          {!selectedTemplate && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="gap-1.5 text-xs"
-              onClick={() => setQuickMode(!quickMode)}
-            >
-              {quickMode ? (
-                <>
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Crear con IA
-                </>
-              ) : (
-                <>
-                  <PenLine className="h-3.5 w-3.5" />
-                  Crear manual
-                </>
-              )}
+      <DialogContent className="sm:max-w-[800px] p-0 gap-0 overflow-hidden">
+        {/* Header with Tabs */}
+        <div className="flex items-center justify-between px-2 border-b">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="flex-1">
+            <TabsList className="bg-transparent h-auto p-0 gap-0">
+              <TabsTrigger
+                value="tarea"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:text-foreground"
+              >
+                Tarea
+              </TabsTrigger>
+              <TabsTrigger
+                value="recordatorio"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:text-foreground"
+              >
+                Recordatorio
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <div className="flex items-center gap-1 pr-2">
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+              <ChevronDown className="h-4 w-4" />
             </Button>
-          )}
+          </div>
         </div>
 
-        {/* Quick Mode Form */}
-        {quickMode ? (
-          <div className="p-4 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="quick-title">Titulo de la tarea *</Label>
-              <Input
-                id="quick-title"
-                placeholder="Ej: Revisar campana de Meta Ads"
+        {/* Task tab */}
+        {activeTab === 'tarea' && (
+          <div className="flex flex-col">
+            {/* Type selectors row */}
+            <div className="flex items-center gap-2 px-5 py-3 border-b">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                    <FileText className="h-3.5 w-3.5" />
+                    Epica 1
+                    <ChevronDown className="h-3 w-3 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-1" align="start">
+                  <div className="text-xs text-muted-foreground px-2 py-1.5">Proximamente</div>
+                </PopoverContent>
+              </Popover>
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                    <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+                    {dbTiposTarea.find(t => t.id === quickType)?.nombre || 'Tarea'}
+                    <ChevronDown className="h-3 w-3 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2 max-h-[320px] overflow-y-auto" align="start">
+                  <div className="text-xs text-muted-foreground px-2 py-1.5 mb-1 sticky top-0 bg-popover">Tipos de tarea</div>
+                  <div className="space-y-0.5">
+                    {dbTiposTarea.map((tipo) => (
+                      <Button
+                        key={tipo.id}
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-xs h-8 font-normal"
+                        onClick={() => setQuickType(tipo.id)}
+                      >
+                        <span className="h-2 w-2 rounded-full bg-muted-foreground/40 mr-2 shrink-0" />
+                        <span className="truncate">{tipo.nombre}</span>
+                        {quickType === tipo.id && <Check className="h-3 w-3 ml-auto shrink-0 text-primary" />}
+                      </Button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Title input */}
+            <div className="px-5 pt-4 pb-1">
+              <input
+                type="text"
+                placeholder="Nombre de Tarea"
                 value={quickTitle}
                 onChange={(e) => setQuickTitle(e.target.value)}
+                className="w-full text-2xl font-light border-0 outline-none bg-transparent placeholder:text-muted-foreground/40"
                 autoFocus
               />
             </div>
-            
-            <div className="space-y-2">
-              <Label>Clientes *</Label>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {quickClientIds.map(id => {
-                  const client = dbClientes.find(c => c.id === id)
-                  return client ? (
-                    <Badge key={id} variant="secondary" className="gap-1 pr-1">
-                      {client.nombre_del_negocio}
-                      <button
-                        type="button"
-                        onClick={() => setQuickClientIds(prev => prev.filter(cid => cid !== id))}
-                        className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ) : null
-                })}
-              </div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 gap-1 text-xs">
-                    <Plus className="h-3 w-3" />
-                    Agregar cliente
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-0" align="start">
-                  <Command>
-                    <CommandInput placeholder="Buscar cliente..." className="h-9" />
-                    <CommandList>
-                      <CommandEmpty>No se encontraron clientes</CommandEmpty>
-                      <CommandGroup>
-                        {dbClientes
-                          .filter(c => !quickClientIds.includes(c.id))
-                          .map(c => (
-                            <CommandItem
-                              key={c.id}
-                              value={c.nombre_del_negocio}
-                              onSelect={() => setQuickClientIds(prev => [...prev, c.id])}
-                            >
-                              {c.nombre_del_negocio}
-                            </CommandItem>
-                          ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="quick-type">Tipo de tarea</Label>
-                <Select value={quickType} onValueChange={setQuickType}>
-                  <SelectTrigger id="quick-type">
-                    <SelectValue placeholder="Seleccionar tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {dbTiposTarea.map(t => (
-                      <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="quick-priority">Prioridad</Label>
-                <Select value={quickPriority} onValueChange={(v) => setQuickPriority(v as TaskPriority)}>
-                  <SelectTrigger id="quick-priority">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
-                      <SelectItem key={key} value={key}>{config.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Asignar a</Label>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {quickAssigneeIds.map(id => {
-                  const assignee = dbColaboradores.find(a => a.id === id)
-                  return assignee ? (
-                    <Badge key={id} variant="secondary" className="gap-1.5 pr-1 pl-1">
-                      <Avatar className="h-4 w-4 shrink-0">
-                        {assignee.avatar_url && <AvatarImage src={assignee.avatar_url} alt={assignee.nombre} />}
-                        <AvatarFallback className="text-[8px]">{assignee.nombre?.[0]?.toUpperCase() || '?'}</AvatarFallback>
-                      </Avatar>
-                      {assignee.nombre}
-                      <button
-                        type="button"
-                        onClick={() => setQuickAssigneeIds(prev => prev.filter(aid => aid !== id))}
-                        className="ml-0.5 hover:bg-destructive/20 rounded-full p-0.5"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ) : null
-                })}
-              </div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 gap-1 text-xs">
-                    <Plus className="h-3 w-3" />
-                    Agregar asignado
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-0" align="start">
-                  <Command>
-                    <CommandInput placeholder="Buscar colaborador..." className="h-9" />
-                    <CommandList>
-                      <CommandEmpty>No se encontraron colaboradores</CommandEmpty>
-                      <CommandGroup>
-                        {dbColaboradores
-                          .filter(a => !quickAssigneeIds.includes(a.id))
-                          .map(a => (
-                            <CommandItem
-                              key={a.id}
-                              value={a.nombre}
-                              onSelect={() => setQuickAssigneeIds(prev => [...prev, a.id])}
-                              className="gap-2"
-                            >
-                              <Avatar className="h-6 w-6 shrink-0">
-                                {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
-                                <AvatarFallback className="text-[10px]">{a.nombre?.[0]?.toUpperCase() || '?'}</AvatarFallback>
-                              </Avatar>
-                              {a.nombre}
-                            </CommandItem>
-                          ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="quick-due-date">Fecha limite</Label>
-              <Input
-                id="quick-due-date"
-                type="date"
-                value={quickDueDate}
-                onChange={(e) => setQuickDueDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
+
+            {/* Description area */}
+            <div className="px-5 py-2 min-h-[60px]">
+              <div
+                contentEditable
+                suppressContentEditableWarning
+                onInput={(e) => {
+                  const text = (e.target as HTMLDivElement).textContent || ''
+                  setQuickDescription(text)
+                }}
+                className="min-h-[48px] text-sm outline-none text-muted-foreground empty:before:content-['Añade_una_descripcion...'] empty:before:text-muted-foreground/40 empty:before:pointer-events-none"
               />
             </div>
 
-            {/* Creado por */}
-            <div className="space-y-2">
-              <Label>Creado por</Label>
-              {currentUser ? (
-                <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/40">
-                  <Avatar className="h-6 w-6 shrink-0">
-                    {currentUser.avatar_url && (
-                      <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />
+            {/* Property chips row */}
+            <div className="flex items-center gap-2 px-5 py-3 border-t flex-wrap">
+              {/* Status chip */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-7 gap-1.5 text-xs border-0",
+                      STATUS_CONFIG[quickStatus as TaskStatus]?.bgColor,
+                      STATUS_CONFIG[quickStatus as TaskStatus]?.color
                     )}
-                    <AvatarFallback className="text-[10px]">
-                      {[currentUser.nombre, currentUser.apellido]
-                        .filter(Boolean)
-                        .map(n => n![0])
-                        .join('')
-                        .toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="text-sm text-foreground">
-                    {[currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ')}
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/40">
-                  <div className="h-6 w-6 rounded-full bg-muted animate-pulse shrink-0" />
-                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-                </div>
-              )}
+                  >
+                    {STATUS_CONFIG[quickStatus as TaskStatus]?.label || quickStatus}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-52 p-1" align="start">
+                  {STATUS_ORDER.map(status => {
+                    const cfg = STATUS_CONFIG[status]
+                    return (
+                      <Button
+                        key={status}
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-xs h-8"
+                        onClick={() => setQuickStatus(status)}
+                      >
+                        <span className={cn("h-2 w-2 rounded-full mr-2", cfg.bgColor.replace('/10', '').replace('/20', ''))} />
+                        {cfg.label}
+                        {quickStatus === status && <Check className="h-3 w-3 ml-auto" />}
+                      </Button>
+                    )
+                  })}
+                </PopoverContent>
+              </Popover>
+
+              {/* Assignee chip */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                    <User className="h-3.5 w-3.5" />
+                    {quickAssigneeIds.length > 0
+                      ? dbColaboradores.find(c => c.id === quickAssigneeIds[0])?.nombre || 'Persona asignada'
+                      : 'Persona asignada'
+                    }
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-1" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar..." className="h-8 text-xs" />
+                    <CommandList>
+                      <CommandEmpty>Sin resultados</CommandEmpty>
+                      <CommandGroup>
+                        {dbColaboradores.map((colab) => (
+                          <CommandItem
+                            key={colab.id}
+                            value={colab.nombre}
+                            onSelect={() => setQuickAssigneeIds([colab.id])}
+                            className="text-xs"
+                          >
+                            <Avatar className="h-5 w-5 mr-2">
+                              {colab.avatar_url && <AvatarImage src={colab.avatar_url} />}
+                              <AvatarFallback className="text-[9px]">{colab.nombre[0]}</AvatarFallback>
+                            </Avatar>
+                            {colab.nombre}
+                            {quickAssigneeIds.includes(colab.id) && <Check className="h-3 w-3 ml-auto" />}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+
+              {/* Due date chip */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {quickDueDate
+                      ? new Date(quickDueDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+                      : 'Fecha limite'
+                    }
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-3" align="start">
+                  <input
+                    type="date"
+                    value={quickDueDate}
+                    onChange={(e) => setQuickDueDate(e.target.value)}
+                    className="bg-transparent border border-border rounded px-2 py-1 text-sm"
+                  />
+                </PopoverContent>
+              </Popover>
+
+              {/* Client chip */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                    <Building2 className="h-3.5 w-3.5" />
+                    {quickClientIds.length > 0
+                      ? dbClientes.find(c => c.id === quickClientIds[0])?.nombre_del_negocio || 'Cliente'
+                      : 'Cliente'
+                    }
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-1" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar cliente..." className="h-8 text-xs" />
+                    <CommandList>
+                      <CommandEmpty>Sin resultados</CommandEmpty>
+                      <CommandGroup>
+                        {dbClientes.map((cliente) => (
+                          <CommandItem
+                            key={cliente.id}
+                            value={cliente.nombre_del_negocio}
+                            onSelect={() => setQuickClientIds([cliente.id])}
+                            className="text-xs"
+                          >
+                            <Building2 className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+                            {cliente.nombre_del_negocio}
+                            {quickClientIds.includes(cliente.id) && <Check className="h-3 w-3 ml-auto" />}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+
+              {/* Add more property button */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground hover:text-foreground hover:border-foreground hover:bg-accent">
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-1" align="start">
+                  <div className="text-xs text-muted-foreground px-2 py-1.5 mb-1">Agregar propiedad</div>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
+                    <Flag className="h-3.5 w-3.5 text-muted-foreground" />
+                    Prioridad
+                  </Button>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
+                    <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+                    Etiquetas
+                  </Button>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
+                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                    Tiempo estimado
+                  </Button>
+                  <div className="h-px bg-border my-1" />
+                  <div className="text-xs text-muted-foreground px-2 py-1.5">Adjuntos</div>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
+                    <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+                    Subir archivo
+                  </Button>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
+                    <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    Agregar enlace
+                  </Button>
+                </PopoverContent>
+              </Popover>
             </div>
 
-            <div className="pt-4 space-y-2">
-              {/* Show create meeting button if type is "reunion" */}
-              {dbTiposTarea.find(t => t.id === quickType)?.nombre?.toLowerCase().includes('reuni') && (
-                <Button 
-                  variant="outline"
-                  className="w-full gap-2 border-orange-500/50 text-orange-400 hover:bg-orange-500/10" 
-                  onClick={() => {
-                    // Open Google Calendar to create meeting
-                    const clientNames = quickClientIds.map(id => dbClientes.find(c => c.id === id)?.nombre_del_negocio).filter(Boolean).join(', ')
-                    const title = encodeURIComponent(quickTitle || `Reunion - ${clientNames || 'Cliente'}`)
-                    const url = `https://calendar.google.com/calendar/u/0/r/eventedit?text=${title}&details=${encodeURIComponent('Creado desde MDK Workspace')}`
-                    window.open(url, '_blank')
-                  }}
-                  disabled={!quickTitle.trim() || quickClientIds.length === 0}
-                >
-                  <Video className="h-4 w-4" />
-                  Crear reunion en Calendar
-                </Button>
-              )}
-              <Button 
-                className="w-full gap-2" 
-                onClick={handleQuickCreate}
-                disabled={!quickTitle.trim() || quickClientIds.length === 0 || isCreating}
-              >
-                {isCreating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Creando...
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-4 w-4" />
-                    Crear tarea
-                  </>
-                )}
+            {/* Footer */}
+            <div className="flex items-center justify-between px-5 py-3 border-t">
+              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+                <FileText className="h-3.5 w-3.5" />
+                Plantillas
               </Button>
+
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Paperclip className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8 relative">
+                  <Bell className="h-4 w-4" />
+                  <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-primary text-[9px] text-primary-foreground flex items-center justify-center">1</span>
+                </Button>
+                <Button
+                  className="h-8 px-4"
+                  onClick={handleQuickCreate}
+                  disabled={!quickTitle.trim() || isCreating}
+                >
+                  {isCreating ? 'Creando...' : 'Crear Tarea'}
+                  <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
+              </div>
             </div>
           </div>
-        ) : (
-          /* Chat area */
-          <ScrollArea className="h-[420px] p-4" ref={scrollRef}>
-          <div className="space-y-4">
-            {messages.map((msg, idx) => (
-              <ChatBubble
-                key={msg.id}
-                message={msg}
-                onSelect={selectedTemplate ? handleOptionSelect : handleTemplateSelect}
-                onInputSubmit={handleInputSubmit}
-                inputValue={inputValue}
-                setInputValue={setInputValue}
-                isLast={idx === messages.length - 1}
+        )}
+
+        {/* Reminder tab */}
+        {activeTab === 'recordatorio' && (
+          <div className="flex flex-col">
+            <div className="px-5 pt-5 pb-2">
+              <input
+                type="text"
+                placeholder={'Escribe el nombre del recordatorio o "/" para los comandos'}
+                value={reminderName}
+                onChange={(e) => setReminderName(e.target.value)}
+                className="w-full text-base border-0 outline-none bg-transparent placeholder:text-muted-foreground/40"
+                autoFocus
               />
-            ))}
-            {isTyping && (
-              <ChatBubble
-                message={{ id: 'typing', role: 'assistant', content: '', typing: true }}
-                onSelect={() => {}}
-                onInputSubmit={() => {}}
-                inputValue=""
-                setInputValue={() => {}}
-                isLast={false}
-              />
-            )}
-            {isCreating && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground pl-11">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Creando tarea...
+            </div>
+
+            <div className="px-5 py-2">
+              <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+                <FileText className="h-4 w-4" />
+                Agregar descripcion
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 px-5 py-3">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {reminderDate
+                      ? new Date(reminderDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+                      : 'Hoy'
+                    }
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-3" align="start">
+                  <input
+                    type="date"
+                    value={reminderDate}
+                    onChange={(e) => setReminderDate(e.target.value)}
+                    className="bg-transparent border border-border rounded px-2 py-1 text-sm"
+                  />
+                </PopoverContent>
+              </Popover>
+
+              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                <Avatar className="h-4 w-4">
+                  <AvatarFallback className="text-[8px] bg-primary text-primary-foreground">E</AvatarFallback>
+                </Avatar>
+                Para mi
+              </Button>
+
+              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                <Bell className="h-3.5 w-3.5" />
+                Notificarme
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-end px-5 py-3 border-t mt-6">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Paperclip className="h-4 w-4" />
+                </Button>
+                <Button
+                  className="h-8 px-4"
+                  disabled={!reminderName.trim() || isCreating}
+                  onClick={handleCreateReminder}
+                >
+                  {isCreating ? 'Creando...' : 'Crear recordatorio'}
+                </Button>
               </div>
-            )}
-</div>
-          </ScrollArea>
+            </div>
+          </div>
         )}
       </DialogContent>
     </Dialog>

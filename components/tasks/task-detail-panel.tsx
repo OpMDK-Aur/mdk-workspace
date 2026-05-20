@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation, ClientPlan } from '@/lib/types'
+import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation, ClientPlan, TaskFile, TaskComment } from '@/lib/types'
 import { cn, linkifyText } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -70,7 +70,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { Check, ChevronsUpDown, ChevronLeft, ChevronRight, Pencil, ArrowUpDown } from 'lucide-react'
+import { Check, ChevronsUpDown, ChevronLeft, ChevronRight, Pencil, ArrowUpDown, Search, SlidersHorizontal, Building2, Paperclip, User } from 'lucide-react'
 import {
   Play,
   RotateCcw,
@@ -838,15 +838,111 @@ function FilesSection({ task }: { task: Task }) {
 
 // ── Comments Section (with rich text editor) ──────────────────────────────────
 
-function CommentsSection({ task }: { task: Task }) {
+// ─── CommentItem: renders a single comment with lightbox + attachments ───────
+function CommentItem({ comment: c, taskId }: { comment: TaskComment; taskId: string }) {
+  const { deleteComment } = useTaskStore()
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
+
+  const handleImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement
+    if (target.tagName === 'IMG') {
+      setLightboxImage((target as HTMLImageElement).src)
+    }
+  }
+
+  return (
+    <>
+      <div className="flex items-start gap-2.5 text-xs mb-3 group">
+        <Avatar className="h-5 w-5 mt-0.5 shrink-0">
+          <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
+          <AvatarFallback className="text-[8px]">{getInitials(c.userName)}</AvatarFallback>
+        </Avatar>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="text-xs font-medium text-foreground">{c.userName}</span>
+            <span className="text-[11px] text-muted-foreground">
+              {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
+            </span>
+            <Button
+              variant="ghost" size="icon" className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100"
+              onClick={() => deleteComment(taskId, c.id)}
+            >
+              <X className="h-2.5 w-2.5" />
+            </Button>
+          </div>
+          {/* Content with clickable images */}
+          <div
+            className="text-[11px] text-foreground/80 break-words [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity"
+            dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
+            onClick={handleImageClick}
+          />
+          {/* Attachments */}
+          {c.attachments && c.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {c.attachments.map((att: { url: string; name: string; mimeType: string }, i: number) => (
+                att.mimeType.startsWith('image/') ? (
+                  <img
+                    key={i}
+                    src={att.url}
+                    alt={att.name}
+                    className="h-16 w-16 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity border border-border"
+                    onClick={() => setLightboxImage(att.url)}
+                  />
+                ) : (
+                  <a
+                    key={i}
+                    href={att.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded border border-border bg-muted hover:bg-accent transition-colors"
+                  >
+                    <Paperclip className="h-3 w-3 shrink-0" />
+                    <span className="max-w-[100px] truncate">{att.name}</span>
+                  </a>
+                )
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Lightbox */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center"
+          onClick={() => setLightboxImage(null)}
+        >
+          <Button
+            variant="ghost" size="icon"
+            className="absolute top-4 right-4 text-white hover:bg-white/10"
+            onClick={() => setLightboxImage(null)}
+          >
+            <X className="h-5 w-5" />
+          </Button>
+          <img
+            src={lightboxImage}
+            alt="Imagen adjunta"
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+function CommentsSection({ task, compact = false }: { task: Task; compact?: boolean }) {
   const { addComment, updateComment, deleteComment } = useTaskStore()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; avatar_url: string | null } | null>(null)
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
   const editorRef = useRef<HTMLDivElement>(null)
+  const commentFileInputRef = useRef<HTMLInputElement>(null)
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
+  const [pendingAttachments, setPendingAttachments] = useState<{ url: string; name: string; mimeType: string }[]>([])
   
   // Mention states
   const [showMentions, setShowMentions] = useState(false)
@@ -1087,8 +1183,9 @@ function CommentsSection({ task }: { task: Task }) {
     })
     
     try {
-      await addComment(task.id, content, userId, userName, currentUser?.avatar_url, mentionedIds)
+      await addComment(task.id, content, userId, userName, currentUser?.avatar_url, mentionedIds, pendingAttachments)
       editorRef.current.innerHTML = ''
+      setPendingAttachments([])
       toast.success('Comentario agregado')
     } catch (err) {
       console.error('Error adding comment:', err)
@@ -1108,115 +1205,104 @@ function CommentsSection({ task }: { task: Task }) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">Comentarios ({task.comments.length})</p>
-        {task.comments.length > 1 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 text-xs h-7"
-            onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
-          >
-            <ArrowUpDown className="h-3 w-3" />
-            {sortOrder === 'newest' ? 'Más recientes' : 'Más antiguos'}
-          </Button>
-        )}
-      </div>
+    <div className={cn(
+      "flex flex-col overflow-hidden",
+      compact ? "h-auto" : "h-full"
+    )}>
+      {/* Header - hidden in compact mode */}
+      {!compact && (
+        <div className="flex items-center justify-between px-5 py-3.5 border-b shrink-0">
+          <p className="text-sm font-semibold">Comentarios ({task.comments.length})</p>
+          {task.comments.length > 1 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-xs h-7"
+              onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
+            >
+              <ArrowUpDown className="h-3 w-3" />
+              {sortOrder === 'newest' ? 'Más recientes' : 'Más antiguos'}
+            </Button>
+          )}
+        </div>
+      )}
 
-      {task.comments.length > 0 && (
-        <div className="space-y-4 max-h-[400px] overflow-y-auto overflow-x-hidden pr-1 w-full">
+      {/* Comments list - scrollable */}
+      {!compact && task.comments.length > 0 && (
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
           {sortedComments.map((c) => (
-            <div key={c.id} className="group rounded-lg border bg-muted/30 p-3 w-full overflow-hidden">
-              <div className="flex items-start gap-3 min-w-0 w-full">
-                <Avatar className="h-8 w-8 shrink-0">
-                  <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
-                  <AvatarFallback className="text-xs">{getInitials(c.userName)}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium">{c.userName}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {format(new Date(c.createdAt), 'dd/MM/yyyy HH:mm', { locale: es })}
-                    </span>
-                  </div>
-                  {editingCommentId === c.id ? (
-                    <div className="mt-2 space-y-2">
-                      <textarea
-                        value={editingContent}
-                        onChange={(e) => setEditingContent(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault()
-                            handleEditComment(c.id)
-                          }
-                          if (e.key === 'Escape') {
-                            setEditingCommentId(null)
-                            setEditingContent('')
-                          }
-                        }}
-                        className="w-full min-h-[60px] p-2 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-                        autoFocus
-                      />
-                      <div className="flex gap-2">
-                        <Button size="sm" onClick={() => handleEditComment(c.id)}>
-                          Guardar
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          onClick={() => { setEditingCommentId(null); setEditingContent('') }}
-                        >
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div 
-                      className="text-sm text-foreground/80 mt-2 break-words whitespace-pre-wrap [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_em]:italic [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block [&_img]:cursor-pointer [&_img]:hover:opacity-90 [&_img]:transition-opacity"
-                      dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
-                      onClick={handleImageClick}
+            <div key={c.id} className="group flex items-start gap-3 w-full">
+              <Avatar className="h-8 w-8 shrink-0 mt-0.5">
+                <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
+                <AvatarFallback className="text-xs">{getInitials(c.userName)}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <span className="text-sm font-medium">{c.userName}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
+                  </span>
+                  <span className="text-xs text-muted-foreground/60">
+                    {format(new Date(c.createdAt), 'dd/MM/yyyy HH:mm', { locale: es })}
+                  </span>
+                </div>
+                {editingCommentId === c.id ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={editingContent}
+                      onChange={(e) => setEditingContent(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          handleEditComment(c.id)
+                        }
+                        if (e.key === 'Escape') {
+                          setEditingCommentId(null)
+                          setEditingContent('')
+                        }
+                      }}
+                      className="w-full min-h-[60px] p-2.5 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                      autoFocus
                     />
-                  )}
-                </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content.replace(/<[^>]*>/g, '')) }}
-                    title="Editar"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => deleteComment(task.id, c.id)}
-                    title="Eliminar"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => handleEditComment(c.id)}>Guardar</Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setEditingCommentId(null); setEditingContent('') }}>Cancelar</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="text-sm text-foreground/80 break-words whitespace-pre-wrap [&_p]:my-1 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-foreground [&_strong]:font-semibold [&_em]:italic [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2 [&_img]:max-h-[300px] [&_img]:object-contain [&_img]:block [&_img]:cursor-pointer [&_img]:hover:opacity-90 [&_img]:transition-opacity"
+                    dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
+                    onClick={handleImageClick}
+                  />
+                )}
+              </div>
+              <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content.replace(/<[^>]*>/g, '')) }} title="Editar">
+                  <Pencil className="h-3 w-3" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => deleteComment(task.id, c.id)} title="Eliminar">
+                  <X className="h-3 w-3" />
+                </Button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      <div className="space-y-3">
+      {/* New comment composer - compact or full */}
+      <div className={cn(
+        "border-t shrink-0",
+        compact ? "px-4 py-3 space-y-2" : "px-5 py-4 space-y-3"
+      )}>
         <div className="flex items-center gap-2">
-          <Avatar className="h-7 w-7 shrink-0">
+          <Avatar className={cn("shrink-0", compact ? "h-6 w-6" : "h-7 w-7")}>
             {currentUser?.avatar_url && <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />}
-            <AvatarFallback className="text-xs">
+            <AvatarFallback className={cn("text-xs", compact ? "text-[7px]" : "")}>
               {currentUser ? getInitials(currentUser.nombre) : 'US'}
             </AvatarFallback>
           </Avatar>
-          <span className="text-sm text-muted-foreground">Nuevo comentario</span>
+          <span className={cn("font-medium", compact ? "text-xs" : "text-sm")}>{currentUser?.nombre || 'Nuevo comentario'}</span>
         </div>
         <div className="relative">
           <div
@@ -1225,14 +1311,20 @@ function CommentsSection({ task }: { task: Task }) {
             onPaste={handlePaste}
             onKeyDown={handleKeyDown}
             onInput={handleInput}
-            data-placeholder="Escribe un comentario... usa @ para mencionar (podes pegar imagenes con Ctrl+V)"
-            className="w-full min-h-[80px] p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1 [&_.mention]:bg-primary/20 [&_.mention]:text-primary [&_.mention]:px-1 [&_.mention]:rounded"
+            data-placeholder={compact ? "Escribe..." : "Escribe un comentario... usa @ para mencionar (podes pegar imagenes con Ctrl+V)"}
+            className={cn(
+              "w-full p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary overflow-y-auto empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/50 [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1 [&_.mention]:bg-primary/20 [&_.mention]:text-primary [&_.mention]:px-1 [&_.mention]:rounded",
+              compact ? "min-h-[50px] text-xs" : "min-h-[88px]"
+            )}
           />
           
           {/* Mention dropdown */}
           {showMentions && filteredAssignees.length > 0 && (
             <div 
-              className="absolute z-50 bg-popover border rounded-md shadow-lg py-1 min-w-[200px]"
+              className={cn(
+                "absolute z-50 bg-popover border rounded-md shadow-lg py-1 min-w-[200px]",
+                compact && "min-w-[150px]"
+              )}
               style={{ top: mentionPosition.top, left: mentionPosition.left }}
             >
               {filteredAssignees.map((assignee, index) => (
@@ -1241,14 +1333,15 @@ function CommentsSection({ task }: { task: Task }) {
                   type="button"
                   className={cn(
                     'w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-muted',
+                    compact && "px-2 py-1 text-xs",
                     index === selectedMentionIndex && 'bg-muted'
                   )}
                   onClick={() => insertMention(assignee)}
                   onMouseEnter={() => setSelectedMentionIndex(index)}
                 >
-                  <Avatar className="h-6 w-6">
+                  <Avatar className={cn("shrink-0", compact ? "h-5 w-5" : "h-6 w-6")}>
                     {assignee.avatar_url && <AvatarImage src={assignee.avatar_url} />}
-                    <AvatarFallback className="text-xs">{getInitials(assignee.name)}</AvatarFallback>
+                    <AvatarFallback className={cn("text-xs", compact && "text-[7px]")}>{getInitials(assignee.name)}</AvatarFallback>
                   </Avatar>
                   <span>{assignee.name}</span>
                 </button>
@@ -1257,15 +1350,67 @@ function CommentsSection({ task }: { task: Task }) {
           )}
         </div>
         
-        <div className="flex items-center justify-end">
-          <Button 
-            size="sm" 
-            className="gap-1.5" 
-            onClick={handleSubmit} 
+        <div className="flex items-center justify-between gap-2">
+          {/* Attach file button */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn("h-7 w-7 text-muted-foreground hover:text-foreground shrink-0", compact && "h-6 w-6")}
+            onClick={() => commentFileInputRef.current?.click()}
+            title="Adjuntar archivo"
+          >
+            <Paperclip className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} />
+          </Button>
+          <input
+            ref={commentFileInputRef}
+            type="file"
+            multiple
+            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+            className="hidden"
+            onChange={async (e) => {
+              const files = Array.from(e.target.files || [])
+              if (!files.length) return
+              for (const file of files) {
+                try {
+                  const formData = new FormData()
+                  formData.append('file', file)
+                  formData.append('taskId', task.id)
+                  const res = await fetch('/api/tasks/upload', { method: 'POST', body: formData })
+                  if (res.ok) {
+                    const { fileUrl, fileName, mimeType } = await res.json()
+                    setPendingAttachments(prev => [...prev, { url: fileUrl, name: fileName, mimeType: mimeType || file.type }])
+                    toast.success(`Adjunto: ${fileName}`)
+                  }
+                } catch {
+                  toast.error('Error al subir archivo')
+                }
+              }
+              e.target.value = ''
+            }}
+          />
+          {/* Pending attachments preview */}
+          {pendingAttachments.length > 0 && (
+            <div className="flex flex-wrap gap-1 flex-1">
+              {pendingAttachments.map((att, i) => (
+                <div key={i} className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-muted border border-border">
+                  <Paperclip className="h-2.5 w-2.5 shrink-0" />
+                  <span className="max-w-[60px] truncate">{att.name}</span>
+                  <button onClick={() => setPendingAttachments(prev => prev.filter((_, j) => j !== i))}>
+                    <X className="h-2.5 w-2.5 text-muted-foreground hover:text-foreground" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <Button
+            size="sm"
+            className={cn("gap-2 px-4 ml-auto", compact && "h-7 px-2 gap-1 text-xs")}
+            onClick={handleSubmit}
             disabled={isSubmitting}
           >
-            <Send className="h-3.5 w-3.5" />
-            {isSubmitting ? 'Enviando...' : 'Enviar'}
+            <Send className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} />
+            {isSubmitting ? (compact ? 'Env...' : 'Enviando...') : 'Enviar'}
           </Button>
         </div>
       </div>
@@ -1448,7 +1593,7 @@ function CustomFields({ task }: { task: Task }) {
       ))}
 
       {isAdding && (
-        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+        <div className="rounded-lg border p-3 space-y-2">
           <Input
             placeholder="Nombre del campo"
             value={newFieldName}
@@ -1520,6 +1665,16 @@ export function TaskDetailPanel() {
   const [hitoModalOpen, setHitoModalOpen] = useState(false)
   const [pendingStatus, setPendingStatus] = useState<TaskStatus | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  // Activity filters
+  const [filterPersona, setFilterPersona] = useState<string | null>(null) // userId
+  const [filterConAdjuntos, setFilterConAdjuntos] = useState(false)
+  const [filterFechaDesde, setFilterFechaDesde] = useState<string>('')
+  const [filterFechaHasta, setFilterFechaHasta] = useState<string>('')
+  const [filterPersonaOpen, setFilterPersonaOpen] = useState(false)
+
+  // Description editing state
+  const descriptionRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Load current user ID
   useEffect(() => {
@@ -1650,55 +1805,20 @@ export function TaskDetailPanel() {
           'p-0 flex flex-col',
           isFullscreen 
             ? '!w-full !max-w-full sm:!max-w-full' 
-            : '!w-[520px] !max-w-[520px]'
+            : '!w-[920px] !max-w-[920px]'
         )} 
         side="right"
       >
-        {/* Header */}
-        <SheetHeader className="px-4 pt-4 pb-3 border-b shrink-0">
-          {/* Línea 1: título + acciones */}
-          <div className="flex items-center gap-2 pr-10">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                {isEditingTitle ? (
-                  <Input
-                    value={tempTitle}
-                    onChange={(e) => setTempTitle(e.target.value)}
-                    onBlur={() => {
-                      if (tempTitle.trim() && tempTitle !== task.title) {
-                        updateTask(task.id, { title: tempTitle.trim() })
-                      }
-                      setIsEditingTitle(false)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        if (tempTitle.trim() && tempTitle !== task.title) {
-                          updateTask(task.id, { title: tempTitle.trim() })
-                        }
-                        setIsEditingTitle(false)
-                      }
-                      if (e.key === 'Escape') setIsEditingTitle(false)
-                    }}
-                    className="h-8 text-base font-medium"
-                    autoFocus
-                  />
-                ) : (
-                  <SheetTitle
-                    className="text-base font-medium leading-tight cursor-text hover:text-primary truncate"
-                    onClick={() => {
-                      setTempTitle(task.title)
-                      setIsEditingTitle(true)
-                    }}
-                  >
-                    {task.title}
-                  </SheetTitle>
-                )}
-                {task.isSystemTask && (
-                  <Badge className="bg-teal-500/20 text-teal-400 border-teal-500/30 text-[10px] shrink-0">
-                    Recurrente
-                  </Badge>
-                )}
-              </div>
+        {/* Header - Navigation bar only */}
+        <SheetHeader className="px-4 py-2 border-b shrink-0">
+          <div className="flex items-center justify-between">
+            {/* Breadcrumb */}
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
+              <span className="truncate max-w-[120px]">
+                {task.clients?.[0]?.nombre_del_negocio || task.clientName || 'Sin cliente'}
+              </span>
+              <span>/</span>
+              <span className="truncate max-w-[120px] text-foreground font-medium">{task.title}</span>
             </div>
 
             {/* Navigation + expand */}
@@ -1717,14 +1837,6 @@ export function TaskDetailPanel() {
               </Button>
             </div>
           </div>
-
-          {/* Línea 2: cliente */}
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {task.clients && task.clients.length > 0
-              ? task.clients.map(c => c.nombre_del_negocio).join(', ')
-              : task.clientName}
-          </p>
-
           {/* WhatsApp buttons */}
           {task.isSystemTask && task.systemTaskMeta?.whatsappLink && (
             <Button variant="outline" size="sm" className="mt-2 h-8 gap-2 border-green-500/50 text-green-400 hover:bg-green-500/10 hover:text-green-300 self-start"
@@ -1735,266 +1847,111 @@ export function TaskDetailPanel() {
               Enviar por WhatsApp
             </Button>
           )}
-          {(task.typeName?.toLowerCase().includes('seguimiento') || task.title?.toLowerCase().includes('seguimiento')) && (
-            <Button variant="outline" size="sm" className="mt-2 h-8 gap-2 border-green-500/50 text-green-400 hover:bg-green-500/10 hover:text-green-300 self-start"
-              onClick={() => {
-                const text = task.description?.replace(/<[^>]*>/g, '') || ''
-                navigator.clipboard.writeText(text)
-                toast.success('Mensaje copiado al portapapeles')
-                window.open('https://web.whatsapp.com', '_blank')
-              }}>
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-              </svg>
-              Enviar por WhatsApp
-            </Button>
-          )}
         </SheetHeader>
-
-        {/* Time Tracker bar — debajo del header, antes de los tabs */}
-        <div className="flex items-center gap-3 px-4 h-9 bg-muted/40 border-b shrink-0">
-          <TimeTracker task={task} />
-        </div>
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="mx-4 mt-3 mb-0 shrink-0">
-            <TabsTrigger value="detalles" className="text-xs">Detalles</TabsTrigger>
-            <TabsTrigger value="archivos" className="text-xs">Archivos ({task.files.length})</TabsTrigger>
-            <TabsTrigger value="cotizacion" className="text-xs">Cotizacion</TabsTrigger>
+          <TabsList className="mx-6 mt-6 mb-0 shrink-0 bg-muted/50 p-1 h-auto">
+            <TabsTrigger value="detalles" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Detalles</TabsTrigger>
+            <TabsTrigger value="cotizacion" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Cotizacion</TabsTrigger>
           </TabsList>
 
-          <div className={cn(
-              "flex-1 overflow-y-auto p-4",
-              isFullscreen && "p-6"
-            )}>
-            <TabsContent value="detalles" className={cn(
-              "mt-0",
-              isFullscreen ? "grid grid-cols-[1fr_400px] gap-8" : "space-y-5"
-            )}>
-              {/* Main content - Comments in fullscreen, details in normal */}
-              {isFullscreen ? (
-                <>
-                  {/* Left column - Comments & Activity */}
-                  <div className="space-y-6">
-                    {/* Description */}
-                    {task.description && (
-                      <div className="rounded-xl border bg-card/50 p-5">
-                        <Label className="text-xs text-muted-foreground mb-2 block">Descripcion</Label>
-                        <div 
-                          className="text-sm prose prose-sm prose-invert max-w-none whitespace-pre-wrap"
-                          dangerouslySetInnerHTML={{ __html: task.description }}
-                        />
-                      </div>
-                    )}
-                    
-                    <div className="rounded-xl border bg-card/50 p-5">
-                      <CommentsSection task={task} />
-                    </div>
-                    
-                    <div className="rounded-xl border bg-card/50 p-5">
-                      <div className="space-y-3">
-                        <p className="text-sm font-medium">Actividad reciente</p>
-                        {task.activities.length > 0 ? (
-                          <div className="space-y-3">
-                            {task.activities.slice(0, 10).map((activity) => (
-                              <div key={activity.id} className="flex items-start gap-3 text-sm">
-                                <Avatar className="h-6 w-6 mt-0.5 shrink-0">
-                                  <AvatarFallback className="text-[9px]">{getInitials(activity.userName)}</AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1">
-                                  <span className="text-foreground/80">{activity.action}</span>
-                                  <p className="text-xs text-muted-foreground mt-0.5">
-                                    {format(new Date(activity.timestamp), "dd MMM yyyy 'a las' HH:mm", { locale: es })}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">Sin actividad reciente</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Right column - Details */}
-                  <div className="space-y-5">
-                    {/* Status & Priority */}
-                    <div className="rounded-xl border bg-card/50 p-4 space-y-4">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label className="text-xs text-muted-foreground mb-1.5 block">Estado</Label>
-                          <Select
-                            value={task.status}
-                          onValueChange={(v) => handleStatusChange(v as TaskStatus)}
-                          >
-                            <SelectTrigger className={cn('h-9', statusConfig.bgColor, statusConfig.color)}>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {STATUS_ORDER.map((s) => (
-                                <SelectItem key={s} value={s}>
-                                  <div className="flex items-center gap-2">
-                                    <div className={cn('w-2 h-2 rounded-full', STATUS_CONFIG[s].bgColor.replace('/10', ''))} />
-                                    {STATUS_CONFIG[s].label}
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label className="text-xs text-muted-foreground mb-1.5 block">Prioridad</Label>
-                          <Select
-                            value={task.priority}
-                            onValueChange={(v) => updateTask(task.id, { priority: v as TaskPriority })}
-                          >
-                            <SelectTrigger className="h-9">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {(['alta', 'media', 'baja'] as TaskPriority[]).map((p) => (
-                                <SelectItem key={p} value={p}>
-                                  <Badge variant="outline" className={cn('text-xs border-0', PRIORITY_CONFIG[p].bgColor, PRIORITY_CONFIG[p].color)}>
-                                    {PRIORITY_CONFIG[p].label}
-                                  </Badge>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
+          <div className="flex-1 overflow-hidden">
+            <TabsContent value="detalles" className="mt-0 h-full">
+              <div className="h-full flex flex-row px-6 pb-6 gap-0">
+                {/* LEFT / MAIN COLUMN - 50% */}
+                <div className="w-1/2 overflow-y-auto flex flex-col min-w-0 pr-6">
 
-                      
-                      <div>
-                        <Label className="text-xs text-muted-foreground mb-1.5 block">Clientes</Label>
-                        <MultiClientSelect
-                          clients={task.clients || []}
-                          availableClients={clientes}
-                          onChange={(newClients) => {
-                            updateTask(task.id, { 
-                              clients: newClients,
-                              clientIds: newClients.map(c => c.id),
-                              clientId: newClients[0]?.id || '',
-                              clientName: newClients[0]?.nombre_del_negocio || 'Sin cliente',
-                            })
-                          }}
-                        />
-                      </div>
-                      
-                      <div>
-                        <Label className="text-xs text-muted-foreground mb-1.5 block">Asignados</Label>
-                        <MultiAssigneeSelect
-                          assignees={task.assignees || []}
-                          colaboradores={colaboradores}
-                          onChange={(newAssignees) => {
-                            updateTask(task.id, { 
-                              assignees: newAssignees,
-                              assigneeId: newAssignees[0]?.id || '',
-                              assigneeName: newAssignees[0]?.nombre || 'Sin asignar',
-                              assigneeAvatar: newAssignees[0]?.avatar_url || null,
-                            })
-                          }}
-                        />
-                      </div>
+                  {/* Title area */}
+                  <div className="pt-0 pb-4">
+                    {/* Type selector pill + actions */}
+                    <div className="flex items-center gap-2 mb-5">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-7 gap-2 text-xs rounded-full px-3.5 bg-primary/10 border-primary/20 text-primary hover:bg-primary/20">
+                            <span className="h-2 w-2 rounded-full bg-primary" />
+                            {tiposTarea.find(t => t.id === task.type)?.nombre || 'Tarea'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-56 p-1.5" align="start">
+                          <div className="px-2 py-1.5 text-xs text-muted-foreground font-medium">Tipo de tarea</div>
+                          {tiposTarea.map(t => (
+                            <Button
+                              key={t.id}
+                              variant="ghost"
+                              size="sm"
+                              className="w-full justify-start text-sm h-9 gap-2.5"
+                              onClick={() => updateTask(task.id, { type: t.id as TaskType, typeName: t.nombre })}
+                            >
+                              <span className="h-2 w-2 rounded-full bg-primary" />
+                              {t.nombre}
+                              {task.type === t.id && <Check className="h-3.5 w-3.5 ml-auto text-primary" />}
+                            </Button>
+                          ))}
+                        </PopoverContent>
+                      </Popover>
+                    </div>
 
-                      <div>
-                        <Label className="text-xs text-muted-foreground mb-1.5 block">Creado por</Label>
-                        <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/30">
-                          <Avatar className="h-5 w-5">
-                            {task.createdByAvatar && <AvatarImage src={task.createdByAvatar} alt={task.createdByName} />}
-                            <AvatarFallback className="text-[9px]">{getInitials(task.createdByName)}</AvatarFallback>
-                          </Avatar>
-                          <span className="text-sm">{task.createdByName}</span>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-3">
-                        <div>
-                          <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo de tarea</Label>
-                          <SearchableTaskTypeSelect 
-                            tiposTarea={tiposTarea}
-                            value={task.type}
-                            onValueChange={(v) => {
-                              const tipo = tiposTarea.find(t => t.id === v)
-                              updateTask(task.id, { type: v as TaskType, typeName: tipo?.nombre || '' })
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs text-muted-foreground mb-1.5 block">Vencimiento</Label>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button variant="outline" className="h-9 w-full justify-start text-left font-normal text-sm">
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {task.dueDate ? format(task.dueDate, 'dd MMM', { locale: es }) : 'Sin fecha'}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar
-                                mode="single"
-                                selected={task.dueDate ?? undefined}
-                                onSelect={(date) => updateTask(task.id, { dueDate: date ?? null })}
-                                initialFocus
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Custom Fields */}
-                    <div className="rounded-xl border bg-card/50 p-4">
-                      <CustomFields task={task} />
-                    </div>
-                    
-                    {/* Delete */}
-                    <Button
-                      variant="ghost"
-                      className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={async () => {
-                        const confirmed = confirm(`¿Eliminar tarea "${task.title}"? Esta acción no se puede deshacer.`)
-                        if (confirmed) {
-                          await deleteTask(task.id)
-                          handleClose()
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Eliminar tarea
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {/* Description */}
-                  {task.description && (
-                    <div className="rounded-lg border bg-card/50 p-4">
-                      <Label className="text-xs text-muted-foreground mb-2 block">Descripcion</Label>
-                      <div 
-                        className="text-sm prose prose-sm prose-invert max-w-none whitespace-pre-wrap"
-                        dangerouslySetInnerHTML={{ __html: task.description }}
+                    {/* Title */}
+                    {isEditingTitle ? (
+                      <input
+                        value={tempTitle}
+                        onChange={(e) => setTempTitle(e.target.value)}
+                        onBlur={() => {
+                          if (tempTitle.trim() && tempTitle !== task.title) {
+                            updateTask(task.id, { title: tempTitle.trim() })
+                          }
+                          setIsEditingTitle(false)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            if (tempTitle.trim() && tempTitle !== task.title) {
+                              updateTask(task.id, { title: tempTitle.trim() })
+                            }
+                            setIsEditingTitle(false)
+                          }
+                          if (e.key === 'Escape') setIsEditingTitle(false)
+                        }}
+                        className="w-full text-2xl font-semibold bg-transparent border-0 outline-none focus:ring-0 p-0 text-foreground"
+                        autoFocus
                       />
-                    </div>
-                  )}
-                  
-                  {/* Status & Priority */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs text-muted-foreground mb-1.5 block">Estado</Label>
-                      <Select
-                        value={task.status}
-                        onValueChange={(v) => handleStatusChange(v as TaskStatus)}
+                    ) : (
+                      <h1
+                        className="text-2xl font-bold cursor-text hover:text-foreground/80 leading-tight transition-colors"
+                        onClick={() => { setTempTitle(task.title); setIsEditingTitle(true) }}
                       >
-                        <SelectTrigger className={cn('h-9', statusConfig.bgColor, statusConfig.color)}>
+                        {task.title}
+                      </h1>
+                    )}
+                  </div>
+
+                  {/* Time tracker - moved to header */}
+                  <div className="px-0 py-2 border-b">
+                    <TimeTracker task={task} />
+                  </div>
+
+                  {/* Metadata rows - ClickUp style */}
+                  <div className="pb-5 space-y-1">
+                    {/* Estado row */}
+                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
+                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                        <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 flex items-center justify-center">
+                          <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
+                        </div>
+                        Estado
+                      </div>
+                      <Select value={task.status} onValueChange={(v) => handleStatusChange(v as TaskStatus)}>
+                        <SelectTrigger className={cn(
+                          'h-8 w-auto border-0 bg-transparent shadow-none px-2.5 text-sm font-medium gap-2 hover:bg-accent rounded-md'
+                        )}>
+                          <div className={cn('h-2 w-2 rounded-full', statusConfig.bgColor.replace('/10', '').replace('/20', ''))} />
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           {STATUS_ORDER.map((s) => (
                             <SelectItem key={s} value={s}>
                               <div className="flex items-center gap-2">
-                                <div className={cn('w-2 h-2 rounded-full', STATUS_CONFIG[s].bgColor.replace('/10', ''))} />
+                                <div className={cn('w-2.5 h-2.5 rounded-sm', STATUS_CONFIG[s].bgColor.replace('/10', '').replace('/20', ''))} />
                                 {STATUS_CONFIG[s].label}
                               </div>
                             </SelectItem>
@@ -2002,19 +1959,86 @@ export function TaskDetailPanel() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground mb-1.5 block">Prioridad</Label>
-                      <Select
-                        value={task.priority}
-                        onValueChange={(v) => updateTask(task.id, { priority: v as TaskPriority })}
-                      >
-                        <SelectTrigger className="h-9">
+
+                    {/* Personas asignadas row */}
+                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
+                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                        <User className="h-4 w-4 opacity-60" />
+                        Personas asignadas
+                      </div>
+                      <MultiAssigneeSelect
+                        assignees={task.assignees || []}
+                        colaboradores={colaboradores}
+                        onChange={(newAssignees) => {
+                          updateTask(task.id, {
+                            assignees: newAssignees,
+                            assigneeId: newAssignees[0]?.id || '',
+                            assigneeName: newAssignees[0]?.nombre || 'Sin asignar',
+                            assigneeAvatar: newAssignees[0]?.avatar_url || null,
+                          })
+                        }}
+                      />
+                    </div>
+
+                    {/* Fechas row */}
+                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
+                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                        <CalendarIcon className="h-4 w-4 opacity-60" />
+                        Fechas
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 gap-2 text-sm px-2.5 text-muted-foreground hover:text-foreground rounded-md">
+                              <CalendarIcon className="h-3.5 w-3.5" />
+                              Inicio
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={undefined}
+                              onSelect={() => {}}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <span className="text-muted-foreground/30 text-sm font-light">—</span>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 gap-2 text-sm px-2.5 text-muted-foreground hover:text-foreground rounded-md">
+                              <CalendarIcon className="h-3.5 w-3.5" />
+                              {task.dueDate
+                                ? format(task.dueDate, 'dd MMM yyyy', { locale: es })
+                                : 'Fecha limite'}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={task.dueDate ?? undefined}
+                              onSelect={(date) => updateTask(task.id, { dueDate: date ?? null })}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                    </div>
+
+                    {/* Prioridad row */}
+                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
+                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                        <ArrowUpDown className="h-4 w-4 opacity-60" />
+                        Prioridad
+                      </div>
+                      <Select value={task.priority} onValueChange={(v) => updateTask(task.id, { priority: v as TaskPriority })}>
+                        <SelectTrigger className="h-8 w-auto border-0 bg-transparent shadow-none px-2.5 text-sm hover:bg-accent gap-2 rounded-md">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           {(['alta', 'media', 'baja'] as TaskPriority[]).map((p) => (
                             <SelectItem key={p} value={p}>
-                              <Badge variant="outline" className={cn('text-xs border-0', PRIORITY_CONFIG[p].bgColor, PRIORITY_CONFIG[p].color)}>
+                              <Badge variant="outline" className={cn('text-xs border-0 font-medium', PRIORITY_CONFIG[p].bgColor, PRIORITY_CONFIG[p].color)}>
                                 {PRIORITY_CONFIG[p].label}
                               </Badge>
                             </SelectItem>
@@ -2022,17 +2046,18 @@ export function TaskDetailPanel() {
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
 
-                  {/* Client & Assignee */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs text-muted-foreground mb-1.5 block">Clientes</Label>
+                    {/* Clientes row */}
+                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
+                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                        <Building2 className="h-4 w-4 opacity-60" />
+                        Clientes
+                      </div>
                       <MultiClientSelect
                         clients={task.clients || []}
                         availableClients={clientes}
                         onChange={(newClients) => {
-                          updateTask(task.id, { 
+                          updateTask(task.id, {
                             clients: newClients,
                             clientIds: newClients.map(c => c.id),
                             clientId: newClients[0]?.id || '',
@@ -2041,133 +2066,307 @@ export function TaskDetailPanel() {
                         }}
                       />
                     </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground mb-1.5 block">Asignados</Label>
-                      <MultiAssigneeSelect
-                        assignees={task.assignees || []}
-                        colaboradores={colaboradores}
-                        onChange={(newAssignees) => {
-                          updateTask(task.id, { 
-                            assignees: newAssignees,
-                            // Keep legacy fields in sync with first assignee
-                            assigneeId: newAssignees[0]?.id || '',
-                            assigneeName: newAssignees[0]?.nombre || 'Sin asignar',
-                            assigneeAvatar: newAssignees[0]?.avatar_url || null,
-                          })
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground mb-1.5 block">Creado por</Label>
-                      <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/30">
-                        <Avatar className="h-5 w-5">
-                          <AvatarFallback className="text-[9px]">{getInitials(task.createdByName)}</AvatarFallback>
+
+                    {/* Creado por row */}
+                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
+                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                        <User className="h-4 w-4 opacity-60" />
+                        Creado por
+                      </div>
+                      <div className="flex items-center gap-2 px-2.5">
+                        <Avatar className="h-6 w-6 ring-2 ring-background">
+                          {task.createdByAvatar && <AvatarImage src={task.createdByAvatar} alt={task.createdByName} />}
+                          <AvatarFallback className="text-[10px] font-medium">{getInitials(task.createdByName)}</AvatarFallback>
                         </Avatar>
-                        <span className="text-sm">{task.createdByName}</span>
+                        <span className="text-sm">{task.createdByName || 'Sin asignar'}</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Type & Due Date */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs text-muted-foreground mb-1.5 block">Tipo de tarea</Label>
-                      <SearchableTaskTypeSelect 
-                        tiposTarea={tiposTarea}
-                        value={task.type}
-                        onValueChange={(v) => {
-                          const tipo = tiposTarea.find(t => t.id === v)
-                          updateTask(task.id, { type: v as TaskType, typeName: tipo?.nombre || '' })
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground mb-1.5 block">Vencimiento</Label>
+                  {/* Description area */}
+                  <div className="py-5 border-y flex-shrink-0">
+                    <div
+                      ref={descriptionRef}
+                      contentEditable
+                      suppressContentEditableWarning
+                      onBlur={() => {
+                        if (descriptionRef.current) {
+                          const html = descriptionRef.current.innerHTML
+                          if (html !== task.description) {
+                            updateTask(task.id, { description: html || null })
+                          }
+                        }
+                      }}
+                      onInput={() => {
+                        // No-op for now, save on blur
+                      }}
+                      className={cn(
+                        "min-h-[100px] text-sm outline-none",
+                        "prose prose-sm prose-invert max-w-none",
+                        "[&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5",
+                        "empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/40 empty:before:pointer-events-none"
+                      )}
+                      data-placeholder="Añade una descripcion o escribe con / para comandos..."
+                      dangerouslySetInnerHTML={{ __html: task.description || '' }}
+                    />
+                  </div>
+
+                  {/* Quick actions */}
+                  <div className="py-4 space-y-1">
+                    <button
+                      className="flex items-center gap-3 w-full py-2 px-2 -mx-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-md transition-colors group"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Paperclip className="h-4 w-4 opacity-40 group-hover:opacity-100 transition-opacity" />
+                      Adjuntar archivo
+                    </button>
+                  </div>
+
+                  {/* Delete */}
+                  <div className="py-4 border-t mt-auto">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 text-sm gap-2"
+                      onClick={async () => {
+                        const confirmed = confirm(`¿Eliminar tarea "${task.title}"?`)
+                        if (confirmed) {
+                          await deleteTask(task.id)
+                          handleClose()
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Eliminar tarea
+                    </Button>
+                  </div>
+                </div>
+
+                {/* RIGHT COLUMN - Activity 50% */}
+                <div className="w-1/2 border-l flex flex-col overflow-hidden">
+                  {/* Activity header with filters */}
+                  <div className="px-5 py-4 border-b flex items-center justify-between shrink-0">
+                    <span className="text-sm font-semibold">Activity</span>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" className="h-6 w-6">
+                        <Search className="h-3.5 w-3.5" />
+                      </Button>
                       <Popover>
                         <PopoverTrigger asChild>
-                          <Button variant="outline" className="h-9 w-full justify-start text-left font-normal">
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {task.dueDate ? format(task.dueDate, 'dd MMM yyyy', { locale: es }) : 'Sin fecha'}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn("h-6 w-6", (filterPersona || filterConAdjuntos || filterFechaDesde || filterFechaHasta) && "text-primary")}
+                          >
+                            <SlidersHorizontal className="h-3.5 w-3.5" />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={task.dueDate ?? undefined}
-                            onSelect={(date) => updateTask(task.id, { dueDate: date ?? null })}
-                            initialFocus
-                          />
+                        <PopoverContent className="w-64 p-3" align="end">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs font-semibold">Filtros</span>
+                            {(filterPersona || filterConAdjuntos || filterFechaDesde || filterFechaHasta) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 text-[10px] px-1 text-primary"
+                                onClick={() => { setFilterPersona(null); setFilterConAdjuntos(false); setFilterFechaDesde(''); setFilterFechaHasta('') }}
+                              >
+                                Limpiar
+                              </Button>
+                            )}
+                          </div>
+
+                          {/* Filtro Persona */}
+                          <div className="mb-3">
+                            <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Persona</p>
+                            <div className="space-y-1 max-h-32 overflow-y-auto">
+                              {Array.from(new Set(task.comments.map(c => c.userId))).map(uid => {
+                                const comment = task.comments.find(c => c.userId === uid)
+                                if (!comment) return null
+                                return (
+                                  <div
+                                    key={uid}
+                                    className={cn("flex items-center gap-2 py-1 px-1.5 rounded cursor-pointer hover:bg-accent text-xs", filterPersona === uid && "bg-accent")}
+                                    onClick={() => setFilterPersona(filterPersona === uid ? null : uid)}
+                                  >
+                                    <Avatar className="h-5 w-5 shrink-0">
+                                      <AvatarImage src={comment.userAvatar || undefined} />
+                                      <AvatarFallback className="text-[8px]">{getInitials(comment.userName)}</AvatarFallback>
+                                    </Avatar>
+                                    <span>{comment.userName}</span>
+                                    {filterPersona === uid && <Check className="h-3 w-3 text-primary ml-auto" />}
+                                  </div>
+                                )
+                              })}
+                              {task.comments.length === 0 && <p className="text-[11px] text-muted-foreground">Sin comentarios</p>}
+                            </div>
+                          </div>
+
+                          {/* Filtro Adjuntos */}
+                          <div className="mb-3">
+                            <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Adjuntos</p>
+                            <div
+                              className={cn("flex items-center gap-2 py-1 px-1.5 rounded cursor-pointer hover:bg-accent text-xs", filterConAdjuntos && "bg-accent")}
+                              onClick={() => setFilterConAdjuntos(!filterConAdjuntos)}
+                            >
+                              <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span>Solo con adjuntos</span>
+                              {filterConAdjuntos && <Check className="h-3 w-3 text-primary ml-auto" />}
+                            </div>
+                          </div>
+
+                          {/* Filtro Fecha */}
+                          <div>
+                            <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Fecha</p>
+                            <div className="space-y-1.5">
+                              <div>
+                                <label className="text-[10px] text-muted-foreground">Desde</label>
+                                <input
+                                  type="date"
+                                  value={filterFechaDesde}
+                                  onChange={e => setFilterFechaDesde(e.target.value)}
+                                  className="w-full text-xs px-2 py-1 rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-muted-foreground">Hasta</label>
+                                <input
+                                  type="date"
+                                  value={filterFechaHasta}
+                                  onChange={e => setFilterFechaHasta(e.target.value)}
+                                  className="w-full text-xs px-2 py-1 rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                                />
+                              </div>
+                            </div>
+                          </div>
                         </PopoverContent>
                       </Popover>
                     </div>
                   </div>
 
-                  <Separator />
+                  {/* Activity feed - filtered */}
+                  <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
+                    {(() => {
+                      const filteredComments = task.comments.filter(c => {
+                        if (filterPersona && c.userId !== filterPersona) return false
+                        if (filterConAdjuntos && (!c.attachments || c.attachments.length === 0)) return false
+                        if (filterFechaDesde && new Date(c.createdAt) < new Date(filterFechaDesde)) return false
+                        if (filterFechaHasta && new Date(c.createdAt) > new Date(filterFechaHasta + 'T23:59:59')) return false
+                        return true
+                      })
+                      const hasFilters = filterPersona || filterConAdjuntos || filterFechaDesde || filterFechaHasta
 
-                  {/* Custom Fields */}
-                  <CustomFields task={task} />
-
-                  <Separator />
-
-                  {/* Comments */}
-                  <CommentsSection task={task} />
-
-                  <Separator />
-
-                  {/* Activity Log */}
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Actividad reciente</p>
-                    {task.activities.length > 0 ? (
-                      <div className="space-y-2">
-                        {task.activities.slice(0, 5).map((activity) => (
-                          <div key={activity.id} className="flex items-start gap-2 text-xs">
-                            <Avatar className="h-5 w-5 mt-0.5">
-                              <AvatarFallback className="text-[8px]">{getInitials(activity.userName)}</AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <span className="text-muted-foreground">{activity.action}</span>
-                              <span className="text-muted-foreground/60 ml-1">
-                                · {format(new Date(activity.timestamp), 'dd/MM HH:mm', { locale: es })}
-                              </span>
-                            </div>
+                      if (task.activities.length === 0 && task.comments.length === 0) {
+                        return (
+                          <div className="flex items-center justify-center h-24">
+                            <p className="text-xs text-muted-foreground">Sin actividad aun</p>
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">Sin actividad reciente</p>
-                    )}
+                        )
+                      }
+
+                      return (
+                        <>
+                          {/* Activities - hidden when filters active */}
+                          {!hasFilters && task.activities.slice(0, 20).map((activity) => (
+                            <div key={activity.id} className="flex items-start gap-3 text-xs">
+                              <Avatar className="h-6 w-6 mt-0.5 shrink-0">
+                                <AvatarFallback className="text-[9px]">{getInitials(activity.userName)}</AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-muted-foreground leading-relaxed">{activity.action}</span>
+                                <p className="text-muted-foreground/50 mt-1">
+                                  {format(new Date(activity.timestamp), "dd MMM 'a las' HH:mm", { locale: es })}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+
+                          {/* Comments */}
+                          {filteredComments.length === 0 && hasFilters ? (
+                            <div className="flex items-center justify-center h-16">
+                              <p className="text-xs text-muted-foreground">Sin resultados para los filtros aplicados</p>
+                            </div>
+                          ) : (
+                            filteredComments.length > 0 && (
+                              <div className={cn(!hasFilters && "pt-2 border-t mt-2")}>
+                                {!hasFilters && <p className="text-xs font-semibold mb-3">Comentarios ({task.comments.length})</p>}
+                                {filteredComments.map((c) => (
+                                  <CommentItem key={c.id} comment={c} taskId={task.id} />
+                                ))}
+                              </div>
+                            )
+                          )}
+                        </>
+                      )
+                    })()}
                   </div>
 
-                  <Separator />
-
-                  {/* Delete */}
-                  <Button
-                    variant="ghost"
-                    className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={async () => {
-                      const confirmed = confirm(`¿Eliminar tarea "${task.title}"? Esta acción no se puede deshacer.`)
-                      if (confirmed) {
-                        await deleteTask(task.id)
-                        handleClose()
-                      }
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Eliminar tarea
-                  </Button>
-                </>
-              )}
+                  {/* Comment input at bottom - using CommentsSection component */}
+                  <div className="border-t shrink-0">
+                    <CommentsSection task={task} compact={true} />
+                  </div>
+                </div>
+              </div>
             </TabsContent>
 
-            <TabsContent value="archivos" className="mt-0">
-              <FilesSection task={task} />
-            </TabsContent>
-
-            <TabsContent value="cotizacion" className="mt-0">
+            <TabsContent value="cotizacion" className="mt-0 p-4">
               <QuotationSection task={task} />
             </TabsContent>
           </div>
         </Tabs>
+
+        {/* Hidden file input for attachments */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={async (e) => {
+            const files = Array.from(e.target.files || [])
+            if (files.length === 0) return
+
+            try {
+              for (const file of files) {
+                const formData = new FormData()
+                formData.append('file', file)
+                formData.append('taskId', task.id)
+
+                const response = await fetch('/api/tasks/upload', {
+                  method: 'POST',
+                  body: formData,
+                })
+
+                if (response.ok) {
+                  const { fileUrl, fileName, mimeType, size } = await response.json()
+                  const newFile: TaskFile = {
+                    id: `file-${Date.now()}`,
+                    name: fileName,
+                    url: fileUrl,
+                    mimeType: mimeType || file.type || 'application/octet-stream',
+                    size: size || file.size,
+                    uploadedBy: currentUserId || 'unknown',
+                    uploadedByName: colaboradores.find(c => c.id === currentUserId)?.nombre || 'Unknown',
+                    createdAt: new Date(),
+                  }
+                  updateTask(task.id, {
+                    files: [...(task.files || []), newFile],
+                  })
+                  toast.success(`Archivo ${fileName} agregado`)
+                } else {
+                  toast.error(`Error al subir ${file.name}`)
+                }
+              }
+            } catch (error) {
+              toast.error('Error al subir archivos')
+              console.error(error)
+            }
+
+            // Reset input
+            if (fileInputRef.current) {
+              fileInputRef.current.value = ''
+            }
+          }}
+        />
       </SheetContent>
 
       {/* Hito Completion Modal */}

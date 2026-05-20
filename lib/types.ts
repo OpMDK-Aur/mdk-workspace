@@ -441,6 +441,7 @@ export interface TaskComment {
   userName: string
   userAvatar: string | null
   createdAt: Date
+  attachments?: { url: string; name: string; mimeType: string }[]
 }
 
 export interface TaskFile {

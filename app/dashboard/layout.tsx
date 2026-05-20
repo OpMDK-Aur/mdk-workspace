@@ -1,10 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { DashboardShell } from '@/components/dashboard/dashboard-shell'
+import type { Client, ClientStatus } from '@/lib/types'
 
 // Cache revalidation
-export const revalidate = 60 // Revalidate every 60 seconds
+export const revalidate = 60
 
+// Force chunk rebuild v3
 export default async function DashboardLayout({
   children,
 }: {
@@ -44,13 +46,11 @@ export default async function DashboardLayout({
   }
 
   // Semaforo ID to status mapping
-  const SEMAFORO_MAP: Record<string, string> = {
+  const SEMAFORO_MAP: Record<string, ClientStatus> = {
     'd3f4361f-477e-4f7a-9f98-9868cddef57f': 'verde',
     '04dca848-a17e-4626-b83a-5377aef062ec': 'amarillo',
     'c19b9591-862e-49a8-898c-b29ed35fcd3b': 'naranja',
     '753e6c36-5a9f-4b4b-b5fa-aac7d6f281af': 'rojo',
-    '3876a424-6749-4205-b5b2-a59c49ca8eb9': 'inhabilitado',
-    '550f7375-4aec-4e76-a006-16b427d493e9': 'inactivo',
   }
 
   // All users see all clients
@@ -59,10 +59,20 @@ export default async function DashboardLayout({
   const { data: clientsData } = await clientsQuery.order('nombre_del_negocio')
   
   const clients = (clientsData || []).map(c => ({ 
-    ...c, 
-    business_name: c.nombre_del_negocio,
+    id: c.id as string,
+    nombre_del_negocio: c.nombre_del_negocio as string,
+    business_name: c.nombre_del_negocio as string,
+    plan: c.plan as string | null,
+    semaforo_id: c.semaforo_id as string | null,
     status: c.semaforo_id ? SEMAFORO_MAP[c.semaforo_id] || null : null,
-  }))
+    // Required fields with defaults
+    notion_id: null,
+    fee_mdk: null,
+    fee_aurelia: null,
+    google_ads_customer_id: null,
+    meta_ads_account_id: null,
+    crm_type: null,
+  })) as Client[]
 
   return (
     <DashboardShell 
