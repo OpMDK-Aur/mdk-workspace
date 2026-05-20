@@ -1698,7 +1698,6 @@ export function TaskDetailPanel() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
           <TabsList className="mx-6 mt-6 mb-0 shrink-0 bg-muted/50 p-1 h-auto">
             <TabsTrigger value="detalles" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Detalles</TabsTrigger>
-            <TabsTrigger value="archivos" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Archivos ({task.files.length})</TabsTrigger>
             <TabsTrigger value="cotizacion" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Cotizacion</TabsTrigger>
           </TabsList>
 
@@ -1771,6 +1770,11 @@ export function TaskDetailPanel() {
                     )}
                   </div>
 
+                  {/* Time tracker - moved to header */}
+                  <div className="px-0 py-2 border-b">
+                    <TimeTracker task={task} />
+                  </div>
+
                   {/* Metadata rows - ClickUp style */}
                   <div className="pb-5 space-y-1">
                     {/* Estado row */}
@@ -1783,10 +1787,9 @@ export function TaskDetailPanel() {
                       </div>
                       <Select value={task.status} onValueChange={(v) => handleStatusChange(v as TaskStatus)}>
                         <SelectTrigger className={cn(
-                          'h-8 w-auto border-0 bg-transparent shadow-none px-2.5 text-sm font-medium gap-2 hover:bg-accent rounded-md',
-                          statusConfig.color
+                          'h-8 w-auto border-0 bg-transparent shadow-none px-2.5 text-sm font-medium gap-2 hover:bg-accent rounded-md'
                         )}>
-                          <div className={cn('h-2.5 w-2.5 rounded-sm', statusConfig.bgColor.replace('/10', '').replace('/20', ''))} />
+                          <div className={cn('h-2 w-2 rounded-full', statusConfig.bgColor.replace('/10', '').replace('/20', ''))} />
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1976,13 +1979,8 @@ export function TaskDetailPanel() {
                     </button>
                   </div>
 
-                  {/* Time tracker compact */}
-                  <div className="pb-4 mt-auto">
-                    <TimeTracker task={task} />
-                  </div>
-
                   {/* Delete */}
-                  <div className="py-4 border-t">
+                  <div className="py-4 border-t mt-auto">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -2097,10 +2095,6 @@ export function TaskDetailPanel() {
                   </div>
                 </div>
               </div>
-            </TabsContent>
-
-            <TabsContent value="archivos" className="mt-0 p-4">
-              <FilesSection task={task} />
             </TabsContent>
 
             <TabsContent value="cotizacion" className="mt-0 p-4">
