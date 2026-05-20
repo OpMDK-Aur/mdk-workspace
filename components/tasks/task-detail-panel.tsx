@@ -1704,12 +1704,9 @@ export function TaskDetailPanel() {
 
           <div className="flex-1 overflow-hidden">
             <TabsContent value="detalles" className="mt-0 h-full">
-              <div className={cn(
-                "h-full flex gap-6 px-6 pb-6",
-                isFullscreen ? "flex-row" : "flex-row"
-              )}>
-                {/* LEFT / MAIN COLUMN */}
-                <div className="flex-1 overflow-y-auto flex flex-col min-w-0 pr-0">
+              <div className="h-full flex flex-row px-6 pb-6 gap-0">
+                {/* LEFT / MAIN COLUMN - 50% */}
+                <div className="w-1/2 overflow-y-auto flex flex-col min-w-0 pr-6">
 
                   {/* Title area */}
                   <div className="pt-0 pb-4">
@@ -2004,11 +2001,8 @@ export function TaskDetailPanel() {
                   </div>
                 </div>
 
-                {/* RIGHT COLUMN - Activity */}
-                <div className={cn(
-                  "border-l flex flex-col overflow-hidden shrink-0",
-                  isFullscreen ? "w-[420px]" : "w-[300px]"
-                )}>
+                {/* RIGHT COLUMN - Activity 50% */}
+                <div className="w-1/2 border-l flex flex-col overflow-hidden">
                   {/* Activity header with filters */}
                   <div className="px-5 py-4 border-b flex items-center justify-between shrink-0">
                     <span className="text-sm font-semibold">Activity</span>
