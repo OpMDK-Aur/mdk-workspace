@@ -226,7 +226,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ──────────────────────────────────�����───────���──
+// ── Seguimiento Templates by Plan ───────────────────────────────��──�����───────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -1485,13 +1485,8 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
 
     try {
       const supabase = createClient()
+      const remindDate = reminderDate ? new Date(reminderDate) : new Date()
 
-      // Set reminder date to today if not specified
-      const remindDate = reminderDate 
-        ? new Date(reminderDate)
-        : new Date()
-
-      // Create reminder in database
       const { data, error } = await supabase
         .from('tareas')
         .insert({
@@ -1503,29 +1498,21 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
           fecha_vencimiento: remindDate.toISOString(),
           cliente_ids: [],
           asignados_ids: [],
-          creado_por: currentUser?.id || null,
+          creado_por: currentUser?.id,
         })
         .select()
 
       if (error) {
-        console.error('[v0] Error creating reminder:', error)
-        alert('Error al crear recordatorio: ' + (error?.message || 'Error desconocido'))
+        console.error('[v0] Reminder error:', error.message)
         return
       }
 
-      // Show success message
-      console.log("[v0] Reminder created:", data)
-      alert('Recordatorio creado exitosamente')
-
-      // Reset form
+      console.log('[v0] Reminder created:', data)
       setReminderName('')
       setReminderDate('')
-      
-      // Close modal
       onOpenChange(false)
     } catch (error) {
-      console.error('[v0] Error creating reminder:', error)
-      alert('Error al crear recordatorio. Por favor intenta de nuevo.')
+      console.error('[v0] Reminder exception:', error)
     } finally {
       setIsCreating(false)
     }
