@@ -1654,7 +1654,7 @@ export function TaskDetailPanel() {
           'p-0 flex flex-col',
           isFullscreen 
             ? '!w-full !max-w-full sm:!max-w-full' 
-            : '!w-[780px] !max-w-[780px]'
+            : '!w-[920px] !max-w-[920px]'
         )} 
         side="right"
       >
@@ -1700,7 +1700,7 @@ export function TaskDetailPanel() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="mx-4 mt-4 mb-0 shrink-0 bg-muted/50 p-1 h-auto">
+          <TabsList className="mx-6 mt-6 mb-0 shrink-0 bg-muted/50 p-1 h-auto">
             <TabsTrigger value="detalles" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Detalles</TabsTrigger>
             <TabsTrigger value="archivos" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Archivos ({task.files.length})</TabsTrigger>
             <TabsTrigger value="cotizacion" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Cotizacion</TabsTrigger>
@@ -1709,14 +1709,14 @@ export function TaskDetailPanel() {
           <div className="flex-1 overflow-hidden">
             <TabsContent value="detalles" className="mt-0 h-full">
               <div className={cn(
-                "h-full flex",
+                "h-full flex gap-6 px-6 pb-6",
                 isFullscreen ? "flex-row" : "flex-row"
               )}>
                 {/* LEFT / MAIN COLUMN */}
-                <div className="flex-1 overflow-y-auto flex flex-col min-w-0">
+                <div className="flex-1 overflow-y-auto flex flex-col min-w-0 pr-0">
 
                   {/* Title area */}
-                  <div className="px-6 pt-6 pb-4">
+                  <div className="pt-0 pb-4">
                     {/* Type selector pill + actions */}
                     <div className="flex items-center gap-2 mb-5">
                       <Popover>
@@ -1779,7 +1779,7 @@ export function TaskDetailPanel() {
                   </div>
 
                   {/* Metadata rows - ClickUp style */}
-                  <div className="px-6 pb-5 space-y-1">
+                  <div className="pb-5 space-y-1">
                     {/* Estado row */}
                     <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
                       <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
@@ -1933,7 +1933,7 @@ export function TaskDetailPanel() {
                   </div>
 
                   {/* Description area */}
-                  <div className="px-6 py-5 border-y flex-shrink-0">
+                  <div className="py-5 border-y flex-shrink-0">
                     <div
                       ref={descriptionRef}
                       contentEditable
@@ -1961,7 +1961,7 @@ export function TaskDetailPanel() {
                   </div>
 
                   {/* Quick actions */}
-                  <div className="px-6 py-4 space-y-1">
+                  <div className="py-4 space-y-1">
                     <button className="flex items-center gap-3 w-full py-2 px-2 -mx-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-md transition-colors group">
                       <Plus className="h-4 w-4 opacity-40 group-hover:opacity-100 transition-opacity" />
                       Agregar subtarea
@@ -1984,12 +1984,12 @@ export function TaskDetailPanel() {
                   </div>
 
                   {/* Time tracker compact */}
-                  <div className="px-6 pb-4 mt-auto">
+                  <div className="pb-4 mt-auto">
                     <TimeTracker task={task} />
                   </div>
 
                   {/* Delete */}
-                  <div className="px-6 py-4 border-t">
+                  <div className="py-4 border-t">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -2010,8 +2010,8 @@ export function TaskDetailPanel() {
 
                 {/* RIGHT COLUMN - Activity */}
                 <div className={cn(
-                  "border-l flex flex-col overflow-hidden",
-                  isFullscreen ? "w-[400px]" : "w-[280px]"
+                  "border-l flex flex-col overflow-hidden shrink-0",
+                  isFullscreen ? "w-[420px]" : "w-[300px]"
                 )}>
                   {/* Activity header with filters */}
                   <div className="px-5 py-4 border-b flex items-center justify-between shrink-0">
