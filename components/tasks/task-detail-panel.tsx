@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation, ClientPlan } from '@/lib/types'
+import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation, ClientPlan, TaskFile } from '@/lib/types'
 import { cn, linkifyText } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -2111,9 +2111,19 @@ export function TaskDetailPanel() {
                 })
 
                 if (response.ok) {
-                  const { fileUrl, fileName } = await response.json()
+                  const { fileUrl, fileName, mimeType, size } = await response.json()
+                  const newFile: TaskFile = {
+                    id: `file-${Date.now()}`,
+                    name: fileName,
+                    url: fileUrl,
+                    mimeType: mimeType || file.type || 'application/octet-stream',
+                    size: size || file.size,
+                    uploadedBy: currentUserId || 'unknown',
+                    uploadedByName: colaboradores.find(c => c.id === currentUserId)?.nombre || 'Unknown',
+                    createdAt: new Date(),
+                  }
                   updateTask(task.id, {
-                    files: [...(task.files || []), { url: fileUrl, name: fileName, type: file.type }],
+                    files: [...(task.files || []), newFile],
                   })
                   toast.success(`Archivo ${fileName} agregado`)
                 } else {
