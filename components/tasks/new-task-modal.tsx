@@ -247,7 +247,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ──────────────────────────────────────────���──
+// ── Seguimiento Templates by Plan ──────────────────────────────────���───────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -2253,83 +2253,58 @@ setIsCreating(true)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn(
-        "p-0 gap-0 overflow-hidden",
-        quickMode ? "sm:max-w-[680px]" : "sm:max-w-[500px]"
-      )}>
-        {/* Header */}
-        {quickMode ? (
-          <div className="border-b">
-            <div className="flex items-center justify-between px-4 pt-3 pb-0">
-              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-full">
-                <TabsList className="bg-transparent h-auto p-0 gap-0">
-                  <TabsTrigger 
-                    value="tarea" 
-                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2 text-sm"
-                  >
-                    Tarea
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="documento" 
-                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2 text-sm"
-                  >
-                    Documento
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="recordatorio" 
-                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2 text-sm"
-                  >
-                    Recordatorio
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-              <div className="flex items-center gap-2 pb-2">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="gap-1.5 text-xs h-7"
-                  onClick={() => setQuickMode(false)}
+      <DialogContent className="sm:max-w-[680px] p-0 gap-0 overflow-hidden">
+        {/* Header with Tabs */}
+        <div className="border-b">
+          <div className="flex items-center justify-between px-4 pt-3 pb-0">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-full">
+              <TabsList className="bg-transparent h-auto p-0 gap-0">
+                <TabsTrigger 
+                  value="tarea" 
+                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2 text-sm"
                 >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Crear con IA
-                </Button>
-              </div>
-            </div>
+                  Tarea
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="documento" 
+                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2 text-sm"
+                >
+                  Documento
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="recordatorio" 
+                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2 text-sm"
+                >
+                  Recordatorio
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
-        ) : (
-        <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-violet-500/10 to-fuchsia-500/10">
-          <div className="flex items-center gap-3">
-            {selectedTemplate && (
-              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={handleBack}>
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            )}
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full flex items-center justify-center shadow-lg bg-gradient-to-br from-violet-500 to-fuchsia-500">
-                <Sparkles className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold">{ASSISTANT_NAME}</h3>
-                <p className="text-xs text-muted-foreground">Asistente de tareas MDK</p>
-              </div>
-            </div>
-          </div>
-          {!selectedTemplate && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="gap-1.5 text-xs"
-              onClick={() => setQuickMode(true)}
-            >
-              <PenLine className="h-3.5 w-3.5" />
-              Crear manual
-            </Button>
-          )}
         </div>
-        )}
         
-        {/* Quick Mode Form - ClickUp Style */}
-        {quickMode ? (
+        {/* Task Form - ClickUp Style */}
+        <div className="flex flex-col h-[520px]">
+          {/* Tab Content */}
+          {activeTab === 'tarea' && (
+            <>
+              {/* Top selectors row */}
+              <div className="flex items-center gap-2 px-5 py-3 border-b">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                      <span className="h-2 w-2 rounded-full bg-yellow-500" />
+                      {quickStatus === 'pendiente' ? 'BACKLOG' : quickStatus.toUpperCase()}
+                      <ChevronDown className="h-3 w-3 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-40 p-1" align="start">
+                    {['pendiente', 'resolviendo', 'bloqueado', 'en_revision', 'completada'].map(status => (
+                      <Button
+                        key={status}
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-xs h-8"
+                        onClick={() => setQuickStatus(status)}
           <div className="flex flex-col h-[520px]">
             {/* Tab Content */}
             {activeTab === 'tarea' && (
@@ -2730,40 +2705,6 @@ setIsCreating(true)
               </div>
             )}
           </div>
-        ) : (
-          /* Chat area */
-          <ScrollArea className="h-[420px] p-4" ref={scrollRef}>
-          <div className="space-y-4">
-            {messages.map((msg, idx) => (
-              <ChatBubble
-                key={msg.id}
-                message={msg}
-                onSelect={selectedTemplate ? handleOptionSelect : handleTemplateSelect}
-                onInputSubmit={handleInputSubmit}
-                inputValue={inputValue}
-                setInputValue={setInputValue}
-                isLast={idx === messages.length - 1}
-              />
-            ))}
-            {isTyping && (
-              <ChatBubble
-                message={{ id: 'typing', role: 'assistant', content: '', typing: true }}
-                onSelect={() => {}}
-                onInputSubmit={() => {}}
-                inputValue=""
-                setInputValue={() => {}}
-                isLast={false}
-              />
-            )}
-            {isCreating && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground pl-11">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Creando tarea...
-              </div>
-            )}
-</div>
-          </ScrollArea>
-        )}
       </DialogContent>
     </Dialog>
   )
