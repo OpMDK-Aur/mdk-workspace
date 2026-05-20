@@ -1478,6 +1478,58 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     onOpenChange(false)
   }
 
+  const handleCreateReminder = async () => {
+    if (!reminderName.trim()) return
+
+    setIsCreating(true)
+
+    try {
+      const supabase = createClient()
+
+      // Set reminder date to today if not specified
+      const remindDate = reminderDate 
+        ? new Date(reminderDate)
+        : new Date()
+
+      // Create reminder in database
+      const { data, error } = await supabase
+        .from('tareas')
+        .insert({
+          titulo: reminderName,
+          descripcion: null,
+          tipo_id: 'reminder', // Special type for reminders
+          estado_id: 'pendiente',
+          prioridad_id: 'media',
+          fecha_vencimiento: remindDate.toISOString(),
+          cliente_ids: [],
+          asignados_ids: [],
+          creado_por: currentUser?.id || null,
+          metadata: {
+            is_reminder: true,
+            reminder_type: 'user_reminder',
+          }
+        })
+        .select()
+
+      if (error) throw error
+
+      // Show success message
+      console.log("[v0] Reminder created:", data)
+
+      // Reset form
+      setReminderName('')
+      setReminderDate('')
+      
+      // Close modal or reset tab
+      setActiveTab('tarea')
+      onOpenChange(false)
+    } catch (error) {
+      console.error('[v0] Error creating reminder:', error)
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[800px] p-0 gap-0 overflow-hidden">
@@ -1834,9 +1886,10 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 </Button>
                 <Button
                   className="h-8 px-4"
-                  disabled={!reminderName.trim()}
+                  disabled={!reminderName.trim() || isCreating}
+                  onClick={handleCreateReminder}
                 >
-                  Crear recordatorio
+                  {isCreating ? 'Creando...' : 'Crear recordatorio'}
                 </Button>
               </div>
             </div>
