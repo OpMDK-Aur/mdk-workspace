@@ -1524,29 +1524,107 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
           </div>
         </div>
         
-        {/* Task Form - ClickUp Style */}
-        <div className="flex flex-col h-[520px]">
-          {/* Tab Content */}
+        <div className="flex-1 overflow-auto p-4">
           {activeTab === 'tarea' && (
-            <>
-              {/* Top selectors row */}
-              <div className="flex items-center gap-2 px-5 py-3 border-b">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                      <span className="h-2 w-2 rounded-full bg-yellow-500" />
-                      {quickStatus === 'pendiente' ? 'BACKLOG' : quickStatus.toUpperCase()}
-                      <ChevronDown className="h-3 w-3 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-40 p-1" align="start">
-                    {['pendiente', 'resolviendo', 'bloqueado', 'en_revision', 'completada'].map(status => (
-                      <Button
-                        key={status}
-                        variant="ghost"
-                        size="sm"
-                        className="w-full justify-start text-xs h-8"
-                        onClick={() => setQuickStatus(status)}
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Nombre de Tarea"
+                value={quickTitle}
+                onChange={(e) => setQuickTitle(e.target.value)}
+                className="w-full text-2xl font-light border-0 outline-none bg-transparent"
+                autoFocus
+              />
+              <textarea
+                placeholder="Descripción..."
+                value={quickDescription}
+                onChange={(e) => setQuickDescription(e.target.value)}
+                className="w-full min-h-[100px] border rounded p-2 text-sm"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Select value={quickStatus} onValueChange={setQuickStatus}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pendiente">BACKLOG</SelectItem>
+                    <SelectItem value="resolviendo">EN PROGRESO</SelectItem>
+                    <SelectItem value="bloqueado">BLOQUEADO</SelectItem>
+                    <SelectItem value="en_revision">EN REVISIÓN</SelectItem>
+                    <SelectItem value="completada">COMPLETADA</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={quickPriority} onValueChange={(v) => setQuickPriority(v as TaskPriority)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Prioridad" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="alta">Alta</SelectItem>
+                    <SelectItem value="media">Media</SelectItem>
+                    <SelectItem value="baja">Baja</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="flex-1 h-8 text-xs" onClick={() => setQuickClientIds([])}>
+                  Cliente
+                </Button>
+                <Button size="sm" variant="outline" className="flex-1 h-8 text-xs" onClick={() => setQuickAssigneeIds([])}>
+                  Persona
+                </Button>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => onOpenChange(false)}>
+                  Cancelar
+                </Button>
+                <Button size="sm" className="ml-auto text-xs" onClick={handleQuickCreate} disabled={!quickTitle.trim() || isCreating}>
+                  {isCreating ? 'Creando...' : 'Crear Tarea'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'documento' && (
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Nombre del documento..."
+                className="w-full text-xl font-light border-0 outline-none bg-transparent"
+              />
+              <p className="text-sm text-muted-foreground">Función de documentos próximamente</p>
+            </div>
+          )}
+
+          {activeTab === 'recordatorio' && (
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Nombre del recordatorio..."
+                value={reminderName}
+                onChange={(e) => setReminderName(e.target.value)}
+                className="w-full text-xl font-light border-0 outline-none bg-transparent"
+              />
+              <input
+                type="date"
+                value={reminderDate}
+                onChange={(e) => setReminderDate(e.target.value)}
+                className="w-full border rounded p-2"
+              />
+              <div className="flex gap-2 pt-2">
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => onOpenChange(false)}>
+                  Cancelar
+                </Button>
+                <Button size="sm" className="ml-auto text-xs" disabled={!reminderName.trim()}>
+                  Crear recordatorio
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}}
           <div className="flex flex-col h-[520px]">
             {/* Tab Content */}
             {activeTab === 'tarea' && (

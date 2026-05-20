@@ -1693,20 +1693,8 @@ export function TaskDetailPanel() {
             </Button>
           )}
         </SheetHeader>
-            </div>
 
-            {/* Navigation + expand */}
-            <div className="flex items-center gap-1 shrink-0">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToPrevious} disabled={!hasPrevious} title="Tarea anterior">
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </Button>
-              <span className="text-xs text-muted-foreground tabular-nums min-w-[3.5rem] text-center">
-                {currentIndex + 1} / {tasks.length}
-              </span>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToNext} disabled={!hasNext} title="Siguiente tarea">
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsFullscreen(!isFullscreen)}>
+        {/* Tabs */}
                 {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
               </Button>
             </div>
