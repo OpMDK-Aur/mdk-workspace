@@ -1497,34 +1497,35 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
         .insert({
           titulo: reminderName,
           descripcion: null,
-          tipo_id: 'reminder', // Special type for reminders
+          tipo_id: 'reminder',
           estado_id: 'pendiente',
           prioridad_id: 'media',
           fecha_vencimiento: remindDate.toISOString(),
           cliente_ids: [],
           asignados_ids: [],
           creado_por: currentUser?.id || null,
-          metadata: {
-            is_reminder: true,
-            reminder_type: 'user_reminder',
-          }
         })
         .select()
 
-      if (error) throw error
+      if (error) {
+        console.error('[v0] Error creating reminder:', error)
+        alert('Error al crear recordatorio: ' + (error?.message || 'Error desconocido'))
+        return
+      }
 
       // Show success message
       console.log("[v0] Reminder created:", data)
+      alert('Recordatorio creado exitosamente')
 
       // Reset form
       setReminderName('')
       setReminderDate('')
       
-      // Close modal or reset tab
-      setActiveTab('tarea')
+      // Close modal
       onOpenChange(false)
     } catch (error) {
       console.error('[v0] Error creating reminder:', error)
+      alert('Error al crear recordatorio. Por favor intenta de nuevo.')
     } finally {
       setIsCreating(false)
     }
