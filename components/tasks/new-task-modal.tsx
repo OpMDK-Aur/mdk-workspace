@@ -60,7 +60,9 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { X, Plus, MessageSquare } from 'lucide-react'
+import { X, Plus, MessageSquare, User, CalendarDays, Building2, MoreHorizontal, Paperclip, Bell, FileText, Clock, ChevronDown } from 'lucide-react'
+import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Palette,
   Globe,
@@ -959,6 +961,11 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     initialDueDate ? initialDueDate.toISOString().split('T')[0] : ''
   )
   const [quickComment, setQuickComment] = useState('')
+  const [quickDescription, setQuickDescription] = useState('')
+  const [quickStatus, setQuickStatus] = useState<string>('pendiente')
+  const [activeTab, setActiveTab] = useState<'tarea' | 'documento' | 'recordatorio'>('tarea')
+  const [reminderName, setReminderName] = useState('')
+  const [reminderDate, setReminderDate] = useState<string>('')
   
   // Update quickDueDate when initialDueDate changes (e.g., from calendar)
   useEffect(() => {
@@ -1479,12 +1486,12 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     
     await addTask({
       title: quickTitle,
-      description: null,
+      description: quickDescription || null,
       clientId: firstClient?.id || '',
       clientIds: quickClientIds,
       assigneeId: firstAssignee?.id || '',
       assignees,
-      status: 'pendiente' as TaskStatus,
+      status: quickStatus as TaskStatus,
       priority: quickPriority,
       type: quickType,
       dueDate: quickDueDate ? new Date(quickDueDate + 'T12:00:00') : null,
@@ -1496,12 +1503,15 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     setIsCreating(false)
     // Reset quick mode state
     setQuickTitle('')
+    setQuickDescription('')
     setQuickClientIds([])
     setQuickType('')
     setQuickPriority('media')
+    setQuickStatus('pendiente')
     setQuickAssigneeIds([])
     setQuickDueDate('')
     setQuickComment('')
+    setActiveTab('tarea')
     setQuickMode(false)
     onOpenChange(false)
   }
@@ -2226,6 +2236,11 @@ setIsCreating(true)
     setQuickAssigneeIds([])
     setQuickDueDate('')
     setQuickComment('')
+    setQuickDescription('')
+    setQuickStatus('pendiente')
+    setActiveTab('tarea')
+    setReminderName('')
+    setReminderDate('')
     setMessages([{
       id: 'welcome',
       role: 'assistant',
@@ -2240,33 +2255,64 @@ setIsCreating(true)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] p-0 gap-0 overflow-hidden">
+      <DialogContent className={cn(
+        "p-0 gap-0 overflow-hidden",
+        quickMode ? "sm:max-w-[680px]" : "sm:max-w-[500px]"
+      )}>
         {/* Header */}
+        {quickMode ? (
+          <div className="border-b">
+            <div className="flex items-center justify-between px-4 pt-3 pb-0">
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-full">
+                <TabsList className="bg-transparent h-auto p-0 gap-0">
+                  <TabsTrigger 
+                    value="tarea" 
+                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2 text-sm"
+                  >
+                    Tarea
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="documento" 
+                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2 text-sm"
+                  >
+                    Documento
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="recordatorio" 
+                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2 text-sm"
+                  >
+                    Recordatorio
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <div className="flex items-center gap-2 pb-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="gap-1.5 text-xs h-7"
+                  onClick={() => setQuickMode(false)}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Crear con IA
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
         <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-violet-500/10 to-fuchsia-500/10">
           <div className="flex items-center gap-3">
-            {(selectedTemplate || quickMode) && (
-              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => {
-                if (quickMode) {
-                  setQuickMode(false)
-                } else {
-                  handleBack()
-                }
-              }}>
+            {selectedTemplate && (
+              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={handleBack}>
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             )}
             <div className="flex items-center gap-3">
-              <div className={cn(
-                "h-10 w-10 rounded-full flex items-center justify-center shadow-lg",
-                quickMode 
-                  ? "bg-gradient-to-br from-emerald-500 to-teal-500" 
-                  : "bg-gradient-to-br from-violet-500 to-fuchsia-500"
-              )}>
-                {quickMode ? <PenLine className="h-5 w-5 text-white" /> : <Sparkles className="h-5 w-5 text-white" />}
+              <div className="h-10 w-10 rounded-full flex items-center justify-center shadow-lg bg-gradient-to-br from-violet-500 to-fuchsia-500">
+                <Sparkles className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold">{quickMode ? 'Tarea rapida' : ASSISTANT_NAME}</h3>
-                <p className="text-xs text-muted-foreground">{quickMode ? 'Crear sin asistente' : 'Asistente de tareas MDK'}</p>
+                <h3 className="text-sm font-semibold">{ASSISTANT_NAME}</h3>
+                <p className="text-xs text-muted-foreground">Asistente de tareas MDK</p>
               </div>
             </div>
           </div>
@@ -2275,271 +2321,417 @@ setIsCreating(true)
               variant="outline" 
               size="sm" 
               className="gap-1.5 text-xs"
-              onClick={() => setQuickMode(!quickMode)}
+              onClick={() => setQuickMode(true)}
             >
-              {quickMode ? (
-                <>
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Crear con IA
-                </>
-              ) : (
-                <>
-                  <PenLine className="h-3.5 w-3.5" />
-                  Crear manual
-                </>
-              )}
+              <PenLine className="h-3.5 w-3.5" />
+              Crear manual
             </Button>
           )}
         </div>
+        )}
         
-        {/* Quick Mode Form */}
+        {/* Quick Mode Form - ClickUp Style */}
         {quickMode ? (
-          <ScrollArea className="h-[520px]">
-          <div className="p-4 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="quick-title">Titulo de la tarea *</Label>
-              <Input
-                id="quick-title"
-                placeholder="Ej: Revisar campana de Meta Ads"
-                value={quickTitle}
-                onChange={(e) => setQuickTitle(e.target.value)}
-                autoFocus
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Clientes *</Label>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {quickClientIds.map(id => {
-                  const client = dbClientes.find(c => c.id === id)
-                  return client ? (
-                    <Badge key={id} variant="secondary" className="gap-1 pr-1">
-                      {client.nombre_del_negocio}
-                      <button
-                        type="button"
-                        onClick={() => setQuickClientIds(prev => prev.filter(cid => cid !== id))}
-                        className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ) : null
-                })}
-              </div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 gap-1 text-xs">
-                    <Plus className="h-3 w-3" />
-                    Agregar cliente
+          <div className="flex flex-col h-[520px]">
+            {/* Tab Content */}
+            {activeTab === 'tarea' && (
+              <>
+                {/* Top selectors row */}
+                <div className="flex items-center gap-2 px-5 py-3 border-b">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                        <span className="h-2 w-2 rounded-full bg-yellow-500" />
+                        {quickStatus === 'pendiente' ? 'BACKLOG' : quickStatus.toUpperCase()}
+                        <ChevronDown className="h-3 w-3 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-40 p-1" align="start">
+                      {['pendiente', 'resolviendo', 'bloqueado', 'en_revision', 'completada'].map(status => (
+                        <Button
+                          key={status}
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-start text-xs h-8"
+                          onClick={() => setQuickStatus(status)}
+                        >
+                          {status === 'pendiente' ? 'BACKLOG' : status.replace('_', ' ').toUpperCase()}
+                        </Button>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
+                  
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                        {dbTiposTarea.find(t => t.id === quickType)?.nombre || 'Tarea'}
+                        <ChevronDown className="h-3 w-3 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-52 p-1" align="start">
+                      <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Tipos de tarea</div>
+                      {dbTiposTarea.map(t => (
+                        <Button
+                          key={t.id}
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-start text-xs h-8 gap-2"
+                          onClick={() => setQuickType(t.id)}
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                          {t.nombre}
+                          {quickType === t.id && <Check className="h-3 w-3 ml-auto" />}
+                        </Button>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                
+                {/* Main content area */}
+                <div className="flex-1 overflow-auto px-5 py-4">
+                  {/* Title input - big and clean */}
+                  <input
+                    type="text"
+                    placeholder="Nombre de Tarea"
+                    value={quickTitle}
+                    onChange={(e) => setQuickTitle(e.target.value)}
+                    className="w-full text-2xl font-light text-foreground placeholder:text-muted-foreground/50 bg-transparent border-0 outline-none focus:ring-0 p-0 mb-4"
+                    autoFocus
+                  />
+                  
+                  {/* Description textarea - clean */}
+                  <textarea
+                    placeholder="Añade una descripción o escribe con / para comandos..."
+                    value={quickDescription}
+                    onChange={(e) => setQuickDescription(e.target.value)}
+                    className="w-full min-h-[120px] text-sm text-muted-foreground placeholder:text-muted-foreground/40 bg-transparent border-0 outline-none focus:ring-0 p-0 resize-none"
+                  />
+                </div>
+                
+                {/* Metadata bar */}
+                <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-t bg-muted/30">
+                  {/* Status badge */}
+                  <Badge variant="outline" className="h-7 gap-1.5 font-normal cursor-pointer hover:bg-accent">
+                    <span className="h-2 w-2 rounded-full bg-yellow-500" />
+                    {quickStatus === 'pendiente' ? 'BACKLOG' : quickStatus.toUpperCase()}
+                  </Badge>
+                  
+                  {/* Assignee selector */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs font-normal">
+                        {quickAssigneeIds.length > 0 ? (
+                          <>
+                            <div className="flex -space-x-1">
+                              {quickAssigneeIds.slice(0, 2).map(id => {
+                                const a = dbColaboradores.find(c => c.id === id)
+                                return (
+                                  <Avatar key={id} className="h-4 w-4 border border-background">
+                                    {a?.avatar_url && <AvatarImage src={a.avatar_url} />}
+                                    <AvatarFallback className="text-[8px]">{a?.nombre?.[0]}</AvatarFallback>
+                                  </Avatar>
+                                )
+                              })}
+                            </div>
+                            {quickAssigneeIds.length > 2 && <span>+{quickAssigneeIds.length - 2}</span>}
+                          </>
+                        ) : (
+                          <>
+                            <User className="h-3.5 w-3.5" />
+                            Persona asignada
+                          </>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Buscar colaborador..." className="h-9" />
+                        <CommandList>
+                          <CommandEmpty>No se encontraron colaboradores</CommandEmpty>
+                          <CommandGroup>
+                            {dbColaboradores.map(a => (
+                              <CommandItem
+                                key={a.id}
+                                value={a.nombre}
+                                onSelect={() => {
+                                  if (quickAssigneeIds.includes(a.id)) {
+                                    setQuickAssigneeIds(prev => prev.filter(id => id !== a.id))
+                                  } else {
+                                    setQuickAssigneeIds(prev => [...prev, a.id])
+                                  }
+                                }}
+                                className="gap-2"
+                              >
+                                <Avatar className="h-6 w-6 shrink-0">
+                                  {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
+                                  <AvatarFallback className="text-[10px]">{a.nombre?.[0]?.toUpperCase()}</AvatarFallback>
+                                </Avatar>
+                                {a.nombre}
+                                {quickAssigneeIds.includes(a.id) && <Check className="h-3.5 w-3.5 ml-auto" />}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  
+                  {/* Due date selector */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs font-normal">
+                        <CalendarDays className="h-3.5 w-3.5" />
+                        {quickDueDate ? new Date(quickDueDate + 'T12:00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : 'Fecha limite'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-3" align="start">
+                      <Input
+                        type="date"
+                        value={quickDueDate}
+                        onChange={(e) => setQuickDueDate(e.target.value)}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="h-9"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  
+                  {/* Client selector */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs font-normal">
+                        <Building2 className="h-3.5 w-3.5" />
+                        {quickClientIds.length > 0 
+                          ? quickClientIds.length === 1 
+                            ? dbClientes.find(c => c.id === quickClientIds[0])?.nombre_del_negocio 
+                            : `${quickClientIds.length} clientes`
+                          : 'Cliente'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Buscar cliente..." className="h-9" />
+                        <CommandList>
+                          <CommandEmpty>No se encontraron clientes</CommandEmpty>
+                          <CommandGroup>
+                            {dbClientes.map(c => (
+                              <CommandItem
+                                key={c.id}
+                                value={c.nombre_del_negocio}
+                                onSelect={() => {
+                                  if (quickClientIds.includes(c.id)) {
+                                    setQuickClientIds(prev => prev.filter(id => id !== c.id))
+                                  } else {
+                                    setQuickClientIds(prev => [...prev, c.id])
+                                  }
+                                }}
+                              >
+                                {c.nombre_del_negocio}
+                                {quickClientIds.includes(c.id) && <Check className="h-3.5 w-3.5 ml-auto" />}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  
+                  {/* Priority selector in more menu */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="icon" className="h-7 w-7">
+                        <MoreHorizontal className="h-3.5 w-3.5" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-48 p-1" align="start">
+                      <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Prioridad</div>
+                      {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
+                        <Button
+                          key={key}
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-start text-xs h-8 gap-2"
+                          onClick={() => setQuickPriority(key as TaskPriority)}
+                        >
+                          <span className={cn("h-2 w-2 rounded-full", config.color)} />
+                          {config.label}
+                          {quickPriority === key && <Check className="h-3 w-3 ml-auto" />}
+                        </Button>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                
+                {/* Footer */}
+                <div className="flex items-center justify-between px-5 py-3 border-t">
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+                    <FileText className="h-3.5 w-3.5" />
+                    Plantillas
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-0" align="start">
-                  <Command>
-                    <CommandInput placeholder="Buscar cliente..." className="h-9" />
-                    <CommandList>
-                      <CommandEmpty>No se encontraron clientes</CommandEmpty>
-                      <CommandGroup>
-                        {dbClientes
-                          .filter(c => !quickClientIds.includes(c.id))
-                          .map(c => (
-                            <CommandItem
-                              key={c.id}
-                              value={c.nombre_del_negocio}
-                              onSelect={() => setQuickClientIds(prev => [...prev, c.id])}
-                            >
-                              {c.nombre_del_negocio}
-                            </CommandItem>
-                          ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Paperclip className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Bell className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      className="h-8 gap-1.5 bg-primary hover:bg-primary/90" 
+                      onClick={handleQuickCreate}
+                      disabled={!quickTitle.trim() || quickClientIds.length === 0 || isCreating}
+                    >
+                      {isCreating ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Creando...
+                        </>
+                      ) : (
+                        <>
+                          Crear Tarea
+                          <ChevronDown className="h-3.5 w-3.5 ml-1" />
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
             
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="quick-type">Tipo de tarea</Label>
-                <Select value={quickType} onValueChange={setQuickType}>
-                  <SelectTrigger id="quick-type">
-                    <SelectValue placeholder="Seleccionar tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {dbTiposTarea.map(t => (
-                      <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="quick-priority">Prioridad</Label>
-                <Select value={quickPriority} onValueChange={(v) => setQuickPriority(v as TaskPriority)}>
-                  <SelectTrigger id="quick-priority">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
-                      <SelectItem key={key} value={key}>{config.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Asignar a</Label>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {quickAssigneeIds.map(id => {
-                  const assignee = dbColaboradores.find(a => a.id === id)
-                  return assignee ? (
-                    <Badge key={id} variant="secondary" className="gap-1.5 pr-1 pl-1">
-                      <Avatar className="h-4 w-4 shrink-0">
-                        {assignee.avatar_url && <AvatarImage src={assignee.avatar_url} alt={assignee.nombre} />}
-                        <AvatarFallback className="text-[8px]">{assignee.nombre?.[0]?.toUpperCase() || '?'}</AvatarFallback>
-                      </Avatar>
-                      {assignee.nombre}
-                      <button
-                        type="button"
-                        onClick={() => setQuickAssigneeIds(prev => prev.filter(aid => aid !== id))}
-                        className="ml-0.5 hover:bg-destructive/20 rounded-full p-0.5"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ) : null
-                })}
-              </div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 gap-1 text-xs">
-                    <Plus className="h-3 w-3" />
-                    Agregar asignado
+            {/* Documento Tab */}
+            {activeTab === 'documento' && (
+              <div className="flex-1 flex flex-col p-5">
+                <div className="mb-4">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+                        <FileText className="h-3.5 w-3.5" />
+                        Mis documentos
+                        <ChevronDown className="h-3 w-3 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-48 p-1" align="start">
+                      <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8">
+                        Mis documentos
+                      </Button>
+                      <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8">
+                        Documentos compartidos
+                      </Button>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                
+                <input
+                  type="text"
+                  placeholder="Ponle nombre a este documento..."
+                  className="w-full text-xl font-light text-foreground placeholder:text-muted-foreground/50 bg-transparent border-0 outline-none focus:ring-0 p-0 mb-6"
+                />
+                
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  <button className="flex items-center gap-2 w-full p-2 rounded hover:bg-accent text-left">
+                    <FileText className="h-4 w-4" />
+                    Comenzar a escribir
+                  </button>
+                  <button className="flex items-center gap-2 w-full p-2 rounded hover:bg-accent text-left">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    Escribe con IA
+                  </button>
+                </div>
+                
+                <div className="mt-6 pt-4 border-t">
+                  <p className="text-xs text-muted-foreground mb-2">Agregar nuevo</p>
+                  <div className="space-y-1">
+                    <button className="flex items-center gap-2 w-full p-2 rounded hover:bg-accent text-left text-sm">
+                      <div className="h-4 w-4 border rounded grid grid-cols-2 gap-px p-0.5">
+                        <div className="bg-muted-foreground/30 rounded-sm" />
+                        <div className="bg-muted-foreground/30 rounded-sm" />
+                        <div className="bg-muted-foreground/30 rounded-sm" />
+                        <div className="bg-muted-foreground/30 rounded-sm" />
+                      </div>
+                      Tabla
+                    </button>
+                    <button className="flex items-center gap-2 w-full p-2 rounded hover:bg-accent text-left text-sm">
+                      <div className="h-4 w-4 border rounded flex gap-px p-0.5">
+                        <div className="flex-1 bg-muted-foreground/30 rounded-sm" />
+                        <div className="flex-1 bg-muted-foreground/30 rounded-sm" />
+                      </div>
+                      Columna
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="mt-auto pt-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="doc-private" className="rounded" />
+                    <label htmlFor="doc-private" className="text-sm">Privado</label>
+                  </div>
+                  <Button className="bg-primary hover:bg-primary/90">
+                    Crear documento
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-0" align="start">
-                  <Command>
-                    <CommandInput placeholder="Buscar colaborador..." className="h-9" />
-                    <CommandList>
-                      <CommandEmpty>No se encontraron colaboradores</CommandEmpty>
-                      <CommandGroup>
-                        {dbColaboradores
-                          .filter(a => !quickAssigneeIds.includes(a.id))
-                          .map(a => (
-                            <CommandItem
-                              key={a.id}
-                              value={a.nombre}
-                              onSelect={() => setQuickAssigneeIds(prev => [...prev, a.id])}
-                              className="gap-2"
-                            >
-                              <Avatar className="h-6 w-6 shrink-0">
-                                {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
-                                <AvatarFallback className="text-[10px]">{a.nombre?.[0]?.toUpperCase() || '?'}</AvatarFallback>
-                              </Avatar>
-                              {a.nombre}
-                            </CommandItem>
-                          ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
+                </div>
+              </div>
+            )}
             
-            <div className="space-y-2">
-              <Label htmlFor="quick-due-date">Fecha limite</Label>
-              <Input
-                id="quick-due-date"
-                type="date"
-                value={quickDueDate}
-                onChange={(e) => setQuickDueDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-              />
-            </div>
-
-            {/* Creado por */}
-            <div className="space-y-2">
-              <Label>Creado por</Label>
-              {currentUser ? (
-                <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/40">
-                  <Avatar className="h-6 w-6 shrink-0">
-                    {currentUser.avatar_url && (
-                      <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />
+            {/* Recordatorio Tab */}
+            {activeTab === 'recordatorio' && (
+              <div className="flex-1 flex flex-col p-5">
+                <input
+                  type="text"
+                  placeholder={'Escribe el nombre del recordatorio o "/" para los comandos'}
+                  value={reminderName}
+                  onChange={(e) => setReminderName(e.target.value)}
+                  className="w-full text-lg font-light text-foreground placeholder:text-muted-foreground/50 bg-transparent border-0 outline-none focus:ring-0 p-0 mb-4"
+                  autoFocus
+                />
+                
+                <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
+                  <FileText className="h-4 w-4" />
+                  Agregar descripcion
+                </button>
+                
+                <div className="flex flex-wrap items-center gap-2 mb-auto">
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    Hoy
+                  </Button>
+                  
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                    {currentUser ? (
+                      <>
+                        <Avatar className="h-4 w-4">
+                          {currentUser.avatar_url && <AvatarImage src={currentUser.avatar_url} />}
+                          <AvatarFallback className="text-[8px]">{currentUser.nombre?.[0]}</AvatarFallback>
+                        </Avatar>
+                        Para mi
+                      </>
+                    ) : (
+                      <>
+                        <User className="h-3.5 w-3.5" />
+                        Para mi
+                      </>
                     )}
-                    <AvatarFallback className="text-[10px]">
-                      {[currentUser.nombre, currentUser.apellido]
-                        .filter(Boolean)
-                        .map(n => n![0])
-                        .join('')
-                        .toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="text-sm text-foreground">
-                    {[currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ')}
-                  </span>
+                  </Button>
+                  
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                    <Bell className="h-3.5 w-3.5" />
+                    Notificarme
+                  </Button>
                 </div>
-              ) : (
-                <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/40">
-                  <div className="h-6 w-6 rounded-full bg-muted animate-pulse shrink-0" />
-                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                
+                <div className="pt-4 flex items-center justify-between border-t mt-4">
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
+                  <Button 
+                    className="bg-primary hover:bg-primary/90"
+                    disabled={!reminderName.trim()}
+                  >
+                    Crear recordatorio
+                  </Button>
                 </div>
-              )}
-            </div>
-
-            {/* Comentario inicial */}
-            <div className="space-y-2">
-              <Label htmlFor="quick-comment" className="flex items-center gap-1.5">
-                <MessageSquare className="h-3.5 w-3.5" />
-                Comentario inicial
-              </Label>
-              <Textarea
-                id="quick-comment"
-                placeholder="Agregar notas o contexto sobre la tarea..."
-                value={quickComment}
-                onChange={(e) => setQuickComment(e.target.value)}
-                className="min-h-[80px] resize-none"
-              />
-            </div>
-
-            <div className="pt-4 space-y-2">
-              {/* Show create meeting button if type is "reunion" */}
-              {dbTiposTarea.find(t => t.id === quickType)?.nombre?.toLowerCase().includes('reuni') && (
-                <Button 
-                  variant="outline"
-                  className="w-full gap-2 border-orange-500/50 text-orange-400 hover:bg-orange-500/10" 
-                  onClick={() => {
-                    // Open Google Calendar to create meeting
-                    const clientNames = quickClientIds.map(id => dbClientes.find(c => c.id === id)?.nombre_del_negocio).filter(Boolean).join(', ')
-                    const title = encodeURIComponent(quickTitle || `Reunion - ${clientNames || 'Cliente'}`)
-                    const url = `https://calendar.google.com/calendar/u/0/r/eventedit?text=${title}&details=${encodeURIComponent('Creado desde MDK Workspace')}`
-                    window.open(url, '_blank')
-                  }}
-                  disabled={!quickTitle.trim() || quickClientIds.length === 0}
-                >
-                  <Video className="h-4 w-4" />
-                  Crear reunion en Calendar
-                </Button>
-              )}
-              <Button 
-                className="w-full gap-2" 
-                onClick={handleQuickCreate}
-                disabled={!quickTitle.trim() || quickClientIds.length === 0 || isCreating}
-              >
-                {isCreating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Creando...
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-4 w-4" />
-                    Crear tarea
-                  </>
-                )}
-              </Button>
-            </div>
+              </div>
+            )}
           </div>
-          </ScrollArea>
         ) : (
           /* Chat area */
           <ScrollArea className="h-[420px] p-4" ref={scrollRef}>
