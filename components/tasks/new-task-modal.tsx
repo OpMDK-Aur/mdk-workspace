@@ -60,8 +60,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { X, Plus, MessageSquare, User, CalendarDays, Building2, MoreHorizontal, Paperclip, Bell, FileText, Clock, ChevronDown } from 'lucide-react'
-import { Textarea } from '@/components/ui/textarea'
+import { X, Plus, MessageSquare, User, CalendarDays, Building2, MoreHorizontal, Paperclip, Bell, Clock, ChevronDown } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Palette,
@@ -87,7 +86,6 @@ import {
   Video,
   PenLine,
 } from 'lucide-react'
-import { Textarea } from '@/components/ui/textarea'
 
 interface NewTaskModalProps {
   open: boolean
