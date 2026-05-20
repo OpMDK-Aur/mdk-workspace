@@ -1127,7 +1127,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
       {task.comments.length > 0 && (
         <div className="space-y-4 max-h-[400px] overflow-y-auto overflow-x-hidden pr-1 w-full">
           {sortedComments.map((c) => (
-            <div key={c.id} className="group rounded-lg border bg-muted/30 p-3 w-full overflow-hidden">
+            <div key={c.id} className="group rounded-lg border p-3 w-full overflow-hidden">
               <div className="flex items-start gap-3 min-w-0 w-full">
                 <Avatar className="h-8 w-8 shrink-0">
                   <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
@@ -1448,7 +1448,7 @@ function CustomFields({ task }: { task: Task }) {
       ))}
 
       {isAdding && (
-        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+        <div className="rounded-lg border p-3 space-y-2">
           <Input
             placeholder="Nombre del campo"
             value={newFieldName}
@@ -1933,7 +1933,7 @@ export function TaskDetailPanel() {
                   </div>
 
                   {/* Description area */}
-                  <div className="px-6 py-5 border-y bg-accent/20 flex-shrink-0">
+                  <div className="px-6 py-5 border-y flex-shrink-0">
                     <div
                       ref={descriptionRef}
                       contentEditable
@@ -2010,11 +2010,11 @@ export function TaskDetailPanel() {
 
                 {/* RIGHT COLUMN - Activity */}
                 <div className={cn(
-                  "border-l flex flex-col overflow-hidden bg-muted/30",
+                  "border-l flex flex-col overflow-hidden",
                   isFullscreen ? "w-[400px]" : "w-[280px]"
                 )}>
                   {/* Activity header with filters */}
-                  <div className="px-4 py-3.5 border-b flex items-center justify-between shrink-0 bg-background/50">
+                  <div className="px-5 py-4 border-b flex items-center justify-between shrink-0">
                     <span className="text-sm font-semibold">Activity</span>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="icon" className="h-6 w-6">
@@ -2088,6 +2088,49 @@ export function TaskDetailPanel() {
             </TabsContent>
           </div>
         </Tabs>
+
+        {/* Hidden file input for attachments */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={async (e) => {
+            const files = Array.from(e.target.files || [])
+            if (files.length === 0) return
+
+            try {
+              for (const file of files) {
+                const formData = new FormData()
+                formData.append('file', file)
+                formData.append('taskId', task.id)
+
+                const response = await fetch('/api/tasks/upload', {
+                  method: 'POST',
+                  body: formData,
+                })
+
+                if (response.ok) {
+                  const { fileUrl, fileName } = await response.json()
+                  updateTask(task.id, {
+                    files: [...(task.files || []), { url: fileUrl, name: fileName, type: file.type }],
+                  })
+                  toast.success(`Archivo ${fileName} agregado`)
+                } else {
+                  toast.error(`Error al subir ${file.name}`)
+                }
+              }
+            } catch (error) {
+              toast.error('Error al subir archivos')
+              console.error(error)
+            }
+
+            // Reset input
+            if (fileInputRef.current) {
+              fileInputRef.current.value = ''
+            }
+          }}
+        />
       </SheetContent>
 
       {/* Hito Completion Modal */}
