@@ -62,7 +62,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { X, Plus, MessageSquare, User, CalendarDays, Building2, MoreHorizontal, Paperclip, Bell, Clock, ChevronDown, FileText, Palette, Globe, TrendingUp, Link, Search, AlertTriangle, Mail, BarChart3, HelpCircle, Calculator, Sparkles, ArrowLeft, Check, Loader2, Zap, Coffee, PartyPopper, Flame, Calendar, Video, PenLine } from 'lucide-react'
+import { X, Plus, MessageSquare, User, CalendarDays, Building2, MoreHorizontal, Paperclip, Bell, Clock, ChevronDown, FileText, Palette, Globe, TrendingUp, Link, Search, AlertTriangle, Mail, BarChart3, HelpCircle, Calculator, Sparkles, ArrowLeft, Check, Loader2, Zap, Coffee, PartyPopper, Flame, Calendar, Video, PenLine, Flag, Tag, Link2 } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -1480,7 +1480,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[680px] p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-[800px] p-0 gap-0 overflow-hidden">
         {/* Header with Tabs */}
         <div className="flex items-center justify-between px-2 border-b">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="flex-1">
@@ -1532,21 +1532,23 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                     <ChevronDown className="h-3 w-3 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-56 p-2" align="start">
-                  <div className="text-xs text-muted-foreground px-2 py-1 mb-1">Tipos de tarea</div>
-                  {dbTiposTarea.map((tipo) => (
-                    <Button
-                      key={tipo.id}
-                      variant="ghost"
-                      size="sm"
-                      className="w-full justify-start text-xs h-8"
-                      onClick={() => setQuickType(tipo.id)}
-                    >
-                      <span className="h-2 w-2 rounded-full bg-muted-foreground/40 mr-2" />
-                      {tipo.nombre}
-                      {quickType === tipo.id && <Check className="h-3 w-3 ml-auto text-primary" />}
-                    </Button>
-                  ))}
+                <PopoverContent className="w-64 p-2 max-h-[320px] overflow-y-auto" align="start">
+                  <div className="text-xs text-muted-foreground px-2 py-1.5 mb-1 sticky top-0 bg-popover">Tipos de tarea</div>
+                  <div className="space-y-0.5">
+                    {dbTiposTarea.map((tipo) => (
+                      <Button
+                        key={tipo.id}
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-xs h-8 font-normal"
+                        onClick={() => setQuickType(tipo.id)}
+                      >
+                        <span className="h-2 w-2 rounded-full bg-muted-foreground/40 mr-2 shrink-0" />
+                        <span className="truncate">{tipo.nombre}</span>
+                        {quickType === tipo.id && <Check className="h-3 w-3 ml-auto shrink-0 text-primary" />}
+                      </Button>
+                    ))}
+                  </div>
                 </PopoverContent>
               </Popover>
             </div>
@@ -1708,9 +1710,38 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
               </Popover>
 
               {/* Add more property button */}
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground">
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground hover:text-foreground hover:border-foreground hover:bg-accent">
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-1" align="start">
+                  <div className="text-xs text-muted-foreground px-2 py-1.5 mb-1">Agregar propiedad</div>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
+                    <Flag className="h-3.5 w-3.5 text-muted-foreground" />
+                    Prioridad
+                  </Button>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
+                    <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+                    Etiquetas
+                  </Button>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
+                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                    Tiempo estimado
+                  </Button>
+                  <div className="h-px bg-border my-1" />
+                  <div className="text-xs text-muted-foreground px-2 py-1.5">Adjuntos</div>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
+                    <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+                    Subir archivo
+                  </Button>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
+                    <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    Agregar enlace
+                  </Button>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Footer */}
