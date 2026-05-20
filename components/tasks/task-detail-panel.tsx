@@ -1958,18 +1958,6 @@ export function TaskDetailPanel() {
 
                   {/* Quick actions */}
                   <div className="py-4 space-y-1">
-                    <button className="flex items-center gap-3 w-full py-2 px-2 -mx-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-md transition-colors group">
-                      <Plus className="h-4 w-4 opacity-40 group-hover:opacity-100 transition-opacity" />
-                      Agregar subtarea
-                    </button>
-                    <button className="flex items-center gap-3 w-full py-2 px-2 -mx-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-md transition-colors group">
-                      <ArrowUpDown className="h-4 w-4 opacity-40 group-hover:opacity-100 transition-opacity" />
-                      Relacionar elementos o agregar dependencias
-                    </button>
-                    <button className="flex items-center gap-3 w-full py-2 px-2 -mx-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-md transition-colors group">
-                      <Check className="h-4 w-4 opacity-40 group-hover:opacity-100 transition-opacity" />
-                      Crear lista de control
-                    </button>
                     <button
                       className="flex items-center gap-3 w-full py-2 px-2 -mx-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-md transition-colors group"
                       onClick={() => fileInputRef.current?.click()}
