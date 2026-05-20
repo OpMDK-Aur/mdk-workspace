@@ -1212,30 +1212,6 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
             data-placeholder="Escribe un comentario... usa @ para mencionar (podes pegar imagenes con Ctrl+V)"
             className="w-full min-h-[72px] max-h-[120px] p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary overflow-y-auto empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/50 [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1 [&_.mention]:bg-primary/20 [&_.mention]:text-primary [&_.mention]:px-1 [&_.mention]:rounded"
           />
-        </div>
-        
-        <div className="flex items-center justify-end">
-          <Button
-            size="sm"
-            className="gap-2 px-4"
-            onClick={handleSubmit}
-            disabled={isSubmitting}
-          >
-            <Send className="h-3.5 w-3.5" />
-            {isSubmitting ? 'Enviando...' : 'Enviar'}
-          </Button>
-        </div>
-      </div>
-        <div className="relative">
-          <div
-            ref={editorRef}
-            contentEditable
-            onPaste={handlePaste}
-            onKeyDown={handleKeyDown}
-            onInput={handleInput}
-            data-placeholder="Escribe un comentario... usa @ para mencionar (podes pegar imagenes con Ctrl+V)"
-            className="w-full min-h-[88px] p-3.5 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/50 [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1 [&_.mention]:bg-primary/20 [&_.mention]:text-primary [&_.mention]:px-1 [&_.mention]:rounded"
-          />
           
           {/* Mention dropdown */}
           {showMentions && filteredAssignees.length > 0 && (
@@ -1264,6 +1240,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
             </div>
           )}
         </div>
+        
         <div className="flex items-center justify-end">
           <Button
             size="sm"
