@@ -247,7 +247,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ──────────────────────────────────���───────���──
+// ── Seguimiento Templates by Plan ──────────────────────────────────�����───────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -2182,18 +2182,18 @@ setIsCreating(true)
         assigneeAvatar: assignee?.avatar_url || null,
         assigneeIds,
         assignees: assignees.map(a => ({ id: a.id, nombre: a.nombre, avatar_url: a.avatar_url })),
-      status: 'pendiente' as TaskStatus,
-      priority,
-      type: tipoTarea?.id || '',
-      // Parse date as local timezone to avoid UTC offset issues
-      dueDate: taskData.dueDate ? new Date(taskData.dueDate.includes('T') ? taskData.dueDate : taskData.dueDate + 'T12:00:00') : null,
-      customFields: {},
-      createdById: currentUser?.id || null,
-      createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
-      createdByAvatar: currentUser?.avatar_url || undefined,
-      comments: [initialComment],
-    })
-      } catch (err) {
+        status: 'pendiente' as TaskStatus,
+        priority,
+        type: tipoTarea?.id || '',
+        // Parse date as local timezone to avoid UTC offset issues
+        dueDate: taskData.dueDate ? new Date(taskData.dueDate.includes('T') ? taskData.dueDate : taskData.dueDate + 'T12:00:00') : null,
+        customFields: {},
+        createdById: currentUser?.id || null,
+        createdByName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
+        createdByAvatar: currentUser?.avatar_url || undefined,
+        comments: [initialComment],
+      } as any)
+    } catch (err) {
       console.error('Error creating task:', err)
     }
 
