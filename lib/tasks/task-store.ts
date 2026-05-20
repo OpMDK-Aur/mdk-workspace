@@ -61,6 +61,7 @@ function mapComentarioToComment(comentario: ComentarioDB): TaskComment {
     userName: comentario.autor_nombre,
     userAvatar: comentario.colaboradores?.avatar_url || null,
     createdAt: new Date(comentario.created_at),
+    attachments: (comentario as any).adjuntos || [],
   }
 }
 
@@ -778,7 +779,7 @@ interface TaskStore {
   removeCustomField: (taskId: string, key: string) => void
 
   // Comments
-  addComment: (taskId: string, content: string, userId: string, userName: string, userAvatar?: string | null, mentionedUserIds?: string[]) => Promise<void>
+  addComment: (taskId: string, content: string, userId: string, userName: string, userAvatar?: string | null, mentionedUserIds?: string[], attachments?: { url: string; name: string; mimeType: string }[]) => Promise<void>
   updateComment: (taskId: string, commentId: string, content: string) => Promise<void>
   deleteComment: (taskId: string, commentId: string) => Promise<void>
 
@@ -1348,7 +1349,7 @@ addTask: async (taskData) => {
     }),
   })),
 
-addComment: async (taskId, content, userId, userName, userAvatar = null, mentionedUserIds: string[] = []) => {
+addComment: async (taskId, content, userId, userName, userAvatar = null, mentionedUserIds: string[] = [], attachments: { url: string; name: string; mimeType: string }[] = []) => {
   const supabase = createClient()
   const commentId = crypto.randomUUID()
   const now = new Date()
@@ -1363,6 +1364,7 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
         autor_id: userId === 'system' ? null : userId,
         autor_nombre: userName,
         es_sistema: userName === 'Madky',
+        adjuntos: attachments.length > 0 ? attachments : null,
       })
 
     if (error) {

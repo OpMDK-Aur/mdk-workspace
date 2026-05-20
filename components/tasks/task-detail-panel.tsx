@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation, ClientPlan, TaskFile } from '@/lib/types'
+import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation, ClientPlan, TaskFile, TaskComment } from '@/lib/types'
 import { cn, linkifyText } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -838,6 +838,100 @@ function FilesSection({ task }: { task: Task }) {
 
 // ── Comments Section (with rich text editor) ──────────────────────────────────
 
+// ─── CommentItem: renders a single comment with lightbox + attachments ───────
+function CommentItem({ comment: c, taskId }: { comment: TaskComment; taskId: string }) {
+  const { deleteComment } = useTaskStore()
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
+
+  const handleImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement
+    if (target.tagName === 'IMG') {
+      setLightboxImage((target as HTMLImageElement).src)
+    }
+  }
+
+  return (
+    <>
+      <div className="flex items-start gap-2.5 text-xs mb-3 group">
+        <Avatar className="h-5 w-5 mt-0.5 shrink-0">
+          <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
+          <AvatarFallback className="text-[8px]">{getInitials(c.userName)}</AvatarFallback>
+        </Avatar>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="text-xs font-medium text-foreground">{c.userName}</span>
+            <span className="text-[11px] text-muted-foreground">
+              {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
+            </span>
+            <Button
+              variant="ghost" size="icon" className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100"
+              onClick={() => deleteComment(taskId, c.id)}
+            >
+              <X className="h-2.5 w-2.5" />
+            </Button>
+          </div>
+          {/* Content with clickable images */}
+          <div
+            className="text-[11px] text-foreground/80 break-words [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity"
+            dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
+            onClick={handleImageClick}
+          />
+          {/* Attachments */}
+          {c.attachments && c.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {c.attachments.map((att: { url: string; name: string; mimeType: string }, i: number) => (
+                att.mimeType.startsWith('image/') ? (
+                  <img
+                    key={i}
+                    src={att.url}
+                    alt={att.name}
+                    className="h-16 w-16 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity border border-border"
+                    onClick={() => setLightboxImage(att.url)}
+                  />
+                ) : (
+                  <a
+                    key={i}
+                    href={att.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded border border-border bg-muted hover:bg-accent transition-colors"
+                  >
+                    <Paperclip className="h-3 w-3 shrink-0" />
+                    <span className="max-w-[100px] truncate">{att.name}</span>
+                  </a>
+                )
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Lightbox */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center"
+          onClick={() => setLightboxImage(null)}
+        >
+          <Button
+            variant="ghost" size="icon"
+            className="absolute top-4 right-4 text-white hover:bg-white/10"
+            onClick={() => setLightboxImage(null)}
+          >
+            <X className="h-5 w-5" />
+          </Button>
+          <img
+            src={lightboxImage}
+            alt="Imagen adjunta"
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 function CommentsSection({ task, compact = false }: { task: Task; compact?: boolean }) {
   const { addComment, updateComment, deleteComment } = useTaskStore()
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -845,8 +939,10 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
   const editorRef = useRef<HTMLDivElement>(null)
+  const commentFileInputRef = useRef<HTMLInputElement>(null)
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
+  const [pendingAttachments, setPendingAttachments] = useState<{ url: string; name: string; mimeType: string }[]>([])
   
   // Mention states
   const [showMentions, setShowMentions] = useState(false)
@@ -1087,8 +1183,9 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
     })
     
     try {
-      await addComment(task.id, content, userId, userName, currentUser?.avatar_url, mentionedIds)
+      await addComment(task.id, content, userId, userName, currentUser?.avatar_url, mentionedIds, pendingAttachments)
       editorRef.current.innerHTML = ''
+      setPendingAttachments([])
       toast.success('Comentario agregado')
     } catch (err) {
       console.error('Error adding comment:', err)
@@ -1253,10 +1350,62 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
           )}
         </div>
         
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center justify-between gap-2">
+          {/* Attach file button */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn("h-7 w-7 text-muted-foreground hover:text-foreground shrink-0", compact && "h-6 w-6")}
+            onClick={() => commentFileInputRef.current?.click()}
+            title="Adjuntar archivo"
+          >
+            <Paperclip className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} />
+          </Button>
+          <input
+            ref={commentFileInputRef}
+            type="file"
+            multiple
+            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+            className="hidden"
+            onChange={async (e) => {
+              const files = Array.from(e.target.files || [])
+              if (!files.length) return
+              for (const file of files) {
+                try {
+                  const formData = new FormData()
+                  formData.append('file', file)
+                  formData.append('taskId', task.id)
+                  const res = await fetch('/api/tasks/upload', { method: 'POST', body: formData })
+                  if (res.ok) {
+                    const { fileUrl, fileName, mimeType } = await res.json()
+                    setPendingAttachments(prev => [...prev, { url: fileUrl, name: fileName, mimeType: mimeType || file.type }])
+                    toast.success(`Adjunto: ${fileName}`)
+                  }
+                } catch {
+                  toast.error('Error al subir archivo')
+                }
+              }
+              e.target.value = ''
+            }}
+          />
+          {/* Pending attachments preview */}
+          {pendingAttachments.length > 0 && (
+            <div className="flex flex-wrap gap-1 flex-1">
+              {pendingAttachments.map((att, i) => (
+                <div key={i} className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-muted border border-border">
+                  <Paperclip className="h-2.5 w-2.5 shrink-0" />
+                  <span className="max-w-[60px] truncate">{att.name}</span>
+                  <button onClick={() => setPendingAttachments(prev => prev.filter((_, j) => j !== i))}>
+                    <X className="h-2.5 w-2.5 text-muted-foreground hover:text-foreground" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <Button
             size="sm"
-            className={cn("gap-2 px-4", compact && "h-7 px-2 gap-1 text-xs")}
+            className={cn("gap-2 px-4 ml-auto", compact && "h-7 px-2 gap-1 text-xs")}
             onClick={handleSubmit}
             disabled={isSubmitting}
           >
@@ -1516,16 +1665,12 @@ export function TaskDetailPanel() {
   const [hitoModalOpen, setHitoModalOpen] = useState(false)
   const [pendingStatus, setPendingStatus] = useState<TaskStatus | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [activeActivityFilters, setActiveActivityFilters] = useState<Set<string>>(new Set([
-    'Comentarios', 'Comentarios asignados'
-  ]))
-  const allActivityFilters = [
-    'Persona', 'Adjuntos', 'Ajustes de uso compartido',
-    'Archivado', 'Campos personalizados', 'Combinadas',
-    'Comentarios', 'Comentarios asignados', 'Correo electronico',
-    'Creacion de tareas', 'Dependencias', 'Duracion estimada',
-    'Estado', 'Subtareas',
-  ]
+  // Activity filters
+  const [filterPersona, setFilterPersona] = useState<string | null>(null) // userId
+  const [filterConAdjuntos, setFilterConAdjuntos] = useState(false)
+  const [filterFechaDesde, setFilterFechaDesde] = useState<string>('')
+  const [filterFechaHasta, setFilterFechaHasta] = useState<string>('')
+  const [filterPersonaOpen, setFilterPersonaOpen] = useState(false)
 
   // Description editing state
   const descriptionRef = useRef<HTMLDivElement>(null)
@@ -2008,58 +2153,121 @@ export function TaskDetailPanel() {
                       </Button>
                       <Popover>
                         <PopoverTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-6 w-6">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn("h-6 w-6", (filterPersona || filterConAdjuntos || filterFechaDesde || filterFechaHasta) && "text-primary")}
+                          >
                             <SlidersHorizontal className="h-3.5 w-3.5" />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-56 p-2" align="end">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-medium text-muted-foreground">Actividades</span>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="h-5 text-[10px] px-1 text-primary"
-                              onClick={() => setActiveActivityFilters(new Set())}
-                            >
-                              Deseleccionar todo
-                            </Button>
+                        <PopoverContent className="w-64 p-3" align="end">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs font-semibold">Filtros</span>
+                            {(filterPersona || filterConAdjuntos || filterFechaDesde || filterFechaHasta) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 text-[10px] px-1 text-primary"
+                                onClick={() => { setFilterPersona(null); setFilterConAdjuntos(false); setFilterFechaDesde(''); setFilterFechaHasta('') }}
+                              >
+                                Limpiar
+                              </Button>
+                            )}
                           </div>
-                          {allActivityFilters.map(filter => (
-                            <div 
-                              key={filter} 
-                              className="flex items-center justify-between py-1 px-1 rounded hover:bg-accent cursor-pointer"
-                              onClick={() => {
-                                const newFilters = new Set(activeActivityFilters)
-                                if (newFilters.has(filter)) {
-                                  newFilters.delete(filter)
-                                } else {
-                                  newFilters.add(filter)
-                                }
-                                setActiveActivityFilters(newFilters)
-                              }}
-                            >
-                              <span className="text-xs">{filter}</span>
-                              {activeActivityFilters.has(filter) && (
-                                <Check className="h-3 w-3 text-primary" />
-                              )}
+
+                          {/* Filtro Persona */}
+                          <div className="mb-3">
+                            <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Persona</p>
+                            <div className="space-y-1 max-h-32 overflow-y-auto">
+                              {Array.from(new Set(task.comments.map(c => c.userId))).map(uid => {
+                                const comment = task.comments.find(c => c.userId === uid)
+                                if (!comment) return null
+                                return (
+                                  <div
+                                    key={uid}
+                                    className={cn("flex items-center gap-2 py-1 px-1.5 rounded cursor-pointer hover:bg-accent text-xs", filterPersona === uid && "bg-accent")}
+                                    onClick={() => setFilterPersona(filterPersona === uid ? null : uid)}
+                                  >
+                                    <Avatar className="h-5 w-5 shrink-0">
+                                      <AvatarImage src={comment.userAvatar || undefined} />
+                                      <AvatarFallback className="text-[8px]">{getInitials(comment.userName)}</AvatarFallback>
+                                    </Avatar>
+                                    <span>{comment.userName}</span>
+                                    {filterPersona === uid && <Check className="h-3 w-3 text-primary ml-auto" />}
+                                  </div>
+                                )
+                              })}
+                              {task.comments.length === 0 && <p className="text-[11px] text-muted-foreground">Sin comentarios</p>}
                             </div>
-                          ))}
+                          </div>
+
+                          {/* Filtro Adjuntos */}
+                          <div className="mb-3">
+                            <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Adjuntos</p>
+                            <div
+                              className={cn("flex items-center gap-2 py-1 px-1.5 rounded cursor-pointer hover:bg-accent text-xs", filterConAdjuntos && "bg-accent")}
+                              onClick={() => setFilterConAdjuntos(!filterConAdjuntos)}
+                            >
+                              <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span>Solo con adjuntos</span>
+                              {filterConAdjuntos && <Check className="h-3 w-3 text-primary ml-auto" />}
+                            </div>
+                          </div>
+
+                          {/* Filtro Fecha */}
+                          <div>
+                            <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Fecha</p>
+                            <div className="space-y-1.5">
+                              <div>
+                                <label className="text-[10px] text-muted-foreground">Desde</label>
+                                <input
+                                  type="date"
+                                  value={filterFechaDesde}
+                                  onChange={e => setFilterFechaDesde(e.target.value)}
+                                  className="w-full text-xs px-2 py-1 rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-muted-foreground">Hasta</label>
+                                <input
+                                  type="date"
+                                  value={filterFechaHasta}
+                                  onChange={e => setFilterFechaHasta(e.target.value)}
+                                  className="w-full text-xs px-2 py-1 rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                                />
+                              </div>
+                            </div>
+                          </div>
                         </PopoverContent>
                       </Popover>
                     </div>
                   </div>
 
-                  {/* Activity feed - combined with comments */}
+                  {/* Activity feed - filtered */}
                   <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
-                    {task.activities.length === 0 && task.comments.length === 0 ? (
-                      <div className="flex items-center justify-center h-24">
-                        <p className="text-xs text-muted-foreground">Sin actividad aun</p>
-                      </div>
-                    ) : (
-                      <>
-                        {/* Activities */}
-                        {task.activities.length > 0 && activeActivityFilters.size > 0 && (
-                          task.activities.slice(0, 20).map((activity) => (
+                    {(() => {
+                      const filteredComments = task.comments.filter(c => {
+                        if (filterPersona && c.userId !== filterPersona) return false
+                        if (filterConAdjuntos && (!c.attachments || c.attachments.length === 0)) return false
+                        if (filterFechaDesde && new Date(c.createdAt) < new Date(filterFechaDesde)) return false
+                        if (filterFechaHasta && new Date(c.createdAt) > new Date(filterFechaHasta + 'T23:59:59')) return false
+                        return true
+                      })
+                      const hasFilters = filterPersona || filterConAdjuntos || filterFechaDesde || filterFechaHasta
+
+                      if (task.activities.length === 0 && task.comments.length === 0) {
+                        return (
+                          <div className="flex items-center justify-center h-24">
+                            <p className="text-xs text-muted-foreground">Sin actividad aun</p>
+                          </div>
+                        )
+                      }
+
+                      return (
+                        <>
+                          {/* Activities - hidden when filters active */}
+                          {!hasFilters && task.activities.slice(0, 20).map((activity) => (
                             <div key={activity.id} className="flex items-start gap-3 text-xs">
                               <Avatar className="h-6 w-6 mt-0.5 shrink-0">
                                 <AvatarFallback className="text-[9px]">{getInitials(activity.userName)}</AvatarFallback>
@@ -2071,44 +2279,26 @@ export function TaskDetailPanel() {
                                 </p>
                               </div>
                             </div>
-                          ))
-                        )}
+                          ))}
 
-                        {/* Comments section - shown only if filter is active */}
-                        {task.comments.length > 0 && (activeActivityFilters.has('Comentarios') || activeActivityFilters.has('Comentarios asignados')) && (
-                          <div className="pt-2 border-t mt-4">
-                            <p className="text-xs font-semibold mb-3">Comentarios ({task.comments.length})</p>
-                            {task.comments.map((c) => {
-                              const isAssignedComment = c.content.includes('@')
-                              const shouldShow = 
-                                activeActivityFilters.has('Comentarios') ||
-                                (activeActivityFilters.has('Comentarios asignados') && isAssignedComment)
-                              
-                              return shouldShow ? (
-                                <div key={c.id} className="flex items-start gap-2.5 text-xs mb-3 group">
-                                  <Avatar className="h-5 w-5 mt-0.5 shrink-0">
-                                    <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
-                                    <AvatarFallback className="text-[8px]">{getInitials(c.userName)}</AvatarFallback>
-                                  </Avatar>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-1.5 mb-0.5">
-                                      <span className="text-xs font-medium text-foreground">{c.userName}</span>
-                                      <span className="text-[11px] text-muted-foreground">
-                                        {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
-                                      </span>
-                                    </div>
-                                    <div 
-                                      className="text-[11px] text-foreground/80 break-words [&_img]:max-w-[120px] [&_img]:rounded [&_img]:mt-1"
-                                      dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
-                                    />
-                                  </div>
-                                </div>
-                              ) : null
-                            })}
-                          </div>
-                        )}
-                      </>
-                    )}
+                          {/* Comments */}
+                          {filteredComments.length === 0 && hasFilters ? (
+                            <div className="flex items-center justify-center h-16">
+                              <p className="text-xs text-muted-foreground">Sin resultados para los filtros aplicados</p>
+                            </div>
+                          ) : (
+                            filteredComments.length > 0 && (
+                              <div className={cn(!hasFilters && "pt-2 border-t mt-2")}>
+                                {!hasFilters && <p className="text-xs font-semibold mb-3">Comentarios ({task.comments.length})</p>}
+                                {filteredComments.map((c) => (
+                                  <CommentItem key={c.id} comment={c} taskId={task.id} />
+                                ))}
+                              </div>
+                            )
+                          )}
+                        </>
+                      )
+                    })()}
                   </div>
 
                   {/* Comment input at bottom - using CommentsSection component */}
