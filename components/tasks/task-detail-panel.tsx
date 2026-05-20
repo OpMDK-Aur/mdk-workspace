@@ -2032,32 +2032,140 @@ export function TaskDetailPanel() {
                     </div>
                   </div>
 
-                  {/* Activity feed */}
-                  <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-                    {task.activities.length > 0 ? (
-                      task.activities.slice(0, 20).map((activity) => (
-                        <div key={activity.id} className="flex items-start gap-3 text-xs">
-                          <Avatar className="h-6 w-6 mt-0.5 shrink-0">
-                            <AvatarFallback className="text-[9px]">{getInitials(activity.userName)}</AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <span className="text-muted-foreground leading-relaxed">{activity.action}</span>
-                            <p className="text-muted-foreground/50 mt-1">
-                              {format(new Date(activity.timestamp), "dd MMM 'a las' HH:mm", { locale: es })}
-                            </p>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
+                  {/* Activity feed - combined with comments */}
+                  <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
+                    {task.activities.length === 0 && task.comments.length === 0 ? (
                       <div className="flex items-center justify-center h-24">
                         <p className="text-xs text-muted-foreground">Sin actividad aun</p>
                       </div>
+                    ) : (
+                      <>
+                        {/* Activities */}
+                        {task.activities.slice(0, 20).map((activity) => (
+                          <div key={activity.id} className="flex items-start gap-3 text-xs">
+                            <Avatar className="h-6 w-6 mt-0.5 shrink-0">
+                              <AvatarFallback className="text-[9px]">{getInitials(activity.userName)}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <span className="text-muted-foreground leading-relaxed">{activity.action}</span>
+                              <p className="text-muted-foreground/50 mt-1">
+                                {format(new Date(activity.timestamp), "dd MMM 'a las' HH:mm", { locale: es })}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Comments in activity feed */}
+                        {task.comments.map((c) => (
+                          <div key={c.id} className="flex items-start gap-3 text-xs group">
+                            <Avatar className="h-6 w-6 mt-0.5 shrink-0">
+                              <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
+                              <AvatarFallback className="text-[9px]">{getInitials(c.userName)}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <span className="text-sm font-medium text-foreground">{c.userName}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
+                                </span>
+                              </div>
+                              <div 
+                                className="text-xs text-foreground/80 break-words whitespace-pre-wrap [&_p]:my-0.5 [&_a]:text-primary [&_a]:underline [&_img]:max-w-[180px] [&_img]:rounded [&_img]:mt-2 [&_img]:max-h-[150px]"
+                                dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
+                              />
+                            </div>
+                            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-5 w-5"
+                                onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content.replace(/<[^>]*>/g, '')) }}
+                              >
+                                <Pencil className="h-2.5 w-2.5" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-5 w-5"
+                                onClick={() => deleteComment(task.id, c.id)}
+                              >
+                                <X className="h-2.5 w-2.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </>
                     )}
                   </div>
 
                   {/* Comment input at bottom */}
-                  <div className="border-t shrink-0 flex-1 overflow-hidden flex flex-col">
-                    <CommentsSection task={task} compact />
+                  <div className="border-t shrink-0">
+                    <div className="px-5 py-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-6 w-6 shrink-0">
+                          {currentUser?.avatar_url && <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />}
+                          <AvatarFallback className="text-[9px]">
+                            {currentUser ? getInitials(currentUser.nombre) : 'US'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-xs font-medium">{currentUser?.nombre || 'Comentario'}</span>
+                      </div>
+                      <div className="relative">
+                        <div
+                          ref={editorRef}
+                          contentEditable
+                          onPaste={handlePaste}
+                          onKeyDown={handleKeyDown}
+                          onInput={handleInput}
+                          data-placeholder="Escribe un comentario..."
+                          className="w-full min-h-[60px] p-2 text-xs rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary overflow-y-auto empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/50"
+                        />
+                        
+                        {/* Mention dropdown */}
+                        {showMentions && filteredAssignees.length > 0 && (
+                          <div 
+                            className="absolute z-50 bg-popover border rounded-md shadow-lg py-1 min-w-[150px] text-xs"
+                            style={{ top: mentionPosition.top, left: mentionPosition.left }}
+                          >
+                            {filteredAssignees.map((assignee) => (
+                              <button
+                                key={assignee.id}
+                                type="button"
+                                className="w-full px-2 py-1 text-left flex items-center gap-2 hover:bg-muted"
+                                onClick={() => insertMention(assignee)}
+                              >
+                                <Avatar className="h-5 w-5">
+                                  {assignee.avatar_url && <AvatarImage src={assignee.avatar_url} />}
+                                  <AvatarFallback className="text-[7px]">{getInitials(assignee.name)}</AvatarFallback>
+                                </Avatar>
+                                <span className="text-xs">{assignee.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => { 
+                            if (editorRef.current) editorRef.current.innerHTML = ''
+                          }}
+                        >
+                          Limpiar
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1"
+                          onClick={handleSubmit}
+                          disabled={isSubmitting}
+                        >
+                          <Send className="h-2.5 w-2.5" />
+                          {isSubmitting ? 'Enviando' : 'Enviar'}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
