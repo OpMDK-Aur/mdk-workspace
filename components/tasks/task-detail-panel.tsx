@@ -1516,6 +1516,16 @@ export function TaskDetailPanel() {
   const [hitoModalOpen, setHitoModalOpen] = useState(false)
   const [pendingStatus, setPendingStatus] = useState<TaskStatus | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [activeActivityFilters, setActiveActivityFilters] = useState<Set<string>>(new Set([
+    'Comentarios', 'Comentarios asignados'
+  ]))
+  const allActivityFilters = [
+    'Persona', 'Adjuntos', 'Ajustes de uso compartido',
+    'Archivado', 'Campos personalizados', 'Combinadas',
+    'Comentarios', 'Comentarios asignados', 'Correo electronico',
+    'Creacion de tareas', 'Dependencias', 'Duracion estimada',
+    'Estado', 'Subtareas',
+  ]
 
   // Description editing state
   const descriptionRef = useRef<HTMLDivElement>(null)
@@ -2005,18 +2015,33 @@ export function TaskDetailPanel() {
                         <PopoverContent className="w-56 p-2" align="end">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-xs font-medium text-muted-foreground">Actividades</span>
-                            <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1 text-primary">Deseleccionar todo</Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-5 text-[10px] px-1 text-primary"
+                              onClick={() => setActiveActivityFilters(new Set())}
+                            >
+                              Deseleccionar todo
+                            </Button>
                           </div>
-                          {[
-                            'Persona', 'Adjuntos', 'Ajustes de uso compartido',
-                            'Archivado', 'Campos personalizados', 'Combinadas',
-                            'Comentarios', 'Comentarios asignados', 'Correo electronico',
-                            'Creacion de tareas', 'Dependencias', 'Duracion estimada',
-                            'Estado', 'Subtareas',
-                          ].map(filter => (
-                            <div key={filter} className="flex items-center justify-between py-1 px-1 rounded hover:bg-accent cursor-pointer">
+                          {allActivityFilters.map(filter => (
+                            <div 
+                              key={filter} 
+                              className="flex items-center justify-between py-1 px-1 rounded hover:bg-accent cursor-pointer"
+                              onClick={() => {
+                                const newFilters = new Set(activeActivityFilters)
+                                if (newFilters.has(filter)) {
+                                  newFilters.delete(filter)
+                                } else {
+                                  newFilters.add(filter)
+                                }
+                                setActiveActivityFilters(newFilters)
+                              }}
+                            >
                               <span className="text-xs">{filter}</span>
-                              <Check className="h-3 w-3 text-primary" />
+                              {activeActivityFilters.has(filter) && (
+                                <Check className="h-3 w-3 text-primary" />
+                              )}
                             </div>
                           ))}
                         </PopoverContent>
@@ -2033,44 +2058,53 @@ export function TaskDetailPanel() {
                     ) : (
                       <>
                         {/* Activities */}
-                        {task.activities.slice(0, 20).map((activity) => (
-                          <div key={activity.id} className="flex items-start gap-3 text-xs">
-                            <Avatar className="h-6 w-6 mt-0.5 shrink-0">
-                              <AvatarFallback className="text-[9px]">{getInitials(activity.userName)}</AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 min-w-0">
-                              <span className="text-muted-foreground leading-relaxed">{activity.action}</span>
-                              <p className="text-muted-foreground/50 mt-1">
-                                {format(new Date(activity.timestamp), "dd MMM 'a las' HH:mm", { locale: es })}
-                              </p>
+                        {task.activities.length > 0 && activeActivityFilters.size > 0 && (
+                          task.activities.slice(0, 20).map((activity) => (
+                            <div key={activity.id} className="flex items-start gap-3 text-xs">
+                              <Avatar className="h-6 w-6 mt-0.5 shrink-0">
+                                <AvatarFallback className="text-[9px]">{getInitials(activity.userName)}</AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-muted-foreground leading-relaxed">{activity.action}</span>
+                                <p className="text-muted-foreground/50 mt-1">
+                                  {format(new Date(activity.timestamp), "dd MMM 'a las' HH:mm", { locale: es })}
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          ))
+                        )}
 
-                        {/* Comments section header if there are comments */}
-                        {task.comments.length > 0 && (
+                        {/* Comments section - shown only if filter is active */}
+                        {task.comments.length > 0 && (activeActivityFilters.has('Comentarios') || activeActivityFilters.has('Comentarios asignados')) && (
                           <div className="pt-2 border-t mt-4">
                             <p className="text-xs font-semibold mb-3">Comentarios ({task.comments.length})</p>
-                            {task.comments.map((c) => (
-                              <div key={c.id} className="flex items-start gap-2.5 text-xs mb-3 group">
-                                <Avatar className="h-5 w-5 mt-0.5 shrink-0">
-                                  <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
-                                  <AvatarFallback className="text-[8px]">{getInitials(c.userName)}</AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-1.5 mb-0.5">
-                                    <span className="text-xs font-medium text-foreground">{c.userName}</span>
-                                    <span className="text-[11px] text-muted-foreground">
-                                      {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
-                                    </span>
+                            {task.comments.map((c) => {
+                              const isAssignedComment = c.content.includes('@')
+                              const shouldShow = 
+                                activeActivityFilters.has('Comentarios') ||
+                                (activeActivityFilters.has('Comentarios asignados') && isAssignedComment)
+                              
+                              return shouldShow ? (
+                                <div key={c.id} className="flex items-start gap-2.5 text-xs mb-3 group">
+                                  <Avatar className="h-5 w-5 mt-0.5 shrink-0">
+                                    <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
+                                    <AvatarFallback className="text-[8px]">{getInitials(c.userName)}</AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-1.5 mb-0.5">
+                                      <span className="text-xs font-medium text-foreground">{c.userName}</span>
+                                      <span className="text-[11px] text-muted-foreground">
+                                        {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
+                                      </span>
+                                    </div>
+                                    <div 
+                                      className="text-[11px] text-foreground/80 break-words [&_img]:max-w-[120px] [&_img]:rounded [&_img]:mt-1"
+                                      dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
+                                    />
                                   </div>
-                                  <div 
-                                    className="text-[11px] text-foreground/80 break-words [&_img]:max-w-[120px] [&_img]:rounded [&_img]:mt-1"
-                                    dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
-                                  />
                                 </div>
-                              </div>
-                            ))}
+                              ) : null
+                            })}
                           </div>
                         )}
                       </>
