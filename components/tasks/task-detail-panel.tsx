@@ -1521,6 +1521,10 @@ export function TaskDetailPanel() {
   const [pendingStatus, setPendingStatus] = useState<TaskStatus | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
+  // Description editing state
+  const descriptionRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   // Load current user ID
   useEffect(() => {
     async function loadCurrentUser() {
@@ -1934,10 +1938,17 @@ export function TaskDetailPanel() {
                       ref={descriptionRef}
                       contentEditable
                       suppressContentEditableWarning
-                      onBlur={handleDescriptionBlur}
-                      onKeyDown={handleKeyDown}
-                      onPaste={handlePaste}
-                      onInput={handleInput}
+                      onBlur={() => {
+                        if (descriptionRef.current) {
+                          const html = descriptionRef.current.innerHTML
+                          if (html !== task.description) {
+                            updateTask(task.id, { description: html || null })
+                          }
+                        }
+                      }}
+                      onInput={() => {
+                        // No-op for now, save on blur
+                      }}
                       className={cn(
                         "min-h-[80px] text-sm outline-none",
                         "prose prose-sm prose-invert max-w-none",
@@ -1945,33 +1956,8 @@ export function TaskDetailPanel() {
                         "empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/50 empty:before:pointer-events-none"
                       )}
                       data-placeholder="Añade una descripcion o escribe con / para comandos..."
+                      dangerouslySetInnerHTML={{ __html: task.description || '' }}
                     />
-                    {showMentions && filteredMentions.length > 0 && (
-                      <div
-                        className="absolute z-50 bg-popover border rounded-md shadow-md p-1 min-w-[200px]"
-                        style={{ top: mentionPosition.top, left: mentionPosition.left }}
-                      >
-                        {filteredMentions.map((a, index) => (
-                          <button
-                            key={a.id}
-                            className={cn(
-                              "flex items-center gap-2 w-full p-1.5 rounded text-sm hover:bg-accent",
-                              index === selectedMentionIndex && "bg-accent"
-                            )}
-                            onMouseDown={(e) => {
-                              e.preventDefault()
-                              insertMention({ id: a.id, name: a.nombre })
-                            }}
-                          >
-                            <Avatar className="h-5 w-5">
-                              {a.avatar_url && <AvatarImage src={a.avatar_url} />}
-                              <AvatarFallback className="text-[9px]">{a.nombre[0]}</AvatarFallback>
-                            </Avatar>
-                            {a.nombre}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
 
                   {/* Quick actions */}
