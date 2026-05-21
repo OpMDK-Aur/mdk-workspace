@@ -1680,33 +1680,72 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
                     <Building2 className="h-3.5 w-3.5" />
-                    {quickClientIds.length > 0
-                      ? dbClientes.find(c => c.id === quickClientIds[0])?.nombre_del_negocio || 'Cliente'
-                      : 'Cliente'
+                    {quickClientIds.length === 0
+                      ? 'Cliente'
+                      : quickClientIds.length === 1
+                        ? dbClientes.find(c => c.id === quickClientIds[0])?.nombre_del_negocio || 'Cliente'
+                        : `${quickClientIds.length} clientes`
                     }
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-64 p-1" align="start">
+                <PopoverContent className="w-64 p-2" align="start">
+                  <div className="mb-2 px-1">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Clientes</p>
+                  </div>
                   <Command>
-                    <CommandInput placeholder="Buscar cliente..." className="h-8 text-xs" />
-                    <CommandList>
-                      <CommandEmpty>Sin resultados</CommandEmpty>
+                    <div className="relative mb-1">
+                      <CommandInput placeholder="Buscar cliente..." className="h-8 text-xs pl-8" />
+                    </div>
+                    <CommandList className="max-h-52 overflow-y-auto">
+                      <CommandEmpty className="text-xs text-muted-foreground py-3 text-center">Sin resultados</CommandEmpty>
                       <CommandGroup>
-                        {dbClientes.map((cliente) => (
-                          <CommandItem
-                            key={cliente.id}
-                            value={cliente.nombre_del_negocio}
-                            onSelect={() => setQuickClientIds([cliente.id])}
-                            className="text-xs"
-                          >
-                            <Building2 className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
-                            {cliente.nombre_del_negocio}
-                            {quickClientIds.includes(cliente.id) && <Check className="h-3 w-3 ml-auto" />}
-                          </CommandItem>
-                        ))}
+                        {dbClientes.map((cliente) => {
+                          const selected = quickClientIds.includes(cliente.id)
+                          return (
+                            <CommandItem
+                              key={cliente.id}
+                              value={cliente.nombre_del_negocio}
+                              onSelect={() =>
+                                setQuickClientIds(prev =>
+                                  prev.includes(cliente.id)
+                                    ? prev.filter(id => id !== cliente.id)
+                                    : [...prev, cliente.id]
+                                )
+                              }
+                              className={`text-xs flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer aria-selected:bg-muted aria-selected:text-foreground ${selected ? 'bg-muted/60' : ''}`}
+                            >
+                              <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-transparent'}`}>
+                                {selected && <Check className="h-3 w-3" />}
+                              </div>
+                              <span className="flex-1 truncate">{cliente.nombre_del_negocio}</span>
+                            </CommandItem>
+                          )
+                        })}
                       </CommandGroup>
                     </CommandList>
                   </Command>
+                  {quickClientIds.length > 0 && (
+                    <div className="mt-2 pt-2 border-t flex flex-wrap gap-1">
+                      {quickClientIds.map(id => {
+                        const c = dbClientes.find(cl => cl.id === id)
+                        if (!c) return null
+                        return (
+                          <span
+                            key={id}
+                            className="inline-flex items-center gap-1 text-[11px] bg-muted text-foreground rounded px-1.5 py-0.5"
+                          >
+                            {c.nombre_del_negocio}
+                            <button
+                              onClick={() => setQuickClientIds(prev => prev.filter(i => i !== id))}
+                              className="text-muted-foreground hover:text-foreground ml-0.5"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
                 </PopoverContent>
               </Popover>
 
