@@ -226,7 +226,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ──�������────────────────────────────���──�����───────���──
+// ── Seguimiento Templates by Plan ──���������────────────────────────────���──�����───────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -1795,19 +1795,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 </PopoverTrigger>
                 <PopoverContent className="w-56 p-1" align="start">
                   <div className="text-xs text-muted-foreground px-2 py-1.5 mb-1">Agregar propiedad</div>
-                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
-                    <Tag className="h-3.5 w-3.5 text-muted-foreground" />
-                    Etiquetas
-                  </Button>
-                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
-                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                    Tiempo estimado
-                  </Button>
-                  <div className="h-px bg-border my-1" />
-                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
-                    <Link className="h-3.5 w-3.5 text-muted-foreground" />
-                    Agregar enlace
-                  </Button>
+                  <p className="text-xs text-muted-foreground px-2 py-2 italic">Próximamente</p>
                   <input
                     ref={fileInputRef}
                     type="file"
