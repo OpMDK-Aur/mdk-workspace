@@ -1987,7 +1987,7 @@ export function TaskDetailPanel() {
                           })
                         }}
                         onNavigateToClient={(clientId) => {
-                          router.push(`/dashboard/crm?client_id=${clientId}`)
+                          router.push(`/dashboard/clients/${clientId}`)
                         }}
                       />
                     </div>

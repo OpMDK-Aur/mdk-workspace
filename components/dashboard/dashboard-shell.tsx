@@ -7,6 +7,7 @@ import type { Profile, Client } from '@/lib/types'
 import { Sidebar } from './sidebar'
 import { ActiveTimerBar } from '@/components/time-tracking/active-timer-bar'
 import { NotificationAlertProvider } from './notification-alert'
+import { DashboardHeader } from './dashboard-header'
 
 interface DashboardShellProps {
   user: User
@@ -50,6 +51,7 @@ export function DashboardShell({ user, profile, clients, children }: DashboardSh
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         <ActiveTimerBar />
+        <DashboardHeader clients={clients} selectedClientId={selectedClientId} onSelectClient={setSelectedClientId} />
         <main className="flex-1 overflow-auto relative">
           {children}
         </main>
