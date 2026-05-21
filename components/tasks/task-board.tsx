@@ -1,12 +1,11 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { TaskPriority, TaskType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useTaskStore, useTaskStoreHydrated, PRIORITY_CONFIG, TYPE_CONFIG, ASSIGNEES } from '@/lib/tasks/task-store'
-import { createClient } from '@/lib/supabase/client'
 
 // Lazy load heavy components
 const KanbanView = dynamic(() => import('./kanban-view').then(m => ({ default: m.KanbanView })), {
@@ -41,17 +40,8 @@ import {
   FileText,
   X,
   Search,
-  Check,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command'
 
 export function TaskBoard() {
   const searchParams = useSearchParams()
@@ -77,7 +67,6 @@ export function TaskBoard() {
   const [newTaskOpen, setNewTaskOpen] = useState(false)
   const [newTaskMode, setNewTaskMode] = useState<'manual' | 'ai'>('manual')
   const [meetingOpen, setMeetingOpen] = useState(false)
-  const [availableClients, setAvailableClients] = useState<{ id: string; nombre_del_negocio: string }[]>([])
   
   // Track if seguimiento was already generated this session
   const seguimientoGenerated = useRef(false)
