@@ -1500,40 +1500,18 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     setIsCreating(true)
 
     try {
-      console.log('[v0] Creating reminder:', reminderName, reminderDate)
-      const { data: { user } } = await supabase.auth.getUser()
-      console.log('[v0] Current user:', user?.email)
-      let colaboradorId: string | null = null
-      if (user?.email) {
-        const { data: colab } = await supabase
-          .from('colaboradores')
-          .select('id')
-          .eq('email', user.email)
-          .single()
-        colaboradorId = colab?.id ?? null
-        console.log('[v0] Colaborador ID:', colaboradorId)
-      }
-
-      const fechaTexto = reminderDate
-        ? new Date(reminderDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })
-        : null
-
-      console.log('[v0] Inserting notification:', { colaboradorId, titulo: reminderName, fechaTexto })
-      const { error } = await supabase.from('notificaciones').insert({
-        colaborador_id: colaboradorId,
-        tipo: 'recordatorio',
-        titulo: reminderName.trim(),
-        descripcion: fechaTexto ? `Recordatorio para el ${fechaTexto}` : 'Recordatorio sin fecha',
-        referencia_id: null,
-        referencia_tipo: null,
-        leida: false,
+      const res = await fetch('/api/notifications/recordatorio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          titulo: reminderName.trim(),
+          fecha: reminderDate || null,
+        }),
       })
 
-      console.log('[v0] Insert result:', { error })
-      if (error) {
-        console.error('[v0] Error creating reminder:', error)
-      } else {
-        console.log('[v0] Reminder created successfully')
+      if (!res.ok) {
+        const data = await res.json()
+        console.error('[v0] Error creating reminder:', data.error)
       }
 
       setReminderName('')
