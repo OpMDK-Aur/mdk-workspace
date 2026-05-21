@@ -83,12 +83,14 @@ export function TaskFilesSection({ task, currentUserId, colaboradorNombre }: Tas
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
+    console.log('[v0] TaskFilesSection handleUpload called, files:', files?.length)
     if (!files || files.length === 0) return
 
     setUploading(true)
     setError(null)
 
     for (const file of Array.from(files)) {
+      console.log('[v0] Uploading file:', file.name, file.size, file.type)
       const sanitizedName = file.name
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -96,6 +98,7 @@ export function TaskFilesSection({ task, currentUserId, colaboradorNombre }: Tas
         .replace(/[^a-zA-Z0-9_.-]/g, '')
 
       const path = `${currentUserId || 'anon'}/${task.id}/${Date.now()}-${sanitizedName}`
+      console.log('[v0] Storage path:', path)
 
       try {
         const { error: uploadError } = await supabase.storage
@@ -103,13 +106,16 @@ export function TaskFilesSection({ task, currentUserId, colaboradorNombre }: Tas
           .upload(path, file)
 
         if (uploadError) {
+          console.error('[v0] Storage upload error:', uploadError)
           setError(`Error al subir ${file.name}: ${uploadError.message}`)
           continue
         }
 
+        console.log('[v0] Storage upload success, getting public URL')
         const { data: { publicUrl } } = supabase.storage
           .from('task-files')
           .getPublicUrl(path)
+        console.log('[v0] Public URL:', publicUrl)
 
         const { data: dbData, error: dbError } = await supabase
           .from('tarea_adjuntos')
