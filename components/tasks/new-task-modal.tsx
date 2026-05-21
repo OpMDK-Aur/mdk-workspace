@@ -226,7 +226,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ──�����������────────────────────────────���──�����───────���──
+// ── Seguimiento Templates by Plan ──�������������────────────────────────────���──�����───────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -927,9 +927,10 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   const [quickComment, setQuickComment] = useState('')
   const [quickDescription, setQuickDescription] = useState('')
   const [quickStatus, setQuickStatus] = useState<string>('pendiente')
-  const [activeTab, setActiveTab] = useState<'tarea' | 'documento' | 'recordatorio'>('tarea')
-  const [reminderName, setReminderName] = useState('')
+  const [activeTab, setActiveTab] = useState<'tarea' | 'documento'>('tarea')
   const [reminderDate, setReminderDate] = useState<string>('')
+  const [reminderTime, setReminderTime] = useState<string>('')
+  const [reminderAssignee, setReminderAssignee] = useState<string>('')
   const [pendingAttachments, setPendingAttachments] = useState<{ url: string; name: string; mimeType: string }[]>([])
   const [isUploadingFile, setIsUploadingFile] = useState(false)
   
@@ -1477,6 +1478,21 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       )
     }
 
+    // Create reminder if configured
+    if ((reminderDate || reminderTime) && reminderAssignee && newTaskId) {
+      await fetch('/api/notifications/recordatorio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId: newTaskId,
+          tituloTarea: quickTitle,
+          fecha: reminderDate || null,
+          hora: reminderTime || null,
+          colaboradorIds: [reminderAssignee],
+        }),
+      })
+    }
+
     setIsCreating(false)
     // Reset quick mode state
     setQuickTitle('')
@@ -1489,40 +1505,15 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     setQuickDueDate('')
     setQuickComment('')
     setPendingAttachments([])
+    setReminderDate('')
+    setReminderTime('')
+    setReminderAssignee('')
     setActiveTab('tarea')
     setQuickMode(false)
     onOpenChange(false)
   }
 
-  const handleCreateReminder = async () => {
-    if (!reminderName.trim()) return
-
-    setIsCreating(true)
-
-    try {
-      const res = await fetch('/api/notifications/recordatorio', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          titulo: reminderName.trim(),
-          fecha: reminderDate || null,
-        }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        console.error('[v0] Error creating reminder:', data.error)
-      }
-
-      setReminderName('')
-      setReminderDate('')
-      onOpenChange(false)
-    } catch (error) {
-      console.error('[v0] Error:', error)
-    } finally {
-      setIsCreating(false)
-    }
-  }
+  // Rest of component code continues below
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1536,12 +1527,6 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:text-foreground"
               >
                 Tarea
-              </TabsTrigger>
-              <TabsTrigger
-                value="recordatorio"
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:text-foreground"
-              >
-                Recordatorio
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -1883,6 +1868,76 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
               </div>
             )}
 
+            {/* Reminder section */}
+            <div className="px-5 py-3 border-t bg-muted/20">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Crear recordatorio</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                      <CalendarDays className="h-3.5 w-3.5" />
+                      {reminderDate
+                        ? new Date(reminderDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+                        : 'Fecha'
+                      }
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-3" align="start">
+                    <input
+                      type="date"
+                      value={reminderDate}
+                      onChange={(e) => setReminderDate(e.target.value)}
+                      className="bg-transparent border border-border rounded px-2 py-1 text-sm"
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                      <Clock className="h-3.5 w-3.5" />
+                      {reminderTime || 'Hora'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-3" align="start">
+                    <input
+                      type="time"
+                      value={reminderTime}
+                      onChange={(e) => setReminderTime(e.target.value)}
+                      className="bg-transparent border border-border rounded px-2 py-1 text-sm"
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                      <Users className="h-3.5 w-3.5" />
+                      {reminderAssignee ? colaboradores.find(c => c.id === reminderAssignee)?.nombre || 'Para' : 'Para'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-56 p-1" align="start">
+                    {colaboradores.map((colab) => (
+                      <Button
+                        key={colab.id}
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-xs h-8"
+                        onClick={() => setReminderAssignee(colab.id)}
+                      >
+                        <Avatar className="h-4 w-4 mr-2">
+                          <AvatarImage src={colab.avatar_url || ''} />
+                          <AvatarFallback className="text-[8px]">{colab.nombre.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        {colab.nombre}
+                        {reminderAssignee === colab.id && <Check className="h-3 w-3 ml-auto" />}
+                      </Button>
+                    ))}
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+
             {/* Footer */}
             <div className="flex items-center justify-end px-5 py-3 border-t">
               <div className="flex items-center gap-2">
@@ -1899,77 +1954,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
           </div>
         )}
 
-        {/* Reminder tab */}
-        {activeTab === 'recordatorio' && (
-          <div className="flex flex-col">
-            <div className="px-5 pt-5 pb-2">
-              <input
-                type="text"
-                placeholder={'Escribe el nombre del recordatorio o "/" para los comandos'}
-                value={reminderName}
-                onChange={(e) => setReminderName(e.target.value)}
-                className="w-full text-base border-0 outline-none bg-transparent placeholder:text-muted-foreground/40"
-                autoFocus
-              />
-            </div>
-
-            <div className="px-5 py-2">
-              <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-                <FileText className="h-4 w-4" />
-                Agregar descripcion
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 px-5 py-3">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                    <CalendarDays className="h-3.5 w-3.5" />
-                    {reminderDate
-                      ? new Date(reminderDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
-                      : 'Hoy'
-                    }
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-3" align="start">
-                  <input
-                    type="date"
-                    value={reminderDate}
-                    onChange={(e) => setReminderDate(e.target.value)}
-                    className="bg-transparent border border-border rounded px-2 py-1 text-sm"
-                  />
-                </PopoverContent>
-              </Popover>
-
-              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                <Avatar className="h-4 w-4">
-                  <AvatarFallback className="text-[8px] bg-primary text-primary-foreground">E</AvatarFallback>
-                </Avatar>
-                Para mi
-              </Button>
-
-              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                <Bell className="h-3.5 w-3.5" />
-                Notificarme
-              </Button>
-            </div>
-
-            <div className="flex items-center justify-end px-5 py-3 border-t mt-6">
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Paperclip className="h-4 w-4" />
-                </Button>
-                <Button
-                  className="h-8 px-4"
-                  disabled={!reminderName.trim() || isCreating}
-                  onClick={handleCreateReminder}
-                >
-                  {isCreating ? 'Creando...' : 'Crear recordatorio'}
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Reminder tab - REMOVED, now integrated into tarea view */}
       </DialogContent>
     </Dialog>
   )
