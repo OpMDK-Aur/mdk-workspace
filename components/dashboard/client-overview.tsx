@@ -231,67 +231,102 @@ function EditablePersonChip({
   onChange: (id: string | null) => void
   updating: boolean
 }) {
+  return null // replaced by EditableMultiPersonChip
+}
+
+// ── Multi-person chip (editable, multi-select) ────────────────────────────────
+function EditableMultiPersonChip({
+  profileIds,
+  label,
+  profiles,
+  onChange,
+  updating,
+}: {
+  profileIds: string[]
+  label: string
+  profiles: Profile[]
+  onChange: (ids: string[]) => void
+  updating: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const selectedProfiles = profiles.filter(p => profileIds.includes(p.id))
+
+  const toggle = (id: string) => {
+    const next = profileIds.includes(id)
+      ? profileIds.filter(x => x !== id)
+      : [...profileIds, id]
+    onChange(next)
+  }
+
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-xs text-muted-foreground font-medium">{label}</span>
-      <DropdownMenu>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild disabled={updating}>
-          <button className="flex items-center gap-2 hover:bg-muted/50 rounded-lg p-1 -m-1 transition-colors cursor-pointer text-left">
-            {profile ? (
-              <>
-                <Avatar className="h-8 w-8 shrink-0">
-                  {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={profile.full_name ?? ''} />}
-                  <AvatarFallback className="bg-primary/20 text-primary text-xs">
-                    {initials(profile.full_name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{profile.full_name ?? profile.email}</p>
-                  <p className="text-[11px] text-muted-foreground">{getRoleName(profile.role)}</p>
+          <button className="flex items-start gap-2 hover:bg-muted/50 rounded-lg p-1 -m-1 transition-colors cursor-pointer text-left w-full">
+            <div className="flex-1 min-w-0">
+              {selectedProfiles.length === 0 ? (
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full border-2 border-dashed border-border flex items-center justify-center shrink-0 text-muted-foreground">
+                    <Users className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="text-sm text-muted-foreground">Sin asignar</span>
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="h-8 w-8 rounded-full border-2 border-dashed border-border flex items-center justify-center shrink-0 text-muted-foreground">
-                  <Users className="h-3.5 w-3.5" />
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {selectedProfiles.map(p => (
+                    <div key={p.id} className="flex items-center gap-2">
+                      <Avatar className="h-7 w-7 shrink-0">
+                        {p.avatar_url && <AvatarImage src={p.avatar_url} alt={p.full_name ?? ''} />}
+                        <AvatarFallback className="bg-primary/20 text-primary text-[10px]">
+                          {initials(p.full_name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate leading-tight">{p.full_name ?? p.email}</p>
+                        <p className="text-[10px] text-muted-foreground">{getRoleName(p.role)}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <span className="text-sm text-muted-foreground">Sin asignar</span>
-              </>
-            )}
+              )}
+            </div>
             {updating ? (
-              <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-spin ml-auto" />
+              <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0 mt-1" />
             ) : (
-              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" />
             )}
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuItem 
-            onClick={() => onChange(null)}
+        <DropdownMenuContent align="start" className="w-60">
+          <DropdownMenuItem
+            onClick={(e) => { e.preventDefault(); onChange([]) }}
             className="gap-2 cursor-pointer"
           >
             <div className="h-6 w-6 rounded-full border-2 border-dashed border-border flex items-center justify-center shrink-0">
               <Users className="h-3 w-3 text-muted-foreground" />
             </div>
-            <span className="text-muted-foreground">Sin asignar</span>
-            {!profile && <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-primary" />}
+            <span className="text-muted-foreground flex-1">Limpiar selección</span>
           </DropdownMenuItem>
-          {profiles.map(p => (
-            <DropdownMenuItem 
-              key={p.id} 
-              onClick={() => onChange(p.id)}
-              className="gap-2 cursor-pointer"
-            >
-              <Avatar className="h-6 w-6 shrink-0">
-                {p.avatar_url && <AvatarImage src={p.avatar_url} alt={p.full_name ?? ''} />}
-                <AvatarFallback className="bg-primary/20 text-primary text-[10px]">
-                  {initials(p.full_name)}
-                </AvatarFallback>
-              </Avatar>
-              <span className="truncate">{p.full_name ?? p.email}</span>
-              {profile?.id === p.id && <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-primary" />}
-            </DropdownMenuItem>
-          ))}
+          {profiles.map(p => {
+            const selected = profileIds.includes(p.id)
+            return (
+              <DropdownMenuItem
+                key={p.id}
+                onClick={(e) => { e.preventDefault(); toggle(p.id) }}
+                className="gap-2 cursor-pointer"
+              >
+                <Avatar className="h-6 w-6 shrink-0">
+                  {p.avatar_url && <AvatarImage src={p.avatar_url} alt={p.full_name ?? ''} />}
+                  <AvatarFallback className="bg-primary/20 text-primary text-[10px]">
+                    {initials(p.full_name)}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="truncate flex-1">{p.full_name ?? p.email}</span>
+                {selected && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+              </DropdownMenuItem>
+            )
+          })}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -367,8 +402,14 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [semaforoId, setSemaforoId] = useState(client.semaforo_id)
   const currentSemaforo = getSemaforoById(semaforoId)
   const [updatingStatus, setUpdatingStatus] = useState(false)
-  const [pmId, setPmId] = useState(client.project_manager_id)
-  const [amId, setAmId] = useState(client.account_manager_id)
+  const [pmIds, setPmIds] = useState<string[]>(() => {
+    if (client.project_manager_ids?.length) return client.project_manager_ids
+    return client.project_manager_id ? [client.project_manager_id] : []
+  })
+  const [amIds, setAmIds] = useState<string[]>(() => {
+    if (client.account_manager_ids?.length) return client.account_manager_ids
+    return client.account_manager_id ? [client.account_manager_id] : []
+  })
   const [updatingPM, setUpdatingPM] = useState(false)
   const [updatingAM, setUpdatingAM] = useState(false)
   
@@ -419,17 +460,17 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     }
   }
 
-  const handlePMChange = async (newPmId: string | null) => {
+  const handlePMChange = async (newIds: string[]) => {
     setUpdatingPM(true)
     try {
       const { error } = await supabase
         .from('clientes')
-        .update({ project_manager_id: newPmId })
+        .update({ 
+          project_manager_ids: newIds,
+          project_manager_id: newIds[0] ?? null,
+        })
         .eq('id', client.id)
-      
-      if (!error) {
-        setPmId(newPmId)
-      }
+      if (!error) setPmIds(newIds)
     } catch (e) {
       console.error('Error updating PM:', e)
     } finally {
@@ -437,17 +478,17 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     }
   }
 
-  const handleAMChange = async (newAmId: string | null) => {
+  const handleAMChange = async (newIds: string[]) => {
     setUpdatingAM(true)
     try {
       const { error } = await supabase
         .from('clientes')
-        .update({ account_manager_id: newAmId })
+        .update({ 
+          account_manager_ids: newIds,
+          account_manager_id: newIds[0] ?? null,
+        })
         .eq('id', client.id)
-      
-      if (!error) {
-        setAmId(newAmId)
-      }
+      if (!error) setAmIds(newIds)
     } catch (e) {
       console.error('Error updating AM:', e)
     } finally {
@@ -486,8 +527,6 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     setEditingFee(false)
   }
 
-  const pm = profiles.find(p => p.id === pmId) ?? null
-  const am = profiles.find(p => p.id === amId) ?? null
   const platforms = getActivePlatforms(client)
 
   // Dedication status
@@ -710,9 +749,9 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card>
             <CardContent className="pt-5 pb-5">
-              <EditablePersonChip 
-                profile={pm} 
-                label="Project Manager" 
+              <EditableMultiPersonChip
+                profileIds={pmIds}
+                label="Project Manager"
                 profiles={profiles}
                 onChange={handlePMChange}
                 updating={updatingPM}
@@ -721,9 +760,9 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           </Card>
           <Card>
             <CardContent className="pt-5 pb-5">
-              <EditablePersonChip 
-                profile={am} 
-                label="Account Manager" 
+              <EditableMultiPersonChip
+                profileIds={amIds}
+                label="Account Manager"
                 profiles={profiles}
                 onChange={handleAMChange}
                 updating={updatingAM}

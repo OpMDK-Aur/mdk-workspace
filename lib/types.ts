@@ -91,6 +91,8 @@ export interface Client {
   plan: ClientPlan
   project_manager_id: string | null
   account_manager_id: string | null
+  project_manager_ids?: string[] | null
+  account_manager_ids?: string[] | null
   landings?: Array<{ nombre: string; url: string; tipo: string }> | null
   // Nuevos campos
   servicio_id?: string[] | null // Array de UUIDs de servicios
