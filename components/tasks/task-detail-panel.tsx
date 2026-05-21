@@ -1722,10 +1722,10 @@ export function TaskDetailPanel() {
         side="right"
       >
         {/* Header - Navigation bar only */}
-        <SheetHeader className="px-4 py-2 border-b shrink-0">
-          <div className="flex items-center justify-between">
+        <SheetHeader className="px-4 py-2 border-b shrink-0 pr-12">
+          <div className="flex items-center justify-between gap-4">
             {/* Breadcrumb */}
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0 flex-1">
               <span className="truncate max-w-[120px]">
                 {task.clients?.[0]?.nombre_del_negocio || task.clientName || 'Sin cliente'}
               </span>

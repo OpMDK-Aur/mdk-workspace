@@ -42,6 +42,7 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Label } from '@/components/ui/label'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Select,
   SelectContent,
@@ -62,7 +63,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { X, Plus, MessageSquare, User, CalendarDays, Building2, MoreHorizontal, Paperclip, Bell, Clock, ChevronDown, FileText, Palette, Globe, TrendingUp, Link, Search, AlertTriangle, Mail, BarChart3, HelpCircle, Calculator, Sparkles, ArrowLeft, Check, Loader2, Zap, Coffee, PartyPopper, Flame, Calendar, Video, PenLine, Flag, Tag, Link2 } from 'lucide-react'
+import { X, Plus, MessageSquare, User, Users, CalendarDays, Building2, MoreHorizontal, Paperclip, Bell, Clock, ChevronDown, FileText, Palette, Globe, TrendingUp, Link, Search, AlertTriangle, Mail, BarChart3, HelpCircle, Calculator, Sparkles, ArrowLeft, Check, Loader2, Zap, Coffee, PartyPopper, Flame, Calendar, Video, PenLine, Flag, Tag, Link2 } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -226,7 +227,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ──���������────────────────────────────���──�����───────���──
+// ── Seguimiento Templates by Plan ──���������������────────────────────────────���──�����───────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -573,7 +574,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       ]},
       { type: 'options', key: 'addMeet', question: 'Agrego link de Google Meet?', options: [
         { label: 'Si, agregar Meet', value: 'yes', emoji: '📹' },
-        { label: 'No, es presencial', value: 'no', emoji: '🏢' },
+        { label: 'No, es presencial', value: 'no', emoji: '���' },
       ]},
       { type: 'input', key: 'attendees', question: 'Emails de los participantes (separados por coma)', placeholder: 'cliente@email.com, otro@email.com' },
       { type: 'priority' },
@@ -919,7 +920,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   const [quickTitle, setQuickTitle] = useState('')
   const [quickClientIds, setQuickClientIds] = useState<string[]>([])
   const [quickType, setQuickType] = useState<string>('')
-  const [quickPriority, setQuickPriority] = useState<TaskPriority>('media')
+  const [quickPriority, setQuickPriority] = useState<TaskPriority | ''>('')
   const [quickAssigneeIds, setQuickAssigneeIds] = useState<string[]>([])
   const [quickDueDate, setQuickDueDate] = useState(() => 
     initialDueDate ? initialDueDate.toISOString().split('T')[0] : ''
@@ -927,9 +928,11 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   const [quickComment, setQuickComment] = useState('')
   const [quickDescription, setQuickDescription] = useState('')
   const [quickStatus, setQuickStatus] = useState<string>('pendiente')
-  const [activeTab, setActiveTab] = useState<'tarea' | 'documento' | 'recordatorio'>('tarea')
-  const [reminderName, setReminderName] = useState('')
+  const [activeTab, setActiveTab] = useState<'tarea' | 'documento'>('tarea')
   const [reminderDate, setReminderDate] = useState<string>('')
+  const [reminderTime, setReminderTime] = useState<string>('')
+  const [reminderMode, setReminderMode] = useState<'asignados' | 'personalizar'>('asignados')
+  const [reminderCustomIds, setReminderCustomIds] = useState<string[]>([])
   const [pendingAttachments, setPendingAttachments] = useState<{ url: string; name: string; mimeType: string }[]>([])
   const [isUploadingFile, setIsUploadingFile] = useState(false)
   
@@ -1456,7 +1459,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       assigneeId: firstAssignee?.id || '',
       assignees,
       status: quickStatus as TaskStatus,
-      priority: quickPriority,
+      priority: (quickPriority || 'media') as TaskPriority,
       type: quickType,
       dueDate: quickDueDate ? new Date(quickDueDate + 'T12:00:00') : null,
       customFields: {},
@@ -1477,50 +1480,55 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       )
     }
 
+    // Create reminder if configured
+    if ((reminderDate || reminderTime) && newTaskId) {
+      const reminderRecipients = reminderMode === 'asignados' 
+        ? quickAssigneeIds 
+        : reminderCustomIds
+      
+      if (reminderRecipients.length > 0) {
+        await fetch('/api/notifications/recordatorio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId: newTaskId,
+            tituloTarea: quickTitle,
+            fecha: reminderDate || null,
+            hora: reminderTime || null,
+            colaboradorIds: reminderRecipients,
+          }),
+        })
+      }
+    }
+
     setIsCreating(false)
     // Reset quick mode state
     setQuickTitle('')
     setQuickDescription('')
     setQuickClientIds([])
     setQuickType('')
-    setQuickPriority('media')
+    setQuickPriority('')
     setQuickStatus('pendiente')
     setQuickAssigneeIds([])
     setQuickDueDate('')
     setQuickComment('')
     setPendingAttachments([])
+    setReminderDate('')
+    setReminderTime('')
+    setReminderMode('asignados')
+    setReminderCustomIds([])
     setActiveTab('tarea')
     setQuickMode(false)
     onOpenChange(false)
   }
 
-  const handleCreateReminder = async () => {
-    if (!reminderName.trim()) return
-
-    setIsCreating(true)
-
-    try {
-      console.log('[v0] Creating reminder:', { reminderName, reminderDate })
-      
-      // TODO: Implement reminder creation in database
-      // For now, just log the reminder
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      setReminderName('')
-      setReminderDate('')
-      onOpenChange(false)
-    } catch (error) {
-      console.error('[v0] Error:', error)
-    } finally {
-      setIsCreating(false)
-    }
-  }
+  // Rest of component code continues below
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[800px] p-0 gap-0 overflow-hidden">
         {/* Header with Tabs */}
-        <div className="flex items-center justify-between px-2 border-b">
+        <div className="flex items-center justify-between px-2 border-b pr-10">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="flex-1">
             <TabsList className="bg-transparent h-auto p-0 gap-0">
               <TabsTrigger
@@ -1529,15 +1537,9 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
               >
                 Tarea
               </TabsTrigger>
-              <TabsTrigger
-                value="recordatorio"
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:text-foreground"
-              >
-                Recordatorio
-              </TabsTrigger>
             </TabsList>
           </Tabs>
-          <div className="flex items-center gap-1 pr-2">
+          <div className="flex items-center gap-1 shrink-0">
             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
               <ChevronDown className="h-4 w-4" />
             </Button>
@@ -1611,31 +1613,39 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
                     <User className="h-3.5 w-3.5" />
-                    {quickAssigneeIds.length > 0
-                      ? dbColaboradores.find(c => c.id === quickAssigneeIds[0])?.nombre || 'Persona asignada'
-                      : 'Persona asignada'
+                    {quickAssigneeIds.length === 0
+                      ? 'Persona asignada'
+                      : quickAssigneeIds.length === 1
+                        ? dbColaboradores.find(c => c.id === quickAssigneeIds[0])?.nombre || 'Persona asignada'
+                        : `${quickAssigneeIds.length} asignados`
                     }
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-56 p-1" align="start">
                   <Command>
                     <CommandInput placeholder="Buscar..." className="h-8 text-xs" />
-                    <CommandList>
-                      <CommandEmpty>Sin resultados</CommandEmpty>
+                    <CommandList className="max-h-48 overflow-y-auto">
+                      <CommandEmpty className="text-xs text-muted-foreground py-3 text-center">Sin resultados</CommandEmpty>
                       <CommandGroup>
                         {dbColaboradores.map((colab) => (
                           <CommandItem
                             key={colab.id}
                             value={colab.nombre}
-                            onSelect={() => setQuickAssigneeIds([colab.id])}
-                            className="text-xs"
+                            onSelect={() => setQuickAssigneeIds(prev =>
+                              prev.includes(colab.id)
+                                ? prev.filter(id => id !== colab.id)
+                                : [...prev, colab.id]
+                            )}
+                            className="text-xs flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer aria-selected:bg-muted aria-selected:text-foreground data-[selected=true]:bg-muted"
                           >
-                            <Avatar className="h-5 w-5 mr-2">
+                            <Avatar className="h-6 w-6 shrink-0">
                               {colab.avatar_url && <AvatarImage src={colab.avatar_url} />}
-                              <AvatarFallback className="text-[9px]">{colab.nombre[0]}</AvatarFallback>
+                              <AvatarFallback className="text-[9px] bg-muted-foreground/20">{colab.nombre[0]}</AvatarFallback>
                             </Avatar>
-                            {colab.nombre}
-                            {quickAssigneeIds.includes(colab.id) && <Check className="h-3 w-3 ml-auto" />}
+                            <span className="flex-1 truncate">{colab.nombre}</span>
+                            {quickAssigneeIds.includes(colab.id) && (
+                              <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                            )}
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -1670,33 +1680,72 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
                     <Building2 className="h-3.5 w-3.5" />
-                    {quickClientIds.length > 0
-                      ? dbClientes.find(c => c.id === quickClientIds[0])?.nombre_del_negocio || 'Cliente'
-                      : 'Cliente'
+                    {quickClientIds.length === 0
+                      ? 'Cliente'
+                      : quickClientIds.length === 1
+                        ? dbClientes.find(c => c.id === quickClientIds[0])?.nombre_del_negocio || 'Cliente'
+                        : `${quickClientIds.length} clientes`
                     }
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-64 p-1" align="start">
+                <PopoverContent className="w-64 p-2" align="start">
+                  <div className="mb-2 px-1">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Clientes</p>
+                  </div>
                   <Command>
-                    <CommandInput placeholder="Buscar cliente..." className="h-8 text-xs" />
-                    <CommandList>
-                      <CommandEmpty>Sin resultados</CommandEmpty>
+                    <div className="relative mb-1">
+                      <CommandInput placeholder="Buscar cliente..." className="h-8 text-xs pl-8" />
+                    </div>
+                    <CommandList className="max-h-52 overflow-y-auto">
+                      <CommandEmpty className="text-xs text-muted-foreground py-3 text-center">Sin resultados</CommandEmpty>
                       <CommandGroup>
-                        {dbClientes.map((cliente) => (
-                          <CommandItem
-                            key={cliente.id}
-                            value={cliente.nombre_del_negocio}
-                            onSelect={() => setQuickClientIds([cliente.id])}
-                            className="text-xs"
-                          >
-                            <Building2 className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
-                            {cliente.nombre_del_negocio}
-                            {quickClientIds.includes(cliente.id) && <Check className="h-3 w-3 ml-auto" />}
-                          </CommandItem>
-                        ))}
+                        {dbClientes.map((cliente) => {
+                          const selected = quickClientIds.includes(cliente.id)
+                          return (
+                            <CommandItem
+                              key={cliente.id}
+                              value={cliente.nombre_del_negocio}
+                              onSelect={() =>
+                                setQuickClientIds(prev =>
+                                  prev.includes(cliente.id)
+                                    ? prev.filter(id => id !== cliente.id)
+                                    : [...prev, cliente.id]
+                                )
+                              }
+                              className={`text-xs flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer aria-selected:bg-muted aria-selected:text-foreground ${selected ? 'bg-muted/60' : ''}`}
+                            >
+                              <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-transparent'}`}>
+                                {selected && <Check className="h-3 w-3" />}
+                              </div>
+                              <span className="flex-1 truncate">{cliente.nombre_del_negocio}</span>
+                            </CommandItem>
+                          )
+                        })}
                       </CommandGroup>
                     </CommandList>
                   </Command>
+                  {quickClientIds.length > 0 && (
+                    <div className="mt-2 pt-2 border-t flex flex-wrap gap-1">
+                      {quickClientIds.map(id => {
+                        const c = dbClientes.find(cl => cl.id === id)
+                        if (!c) return null
+                        return (
+                          <span
+                            key={id}
+                            className="inline-flex items-center gap-1 text-[11px] bg-muted text-foreground rounded px-1.5 py-0.5"
+                          >
+                            {c.nombre_del_negocio}
+                            <button
+                              onClick={() => setQuickClientIds(prev => prev.filter(i => i !== id))}
+                              className="text-muted-foreground hover:text-foreground ml-0.5"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
                 </PopoverContent>
               </Popover>
 
@@ -1796,51 +1845,6 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 <PopoverContent className="w-56 p-1" align="start">
                   <div className="text-xs text-muted-foreground px-2 py-1.5 mb-1">Agregar propiedad</div>
                   <p className="text-xs text-muted-foreground px-2 py-2 italic">Próximamente</p>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const files = Array.from(e.target.files || [])
-                      if (!files.length) return
-                      setIsUploadingFile(true)
-                      for (const file of files) {
-                        try {
-                          const sanitizedName = file.name
-                            .normalize('NFD')
-                            .replace(/[\u0300-\u036f]/g, '')
-                            .replace(/\s+/g, '_')
-                            .replace(/[^a-zA-Z0-9_.-]/g, '')
-                          const path = `${currentUser?.id || 'anon'}/new/${Date.now()}-${sanitizedName}`
-
-                          const { error: uploadError } = await supabase.storage
-                            .from('task-files')
-                            .upload(path, file)
-
-                          if (uploadError) {
-                            console.error('[v0] Storage error:', uploadError)
-                            continue
-                          }
-
-                          const { data: { publicUrl } } = supabase.storage
-                            .from('task-files')
-                            .getPublicUrl(path)
-
-                          setPendingAttachments(prev => [...prev, {
-                            url: publicUrl,
-                            name: file.name,
-                            mimeType: file.type,
-                          }])
-                        } catch (error) {
-                          console.error('[v0] Upload error:', error)
-                        }
-                      }
-                      setIsUploadingFile(false)
-                      e.target.value = ''
-                    }}
-                  />
                   <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
                     <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
                     Agregar enlace
@@ -1875,93 +1879,143 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
               </div>
             )}
 
+            {/* Reminder section */}
+            <div className="px-5 py-3 border-t bg-muted/20">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Crear recordatorio</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                      <CalendarDays className="h-3.5 w-3.5" />
+                      {reminderDate
+                        ? new Date(reminderDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+                        : 'Fecha'
+                      }
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-3" align="start">
+                    <input
+                      type="date"
+                      value={reminderDate}
+                      onChange={(e) => setReminderDate(e.target.value)}
+                      className="bg-transparent border border-border rounded px-2 py-1 text-sm"
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                      <Clock className="h-3.5 w-3.5" />
+                      {reminderTime || 'Hora'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-3" align="start">
+                    <input
+                      type="time"
+                      value={reminderTime}
+                      onChange={(e) => setReminderTime(e.target.value)}
+                      className="bg-transparent border border-border rounded px-2 py-1 text-sm"
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                      <Users className="h-3.5 w-3.5" />
+                      {reminderMode === 'asignados' 
+                        ? 'Asignados' 
+                        : reminderCustomIds.length > 0 
+                          ? `${reminderCustomIds.length} seleccionado${reminderCustomIds.length > 1 ? 's' : ''}`
+                          : 'Para'
+                      }
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-60 p-2" align="start">
+                    <div className="space-y-1">
+                      <button
+                        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${reminderMode === 'asignados' ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`}
+                        onClick={() => {
+                          setReminderMode('asignados')
+                          setReminderCustomIds([])
+                        }}
+                      >
+                        <Users className="h-3.5 w-3.5 shrink-0" />
+                        <span className="flex-1 text-left">Enviar a asignados</span>
+                        {reminderMode === 'asignados' && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+                      </button>
+                      <div className="h-px bg-border my-1" />
+                      <p className="text-[11px] text-muted-foreground px-2 py-1 uppercase tracking-wide">O elige personas</p>
+                      <div className="max-h-44 overflow-y-auto space-y-0.5">
+                        {dbColaboradores.map((colab) => (
+                          <button
+                            key={colab.id}
+                            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${reminderCustomIds.includes(colab.id) ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`}
+                            onClick={() => {
+                              setReminderMode('personalizar')
+                              setReminderCustomIds(prev =>
+                                prev.includes(colab.id)
+                                  ? prev.filter(id => id !== colab.id)
+                                  : [...prev, colab.id]
+                              )
+                            }}
+                          >
+                            <Avatar className="h-6 w-6 shrink-0">
+                              {colab.avatar_url && <AvatarImage src={colab.avatar_url} />}
+                              <AvatarFallback className="text-[9px] bg-muted-foreground/20">{colab.nombre.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                            <span className="flex-1 text-left truncate">{colab.nombre}</span>
+                            {reminderCustomIds.includes(colab.id) && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+
             {/* Footer */}
             <div className="flex items-center justify-end px-5 py-3 border-t">
               <div className="flex items-center gap-2">
-                <Button
-                  className="h-8 px-4"
-                  onClick={handleQuickCreate}
-                  disabled={!quickTitle.trim() || isCreating}
-                >
-                  {isCreating ? 'Creando...' : 'Crear Tarea'}
-                  <ChevronDown className="h-3 w-3 ml-1" />
-                </Button>
+                {(() => {
+                  const missing: string[] = []
+                  if (!quickTitle.trim()) missing.push('nombre')
+                  if (quickAssigneeIds.length === 0) missing.push('persona asignada')
+                  if (quickClientIds.length === 0) missing.push('cliente')
+                  if (!quickPriority) missing.push('prioridad')
+                  const isValid = missing.length === 0
+                  return (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>
+                            <Button
+                              className="h-8 px-4"
+                              onClick={handleQuickCreate}
+                              disabled={!isValid || isCreating}
+                            >
+                              {isCreating ? 'Creando...' : 'Crear Tarea'}
+                              <ChevronDown className="h-3 w-3 ml-1" />
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        {!isValid && (
+                          <TooltipContent side="top" className="text-xs">
+                            Falta: {missing.join(', ')}
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
+                    </TooltipProvider>
+                  )
+                })()}
               </div>
             </div>
           </div>
         )}
 
-        {/* Reminder tab */}
-        {activeTab === 'recordatorio' && (
-          <div className="flex flex-col">
-            <div className="px-5 pt-5 pb-2">
-              <input
-                type="text"
-                placeholder={'Escribe el nombre del recordatorio o "/" para los comandos'}
-                value={reminderName}
-                onChange={(e) => setReminderName(e.target.value)}
-                className="w-full text-base border-0 outline-none bg-transparent placeholder:text-muted-foreground/40"
-                autoFocus
-              />
-            </div>
-
-            <div className="px-5 py-2">
-              <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-                <FileText className="h-4 w-4" />
-                Agregar descripcion
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 px-5 py-3">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                    <CalendarDays className="h-3.5 w-3.5" />
-                    {reminderDate
-                      ? new Date(reminderDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
-                      : 'Hoy'
-                    }
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-3" align="start">
-                  <input
-                    type="date"
-                    value={reminderDate}
-                    onChange={(e) => setReminderDate(e.target.value)}
-                    className="bg-transparent border border-border rounded px-2 py-1 text-sm"
-                  />
-                </PopoverContent>
-              </Popover>
-
-              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                <Avatar className="h-4 w-4">
-                  <AvatarFallback className="text-[8px] bg-primary text-primary-foreground">E</AvatarFallback>
-                </Avatar>
-                Para mi
-              </Button>
-
-              <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                <Bell className="h-3.5 w-3.5" />
-                Notificarme
-              </Button>
-            </div>
-
-            <div className="flex items-center justify-end px-5 py-3 border-t mt-6">
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Paperclip className="h-4 w-4" />
-                </Button>
-                <Button
-                  className="h-8 px-4"
-                  disabled={!reminderName.trim() || isCreating}
-                  onClick={handleCreateReminder}
-                >
-                  {isCreating ? 'Creando...' : 'Crear recordatorio'}
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Reminder tab - REMOVED, now integrated into tarea view */}
       </DialogContent>
     </Dialog>
   )

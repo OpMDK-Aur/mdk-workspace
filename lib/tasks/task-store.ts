@@ -1069,6 +1069,18 @@ updateTaskStatus: async (taskId, status) => {
   if (error) {
     console.error('Error updating task status:', error)
   }
+
+  // If task is marked as completed, delete reminder notifications for this task
+  if (status === 'realizada') {
+    await supabase
+      .from('notificaciones')
+      .delete()
+      .eq('tipo', 'recordatorio')
+      .eq('referencia_id', taskId)
+
+    // Also delete by title match for reminders without referencia_id
+    // (reminders created standalone without a task reference)
+  }
   
   // Update local state
   set((state) => ({
@@ -1210,27 +1222,27 @@ addTask: async (taskData) => {
     }
   }
   
-  // Notify assigned users about the new task
+  // Notify assigned users about the new task via server API (bypasses RLS)
+  console.log('[v0] addTask assigneeIds:', assigneeIds, 'createdById:', taskData.createdById)
   const assignedColabIds = assigneeIds.filter(uid => uid && uid !== taskData.createdById)
+  console.log('[v0] Filtered assignedColabIds for notification:', assignedColabIds)
   if (assignedColabIds.length > 0) {
-    const notifications = assignedColabIds.map(colaboradorId => ({
-      colaborador_id: colaboradorId,
-      tipo: 'tarea_asignada',
-      titulo: 'Nueva tarea asignada',
-      descripcion: taskData.title,
-      referencia_id: id,
-      referencia_tipo: 'tarea',
-      cliente_id: clientIds[0] || null,
-      leida: false,
-    }))
-    
-    const { error: notifError } = await supabase
-      .from('notificaciones')
-      .insert(notifications)
-    
-    if (notifError) {
-      console.error('[v0] Error creating task assignment notifications:', notifError)
-    }
+    console.log('[v0] Calling tarea-asignada API with:', { taskId: id, titulo: taskData.title, colaboradorIds: assignedColabIds })
+    fetch('/api/notifications/tarea-asignada', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: id,
+        titulo: taskData.title,
+        colaboradorIds: assignedColabIds,
+        clienteId: clientIds[0] || null,
+      }),
+    })
+      .then(res => res.json())
+      .then(data => console.log('[v0] tarea-asignada API response:', data))
+      .catch(err => console.error('[v0] Error calling tarea-asignada API:', err))
+  } else {
+    console.log('[v0] No assignees to notify (empty or self-assigned)')
   }
   
   // Update local state
