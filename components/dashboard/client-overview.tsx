@@ -333,6 +333,90 @@ function EditableMultiPersonChip({
   )
 }
 
+// ── Multi-account editor (for Meta/Google IDs) ────────────────────────────────
+function EditableAccountsEditor({
+  accounts,
+  label,
+  platform,
+  onChange,
+  updating,
+}: {
+  accounts: string[]
+  label: string
+  platform: 'meta' | 'google'
+  onChange: (ids: string[]) => void
+  updating: boolean
+}) {
+  const [input, setInput] = useState('')
+
+  const addAccount = (id: string) => {
+    const trimmed = id.trim()
+    if (trimmed && !accounts.includes(trimmed)) {
+      onChange([...accounts, trimmed])
+      setInput('')
+    }
+  }
+
+  const removeAccount = (id: string) => {
+    onChange(accounts.filter(a => a !== id))
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-xs text-muted-foreground font-medium">{label}</span>
+      <div className="flex flex-col gap-2">
+        {accounts.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {accounts.map(acc => (
+              <div
+                key={acc}
+                className="inline-flex items-center gap-1.5 bg-muted text-sm text-foreground rounded-md px-2 py-1"
+              >
+                <code className="text-xs font-mono">{acc}</code>
+                <button
+                  onClick={() => removeAccount(acc)}
+                  disabled={updating}
+                  className="text-muted-foreground hover:text-foreground ml-0.5"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <Input
+            type="text"
+            placeholder={platform === 'meta' ? 'act_...' : 'Customer ID'}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                addAccount(input)
+              }
+            }}
+            disabled={updating}
+            className="h-8 text-xs flex-1"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => addAccount(input)}
+            disabled={!input.trim() || updating}
+            className="h-8"
+          >
+            Agregar
+          </Button>
+        </div>
+        {accounts.length === 0 && (
+          <p className="text-xs text-muted-foreground">Sin cuentas agregadas</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Coming soon block ─────────────────────────────────────────────────────────
 function ComingSoonBlock({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
@@ -410,8 +494,18 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     if (client.account_manager_ids?.length) return client.account_manager_ids
     return client.account_manager_id ? [client.account_manager_id] : []
   })
+  const [metaIds, setMetaIds] = useState<string[]>(() => {
+    if (client.meta_ads_account_ids?.length) return client.meta_ads_account_ids
+    return client.meta_ads_account_id ? [client.meta_ads_account_id] : []
+  })
+  const [googleIds, setGoogleIds] = useState<string[]>(() => {
+    if (client.google_ads_customer_ids?.length) return client.google_ads_customer_ids
+    return client.google_ads_customer_id ? [client.google_ads_customer_id] : []
+  })
   const [updatingPM, setUpdatingPM] = useState(false)
   const [updatingAM, setUpdatingAM] = useState(false)
+  const [updatingMeta, setUpdatingMeta] = useState(false)
+  const [updatingGoogle, setUpdatingGoogle] = useState(false)
   
   // Fee editing
   const [editingFee, setEditingFee] = useState(false)
@@ -496,6 +590,42 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     }
   }
 
+  const handleMetaChange = async (newIds: string[]) => {
+    setUpdatingMeta(true)
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .update({ 
+          meta_ads_account_ids: newIds,
+          meta_ads_account_id: newIds[0] ?? null,
+        })
+        .eq('id', client.id)
+      if (!error) setMetaIds(newIds)
+    } catch (e) {
+      console.error('Error updating Meta accounts:', e)
+    } finally {
+      setUpdatingMeta(false)
+    }
+  }
+
+  const handleGoogleChange = async (newIds: string[]) => {
+    setUpdatingGoogle(true)
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .update({ 
+          google_ads_customer_ids: newIds,
+          google_ads_customer_id: newIds[0] ?? null,
+        })
+        .eq('id', client.id)
+      if (!error) setGoogleIds(newIds)
+    } catch (e) {
+      console.error('Error updating Google accounts:', e)
+    } finally {
+      setUpdatingGoogle(false)
+    }
+  }
+
   const handleSaveFee = async () => {
     setSavingFee(true)
     try {
@@ -543,71 +673,65 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
     try {
       // Meta — endpoint expects `account_id`, returns campaigns[].id/.name
-      if (client.meta_ads_account_id) {
-        const params = new URLSearchParams({
-          account_id:  client.meta_ads_account_id,
-          date_range:  p,
-          start_date:  start,
-          end_date:    end,
-        })
-        const res  = await fetch(`/api/ads/meta?${params}`)
-        const data = await res.json()
-        if (data.campaigns) {
-          for (const c of data.campaigns) {
-            collected.push({
-              clientId:     client.id,
-              clientName:   client.business_name,
-              campaignId:   c.id,
-              campaignName: c.name,
-              platform:     'meta',
-              budget:       null,
-              daysToEnd:    null,
-              leads:        Number(c.leads ?? 0),
-              leadType:     c.objective ?? '',
-              cpl:          Number(c.cpl ?? 0),
-              ctr:          Number(c.ctr ?? 0),
-              impressions:  Number(c.impressions ?? 0),
-              clicks:       Number(c.clicks ?? 0),
-              spend:        Number(c.spend ?? 0),
-              crmContacts:  0,
+      const metaAccountIds = metaIds.length > 0 ? metaIds : (client.meta_ads_account_id ? [client.meta_ads_account_id] : [])
+      if (metaAccountIds.length > 0) {
+        for (const account_id of metaAccountIds) {
+          const params = new URLSearchParams({
+            q: 'campaigns',
+            fields: 'id,name',
+            account_id: account_id,
+          })
+          const res = await fetch(`/api/ads/meta?${params}`)
+          const json = (await res.json()) as { data: Array<{ id: string; name: string }> }
+          for (const campaign of json.data) {
+            rows.push({
+              campaignId: campaign.id,
+              campaignName: campaign.name,
+              platform: 'meta',
+              spend: 0,
+              budget: 0,
+              leadType: '',
             })
           }
         }
       }
 
       // Google — endpoint expects `customer_id`, returns campaigns[].id/.name
-      if (client.google_ads_customer_id) {
-        const params = new URLSearchParams({
-          customer_id: client.google_ads_customer_id,
-          date_range:  p,
-          start_date:  start,
-          end_date:    end,
-        })
-        const res  = await fetch(`/api/ads/google?${params}`)
-        const data = await res.json()
-        if (data.campaigns) {
-          for (const c of data.campaigns) {
-            const spend       = Number(c.spend ?? (Number(c.cost_micros ?? 0) / 1_000_000))
-            const leads       = Number(c.leads ?? c.conversions ?? 0)
-            const impressions = Number(c.impressions ?? 0)
-            const clicks      = Number(c.clicks ?? 0)
-            collected.push({
-              clientId:     client.id,
-              clientName:   client.business_name,
-              campaignId:   c.id,
-              campaignName: c.name,
-              platform:     'google',
-              budget:       null,
-              daysToEnd:    null,
-              leads,
-              leadType:     c.campaign_type ?? c.advertising_channel_type ?? '',
-              cpl:          Number(c.cpl ?? (leads > 0 ? spend / leads : 0)),
-              ctr:          Number(c.ctr ?? (impressions > 0 ? (clicks / impressions) * 100 : 0)),
-              impressions,
-              clicks,
-              spend,
-              crmContacts:  0,
-            })
+      const googleCustomerIds = googleIds.length > 0 ? googleIds : (client.google_ads_customer_id ? [client.google_ads_customer_id] : [])
+      if (googleCustomerIds.length > 0) {
+        for (const customer_id of googleCustomerIds) {
+          const params = new URLSearchParams({
+            customer_id: customer_id,
+            date_range:  p,
+            start_date:  start,
+            end_date:    end,
+          })
+          const res  = await fetch(`/api/ads/google?${params}`)
+          const data = await res.json()
+          if (data.campaigns) {
+            for (const c of data.campaigns) {
+              const spend       = Number(c.spend ?? (Number(c.cost_micros ?? 0) / 1_000_000))
+              const leads       = Number(c.leads ?? c.conversions ?? 0)
+              const impressions = Number(c.impressions ?? 0)
+              const clicks      = Number(c.clicks ?? 0)
+              collected.push({
+                clientId:     client.id,
+                clientName:   client.business_name,
+                campaignId:   c.id,
+                campaignName: c.name,
+                platform:     'google',
+                budget:       null,
+                daysToEnd:    null,
+                leads,
+                leadType:     c.campaign_type ?? c.advertising_channel_type ?? '',
+                cpl:          Number(c.cpl ?? (leads > 0 ? spend / leads : 0)),
+                ctr:          Number(c.ctr ?? (impressions > 0 ? (clicks / impressions) * 100 : 0)),
+                impressions,
+                clicks,
+                spend,
+                crmContacts:  0,
+              })
+            }
           }
         }
       }
@@ -766,6 +890,30 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 profiles={profiles}
                 onChange={handleAMChange}
                 updating={updatingAM}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-5 pb-5">
+              <EditableAccountsEditor
+                accounts={metaIds}
+                label="Meta Ads"
+                platform="meta"
+                onChange={handleMetaChange}
+                updating={updatingMeta}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-5 pb-5">
+              <EditableAccountsEditor
+                accounts={googleIds}
+                label="Google Ads"
+                platform="google"
+                onChange={handleGoogleChange}
+                updating={updatingGoogle}
               />
             </CardContent>
           </Card>

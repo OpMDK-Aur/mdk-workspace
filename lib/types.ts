@@ -80,6 +80,8 @@ export interface Client {
   nps_score?: number | null
   google_ads_customer_id: string | null
   meta_ads_account_id: string | null
+  google_ads_customer_ids?: string[] | null
+  meta_ads_account_ids?: string[] | null
   crm_type: string | null
   crm_tipo?: string | null
   crm_url?: string | null
@@ -298,7 +300,7 @@ export interface ClientBudgetAlert {
   meta_ads: BudgetPlatformSummary | null
 }
 
-// ── Service Map (Mapa de Servicio) ────────────────────────────────────────────
+// ─��� Service Map (Mapa de Servicio) ────────────────────────────────────────────
 
 export type TipoServicio = 'esencial' | 'estrategico'
 
