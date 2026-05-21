@@ -1805,51 +1805,6 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 <PopoverContent className="w-56 p-1" align="start">
                   <div className="text-xs text-muted-foreground px-2 py-1.5 mb-1">Agregar propiedad</div>
                   <p className="text-xs text-muted-foreground px-2 py-2 italic">Próximamente</p>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const files = Array.from(e.target.files || [])
-                      if (!files.length) return
-                      setIsUploadingFile(true)
-                      for (const file of files) {
-                        try {
-                          const sanitizedName = file.name
-                            .normalize('NFD')
-                            .replace(/[\u0300-\u036f]/g, '')
-                            .replace(/\s+/g, '_')
-                            .replace(/[^a-zA-Z0-9_.-]/g, '')
-                          const path = `${currentUser?.id || 'anon'}/new/${Date.now()}-${sanitizedName}`
-
-                          const { error: uploadError } = await supabase.storage
-                            .from('task-files')
-                            .upload(path, file)
-
-                          if (uploadError) {
-                            console.error('[v0] Storage error:', uploadError)
-                            continue
-                          }
-
-                          const { data: { publicUrl } } = supabase.storage
-                            .from('task-files')
-                            .getPublicUrl(path)
-
-                          setPendingAttachments(prev => [...prev, {
-                            url: publicUrl,
-                            name: file.name,
-                            mimeType: file.type,
-                          }])
-                        } catch (error) {
-                          console.error('[v0] Upload error:', error)
-                        }
-                      }
-                      setIsUploadingFile(false)
-                      e.target.value = ''
-                    }}
-                  />
                   <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
                     <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
                     Agregar enlace
