@@ -121,12 +121,13 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
       
       setCurrentUserId(colaborador.id)
       
-      // First delete ALL notifications for this user, then generate fresh ones
+      // Only delete tarea_vence notifications, preserve task assignment and other types
       const supabase2 = createClient()
       await supabase2
         .from('notificaciones')
         .delete()
         .eq('colaborador_id', colaborador.id)
+        .eq('tipo', 'tarea_vence')
       
       // Generate new notifications for overdue tasks only
       try {
@@ -193,12 +194,12 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
     if (!currentUserId) return
     setLoading(true)
     
-    // Delete all notifications for this user
-    const supabase = createClient()
+    // Only delete tarea_vence notifications, preserve task assignment notifications
     await supabase
       .from('notificaciones')
       .delete()
       .eq('colaborador_id', currentUserId)
+      .eq('tipo', 'tarea_vence')
     
     // Generate fresh notifications
     await fetch('/api/notifications/generate', { method: 'POST' })
@@ -322,7 +323,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
                   {group.label}
                 </div>
                 {group.items.map((notif) => {
-                  const isTareaAsignada = notif.titulo === 'Nueva tarea asignada'
+                  const isTareaAsignada = notif.titulo === 'Nueva tarea'
                   const config = isTareaAsignada
                     ? { icon: UserPlus, color: 'text-violet-400', bgColor: 'bg-violet-500/10', label: 'Tarea asignada' }
                     : TIPO_CONFIG[notif.tipo] || TIPO_CONFIG.comentario

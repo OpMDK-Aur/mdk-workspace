@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     const notifications = colaboradorIds.map((colaboradorId: string) => ({
       colaborador_id: colaboradorId,
       tipo: 'comentario',
-      titulo: 'Nueva tarea asignada',
+      titulo: 'Nueva tarea',
       descripcion: titulo,
       referencia_id: taskId,
       referencia_tipo: 'tarea',
@@ -26,11 +26,14 @@ export async function POST(request: Request) {
       .from('notificaciones')
       .insert(notifications)
 
+    console.log('[v0] tarea-asignada insert result:', { error, count: notifications.length })
+
     if (error) {
       console.error('[v0] Error inserting tarea-asignada notifications:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    console.log('[v0] tarea-asignada notifications created successfully:', { count: notifications.length })
     return NextResponse.json({ success: true, created: notifications.length })
   } catch (error) {
     console.error('[v0] tarea-asignada API error:', error)
