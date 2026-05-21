@@ -24,6 +24,7 @@ interface DbCliente {
 interface DbColaborador {
   id: string
   nombre: string
+  apellido?: string | null
   avatar_url: string | null
 }
 
@@ -949,6 +950,9 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   const [dbTiposTarea, setDbTiposTarea] = useState<DbTipoTarea[]>([])
   const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; apellido?: string; avatar_url?: string | null } | null>(null)
   
+  const fullName = (colab: DbColaborador) => 
+    [colab.nombre, colab.apellido].filter(Boolean).join(' ')
+  
   // Load dynamic data when modal opens
   useEffect(() => {
     if (!open) return
@@ -967,7 +971,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       
   const [clientesRes, colabRes, tiposRes] = await Promise.all([
   supabase.from('clientes').select('id, nombre_del_negocio, plan').order('nombre_del_negocio'),
-        supabase.from('colaboradores').select('id, nombre, avatar_url').order('nombre'),
+        supabase.from('colaboradores').select('id, nombre, apellido, avatar_url').order('nombre'),
         supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
       ])
       
@@ -1359,7 +1363,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
             content: 'Que necesitas para la landing?',
             options: [
               { label: 'Diseno de landing en Wordpress', value: 'landing_wordpress', emoji: '🔵', hint: '2-3 dias habiles' },
-              { label: 'Diseno de landing en GoHighLevel', value: 'landing_ghl', emoji: '🟢', hint: '2-3 dias habiles' },
+              { label: 'Diseno de landing en GoHighLevel', value: 'landing_ghl', emoji: '����', hint: '2-3 dias habiles' },
               { label: 'Diseno de landing en V0', value: 'landing_v0', emoji: '⚫', hint: '2-3 dias habiles' },
               { label: 'Diseno de banners para landing', value: 'landing_banners', emoji: '🖼', hint: '1-2 dias habiles' },
               { label: 'Modificaciones de estructura', value: 'landing_modificaciones', emoji: '🔧', hint: '1-2 dias habiles' },
@@ -1616,7 +1620,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                     {quickAssigneeIds.length === 0
                       ? 'Persona asignada'
                       : quickAssigneeIds.length === 1
-                        ? dbColaboradores.find(c => c.id === quickAssigneeIds[0])?.nombre || 'Persona asignada'
+                        ? fullName(dbColaboradores.find(c => c.id === quickAssigneeIds[0]) || { nombre: '', apellido: null, id: '', avatar_url: null })
                         : `${quickAssigneeIds.length} asignados`
                     }
                   </Button>
@@ -1630,7 +1634,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                         {dbColaboradores.map((colab) => (
                           <CommandItem
                             key={colab.id}
-                            value={colab.nombre}
+                            value={fullName(colab)}
                             onSelect={() => setQuickAssigneeIds(prev =>
                               prev.includes(colab.id)
                                 ? prev.filter(id => id !== colab.id)
@@ -1640,9 +1644,9 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                           >
                             <Avatar className="h-6 w-6 shrink-0">
                               {colab.avatar_url && <AvatarImage src={colab.avatar_url} />}
-                              <AvatarFallback className="text-[9px] bg-muted-foreground/20">{colab.nombre[0]}</AvatarFallback>
+                              <AvatarFallback className="text-[9px] bg-muted-foreground/20">{fullName(colab).split(' ').map(n => n[0]).join('')}</AvatarFallback>
                             </Avatar>
-                            <span className="flex-1 truncate">{colab.nombre}</span>
+                            <span className="flex-1 truncate">{fullName(colab)}</span>
                             {quickAssigneeIds.includes(colab.id) && (
                               <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
                             )}
