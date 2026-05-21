@@ -749,29 +749,40 @@ function TimeTracker({ task }: { task: Task }) {
 // ── Files Section ─────────────────────────────────────────────────────────────
 
 function FilesSection({ task }: { task: Task }) {
-  const { addFile, deleteFile } = useTaskStore()
+  const { addFile } = useTaskStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isUploading, setIsUploading] = useState(false)
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
 
-    // In a real app, this would upload to Google Drive
-    // For now, we'll simulate adding the file
+    setIsUploading(true)
     for (const file of Array.from(files)) {
-      addFile(task.id, {
-        name: file.name,
-        url: URL.createObjectURL(file), // Simulated URL
-        mimeType: file.type,
-        size: file.size,
-        uploadedBy: 'current',
-        uploadedByName: 'Usuario',
-      })
+      try {
+        const formData = new FormData()
+        formData.append('file', file)
+        const res = await fetch('/api/upload', { method: 'POST', body: formData })
+        if (res.ok) {
+          const { url } = await res.json()
+          addFile(task.id, {
+            name: file.name,
+            url: url,
+            mimeType: file.type,
+            size: file.size,
+            uploadedBy: 'current',
+            uploadedByName: 'Usuario',
+          })
+        }
+      } catch (error) {
+        console.error('[v0] Error uploading file:', error)
+      }
     }
 
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
+    setIsUploading(false)
   }
 
   const formatFileSize = (bytes: number) => {
@@ -789,9 +800,10 @@ function FilesSection({ task }: { task: Task }) {
           size="sm"
           className="gap-1.5 h-7"
           onClick={() => fileInputRef.current?.click()}
+          disabled={isUploading}
         >
           <Upload className="h-3 w-3" />
-          Subir
+          {isUploading ? 'Subiendo...' : 'Subir'}
         </Button>
         <input
           ref={fileInputRef}
@@ -1375,12 +1387,11 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
                 try {
                   const formData = new FormData()
                   formData.append('file', file)
-                  formData.append('taskId', task.id)
-                  const res = await fetch('/api/tasks/upload', { method: 'POST', body: formData })
+                  const res = await fetch('/api/upload', { method: 'POST', body: formData })
                   if (res.ok) {
-                    const { fileUrl, fileName, mimeType } = await res.json()
-                    setPendingAttachments(prev => [...prev, { url: fileUrl, name: fileName, mimeType: mimeType || file.type }])
-                    toast.success(`Adjunto: ${fileName}`)
+                    const { url } = await res.json()
+                    setPendingAttachments(prev => [...prev, { url, name: file.name, mimeType: file.type }])
+                    toast.success(`Adjunto: ${file.name}`)
                   }
                 } catch {
                   toast.error('Error al subir archivo')
