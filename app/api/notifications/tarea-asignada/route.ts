@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     const notifications = colaboradorIds.map((colaboradorId: string) => ({
       colaborador_id: colaboradorId,
       tipo: 'comentario',
-      titulo: 'Nueva tarea asignada',
+      titulo: 'Nueva tarea',
       descripcion: titulo,
       referencia_id: taskId,
       referencia_tipo: 'tarea',
