@@ -1623,8 +1623,8 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 <PopoverContent className="w-56 p-1" align="start">
                   <Command>
                     <CommandInput placeholder="Buscar..." className="h-8 text-xs" />
-                    <CommandList>
-                      <CommandEmpty>Sin resultados</CommandEmpty>
+                    <CommandList className="max-h-48 overflow-y-auto">
+                      <CommandEmpty className="text-xs text-muted-foreground py-3 text-center">Sin resultados</CommandEmpty>
                       <CommandGroup>
                         {dbColaboradores.map((colab) => (
                           <CommandItem
@@ -1635,14 +1635,16 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                                 ? prev.filter(id => id !== colab.id)
                                 : [...prev, colab.id]
                             )}
-                            className="text-xs"
+                            className="text-xs flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer aria-selected:bg-muted aria-selected:text-foreground data-[selected=true]:bg-muted"
                           >
-                            <Avatar className="h-5 w-5 mr-2">
+                            <Avatar className="h-6 w-6 shrink-0">
                               {colab.avatar_url && <AvatarImage src={colab.avatar_url} />}
-                              <AvatarFallback className="text-[9px]">{colab.nombre[0]}</AvatarFallback>
+                              <AvatarFallback className="text-[9px] bg-muted-foreground/20">{colab.nombre[0]}</AvatarFallback>
                             </Avatar>
-                            {colab.nombre}
-                            {quickAssigneeIds.includes(colab.id) && <Check className="h-3 w-3 ml-auto" />}
+                            <span className="flex-1 truncate">{colab.nombre}</span>
+                            {quickAssigneeIds.includes(colab.id) && (
+                              <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                            )}
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -1935,46 +1937,44 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                       }
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-64 p-2" align="start">
-                    <div className="space-y-2">
-                      <Button
-                        variant={reminderMode === 'asignados' ? 'secondary' : 'ghost'}
-                        size="sm"
-                        className="w-full justify-start text-xs h-8"
+                  <PopoverContent className="w-60 p-2" align="start">
+                    <div className="space-y-1">
+                      <button
+                        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${reminderMode === 'asignados' ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`}
                         onClick={() => {
                           setReminderMode('asignados')
                           setReminderCustomIds([])
                         }}
                       >
-                        <Users className="h-3.5 w-3.5 mr-2" />
-                        Enviar a asignados
-                        {reminderMode === 'asignados' && <Check className="h-3 w-3 ml-auto" />}
-                      </Button>
-                      <div className="h-px bg-border" />
-                      <p className="text-xs text-muted-foreground px-2 py-1">O selecciona personas:</p>
-                      {dbColaboradores.map((colab) => (
-                        <Button
-                          key={colab.id}
-                          variant={reminderCustomIds.includes(colab.id) ? 'secondary' : 'ghost'}
-                          size="sm"
-                          className="w-full justify-start text-xs h-8"
-                          onClick={() => {
-                            setReminderMode('personalizar')
-                            setReminderCustomIds(prev => 
-                              prev.includes(colab.id) 
-                                ? prev.filter(id => id !== colab.id)
-                                : [...prev, colab.id]
-                            )
-                          }}
-                        >
-                          <Avatar className="h-4 w-4 mr-2">
-                            <AvatarImage src={colab.avatar_url || ''} />
-                            <AvatarFallback className="text-[8px]">{colab.nombre.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          {colab.nombre}
-                          {reminderCustomIds.includes(colab.id) && <Check className="h-3 w-3 ml-auto" />}
-                        </Button>
-                      ))}
+                        <Users className="h-3.5 w-3.5 shrink-0" />
+                        <span className="flex-1 text-left">Enviar a asignados</span>
+                        {reminderMode === 'asignados' && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+                      </button>
+                      <div className="h-px bg-border my-1" />
+                      <p className="text-[11px] text-muted-foreground px-2 py-1 uppercase tracking-wide">O elige personas</p>
+                      <div className="max-h-44 overflow-y-auto space-y-0.5">
+                        {dbColaboradores.map((colab) => (
+                          <button
+                            key={colab.id}
+                            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${reminderCustomIds.includes(colab.id) ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`}
+                            onClick={() => {
+                              setReminderMode('personalizar')
+                              setReminderCustomIds(prev =>
+                                prev.includes(colab.id)
+                                  ? prev.filter(id => id !== colab.id)
+                                  : [...prev, colab.id]
+                              )
+                            }}
+                          >
+                            <Avatar className="h-6 w-6 shrink-0">
+                              {colab.avatar_url && <AvatarImage src={colab.avatar_url} />}
+                              <AvatarFallback className="text-[9px] bg-muted-foreground/20">{colab.nombre.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                            <span className="flex-1 text-left truncate">{colab.nombre}</span>
+                            {reminderCustomIds.includes(colab.id) && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </PopoverContent>
                 </Popover>
