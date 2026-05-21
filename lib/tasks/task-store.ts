@@ -1222,30 +1222,19 @@ addTask: async (taskData) => {
     }
   }
   
-  // Notify assigned users about the new task
+  // Notify assigned users about the new task via server API (bypasses RLS)
   const assignedColabIds = assigneeIds.filter(uid => uid && uid !== taskData.createdById)
-  console.log('[v0] Task created, assigneeIds:', assigneeIds, 'filtered:', assignedColabIds)
   if (assignedColabIds.length > 0) {
-    const notifications = assignedColabIds.map(colaboradorId => ({
-      colaborador_id: colaboradorId,
-      tipo: 'comentario',
-      titulo: 'Nueva tarea asignada',
-      descripcion: taskData.title,
-      referencia_id: id,
-      referencia_tipo: 'tarea',
-      cliente_id: clientIds[0] || null,
-      leida: false,
-    }))
-    
-    console.log('[v0] Inserting notifications:', notifications)
-    const { error: notifError } = await supabase
-      .from('notificaciones')
-      .insert(notifications)
-    
-    console.log('[v0] Notification insert result:', { error: notifError })
-    if (notifError) {
-      console.error('[v0] Error creating task assignment notifications:', notifError)
-    }
+    fetch('/api/notifications/tarea-asignada', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: id,
+        titulo: taskData.title,
+        colaboradorIds: assignedColabIds,
+        clienteId: clientIds[0] || null,
+      }),
+    }).catch(err => console.error('[v0] Error calling tarea-asignada API:', err))
   }
   
   // Update local state
