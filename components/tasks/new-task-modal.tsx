@@ -226,7 +226,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ───────────────────────────────���──�����───────���──
+// ── Seguimiento Templates by Plan ──���────────────────────────────���──�����───────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -1464,7 +1464,25 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       createdById: currentUser?.id || null,
       comments,
     } as any)
-    
+
+    // Save pending attachments to tarea_adjuntos after task creation
+    if (pendingAttachments.length > 0) {
+      // Get the task id from the store (most recently added)
+      const tasks = useTaskStore.getState().tasks
+      const newTask = tasks[tasks.length - 1]
+      if (newTask?.id) {
+        await supabase.from('tarea_adjuntos').insert(
+          pendingAttachments.map(att => ({
+            tarea_id: newTask.id,
+            nombre: att.name,
+            url: att.url,
+            tipo: att.mimeType,
+            subido_por: currentUser?.id || null,
+          }))
+        )
+      }
+    }
+
     setIsCreating(false)
     // Reset quick mode state
     setQuickTitle('')
@@ -1476,6 +1494,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     setQuickAssigneeIds([])
     setQuickDueDate('')
     setQuickComment('')
+    setPendingAttachments([])
     setActiveTab('tarea')
     setQuickMode(false)
     onOpenChange(false)
@@ -1777,22 +1796,33 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                       const files = Array.from(e.target.files || [])
                       if (!files.length) return
                       setIsUploadingFile(true)
-                      console.log('[v0] Starting upload for', files.length, 'files')
                       for (const file of files) {
                         try {
-                          const formData = new FormData()
-                          formData.append('file', file)
-                          console.log('[v0] Uploading file:', file.name)
-                          const res = await fetch('/api/upload', { method: 'POST', body: formData })
-                          console.log('[v0] Upload response status:', res.status)
-                          if (res.ok) {
-                            const data = await res.json()
-                            console.log('[v0] Upload success:', data)
-                            setPendingAttachments(prev => [...prev, { url: data.url, name: data.fileName || file.name, mimeType: file.type }])
-                          } else {
-                            const errorData = await res.json()
-                            console.error('[v0] Upload failed:', errorData)
+                          const sanitizedName = file.name
+                            .normalize('NFD')
+                            .replace(/[\u0300-\u036f]/g, '')
+                            .replace(/\s+/g, '_')
+                            .replace(/[^a-zA-Z0-9_.-]/g, '')
+                          const path = `${currentUser?.id || 'anon'}/new/${Date.now()}-${sanitizedName}`
+
+                          const { error: uploadError } = await supabase.storage
+                            .from('task-files')
+                            .upload(path, file)
+
+                          if (uploadError) {
+                            console.error('[v0] Storage error:', uploadError)
+                            continue
                           }
+
+                          const { data: { publicUrl } } = supabase.storage
+                            .from('task-files')
+                            .getPublicUrl(path)
+
+                          setPendingAttachments(prev => [...prev, {
+                            url: publicUrl,
+                            name: file.name,
+                            mimeType: file.type,
+                          }])
                         } catch (error) {
                           console.error('[v0] Upload error:', error)
                         }
