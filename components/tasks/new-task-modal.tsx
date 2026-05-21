@@ -226,7 +226,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ──���������────────────────────────────���──�����───────���──
+// ── Seguimiento Templates by Plan ──�����������────────────────────────────���──�����───────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -1500,7 +1500,9 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     setIsCreating(true)
 
     try {
+      console.log('[v0] Creating reminder:', reminderName, reminderDate)
       const { data: { user } } = await supabase.auth.getUser()
+      console.log('[v0] Current user:', user?.email)
       let colaboradorId: string | null = null
       if (user?.email) {
         const { data: colab } = await supabase
@@ -1509,12 +1511,14 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
           .eq('email', user.email)
           .single()
         colaboradorId = colab?.id ?? null
+        console.log('[v0] Colaborador ID:', colaboradorId)
       }
 
       const fechaTexto = reminderDate
         ? new Date(reminderDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })
         : null
 
+      console.log('[v0] Inserting notification:', { colaboradorId, titulo: reminderName, fechaTexto })
       const { error } = await supabase.from('notificaciones').insert({
         colaborador_id: colaboradorId,
         tipo: 'recordatorio',
@@ -1525,8 +1529,11 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
         leida: false,
       })
 
+      console.log('[v0] Insert result:', { error })
       if (error) {
         console.error('[v0] Error creating reminder:', error)
+      } else {
+        console.log('[v0] Reminder created successfully')
       }
 
       setReminderName('')
