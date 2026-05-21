@@ -930,7 +930,8 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   const [activeTab, setActiveTab] = useState<'tarea' | 'documento'>('tarea')
   const [reminderDate, setReminderDate] = useState<string>('')
   const [reminderTime, setReminderTime] = useState<string>('')
-  const [reminderAssignee, setReminderAssignee] = useState<string>('')
+  const [reminderMode, setReminderMode] = useState<'asignados' | 'personalizar'>('asignados')
+  const [reminderCustomIds, setReminderCustomIds] = useState<string[]>([])
   const [pendingAttachments, setPendingAttachments] = useState<{ url: string; name: string; mimeType: string }[]>([])
   const [isUploadingFile, setIsUploadingFile] = useState(false)
   
@@ -1479,18 +1480,24 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     }
 
     // Create reminder if configured
-    if ((reminderDate || reminderTime) && reminderAssignee && newTaskId) {
-      await fetch('/api/notifications/recordatorio', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId: newTaskId,
-          tituloTarea: quickTitle,
-          fecha: reminderDate || null,
-          hora: reminderTime || null,
-          colaboradorIds: [reminderAssignee],
-        }),
-      })
+    if ((reminderDate || reminderTime) && newTaskId) {
+      const reminderRecipients = reminderMode === 'asignados' 
+        ? quickAssigneeIds 
+        : reminderCustomIds
+      
+      if (reminderRecipients.length > 0) {
+        await fetch('/api/notifications/recordatorio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId: newTaskId,
+            tituloTarea: quickTitle,
+            fecha: reminderDate || null,
+            hora: reminderTime || null,
+            colaboradorIds: reminderRecipients,
+          }),
+        })
+      }
     }
 
     setIsCreating(false)
@@ -1507,7 +1514,8 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     setPendingAttachments([])
     setReminderDate('')
     setReminderTime('')
-    setReminderAssignee('')
+    setReminderMode('asignados')
+    setReminderCustomIds([])
     setActiveTab('tarea')
     setQuickMode(false)
     onOpenChange(false)
@@ -1913,26 +1921,55 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                   <PopoverTrigger asChild>
                     <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
                       <Users className="h-3.5 w-3.5" />
-                      {reminderAssignee ? colaboradores.find(c => c.id === reminderAssignee)?.nombre || 'Para' : 'Para'}
+                      {reminderMode === 'asignados' 
+                        ? 'Asignados' 
+                        : reminderCustomIds.length > 0 
+                          ? `${reminderCustomIds.length} seleccionado${reminderCustomIds.length > 1 ? 's' : ''}`
+                          : 'Para'
+                      }
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-56 p-1" align="start">
-                    {colaboradores.map((colab) => (
+                  <PopoverContent className="w-64 p-2" align="start">
+                    <div className="space-y-2">
                       <Button
-                        key={colab.id}
-                        variant="ghost"
+                        variant={reminderMode === 'asignados' ? 'secondary' : 'ghost'}
                         size="sm"
                         className="w-full justify-start text-xs h-8"
-                        onClick={() => setReminderAssignee(colab.id)}
+                        onClick={() => {
+                          setReminderMode('asignados')
+                          setReminderCustomIds([])
+                        }}
                       >
-                        <Avatar className="h-4 w-4 mr-2">
-                          <AvatarImage src={colab.avatar_url || ''} />
-                          <AvatarFallback className="text-[8px]">{colab.nombre.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        {colab.nombre}
-                        {reminderAssignee === colab.id && <Check className="h-3 w-3 ml-auto" />}
+                        <Users className="h-3.5 w-3.5 mr-2" />
+                        Enviar a asignados
+                        {reminderMode === 'asignados' && <Check className="h-3 w-3 ml-auto" />}
                       </Button>
-                    ))}
+                      <div className="h-px bg-border" />
+                      <p className="text-xs text-muted-foreground px-2 py-1">O selecciona personas:</p>
+                      {colaboradores.map((colab) => (
+                        <Button
+                          key={colab.id}
+                          variant={reminderCustomIds.includes(colab.id) ? 'secondary' : 'ghost'}
+                          size="sm"
+                          className="w-full justify-start text-xs h-8"
+                          onClick={() => {
+                            setReminderMode('personalizar')
+                            setReminderCustomIds(prev => 
+                              prev.includes(colab.id) 
+                                ? prev.filter(id => id !== colab.id)
+                                : [...prev, colab.id]
+                            )
+                          }}
+                        >
+                          <Avatar className="h-4 w-4 mr-2">
+                            <AvatarImage src={colab.avatar_url || ''} />
+                            <AvatarFallback className="text-[8px]">{colab.nombre.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                          {colab.nombre}
+                          {reminderCustomIds.includes(colab.id) && <Check className="h-3 w-3 ml-auto" />}
+                        </Button>
+                      ))}
+                    </div>
                   </PopoverContent>
                 </Popover>
               </div>
