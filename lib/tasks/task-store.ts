@@ -766,7 +766,7 @@ interface TaskStore {
   // Task mutations
   updateTaskStatus: (taskId: string, status: TaskStatus) => Promise<void>
   updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>
-  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'activities' | 'timeSessions' | 'totalTimeSec' | 'isTimerRunning' | 'timerStartedAt' | 'quotation'> & { comments?: TaskComment[]; files?: TaskFile[] }) => Promise<void>
+  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'activities' | 'timeSessions' | 'totalTimeSec' | 'isTimerRunning' | 'timerStartedAt' | 'quotation'> & { comments?: TaskComment[]; files?: TaskFile[] }) => Promise<string>
   deleteTask: (taskId: string) => Promise<void>
   toggleTaskActive: (taskId: string) => void
 
@@ -1260,6 +1260,8 @@ addTask: async (taskData) => {
       ...state.tasks,
     ],
   }))
+  
+  return id
 },
 
   deleteTask: async (taskId) => {

@@ -97,6 +97,7 @@ import {
   Power,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
+import { TaskFilesSection } from './task-files-section'
 import { es } from 'date-fns/locale'
 import { QuotationSection } from './quotation-section'
 import { useTimerStore } from '@/lib/time-tracking/timer-store'
@@ -748,94 +749,6 @@ function TimeTracker({ task }: { task: Task }) {
 
 // ── Files Section ─────────────────────────────────────────────────────────────
 
-function FilesSection({ task }: { task: Task }) {
-  const { addFile, deleteFile } = useTaskStore()
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
-
-    // In a real app, this would upload to Google Drive
-    // For now, we'll simulate adding the file
-    for (const file of Array.from(files)) {
-      addFile(task.id, {
-        name: file.name,
-        url: URL.createObjectURL(file), // Simulated URL
-        mimeType: file.type,
-        size: file.size,
-        uploadedBy: 'current',
-        uploadedByName: 'Usuario',
-      })
-    }
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
-  }
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">Archivos</p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5 h-7"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Upload className="h-3 w-3" />
-          Subir
-        </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={handleFileUpload}
-        />
-      </div>
-
-      {task.files.length > 0 ? (
-        <div className="space-y-2">
-          {task.files.map((file) => (
-            <div
-              key={file.id}
-              className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 group"
-            >
-              <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center shrink-0">
-                <FileIcon className="h-4 w-4 text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{file.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {formatFileSize(file.size)} · {file.uploadedByName} · {format(new Date(file.createdAt), 'dd/MM HH:mm', { locale: es })}
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={() => deleteFile(task.id, file.id)}
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-xs text-muted-foreground">Sin archivos adjuntos</p>
-      )}
-    </div>
-  )
-}
-
 // ── Comments Section (with rich text editor) ──────────────────────────────────
 
 // ─── CommentItem: renders a single comment with lightbox + attachments ───────
@@ -1375,12 +1288,11 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
                 try {
                   const formData = new FormData()
                   formData.append('file', file)
-                  formData.append('taskId', task.id)
-                  const res = await fetch('/api/tasks/upload', { method: 'POST', body: formData })
+                  const res = await fetch('/api/upload', { method: 'POST', body: formData })
                   if (res.ok) {
-                    const { fileUrl, fileName, mimeType } = await res.json()
-                    setPendingAttachments(prev => [...prev, { url: fileUrl, name: fileName, mimeType: mimeType || file.type }])
-                    toast.success(`Adjunto: ${fileName}`)
+                    const { url } = await res.json()
+                    setPendingAttachments(prev => [...prev, { url, name: file.name, mimeType: file.type }])
+                    toast.success(`Adjunto: ${file.name}`)
                   }
                 } catch {
                   toast.error('Error al subir archivo')
@@ -1681,11 +1593,11 @@ export function TaskDetailPanel() {
     async function loadCurrentUser() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
+      if (user?.email) {
         const { data: colab } = await supabase
           .from('colaboradores')
           .select('id')
-          .eq('user_id', user.id)
+          .eq('email', user.email)
           .single()
         if (colab) setCurrentUserId(colab.id)
       }
@@ -2111,15 +2023,14 @@ export function TaskDetailPanel() {
                     />
                   </div>
 
-                  {/* Quick actions */}
-                  <div className="py-4 space-y-1">
-                    <button
-                      className="flex items-center gap-3 w-full py-2 px-2 -mx-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 rounded-md transition-colors group"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <Paperclip className="h-4 w-4 opacity-40 group-hover:opacity-100 transition-opacity" />
-                      Adjuntar archivo
-                    </button>
+                  {/* Files */}
+                  <div className="py-4 border-t">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Adjuntos</p>
+                    <TaskFilesSection
+                      task={task}
+                      currentUserId={currentUserId}
+                      colaboradorNombre={colaboradores.find(c => c.id === currentUserId)?.nombre}
+                    />
                   </div>
 
                   {/* Delete */}
@@ -2315,58 +2226,6 @@ export function TaskDetailPanel() {
           </div>
         </Tabs>
 
-        {/* Hidden file input for attachments */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={async (e) => {
-            const files = Array.from(e.target.files || [])
-            if (files.length === 0) return
-
-            try {
-              for (const file of files) {
-                const formData = new FormData()
-                formData.append('file', file)
-                formData.append('taskId', task.id)
-
-                const response = await fetch('/api/tasks/upload', {
-                  method: 'POST',
-                  body: formData,
-                })
-
-                if (response.ok) {
-                  const { fileUrl, fileName, mimeType, size } = await response.json()
-                  const newFile: TaskFile = {
-                    id: `file-${Date.now()}`,
-                    name: fileName,
-                    url: fileUrl,
-                    mimeType: mimeType || file.type || 'application/octet-stream',
-                    size: size || file.size,
-                    uploadedBy: currentUserId || 'unknown',
-                    uploadedByName: colaboradores.find(c => c.id === currentUserId)?.nombre || 'Unknown',
-                    createdAt: new Date(),
-                  }
-                  updateTask(task.id, {
-                    files: [...(task.files || []), newFile],
-                  })
-                  toast.success(`Archivo ${fileName} agregado`)
-                } else {
-                  toast.error(`Error al subir ${file.name}`)
-                }
-              }
-            } catch (error) {
-              toast.error('Error al subir archivos')
-              console.error(error)
-            }
-
-            // Reset input
-            if (fileInputRef.current) {
-              fileInputRef.current.value = ''
-            }
-          }}
-        />
       </SheetContent>
 
       {/* Hito Completion Modal */}

@@ -226,7 +226,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ───────────────────────────────���──�����───────���──
+// ── Seguimiento Templates by Plan ──���������────────────────────────────���──�����───────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -905,7 +905,9 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
 
 export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode = 'ai' }: NewTaskModalProps) {
   const addTask = useTaskStore((s) => s.addTask)
+  const supabase = createClient()
   const scrollRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
@@ -928,6 +930,8 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   const [activeTab, setActiveTab] = useState<'tarea' | 'documento' | 'recordatorio'>('tarea')
   const [reminderName, setReminderName] = useState('')
   const [reminderDate, setReminderDate] = useState<string>('')
+  const [pendingAttachments, setPendingAttachments] = useState<{ url: string; name: string; mimeType: string }[]>([])
+  const [isUploadingFile, setIsUploadingFile] = useState(false)
   
   // Update quickDueDate when initialDueDate changes (e.g., from calendar)
   useEffect(() => {
@@ -947,8 +951,6 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     if (!open) return
     
     async function loadData() {
-      const supabase = createClient()
-      
       // Get logged-in collaborator by email (colaboradores has no user_id column)
       const { data: { user } } = await supabase.auth.getUser()
       if (user?.email) {
@@ -1446,7 +1448,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       })
     }
     
-    await addTask({
+    const newTaskId = await addTask({
       title: quickTitle,
       description: quickDescription || null,
       clientId: firstClient?.id || '',
@@ -1461,7 +1463,20 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       createdById: currentUser?.id || null,
       comments,
     } as any)
-    
+
+    // Save pending attachments to tarea_adjuntos after task creation
+    if (pendingAttachments.length > 0 && newTaskId) {
+      await supabase.from('tarea_adjuntos').insert(
+        pendingAttachments.map(att => ({
+          tarea_id: newTaskId,
+          nombre: att.name,
+          url: att.url,
+          tipo: att.mimeType,
+          subido_por: currentUser?.id || null,
+        }))
+      )
+    }
+
     setIsCreating(false)
     // Reset quick mode state
     setQuickTitle('')
@@ -1473,6 +1488,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     setQuickAssigneeIds([])
     setQuickDueDate('')
     setQuickComment('')
+    setPendingAttachments([])
     setActiveTab('tarea')
     setQuickMode(false)
     onOpenChange(false)
@@ -1536,19 +1552,6 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                    <FileText className="h-3.5 w-3.5" />
-                    Epica 1
-                    <ChevronDown className="h-3 w-3 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-48 p-1" align="start">
-                  <div className="text-xs text-muted-foreground px-2 py-1.5">Proximamente</div>
-                </PopoverContent>
-              </Popover>
-
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
                     <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
                     {dbTiposTarea.find(t => t.id === quickType)?.nombre || 'Tarea'}
                     <ChevronDown className="h-3 w-3 opacity-50" />
@@ -1602,40 +1605,6 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
 
             {/* Property chips row */}
             <div className="flex items-center gap-2 px-5 py-3 border-t flex-wrap">
-              {/* Status chip */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      "h-7 gap-1.5 text-xs border-0",
-                      STATUS_CONFIG[quickStatus as TaskStatus]?.bgColor,
-                      STATUS_CONFIG[quickStatus as TaskStatus]?.color
-                    )}
-                  >
-                    {STATUS_CONFIG[quickStatus as TaskStatus]?.label || quickStatus}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-52 p-1" align="start">
-                  {STATUS_ORDER.map(status => {
-                    const cfg = STATUS_CONFIG[status]
-                    return (
-                      <Button
-                        key={status}
-                        variant="ghost"
-                        size="sm"
-                        className="w-full justify-start text-xs h-8"
-                        onClick={() => setQuickStatus(status)}
-                      >
-                        <span className={cn("h-2 w-2 rounded-full mr-2", cfg.bgColor.replace('/10', '').replace('/20', ''))} />
-                        {cfg.label}
-                        {quickStatus === status && <Check className="h-3 w-3 ml-auto" />}
-                      </Button>
-                    )
-                  })}
-                </PopoverContent>
-              </Popover>
 
               {/* Assignee chip */}
               <Popover>
@@ -1731,6 +1700,92 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 </PopoverContent>
               </Popover>
 
+              {/* Priority chip */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                    <Flag className="h-3.5 w-3.5" />
+                    {quickPriority.charAt(0).toUpperCase() + quickPriority.slice(1)}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-1" align="start">
+                  {['baja', 'media', 'alta'].map((priority) => (
+                    <Button
+                      key={priority}
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-xs h-8"
+                      onClick={() => setQuickPriority(priority)}
+                    >
+                      <Flag className={`h-3.5 w-3.5 mr-2 ${
+                        priority === 'alta' ? 'text-red-500' :
+                        priority === 'media' ? 'text-yellow-500' :
+                        'text-green-500'
+                      }`} />
+                      {priority.charAt(0).toUpperCase() + priority.slice(1)}
+                      {quickPriority === priority && <Check className="h-3 w-3 ml-auto" />}
+                    </Button>
+                  ))}
+                </PopoverContent>
+              </Popover>
+
+              {/* Upload file button */}
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-7 gap-1.5 text-xs"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadingFile}
+              >
+                <Paperclip className="h-3.5 w-3.5" />
+                {isUploadingFile ? 'Subiendo...' : 'Subir Archivo'}
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                className="hidden"
+                onChange={async (e) => {
+                  const files = Array.from(e.target.files || [])
+                  if (!files.length) return
+                  setIsUploadingFile(true)
+                  for (const file of files) {
+                    try {
+                      const sanitizedName = file.name
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .replace(/\s+/g, '_')
+                        .replace(/[^a-zA-Z0-9_.-]/g, '')
+                      const path = `${currentUser?.id || 'anon'}/new/${Date.now()}-${sanitizedName}`
+
+                      const { error: uploadError } = await supabase.storage
+                        .from('task-files')
+                        .upload(path, file)
+
+                      if (uploadError) {
+                        console.error('[v0] Storage error:', uploadError)
+                        continue
+                      }
+
+                      const { data: { publicUrl } } = supabase.storage
+                        .from('task-files')
+                        .getPublicUrl(path)
+
+                      setPendingAttachments(prev => [...prev, {
+                        url: publicUrl,
+                        name: file.name,
+                        mimeType: file.type,
+                      }])
+                    } catch (error) {
+                      console.error('[v0] Upload error:', error)
+                    }
+                  }
+                  setIsUploadingFile(false)
+                  e.target.value = ''
+                }}
+              />
+
               {/* Add more property button */}
               <Popover>
                 <PopoverTrigger asChild>
@@ -1740,24 +1795,52 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 </PopoverTrigger>
                 <PopoverContent className="w-56 p-1" align="start">
                   <div className="text-xs text-muted-foreground px-2 py-1.5 mb-1">Agregar propiedad</div>
-                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
-                    <Flag className="h-3.5 w-3.5 text-muted-foreground" />
-                    Prioridad
-                  </Button>
-                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
-                    <Tag className="h-3.5 w-3.5 text-muted-foreground" />
-                    Etiquetas
-                  </Button>
-                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
-                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                    Tiempo estimado
-                  </Button>
-                  <div className="h-px bg-border my-1" />
-                  <div className="text-xs text-muted-foreground px-2 py-1.5">Adjuntos</div>
-                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
-                    <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-                    Subir archivo
-                  </Button>
+                  <p className="text-xs text-muted-foreground px-2 py-2 italic">Próximamente</p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files || [])
+                      if (!files.length) return
+                      setIsUploadingFile(true)
+                      for (const file of files) {
+                        try {
+                          const sanitizedName = file.name
+                            .normalize('NFD')
+                            .replace(/[\u0300-\u036f]/g, '')
+                            .replace(/\s+/g, '_')
+                            .replace(/[^a-zA-Z0-9_.-]/g, '')
+                          const path = `${currentUser?.id || 'anon'}/new/${Date.now()}-${sanitizedName}`
+
+                          const { error: uploadError } = await supabase.storage
+                            .from('task-files')
+                            .upload(path, file)
+
+                          if (uploadError) {
+                            console.error('[v0] Storage error:', uploadError)
+                            continue
+                          }
+
+                          const { data: { publicUrl } } = supabase.storage
+                            .from('task-files')
+                            .getPublicUrl(path)
+
+                          setPendingAttachments(prev => [...prev, {
+                            url: publicUrl,
+                            name: file.name,
+                            mimeType: file.type,
+                          }])
+                        } catch (error) {
+                          console.error('[v0] Upload error:', error)
+                        }
+                      }
+                      setIsUploadingFile(false)
+                      e.target.value = ''
+                    }}
+                  />
                   <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
                     <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
                     Agregar enlace
@@ -1766,21 +1849,35 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
               </Popover>
             </div>
 
-            {/* Footer */}
-            <div className="flex items-center justify-between px-5 py-3 border-t">
-              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                <FileText className="h-3.5 w-3.5" />
-                Plantillas
-              </Button>
+            {/* Pending attachments preview */}
+            {pendingAttachments.length > 0 && (
+              <div className="px-5 py-2 border-t bg-muted/30">
+                <p className="text-xs text-muted-foreground mb-2">Archivos adjuntos ({pendingAttachments.length})</p>
+                <div className="flex flex-wrap gap-2">
+                  {pendingAttachments.map((att, i) => (
+                    <div key={i} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded bg-background border border-border">
+                      {att.mimeType.startsWith('image/') ? (
+                        <img src={att.url} alt={att.name} className="h-6 w-6 object-cover rounded" />
+                      ) : (
+                        <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      )}
+                      <span className="max-w-[100px] truncate">{att.name}</span>
+                      <button 
+                        type="button"
+                        onClick={() => setPendingAttachments(prev => prev.filter((_, j) => j !== i))}
+                        className="ml-1 hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
+            {/* Footer */}
+            <div className="flex items-center justify-end px-5 py-3 border-t">
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Paperclip className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 relative">
-                  <Bell className="h-4 w-4" />
-                  <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-primary text-[9px] text-primary-foreground flex items-center justify-center">1</span>
-                </Button>
                 <Button
                   className="h-8 px-4"
                   onClick={handleQuickCreate}
