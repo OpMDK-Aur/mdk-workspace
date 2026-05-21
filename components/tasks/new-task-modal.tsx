@@ -1612,9 +1612,11 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
                     <User className="h-3.5 w-3.5" />
-                    {quickAssigneeIds.length > 0
-                      ? dbColaboradores.find(c => c.id === quickAssigneeIds[0])?.nombre || 'Persona asignada'
-                      : 'Persona asignada'
+                    {quickAssigneeIds.length === 0
+                      ? 'Persona asignada'
+                      : quickAssigneeIds.length === 1
+                        ? dbColaboradores.find(c => c.id === quickAssigneeIds[0])?.nombre || 'Persona asignada'
+                        : `${quickAssigneeIds.length} asignados`
                     }
                   </Button>
                 </PopoverTrigger>
@@ -1628,7 +1630,11 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                           <CommandItem
                             key={colab.id}
                             value={colab.nombre}
-                            onSelect={() => setQuickAssigneeIds([colab.id])}
+                            onSelect={() => setQuickAssigneeIds(prev =>
+                              prev.includes(colab.id)
+                                ? prev.filter(id => id !== colab.id)
+                                : [...prev, colab.id]
+                            )}
                             className="text-xs"
                           >
                             <Avatar className="h-5 w-5 mr-2">
@@ -1946,7 +1952,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                       </Button>
                       <div className="h-px bg-border" />
                       <p className="text-xs text-muted-foreground px-2 py-1">O selecciona personas:</p>
-                      {colaboradores.map((colab) => (
+                      {dbColaboradores.map((colab) => (
                         <Button
                           key={colab.id}
                           variant={reminderCustomIds.includes(colab.id) ? 'secondary' : 'ghost'}
