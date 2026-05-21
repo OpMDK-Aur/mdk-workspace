@@ -1552,19 +1552,6 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                    <FileText className="h-3.5 w-3.5" />
-                    Epica 1
-                    <ChevronDown className="h-3 w-3 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-48 p-1" align="start">
-                  <div className="text-xs text-muted-foreground px-2 py-1.5">Proximamente</div>
-                </PopoverContent>
-              </Popover>
-
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
                     <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
                     {dbTiposTarea.find(t => t.id === quickType)?.nombre || 'Tarea'}
                     <ChevronDown className="h-3 w-3 opacity-50" />
@@ -1618,40 +1605,6 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
 
             {/* Property chips row */}
             <div className="flex items-center gap-2 px-5 py-3 border-t flex-wrap">
-              {/* Status chip */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      "h-7 gap-1.5 text-xs border-0",
-                      STATUS_CONFIG[quickStatus as TaskStatus]?.bgColor,
-                      STATUS_CONFIG[quickStatus as TaskStatus]?.color
-                    )}
-                  >
-                    {STATUS_CONFIG[quickStatus as TaskStatus]?.label || quickStatus}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-52 p-1" align="start">
-                  {STATUS_ORDER.map(status => {
-                    const cfg = STATUS_CONFIG[status]
-                    return (
-                      <Button
-                        key={status}
-                        variant="ghost"
-                        size="sm"
-                        className="w-full justify-start text-xs h-8"
-                        onClick={() => setQuickStatus(status)}
-                      >
-                        <span className={cn("h-2 w-2 rounded-full mr-2", cfg.bgColor.replace('/10', '').replace('/20', ''))} />
-                        {cfg.label}
-                        {quickStatus === status && <Check className="h-3 w-3 ml-auto" />}
-                      </Button>
-                    )
-                  })}
-                </PopoverContent>
-              </Popover>
 
               {/* Assignee chip */}
               <Popover>
@@ -1860,12 +1813,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
             )}
 
             {/* Footer */}
-            <div className="flex items-center justify-between px-5 py-3 border-t">
-              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                <FileText className="h-3.5 w-3.5" />
-                Plantillas
-              </Button>
-
+            <div className="flex items-center justify-end px-5 py-3 border-t">
               <div className="flex items-center gap-2">
                 <Button
                   className="h-8 px-4"
