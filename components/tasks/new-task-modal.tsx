@@ -226,7 +226,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ──���────────────────────────────���──�����───────���──
+// ── Seguimiento Templates by Plan ──�����────────────────────────────���──�����───────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -905,6 +905,7 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
 
 export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode = 'ai' }: NewTaskModalProps) {
   const addTask = useTaskStore((s) => s.addTask)
+  const supabase = createClient()
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -950,8 +951,6 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     if (!open) return
     
     async function loadData() {
-      const supabase = createClient()
-      
       // Get logged-in collaborator by email (colaboradores has no user_id column)
       const { data: { user } } = await supabase.auth.getUser()
       if (user?.email) {
