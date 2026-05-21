@@ -743,6 +743,7 @@ interface TaskStore {
   type: TaskType | null
   dueThisWeek: boolean
   searchQuery: string
+  clientIds: string[]
   }
   
   // Advanced filters
@@ -805,6 +806,7 @@ export const useTaskStore = create<TaskStore>()(
   type: null,
   dueThisWeek: false,
   searchQuery: '',
+  clientIds: [],
   },
   advancedFilters: [],
   savedFilters: [],
@@ -963,7 +965,7 @@ export const useTaskStore = create<TaskStore>()(
     filters: { ...state.filters, [key]: value },
   })),
   clearFilters: () => set({
-  filters: { priority: null, assigneeIds: [], showUnassigned: false, type: null, dueThisWeek: false, searchQuery: '' },
+    filters: { priority: null, assigneeIds: [], showUnassigned: false, type: null, dueThisWeek: false, searchQuery: '', clientIds: [] },
   advancedFilters: [],
   }),
   
@@ -1607,6 +1609,12 @@ export function useFilteredTasks() {
   const matchesDescription = task.description?.toLowerCase().includes(query) ?? false
   const matchesAssignee = task.assigneeName?.toLowerCase().includes(query) ?? false
   if (!matchesTitle && !matchesClient && !matchesDescription && !matchesAssignee) return false
+  }
+  // Client filter
+  if (filters.clientIds && filters.clientIds.length > 0) {
+    const taskClientIds = task.clients?.map(c => c.id) || (task.clientId ? [task.clientId] : [])
+    const matches = filters.clientIds.some(id => taskClientIds.includes(id))
+    if (!matches) return false
   }
   return true
   })

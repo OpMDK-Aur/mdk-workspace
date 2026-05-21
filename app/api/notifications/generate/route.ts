@@ -16,7 +16,6 @@ export async function POST() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get current user's colaborador record
     const { data: currentColaborador } = await supabase
       .from('colaboradores')
       .select('id, email')
@@ -29,20 +28,46 @@ export async function POST() {
 
     const now = new Date()
 
-    // Get tasks assigned to the CURRENT USER that are OVERDUE (past due date)
-    // Exclude "realizada" status
+    // Step 1: Delete tarea_vence notifications for tasks that are now resolved or no longer overdue
+    // Get all existing tarea_vence notifications for this user
+    const { data: existingVenceNotifs } = await supabase
+      .from('notificaciones')
+      .select('id, referencia_id')
+      .eq('colaborador_id', currentColaborador.id)
+      .eq('tipo', 'tarea_vence')
+
+    if (existingVenceNotifs && existingVenceNotifs.length > 0) {
+      const referencedTaskIds = existingVenceNotifs.map(n => n.referencia_id).filter(Boolean)
+
+      // Find which of those tasks are now resolved/realizada
+      const { data: resolvedTasks } = await supabase
+        .from('tareas')
+        .select('id, estado, fecha_vencimiento')
+        .in('id', referencedTaskIds)
+        .or('estado.eq.realizada,estado.eq.resuelto,fecha_vencimiento.gte.' + now.toISOString())
+
+      if (resolvedTasks && resolvedTasks.length > 0) {
+        const resolvedIds = new Set(resolvedTasks.map(t => t.id))
+        const notifsToDelete = existingVenceNotifs
+          .filter(n => resolvedIds.has(n.referencia_id))
+          .map(n => n.id)
+
+        if (notifsToDelete.length > 0) {
+          await supabase
+            .from('notificaciones')
+            .delete()
+            .in('id', notifsToDelete)
+        }
+      }
+    }
+
+    // Step 2: Get tasks that are OVERDUE and NOT resolved to create new notifications
     const { data: tareas, error: tareasError } = await supabase
       .from('tareas')
-      .select(`
-        id,
-        titulo,
-        fecha_vencimiento,
-        estado,
-        cliente_id,
-        asignado_a
-      `)
+      .select('id, titulo, fecha_vencimiento, estado, cliente_id, asignado_a')
       .eq('asignado_a', currentColaborador.id)
       .not('estado', 'eq', 'realizada')
+      .not('estado', 'eq', 'resuelto')
       .not('fecha_vencimiento', 'is', null)
       .lt('fecha_vencimiento', now.toISOString())
       .order('fecha_vencimiento', { ascending: true })
@@ -51,10 +76,10 @@ export async function POST() {
       return NextResponse.json({ error: tareasError.message }, { status: 500 })
     }
 
-    // Get existing notifications to avoid duplicates
+    // Step 3: Avoid duplicates - check which ones already have a notification
     const taskIds = (tareas || []).map(t => t.id)
     
-    const { data: existingNotifs } = taskIds.length > 0 
+    const { data: stillExistingNotifs } = taskIds.length > 0 
       ? await supabase
           .from('notificaciones')
           .select('referencia_id')
@@ -63,22 +88,19 @@ export async function POST() {
           .in('referencia_id', taskIds)
       : { data: [] }
     
-    const existingTaskIds = new Set(existingNotifs?.map(n => n.referencia_id) || [])
+    const existingTaskIds = new Set(stillExistingNotifs?.map(n => n.referencia_id) || [])
 
     const notificationsToCreate = (tareas || [])
       .filter(tarea => !existingTaskIds.has(tarea.id))
-      .map(tarea => {
-        const fechaVencimiento = new Date(tarea.fecha_vencimiento)
-        return {
-          colaborador_id: currentColaborador.id,
-          tipo: 'tarea_vence',
-          titulo: `Tarea vencida: ${tarea.titulo}`,
-          descripcion: `Esta tarea venció el ${fechaVencimiento.toLocaleDateString('es-AR')}`,
-          referencia_id: tarea.id,
-          referencia_tipo: 'tarea',
-          cliente_id: tarea.cliente_id,
-        }
-      })
+      .map(tarea => ({
+        colaborador_id: currentColaborador.id,
+        tipo: 'tarea_vence',
+        titulo: `Tarea vencida: ${tarea.titulo}`,
+        descripcion: `Esta tarea venció el ${new Date(tarea.fecha_vencimiento).toLocaleDateString('es-AR')}`,
+        referencia_id: tarea.id,
+        referencia_tipo: 'tarea',
+        cliente_id: tarea.cliente_id,
+      }))
 
     if (notificationsToCreate.length > 0) {
       const { error: insertError } = await supabase

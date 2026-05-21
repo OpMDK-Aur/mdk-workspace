@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { TaskPriority, TaskType } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -45,6 +45,7 @@ import { Input } from '@/components/ui/input'
 
 export function TaskBoard() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const hydrated = useTaskStoreHydrated()
   const { 
     view, 
@@ -168,7 +169,7 @@ export function TaskBoard() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Search */}
+          {/* Search tasks */}
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input

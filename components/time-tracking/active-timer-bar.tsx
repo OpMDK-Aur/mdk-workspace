@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useTimerStore } from '@/lib/time-tracking/timer-store'
 import { formatDuration, formatDurationShort } from '@/lib/time-tracking/mock-data'
 import { createClient } from '@/lib/supabase/client'
@@ -16,7 +17,7 @@ import {
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { Play, Square, DollarSign, Loader2, Building2 } from 'lucide-react'
+import { Play, Square, DollarSign, Loader2, Building2, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 function getClientColor(id: string): string {
@@ -47,6 +48,7 @@ interface ColaboradorInfo {
 }
 
 export function ActiveTimerBar() {
+  const router = useRouter()
   const {
     isRunning,
     startedAt,
@@ -66,6 +68,8 @@ export function ActiveTimerBar() {
 
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
+  const [clientSearch, setClientSearch] = useState('')
+  const [clientSearchOpen, setClientSearchOpen] = useState(false)
   const [colaborador, setColaborador] = useState<ColaboradorInfo | null>(null)
   const [isLoadingClients, setIsLoadingClients] = useState(true)
   const [isLoadingTipos, setIsLoadingTipos] = useState(true)
@@ -181,7 +185,7 @@ export function ActiveTimerBar() {
 
   return (
     <div className="sticky top-0 z-40 border-b border-border bg-card shadow-sm">
-      {/* Fila superior: departamento del colaborador */}
+      {/* Fila superior: departamento + buscador de clientes */}
       {colaborador && (
         <div className="flex items-center gap-2 px-4 pt-2 pb-1 border-b border-border/50">
           <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -196,6 +200,63 @@ export function ActiveTimerBar() {
               </Badge>
             </>
           )}
+
+          {/* Separador */}
+          <div className="h-4 w-px bg-border mx-1" />
+
+          {/* Buscador de clientes */}
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Buscar cliente..."
+              value={clientSearch}
+              onChange={(e) => { setClientSearch(e.target.value); setClientSearchOpen(true) }}
+              onFocus={() => setClientSearchOpen(true)}
+              onBlur={() => setTimeout(() => setClientSearchOpen(false), 150)}
+              className="h-6 w-full rounded-md border border-border bg-muted/40 pl-7 pr-6 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-colors"
+            />
+            {clientSearch && (
+              <button
+                onMouseDown={(e) => { e.preventDefault(); setClientSearch(''); setClientSearchOpen(false) }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+            {/* Dropdown de resultados */}
+            {clientSearchOpen && clientSearch.trim() && (
+              <div className="absolute top-full left-0 mt-1 w-72 rounded-md border border-border bg-popover shadow-lg z-50 overflow-hidden">
+                {clientes
+                  .filter(c => c.nombre_del_negocio.toLowerCase().includes(clientSearch.toLowerCase()))
+                  .slice(0, 8)
+                  .map(cliente => (
+                    <button
+                      key={cliente.id}
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        router.push(`/dashboard/clients/${cliente.id}`)
+                        setClientSearch('')
+                        setClientSearchOpen(false)
+                      }}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+                    >
+                      <div
+                        className="h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0"
+                        style={{ backgroundColor: getClientColor(cliente.id) }}
+                      >
+                        {getInitials(cliente.nombre_del_negocio)}
+                      </div>
+                      <span className="truncate">{cliente.nombre_del_negocio}</span>
+                    </button>
+                  ))
+                }
+                {clientes.filter(c => c.nombre_del_negocio.toLowerCase().includes(clientSearch.toLowerCase())).length === 0 && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
