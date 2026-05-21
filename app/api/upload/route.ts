@@ -1,6 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
+// Increase body size limit to 50MB
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+}
+
+export const runtime = 'nodejs'
+
 export async function POST(request: Request) {
   console.log('[v0] Upload API called')
   try {
@@ -10,6 +19,12 @@ export async function POST(request: Request) {
     if (!file) {
       console.log('[v0] No file in request')
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
+    }
+
+    // Check file size (max 50MB)
+    const maxSize = 50 * 1024 * 1024
+    if (file.size > maxSize) {
+      return NextResponse.json({ error: 'File too large. Maximum size is 50MB' }, { status: 413 })
     }
 
     console.log('[v0] File received:', file.name, file.type, file.size)
