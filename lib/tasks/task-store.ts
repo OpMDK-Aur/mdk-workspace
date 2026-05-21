@@ -1223,8 +1223,11 @@ addTask: async (taskData) => {
   }
   
   // Notify assigned users about the new task via server API (bypasses RLS)
+  console.log('[v0] addTask assigneeIds:', assigneeIds, 'createdById:', taskData.createdById)
   const assignedColabIds = assigneeIds.filter(uid => uid && uid !== taskData.createdById)
+  console.log('[v0] Filtered assignedColabIds for notification:', assignedColabIds)
   if (assignedColabIds.length > 0) {
+    console.log('[v0] Calling tarea-asignada API with:', { taskId: id, titulo: taskData.title, colaboradorIds: assignedColabIds })
     fetch('/api/notifications/tarea-asignada', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1234,7 +1237,12 @@ addTask: async (taskData) => {
         colaboradorIds: assignedColabIds,
         clienteId: clientIds[0] || null,
       }),
-    }).catch(err => console.error('[v0] Error calling tarea-asignada API:', err))
+    })
+      .then(res => res.json())
+      .then(data => console.log('[v0] tarea-asignada API response:', data))
+      .catch(err => console.error('[v0] Error calling tarea-asignada API:', err))
+  } else {
+    console.log('[v0] No assignees to notify (empty or self-assigned)')
   }
   
   // Update local state
