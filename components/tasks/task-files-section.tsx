@@ -69,14 +69,12 @@ export function TaskFilesSection({ task, currentUserId, colaboradorNombre }: Tas
 
   const fetchAdjuntos = async () => {
     setLoading(true)
-    console.log('[v0] Fetching adjuntos for task:', task.id)
     const { data, error } = await supabase
       .from('tarea_adjuntos')
       .select('*')
       .eq('tarea_id', task.id)
       .order('created_at', { ascending: false })
 
-    console.log('[v0] Adjuntos result:', { data, error })
     if (!error && data) {
       setAdjuntos(data)
     }

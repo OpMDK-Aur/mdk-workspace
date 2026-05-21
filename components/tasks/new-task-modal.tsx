@@ -1448,7 +1448,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       })
     }
     
-    await addTask({
+    const newTaskId = await addTask({
       title: quickTitle,
       description: quickDescription || null,
       clientId: firstClient?.id || '',
@@ -1465,21 +1465,16 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     } as any)
 
     // Save pending attachments to tarea_adjuntos after task creation
-    if (pendingAttachments.length > 0) {
-      // Get the task id from the store (most recently added)
-      const tasks = useTaskStore.getState().tasks
-      const newTask = tasks[tasks.length - 1]
-      if (newTask?.id) {
-        await supabase.from('tarea_adjuntos').insert(
-          pendingAttachments.map(att => ({
-            tarea_id: newTask.id,
-            nombre: att.name,
-            url: att.url,
-            tipo: att.mimeType,
-            subido_por: currentUser?.id || null,
-          }))
-        )
-      }
+    if (pendingAttachments.length > 0 && newTaskId) {
+      await supabase.from('tarea_adjuntos').insert(
+        pendingAttachments.map(att => ({
+          tarea_id: newTaskId,
+          nombre: att.name,
+          url: att.url,
+          tipo: att.mimeType,
+          subido_por: currentUser?.id || null,
+        }))
+      )
     }
 
     setIsCreating(false)
