@@ -33,10 +33,10 @@ export async function POST() {
   const supabase = await createClient()
   
   try {
-    // Get clients that have MDK as unidad de negocio, including account_manager_id
+    // Get clients that have MDK as unidad de negocio, including account_manager_ids array
     const { data: mdkClients, error: clientsError } = await supabase
       .from('clientes_unidades_de_negocio')
-      .select('cliente_id, clientes(id, nombre_del_negocio, account_manager_id)')
+      .select('cliente_id, clientes(id, nombre_del_negocio, account_manager_id, account_manager_ids)')
       .eq('unidad_de_negocio_id', MDK_UNIDAD_ID)
     
     if (clientsError) {
@@ -97,8 +97,11 @@ export async function POST() {
     )
     
     for (const mdkClient of mdkClients) {
-      const cliente = mdkClient.clientes as { id: string; nombre_del_negocio: string; account_manager_id: string | null } | null
+      const cliente = mdkClient.clientes as { id: string; nombre_del_negocio: string; account_manager_id: string | null; account_manager_ids: string[] | null } | null
       if (!cliente) continue
+      
+      // Use first account manager from array, fallback to singular field
+      const assignedTo = cliente.account_manager_ids?.[0] ?? cliente.account_manager_id ?? null
       
       for (const friday of fridays) {
         const dateKey = `${cliente.id}-${friday.toISOString().split('T')[0]}`
@@ -115,7 +118,7 @@ export async function POST() {
 </ul>`,
             cliente_id: cliente.id,
             tipo_tarea_id: tipoTarea?.id ?? null,
-            asignado_a: cliente.account_manager_id,
+            asignado_a: assignedTo,
             estado: 'pendiente',
             prioridad: 'media',
             fecha_vencimiento: friday.toISOString(),
