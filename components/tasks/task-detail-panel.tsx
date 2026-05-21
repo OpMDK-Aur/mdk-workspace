@@ -1593,11 +1593,11 @@ export function TaskDetailPanel() {
     async function loadCurrentUser() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
+      if (user?.email) {
         const { data: colab } = await supabase
           .from('colaboradores')
           .select('id')
-          .eq('user_id', user.id)
+          .eq('email', user.email)
           .single()
         if (colab) setCurrentUserId(colab.id)
       }
