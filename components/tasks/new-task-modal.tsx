@@ -906,6 +906,7 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
 export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode = 'ai' }: NewTaskModalProps) {
   const addTask = useTaskStore((s) => s.addTask)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
@@ -928,6 +929,8 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   const [activeTab, setActiveTab] = useState<'tarea' | 'documento' | 'recordatorio'>('tarea')
   const [reminderName, setReminderName] = useState('')
   const [reminderDate, setReminderDate] = useState<string>('')
+  const [pendingAttachments, setPendingAttachments] = useState<{ url: string; name: string; mimeType: string }[]>([])
+  const [isUploadingFile, setIsUploadingFile] = useState(false)
   
   // Update quickDueDate when initialDueDate changes (e.g., from calendar)
   useEffect(() => {
@@ -1754,10 +1757,43 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                   </Button>
                   <div className="h-px bg-border my-1" />
                   <div className="text-xs text-muted-foreground px-2 py-1.5">Adjuntos</div>
-                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="w-full justify-start text-xs h-8 font-normal gap-2"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploadingFile}
+                  >
                     <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-                    Subir archivo
+                    {isUploadingFile ? 'Subiendo...' : 'Subir archivo'}
                   </Button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files || [])
+                      if (!files.length) return
+                      setIsUploadingFile(true)
+                      for (const file of files) {
+                        try {
+                          const formData = new FormData()
+                          formData.append('file', file)
+                          const res = await fetch('/api/upload', { method: 'POST', body: formData })
+                          if (res.ok) {
+                            const { url, fileName } = await res.json()
+                            setPendingAttachments(prev => [...prev, { url, name: fileName || file.name, mimeType: file.type }])
+                          }
+                        } catch (error) {
+                          console.error('[v0] Upload error:', error)
+                        }
+                      }
+                      setIsUploadingFile(false)
+                      e.target.value = ''
+                    }}
+                  />
                   <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
                     <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
                     Agregar enlace
