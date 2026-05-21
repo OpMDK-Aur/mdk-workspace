@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { TaskPriority, TaskType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useTaskStore, useTaskStoreHydrated, PRIORITY_CONFIG, TYPE_CONFIG, ASSIGNEES } from '@/lib/tasks/task-store'
+import { createClient } from '@/lib/supabase/client'
 
 // Lazy load heavy components
 const KanbanView = dynamic(() => import('./kanban-view').then(m => ({ default: m.KanbanView })), {
@@ -40,11 +41,27 @@ import {
   FileText,
   X,
   Search,
+  Building2,
+  Check,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 
 export function TaskBoard() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const hydrated = useTaskStoreHydrated()
   const { 
     view, 
@@ -66,10 +83,19 @@ export function TaskBoard() {
   const [newTaskOpen, setNewTaskOpen] = useState(false)
   const [newTaskMode, setNewTaskMode] = useState<'manual' | 'ai'>('manual')
   const [meetingOpen, setMeetingOpen] = useState(false)
+  const [availableClients, setAvailableClients] = useState<{ id: string; nombre_del_negocio: string }[]>([])
+  const [clientPopoverOpen, setClientPopoverOpen] = useState(false)
   
   // Track if seguimiento was already generated this session
   const seguimientoGenerated = useRef(false)
   
+  // Load available clients for filter
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.from('clientes').select('id, nombre_del_negocio').order('nombre_del_negocio')
+      .then(({ data }) => { if (data) setAvailableClients(data) })
+  }, [])
+
   // Generate seguimiento tasks for MDK clients on mount, then load all tasks
   useEffect(() => {
     const initTasks = async () => {
@@ -98,7 +124,7 @@ export function TaskBoard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
-  const hasSimpleFilters = filters.priority || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned
+  const hasSimpleFilters = filters.priority || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned || (filters.clientIds?.length ?? 0) > 0
   const hasAdvancedFilters = advancedFilters.length > 0
   const hasFilters = hasSimpleFilters || hasAdvancedFilters
 
@@ -168,7 +194,7 @@ export function TaskBoard() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Search */}
+          {/* Search tasks */}
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -179,6 +205,72 @@ export function TaskBoard() {
               className="pl-9 w-[200px] h-8"
             />
           </div>
+
+          {/* Client filter */}
+          <Popover open={clientPopoverOpen} onOpenChange={setClientPopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  'h-8 gap-1.5 text-xs',
+                  (filters.clientIds?.length ?? 0) > 0 && 'border-primary/50 bg-primary/5 text-primary'
+                )}
+              >
+                <Building2 className="h-3.5 w-3.5" />
+                {(filters.clientIds?.length ?? 0) === 0
+                  ? 'Cliente'
+                  : (filters.clientIds?.length ?? 0) === 1
+                    ? availableClients.find(c => c.id === filters.clientIds![0])?.nombre_del_negocio ?? 'Cliente'
+                    : `${filters.clientIds!.length} clientes`
+                }
+                {(filters.clientIds?.length ?? 0) > 0 && (
+                  <span
+                    className="ml-0.5 text-primary/60 hover:text-primary"
+                    onClick={(e) => { e.stopPropagation(); setFilter('clientIds', []) }}
+                  >
+                    <X className="h-3 w-3" />
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2" align="start">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-2">Filtrar por cliente</p>
+              <Command>
+                <CommandInput placeholder="Buscar cliente..." className="h-8 text-xs" />
+                <CommandList className="max-h-56 overflow-y-auto">
+                  <CommandEmpty className="text-xs text-muted-foreground py-3 text-center">Sin resultados</CommandEmpty>
+                  <CommandGroup>
+                    {availableClients.map((client) => {
+                      const selected = filters.clientIds?.includes(client.id) ?? false
+                      return (
+                        <CommandItem
+                          key={client.id}
+                          value={client.nombre_del_negocio}
+                          onSelect={() => {
+                            const current = filters.clientIds ?? []
+                            setFilter('clientIds', selected
+                              ? current.filter(id => id !== client.id)
+                              : [...current, client.id]
+                            )
+                          }}
+                          className="text-xs flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer"
+                        >
+                          <div className={cn(
+                            'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+                            selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border'
+                          )}>
+                            {selected && <Check className="h-3 w-3" />}
+                          </div>
+                          <span className="flex-1 truncate">{client.nombre_del_negocio}</span>
+                        </CommandItem>
+                      )
+                    })}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
 
           {/* Advanced Filter Builder */}
           <FilterBuilder

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation, ClientPlan, TaskFile, TaskComment } from '@/lib/types'
 import { cn, linkifyText } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -115,11 +116,13 @@ function formatTime(seconds: number): string {
 function MultiClientSelect({
   clients,
   availableClients,
-  onChange
+  onChange,
+  onNavigateToClient,
 }: {
   clients: Array<{ id: string; nombre_del_negocio: string }>
   availableClients: Array<{ id: string; nombre_del_negocio: string }>
   onChange: (clients: Array<{ id: string; nombre_del_negocio: string }>) => void
+  onNavigateToClient?: (clientId: string) => void
 }) {
   const [open, setOpen] = useState(false)
   
@@ -148,7 +151,13 @@ function MultiClientSelect({
               key={c.id}
               className="flex items-center gap-1.5 bg-muted/50 rounded-full px-2.5 py-0.5 group"
             >
-              <span className="text-xs">{c.nombre_del_negocio}</span>
+              <button
+                onClick={() => onNavigateToClient?.(c.id)}
+                className="text-xs hover:text-primary hover:underline transition-colors cursor-pointer"
+                title={`Ir a ${c.nombre_del_negocio}`}
+              >
+                {c.nombre_del_negocio}
+              </button>
               <button
                 onClick={() => removeClient(c.id)}
                 className="h-4 w-4 rounded-full hover:bg-destructive/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
@@ -1561,6 +1570,7 @@ function CustomFields({ task }: { task: Task }) {
 // ── Main Panel ────────────────────────────────────────────────────────────────
 
 export function TaskDetailPanel() {
+  const router = useRouter()
   const { selectedTaskId, setSelectedTask, tasks, updateTask, deleteTask, toggleTaskActive } = useTaskStore()
   const task = tasks.find((t) => t.id === selectedTaskId)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -1975,6 +1985,9 @@ export function TaskDetailPanel() {
                             clientId: newClients[0]?.id || '',
                             clientName: newClients[0]?.nombre_del_negocio || 'Sin cliente',
                           })
+                        }}
+                        onNavigateToClient={(clientId) => {
+                          router.push(`/dashboard/crm?client_id=${clientId}`)
                         }}
                       />
                     </div>
