@@ -1368,8 +1368,6 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
   const commentId = crypto.randomUUID()
   const now = new Date()
 
-    console.log('[v0] addComment called with:', { taskId, content, userId, userName, attachments: attachments.length })
-    
     const insertData = {
       id: commentId,
       tarea_id: taskId,
@@ -1377,9 +1375,7 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
       autor_id: userId === 'system' ? null : userId,
       autor_nombre: userName,
       es_sistema: userName === 'Madky',
-      adjuntos: attachments.length > 0 ? attachments : null,
     }
-    console.log('[v0] Insert data:', insertData)
 
     // Insert comment into Supabase
     const { error } = await supabase
