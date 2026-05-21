@@ -231,69 +231,188 @@ function EditablePersonChip({
   onChange: (id: string | null) => void
   updating: boolean
 }) {
+  return null // replaced by EditableMultiPersonChip
+}
+
+// ── Multi-person chip (editable, multi-select) ────────────────────────────────
+function EditableMultiPersonChip({
+  profileIds,
+  label,
+  profiles,
+  onChange,
+  updating,
+}: {
+  profileIds: string[]
+  label: string
+  profiles: Profile[]
+  onChange: (ids: string[]) => void
+  updating: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const selectedProfiles = profiles.filter(p => profileIds.includes(p.id))
+
+  const toggle = (id: string) => {
+    const next = profileIds.includes(id)
+      ? profileIds.filter(x => x !== id)
+      : [...profileIds, id]
+    onChange(next)
+  }
+
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-xs text-muted-foreground font-medium">{label}</span>
-      <DropdownMenu>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild disabled={updating}>
-          <button className="flex items-center gap-2 hover:bg-muted/50 rounded-lg p-1 -m-1 transition-colors cursor-pointer text-left">
-            {profile ? (
-              <>
-                <Avatar className="h-8 w-8 shrink-0">
-                  {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={profile.full_name ?? ''} />}
-                  <AvatarFallback className="bg-primary/20 text-primary text-xs">
-                    {initials(profile.full_name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{profile.full_name ?? profile.email}</p>
-                  <p className="text-[11px] text-muted-foreground">{getRoleName(profile.role)}</p>
+          <button className="flex items-start gap-2 hover:bg-muted/50 rounded-lg p-1 -m-1 transition-colors cursor-pointer text-left w-full">
+            <div className="flex-1 min-w-0">
+              {selectedProfiles.length === 0 ? (
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full border-2 border-dashed border-border flex items-center justify-center shrink-0 text-muted-foreground">
+                    <Users className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="text-sm text-muted-foreground">Sin asignar</span>
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="h-8 w-8 rounded-full border-2 border-dashed border-border flex items-center justify-center shrink-0 text-muted-foreground">
-                  <Users className="h-3.5 w-3.5" />
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {selectedProfiles.map(p => (
+                    <div key={p.id} className="flex items-center gap-2">
+                      <Avatar className="h-7 w-7 shrink-0">
+                        {p.avatar_url && <AvatarImage src={p.avatar_url} alt={p.full_name ?? ''} />}
+                        <AvatarFallback className="bg-primary/20 text-primary text-[10px]">
+                          {initials(p.full_name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate leading-tight">{p.full_name ?? p.email}</p>
+                        <p className="text-[10px] text-muted-foreground">{getRoleName(p.role)}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <span className="text-sm text-muted-foreground">Sin asignar</span>
-              </>
-            )}
+              )}
+            </div>
             {updating ? (
-              <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-spin ml-auto" />
+              <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0 mt-1" />
             ) : (
-              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" />
             )}
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuItem 
-            onClick={() => onChange(null)}
+        <DropdownMenuContent align="start" className="w-60">
+          <DropdownMenuItem
+            onClick={(e) => { e.preventDefault(); onChange([]) }}
             className="gap-2 cursor-pointer"
           >
             <div className="h-6 w-6 rounded-full border-2 border-dashed border-border flex items-center justify-center shrink-0">
               <Users className="h-3 w-3 text-muted-foreground" />
             </div>
-            <span className="text-muted-foreground">Sin asignar</span>
-            {!profile && <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-primary" />}
+            <span className="text-muted-foreground flex-1">Limpiar selección</span>
           </DropdownMenuItem>
-          {profiles.map(p => (
-            <DropdownMenuItem 
-              key={p.id} 
-              onClick={() => onChange(p.id)}
-              className="gap-2 cursor-pointer"
-            >
-              <Avatar className="h-6 w-6 shrink-0">
-                {p.avatar_url && <AvatarImage src={p.avatar_url} alt={p.full_name ?? ''} />}
-                <AvatarFallback className="bg-primary/20 text-primary text-[10px]">
-                  {initials(p.full_name)}
-                </AvatarFallback>
-              </Avatar>
-              <span className="truncate">{p.full_name ?? p.email}</span>
-              {profile?.id === p.id && <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-primary" />}
-            </DropdownMenuItem>
-          ))}
+          {profiles.map(p => {
+            const selected = profileIds.includes(p.id)
+            return (
+              <DropdownMenuItem
+                key={p.id}
+                onClick={(e) => { e.preventDefault(); toggle(p.id) }}
+                className="gap-2 cursor-pointer"
+              >
+                <Avatar className="h-6 w-6 shrink-0">
+                  {p.avatar_url && <AvatarImage src={p.avatar_url} alt={p.full_name ?? ''} />}
+                  <AvatarFallback className="bg-primary/20 text-primary text-[10px]">
+                    {initials(p.full_name)}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="truncate flex-1">{p.full_name ?? p.email}</span>
+                {selected && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+              </DropdownMenuItem>
+            )
+          })}
         </DropdownMenuContent>
       </DropdownMenu>
+    </div>
+  )
+}
+
+// ── Multi-account editor (for Meta/Google IDs) ────────────────────────────────
+function EditableAccountsEditor({
+  accounts,
+  label,
+  platform,
+  onChange,
+  updating,
+}: {
+  accounts: string[]
+  label: string
+  platform: 'meta' | 'google'
+  onChange: (ids: string[]) => void
+  updating: boolean
+}) {
+  const [input, setInput] = useState('')
+
+  const addAccount = (id: string) => {
+    const trimmed = id.trim()
+    if (trimmed && !accounts.includes(trimmed)) {
+      onChange([...accounts, trimmed])
+      setInput('')
+    }
+  }
+
+  const removeAccount = (id: string) => {
+    onChange(accounts.filter(a => a !== id))
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-xs text-muted-foreground font-medium">{label}</span>
+      <div className="flex flex-col gap-2">
+        {accounts.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {accounts.map(acc => (
+              <div
+                key={acc}
+                className="inline-flex items-center gap-1.5 bg-muted text-sm text-foreground rounded-md px-2 py-1"
+              >
+                <code className="text-xs font-mono">{acc}</code>
+                <button
+                  onClick={() => removeAccount(acc)}
+                  disabled={updating}
+                  className="text-muted-foreground hover:text-foreground ml-0.5"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <Input
+            type="text"
+            placeholder={platform === 'meta' ? 'act_...' : 'Customer ID'}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                addAccount(input)
+              }
+            }}
+            disabled={updating}
+            className="h-8 text-xs flex-1"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => addAccount(input)}
+            disabled={!input.trim() || updating}
+            className="h-8"
+          >
+            Agregar
+          </Button>
+        </div>
+        {accounts.length === 0 && (
+          <p className="text-xs text-muted-foreground">Sin cuentas agregadas</p>
+        )}
+      </div>
     </div>
   )
 }
@@ -367,10 +486,26 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [semaforoId, setSemaforoId] = useState(client.semaforo_id)
   const currentSemaforo = getSemaforoById(semaforoId)
   const [updatingStatus, setUpdatingStatus] = useState(false)
-  const [pmId, setPmId] = useState(client.project_manager_id)
-  const [amId, setAmId] = useState(client.account_manager_id)
+  const [pmIds, setPmIds] = useState<string[]>(() => {
+    if (client.project_manager_ids?.length) return client.project_manager_ids
+    return client.project_manager_id ? [client.project_manager_id] : []
+  })
+  const [amIds, setAmIds] = useState<string[]>(() => {
+    if (client.account_manager_ids?.length) return client.account_manager_ids
+    return client.account_manager_id ? [client.account_manager_id] : []
+  })
+  const [metaIds, setMetaIds] = useState<string[]>(() => {
+    if (client.meta_ads_account_ids?.length) return client.meta_ads_account_ids
+    return client.meta_ads_account_id ? [client.meta_ads_account_id] : []
+  })
+  const [googleIds, setGoogleIds] = useState<string[]>(() => {
+    if (client.google_ads_customer_ids?.length) return client.google_ads_customer_ids
+    return client.google_ads_customer_id ? [client.google_ads_customer_id] : []
+  })
   const [updatingPM, setUpdatingPM] = useState(false)
   const [updatingAM, setUpdatingAM] = useState(false)
+  const [updatingMeta, setUpdatingMeta] = useState(false)
+  const [updatingGoogle, setUpdatingGoogle] = useState(false)
   
   // Fee editing
   const [editingFee, setEditingFee] = useState(false)
@@ -419,17 +554,17 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     }
   }
 
-  const handlePMChange = async (newPmId: string | null) => {
+  const handlePMChange = async (newIds: string[]) => {
     setUpdatingPM(true)
     try {
       const { error } = await supabase
         .from('clientes')
-        .update({ project_manager_id: newPmId })
+        .update({ 
+          project_manager_ids: newIds,
+          project_manager_id: newIds[0] ?? null,
+        })
         .eq('id', client.id)
-      
-      if (!error) {
-        setPmId(newPmId)
-      }
+      if (!error) setPmIds(newIds)
     } catch (e) {
       console.error('Error updating PM:', e)
     } finally {
@@ -437,21 +572,57 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     }
   }
 
-  const handleAMChange = async (newAmId: string | null) => {
+  const handleAMChange = async (newIds: string[]) => {
     setUpdatingAM(true)
     try {
       const { error } = await supabase
         .from('clientes')
-        .update({ account_manager_id: newAmId })
+        .update({ 
+          account_manager_ids: newIds,
+          account_manager_id: newIds[0] ?? null,
+        })
         .eq('id', client.id)
-      
-      if (!error) {
-        setAmId(newAmId)
-      }
+      if (!error) setAmIds(newIds)
     } catch (e) {
       console.error('Error updating AM:', e)
     } finally {
       setUpdatingAM(false)
+    }
+  }
+
+  const handleMetaChange = async (newIds: string[]) => {
+    setUpdatingMeta(true)
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .update({ 
+          meta_ads_account_ids: newIds,
+          meta_ads_account_id: newIds[0] ?? null,
+        })
+        .eq('id', client.id)
+      if (!error) setMetaIds(newIds)
+    } catch (e) {
+      console.error('Error updating Meta accounts:', e)
+    } finally {
+      setUpdatingMeta(false)
+    }
+  }
+
+  const handleGoogleChange = async (newIds: string[]) => {
+    setUpdatingGoogle(true)
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .update({ 
+          google_ads_customer_ids: newIds,
+          google_ads_customer_id: newIds[0] ?? null,
+        })
+        .eq('id', client.id)
+      if (!error) setGoogleIds(newIds)
+    } catch (e) {
+      console.error('Error updating Google accounts:', e)
+    } finally {
+      setUpdatingGoogle(false)
     }
   }
 
@@ -486,8 +657,6 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     setEditingFee(false)
   }
 
-  const pm = profiles.find(p => p.id === pmId) ?? null
-  const am = profiles.find(p => p.id === amId) ?? null
   const platforms = getActivePlatforms(client)
 
   // Dedication status
@@ -504,71 +673,65 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
     try {
       // Meta — endpoint expects `account_id`, returns campaigns[].id/.name
-      if (client.meta_ads_account_id) {
-        const params = new URLSearchParams({
-          account_id:  client.meta_ads_account_id,
-          date_range:  p,
-          start_date:  start,
-          end_date:    end,
-        })
-        const res  = await fetch(`/api/ads/meta?${params}`)
-        const data = await res.json()
-        if (data.campaigns) {
-          for (const c of data.campaigns) {
-            collected.push({
-              clientId:     client.id,
-              clientName:   client.business_name,
-              campaignId:   c.id,
-              campaignName: c.name,
-              platform:     'meta',
-              budget:       null,
-              daysToEnd:    null,
-              leads:        Number(c.leads ?? 0),
-              leadType:     c.objective ?? '',
-              cpl:          Number(c.cpl ?? 0),
-              ctr:          Number(c.ctr ?? 0),
-              impressions:  Number(c.impressions ?? 0),
-              clicks:       Number(c.clicks ?? 0),
-              spend:        Number(c.spend ?? 0),
-              crmContacts:  0,
+      const metaAccountIds = metaIds.length > 0 ? metaIds : (client.meta_ads_account_id ? [client.meta_ads_account_id] : [])
+      if (metaAccountIds.length > 0) {
+        for (const account_id of metaAccountIds) {
+          const params = new URLSearchParams({
+            q: 'campaigns',
+            fields: 'id,name',
+            account_id: account_id,
+          })
+          const res = await fetch(`/api/ads/meta?${params}`)
+          const json = (await res.json()) as { data: Array<{ id: string; name: string }> }
+          for (const campaign of json.data) {
+            rows.push({
+              campaignId: campaign.id,
+              campaignName: campaign.name,
+              platform: 'meta',
+              spend: 0,
+              budget: 0,
+              leadType: '',
             })
           }
         }
       }
 
       // Google — endpoint expects `customer_id`, returns campaigns[].id/.name
-      if (client.google_ads_customer_id) {
-        const params = new URLSearchParams({
-          customer_id: client.google_ads_customer_id,
-          date_range:  p,
-          start_date:  start,
-          end_date:    end,
-        })
-        const res  = await fetch(`/api/ads/google?${params}`)
-        const data = await res.json()
-        if (data.campaigns) {
-          for (const c of data.campaigns) {
-            const spend       = Number(c.spend ?? (Number(c.cost_micros ?? 0) / 1_000_000))
-            const leads       = Number(c.leads ?? c.conversions ?? 0)
-            const impressions = Number(c.impressions ?? 0)
-            const clicks      = Number(c.clicks ?? 0)
-            collected.push({
-              clientId:     client.id,
-              clientName:   client.business_name,
-              campaignId:   c.id,
-              campaignName: c.name,
-              platform:     'google',
-              budget:       null,
-              daysToEnd:    null,
-              leads,
-              leadType:     c.campaign_type ?? c.advertising_channel_type ?? '',
-              cpl:          Number(c.cpl ?? (leads > 0 ? spend / leads : 0)),
-              ctr:          Number(c.ctr ?? (impressions > 0 ? (clicks / impressions) * 100 : 0)),
-              impressions,
-              clicks,
-              spend,
-              crmContacts:  0,
-            })
+      const googleCustomerIds = googleIds.length > 0 ? googleIds : (client.google_ads_customer_id ? [client.google_ads_customer_id] : [])
+      if (googleCustomerIds.length > 0) {
+        for (const customer_id of googleCustomerIds) {
+          const params = new URLSearchParams({
+            customer_id: customer_id,
+            date_range:  p,
+            start_date:  start,
+            end_date:    end,
+          })
+          const res  = await fetch(`/api/ads/google?${params}`)
+          const data = await res.json()
+          if (data.campaigns) {
+            for (const c of data.campaigns) {
+              const spend       = Number(c.spend ?? (Number(c.cost_micros ?? 0) / 1_000_000))
+              const leads       = Number(c.leads ?? c.conversions ?? 0)
+              const impressions = Number(c.impressions ?? 0)
+              const clicks      = Number(c.clicks ?? 0)
+              collected.push({
+                clientId:     client.id,
+                clientName:   client.business_name,
+                campaignId:   c.id,
+                campaignName: c.name,
+                platform:     'google',
+                budget:       null,
+                daysToEnd:    null,
+                leads,
+                leadType:     c.campaign_type ?? c.advertising_channel_type ?? '',
+                cpl:          Number(c.cpl ?? (leads > 0 ? spend / leads : 0)),
+                ctr:          Number(c.ctr ?? (impressions > 0 ? (clicks / impressions) * 100 : 0)),
+                impressions,
+                clicks,
+                spend,
+                crmContacts:  0,
+              })
+            }
           }
         }
       }
@@ -710,9 +873,9 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card>
             <CardContent className="pt-5 pb-5">
-              <EditablePersonChip 
-                profile={pm} 
-                label="Project Manager" 
+              <EditableMultiPersonChip
+                profileIds={pmIds}
+                label="Project Manager"
                 profiles={profiles}
                 onChange={handlePMChange}
                 updating={updatingPM}
@@ -721,12 +884,36 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           </Card>
           <Card>
             <CardContent className="pt-5 pb-5">
-              <EditablePersonChip 
-                profile={am} 
-                label="Account Manager" 
+              <EditableMultiPersonChip
+                profileIds={amIds}
+                label="Account Manager"
                 profiles={profiles}
                 onChange={handleAMChange}
                 updating={updatingAM}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-5 pb-5">
+              <EditableAccountsEditor
+                accounts={metaIds}
+                label="Meta Ads"
+                platform="meta"
+                onChange={handleMetaChange}
+                updating={updatingMeta}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-5 pb-5">
+              <EditableAccountsEditor
+                accounts={googleIds}
+                label="Google Ads"
+                platform="google"
+                onChange={handleGoogleChange}
+                updating={updatingGoogle}
               />
             </CardContent>
           </Card>

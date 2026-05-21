@@ -23,6 +23,7 @@ interface TipoDeTarea {
 interface Colaborador {
   id: string
   nombre: string
+  apellido?: string | null
   avatar_url: string | null
   }
 
@@ -210,16 +211,19 @@ function MultiAssigneeSelect({
   colaboradores,
   onChange 
 }: { 
-  assignees: Array<{ id: string; nombre: string; avatar_url: string | null }>
-  colaboradores: Array<{ id: string; nombre: string; avatar_url: string | null }>
-  onChange: (assignees: Array<{ id: string; nombre: string; avatar_url: string | null }>) => void
+  assignees: Array<{ id: string; nombre: string; apellido?: string | null; avatar_url: string | null }>
+  colaboradores: Array<{ id: string; nombre: string; apellido?: string | null; avatar_url: string | null }>
+  onChange: (assignees: Array<{ id: string; nombre: string; apellido?: string | null; avatar_url: string | null }>) => void
 }) {
   const [open, setOpen] = useState(false)
+
+  const fullName = (p: { nombre: string; apellido?: string | null }) =>
+    [p.nombre, p.apellido].filter(Boolean).join(' ')
 
   const addAssignee = (colabId: string) => {
     const colab = colaboradores.find(c => c.id === colabId)
     if (colab && !assignees.find(a => a.id === colabId)) {
-      onChange([...assignees, { id: colab.id, nombre: colab.nombre, avatar_url: colab.avatar_url }])
+      onChange([...assignees, { id: colab.id, nombre: colab.nombre, apellido: colab.apellido, avatar_url: colab.avatar_url }])
     }
   }
 
@@ -242,10 +246,10 @@ function MultiAssigneeSelect({
               className="flex items-center gap-1.5 bg-muted/50 rounded-full pl-1 pr-2 py-0.5 group"
             >
               <Avatar className="h-5 w-5">
-                {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
-                <AvatarFallback className="text-[9px]">{getInitials(a.nombre)}</AvatarFallback>
+                {a.avatar_url && <AvatarImage src={a.avatar_url} alt={fullName(a)} />}
+                <AvatarFallback className="text-[9px]">{getInitials(fullName(a))}</AvatarFallback>
               </Avatar>
-              <span className="text-xs">{a.nombre.split(' ')[0]}</span>
+              <span className="text-xs">{fullName(a)}</span>
               <button 
                 onClick={() => removeAssignee(a.id)}
                 className="h-4 w-4 rounded-full hover:bg-destructive/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
@@ -274,17 +278,17 @@ function MultiAssigneeSelect({
                 {availableColaboradores.map((c) => (
                   <CommandItem
                     key={c.id}
-                    value={c.nombre}
+                    value={fullName(c)}
                     onSelect={() => {
                       addAssignee(c.id)
                       setOpen(false)
                     }}
                   >
                     <Avatar className="h-5 w-5 mr-2">
-                      {c.avatar_url && <AvatarImage src={c.avatar_url} alt={c.nombre} />}
-                      <AvatarFallback className="text-[9px]">{getInitials(c.nombre)}</AvatarFallback>
+                      {c.avatar_url && <AvatarImage src={c.avatar_url} alt={fullName(c)} />}
+                      <AvatarFallback className="text-[9px]">{getInitials(fullName(c))}</AvatarFallback>
                     </Avatar>
-                    {c.nombre}
+                    {fullName(c)}
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -1622,7 +1626,7 @@ export function TaskDetailPanel() {
       
       const [tiposRes, colabRes, clientesRes] = await Promise.all([
         supabase.from('tipo_de_tareas').select('id, nombre, activo').eq('activo', true).order('nombre'),
-        supabase.from('colaboradores').select('id, nombre, avatar_url').order('nombre'),
+        supabase.from('colaboradores').select('id, nombre, apellido, avatar_url').order('nombre'),
         supabase.from('clientes').select('id, nombre_del_negocio, plan').order('nombre_del_negocio'),
       ])
 
