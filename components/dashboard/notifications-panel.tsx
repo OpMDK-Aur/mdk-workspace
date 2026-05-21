@@ -21,7 +21,9 @@ import {
   Settings,
   Filter,
   ChevronLeft,
-  Inbox
+  Inbox,
+  Trash2,
+  RefreshCw
 } from 'lucide-react'
 import Link from 'next/link'
 import {
@@ -118,12 +120,16 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
       
       setCurrentUserId(colaborador.id)
       
-      // Clean up and generate notifications in parallel, then load
+      // First delete ALL notifications for this user, then generate fresh ones
+      const supabase2 = createClient()
+      await supabase2
+        .from('notificaciones')
+        .delete()
+        .eq('colaborador_id', colaborador.id)
+      
+      // Generate new notifications for overdue tasks only
       try {
-        await Promise.all([
-          fetch('/api/notifications/generate', { method: 'DELETE' }),
-          fetch('/api/notifications/generate', { method: 'POST' })
-        ])
+        await fetch('/api/notifications/generate', { method: 'POST' })
       } catch {
         // Silently fail, still load existing notifications
       }
@@ -180,6 +186,24 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
     setNotificaciones((prev) =>
       prev.map((n) => ({ ...n, leida: true }))
     )
+  }
+
+  async function limpiarYRegenerar() {
+    if (!currentUserId) return
+    setLoading(true)
+    
+    // Delete all notifications for this user
+    const supabase = createClient()
+    await supabase
+      .from('notificaciones')
+      .delete()
+      .eq('colaborador_id', currentUserId)
+    
+    // Generate fresh notifications
+    await fetch('/api/notifications/generate', { method: 'POST' })
+    
+    // Reload
+    loadNotificaciones(currentUserId)
   }
 
   function handleNotificationClick(notif: Notificacion) {
@@ -243,6 +267,15 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
             title="Archivar leídas"
           >
             <Archive className="h-3.5 w-3.5" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-7 w-7"
+            onClick={limpiarYRegenerar}
+            title="Limpiar y regenerar"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
