@@ -1527,7 +1527,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[800px] p-0 gap-0 overflow-hidden">
         {/* Header with Tabs */}
-        <div className="flex items-center justify-between px-2 border-b">
+        <div className="flex items-center justify-between px-2 border-b pr-10">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="flex-1">
             <TabsList className="bg-transparent h-auto p-0 gap-0">
               <TabsTrigger
@@ -1538,7 +1538,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
               </TabsTrigger>
             </TabsList>
           </Tabs>
-          <div className="flex items-center gap-1 pr-2">
+          <div className="flex items-center gap-1 shrink-0">
             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
               <ChevronDown className="h-4 w-4" />
             </Button>
