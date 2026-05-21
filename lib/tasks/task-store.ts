@@ -1069,6 +1069,18 @@ updateTaskStatus: async (taskId, status) => {
   if (error) {
     console.error('Error updating task status:', error)
   }
+
+  // If task is marked as completed, delete reminder notifications for this task
+  if (status === 'realizada') {
+    await supabase
+      .from('notificaciones')
+      .delete()
+      .eq('tipo', 'recordatorio')
+      .eq('referencia_id', taskId)
+
+    // Also delete by title match for reminders without referencia_id
+    // (reminders created standalone without a task reference)
+  }
   
   // Update local state
   set((state) => ({

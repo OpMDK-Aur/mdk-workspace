@@ -1500,12 +1500,35 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     setIsCreating(true)
 
     try {
-      console.log('[v0] Creating reminder:', { reminderName, reminderDate })
-      
-      // TODO: Implement reminder creation in database
-      // For now, just log the reminder
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
+      const { data: { user } } = await supabase.auth.getUser()
+      let colaboradorId: string | null = null
+      if (user?.email) {
+        const { data: colab } = await supabase
+          .from('colaboradores')
+          .select('id')
+          .eq('email', user.email)
+          .single()
+        colaboradorId = colab?.id ?? null
+      }
+
+      const fechaTexto = reminderDate
+        ? new Date(reminderDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })
+        : null
+
+      const { error } = await supabase.from('notificaciones').insert({
+        colaborador_id: colaboradorId,
+        tipo: 'recordatorio',
+        titulo: reminderName.trim(),
+        descripcion: fechaTexto ? `Recordatorio para el ${fechaTexto}` : 'Recordatorio sin fecha',
+        referencia_id: null,
+        referencia_tipo: null,
+        leida: false,
+      })
+
+      if (error) {
+        console.error('[v0] Error creating reminder:', error)
+      }
+
       setReminderName('')
       setReminderDate('')
       onOpenChange(false)
