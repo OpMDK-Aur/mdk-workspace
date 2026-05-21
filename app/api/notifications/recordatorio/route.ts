@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
     const { error } = await supabase.from('notificaciones').insert({
       colaborador_id: colaborador.id,
-      tipo: 'recordatorio',
+      tipo: 'tarea_vence',
       titulo: titulo.trim(),
       descripcion: fechaTexto ? `Recordatorio para el ${fechaTexto}` : 'Recordatorio sin fecha',
       referencia_id: null,

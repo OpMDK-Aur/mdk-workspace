@@ -50,8 +50,6 @@ interface NotificationsPanelProps {
 const TIPO_CONFIG: Record<string, { icon: typeof Calendar; color: string; bgColor: string; label: string }> = {
   reunion: { icon: Calendar, color: 'text-blue-400', bgColor: 'bg-blue-500/10', label: 'Reunión' },
   tarea_vence: { icon: CheckSquare, color: 'text-amber-400', bgColor: 'bg-amber-500/10', label: 'Tarea' },
-  tarea_asignada: { icon: CheckSquare, color: 'text-green-400', bgColor: 'bg-green-500/10', label: 'Tarea asignada' },
-  recordatorio: { icon: Calendar, color: 'text-purple-400', bgColor: 'bg-purple-500/10', label: 'Recordatorio' },
   comentario: { icon: MessageSquare, color: 'text-green-400', bgColor: 'bg-green-500/10', label: 'Comentario' },
   mencion: { icon: MessageSquare, color: 'text-cyan-400', bgColor: 'bg-cyan-500/10', label: 'Mención' },
   cpl_alerta: { icon: TrendingDown, color: 'text-red-400', bgColor: 'bg-red-500/10', label: 'CPL Alerta' },
