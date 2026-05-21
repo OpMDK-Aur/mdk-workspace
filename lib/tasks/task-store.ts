@@ -1227,7 +1227,7 @@ addTask: async (taskData) => {
   if (assignedColabIds.length > 0) {
     const notifications = assignedColabIds.map(colaboradorId => ({
       colaborador_id: colaboradorId,
-      tipo: 'tarea_asignada',
+      tipo: 'comentario',
       titulo: 'Nueva tarea asignada',
       descripcion: taskData.title,
       referencia_id: id,

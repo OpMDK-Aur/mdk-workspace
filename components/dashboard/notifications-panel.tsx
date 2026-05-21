@@ -23,7 +23,8 @@ import {
   ChevronLeft,
   Inbox,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  UserPlus
 } from 'lucide-react'
 import Link from 'next/link'
 import {
@@ -321,7 +322,10 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
                   {group.label}
                 </div>
                 {group.items.map((notif) => {
-                  const config = TIPO_CONFIG[notif.tipo] || TIPO_CONFIG.comentario
+                  const isTareaAsignada = notif.titulo === 'Nueva tarea asignada'
+                  const config = isTareaAsignada
+                    ? { icon: UserPlus, color: 'text-violet-400', bgColor: 'bg-violet-500/10', label: 'Tarea asignada' }
+                    : TIPO_CONFIG[notif.tipo] || TIPO_CONFIG.comentario
                   const Icon = config.icon
 
                   return (
