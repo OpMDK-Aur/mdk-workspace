@@ -2,14 +2,17 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
+  console.log('[v0] Upload API called')
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File
     
     if (!file) {
+      console.log('[v0] No file in request')
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
+    console.log('[v0] File received:', file.name, file.type, file.size)
     const supabase = await createClient()
 
     // Generate unique filename
@@ -31,6 +34,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    console.log('[v0] Upload success, getting public URL')
     // Get public URL
     const { data: { publicUrl } } = supabase.storage
       .from('task-files')

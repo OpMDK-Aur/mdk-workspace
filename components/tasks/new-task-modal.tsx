@@ -1777,14 +1777,21 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                       const files = Array.from(e.target.files || [])
                       if (!files.length) return
                       setIsUploadingFile(true)
+                      console.log('[v0] Starting upload for', files.length, 'files')
                       for (const file of files) {
                         try {
                           const formData = new FormData()
                           formData.append('file', file)
+                          console.log('[v0] Uploading file:', file.name)
                           const res = await fetch('/api/upload', { method: 'POST', body: formData })
+                          console.log('[v0] Upload response status:', res.status)
                           if (res.ok) {
-                            const { url, fileName } = await res.json()
-                            setPendingAttachments(prev => [...prev, { url, name: fileName || file.name, mimeType: file.type }])
+                            const data = await res.json()
+                            console.log('[v0] Upload success:', data)
+                            setPendingAttachments(prev => [...prev, { url: data.url, name: data.fileName || file.name, mimeType: file.type }])
+                          } else {
+                            const errorData = await res.json()
+                            console.error('[v0] Upload failed:', errorData)
                           }
                         } catch (error) {
                           console.error('[v0] Upload error:', error)
@@ -1801,6 +1808,32 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 </PopoverContent>
               </Popover>
             </div>
+
+            {/* Pending attachments preview */}
+            {pendingAttachments.length > 0 && (
+              <div className="px-5 py-2 border-t bg-muted/30">
+                <p className="text-xs text-muted-foreground mb-2">Archivos adjuntos ({pendingAttachments.length})</p>
+                <div className="flex flex-wrap gap-2">
+                  {pendingAttachments.map((att, i) => (
+                    <div key={i} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded bg-background border border-border">
+                      {att.mimeType.startsWith('image/') ? (
+                        <img src={att.url} alt={att.name} className="h-6 w-6 object-cover rounded" />
+                      ) : (
+                        <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      )}
+                      <span className="max-w-[100px] truncate">{att.name}</span>
+                      <button 
+                        type="button"
+                        onClick={() => setPendingAttachments(prev => prev.filter((_, j) => j !== i))}
+                        className="ml-1 hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Footer */}
             <div className="flex items-center justify-between px-5 py-3 border-t">
