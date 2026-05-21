@@ -1867,13 +1867,6 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
               </Button>
 
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Paperclip className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 relative">
-                  <Bell className="h-4 w-4" />
-                  <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-primary text-[9px] text-primary-foreground flex items-center justify-center">1</span>
-                </Button>
                 <Button
                   className="h-8 px-4"
                   onClick={handleQuickCreate}
