@@ -226,7 +226,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ──�����────────────────────────────���──�����───────���──
+// ── Seguimiento Templates by Plan ──�������────────────────────────────���──�����───────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -1700,6 +1700,92 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 </PopoverContent>
               </Popover>
 
+              {/* Priority chip */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                    <Flag className="h-3.5 w-3.5" />
+                    {quickPriority.charAt(0).toUpperCase() + quickPriority.slice(1)}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-1" align="start">
+                  {['baja', 'media', 'alta'].map((priority) => (
+                    <Button
+                      key={priority}
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-xs h-8"
+                      onClick={() => setQuickPriority(priority)}
+                    >
+                      <Flag className={`h-3.5 w-3.5 mr-2 ${
+                        priority === 'alta' ? 'text-red-500' :
+                        priority === 'media' ? 'text-yellow-500' :
+                        'text-green-500'
+                      }`} />
+                      {priority.charAt(0).toUpperCase() + priority.slice(1)}
+                      {quickPriority === priority && <Check className="h-3 w-3 ml-auto" />}
+                    </Button>
+                  ))}
+                </PopoverContent>
+              </Popover>
+
+              {/* Upload file button */}
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-7 gap-1.5 text-xs"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadingFile}
+              >
+                <Paperclip className="h-3.5 w-3.5" />
+                {isUploadingFile ? 'Subiendo...' : 'Subir Archivo'}
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                className="hidden"
+                onChange={async (e) => {
+                  const files = Array.from(e.target.files || [])
+                  if (!files.length) return
+                  setIsUploadingFile(true)
+                  for (const file of files) {
+                    try {
+                      const sanitizedName = file.name
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .replace(/\s+/g, '_')
+                        .replace(/[^a-zA-Z0-9_.-]/g, '')
+                      const path = `${currentUser?.id || 'anon'}/new/${Date.now()}-${sanitizedName}`
+
+                      const { error: uploadError } = await supabase.storage
+                        .from('task-files')
+                        .upload(path, file)
+
+                      if (uploadError) {
+                        console.error('[v0] Storage error:', uploadError)
+                        continue
+                      }
+
+                      const { data: { publicUrl } } = supabase.storage
+                        .from('task-files')
+                        .getPublicUrl(path)
+
+                      setPendingAttachments(prev => [...prev, {
+                        url: publicUrl,
+                        name: file.name,
+                        mimeType: file.type,
+                      }])
+                    } catch (error) {
+                      console.error('[v0] Upload error:', error)
+                    }
+                  }
+                  setIsUploadingFile(false)
+                  e.target.value = ''
+                }}
+              />
+
               {/* Add more property button */}
               <Popover>
                 <PopoverTrigger asChild>
@@ -1710,10 +1796,6 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 <PopoverContent className="w-56 p-1" align="start">
                   <div className="text-xs text-muted-foreground px-2 py-1.5 mb-1">Agregar propiedad</div>
                   <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
-                    <Flag className="h-3.5 w-3.5 text-muted-foreground" />
-                    Prioridad
-                  </Button>
-                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
                     <Tag className="h-3.5 w-3.5 text-muted-foreground" />
                     Etiquetas
                   </Button>
@@ -1722,16 +1804,9 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                     Tiempo estimado
                   </Button>
                   <div className="h-px bg-border my-1" />
-                  <div className="text-xs text-muted-foreground px-2 py-1.5">Adjuntos</div>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="w-full justify-start text-xs h-8 font-normal gap-2"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploadingFile}
-                  >
-                    <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-                    {isUploadingFile ? 'Subiendo...' : 'Subir archivo'}
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
+                    <Link className="h-3.5 w-3.5 text-muted-foreground" />
+                    Agregar enlace
                   </Button>
                   <input
                     ref={fileInputRef}
