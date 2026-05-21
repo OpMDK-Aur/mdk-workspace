@@ -42,6 +42,7 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Label } from '@/components/ui/label'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Select,
   SelectContent,
@@ -919,7 +920,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   const [quickTitle, setQuickTitle] = useState('')
   const [quickClientIds, setQuickClientIds] = useState<string[]>([])
   const [quickType, setQuickType] = useState<string>('')
-  const [quickPriority, setQuickPriority] = useState<TaskPriority>('media')
+  const [quickPriority, setQuickPriority] = useState<TaskPriority | ''>('')
   const [quickAssigneeIds, setQuickAssigneeIds] = useState<string[]>([])
   const [quickDueDate, setQuickDueDate] = useState(() => 
     initialDueDate ? initialDueDate.toISOString().split('T')[0] : ''
@@ -1458,7 +1459,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       assigneeId: firstAssignee?.id || '',
       assignees,
       status: quickStatus as TaskStatus,
-      priority: quickPriority,
+      priority: (quickPriority || 'media') as TaskPriority,
       type: quickType,
       dueDate: quickDueDate ? new Date(quickDueDate + 'T12:00:00') : null,
       customFields: {},
@@ -1506,7 +1507,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     setQuickDescription('')
     setQuickClientIds([])
     setQuickType('')
-    setQuickPriority('media')
+    setQuickPriority('')
     setQuickStatus('pendiente')
     setQuickAssigneeIds([])
     setQuickDueDate('')
@@ -1939,14 +1940,37 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
             {/* Footer */}
             <div className="flex items-center justify-end px-5 py-3 border-t">
               <div className="flex items-center gap-2">
-                <Button
-                  className="h-8 px-4"
-                  onClick={handleQuickCreate}
-                  disabled={!quickTitle.trim() || isCreating}
-                >
-                  {isCreating ? 'Creando...' : 'Crear Tarea'}
-                  <ChevronDown className="h-3 w-3 ml-1" />
-                </Button>
+                {(() => {
+                  const missing: string[] = []
+                  if (!quickTitle.trim()) missing.push('nombre')
+                  if (quickAssigneeIds.length === 0) missing.push('persona asignada')
+                  if (quickClientIds.length === 0) missing.push('cliente')
+                  if (!quickPriority) missing.push('prioridad')
+                  const isValid = missing.length === 0
+                  return (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>
+                            <Button
+                              className="h-8 px-4"
+                              onClick={handleQuickCreate}
+                              disabled={!isValid || isCreating}
+                            >
+                              {isCreating ? 'Creando...' : 'Crear Tarea'}
+                              <ChevronDown className="h-3 w-3 ml-1" />
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        {!isValid && (
+                          <TooltipContent side="top" className="text-xs">
+                            Falta: {missing.join(', ')}
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
+                    </TooltipProvider>
+                  )
+                })()}
               </div>
             </div>
           </div>
