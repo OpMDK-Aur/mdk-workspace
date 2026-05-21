@@ -1368,21 +1368,22 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
   const commentId = crypto.randomUUID()
   const now = new Date()
 
+    const insertData = {
+      id: commentId,
+      tarea_id: taskId,
+      contenido: content,
+      autor_id: userId === 'system' ? null : userId,
+      autor_nombre: userName,
+      es_sistema: userName === 'Madky',
+    }
+
     // Insert comment into Supabase
     const { error } = await supabase
       .from('comentarios_tareas')
-      .insert({
-        id: commentId,
-        tarea_id: taskId,
-        contenido: content,
-        autor_id: userId === 'system' ? null : userId,
-        autor_nombre: userName,
-        es_sistema: userName === 'Madky',
-        adjuntos: attachments.length > 0 ? attachments : null,
-      })
+      .insert(insertData)
 
     if (error) {
-      console.error('Error adding comment:', error)
+      console.error('[v0] Error adding comment:', error)
       throw error
     }
 
@@ -1636,7 +1637,7 @@ export function useTasksByStatus() {
   return grouped
 }
 
-// ── Quotation Helpers ─────���───────────────────────────────────────────────────
+// ── Quotation Helpers ─────���─────────────────────────────��─────────────────────
 
 export function calculateQuotation(hours: number, notes: string = ''): TaskQuotation {
   const subtotal = hours * HOURLY_RATE
