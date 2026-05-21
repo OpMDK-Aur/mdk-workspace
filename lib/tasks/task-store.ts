@@ -1224,6 +1224,7 @@ addTask: async (taskData) => {
   
   // Notify assigned users about the new task
   const assignedColabIds = assigneeIds.filter(uid => uid && uid !== taskData.createdById)
+  console.log('[v0] Task created, assigneeIds:', assigneeIds, 'filtered:', assignedColabIds)
   if (assignedColabIds.length > 0) {
     const notifications = assignedColabIds.map(colaboradorId => ({
       colaborador_id: colaboradorId,
@@ -1236,10 +1237,12 @@ addTask: async (taskData) => {
       leida: false,
     }))
     
+    console.log('[v0] Inserting notifications:', notifications)
     const { error: notifError } = await supabase
       .from('notificaciones')
       .insert(notifications)
     
+    console.log('[v0] Notification insert result:', { error: notifError })
     if (notifError) {
       console.error('[v0] Error creating task assignment notifications:', notifError)
     }
