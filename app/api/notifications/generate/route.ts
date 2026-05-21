@@ -43,7 +43,7 @@ export async function POST() {
         asignado_a
       `)
       .eq('asignado_a', currentColaborador.id)
-      .neq('estado', 'completada')
+      .not('estado', 'in', '("resuelto","completada","cancelado")')
       .not('fecha_vencimiento', 'is', null)
       .lte('fecha_vencimiento', endOfWeek.toISOString())
       .order('fecha_vencimiento', { ascending: true })
