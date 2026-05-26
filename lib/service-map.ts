@@ -110,6 +110,7 @@ function shouldAppearInMonth(frecuencia: string, mes: number, hitoOrden: number)
 /**
  * Generate all instances for a client for a given month
  * Uses ON CONFLICT DO NOTHING to avoid duplicates
+ * Only generates for clients with unidad_negocio = 'MDK'
  */
 export async function generateMonthInstances(
   clienteId: string,
@@ -120,6 +121,23 @@ export async function generateMonthInstances(
   const supabase = createClient()
 
   try {
+    // 0. Verify client belongs to MDK business unit
+    const { data: cliente, error: clienteError } = await supabase
+      .from('clientes')
+      .select('id, unidad_negocio, account_manager_id')
+      .eq('id', clienteId)
+      .single()
+
+    if (clienteError || !cliente) {
+      return { success: false, error: 'Client not found' }
+    }
+
+    if (cliente.unidad_negocio !== 'MDK') {
+      return { success: true, generated: 0 } // Skip non-MDK clients silently
+    }
+
+    const accountManagerId = cliente.account_manager_id
+
     // 1. Fetch catalog filtered by plan (normalized comparison)
     const tipoServicioNormalized = normalizePlan(planCliente)
     
@@ -224,6 +242,8 @@ export async function generateMonthInstances(
             prioridad: 'media',
             hito_poe: hito.id,
             es_tarea_sistema: true,
+            asignado_a: accountManagerId, // Assign to account manager
+            asignados_a: accountManagerId ? [accountManagerId] : [], // Array field
           })
           .select('id')
           .single()
@@ -247,7 +267,7 @@ export async function generateMonthInstances(
 
 /**
  * Create tasks for existing instances that are missing them (tarea_id IS NULL)
- * Runs retroactively for all clients for a given month/year
+ * Runs retroactively for all MDK clients for a given month/year
  */
 export async function createMissingTasks(
   mes: number,
@@ -257,13 +277,15 @@ export async function createMissingTasks(
 
   try {
     // Fetch all instances missing a task where hito genera_tarea = true
+    // Only for MDK business unit clients
     const { data: instanciasSinTarea, error } = await supabase
       .from('mapa_servicio_instancias')
       .select(`
         id,
         cliente_id,
         hito_id,
-        hito:hitos_catalogo(id, nombre, descripcion, genera_tarea)
+        hito:hitos_catalogo(id, nombre, descripcion, genera_tarea),
+        cliente:clientes(id, unidad_negocio, account_manager_id)
       `)
       .eq('mes', mes)
       .eq('anio', anio)
@@ -274,16 +296,21 @@ export async function createMissingTasks(
       return { success: true, created: 0 }
     }
 
-    // Filter only those where hito.genera_tarea = true
-    const pendientes = instanciasSinTarea.filter(
-      (i) => (i.hito as HitoCatalogo | null)?.genera_tarea === true
-    )
+    // Filter only those where hito.genera_tarea = true AND cliente.unidad_negocio = 'MDK'
+    const pendientes = instanciasSinTarea.filter((i) => {
+      const hito = i.hito as HitoCatalogo | null
+      const cliente = i.cliente as any
+      return hito?.genera_tarea === true && cliente?.unidad_negocio === 'MDK'
+    })
 
     let created = 0
 
     for (const instancia of pendientes) {
       const hito = instancia.hito as HitoCatalogo | null
-      if (!hito) continue
+      const cliente = instancia.cliente as any
+      if (!hito || !cliente) continue
+
+      const accountManagerId = cliente.account_manager_id
 
       const insertPayload = {
         titulo: `[Hito] ${hito.nombre}`,
@@ -293,6 +320,8 @@ export async function createMissingTasks(
         prioridad: 'media',
         hito_poe: hito.id,
         es_tarea_sistema: true,
+        asignado_a: accountManagerId, // Assign to account manager
+        asignados_a: accountManagerId ? [accountManagerId] : [], // Array field
       }
 
       const { data: newTask, error: taskError } = await supabase
