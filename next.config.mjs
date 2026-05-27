@@ -1,4 +1,5 @@
 /** @type {import('next').NextConfig} */
+// Force full rebuild - cache reset v2
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
