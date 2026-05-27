@@ -1,6 +1,6 @@
 export type UserRole = 'master' | 'direccion' | 'project_manager' | 'account_manager' | 'consultor' | 'administrador'
 
-export type ClientStatus = 'verde' | 'amarillo' | 'naranja' | 'rojo'
+export type SemaforoStatus = 'verde' | 'amarillo' | 'naranja' | 'rojo'
 
 export type ClientPlan = 'Esencial' | 'Estrategico'
 
@@ -54,7 +54,7 @@ export interface ServicioContratado {
 export interface SemaforoUnidad {
   unidad_id: string
   unidad_nombre: string
-  semaforo: 'verde' | 'amarillo' | 'naranja' | 'rojo'
+  semaforo: SemaforoStatus
 }
 
 export interface Client {
@@ -71,7 +71,8 @@ export interface Client {
   contact_lastname?: string | null
   phone?: string | null
   email?: string | null
-  status: ClientStatus | null
+  /** @deprecated Use semaforo_unidades instead */
+  status?: SemaforoStatus | null
   semaforo_id: string | null
   notion_id: string | null
   fee_mdk: number | null
@@ -108,7 +109,9 @@ export interface Client {
   fecha_inicio_trabajo?: string | null
   fecha_baja?: string | null
   etapa?: ClientEtapa | null
-  semaforo_unidades?: Record<string, 'verde' | 'amarillo' | 'naranja' | 'rojo'> | null
+  semaforo_unidades?: Record<string, SemaforoStatus> | null
+  unidades_negocio?: UnidadNegocio[] | null
+  /** @deprecated Use unidades_negocio instead */
   unidad_negocio?: UnidadNegocio | null
   created_at: string
   updated_at: string

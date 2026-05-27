@@ -1,6 +1,6 @@
 'use client'
 
-import type { Client } from '@/lib/types'
+import type { Client, SemaforoStatus } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Download } from 'lucide-react'
+import { Plus, Download, Circle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ClientsTableProps {
@@ -38,18 +38,18 @@ const clientRoasData: Record<string, number> = {
   'Del Sur Autos': 3.1,
 }
 
-function getStatusLabel(status: string | null) {
-  switch (status) {
+function getSemaforoBadge(semaforo: SemaforoStatus | undefined) {
+  switch (semaforo) {
     case 'verde':
-      return { label: 'Óptimo', className: 'bg-status-verde/10 text-status-verde border-status-verde/20' }
+      return { label: 'Optimo', className: 'bg-status-verde/10 text-status-verde border-status-verde/20', color: '#22c55e' }
     case 'amarillo':
-      return { label: 'Atención', className: 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/20' }
+      return { label: 'Atencion', className: 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/20', color: '#eab308' }
     case 'naranja':
-      return { label: 'Alerta', className: 'bg-status-naranja/10 text-status-naranja border-status-naranja/20' }
+      return { label: 'En riesgo', className: 'bg-status-naranja/10 text-status-naranja border-status-naranja/20', color: '#f97316' }
     case 'rojo':
-      return { label: 'Crítico', className: 'bg-status-rojo/10 text-status-rojo border-status-rojo/20' }
+      return { label: 'Critico', className: 'bg-status-rojo/10 text-status-rojo border-status-rojo/20', color: '#ef4444' }
     default:
-      return { label: '-', className: 'bg-muted text-muted-foreground' }
+      return { label: '-', className: 'bg-muted text-muted-foreground', color: '#9ca3af' }
   }
 }
 
@@ -78,35 +78,49 @@ export function ClientsTable({ clients }: ClientsTableProps) {
           <TableHeader>
             <TableRow>
               <TableHead>Cliente</TableHead>
-              <TableHead>Plan</TableHead>
+              <TableHead>Unidades</TableHead>
               <TableHead className="text-right">ROAS</TableHead>
-              <TableHead className="text-right">Inversión</TableHead>
-              <TableHead>Estado</TableHead>
+              <TableHead className="text-right">Inversion</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {displayClients.map((client) => {
-              const status = getStatusLabel(client.status)
+              const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
               const roas = clientRoasData[client.business_name] || (3 + Math.random() * 2)
               
               return (
                 <TableRow key={client.id} className="cursor-pointer hover:bg-muted/50">
                   <TableCell className="font-medium">{client.business_name}</TableCell>
                   <TableCell>
-                    <span className="text-muted-foreground">
-                      {client.unidad_negocio === 'MDK' ? client.plan || '-' : '-'}
-                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {clientUnidades.length > 0 ? (
+                        clientUnidades.map(unidad => {
+                          const semaforo = client.semaforo_unidades?.[unidad]
+                          const semaforoBadge = getSemaforoBadge(semaforo)
+                          return (
+                            <Badge 
+                              key={unidad} 
+                              variant="outline" 
+                              className={cn('text-xs gap-1', semaforoBadge.className)}
+                            >
+                              <Circle 
+                                className="h-1.5 w-1.5 fill-current" 
+                                style={{ color: semaforoBadge.color }}
+                              />
+                              {unidad}
+                            </Badge>
+                          )
+                        })
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     {roas.toFixed(1)}x
                   </TableCell>
                   <TableCell className="text-right">
                     {formatCurrency(client.fee_mdk)}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={cn('font-medium', status.className)}>
-                      {status.label}
-                    </Badge>
                   </TableCell>
                 </TableRow>
               )

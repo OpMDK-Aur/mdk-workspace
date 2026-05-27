@@ -1,6 +1,6 @@
 'use client'
 
-import type { Client } from '@/lib/types'
+import type { Client, SemaforoStatus, UnidadNegocio } from '@/lib/types'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -14,18 +14,18 @@ interface ClientPanelProps {
   onClose: () => void
 }
 
-function getStatusInfo(status: string | null) {
-  switch (status) {
+function getSemaforoInfo(semaforo: SemaforoStatus | undefined) {
+  switch (semaforo) {
     case 'verde':
-      return { label: 'Optimo', className: 'bg-status-verde/10 text-status-verde border-status-verde/25', dotClass: 'bg-status-verde', description: 'El cliente se encuentra en estado optimo. Todas las metricas dentro del objetivo.' }
+      return { label: 'Optimo', className: 'bg-status-verde/10 text-status-verde border-status-verde/25', dotClass: 'bg-status-verde', color: '#22c55e' }
     case 'amarillo':
-      return { label: 'Atencion', className: 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/25', dotClass: 'bg-status-amarillo', description: 'Algunas metricas requieren atencion. Revisar campanas activas.' }
+      return { label: 'Atencion', className: 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/25', dotClass: 'bg-status-amarillo', color: '#eab308' }
     case 'naranja':
-      return { label: 'Alerta', className: 'bg-status-naranja/10 text-status-naranja border-status-naranja/25', dotClass: 'bg-status-naranja', description: 'El cliente presenta alertas criticas. Tomar accion inmediata.' }
+      return { label: 'En riesgo', className: 'bg-status-naranja/10 text-status-naranja border-status-naranja/25', dotClass: 'bg-status-naranja', color: '#f97316' }
     case 'rojo':
-      return { label: 'Critico', className: 'bg-status-rojo/10 text-status-rojo border-status-rojo/25', dotClass: 'bg-status-rojo', description: 'Estado critico. Requiere intervencion urgente.' }
+      return { label: 'Critico', className: 'bg-status-rojo/10 text-status-rojo border-status-rojo/25', dotClass: 'bg-status-rojo', color: '#ef4444' }
     default:
-      return { label: 'Sin estado', className: 'bg-muted text-muted-foreground', dotClass: 'bg-muted-foreground', description: 'Sin informacion de estado disponible.' }
+      return { label: 'Sin estado', className: 'bg-muted text-muted-foreground', dotClass: 'bg-muted-foreground', color: '#9ca3af' }
   }
 }
 
@@ -47,7 +47,7 @@ function formatCurrency(value: number | null): string {
 export function ClientPanel({ client, onClose }: ClientPanelProps) {
   if (!client) return null
 
-  const status = getStatusInfo(client.status)
+  const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
   const initials = client.business_name
     .split(' ')
     .map(w => w[0])
@@ -71,26 +71,42 @@ export function ClientPanel({ client, onClose }: ClientPanelProps) {
             <div className="flex-1 min-w-0">
               <h2 className="text-lg font-semibold leading-tight truncate">{client.business_name}</h2>
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                {client.unidad_negocio === 'MDK' && client.plan && (
+                {clientUnidades.includes('MDK') && client.plan && (
                   <Badge variant="outline" className={cn('text-xs font-medium', getPlanBadgeClass(client.plan))}>
                     {client.plan}
                   </Badge>
                 )}
-                <Badge variant="outline" className={cn('text-xs font-medium', status.className)}>
-                  <Circle className={cn('h-1.5 w-1.5 fill-current mr-1', status.dotClass)} />
-                  {status.label}
-                </Badge>
               </div>
             </div>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Status description */}
-          <div className={cn('rounded-xl border px-4 py-3 text-sm', status.className)}>
-            <p className="font-medium mb-0.5">Estado: {status.label}</p>
-            <p className="text-xs opacity-80">{status.description}</p>
-          </div>
+          {/* Unidades y Semaforos */}
+          {clientUnidades.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                Unidades de negocio
+              </h3>
+              <div className="space-y-2">
+                {clientUnidades.map(unidad => {
+                  const semaforo = client.semaforo_unidades?.[unidad]
+                  const semaforoInfo = getSemaforoInfo(semaforo)
+                  return (
+                    <div key={unidad} className={cn('rounded-xl border px-4 py-3', semaforoInfo.className)}>
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-sm">{unidad}</span>
+                        <Badge variant="outline" className={cn('text-xs', semaforoInfo.className)}>
+                          <Circle className={cn('h-1.5 w-1.5 fill-current mr-1', semaforoInfo.dotClass)} />
+                          {semaforoInfo.label}
+                        </Badge>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Contact */}
           {hasContact && (

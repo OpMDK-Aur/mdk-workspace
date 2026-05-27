@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, memo } from 'react'
 import Link from 'next/link'
-import type { Client, Profile, ClientStatus, ClientPlan, UnidadNegocio } from '@/lib/types'
+import type { Client, Profile, ClientPlan, UnidadNegocio, SemaforoStatus } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -101,18 +101,18 @@ function formatTrackedHours(hours: number): string {
   return `${h}:${String(m).padStart(2, '0')}`
 }
 
-function getStatusBadge(status: ClientStatus | null) {
-  switch (status) {
+function getSemaforoBadge(semaforo: SemaforoStatus | undefined) {
+  switch (semaforo) {
     case 'verde':
-      return { label: 'Optimo', className: 'bg-status-verde/10 text-status-verde border-status-verde/20' }
+      return { label: 'Optimo', color: '#22c55e', className: 'bg-status-verde/10 text-status-verde border-status-verde/20' }
     case 'amarillo':
-      return { label: 'Atencion', className: 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/20' }
+      return { label: 'Atencion', color: '#eab308', className: 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/20' }
     case 'naranja':
-      return { label: 'Alerta', className: 'bg-status-naranja/10 text-status-naranja border-status-naranja/20' }
+      return { label: 'En riesgo', color: '#f97316', className: 'bg-status-naranja/10 text-status-naranja border-status-naranja/20' }
     case 'rojo':
-      return { label: 'Critico', className: 'bg-status-rojo/10 text-status-rojo border-status-rojo/20' }
+      return { label: 'Critico', color: '#ef4444', className: 'bg-status-rojo/10 text-status-rojo border-status-rojo/20' }
     default:
-      return { label: 'Sin estado', className: 'bg-muted text-muted-foreground' }
+      return { label: '-', color: '#9ca3af', className: 'bg-muted text-muted-foreground' }
   }
 }
 
@@ -130,7 +130,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // Local state for clients list
   const [localClients, setLocalClients] = useState<Client[]>(clients)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [semaforoFilter, setSemaforoFilter] = useState<string>('all')
   const [planFilter, setPlanFilter] = useState<string>('all')
   const [pmFilter, setPmFilter] = useState<string>('all')
   const [amFilter, setAmFilter] = useState<string>('all')
@@ -159,13 +159,12 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const allColumns = [
     { id: 'cliente', label: 'Cliente' },
     { id: 'unidad_negocio', label: 'Unidad de Negocio' },
-    { id: 'contacto', label: 'Contacto' },
-    { id: 'plan', label: 'Plan' },
-    { id: 'fee_mdk', label: 'Fee MDK' },
-    { id: 'fee_aurelia', label: 'Fee Aurelia' },
-    { id: 'fee_consultoria', label: 'Fee Consultoría' },
-    { id: 'estado', label: 'Estado' },
-    { id: 'plataformas', label: 'Plataformas' },
+  { id: 'contacto', label: 'Contacto' },
+  { id: 'plan', label: 'Plan' },
+  { id: 'fee_mdk', label: 'Fee MDK' },
+  { id: 'fee_aurelia', label: 'Fee Aurelia' },
+  { id: 'fee_consultoria', label: 'Fee Consultoría' },
+  { id: 'plataformas', label: 'Plataformas' },
     { id: 'pm', label: 'Project Manager' },
     { id: 'am', label: 'Account Manager' },
     { id: 'nps', label: 'NPS' },
@@ -188,7 +187,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // Saved filters
   interface SavedFilter {
     name: string
-    status: string
+    semaforo: string
     plan: string
     pm: string
     am: string
@@ -213,11 +212,11 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [saveFilterName, setSaveFilterName] = useState('')
   const [saveFilterOpen, setSaveFilterOpen] = useState(false)
 
-  const hasActiveFilters = statusFilter !== 'all' || planFilter !== 'all' || pmFilter !== 'all' || amFilter !== 'all' || platformFilter !== 'all' || unidadFilter !== 'all' || etapaFilter !== 'all' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
+  const hasActiveFilters = semaforoFilter !== 'all' || planFilter !== 'all' || pmFilter !== 'all' || amFilter !== 'all' || platformFilter !== 'all' || unidadFilter !== 'all' || etapaFilter !== 'all' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
 
   const clearAllFilters = () => {
     setSearchTerm('')
-    setStatusFilter('all')
+    setSemaforoFilter('all')
     setPlanFilter('all')
     setPmFilter('all')
     setAmFilter('all')
@@ -232,10 +231,10 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
 
   const saveCurrentFilter = () => {
     if (!saveFilterName.trim()) return
-    const newFilter: SavedFilter = {
-      name: saveFilterName.trim(),
-      status: statusFilter,
-      plan: planFilter,
+  const newFilter: SavedFilter = {
+    name: saveFilterName.trim(),
+    semaforo: semaforoFilter,
+    plan: planFilter,
       pm: pmFilter,
       am: amFilter,
       platform: platformFilter,
@@ -257,7 +256,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   }
 
   const applyFilter = (filter: SavedFilter) => {
-    setStatusFilter(filter.status)
+    setSemaforoFilter(filter.semaforo)
     setPlanFilter(filter.plan)
     setPmFilter(filter.pm)
     setAmFilter(filter.am)
@@ -416,8 +415,12 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     const matchesSearch = client.nombre_del_negocio.toLowerCase().includes(searchTerm.toLowerCase()) ||
       client.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       client.apellido?.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || client.status === statusFilter
-    const matchesPlan = planFilter === 'all' || (client.unidad_negocio === 'MDK' && client.plan === planFilter)
+    // Filter by semaforo - check if any unidad has this semaforo
+    const matchesSemaforo = semaforoFilter === 'all' || 
+      (client.semaforo_unidades && Object.values(client.semaforo_unidades).includes(semaforoFilter as SemaforoStatus))
+    // Filter by plan - only for clients with MDK
+    const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
+    const matchesPlan = planFilter === 'all' || (clientUnidades.includes('MDK') && client.plan === planFilter)
     const matchesPm = pmFilter === 'all' || client.project_manager_id === pmFilter
     const matchesAm = amFilter === 'all' || client.account_manager_id === amFilter
     const matchesPlatform = platformFilter === 'all' || 
@@ -425,14 +428,14 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       (platformFilter === 'meta' && client.meta_ads_account_id) ||
       (platformFilter === 'both' && client.google_ads_customer_id && client.meta_ads_account_id) ||
       (platformFilter === 'none' && !client.google_ads_customer_id && !client.meta_ads_account_id)
-    const matchesUnidad = unidadFilter === 'all' || client.unidad_negocio === unidadFilter
+    const matchesUnidad = unidadFilter === 'all' || clientUnidades.includes(unidadFilter as UnidadNegocio)
     const matchesEtapa = etapaFilter === 'all' || client.etapa === etapaFilter
     const matchesFechaDesde = !fechaActivacionDesde || (client.fecha_activacion && client.fecha_activacion >= fechaActivacionDesde)
     const matchesFechaHasta = !fechaActivacionHasta || (client.fecha_activacion && client.fecha_activacion <= fechaActivacionHasta)
     const totalFee = (client.fee_mdk || 0) + (client.fee_aurelia || 0)
     const matchesFeeMin = !feeMinFilter || totalFee >= parseFloat(feeMinFilter)
     const matchesFeeMax = !feeMaxFilter || totalFee <= parseFloat(feeMaxFilter)
-    return matchesSearch && matchesStatus && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
+    return matchesSearch && matchesSemaforo && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
   }).sort((a, b) => {
     let valueA: string | number = ''
     let valueB: string | number = ''
@@ -867,18 +870,18 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                   />
                 </div>
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los estados</SelectItem>
-                  <SelectItem value="verde">Optimo</SelectItem>
-                  <SelectItem value="amarillo">Atencion</SelectItem>
-                  <SelectItem value="naranja">Alerta</SelectItem>
-                  <SelectItem value="rojo">Critico</SelectItem>
-                </SelectContent>
-              </Select>
+                <Select value={semaforoFilter} onValueChange={setSemaforoFilter}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Semaforo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="verde">Optimo</SelectItem>
+                    <SelectItem value="amarillo">Atencion</SelectItem>
+                    <SelectItem value="naranja">En riesgo</SelectItem>
+                    <SelectItem value="rojo">Critico</SelectItem>
+                  </SelectContent>
+                </Select>
               <Select value={planFilter} onValueChange={setPlanFilter}>
                 <SelectTrigger className="w-[140px]">
                   <SelectValue placeholder="Plan" />
@@ -1141,9 +1144,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                   {visibleColumns.includes('plan') && <TableHead>Plan</TableHead>}
                   {visibleColumns.includes('fee_mdk') && <TableHead className="text-right">Fee MDK</TableHead>}
                   {visibleColumns.includes('fee_aurelia') && <TableHead className="text-right">Fee Aurelia</TableHead>}
-                  {visibleColumns.includes('fee_consultoria') && <TableHead className="text-right">Fee Cons.</TableHead>}
-                  {visibleColumns.includes('estado') && <TableHead>Estado</TableHead>}
-                  {visibleColumns.includes('plataformas') && <TableHead>Plataformas</TableHead>}
+                              {visibleColumns.includes('fee_consultoria') && <TableHead className="text-right">Fee Cons.</TableHead>}
+                              {visibleColumns.includes('plataformas') && <TableHead>Plataformas</TableHead>}
                   {visibleColumns.includes('pm') && <TableHead>PM</TableHead>}
                   {visibleColumns.includes('am') && <TableHead>AM</TableHead>}
                   {visibleColumns.includes('nps') && <TableHead>NPS</TableHead>}
@@ -1165,7 +1167,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                   </TableRow>
                 ) : (
                   filteredClients.map((client) => {
-                    const status = getStatusBadge(client.status)
+                    const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
                     const hasGoogle = !!client.google_ads_customer_id
                     const hasMeta = !!client.meta_ads_account_id
                     const pm = profiles.find(p => p.id === client.project_manager_id)
@@ -1183,9 +1185,29 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                         )}
                         {visibleColumns.includes('unidad_negocio') && (
                           <TableCell>
-                            <Badge variant="outline" className="text-xs">
-                              {client.unidad_negocio || '-'}
-                            </Badge>
+                            <div className="flex flex-wrap gap-1">
+                              {clientUnidades.length > 0 ? (
+                                clientUnidades.map(unidad => {
+                                  const semaforo = client.semaforo_unidades?.[unidad]
+                                  const semaforoBadge = getSemaforoBadge(semaforo)
+                                  return (
+                                    <Badge 
+                                      key={unidad} 
+                                      variant="outline" 
+                                      className={cn('text-xs gap-1', semaforoBadge.className)}
+                                    >
+                                      <span 
+                                        className="h-2 w-2 rounded-full" 
+                                        style={{ backgroundColor: semaforoBadge.color }}
+                                      />
+                                      {unidad}
+                                    </Badge>
+                                  )
+                                })
+                              ) : (
+                                <span className="text-xs text-muted-foreground">-</span>
+                              )}
+                            </div>
                           </TableCell>
                         )}
                         {visibleColumns.includes('contacto') && (
@@ -1203,7 +1225,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                         {visibleColumns.includes('plan') && (
                           <TableCell>
                             <span className="text-sm text-muted-foreground">
-                              {client.unidad_negocio === 'MDK' ? client.plan || '-' : '-'}
+                              {clientUnidades.includes('MDK') ? client.plan || '-' : '-'}
                             </span>
                           </TableCell>
                         )}
@@ -1220,13 +1242,6 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                         {visibleColumns.includes('fee_consultoria') && (
                           <TableCell className="text-right font-medium">
                             {formatCurrency(client.fee_consultoria || null)}
-                          </TableCell>
-                        )}
-                        {visibleColumns.includes('estado') && (
-                          <TableCell>
-                            <Badge variant="outline" className={cn('font-medium', status.className)}>
-                              {status.label}
-                            </Badge>
                           </TableCell>
                         )}
                         {visibleColumns.includes('plataformas') && (
@@ -1327,9 +1342,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                       <TableCell className="text-right font-bold">
                         {formatCurrency(filteredClients.reduce((sum, c) => sum + (c.fee_consultoria || 0), 0))}
                       </TableCell>
-                    )}
-                    {visibleColumns.includes('estado') && <TableCell></TableCell>}
-                    {visibleColumns.includes('plataformas') && <TableCell></TableCell>}
+                              )}
+                              {visibleColumns.includes('plataformas') && <TableCell></TableCell>}
                     {visibleColumns.includes('pm') && <TableCell></TableCell>}
                     {visibleColumns.includes('am') && <TableCell></TableCell>}
                     {visibleColumns.includes('nps') && <TableCell></TableCell>}
