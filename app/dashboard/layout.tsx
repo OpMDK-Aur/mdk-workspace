@@ -46,25 +46,12 @@ export default async function DashboardLayout({
   }
 
   // All users see all clients
-  const clientsQuery = supabase.from('clientes').select('id, nombre_del_negocio, plan, unidades_negocio, semaforo_unidades')
-
-  const { data: clientsData } = await clientsQuery.order('nombre_del_negocio')
+  const { data: clientsData } = await supabase
+    .from('clientes')
+    .select('*')
+    .order('nombre_del_negocio')
   
-  const clients = (clientsData || []).map(c => ({ 
-    id: c.id as string,
-    nombre_del_negocio: c.nombre_del_negocio as string,
-    business_name: c.nombre_del_negocio as string,
-    plan: c.plan as string | null,
-    unidades_negocio: c.unidades_negocio as string[] | null,
-    semaforo_unidades: c.semaforo_unidades as Record<string, string> | null,
-    // Required fields with defaults
-    notion_id: null,
-    fee_mdk: null,
-    fee_aurelia: null,
-    google_ads_customer_id: null,
-    meta_ads_account_id: null,
-    crm_type: null,
-  })) as Client[]
+  const clients = (clientsData || []) as Client[]
 
   return (
     <DashboardShell 
