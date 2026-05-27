@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, memo } from 'react'
 import Link from 'next/link'
-import type { Client, Profile, ClientStatus, ClientPlan } from '@/lib/types'
+import type { Client, Profile, ClientStatus, ClientPlan, UnidadNegocio } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -60,6 +60,7 @@ import {
   Bookmark,
   Save,
   Trash2,
+  Calendar,
 } from 'lucide-react'
 
 interface ClientsListContentProps {
@@ -134,6 +135,10 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [pmFilter, setPmFilter] = useState<string>('all')
   const [amFilter, setAmFilter] = useState<string>('all')
   const [platformFilter, setPlatformFilter] = useState<string>('all')
+  const [unidadFilter, setUnidadFilter] = useState<string>('all')
+  const [fechaActivacionDesde, setFechaActivacionDesde] = useState<string>('')
+  const [fechaActivacionHasta, setFechaActivacionHasta] = useState<string>('')
+  const [etapaFilter, setEtapaFilter] = useState<string>('all')
   
   // Advanced filter state
   const [feeMinFilter, setFeeMinFilter] = useState<string>('')
@@ -142,26 +147,34 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [advancedOpen, setAdvancedOpen] = useState(false)
   
-  // Visible columns
+  // Visible columns - ahora incluye todas las columnas disponibles
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('clientVisibleColumns')
-      return saved ? JSON.parse(saved) : ['cliente', 'contacto', 'plan', 'fee_mdk', 'fee_aurelia', 'estado', 'plataformas']
+      return saved ? JSON.parse(saved) : ['cliente', 'unidad_negocio', 'contacto', 'plan', 'fee_mdk', 'fee_aurelia', 'estado', 'plataformas', 'pm', 'am']
     }
-    return ['cliente', 'contacto', 'plan', 'fee_mdk', 'fee_aurelia', 'estado', 'plataformas']
+    return ['cliente', 'unidad_negocio', 'contacto', 'plan', 'fee_mdk', 'fee_aurelia', 'estado', 'plataformas', 'pm', 'am']
   })
 
   const allColumns = [
     { id: 'cliente', label: 'Cliente' },
+    { id: 'unidad_negocio', label: 'Unidad de Negocio' },
     { id: 'contacto', label: 'Contacto' },
     { id: 'plan', label: 'Plan' },
     { id: 'fee_mdk', label: 'Fee MDK' },
     { id: 'fee_aurelia', label: 'Fee Aurelia' },
+    { id: 'fee_consultoria', label: 'Fee Consultoría' },
     { id: 'estado', label: 'Estado' },
     { id: 'plataformas', label: 'Plataformas' },
     { id: 'pm', label: 'Project Manager' },
     { id: 'am', label: 'Account Manager' },
     { id: 'nps', label: 'NPS' },
+    { id: 'etapa', label: 'Etapa' },
+    { id: 'fecha_activacion', label: 'Fecha Activación' },
+    { id: 'fecha_venta', label: 'Fecha Venta' },
+    { id: 'fecha_inicio_trabajo', label: 'Fecha Inicio Trabajo' },
+    { id: 'crm', label: 'CRM' },
+    { id: 'discord', label: 'Discord' },
   ]
 
   const toggleColumn = (columnId: string) => {
@@ -180,6 +193,10 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     pm: string
     am: string
     platform: string
+    unidad: string
+    etapa: string
+    fechaActivacionDesde: string
+    fechaActivacionHasta: string
     feeMin: string
     feeMax: string
     sortBy: string
@@ -196,7 +213,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [saveFilterName, setSaveFilterName] = useState('')
   const [saveFilterOpen, setSaveFilterOpen] = useState(false)
 
-  const hasActiveFilters = statusFilter !== 'all' || planFilter !== 'all' || pmFilter !== 'all' || amFilter !== 'all' || platformFilter !== 'all' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== ''
+  const hasActiveFilters = statusFilter !== 'all' || planFilter !== 'all' || pmFilter !== 'all' || amFilter !== 'all' || platformFilter !== 'all' || unidadFilter !== 'all' || etapaFilter !== 'all' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
 
   const clearAllFilters = () => {
     setSearchTerm('')
@@ -205,8 +222,12 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setPmFilter('all')
     setAmFilter('all')
     setPlatformFilter('all')
+    setUnidadFilter('all')
+    setEtapaFilter('all')
     setFeeMinFilter('')
     setFeeMaxFilter('')
+    setFechaActivacionDesde('')
+    setFechaActivacionHasta('')
   }
 
   const saveCurrentFilter = () => {
@@ -218,6 +239,10 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       pm: pmFilter,
       am: amFilter,
       platform: platformFilter,
+      unidad: unidadFilter,
+      etapa: etapaFilter,
+      fechaActivacionDesde,
+      fechaActivacionHasta,
       feeMin: feeMinFilter,
       feeMax: feeMaxFilter,
       sortBy,
@@ -237,6 +262,10 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setPmFilter(filter.pm)
     setAmFilter(filter.am)
     setPlatformFilter(filter.platform)
+    setUnidadFilter(filter.unidad || 'all')
+    setEtapaFilter(filter.etapa || 'all')
+    setFechaActivacionDesde(filter.fechaActivacionDesde || '')
+    setFechaActivacionHasta(filter.fechaActivacionHasta || '')
     setFeeMinFilter(filter.feeMin || '')
     setFeeMaxFilter(filter.feeMax || '')
     setSortBy(filter.sortBy || 'nombre_del_negocio')
@@ -396,10 +425,14 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       (platformFilter === 'meta' && client.meta_ads_account_id) ||
       (platformFilter === 'both' && client.google_ads_customer_id && client.meta_ads_account_id) ||
       (platformFilter === 'none' && !client.google_ads_customer_id && !client.meta_ads_account_id)
+    const matchesUnidad = unidadFilter === 'all' || client.unidad_negocio === unidadFilter
+    const matchesEtapa = etapaFilter === 'all' || client.etapa === etapaFilter
+    const matchesFechaDesde = !fechaActivacionDesde || (client.fecha_activacion && client.fecha_activacion >= fechaActivacionDesde)
+    const matchesFechaHasta = !fechaActivacionHasta || (client.fecha_activacion && client.fecha_activacion <= fechaActivacionHasta)
     const totalFee = (client.fee_mdk || 0) + (client.fee_aurelia || 0)
     const matchesFeeMin = !feeMinFilter || totalFee >= parseFloat(feeMinFilter)
     const matchesFeeMax = !feeMaxFilter || totalFee <= parseFloat(feeMaxFilter)
-    return matchesSearch && matchesStatus && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesFeeMin && matchesFeeMax
+    return matchesSearch && matchesStatus && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
   }).sort((a, b) => {
     let valueA: string | number = ''
     let valueB: string | number = ''
@@ -429,6 +462,14 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
         const statusOrder = { verde: 0, amarillo: 1, naranja: 2, rojo: 3 }
         valueA = statusOrder[a.status as keyof typeof statusOrder] ?? 4
         valueB = statusOrder[b.status as keyof typeof statusOrder] ?? 4
+        break
+      case 'unidad_negocio':
+        valueA = a.unidad_negocio || ''
+        valueB = b.unidad_negocio || ''
+        break
+      case 'fecha_activacion':
+        valueA = a.fecha_activacion || ''
+        valueB = b.fecha_activacion || ''
         break
       default:
         valueA = a.nombre_del_negocio.toLowerCase()
@@ -903,6 +944,30 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                   <SelectItem value="none">Sin plataformas</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={unidadFilter} onValueChange={setUnidadFilter}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Unidad de Negocio" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las unidades</SelectItem>
+                  <SelectItem value="MDK">MDK</SelectItem>
+                  <SelectItem value="Aurelia">Aurelia</SelectItem>
+                  <SelectItem value="Consultoría">Consultoria</SelectItem>
+                  <SelectItem value="Tecnología">Tecnologia</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={etapaFilter} onValueChange={setEtapaFilter}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Etapa" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las etapas</SelectItem>
+                  <SelectItem value="activacion">Activacion</SelectItem>
+                  <SelectItem value="1_3_meses">1-3 meses</SelectItem>
+                  <SelectItem value="4_6_meses">4-6 meses</SelectItem>
+                  <SelectItem value="7_mas">7+ meses</SelectItem>
+                </SelectContent>
+              </Select>
               
               {/* Clear filters */}
               {hasActiveFilters && (
@@ -978,7 +1043,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                     Personalizar
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-80">
+                <PopoverContent align="end" className="w-96">
                   <div className="space-y-4">
                     <h4 className="font-medium text-sm">Filtros Avanzados</h4>
                     
@@ -1003,6 +1068,27 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                       </div>
                     </div>
                     
+                    {/* Fecha Activacion Range */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Fecha de Activacion</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="date"
+                          placeholder="Desde"
+                          value={fechaActivacionDesde}
+                          onChange={(e) => setFechaActivacionDesde(e.target.value)}
+                          className="h-8"
+                        />
+                        <Input
+                          type="date"
+                          placeholder="Hasta"
+                          value={fechaActivacionHasta}
+                          onChange={(e) => setFechaActivacionHasta(e.target.value)}
+                          className="h-8"
+                        />
+                      </div>
+                    </div>
+                    
                     {/* Sort By */}
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Ordenar por</Label>
@@ -1013,11 +1099,13 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="nombre_del_negocio">Nombre</SelectItem>
+                            <SelectItem value="unidad_negocio">Unidad de Negocio</SelectItem>
                             <SelectItem value="fee_mdk">Fee MDK</SelectItem>
                             <SelectItem value="fee_aurelia">Fee Aurelia</SelectItem>
                             <SelectItem value="fee_total">Fee Total</SelectItem>
                             <SelectItem value="nps">NPS</SelectItem>
                             <SelectItem value="status">Estado</SelectItem>
+                            <SelectItem value="fecha_activacion">Fecha Activacion</SelectItem>
                           </SelectContent>
                         </Select>
                         <Button
@@ -1065,15 +1153,23 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
               <TableHeader>
                 <TableRow>
                   {visibleColumns.includes('cliente') && <TableHead>Cliente</TableHead>}
+                  {visibleColumns.includes('unidad_negocio') && <TableHead>Unidad</TableHead>}
                   {visibleColumns.includes('contacto') && <TableHead>Contacto</TableHead>}
                   {visibleColumns.includes('plan') && <TableHead>Plan</TableHead>}
                   {visibleColumns.includes('fee_mdk') && <TableHead className="text-right">Fee MDK</TableHead>}
                   {visibleColumns.includes('fee_aurelia') && <TableHead className="text-right">Fee Aurelia</TableHead>}
+                  {visibleColumns.includes('fee_consultoria') && <TableHead className="text-right">Fee Cons.</TableHead>}
                   {visibleColumns.includes('estado') && <TableHead>Estado</TableHead>}
                   {visibleColumns.includes('plataformas') && <TableHead>Plataformas</TableHead>}
                   {visibleColumns.includes('pm') && <TableHead>PM</TableHead>}
                   {visibleColumns.includes('am') && <TableHead>AM</TableHead>}
                   {visibleColumns.includes('nps') && <TableHead>NPS</TableHead>}
+                  {visibleColumns.includes('etapa') && <TableHead>Etapa</TableHead>}
+                  {visibleColumns.includes('fecha_activacion') && <TableHead>F. Activacion</TableHead>}
+                  {visibleColumns.includes('fecha_venta') && <TableHead>F. Venta</TableHead>}
+                  {visibleColumns.includes('fecha_inicio_trabajo') && <TableHead>F. Inicio</TableHead>}
+                  {visibleColumns.includes('crm') && <TableHead>CRM</TableHead>}
+                  {visibleColumns.includes('discord') && <TableHead>Discord</TableHead>}
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -1102,6 +1198,13 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                             <div className="font-medium">{client.nombre_del_negocio}</div>
                           </TableCell>
                         )}
+                        {visibleColumns.includes('unidad_negocio') && (
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {client.unidad_negocio || '-'}
+                            </Badge>
+                          </TableCell>
+                        )}
                         {visibleColumns.includes('contacto') && (
                           <TableCell>
                             <div className="text-sm">
@@ -1127,6 +1230,11 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                         {visibleColumns.includes('fee_aurelia') && (
                           <TableCell className="text-right font-medium">
                             {formatCurrency(client.fee_aurelia)}
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('fee_consultoria') && (
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(client.fee_consultoria || null)}
                           </TableCell>
                         )}
                         {visibleColumns.includes('estado') && (
@@ -1166,6 +1274,46 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                             <span className="text-sm">{client.nps_score ?? '-'}</span>
                           </TableCell>
                         )}
+                        {visibleColumns.includes('etapa') && (
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {client.etapa ? client.etapa.replace(/_/g, ' ') : '-'}
+                            </span>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('fecha_activacion') && (
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {client.fecha_activacion ? new Date(client.fecha_activacion).toLocaleDateString('es-AR') : '-'}
+                            </span>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('fecha_venta') && (
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {client.fecha_venta ? new Date(client.fecha_venta).toLocaleDateString('es-AR') : '-'}
+                            </span>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('fecha_inicio_trabajo') && (
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {client.fecha_inicio_trabajo ? new Date(client.fecha_inicio_trabajo).toLocaleDateString('es-AR') : '-'}
+                            </span>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('crm') && (
+                          <TableCell>
+                            <span className="text-sm">{client.crm_tipo || '-'}</span>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('discord') && (
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {client.discord_channel_name || '-'}
+                            </span>
+                          </TableCell>
+                        )}
                         <TableCell>
                           <Link href={`/dashboard/clients/${client.id}`}>
                             <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1181,6 +1329,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                 {filteredClients.length > 0 && (
                   <TableRow className="bg-muted/50 font-medium">
                     {visibleColumns.includes('cliente') && <TableCell className="font-bold">Total ({filteredClients.length})</TableCell>}
+                    {visibleColumns.includes('unidad_negocio') && <TableCell></TableCell>}
                     {visibleColumns.includes('contacto') && <TableCell></TableCell>}
                     {visibleColumns.includes('plan') && <TableCell></TableCell>}
                     {visibleColumns.includes('fee_mdk') && (
@@ -1189,11 +1338,22 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                     {visibleColumns.includes('fee_aurelia') && (
                       <TableCell className="text-right font-bold">{formatCurrency(totalFeeAurelia)}</TableCell>
                     )}
+                    {visibleColumns.includes('fee_consultoria') && (
+                      <TableCell className="text-right font-bold">
+                        {formatCurrency(filteredClients.reduce((sum, c) => sum + (c.fee_consultoria || 0), 0))}
+                      </TableCell>
+                    )}
                     {visibleColumns.includes('estado') && <TableCell></TableCell>}
                     {visibleColumns.includes('plataformas') && <TableCell></TableCell>}
                     {visibleColumns.includes('pm') && <TableCell></TableCell>}
                     {visibleColumns.includes('am') && <TableCell></TableCell>}
                     {visibleColumns.includes('nps') && <TableCell></TableCell>}
+                    {visibleColumns.includes('etapa') && <TableCell></TableCell>}
+                    {visibleColumns.includes('fecha_activacion') && <TableCell></TableCell>}
+                    {visibleColumns.includes('fecha_venta') && <TableCell></TableCell>}
+                    {visibleColumns.includes('fecha_inicio_trabajo') && <TableCell></TableCell>}
+                    {visibleColumns.includes('crm') && <TableCell></TableCell>}
+                    {visibleColumns.includes('discord') && <TableCell></TableCell>}
                     <TableCell></TableCell>
                   </TableRow>
                 )}
