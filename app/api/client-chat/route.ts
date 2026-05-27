@@ -102,8 +102,10 @@ export async function POST(req: Request) {
 - ID: ${client.id}
 - Nombre del Negocio: ${client.nombre_del_negocio || client.business_name || 'N/A'}
 - Plan: ${client.plan || 'N/A'}
-- Estado/Semaforo: ${client.semaforo_id || client.status || 'N/A'}
-- Etapa: ${client.etapa || 'N/A'}
+- Unidades de Negocio: ${client.unidades_negocio?.join(', ') || 'N/A'}
+
+### Semáforo por Unidad
+${client.semaforo_unidades ? Object.entries(client.semaforo_unidades).map(([unidad, color]) => `- ${unidad}: ${color}`).join('\n') : '- Sin semáforos por unidad'}
 
 ### Contacto
 - Nombre: ${client.nombre || ''} ${client.apellido || ''}
@@ -138,9 +140,6 @@ export async function POST(req: Request) {
 
 ### Servicios Contratados
 ${client.servicio_id && client.servicio_id.length > 0 ? client.servicio_id.map((id: string) => `- ${id}`).join('\n') : '- Sin servicios asignados'}
-
-### Semáforo por Unidad de Negocio
-${client.semaforo_unidades ? Object.entries(client.semaforo_unidades).map(([unidad, color]) => `- ${unidad}: ${color}`).join('\n') : '- Sin semáforos por unidad'}
 
 ### Landings
 ${client.landings && client.landings.length > 0 ? client.landings.map((l: { nombre: string; url: string; tipo: string }) => `- ${l.nombre} (${l.tipo}): ${l.url}`).join('\n') : '- Sin landings registradas'}

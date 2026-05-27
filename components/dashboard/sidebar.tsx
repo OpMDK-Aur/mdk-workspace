@@ -103,8 +103,14 @@ const recursos = [
   { id: 'sops', name: 'SOPs', icon: BookOpen },
 ]
 
-function getStatusColor(status: string | null) {
-  switch (status) {
+function getSemaforoColor(unidades_negocio: string[] | undefined, semaforo_unidades: Record<string, string> | undefined) {
+  if (!unidades_negocio || !semaforo_unidades || unidades_negocio.length === 0) {
+    return 'bg-muted-foreground'
+  }
+  
+  // Get semaforo for first unidad
+  const semaforo = semaforo_unidades[unidades_negocio[0]]
+  switch (semaforo) {
     case 'verde': return 'bg-status-verde'
     case 'amarillo': return 'bg-status-amarillo'
     case 'naranja': return 'bg-status-naranja'
@@ -685,10 +691,10 @@ export function Sidebar({
                           : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                       )}
                     >
-                      <div className={cn(
-                        'h-2.5 w-2.5 rounded-full flex-shrink-0 ring-1 ring-inset ring-black/10',
-                        getStatusColor(client.status)
-                      )} />
+                  <div className={cn(
+                    'h-2.5 w-2.5 rounded-full flex-shrink-0 ring-1 ring-inset ring-black/10',
+                    getSemaforoColor(client.unidades_negocio, client.semaforo_unidades)
+                  )} />
                       <span className="truncate">{client.nombre_del_negocio}</span>
                     </Link>
                   )
