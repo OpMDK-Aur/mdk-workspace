@@ -143,7 +143,7 @@ export async function generateMonthInstances(
     
     let query = supabase.from('hitos_catalogo').select('*').order('orden', { ascending: true })
     
-    // Esencial clients only see 'esencial' hitos, Estrategico/Premium see all
+    // Esencial clients only see 'esencial' hitos, Estrategico sees all
     if (isEsencial(planCliente)) {
       query = query.eq('tipo_servicio', 'esencial')
     }

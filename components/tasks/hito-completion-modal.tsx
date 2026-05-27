@@ -97,7 +97,7 @@ export function HitoCompletionModal({
     if (plan === 'Esencial') {
       return hito.checklist_esencial || []
     }
-    // Estrategico and Premium use checklist_estrategico
+    // Estrategico uses checklist_estrategico
     return hito.checklist_estrategico || []
   }
 

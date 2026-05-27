@@ -547,7 +547,6 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                           <SelectContent>
                             <SelectItem value="Esencial">Esencial</SelectItem>
                             <SelectItem value="Estrategico">Estrategico</SelectItem>
-                            <SelectItem value="Premium">Premium</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -903,7 +902,6 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                   <SelectItem value="all">Todos los planes</SelectItem>
                   <SelectItem value="Esencial">Esencial</SelectItem>
                   <SelectItem value="Estrategico">Estrategico</SelectItem>
-                  <SelectItem value="Premium">Premium</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={pmFilter} onValueChange={setPmFilter}>

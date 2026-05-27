@@ -2,7 +2,7 @@ export type UserRole = 'master' | 'direccion' | 'project_manager' | 'account_man
 
 export type ClientStatus = 'verde' | 'amarillo' | 'naranja' | 'rojo'
 
-export type ClientPlan = 'Esencial' | 'Estrategico' | 'Premium'
+export type ClientPlan = 'Esencial' | 'Estrategico'
 
 export type UnidadNegocio = 'MDK' | 'Aurelia' | 'Consultoría' | 'Tecnología'
 

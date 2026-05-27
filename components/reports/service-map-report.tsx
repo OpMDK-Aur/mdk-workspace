@@ -38,7 +38,6 @@ const MONTHS = [
 const PLAN_COLORS: Record<ClientPlan, string> = {
   Esencial: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
   Estrategico: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
-  Premium: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
 }
 
 export function ServiceMapReport() {
@@ -246,9 +245,8 @@ export function ServiceMapReport() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los planes</SelectItem>
-            <SelectItem value="Esencial">Esencial</SelectItem>
-            <SelectItem value="Estrategico">Estrategico</SelectItem>
-            <SelectItem value="Premium">Premium</SelectItem>
+                  <SelectItem value="Esencial">Esencial</SelectItem>
+                  <SelectItem value="Estrategico">Estrategico</SelectItem>
           </SelectContent>
         </Select>
 

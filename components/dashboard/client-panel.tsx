@@ -31,7 +31,6 @@ function getStatusInfo(status: string | null) {
 
 function getPlanBadgeClass(plan: string) {
   switch (plan) {
-    case 'Premium': return 'bg-primary/10 text-primary border-primary/25'
     case 'Estrategico': return 'bg-status-verde/10 text-status-verde border-status-verde/25'
     case 'Esencial': return 'bg-muted text-muted-foreground'
     default: return 'bg-muted text-muted-foreground'
