@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import type { Client, ClientEtapa, ServicioContratado, ClientPlan, UnidadNegocio } from '@/lib/types'
+import type { Client, ClientEtapa, ServicioContratado, ClientPlan, UnidadNegocio, SemaforoStatus } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -157,7 +157,7 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
   const [savingEtapa, setSavingEtapa] = useState(false)
   
   // Semaforo por unidad state
-  const [semaforoUnidades, setSemaforoUnidades] = useState<Record<string, 'verde' | 'amarillo' | 'naranja' | 'rojo'>>(
+  const [semaforoUnidades, setSemaforoUnidades] = useState<Record<string, SemaforoStatus>>(
     client.semaforo_unidades || {}
   )
   const [savingSemaforo, setSavingSemaforo] = useState(false)
@@ -166,8 +166,10 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
   const [plan, setPlan] = useState<ClientPlan>(client.plan || 'Esencial')
   const [savingPlan, setSavingPlan] = useState(false)
   
-  // Unidad de negocio state
-  const [unidadNegocio, setUnidadNegocio] = useState<UnidadNegocio | null>(client.unidad_negocio || null)
+  // Unidades de negocio state (array)
+  const [unidadesNegocio, setUnidadesNegocio] = useState<UnidadNegocio[]>(
+    client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
+  )
   const [savingUnidad, setSavingUnidad] = useState(false)
   
   // Load available services
@@ -319,9 +321,9 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
   }
   
   // Save semaforo unidad
-  const saveSemaforoUnidad = async (unidadId: string, semaforo: 'verde' | 'amarillo' | 'naranja' | 'rojo') => {
+  const saveSemaforoUnidad = async (unidadKey: string, semaforo: SemaforoStatus) => {
     setSavingSemaforo(true)
-    const newSemaforo = { ...semaforoUnidades, [unidadId]: semaforo }
+    const newSemaforo = { ...semaforoUnidades, [unidadKey]: semaforo }
     setSemaforoUnidades(newSemaforo)
     await supabase
       .from('clientes')
@@ -341,24 +343,39 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
     setSavingPlan(false)
   }
   
-  // Save unidad de negocio
-  const saveUnidadNegocio = async (newUnidad: UnidadNegocio) => {
+  // Toggle unidad de negocio
+  const toggleUnidadNegocio = async (unidad: UnidadNegocio) => {
     setSavingUnidad(true)
-    setUnidadNegocio(newUnidad)
-    await supabase
-      .from('clientes')
-      .update({ unidad_negocio: newUnidad })
-      .eq('id', client.id)
+    let newUnidades: UnidadNegocio[]
+    if (unidadesNegocio.includes(unidad)) {
+      newUnidades = unidadesNegocio.filter(u => u !== unidad)
+      // Remove semaforo for this unidad
+      const newSemaforo = { ...semaforoUnidades }
+      delete newSemaforo[unidad]
+      setSemaforoUnidades(newSemaforo)
+      await supabase
+        .from('clientes')
+        .update({ 
+          unidades_negocio: newUnidades,
+          semaforo_unidades: newSemaforo,
+          // Clear plan if MDK is removed
+          ...(unidad === 'MDK' ? { plan: null } : {})
+        })
+        .eq('id', client.id)
+    } else {
+      newUnidades = [...unidadesNegocio, unidad]
+      await supabase
+        .from('clientes')
+        .update({ unidades_negocio: newUnidades })
+        .eq('id', client.id)
+    }
+    setUnidadesNegocio(newUnidades)
     setSavingUnidad(false)
   }
   
   const availableServicesFiltered = serviciosDisponibles.filter(
     s => !servicioIds.includes(s.id)
   )
-
-  const unidades = unidadesDeNegocio
-    .map(u => u.unidad_de_negocio)
-    .filter((u): u is { id: string; nombre: string } => u !== null)
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -672,32 +689,74 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Star className="h-4 w-4 text-primary" />
-            Plan y unidad de negocio
+            Unidades de negocio
             {(savingPlan || savingUnidad) && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Unidad de Negocio */}
+          {/* Unidades de Negocio - Multi-select */}
           <div>
-            <Label className="text-xs text-muted-foreground mb-2 block">Unidad de negocio</Label>
-            <Select value={unidadNegocio || ''} onValueChange={(v) => saveUnidadNegocio(v as UnidadNegocio)}>
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Seleccionar unidad" />
-              </SelectTrigger>
-              <SelectContent>
-                {UNIDAD_NEGOCIO_OPTIONS.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label className="text-xs text-muted-foreground mb-2 block">Selecciona las unidades del cliente</Label>
+            <div className="flex flex-wrap gap-2">
+              {UNIDAD_NEGOCIO_OPTIONS.map(option => (
+                <button
+                  key={option.value}
+                  onClick={() => toggleUnidadNegocio(option.value)}
+                  className={cn(
+                    'px-3 py-1.5 rounded-full text-xs font-medium border transition-all',
+                    unidadesNegocio.includes(option.value)
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-muted/50 text-muted-foreground border-border hover:border-primary/50'
+                  )}
+                >
+                  {unidadesNegocio.includes(option.value) && (
+                    <CheckCircle2 className="h-3 w-3 inline mr-1" />
+                  )}
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </div>
           
-          {/* Plan de servicio - solo visible para MDK */}
-          {unidadNegocio === 'MDK' && (
+          {/* Semaforo por unidad seleccionada */}
+          {unidadesNegocio.length > 0 && (
             <div>
-              <Label className="text-xs text-muted-foreground mb-2 block">Plan de servicio</Label>
+              <Label className="text-xs text-muted-foreground mb-2 block">Estado por unidad</Label>
+              <div className="space-y-2">
+                {unidadesNegocio.map(unidad => (
+                  <div key={unidad} className="flex items-center justify-between gap-3 p-2 rounded-lg bg-muted/50">
+                    <span className="text-sm font-medium">{unidad}</span>
+                    <div className="flex gap-1">
+                      {SEMAFORO_OPTIONS.map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => saveSemaforoUnidad(unidad, opt.value)}
+                          className={cn(
+                            'h-6 w-6 rounded-full border-2 transition-all',
+                            semaforoUnidades[unidad] === opt.value
+                              ? 'ring-2 ring-offset-2 ring-offset-background'
+                              : 'opacity-40 hover:opacity-70'
+                          )}
+                          style={{ 
+                            backgroundColor: opt.color,
+                            borderColor: opt.color,
+                            // @ts-expect-error - CSS custom property
+                            '--tw-ring-color': opt.color,
+                          }}
+                          title={opt.label}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Plan de servicio - solo visible si tiene MDK */}
+          {unidadesNegocio.includes('MDK') && (
+            <div>
+              <Label className="text-xs text-muted-foreground mb-2 block">Plan de servicio MDK</Label>
               <Select value={plan} onValueChange={(v) => savePlan(v as ClientPlan)}>
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="Seleccionar plan" />
@@ -759,69 +818,30 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
         </CardContent>
       </Card>
 
-      {/* Etapa y Semaforo por Unidad */}
+      {/* Etapa del Cliente */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Circle className="h-4 w-4 text-primary" />
-            Etapa y estado por unidad
-            {(savingEtapa || savingSemaforo) && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
+            Etapa del cliente
+            {savingEtapa && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Etapa */}
-          <div>
-            <Label className="text-xs text-muted-foreground mb-2 block">Etapa del cliente</Label>
-            <Select value={etapa || ''} onValueChange={(v) => saveEtapa(v as ClientEtapa)}>
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Seleccionar etapa" />
-              </SelectTrigger>
-              <SelectContent>
-                {ETAPA_OPTIONS.map(opt => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    <div className="flex flex-col">
-                      <span>{opt.label}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Semaforo por unidad */}
-          {unidades.length > 0 && (
-            <div>
-              <Label className="text-xs text-muted-foreground mb-2 block">Semaforo por unidad de negocio</Label>
-              <div className="space-y-2">
-                {unidades.map(unidad => (
-                  <div key={unidad.id} className="flex items-center justify-between gap-3 p-2 rounded-lg bg-muted/50">
-                    <span className="text-sm font-medium">{unidad.nombre}</span>
-                    <div className="flex gap-1">
-                      {SEMAFORO_OPTIONS.map(opt => (
-                        <button
-                          key={opt.value}
-                          onClick={() => saveSemaforoUnidad(unidad.id, opt.value)}
-                          className={cn(
-                            'h-6 w-6 rounded-full border-2 transition-all',
-                            semaforoUnidades[unidad.id] === opt.value
-                              ? 'ring-2 ring-offset-2 ring-offset-background'
-                              : 'opacity-40 hover:opacity-70'
-                          )}
-                          style={{ 
-                            backgroundColor: opt.color,
-                            borderColor: opt.color,
-                            // @ts-expect-error - CSS custom property
-                            '--tw-ring-color': opt.color,
-                          }}
-                          title={opt.label}
-                        />
-                      ))}
-                    </div>
+        <CardContent>
+          <Select value={etapa || ''} onValueChange={(v) => saveEtapa(v as ClientEtapa)}>
+            <SelectTrigger className="h-9">
+              <SelectValue placeholder="Seleccionar etapa" />
+            </SelectTrigger>
+            <SelectContent>
+              {ETAPA_OPTIONS.map(opt => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  <div className="flex flex-col">
+                    <span>{opt.label}</span>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </CardContent>
       </Card>
     </div>
