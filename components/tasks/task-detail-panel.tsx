@@ -1648,9 +1648,9 @@ export function TaskDetailPanel() {
 
   const statusConfig = STATUS_CONFIG[task.status]
 
-  // Get client plan for the task's primary client
+  // Get client plan for the task's primary client (only for MDK clients)
   const taskClient = clientes.find(c => c.id === task.clientId)
-  const clientPlan: ClientPlan = taskClient?.plan || 'Esencial'
+  const clientPlan: ClientPlan = (taskClient?.unidad_negocio === 'MDK' && taskClient?.plan) ? taskClient.plan : 'Esencial'
 
   // Handle status change with hito_poe interception
   const handleStatusChange = async (newStatus: TaskStatus) => {

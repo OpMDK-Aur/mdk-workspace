@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS clients (
   fee_aurelia DECIMAL(15,2),
   google_ads_customer_id TEXT,
   meta_ads_account_id TEXT,
-  plan TEXT DEFAULT 'Esencial' CHECK (plan IN ('Esencial', 'Estratégico')),
+  plan TEXT DEFAULT NULL CHECK (plan IS NULL OR plan IN ('Esencial', 'Estratégico')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

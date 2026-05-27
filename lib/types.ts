@@ -90,7 +90,7 @@ export interface Client {
   ghl_token: string | null
   discord_channel_name: string | null
   discord_channel_id: string | null
-  plan: ClientPlan
+  plan?: ClientPlan | null
   project_manager_id: string | null
   account_manager_id: string | null
   project_manager_ids?: string[] | null

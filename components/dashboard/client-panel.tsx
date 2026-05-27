@@ -71,9 +71,11 @@ export function ClientPanel({ client, onClose }: ClientPanelProps) {
             <div className="flex-1 min-w-0">
               <h2 className="text-lg font-semibold leading-tight truncate">{client.business_name}</h2>
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                <Badge variant="outline" className={cn('text-xs font-medium', getPlanBadgeClass(client.plan))}>
-                  {client.plan}
-                </Badge>
+                {client.unidad_negocio === 'MDK' && client.plan && (
+                  <Badge variant="outline" className={cn('text-xs font-medium', getPlanBadgeClass(client.plan))}>
+                    {client.plan}
+                  </Badge>
+                )}
                 <Badge variant="outline" className={cn('text-xs font-medium', status.className)}>
                   <Circle className={cn('h-1.5 w-1.5 fill-current mr-1', status.dotClass)} />
                   {status.label}

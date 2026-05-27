@@ -93,7 +93,9 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                 <TableRow key={client.id} className="cursor-pointer hover:bg-muted/50">
                   <TableCell className="font-medium">{client.business_name}</TableCell>
                   <TableCell>
-                    <span className="text-muted-foreground">{client.plan}</span>
+                    <span className="text-muted-foreground">
+                      {client.unidad_negocio === 'MDK' ? client.plan || '-' : '-'}
+                    </span>
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     {roas.toFixed(1)}x

@@ -1333,7 +1333,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         {/* ── Comentarios del Cliente ── */}
         <ClientActivityTabs
           clientId={client.id}
-          clientPlan={client.plan}
+          clientPlan={client.unidad_negocio === 'MDK' ? client.plan : null}
           unidadNegocio={client.unidad_negocio}
           currentUser={currentProfile ? {
             id: currentProfile.id,

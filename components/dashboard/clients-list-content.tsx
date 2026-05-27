@@ -290,13 +290,13 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
 
   // New client form state
   const [newClient, setNewClient] = useState({
-    nombre_del_negocio: '',
-    nombre: '',
-    apellido: '',
-    telefono: '',
-    status: 'verde' as ClientStatus,
-    plan: 'Esencial' as ClientPlan,
-    fee_mdk: '',
+  nombre_del_negocio: '',
+  nombre: '',
+  apellido: '',
+  telefono: '',
+  status: 'verde' as ClientStatus,
+  plan: null as ClientPlan | null,
+  fee_mdk: '',
     fee_aurelia: '',
     nps_score: '',
     notion_id: '',
@@ -314,13 +314,13 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
 
   const resetForm = () => {
     setNewClient({
-      nombre_del_negocio: '',
-      nombre: '',
-      apellido: '',
-      telefono: '',
-      status: 'verde',
-      plan: 'Esencial',
-      fee_mdk: '',
+  nombre_del_negocio: '',
+  nombre: '',
+  apellido: '',
+  telefono: '',
+  status: 'verde',
+  plan: null,
+  fee_mdk: '',
       fee_aurelia: '',
       nps_score: '',
       notion_id: '',
@@ -346,13 +346,13 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
 
     try {
       const clientData = {
-        nombre_del_negocio: newClient.nombre_del_negocio.trim(),
-        nombre: newClient.nombre.trim() || null,
-        apellido: newClient.apellido.trim() || null,
-        telefono: newClient.telefono.trim() || null,
-        status: newClient.status,
-        plan: newClient.plan,
-        fee_mdk: newClient.fee_mdk ? parseFloat(newClient.fee_mdk) : null,
+  nombre_del_negocio: newClient.nombre_del_negocio.trim(),
+  nombre: newClient.nombre.trim() || null,
+  apellido: newClient.apellido.trim() || null,
+  telefono: newClient.telefono.trim() || null,
+  status: newClient.status,
+  plan: null, // Plan se asigna desde la ficha del cliente solo si es MDK
+  fee_mdk: newClient.fee_mdk ? parseFloat(newClient.fee_mdk) : null,
         fee_aurelia: newClient.fee_aurelia ? parseFloat(newClient.fee_aurelia) : null,
         nps_score: newClient.nps_score ? parseInt(newClient.nps_score) : null,
         notion_id: newClient.notion_id.trim() || null,
@@ -417,7 +417,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       client.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       client.apellido?.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || client.status === statusFilter
-    const matchesPlan = planFilter === 'all' || client.plan === planFilter
+    const matchesPlan = planFilter === 'all' || (client.unidad_negocio === 'MDK' && client.plan === planFilter)
     const matchesPm = pmFilter === 'all' || client.project_manager_id === pmFilter
     const matchesAm = amFilter === 'all' || client.account_manager_id === amFilter
     const matchesPlatform = platformFilter === 'all' || 
@@ -534,21 +534,6 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                           required
                           className="mt-1"
                         />
-                      </div>
-                      <div>
-                        <Label htmlFor="plan">Plan</Label>
-                        <Select
-                          value={newClient.plan}
-                          onValueChange={(v) => setNewClient(prev => ({ ...prev, plan: v as ClientPlan }))}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Esencial">Esencial</SelectItem>
-                            <SelectItem value="Estrategico">Estrategico</SelectItem>
-                          </SelectContent>
-                        </Select>
                       </div>
                       <div>
                         <Label htmlFor="status">Estado inicial</Label>
@@ -1217,7 +1202,9 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                         )}
                         {visibleColumns.includes('plan') && (
                           <TableCell>
-                            <span className="text-sm text-muted-foreground">{client.plan}</span>
+                            <span className="text-sm text-muted-foreground">
+                              {client.unidad_negocio === 'MDK' ? client.plan || '-' : '-'}
+                            </span>
                           </TableCell>
                         )}
                         {visibleColumns.includes('fee_mdk') && (
