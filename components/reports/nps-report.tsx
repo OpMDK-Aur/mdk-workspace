@@ -636,16 +636,20 @@ export function NPSReport() {
                           <div className="flex items-end gap-1 justify-center h-8">
                             {data.historicalScores.map((h, idx) => (
                               <div key={idx} className="flex flex-col items-center gap-0.5">
-                                <div
-                                  className={cn(
-                                    "w-4 rounded-t",
-                                    h.score >= 0 ? NPS_COLORS[h.score]?.bg : "bg-muted"
-                                  )}
-                                  style={{ 
-                                    height: h.score >= 0 ? `${Math.max((h.score / 5) * 24, 4)}px` : '2px' 
-                                  }}
-                                  title={`${h.mes}: ${h.score >= 0 ? h.score : 'Sin datos'}`}
-                                />
+                                {h.score >= 0 ? (
+                                  <div
+                                    className={cn("w-4 rounded-t", NPS_COLORS[h.score]?.bg)}
+                                    style={{ 
+                                      height: `${Math.max((h.score / 5) * 24, 4)}px`
+                                    }}
+                                    title={`${h.mes}: ${h.score}`}
+                                  />
+                                ) : (
+                                  <div 
+                                    className="w-4 h-[2px] border-b border-dashed border-muted-foreground/30"
+                                    title={`${h.mes}: Sin datos`}
+                                  />
+                                )}
                                 <span className="text-[9px] text-muted-foreground">{h.mes}</span>
                               </div>
                             ))}
