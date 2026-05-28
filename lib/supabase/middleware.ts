@@ -2,26 +2,27 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
-
   // Detect v0 sandbox environment - skip auth and redirect to dashboard
   const isV0Sandbox = request.headers.get('host')?.includes('vusercontent.net') ||
                       request.headers.get('host')?.includes('v0.dev') ||
+                      request.headers.get('x-forwarded-host')?.includes('vusercontent.net') ||
                       process.env.VERCEL_ENV === 'preview'
   
   if (isV0Sandbox) {
-    // In v0 sandbox, redirect login/root to dashboard directly
-    if (request.nextUrl.pathname === '/' || 
-        request.nextUrl.pathname.startsWith('/auth/login')) {
+    // In v0 sandbox, allow all routes without auth check
+    const response = NextResponse.next({ request })
+    // Redirect root and login to dashboard
+    if (request.nextUrl.pathname === '/' || request.nextUrl.pathname.startsWith('/auth/login')) {
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'
       return NextResponse.redirect(url)
     }
-    // Allow all other routes without auth check
-    return supabaseResponse
+    return response
   }
+
+  let supabaseResponse = NextResponse.next({
+    request,
+  })
 
   // With Fluid compute, don't put this client in a global environment
   // variable. Always create a new one on each request.
