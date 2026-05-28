@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Loader2, Download, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Loader2, Download, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getServiceMapKPIs, createMissingTasks } from '@/lib/service-map'
 import type { ServiceMapKPIs, ClientPlan } from '@/lib/types'
@@ -149,14 +149,16 @@ export function ServiceMapReport() {
     ? Math.round(kpis.reduce((acc, k) => acc + k.checklistCompletoPercent, 0) / totalClients) 
     : 0
   const clientsAbove80 = kpis.filter(k => k.progresoPercent >= 80).length
+  const totalNoRealizados = kpis.reduce((acc, k) => acc + k.noRealizados, 0)
 
   // Export to CSV
   const exportToCSV = () => {
-    const headers = ['Cliente', 'Plan', 'Completados', 'Total', 'Progreso %', 'Checklist Completo %', 'Ultimo Hito', 'Fecha']
+    const headers = ['Cliente', 'Plan', 'Completados', 'No Realizados', 'Total', 'Progreso %', 'Checklist Completo %', 'Ultimo Hito', 'Fecha']
     const rows = kpis.map(k => [
       k.clientName,
       k.plan,
       k.completados,
+      k.noRealizados,
       k.totalHitos,
       k.progresoPercent,
       k.checklistCompletoPercent,
@@ -286,7 +288,7 @@ export function ServiceMapReport() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="p-4 rounded-lg border bg-card">
           <div className="text-sm text-muted-foreground">Clientes</div>
           <div className="text-2xl font-bold mt-1">{totalClients}</div>
@@ -302,6 +304,15 @@ export function ServiceMapReport() {
         <div className="p-4 rounded-lg border bg-card">
           <div className="text-sm text-muted-foreground">Clientes &gt;80%</div>
           <div className="text-2xl font-bold mt-1 text-emerald-600">{clientsAbove80}</div>
+        </div>
+        <div className="p-4 rounded-lg border bg-card">
+          <div className="text-sm text-muted-foreground">No Realizados</div>
+          <div className={cn(
+            "text-2xl font-bold mt-1",
+            totalNoRealizados > 0 ? "text-red-600" : "text-muted-foreground"
+          )}>
+            {totalNoRealizados}
+          </div>
         </div>
       </div>
 
@@ -330,6 +341,7 @@ export function ServiceMapReport() {
                 <TableHead>Cliente</TableHead>
                 <TableHead>Plan</TableHead>
                 <TableHead className="text-center">Completados</TableHead>
+                <TableHead className="text-center">No Realizados</TableHead>
                 <TableHead className="text-center">Progreso</TableHead>
                 <TableHead className="text-center">Checklist</TableHead>
                 <TableHead>Ultimo Hito</TableHead>
@@ -348,6 +360,16 @@ export function ServiceMapReport() {
                   </TableCell>
                   <TableCell className="text-center">
                     {kpi.completados}/{kpi.totalHitos}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {kpi.noRealizados > 0 ? (
+                      <div className="flex items-center justify-center gap-1">
+                        <XCircle className="h-4 w-4 text-red-500" />
+                        <span className="text-red-600 font-medium">{kpi.noRealizados}</span>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
