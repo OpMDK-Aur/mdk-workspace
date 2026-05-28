@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Loader2, Download, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Loader2, Download, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getServiceMapKPIs, createMissingTasks } from '@/lib/service-map'
 import type { ServiceMapKPIs, ClientPlan } from '@/lib/types'
@@ -145,20 +145,27 @@ export function ServiceMapReport() {
   const avgProgress = totalClients > 0 
     ? Math.round(kpis.reduce((acc, k) => acc + k.progresoPercent, 0) / totalClients) 
     : 0
+  const avgCumplimiento = totalClients > 0 
+    ? Math.round(kpis.reduce((acc, k) => acc + k.cumplimientoPercent, 0) / totalClients) 
+    : 0
   const avgChecklistRate = totalClients > 0 
     ? Math.round(kpis.reduce((acc, k) => acc + k.checklistCompletoPercent, 0) / totalClients) 
     : 0
-  const clientsAbove80 = kpis.filter(k => k.progresoPercent >= 80).length
+  const clientsAbove80 = kpis.filter(k => k.cumplimientoPercent >= 80).length
+  const totalNoRealizados = kpis.reduce((acc, k) => acc + k.noRealizados, 0)
 
   // Export to CSV
   const exportToCSV = () => {
-    const headers = ['Cliente', 'Plan', 'Completados', 'Total', 'Progreso %', 'Checklist Completo %', 'Ultimo Hito', 'Fecha']
+    const headers = ['Cliente', 'Plan', 'Completados', 'No Realizados', 'Pendientes', 'Total', 'Progreso %', 'Cumplimiento %', 'Checklist Completo %', 'Ultimo Hito', 'Fecha']
     const rows = kpis.map(k => [
       k.clientName,
       k.plan,
       k.completados,
+      k.noRealizados,
+      k.pendientes,
       k.totalHitos,
       k.progresoPercent,
+      k.cumplimientoPercent,
       k.checklistCompletoPercent,
       k.ultimoHito || '',
       k.ultimaFecha || '',
@@ -286,18 +293,33 @@ export function ServiceMapReport() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="p-4 rounded-lg border bg-card">
           <div className="text-sm text-muted-foreground">Clientes</div>
           <div className="text-2xl font-bold mt-1">{totalClients}</div>
         </div>
         <div className="p-4 rounded-lg border bg-card">
-          <div className="text-sm text-muted-foreground">Progreso Promedio</div>
+          <div className="text-sm text-muted-foreground">Cumplimiento Promedio</div>
+          <div className={cn(
+            'text-2xl font-bold mt-1',
+            avgCumplimiento >= 80 && 'text-emerald-600',
+            avgCumplimiento < 50 && 'text-red-600'
+          )}>
+            {avgCumplimiento}%
+          </div>
+        </div>
+        <div className="p-4 rounded-lg border bg-card">
+          <div className="text-sm text-muted-foreground">Progreso Actual</div>
           <div className="text-2xl font-bold mt-1">{avgProgress}%</div>
         </div>
         <div className="p-4 rounded-lg border bg-card">
-          <div className="text-sm text-muted-foreground">Checklist Completo</div>
-          <div className="text-2xl font-bold mt-1">{avgChecklistRate}%</div>
+          <div className="text-sm text-muted-foreground">No Realizados</div>
+          <div className={cn(
+            'text-2xl font-bold mt-1',
+            totalNoRealizados > 0 && 'text-red-600'
+          )}>
+            {totalNoRealizados}
+          </div>
         </div>
         <div className="p-4 rounded-lg border bg-card">
           <div className="text-sm text-muted-foreground">Clientes &gt;80%</div>
@@ -329,11 +351,12 @@ export function ServiceMapReport() {
               <TableRow>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Plan</TableHead>
-                <TableHead className="text-center">Completados</TableHead>
-                <TableHead className="text-center">Progreso</TableHead>
+                <TableHead className="text-center">Listo</TableHead>
+                <TableHead className="text-center">No Realizado</TableHead>
+                <TableHead className="text-center">Pendiente</TableHead>
+                <TableHead className="text-center">Cumplimiento</TableHead>
                 <TableHead className="text-center">Checklist</TableHead>
                 <TableHead>Ultimo Hito</TableHead>
-                <TableHead>PM</TableHead>
                 <TableHead>AM</TableHead>
               </TableRow>
             </TableHeader>
@@ -347,17 +370,31 @@ export function ServiceMapReport() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-center">
-                    {kpi.completados}/{kpi.totalHitos}
+                    <span className="text-emerald-600 font-medium">{kpi.completados}</span>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {kpi.noRealizados > 0 ? (
+                      <span className="text-red-600 font-medium">{kpi.noRealizados}</span>
+                    ) : (
+                      <span className="text-muted-foreground">0</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {kpi.pendientes > 0 ? (
+                      <span className="text-amber-600 font-medium">{kpi.pendientes}</span>
+                    ) : (
+                      <span className="text-muted-foreground">0</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <Progress value={kpi.progresoPercent} className="h-2 w-20" />
+                      <Progress value={kpi.cumplimientoPercent} className="h-2 w-20" />
                       <span className={cn(
                         'text-sm font-medium',
-                        kpi.progresoPercent >= 80 && 'text-emerald-600',
-                        kpi.progresoPercent < 50 && 'text-amber-600'
+                        kpi.cumplimientoPercent >= 80 && 'text-emerald-600',
+                        kpi.cumplimientoPercent < 50 && 'text-red-600'
                       )}>
-                        {kpi.progresoPercent}%
+                        {kpi.cumplimientoPercent}%
                       </span>
                     </div>
                   </TableCell>
@@ -383,7 +420,6 @@ export function ServiceMapReport() {
                       <span className="text-xs block">{new Date(kpi.ultimaFecha).toLocaleDateString('es-AR')}</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-sm">{getColabName(kpi.projectManagerId)}</TableCell>
                   <TableCell className="text-sm">{getColabName(kpi.accountManagerId)}</TableCell>
                 </TableRow>
               ))}

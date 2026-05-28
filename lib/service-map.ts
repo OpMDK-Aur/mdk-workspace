@@ -576,7 +576,10 @@ export async function getServiceMapKPIs(filters?: {
           plan: cliente.plan,
           totalHitos: 0,
           completados: 0,
+          noRealizados: 0,
+          pendientes: 0,
           progresoPercent: 0,
+          cumplimientoPercent: 0,
           checklistsCompletos: 0,
           checklistCompletoPercent: 0,
           ultimoHito: null,
@@ -599,13 +602,21 @@ export async function getServiceMapKPIs(filters?: {
           kpi.ultimaFecha = row.fecha_completado
           kpi.ultimoHito = hito?.nombre || null
         }
+      } else if (row.estado === 'no_realizado') {
+        kpi.noRealizados++
+      } else if (row.estado === 'pendiente') {
+        kpi.pendientes++
       }
     }
 
     // Calculate percentages
     const result: ServiceMapKPIs[] = []
     for (const kpi of clientMap.values()) {
+      // progresoPercent: completed out of total (includes pending)
       kpi.progresoPercent = kpi.totalHitos > 0 ? Math.round((kpi.completados / kpi.totalHitos) * 100) : 0
+      // cumplimientoPercent: completed out of finalized (listo + no_realizado) - historical compliance
+      const finalized = kpi.completados + kpi.noRealizados
+      kpi.cumplimientoPercent = finalized > 0 ? Math.round((kpi.completados / finalized) * 100) : 100
       kpi.checklistCompletoPercent =
         kpi.completados > 0 ? Math.round((kpi.checklistsCompletos / kpi.completados) * 100) : 0
       result.push(kpi)
@@ -852,6 +863,126 @@ export async function updateCatalogHito(
     return { success: true }
   } catch (error) {
     console.error('[service-map] Error updating catalog hito:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
+
+// ── Monthly Closing Functions ─────────────────────────────────────────────────
+
+/**
+ * Close all expired milestones from previous months
+ * Marks 'pendiente' instances as 'no_realizado' with fecha_completado = last day of that month
+ */
+export async function closeExpiredMilestones(): Promise<{
+  success: boolean
+  closed: number
+  error?: string
+}> {
+  const supabase = createClient()
+
+  try {
+    const now = new Date()
+    const currentMonth = now.getMonth() + 1
+    const currentYear = now.getFullYear()
+
+    // Find all pending instances from previous months
+    const { data: pendingInstances, error: fetchError } = await supabase
+      .from('mapa_servicio_instancias')
+      .select('id, mes, anio')
+      .eq('estado', 'pendiente')
+      .or(`anio.lt.${currentYear},and(anio.eq.${currentYear},mes.lt.${currentMonth})`)
+
+    if (fetchError) throw fetchError
+    if (!pendingInstances || pendingInstances.length === 0) {
+      return { success: true, closed: 0 }
+    }
+
+    let closedCount = 0
+
+    // Update each instance with the last day of its month
+    for (const instance of pendingInstances) {
+      // Calculate last day of the month
+      const lastDayOfMonth = new Date(instance.anio, instance.mes, 0)
+      const fechaCompletado = lastDayOfMonth.toISOString().split('T')[0]
+
+      const { error: updateError } = await supabase
+        .from('mapa_servicio_instancias')
+        .update({
+          estado: 'no_realizado',
+          fecha_completado: fechaCompletado,
+          checklist_snapshot: [],
+          checklist_completo: false,
+        })
+        .eq('id', instance.id)
+
+      if (updateError) {
+        console.error(`[service-map] Error closing instance ${instance.id}:`, updateError.message)
+        continue
+      }
+
+      closedCount++
+    }
+
+    console.log(`[service-map] Closed ${closedCount} expired milestones`)
+    return { success: true, closed: closedCount }
+  } catch (error) {
+    console.error('[service-map] Error closing expired milestones:', error)
+    return { success: false, closed: 0, error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
+
+/**
+ * Reopen a milestone that was marked as 'no_realizado'
+ * Only allowed for milestones in the current month
+ */
+export async function reopenMilestone(
+  instanceId: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = createClient()
+
+  try {
+    const now = new Date()
+    const currentMonth = now.getMonth() + 1
+    const currentYear = now.getFullYear()
+
+    // First verify the instance exists and is from current month
+    const { data: instance, error: fetchError } = await supabase
+      .from('mapa_servicio_instancias')
+      .select('id, mes, anio, estado')
+      .eq('id', instanceId)
+      .single()
+
+    if (fetchError || !instance) {
+      return { success: false, error: 'Instance not found' }
+    }
+
+    if (instance.estado !== 'no_realizado') {
+      return { success: false, error: 'Instance is not marked as no_realizado' }
+    }
+
+    // Check if it's from current month (allow reopening)
+    const isCurrentMonth = instance.mes === currentMonth && instance.anio === currentYear
+    if (!isCurrentMonth) {
+      return { success: false, error: 'Solo se pueden reabrir hitos del mes actual' }
+    }
+
+    // Reopen the instance
+    const { error: updateError } = await supabase
+      .from('mapa_servicio_instancias')
+      .update({
+        estado: 'pendiente',
+        fecha_completado: null,
+        checklist_snapshot: null,
+        checklist_completo: null,
+        completado_por: null,
+      })
+      .eq('id', instanceId)
+
+    if (updateError) throw updateError
+
+    return { success: true }
+  } catch (error) {
+    console.error('[service-map] Error reopening milestone:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }

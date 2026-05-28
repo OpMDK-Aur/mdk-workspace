@@ -18,9 +18,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { Loader2, CheckCircle2, Clock, Circle, Ban, ExternalLink, ChevronLeft, ChevronRight, ClipboardCheck } from 'lucide-react'
+import { Loader2, CheckCircle2, Clock, Circle, Ban, ExternalLink, ChevronLeft, ChevronRight, ClipboardCheck, XCircle, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { generateMonthInstances, getClientServiceMap, completeInstance } from '@/lib/service-map'
+import { generateMonthInstances, getClientServiceMap, completeInstance, reopenMilestone } from '@/lib/service-map'
 import type { MapaServicioInstancia, ClientPlan, HitoCatalogo, EstadoInstancia, ChecklistItem, ChecklistItemSnapshot } from '@/lib/types'
 import {
   Dialog,
@@ -50,6 +50,7 @@ const ESTADO_CONFIG: Record<EstadoInstancia, { icon: typeof CheckCircle2; color:
   en_curso: { icon: Clock, color: 'text-amber-500', label: 'En curso' },
   listo: { icon: CheckCircle2, color: 'text-emerald-500', label: 'Completado' },
   no_aplica: { icon: Ban, color: 'text-muted-foreground/50', label: 'No aplica' },
+  no_realizado: { icon: XCircle, color: 'text-red-500', label: 'No realizado' },
 }
 
 export function ClientServiceMap({ clientId, clientPlan, currentUserId }: ClientServiceMapProps) {
@@ -63,6 +64,7 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
   const [checklistState, setChecklistState] = useState<Record<string, boolean>>({})
   const [linkDrive, setLinkDrive] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [reopening, setReopening] = useState<string | null>(null)
 
   // Current month/year state
   const now = new Date()
@@ -177,6 +179,21 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
     return Math.round((completed / instances.length) * 100)
   }, [instances])
 
+  // Calculate cumplimiento (listo vs no_realizado)
+  const cumplimiento = useMemo(() => {
+    const finalized = instances.filter((i) => i.estado === 'listo' || i.estado === 'no_realizado')
+    if (finalized.length === 0) return 100
+    const completed = finalized.filter((i) => i.estado === 'listo').length
+    return Math.round((completed / finalized.length) * 100)
+  }, [instances])
+
+  // Count by status
+  const statusCounts = useMemo(() => ({
+    listo: instances.filter(i => i.estado === 'listo').length,
+    noRealizado: instances.filter(i => i.estado === 'no_realizado').length,
+    pendiente: instances.filter(i => i.estado === 'pendiente').length,
+  }), [instances])
+
   // Navigation handlers
   const goToPreviousMonth = () => {
     if (selectedMonth === 1) {
@@ -283,6 +300,27 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
     }
   }
 
+  // Handle reopen milestone
+  const handleReopenMilestone = async (instanceId: string) => {
+    setReopening(instanceId)
+    try {
+      const result = await reopenMilestone(instanceId)
+      if (!result.success) {
+        throw new Error(result.error || 'Error al reabrir')
+      }
+      // Refresh instances
+      const refreshResult = await getClientServiceMap(clientId, selectedMonth, selectedYear, clientPlan)
+      if (refreshResult.data) {
+        setInstances(refreshResult.data)
+      }
+    } catch (e) {
+      console.error('[service-map] Error reopening milestone:', e)
+      alert(`Error: ${e instanceof Error ? e.message : 'Error desconocido'}`)
+    } finally {
+      setReopening(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -353,9 +391,17 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
           )}
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="text-sm text-muted-foreground">
-            {instances.filter((i) => i.estado === 'listo').length}/{instances.length} completados
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-emerald-600 font-medium">{statusCounts.listo}</span>
+            <span className="text-muted-foreground">/</span>
+            {statusCounts.noRealizado > 0 && (
+              <>
+                <span className="text-red-500 font-medium">{statusCounts.noRealizado}</span>
+                <span className="text-muted-foreground">/</span>
+              </>
+            )}
+            <span className="text-muted-foreground">{instances.length}</span>
           </div>
           <div className="w-32">
             <Progress value={progress} className="h-2" />
@@ -456,7 +502,7 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
                       )}
 
                       {/* Complete button - only for hitos without linked task and not completed */}
-                      {!primaryInstance.tarea_id && primaryInstance.estado !== 'listo' && currentUserId && (
+                      {!primaryInstance.tarea_id && primaryInstance.estado !== 'listo' && primaryInstance.estado !== 'no_realizado' && currentUserId && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -470,6 +516,30 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
                           </TooltipTrigger>
                           <TooltipContent>
                             <p>Marcar como completado</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+
+                      {/* Reopen button - only for no_realizado hitos in current month */}
+                      {primaryInstance.estado === 'no_realizado' && isCurrentMonth && currentUserId && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-amber-500"
+                              onClick={() => handleReopenMilestone(primaryInstance.id)}
+                              disabled={reopening === primaryInstance.id}
+                            >
+                              {reopening === primaryInstance.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Reabrir hito</p>
                           </TooltipContent>
                         </Tooltip>
                       )}
@@ -503,6 +573,8 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
                                   'w-6 h-6 rounded flex items-center justify-center text-[10px] font-medium border',
                                   instance.estado === 'listo'
                                     ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600'
+                                    : instance.estado === 'no_realizado'
+                                    ? 'bg-red-500/10 border-red-500/30 text-red-600'
                                     : 'bg-muted border-border text-muted-foreground'
                                 )}
                               >
