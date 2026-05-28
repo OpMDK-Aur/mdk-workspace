@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Loader2, Download, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
+import { Loader2, Download, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getServiceMapKPIs, createMissingTasks } from '@/lib/service-map'
 import type { ServiceMapKPIs, ClientPlan } from '@/lib/types'
@@ -86,11 +86,9 @@ export function ServiceMapReport() {
       const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
       if (isCurrentMonth) {
         try {
-          console.log('[v0] Calling createMissingTasks for', { selectedMonth, selectedYear })
-          const taskResult = await createMissingTasks(selectedMonth, selectedYear)
-          console.log('[v0] createMissingTasks result:', taskResult)
+          await createMissingTasks(selectedMonth, selectedYear)
         } catch (err) {
-          console.error('[v0] createMissingTasks error:', err)
+          console.error('[service-map] createMissingTasks error:', err)
         }
       }
 
