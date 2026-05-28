@@ -60,10 +60,11 @@ const PLAN_COLORS: Record<ClientPlan, string> = {
 
 const NPS_COLORS: Record<number, { bg: string; text: string; label: string }> = {
   5: { bg: 'bg-emerald-500', text: 'text-emerald-600', label: 'Excelente' },
-  4: { bg: 'bg-green-500', text: 'text-green-600', label: 'Bueno' },
-  3: { bg: 'bg-yellow-500', text: 'text-yellow-600', label: 'Regular' },
-  2: { bg: 'bg-orange-500', text: 'text-orange-600', label: 'Malo' },
-  1: { bg: 'bg-red-500', text: 'text-red-600', label: 'Muy malo' },
+  4: { bg: 'bg-green-500', text: 'text-green-600', label: 'Muy bueno' },
+  3: { bg: 'bg-lime-500', text: 'text-lime-600', label: 'Bueno' },
+  2: { bg: 'bg-yellow-500', text: 'text-yellow-600', label: 'Regular' },
+  1: { bg: 'bg-orange-500', text: 'text-orange-600', label: 'Malo' },
+  0: { bg: 'bg-red-500', text: 'text-red-600', label: 'Muy malo' },
 }
 
 export function NPSReport() {
@@ -232,17 +233,17 @@ export function NPSReport() {
   const avgNPS = clientsWithNPS.length > 0
     ? (clientsWithNPS.reduce((sum, c) => sum + (c.currentScore || 0), 0) / clientsWithNPS.length).toFixed(1)
     : '-'
-  const promoters = clientsWithNPS.filter(c => c.currentScore && c.currentScore >= 4).length
-  const detractors = clientsWithNPS.filter(c => c.currentScore && c.currentScore <= 2).length
+  const promoters = clientsWithNPS.filter(c => c.currentScore !== null && c.currentScore >= 4).length
+  const detractors = clientsWithNPS.filter(c => c.currentScore !== null && c.currentScore <= 1).length
   const npsScore = clientsWithNPS.length > 0
     ? Math.round(((promoters - detractors) / clientsWithNPS.length) * 100)
     : 0
 
   // Distribution
   const distribution = useMemo(() => {
-    const counts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
+    const counts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0, 0: 0 }
     clientsWithNPS.forEach(c => {
-      if (c.currentScore) counts[c.currentScore as keyof typeof counts]++
+      if (c.currentScore !== null) counts[c.currentScore as keyof typeof counts]++
     })
     const total = clientsWithNPS.length || 1
     return Object.entries(counts).reverse().map(([score, count]) => ({
@@ -395,7 +396,7 @@ export function NPSReport() {
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground">Detractores (1-2)</div>
+            <div className="text-sm text-muted-foreground">Detractores (0-1)</div>
             <div className={cn(
               "text-2xl font-bold mt-1",
               detractors > 0 ? "text-red-600" : "text-muted-foreground"
@@ -510,9 +511,9 @@ export function NPSReport() {
                           <div
                             className={cn(
                               "w-4 rounded-t",
-                              h.score > 0 ? NPS_COLORS[h.score]?.bg : "bg-muted"
+                              h.score > 0 ? NPS_COLORS[h.score]?.bg : h.score === 0 ? "bg-red-500" : "bg-muted"
                             )}
-                            style={{ height: h.score > 0 ? `${(h.score / 5) * 24}px` : '4px' }}
+                            style={{ height: h.score > 0 ? `${(h.score / 5) * 24}px` : h.score === 0 ? '4px' : '2px' }}
                           />
                         </div>
                       ))}
