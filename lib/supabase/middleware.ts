@@ -6,6 +6,23 @@ export async function updateSession(request: NextRequest) {
     request,
   })
 
+  // Detect v0 sandbox environment - skip auth and redirect to dashboard
+  const isV0Sandbox = request.headers.get('host')?.includes('vusercontent.net') ||
+                      request.headers.get('host')?.includes('v0.dev') ||
+                      process.env.VERCEL_ENV === 'preview'
+  
+  if (isV0Sandbox) {
+    // In v0 sandbox, redirect login/root to dashboard directly
+    if (request.nextUrl.pathname === '/' || 
+        request.nextUrl.pathname.startsWith('/auth/login')) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+    // Allow all other routes without auth check
+    return supabaseResponse
+  }
+
   // With Fluid compute, don't put this client in a global environment
   // variable. Always create a new one on each request.
   const supabase = createServerClient(
