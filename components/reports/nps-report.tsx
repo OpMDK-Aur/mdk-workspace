@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Loader2, Download, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Minus, AlertTriangle, BellOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import type { Client, ClientPlan, Profile } from '@/lib/types'
+import type { Client, ClientPlan, Profile, UnidadNegocio } from '@/lib/types'
 
 interface NPSHistorial {
   id: string
@@ -39,6 +39,7 @@ interface ClientNPSData {
   clientId: string
   clientName: string
   plan: ClientPlan | null
+  unidadesNegocio: UnidadNegocio[] | null
   accountManagerId: string | null
   accountManagerName: string | null
   currentScore: number | null
@@ -46,6 +47,9 @@ interface ClientNPSData {
   responded: boolean
   trend: 'up' | 'down' | 'stable' | 'new'
   observation: string | null
+  historicalScores: { mes: string; score: number }[]
+  totalEncuestas: number
+  ultimaEncuesta: string | null
 }
 
 interface ACData {
@@ -56,6 +60,15 @@ interface ACData {
   respondedCount: number
   avgWithRule: number // Con regla (0 si no respondió)
   avgOnlyResponded: number // Solo respondientes
+}
+
+const NPS_COLORS: Record<number, { bg: string; text: string }> = {
+  5: { bg: 'bg-emerald-500', text: 'text-emerald-600' },
+  4: { bg: 'bg-green-500', text: 'text-green-600' },
+  3: { bg: 'bg-lime-500', text: 'text-lime-600' },
+  2: { bg: 'bg-yellow-500', text: 'text-yellow-600' },
+  1: { bg: 'bg-orange-500', text: 'text-orange-600' },
+  0: { bg: 'bg-red-500', text: 'text-red-600' },
 }
 
 const MONTHS = [
@@ -91,6 +104,7 @@ export function NPSReport() {
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState(now.getFullYear())
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
+  const [unidadFilter, setUnidadFilter] = useState<UnidadNegocio | 'all'>('all')
 
   // Years for selector
   const years = useMemo(() => {
@@ -182,9 +196,17 @@ export function NPSReport() {
 
   // Process client NPS data
   const clientNPSData: ClientNPSData[] = useMemo(() => {
-    const filteredClients = planFilter === 'all' 
-      ? clients 
-      : clients.filter(c => c.plan === planFilter)
+    let filteredClients = clients
+    
+    if (planFilter !== 'all') {
+      filteredClients = filteredClients.filter(c => c.plan === planFilter)
+    }
+    
+    if (unidadFilter !== 'all') {
+      filteredClients = filteredClients.filter(c => 
+        c.unidades_negocio?.includes(unidadFilter)
+      )
+    }
 
     return filteredClients.map(client => {
       const clientHistory = npsHistorial.filter(h => h.cliente_id === client.id)
@@ -217,6 +239,33 @@ export function NPSReport() {
         else trend = 'stable'
       }
 
+      // Historical scores (last 6 months)
+      const historicalScores: { mes: string; score: number }[] = []
+      for (let i = 5; i >= 0; i--) {
+        let targetMonth = selectedMonth - i
+        let targetYear = selectedYear
+        while (targetMonth <= 0) {
+          targetMonth += 12
+          targetYear -= 1
+        }
+        const monthRecords = clientHistory.filter(h => {
+          const date = new Date(h.fecha)
+          return date.getMonth() + 1 === targetMonth && date.getFullYear() === targetYear
+        })
+        if (monthRecords.length > 0) {
+          const avgScore = Math.round(monthRecords.reduce((sum, r) => sum + r.score, 0) / monthRecords.length)
+          historicalScores.push({ mes: MONTHS[targetMonth - 1].substring(0, 3), score: avgScore })
+        } else {
+          historicalScores.push({ mes: MONTHS[targetMonth - 1].substring(0, 3), score: -1 })
+        }
+      }
+
+      // Total encuestas and ultima encuesta
+      const totalEncuestas = clientHistory.length
+      const ultimaEncuesta = clientHistory.length > 0 
+        ? clientHistory.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())[0].fecha
+        : null
+
       // Get observation from comment
       const latestRecord = currentMonthRecords[0]
       
@@ -224,6 +273,7 @@ export function NPSReport() {
         clientId: client.id,
         clientName: client.nombre_del_negocio,
         plan: client.plan || null,
+        unidadesNegocio: client.unidades_negocio || null,
         accountManagerId: client.account_manager_id,
         accountManagerName: getProfileName(client.account_manager_id),
         currentScore,
@@ -231,9 +281,12 @@ export function NPSReport() {
         responded: currentScore !== null,
         trend,
         observation: latestRecord?.comentario || null,
+        historicalScores,
+        totalEncuestas,
+        ultimaEncuesta,
       }
     })
-  }, [clients, npsHistorial, selectedMonth, selectedYear, planFilter, profiles])
+  }, [clients, npsHistorial, selectedMonth, selectedYear, planFilter, unidadFilter, profiles])
 
   // Group by Account Manager
   const acData: ACData[] = useMemo(() => {
@@ -394,6 +447,19 @@ export function NPSReport() {
           </SelectContent>
         </Select>
 
+        <Select value={unidadFilter} onValueChange={(v) => setUnidadFilter(v as UnidadNegocio | 'all')}>
+          <SelectTrigger className="w-[150px] h-8 text-sm">
+            <SelectValue placeholder="Unidad" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas las unidades</SelectItem>
+            <SelectItem value="MDK">MDK</SelectItem>
+            <SelectItem value="Aurelia">Aurelia</SelectItem>
+            <SelectItem value="Consultoría">Consultoria</SelectItem>
+            <SelectItem value="Tecnología">Tecnologia</SelectItem>
+          </SelectContent>
+        </Select>
+
         <div className="flex-1" />
 
         <Button variant="outline" size="sm" className="h-8 gap-2" onClick={exportToCSV} disabled={clientNPSData.length === 0}>
@@ -518,18 +584,19 @@ export function NPSReport() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-left">Cliente</TableHead>
-                    <TableHead className="text-left">AC / Responsable</TableHead>
                     <TableHead className="text-left">Plan</TableHead>
-                    <TableHead className="text-center">NPS actual</TableHead>
-                    <TableHead className="text-center">Respondio</TableHead>
-                    <TableHead className="text-center">vs mes ant.</TableHead>
-                    <TableHead className="text-left">Observacion</TableHead>
+                    <TableHead className="text-center">NPS Actual</TableHead>
+                    <TableHead className="text-center">NPS Anterior</TableHead>
+                    <TableHead className="text-center">Tendencia</TableHead>
+                    <TableHead className="text-center">Historico (6 meses)</TableHead>
+                    <TableHead className="text-center">Encuestas</TableHead>
+                    <TableHead className="text-center">Ultima Encuesta</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredData.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                         No hay datos para mostrar en esta vista.
                       </TableCell>
                     </TableRow>
@@ -537,9 +604,6 @@ export function NPSReport() {
                     filteredData.map((data) => (
                       <TableRow key={data.clientId}>
                         <TableCell className="font-medium">{data.clientName}</TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {data.accountManagerName || '-'}
-                        </TableCell>
                         <TableCell>
                           {data.plan ? (
                             <Badge variant="outline" className="text-xs">
@@ -551,28 +615,49 @@ export function NPSReport() {
                         </TableCell>
                         <TableCell className="text-center">
                           <Badge variant="outline" className={cn('text-xs font-semibold', getNPSBadgeClass(data.currentScore))}>
-                            {data.currentScore ?? 0}
+                            {data.currentScore ?? '-'}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-center">
-                          {data.responded ? (
-                            <span className="text-emerald-600 text-xs">Si</span>
+                          {data.previousScore !== null ? (
+                            <Badge variant="outline" className={cn('text-xs font-semibold', getNPSBadgeClass(data.previousScore))}>
+                              {data.previousScore}
+                            </Badge>
                           ) : (
-                            <span className="text-muted-foreground text-xs">No</span>
+                            <span className="text-muted-foreground">-</span>
                           )}
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex items-center justify-center gap-1">
                             <TrendIcon trend={data.trend} />
-                            {data.previousScore !== null && (
-                              <span className="text-xs text-muted-foreground">
-                                ({data.previousScore})
-                              </span>
-                            )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                          {data.observation || '-'}
+                        <TableCell>
+                          <div className="flex items-end gap-1 justify-center h-8">
+                            {data.historicalScores.map((h, idx) => (
+                              <div key={idx} className="flex flex-col items-center gap-0.5">
+                                <div
+                                  className={cn(
+                                    "w-4 rounded-t",
+                                    h.score >= 0 ? NPS_COLORS[h.score]?.bg : "bg-muted"
+                                  )}
+                                  style={{ 
+                                    height: h.score >= 0 ? `${Math.max((h.score / 5) * 24, 4)}px` : '2px' 
+                                  }}
+                                  title={`${h.mes}: ${h.score >= 0 ? h.score : 'Sin datos'}`}
+                                />
+                                <span className="text-[9px] text-muted-foreground">{h.mes}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center text-sm text-muted-foreground">
+                          {data.totalEncuestas}
+                        </TableCell>
+                        <TableCell className="text-center text-sm text-muted-foreground">
+                          {data.ultimaEncuesta 
+                            ? new Date(data.ultimaEncuesta).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric', year: 'numeric' })
+                            : '-'}
                         </TableCell>
                       </TableRow>
                     ))
