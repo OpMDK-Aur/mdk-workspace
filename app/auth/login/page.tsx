@@ -85,6 +85,19 @@ export default function LoginPage() {
   const router = useRouter()
   const supabase = createClient()
 
+  // Detect v0 sandbox and redirect to dashboard immediately
+  useEffect(() => {
+    const isV0Sandbox = 
+      typeof window !== 'undefined' && 
+      (window.location.hostname.includes('vusercontent.net') ||
+       window.location.hostname.includes('v0.dev') ||
+       window.location.hostname.includes('localhost'))
+    
+    if (isV0Sandbox) {
+      router.replace('/dashboard')
+    }
+  }, [router])
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
