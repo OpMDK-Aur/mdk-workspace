@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
-import { Loader2, AlertTriangle, CheckCircle2, XCircle, Users, Building2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Loader2, AlertTriangle, CheckCircle2, XCircle, Users, Building2, TrendingUp, TrendingDown, Minus, Clock } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import {
   Tooltip,
@@ -132,6 +132,53 @@ function formatHoursToTime(hours: number): string {
   const m = Math.floor((totalSeconds % 3600) / 60)
   const s = totalSeconds % 60
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+}
+
+/**
+ * Calculates expected hours up to today for the current month.
+ * Formula: (minimo / daysInMonth) * dayOfMonth
+ * Only meaningful when the selected period is the current month.
+ */
+function calcHorasEsperadas(minimo: number, mes: number, anio: number): number | null {
+  const now = new Date()
+  const isCurrentMonth = now.getMonth() + 1 === mes && now.getFullYear() === anio
+  if (!isCurrentMonth) return null
+
+  const daysInMonth = new Date(anio, mes, 0).getDate()
+  const dayToday = now.getDate()
+  return (minimo / daysInMonth) * dayToday
+}
+
+interface PaceIndicatorProps {
+  asignado: number
+  minimo: number
+  mes: number
+  anio: number
+}
+
+function PaceIndicator({ asignado, minimo, mes, anio }: PaceIndicatorProps) {
+  const esperadas = calcHorasEsperadas(minimo, mes, anio)
+  if (esperadas === null || minimo === 0) return null
+
+  const diff = asignado - esperadas
+  const isAhead = diff >= 0
+  const isOnTrack = Math.abs(diff) <= minimo * 0.05 // within 5% = on track
+
+  return (
+    <div className={`flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full border ${
+      isAhead
+        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600'
+        : 'bg-red-500/10 border-red-500/30 text-red-600'
+    }`}>
+      <Clock className="w-3 h-3 shrink-0" />
+      <span>
+        Esperado hoy: <span className="font-mono font-medium">{formatHoursToTime(esperadas)}</span>
+      </span>
+      <span className="font-medium">
+        ({isAhead ? '+' : ''}{formatHoursToTime(Math.abs(diff))} {isAhead ? 'adelante' : 'atrás'})
+      </span>
+    </div>
+  )
 }
 
 // Custom progress bar with min/max markers and color logic
@@ -652,6 +699,14 @@ export function HoursControlPanel() {
                         maximo={item.totalMaximo}
                       />
 
+                      {/* Pace indicator - only for current month */}
+                      <PaceIndicator
+                        asignado={item.totalAsignado}
+                        minimo={item.totalMinimo}
+                        mes={selectedMonth}
+                        anio={selectedYear}
+                      />
+
                       {/* Breakdown by client with progress bars */}
                       <div className="space-y-3">
                         <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Desglose por Cliente</h4>
@@ -740,6 +795,14 @@ export function HoursControlPanel() {
                         asignado={item.totalAsignado}
                         minimo={item.totalMinimo}
                         maximo={item.totalMaximo}
+                      />
+
+                      {/* Pace indicator - only for current month */}
+                      <PaceIndicator
+                        asignado={item.totalAsignado}
+                        minimo={item.totalMinimo}
+                        mes={selectedMonth}
+                        anio={selectedYear}
                       />
 
                       {/* Breakdown by colaborador with progress bars */}
