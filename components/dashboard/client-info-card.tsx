@@ -358,10 +358,26 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
         .update({ 
           unidades_negocio: newUnidades,
           semaforo_unidades: newSemaforo,
-          // Clear plan if MDK is removed
           ...(unidad === 'MDK' ? { plan: null } : {})
         })
         .eq('id', client.id)
+
+      // If MDK is removed, delete service map instances and seguimiento tasks
+      if (unidad === 'MDK') {
+        // Delete all service map instances for this client
+        await supabase
+          .from('mapa_servicio_instancias')
+          .delete()
+          .eq('cliente_id', client.id)
+
+        // Delete all pending seguimiento tasks for this client
+        await supabase
+          .from('tareas')
+          .delete()
+          .eq('cliente_id', client.id)
+          .ilike('titulo', '%Seguimiento semanal%')
+          .eq('estado', 'pendiente')
+      }
     } else {
       newUnidades = [...unidadesNegocio, unidad]
       await supabase
