@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
-import { Loader2, AlertTriangle, CheckCircle2, XCircle, Users, Building2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Loader2, AlertTriangle, CheckCircle2, XCircle, Users, Building2, TrendingUp, TrendingDown, Minus, Clock } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import {
   Tooltip,
@@ -132,6 +132,124 @@ function formatHoursToTime(hours: number): string {
   const m = Math.floor((totalSeconds % 3600) / 60)
   const s = totalSeconds % 60
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+}
+
+// Calculate expected hours at current date to be on track for minimum
+interface PaceStatus {
+  expectedHours: number
+  difference: number // positive = ahead, negative = behind
+  percentComplete: number // % of month elapsed
+  status: 'ahead' | 'on-track' | 'behind'
+  message: string
+}
+
+function calculatePaceStatus(
+  asignado: number,
+  minimo: number,
+  selectedMonth: number,
+  selectedYear: number
+): PaceStatus {
+  const today = new Date()
+  const currentDay = today.getDate()
+  const currentMonth = today.getMonth() + 1
+  const currentYear = today.getFullYear()
+  
+  // Get total days in the selected month
+  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate()
+  
+  // If viewing a past month, consider it 100% complete
+  const isPastMonth = selectedYear < currentYear || 
+    (selectedYear === currentYear && selectedMonth < currentMonth)
+  
+  // If viewing a future month, 0% complete
+  const isFutureMonth = selectedYear > currentYear || 
+    (selectedYear === currentYear && selectedMonth > currentMonth)
+  
+  let dayOfMonth: number
+  if (isPastMonth) {
+    dayOfMonth = daysInMonth // Full month elapsed
+  } else if (isFutureMonth) {
+    dayOfMonth = 0 // Month hasn't started
+  } else {
+    dayOfMonth = currentDay // Current day of the month
+  }
+  
+  const percentComplete = (dayOfMonth / daysInMonth) * 100
+  const expectedHours = minimo * (dayOfMonth / daysInMonth)
+  const difference = asignado - expectedHours
+  
+  // Tolerance: consider "on-track" if within 10% of expected
+  const tolerance = expectedHours * 0.1
+  
+  let status: 'ahead' | 'on-track' | 'behind'
+  let message: string
+  
+  if (isFutureMonth) {
+    status = 'on-track'
+    message = 'Mes futuro'
+  } else if (difference > tolerance) {
+    status = 'ahead'
+    message = `+${formatHoursToTime(difference)} adelantado`
+  } else if (difference < -tolerance) {
+    status = 'behind'
+    message = `${formatHoursToTime(Math.abs(difference))} atrasado`
+  } else {
+    status = 'on-track'
+    message = 'En ritmo'
+  }
+  
+  return {
+    expectedHours,
+    difference,
+    percentComplete,
+    status,
+    message,
+  }
+}
+
+// Pace indicator component
+function PaceIndicator({ 
+  asignado, 
+  minimo,
+  selectedMonth,
+  selectedYear,
+}: { 
+  asignado: number
+  minimo: number
+  selectedMonth: number
+  selectedYear: number
+}) {
+  const pace = calculatePaceStatus(asignado, minimo, selectedMonth, selectedYear)
+  
+  if (minimo === 0) return null
+  
+  const iconClass = "w-3 h-3"
+  const containerClass = "flex items-center gap-1 text-xs"
+  
+  if (pace.status === 'ahead') {
+    return (
+      <div className={`${containerClass} text-emerald-500`}>
+        <TrendingUp className={iconClass} />
+        <span>{pace.message}</span>
+      </div>
+    )
+  }
+  
+  if (pace.status === 'behind') {
+    return (
+      <div className={`${containerClass} text-red-500`}>
+        <TrendingDown className={iconClass} />
+        <span>{pace.message}</span>
+      </div>
+    )
+  }
+  
+  return (
+    <div className={`${containerClass} text-muted-foreground`}>
+      <Minus className={iconClass} />
+      <span>{pace.message}</span>
+    </div>
+  )
 }
 
 // Custom progress bar with min/max markers and color logic
@@ -656,23 +774,49 @@ export function HoursControlPanel() {
                       <div className="space-y-3">
                         <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Desglose por Cliente</h4>
                         <div className="space-y-2">
-                          {item.clientes.map((c) => (
-                            <div key={c.cliente.id} className="flex items-center gap-4 py-2 px-3 bg-muted/30 rounded-lg">
-                              <div className="min-w-[160px]">
-                                <span className="text-sm font-medium">{c.cliente.nombre_del_negocio}</span>
-                                <div className="text-xs text-muted-foreground font-mono">
-                                  {formatHoursToTime(c.minimo)} - {formatHoursToTime(c.maximo)}
+                          {item.clientes.map((c) => {
+                            const pace = calculatePaceStatus(c.asignado, c.minimo, selectedMonth, selectedYear)
+                            return (
+                              <div key={c.cliente.id} className="flex items-center gap-4 py-2 px-3 bg-muted/30 rounded-lg">
+                                <div className="min-w-[180px]">
+                                  <span className="text-sm font-medium">{c.cliente.nombre_del_negocio}</span>
+                                  <div className="text-xs text-muted-foreground font-mono">
+                                    {formatHoursToTime(c.minimo)} - {formatHoursToTime(c.maximo)}
+                                  </div>
+                                  {c.minimo > 0 && (
+                                    <div className="mt-1 flex items-center gap-2">
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                              <Clock className="w-3 h-3" />
+                                              <span>Esperado: <span className="font-mono">{formatHoursToTime(pace.expectedHours)}</span></span>
+                                            </div>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>Horas que deberian estar marcadas al dia {new Date().getDate()} para cumplir el minimo de {formatHoursToTime(c.minimo)} al fin de mes</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                      <PaceIndicator 
+                                        asignado={c.asignado}
+                                        minimo={c.minimo}
+                                        selectedMonth={selectedMonth}
+                                        selectedYear={selectedYear}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex-1">
+                                  <CompactProgressBar 
+                                    asignado={c.asignado}
+                                    minimo={c.minimo}
+                                    maximo={c.maximo}
+                                  />
                                 </div>
                               </div>
-                              <div className="flex-1">
-                                <CompactProgressBar 
-                                  asignado={c.asignado}
-                                  minimo={c.minimo}
-                                  maximo={c.maximo}
-                                />
-                              </div>
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       </div>
                     </CardContent>
@@ -746,25 +890,51 @@ export function HoursControlPanel() {
                       <div className="space-y-3">
                         <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Desglose por Colaborador</h4>
                         <div className="space-y-2">
-                          {item.colaboradores.map((c) => (
-                            <div key={c.colaborador.id} className="flex items-center gap-4 py-2 px-3 bg-muted/30 rounded-lg">
-                              <div className="min-w-[160px]">
-                                <span className="text-sm font-medium">
-                                  {c.colaborador.nombre}{c.colaborador.apellido ? ` ${c.colaborador.apellido}` : ''}
-                                </span>
-                                <div className="text-xs text-muted-foreground font-mono">
-                                  {formatHoursToTime(c.minimo)} - {formatHoursToTime(c.maximo)}
+                          {item.colaboradores.map((c) => {
+                            const pace = calculatePaceStatus(c.asignado, c.minimo, selectedMonth, selectedYear)
+                            return (
+                              <div key={c.colaborador.id} className="flex items-center gap-4 py-2 px-3 bg-muted/30 rounded-lg">
+                                <div className="min-w-[180px]">
+                                  <span className="text-sm font-medium">
+                                    {c.colaborador.nombre}{c.colaborador.apellido ? ` ${c.colaborador.apellido}` : ''}
+                                  </span>
+                                  <div className="text-xs text-muted-foreground font-mono">
+                                    {formatHoursToTime(c.minimo)} - {formatHoursToTime(c.maximo)}
+                                  </div>
+                                  {c.minimo > 0 && (
+                                    <div className="mt-1 flex items-center gap-2">
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                              <Clock className="w-3 h-3" />
+                                              <span>Esperado: <span className="font-mono">{formatHoursToTime(pace.expectedHours)}</span></span>
+                                            </div>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>Horas que deberian estar marcadas al dia {new Date().getDate()} para cumplir el minimo de {formatHoursToTime(c.minimo)} al fin de mes</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                      <PaceIndicator 
+                                        asignado={c.asignado}
+                                        minimo={c.minimo}
+                                        selectedMonth={selectedMonth}
+                                        selectedYear={selectedYear}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex-1">
+                                  <CompactProgressBar 
+                                    asignado={c.asignado}
+                                    minimo={c.minimo}
+                                    maximo={c.maximo}
+                                  />
                                 </div>
                               </div>
-                              <div className="flex-1">
-                                <CompactProgressBar 
-                                  asignado={c.asignado}
-                                  minimo={c.minimo}
-                                  maximo={c.maximo}
-                                />
-                              </div>
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       </div>
                     </CardContent>
