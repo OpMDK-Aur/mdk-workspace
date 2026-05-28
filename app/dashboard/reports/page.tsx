@@ -9,6 +9,7 @@ import { ClientDonutChart } from '@/components/reports/client-donut-chart'
 import { ClientSummaryTable } from '@/components/reports/client-summary-table'
 import { HoursControlPanel } from '@/components/reports/hours-control-panel'
 import { ServiceMapReport } from '@/components/reports/service-map-report'
+import { NPSReport } from '@/components/reports/nps-report'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
@@ -27,7 +28,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { CalendarIcon, Download, Users, Loader2, ClipboardCheck, Map } from 'lucide-react'
+import { CalendarIcon, Download, Users, Loader2, ClipboardCheck, Map, Star } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/lib/types'
 import type { ClientSummary } from '@/lib/time-tracking/types'
@@ -386,6 +387,10 @@ export default function ReportsPage() {
               <Map className="w-4 h-4" />
               Mapa de Servicio
             </TabsTrigger>
+            <TabsTrigger value="nps" className="gap-2">
+              <Star className="w-4 h-4" />
+              NPS
+            </TabsTrigger>
           </TabsList>
         
         <TabsContent value="by-client">
@@ -714,6 +719,10 @@ export default function ReportsPage() {
 
           <TabsContent value="service-map">
             <ServiceMapReport />
+          </TabsContent>
+
+          <TabsContent value="nps">
+            <NPSReport />
           </TabsContent>
         </Tabs>
     </div>
