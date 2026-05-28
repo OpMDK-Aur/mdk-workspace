@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
+import { V0SandboxDetector } from '@/components/v0-sandbox-detector'
 import './globals.css'
 // Force full rebuild v5
 
@@ -26,6 +27,7 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable} bg-background`}>
       <body className="font-sans antialiased">
+        <V0SandboxDetector />
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"
