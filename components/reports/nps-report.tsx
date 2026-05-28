@@ -584,42 +584,6 @@ export function NPSReport() {
         </Tabs>
       </div>
 
-      {/* Plan de Acción - Clientes que bajaron */}
-      {clientNPSData.filter(c => c.trend === 'down').length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            Plan de accion — clientes con baja en calificacion
-          </h3>
-          
-          {clientNPSData.filter(c => c.trend === 'down').map(client => (
-            <div key={client.clientId} className="border rounded-lg overflow-hidden">
-              <div className="flex items-center gap-3 p-3 bg-muted/30 border-b">
-                <Badge variant="outline" className={getNPSBadgeClass(client.currentScore)}>
-                  {client.clientName}
-                </Badge>
-                <span className="text-sm">
-                  NPS {client.currentScore} · AC: {client.accountManagerName || 'Sin asignar'}
-                </span>
-                <Badge variant="outline" className="ml-auto bg-orange-500/10 text-orange-600 border-orange-500/20 text-xs">
-                  Requiere seguimiento
-                </Badge>
-              </div>
-              <div className="p-4 text-sm">
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                  Situacion
-                </div>
-                <p className="text-muted-foreground">
-                  Bajo de {client.previousScore} a {client.currentScore}. 
-                  {client.observation ? ` ${client.observation}` : ' Se requiere analisis de la situacion con el cliente.'}
-                </p>
-                <div className="mt-3 bg-blue-500/5 border-l-2 border-blue-500 pl-3 py-2 rounded-r text-xs">
-                  <strong>Accion sugerida:</strong> Contactar al cliente para entender las razones de la baja y definir un plan de mejora.
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
