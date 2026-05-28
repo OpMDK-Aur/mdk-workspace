@@ -191,17 +191,21 @@ export function NPSReport() {
       // Historical scores (last 6 months)
       const historicalScores: { mes: string; score: number }[] = []
       for (let i = 5; i >= 0; i--) {
-        const m = ((selectedMonth - 1 - i + 12) % 12) + 1
-        const y = selectedMonth - i <= 0 ? selectedYear - 1 : selectedYear
+        let targetMonth = selectedMonth - i
+        let targetYear = selectedYear
+        while (targetMonth <= 0) {
+          targetMonth += 12
+          targetYear -= 1
+        }
         const monthRecords = clientHistory.filter(h => {
           const date = new Date(h.fecha)
-          return date.getMonth() + 1 === m && date.getFullYear() === y
+          return date.getMonth() + 1 === targetMonth && date.getFullYear() === targetYear
         })
         if (monthRecords.length > 0) {
           const avgScore = Math.round(monthRecords.reduce((sum, r) => sum + r.score, 0) / monthRecords.length)
-          historicalScores.push({ mes: MONTHS[m - 1].substring(0, 3), score: avgScore })
+          historicalScores.push({ mes: MONTHS[targetMonth - 1].substring(0, 3), score: avgScore })
         } else {
-          historicalScores.push({ mes: MONTHS[m - 1].substring(0, 3), score: 0 })
+          historicalScores.push({ mes: MONTHS[targetMonth - 1].substring(0, 3), score: 0 })
         }
       }
 
