@@ -309,7 +309,7 @@ export type TipoServicio = 'esencial' | 'estrategico'
 
 export type FrecuenciaHito = 'Mensual' | 'Bimestral' | 'Semanal' | 'Semanal (Lun)' | 'Semanal (Vie)' | '2 Veces x Sem'
 
-export type EstadoInstancia = 'pendiente' | 'en_curso' | 'listo' | 'no_aplica' | 'no_realizado'
+export type EstadoInstancia = 'pendiente' | 'en_curso' | 'listo' | 'no_aplica'
 
 export type TipoMinuta = 'reunion_cierre_mes' | 'reunion_scorecard' | 'reunion_alineacion' | 'otra'
 
@@ -375,7 +375,6 @@ export interface ServiceMapKPIs {
   plan: ClientPlan
   totalHitos: number
   completados: number
-  noRealizados: number
   progresoPercent: number
   checklistsCompletos: number
   checklistCompletoPercent: number

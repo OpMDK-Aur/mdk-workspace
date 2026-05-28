@@ -18,7 +18,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { Loader2, CheckCircle2, Clock, Circle, Ban, ExternalLink, ChevronLeft, ChevronRight, ClipboardCheck, XCircle } from 'lucide-react'
+import { Loader2, CheckCircle2, Clock, Circle, Ban, ExternalLink, ChevronLeft, ChevronRight, ClipboardCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { generateMonthInstances, getClientServiceMap, completeInstance } from '@/lib/service-map'
 import type { MapaServicioInstancia, ClientPlan, HitoCatalogo, EstadoInstancia, ChecklistItem, ChecklistItemSnapshot } from '@/lib/types'
@@ -50,7 +50,6 @@ const ESTADO_CONFIG: Record<EstadoInstancia, { icon: typeof CheckCircle2; color:
   en_curso: { icon: Clock, color: 'text-amber-500', label: 'En curso' },
   listo: { icon: CheckCircle2, color: 'text-emerald-500', label: 'Completado' },
   no_aplica: { icon: Ban, color: 'text-muted-foreground/50', label: 'No aplica' },
-  no_realizado: { icon: XCircle, color: 'text-red-500', label: 'No realizado' },
 }
 
 export function ClientServiceMap({ clientId, clientPlan, currentUserId }: ClientServiceMapProps) {

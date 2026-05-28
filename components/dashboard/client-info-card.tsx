@@ -362,12 +362,6 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
           ...(unidad === 'MDK' ? { plan: null } : {})
         })
         .eq('id', client.id)
-      
-      // If MDK was removed, cleanup service map instances and tasks
-      if (unidad === 'MDK') {
-        const { cleanupServiceMapOnMDKRemoval } = await import('@/lib/service-map')
-        await cleanupServiceMapOnMDKRemoval(client.id)
-      }
     } else {
       newUnidades = [...unidadesNegocio, unidad]
       await supabase

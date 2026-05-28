@@ -121,10 +121,10 @@ export async function generateMonthInstances(
   const supabase = createClient()
 
   try {
-    // 0. Verify client belongs to MDK business unit (check array field)
+    // 0. Verify client belongs to MDK business unit
     const { data: cliente, error: clienteError } = await supabase
       .from('clientes')
-      .select('id, unidades_negocio, account_manager_id')
+      .select('id, unidad_negocio, account_manager_id')
       .eq('id', clienteId)
       .single()
 
@@ -132,9 +132,7 @@ export async function generateMonthInstances(
       return { success: false, error: 'Client not found' }
     }
 
-    // Check if MDK is in the unidades_negocio array
-    const unidades = cliente.unidades_negocio as string[] | null
-    if (!unidades || !unidades.includes('MDK')) {
+    if (cliente.unidad_negocio !== 'MDK') {
       return { success: true, generated: 0 } // Skip non-MDK clients silently
     }
 
@@ -287,7 +285,7 @@ export async function createMissingTasks(
         cliente_id,
         hito_id,
         hito:hitos_catalogo(id, nombre, descripcion, genera_tarea),
-        cliente:clientes(id, unidades_negocio, account_manager_id)
+        cliente:clientes(id, unidad_negocio, account_manager_id)
       `)
       .eq('mes', mes)
       .eq('anio', anio)
@@ -298,12 +296,11 @@ export async function createMissingTasks(
       return { success: true, created: 0 }
     }
 
-    // Filter only those where hito.genera_tarea = true AND cliente has MDK in unidades_negocio
+    // Filter only those where hito.genera_tarea = true AND cliente.unidad_negocio = 'MDK'
     const pendientes = instanciasSinTarea.filter((i) => {
       const hito = i.hito as HitoCatalogo | null
       const cliente = i.cliente as any
-      const unidades = cliente?.unidades_negocio as string[] | null
-      return hito?.genera_tarea === true && unidades && unidades.includes('MDK')
+      return hito?.genera_tarea === true && cliente?.unidad_negocio === 'MDK'
     })
 
     let created = 0
@@ -499,12 +496,12 @@ export async function getServiceMapKPIs(filters?: {
     const mes = filters?.mes ?? now.getMonth() + 1
     const anio = filters?.anio ?? now.getFullYear()
 
-    // 1. First fetch ALL active clients that have MDK in unidades_negocio array
+    // 1. First fetch ALL active clients with unidad_negocio = 'MDK'
     const { data: allClientes, error: clientesError } = await supabase
       .from('clientes')
-      .select('id, nombre_del_negocio, plan, project_manager_id, account_manager_id, activo, unidades_negocio')
+      .select('id, nombre_del_negocio, plan, project_manager_id, account_manager_id, activo, unidad_negocio')
       .or('activo.is.null,activo.eq.true')
-      .contains('unidades_negocio', ['MDK'])
+      .eq('unidad_negocio', 'MDK')
       .order('nombre_del_negocio')
 
     if (clientesError) throw clientesError
@@ -537,12 +534,12 @@ export async function getServiceMapKPIs(filters?: {
         `
         *,
         hito:hitos_catalogo(nombre, tipo_servicio),
-        cliente:clientes!inner(id, nombre_del_negocio, plan, project_manager_id, account_manager_id, unidades_negocio)
+        cliente:clientes!inner(id, nombre_del_negocio, plan, project_manager_id, account_manager_id, unidad_negocio)
       `
       )
       .eq('mes', mes)
       .eq('anio', anio)
-      .contains('cliente.unidades_negocio', ['MDK'])
+      .eq('cliente.unidad_negocio', 'MDK')
 
     if (error) throw error
     if (!data) return { data: [] }
@@ -579,7 +576,6 @@ export async function getServiceMapKPIs(filters?: {
           plan: cliente.plan,
           totalHitos: 0,
           completados: 0,
-          noRealizados: 0,
           progresoPercent: 0,
           checklistsCompletos: 0,
           checklistCompletoPercent: 0,
@@ -603,8 +599,6 @@ export async function getServiceMapKPIs(filters?: {
           kpi.ultimaFecha = row.fecha_completado
           kpi.ultimoHito = hito?.nombre || null
         }
-      } else if (row.estado === 'no_realizado') {
-        kpi.noRealizados++
       }
     }
 
@@ -780,185 +774,6 @@ export async function deleteMinuta(minutaId: string): Promise<{ success: boolean
 }
 
 // ── Catalog Admin Functions ───────────────────────────────────────────────────
-
-// ── MDK Removal & Month Close Functions ───────────────────────────────────────
-
-/**
- * Cleanup service map when MDK is removed from a client's unidades_negocio
- * - Marks pending/in_course instances as 'no_realizado' (preserves history)
- * - Cancels/deletes pending hito tasks
- * - Does NOT delete completed instances (history preserved)
- */
-export async function cleanupServiceMapOnMDKRemoval(
-  clienteId: string
-): Promise<{ success: boolean; error?: string; instancesMarked?: number; tasksCancelled?: number }> {
-  const supabase = createClient()
-
-  try {
-    const now = new Date()
-    const currentMonth = now.getMonth() + 1
-    const currentYear = now.getFullYear()
-
-    // 1. Get all pending/in_course instances for current month and future
-    const { data: instancias, error: fetchError } = await supabase
-      .from('mapa_servicio_instancias')
-      .select('id, tarea_id, estado')
-      .eq('cliente_id', clienteId)
-      .in('estado', ['pendiente', 'en_curso'])
-      .or(`anio.gt.${currentYear},and(anio.eq.${currentYear},mes.gte.${currentMonth})`)
-
-    if (fetchError) throw fetchError
-
-    if (!instancias || instancias.length === 0) {
-      return { success: true, instancesMarked: 0, tasksCancelled: 0 }
-    }
-
-    // 2. Mark instances as 'no_realizado'
-    const instanceIds = instancias.map((i) => i.id)
-    const { error: updateError } = await supabase
-      .from('mapa_servicio_instancias')
-      .update({ estado: 'no_realizado' })
-      .in('id', instanceIds)
-
-    if (updateError) throw updateError
-
-    // 3. Get task IDs to cancel (only those that exist)
-    const taskIds = instancias.map((i) => i.tarea_id).filter((id): id is string => id !== null)
-
-    let tasksCancelled = 0
-    if (taskIds.length > 0) {
-      // Delete pending hito tasks (only pendiente status)
-      const { data: deletedTasks, error: deleteTaskError } = await supabase
-        .from('tareas')
-        .delete()
-        .in('id', taskIds)
-        .eq('estado', 'pendiente')
-        .select('id')
-
-      if (deleteTaskError) {
-        console.error('[service-map] Error deleting tasks:', deleteTaskError.message)
-        // Non-critical, continue
-      } else {
-        tasksCancelled = deletedTasks?.length || 0
-      }
-    }
-
-    // 4. Create comment documenting the cleanup
-    const { error: commentError } = await supabase.from('comentarios_clientes').insert({
-      cliente_id: clienteId,
-      contenido: `Mapa de servicio desactivado: ${instancias.length} hitos marcados como no realizados, ${tasksCancelled} tareas canceladas. Motivo: Cliente removido de unidad MDK.`,
-      tipo: 'sistema',
-      autor: 'Sistema',
-    })
-
-    if (commentError) {
-      console.error('[service-map] Error creating cleanup comment:', commentError.message)
-    }
-
-    return { success: true, instancesMarked: instancias.length, tasksCancelled }
-  } catch (error) {
-    console.error('[service-map] Error in cleanupServiceMapOnMDKRemoval:', error)
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
-  }
-}
-
-/**
- * Close a month's service map for all MDK clients
- * - Marks all pending/in_course instances as 'no_realizado'
- * - Cancels associated pending tasks
- * - Creates summary comment per client
- * Should be called via cron on the 1st of each month for the previous month
- */
-export async function closeMonthServiceMap(
-  mes: number,
-  anio: number
-): Promise<{ success: boolean; clientsClosed: number; instancesClosed: number; error?: string }> {
-  const supabase = createClient()
-
-  try {
-    // 1. Get all pending/in_course instances for the specified month
-    const { data: instancias, error: fetchError } = await supabase
-      .from('mapa_servicio_instancias')
-      .select(`
-        id,
-        cliente_id,
-        tarea_id,
-        estado,
-        hito:hitos_catalogo(nombre)
-      `)
-      .eq('mes', mes)
-      .eq('anio', anio)
-      .in('estado', ['pendiente', 'en_curso'])
-
-    if (fetchError) throw fetchError
-
-    if (!instancias || instancias.length === 0) {
-      return { success: true, clientsClosed: 0, instancesClosed: 0 }
-    }
-
-    // 2. Group by client for summary
-    const clientInstances = new Map<string, Array<{ id: string; tarea_id: string | null; hitoNombre: string }>>()
-    
-    for (const inst of instancias) {
-      const hito = inst.hito as { nombre: string } | null
-      const clientList = clientInstances.get(inst.cliente_id) || []
-      clientList.push({
-        id: inst.id,
-        tarea_id: inst.tarea_id,
-        hitoNombre: hito?.nombre || 'Hito desconocido',
-      })
-      clientInstances.set(inst.cliente_id, clientList)
-    }
-
-    // 3. Mark all instances as 'no_realizado'
-    const instanceIds = instancias.map((i) => i.id)
-    const { error: updateError } = await supabase
-      .from('mapa_servicio_instancias')
-      .update({ estado: 'no_realizado' })
-      .in('id', instanceIds)
-
-    if (updateError) throw updateError
-
-    // 4. Cancel/delete pending tasks
-    const taskIds = instancias.map((i) => i.tarea_id).filter((id): id is string => id !== null)
-    
-    if (taskIds.length > 0) {
-      const { error: deleteTaskError } = await supabase
-        .from('tareas')
-        .delete()
-        .in('id', taskIds)
-        .eq('estado', 'pendiente')
-
-      if (deleteTaskError) {
-        console.error('[service-map] Error deleting tasks on month close:', deleteTaskError.message)
-      }
-    }
-
-    // 5. Create summary comment for each client
-    const monthNames = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-    
-    for (const [clienteId, clientInsts] of clientInstances) {
-      const hitosNoRealizados = clientInsts.map((i) => i.hitoNombre).join(', ')
-      
-      await supabase.from('comentarios_clientes').insert({
-        cliente_id: clienteId,
-        contenido: `Cierre de mes ${monthNames[mes]} ${anio}: ${clientInsts.length} hitos no realizados - ${hitosNoRealizados}`,
-        tipo: 'cierre_mes',
-        autor: 'Sistema',
-      })
-    }
-
-    return {
-      success: true,
-      clientsClosed: clientInstances.size,
-      instancesClosed: instancias.length,
-    }
-  } catch (error) {
-    console.error('[service-map] Error in closeMonthServiceMap:', error)
-    return { success: false, clientsClosed: 0, instancesClosed: 0, error: error instanceof Error ? error.message : 'Unknown error' }
-  }
-}
 
 /**
  * Get all hitos from catalog
