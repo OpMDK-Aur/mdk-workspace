@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import {
   Select,
@@ -19,11 +18,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, Download, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Loader2, Download, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Minus, AlertTriangle, BellOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import type { Client, ClientPlan } from '@/lib/types'
+import type { Client, ClientPlan, Profile } from '@/lib/types'
 
 interface NPSHistorial {
   id: string
@@ -40,12 +39,23 @@ interface ClientNPSData {
   clientId: string
   clientName: string
   plan: ClientPlan | null
+  accountManagerId: string | null
+  accountManagerName: string | null
   currentScore: number | null
   previousScore: number | null
+  responded: boolean
   trend: 'up' | 'down' | 'stable' | 'new'
-  historicalScores: { mes: string; score: number }[]
-  lastSurveyDate: string | null
-  totalEncuestas: number
+  observation: string | null
+}
+
+interface ACData {
+  id: string
+  name: string
+  clients: ClientNPSData[]
+  totalClients: number
+  respondedCount: number
+  avgWithRule: number // Con regla (0 si no respondió)
+  avgOnlyResponded: number // Solo respondientes
 }
 
 const MONTHS = [
@@ -53,25 +63,28 @@ const MONTHS = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ]
 
-const PLAN_COLORS: Record<ClientPlan, string> = {
-  Esencial: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
-  Estrategico: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
+const getNPSBadgeClass = (score: number | null): string => {
+  if (score === null) return 'bg-muted text-muted-foreground'
+  if (score >= 4) return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+  if (score === 3) return 'bg-amber-500/10 text-amber-600 border-amber-500/20'
+  if (score === 2) return 'bg-orange-500/10 text-orange-600 border-orange-500/20'
+  return 'bg-red-500/10 text-red-600 border-red-500/20'
 }
 
-const NPS_COLORS: Record<number, { bg: string; text: string; label: string }> = {
-  5: { bg: 'bg-emerald-500', text: 'text-emerald-600', label: 'Excelente' },
-  4: { bg: 'bg-green-500', text: 'text-green-600', label: 'Muy bueno' },
-  3: { bg: 'bg-lime-500', text: 'text-lime-600', label: 'Bueno' },
-  2: { bg: 'bg-yellow-500', text: 'text-yellow-600', label: 'Regular' },
-  1: { bg: 'bg-orange-500', text: 'text-orange-600', label: 'Malo' },
-  0: { bg: 'bg-red-500', text: 'text-red-600', label: 'Muy malo' },
+const getNPSColor = (score: number): string => {
+  if (score >= 4) return 'text-emerald-600'
+  if (score >= 3) return 'text-amber-600'
+  if (score >= 2) return 'text-orange-600'
+  return 'text-red-600'
 }
 
 export function NPSReport() {
   const [clients, setClients] = useState<Client[]>([])
+  const [profiles, setProfiles] = useState<Profile[]>([])
   const [npsHistorial, setNpsHistorial] = useState<NPSHistorial[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState('todos')
 
   // Filters
   const now = new Date()
@@ -85,7 +98,7 @@ export function NPSReport() {
     return [currentYear - 1, currentYear, currentYear + 1]
   }, [])
 
-  // Fetch data when filters change
+  // Fetch data
   useEffect(() => {
     async function fetchData() {
       setLoading(true)
@@ -98,11 +111,19 @@ export function NPSReport() {
         const { data: clientsData, error: clientsError } = await supabase
           .from('clientes')
           .select('*')
+          .eq('activo', true)
           .order('nombre_del_negocio')
 
         if (clientsError) throw clientsError
 
-        // Fetch all NPS history (last 12 months)
+        // Fetch profiles for AC names
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('*')
+
+        if (profilesError) throw profilesError
+
+        // Fetch NPS history (last 12 months)
         const startDate = new Date(selectedYear - 1, selectedMonth - 1, 1)
         const { data: npsData, error: npsError } = await supabase
           .from('cliente_nps_historial')
@@ -113,6 +134,7 @@ export function NPSReport() {
         if (npsError) throw npsError
 
         setClients(clientsData || [])
+        setProfiles(profilesData || [])
         setNpsHistorial(npsData || [])
       } catch (err) {
         console.error('[v0] Error fetching NPS data:', err)
@@ -125,7 +147,7 @@ export function NPSReport() {
     fetchData()
   }, [selectedMonth, selectedYear])
 
-  // Navigation handlers
+  // Navigation
   const goToPreviousMonth = () => {
     if (selectedMonth === 1) {
       setSelectedMonth(12)
@@ -150,6 +172,13 @@ export function NPSReport() {
   }
 
   const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
+
+  // Get profile name
+  const getProfileName = (id: string | null): string | null => {
+    if (!id) return null
+    const profile = profiles.find(p => p.id === id)
+    return profile?.full_name || null
+  }
 
   // Process client NPS data
   const clientNPSData: ClientNPSData[] = useMemo(() => {
@@ -188,87 +217,89 @@ export function NPSReport() {
         else trend = 'stable'
       }
 
-      // Historical scores (last 6 months)
-      const historicalScores: { mes: string; score: number }[] = []
-      for (let i = 5; i >= 0; i--) {
-        let targetMonth = selectedMonth - i
-        let targetYear = selectedYear
-        while (targetMonth <= 0) {
-          targetMonth += 12
-          targetYear -= 1
-        }
-        const monthRecords = clientHistory.filter(h => {
-          const date = new Date(h.fecha)
-          return date.getMonth() + 1 === targetMonth && date.getFullYear() === targetYear
-        })
-        if (monthRecords.length > 0) {
-          const avgScore = Math.round(monthRecords.reduce((sum, r) => sum + r.score, 0) / monthRecords.length)
-          historicalScores.push({ mes: MONTHS[targetMonth - 1].substring(0, 3), score: avgScore })
-        } else {
-          historicalScores.push({ mes: MONTHS[targetMonth - 1].substring(0, 3), score: 0 })
-        }
-      }
-
-      // Last survey date
-      const lastSurvey = clientHistory[0]
+      // Get observation from comment
+      const latestRecord = currentMonthRecords[0]
       
       return {
         clientId: client.id,
         clientName: client.nombre_del_negocio,
         plan: client.plan || null,
+        accountManagerId: client.account_manager_id,
+        accountManagerName: getProfileName(client.account_manager_id),
         currentScore,
         previousScore,
+        responded: currentScore !== null,
         trend,
-        historicalScores,
-        lastSurveyDate: lastSurvey?.fecha || null,
-        totalEncuestas: clientHistory.length,
+        observation: latestRecord?.comentario || null,
       }
-    }).sort((a, b) => {
-      // Sort by current score (null at the end), then by name
-      if (a.currentScore === null && b.currentScore === null) return a.clientName.localeCompare(b.clientName)
-      if (a.currentScore === null) return 1
-      if (b.currentScore === null) return -1
-      return b.currentScore - a.currentScore
     })
-  }, [clients, npsHistorial, selectedMonth, selectedYear, planFilter])
+  }, [clients, npsHistorial, selectedMonth, selectedYear, planFilter, profiles])
+
+  // Group by Account Manager
+  const acData: ACData[] = useMemo(() => {
+    const grouped = new Map<string, ClientNPSData[]>()
+    
+    clientNPSData.forEach(client => {
+      const acId = client.accountManagerId || 'sin-asignar'
+      if (!grouped.has(acId)) {
+        grouped.set(acId, [])
+      }
+      grouped.get(acId)!.push(client)
+    })
+
+    return Array.from(grouped.entries()).map(([acId, acClients]) => {
+      const respondedClients = acClients.filter(c => c.responded)
+      const totalScore = acClients.reduce((sum, c) => sum + (c.currentScore ?? 0), 0)
+      const respondedScore = respondedClients.reduce((sum, c) => sum + (c.currentScore ?? 0), 0)
+
+      return {
+        id: acId,
+        name: acId === 'sin-asignar' ? 'Sin AC asignado' : (getProfileName(acId) || 'Desconocido'),
+        clients: acClients.sort((a, b) => (b.currentScore ?? -1) - (a.currentScore ?? -1)),
+        totalClients: acClients.length,
+        respondedCount: respondedClients.length,
+        avgWithRule: acClients.length > 0 ? totalScore / acClients.length : 0,
+        avgOnlyResponded: respondedClients.length > 0 ? respondedScore / respondedClients.length : 0,
+      }
+    }).sort((a, b) => b.avgOnlyResponded - a.avgOnlyResponded)
+  }, [clientNPSData])
+
+  // Filtered data for tabs
+  const filteredData = useMemo(() => {
+    switch (activeTab) {
+      case 'riesgo':
+        return clientNPSData.filter(c => c.currentScore !== null && c.currentScore <= 3)
+      case 'noResp':
+        return clientNPSData.filter(c => !c.responded)
+      case 'bajaron':
+        return clientNPSData.filter(c => c.trend === 'down')
+      default:
+        return clientNPSData
+    }
+  }, [clientNPSData, activeTab])
 
   // Summary stats
-  const clientsWithNPS = clientNPSData.filter(c => c.currentScore !== null)
-  const avgNPS = clientsWithNPS.length > 0
-    ? (clientsWithNPS.reduce((sum, c) => sum + (c.currentScore || 0), 0) / clientsWithNPS.length).toFixed(1)
+  const totalClients = clientNPSData.length
+  const respondedClients = clientNPSData.filter(c => c.responded)
+  const avgWithRule = totalClients > 0 
+    ? (clientNPSData.reduce((sum, c) => sum + (c.currentScore ?? 0), 0) / totalClients).toFixed(2)
     : '-'
-  const promoters = clientsWithNPS.filter(c => c.currentScore !== null && c.currentScore >= 4).length
-  const detractors = clientsWithNPS.filter(c => c.currentScore !== null && c.currentScore <= 1).length
-  const npsScore = clientsWithNPS.length > 0
-    ? Math.round(((promoters - detractors) / clientsWithNPS.length) * 100)
-    : 0
+  const avgOnlyResponded = respondedClients.length > 0
+    ? (respondedClients.reduce((sum, c) => sum + (c.currentScore ?? 0), 0) / respondedClients.length).toFixed(2)
+    : '-'
 
-  // Distribution
-  const distribution = useMemo(() => {
-    const counts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0, 0: 0 }
-    clientsWithNPS.forEach(c => {
-      if (c.currentScore !== null) counts[c.currentScore as keyof typeof counts]++
-    })
-    const total = clientsWithNPS.length || 1
-    return Object.entries(counts).reverse().map(([score, count]) => ({
-      score: parseInt(score),
-      count,
-      percentage: Math.round((count / total) * 100),
-      ...NPS_COLORS[parseInt(score)],
-    }))
-  }, [clientsWithNPS])
-
-  // Export to CSV
+  // Export CSV
   const exportToCSV = () => {
-    const headers = ['Cliente', 'Plan', 'NPS Actual', 'NPS Anterior', 'Tendencia', 'Total Encuestas', 'Ultima Encuesta']
+    const headers = ['Cliente', 'AC / Responsable', 'Plan', 'NPS Actual', 'Respondió', 'NPS Anterior', 'Tendencia', 'Observación']
     const rows = clientNPSData.map(c => [
       c.clientName,
+      c.accountManagerName || '-',
       c.plan || '-',
       c.currentScore ?? '-',
+      c.responded ? 'Sí' : 'No',
       c.previousScore ?? '-',
-      c.trend === 'up' ? 'Subió' : c.trend === 'down' ? 'Bajó' : c.trend === 'stable' ? 'Estable' : 'Nuevo',
-      c.totalEncuestas,
-      c.lastSurveyDate || '-',
+      c.trend === 'up' ? 'Subió' : c.trend === 'down' ? 'Bajó' : c.trend === 'stable' ? 'Estable' : '-',
+      c.observation || '-',
     ])
     
     const csvContent = [
@@ -291,14 +322,21 @@ export function NPSReport() {
     if (trend === 'up') return <TrendingUp className="h-4 w-4 text-emerald-500" />
     if (trend === 'down') return <TrendingDown className="h-4 w-4 text-red-500" />
     if (trend === 'stable') return <Minus className="h-4 w-4 text-muted-foreground" />
-    return null
+    return <span className="text-muted-foreground text-xs">-</span>
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6">
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4">
-        {/* Month navigation */}
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goToPreviousMonth}>
             <ChevronLeft className="h-4 w-4" />
@@ -345,7 +383,6 @@ export function NPSReport() {
 
         <div className="h-6 w-px bg-border" />
 
-        {/* Plan filter */}
         <Select value={planFilter} onValueChange={(v) => setPlanFilter(v as ClientPlan | 'all')}>
           <SelectTrigger className="w-[130px] h-8 text-sm">
             <SelectValue placeholder="Plan" />
@@ -359,180 +396,228 @@ export function NPSReport() {
 
         <div className="flex-1" />
 
-        {/* Export */}
         <Button variant="outline" size="sm" className="h-8 gap-2" onClick={exportToCSV} disabled={clientNPSData.length === 0}>
           <Download className="h-4 w-4" />
           Exportar CSV
         </Button>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground">Clientes Encuestados</div>
-            <div className="text-2xl font-bold mt-1">{clientsWithNPS.length}/{clients.length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground">NPS Promedio</div>
-            <div className="text-2xl font-bold mt-1">{avgNPS}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground">Score NPS</div>
-            <div className={cn(
-              "text-2xl font-bold mt-1",
-              npsScore >= 50 && "text-emerald-600",
-              npsScore < 0 && "text-red-600"
-            )}>
-              {npsScore}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground">Promotores (4-5)</div>
-            <div className="text-2xl font-bold mt-1 text-emerald-600">{promoters}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground">Detractores (0-1)</div>
-            <div className={cn(
-              "text-2xl font-bold mt-1",
-              detractors > 0 ? "text-red-600" : "text-muted-foreground"
-            )}>
-              {detractors}
-            </div>
-          </CardContent>
-        </Card>
+      {/* Nota explicativa */}
+      <div className="bg-muted/50 border rounded-lg p-4 text-sm text-muted-foreground">
+        <strong>Como se calcula:</strong> Los NPS se extraen de la base de datos. Escala 0-5. 
+        La <strong>regla oficial</strong> asigna 0 a los clientes que no respondieron la encuesta. 
+        El puntaje &quot;Solo respondientes&quot; considera unicamente a los que si respondieron. 
+        Objetivo: NPS promedio ≥ 4.
       </div>
 
-      {/* Distribution Chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Distribucion de Puntuaciones</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {distribution.map((d) => (
-              <div key={d.score} className="flex items-center gap-3">
-                <div className="w-20 text-sm font-medium flex items-center gap-2">
-                  <span className={cn("w-3 h-3 rounded-full", d.bg)} />
-                  {d.label}
-                </div>
-                <div className="flex-1">
-                  <Progress value={d.percentage} className="h-2" />
-                </div>
-                <div className="w-16 text-sm text-right text-muted-foreground">
-                  {d.count} ({d.percentage}%)
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Error state */}
       {error && (
         <div className="text-sm text-destructive p-4 rounded-lg bg-destructive/10 border border-destructive/20">
           Error: {error}
         </div>
       )}
 
-      {/* Loading state */}
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      {/* Summary KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-card border rounded-lg p-4">
+          <div className="text-xs text-muted-foreground mb-1">Total Clientes</div>
+          <div className="text-2xl font-semibold">{totalClients}</div>
+          <div className="text-xs text-muted-foreground mt-1">{respondedClients.length} respondieron</div>
         </div>
-      ) : clientNPSData.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <p className="text-sm">No hay datos de NPS para este periodo.</p>
+        <div className="bg-card border rounded-lg p-4">
+          <div className="text-xs text-muted-foreground mb-1">Con regla (0 si no resp.)</div>
+          <div className={cn("text-2xl font-semibold", Number(avgWithRule) >= 4 ? 'text-emerald-600' : Number(avgWithRule) >= 3 ? 'text-amber-600' : 'text-red-600')}>
+            {avgWithRule}
+          </div>
         </div>
-      ) : (
-        /* Table */
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Plan</TableHead>
-                <TableHead className="text-center">NPS Actual</TableHead>
-                <TableHead className="text-center">NPS Anterior</TableHead>
-                <TableHead className="text-center">Tendencia</TableHead>
-                <TableHead>Historico (6 meses)</TableHead>
-                <TableHead className="text-center">Encuestas</TableHead>
-                <TableHead>Ultima Encuesta</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {clientNPSData.map((data) => (
-                <TableRow key={data.clientId}>
-                  <TableCell className="font-medium">{data.clientName}</TableCell>
-                  <TableCell>
-                    {data.plan ? (
-                      <Badge variant="outline" className={cn('text-xs', PLAN_COLORS[data.plan])}>
-                        {data.plan}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {data.currentScore !== null ? (
-                      <Badge className={cn('text-xs font-bold', NPS_COLORS[data.currentScore]?.bg)}>
-                        {data.currentScore}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {data.previousScore !== null ? (
-                      <span className={cn('text-sm font-medium', NPS_COLORS[data.previousScore]?.text)}>
-                        {data.previousScore}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <div className="flex items-center justify-center">
-                      <TrendIcon trend={data.trend} />
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-end gap-1 h-6">
-                      {data.historicalScores.map((h, i) => (
-                        <div
-                          key={i}
-                          className="flex flex-col items-center"
-                          title={`${h.mes}: ${h.score || '-'}`}
-                        >
-                          <div
-                            className={cn(
-                              "w-4 rounded-t",
-                              h.score > 0 ? NPS_COLORS[h.score]?.bg : h.score === 0 ? "bg-red-500" : "bg-muted"
-                            )}
-                            style={{ height: h.score > 0 ? `${(h.score / 5) * 24}px` : h.score === 0 ? '4px' : '2px' }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-center text-sm text-muted-foreground">
-                    {data.totalEncuestas}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {data.lastSurveyDate ? new Date(data.lastSurveyDate).toLocaleDateString('es-AR') : '-'}
-                  </TableCell>
-                </TableRow>
+        <div className="bg-card border rounded-lg p-4">
+          <div className="text-xs text-muted-foreground mb-1">Solo respondientes</div>
+          <div className={cn("text-2xl font-semibold", Number(avgOnlyResponded) >= 4 ? 'text-emerald-600' : Number(avgOnlyResponded) >= 3 ? 'text-amber-600' : 'text-red-600')}>
+            {avgOnlyResponded}
+          </div>
+        </div>
+        <div className="bg-card border rounded-lg p-4">
+          <div className="text-xs text-muted-foreground mb-1">No respondieron</div>
+          <div className={cn("text-2xl font-semibold", (totalClients - respondedClients.length) > 0 ? 'text-orange-600' : 'text-muted-foreground')}>
+            {totalClients - respondedClients.length}
+          </div>
+        </div>
+      </div>
+
+      {/* AC Blocks */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">NPS por Account Manager</h3>
+        
+        {acData.map(ac => (
+          <div key={ac.id} className="bg-card border rounded-lg overflow-hidden">
+            {/* AC Header */}
+            <div className="flex items-center justify-between p-4 border-b bg-muted/30">
+              <div>
+                <div className="font-semibold">{ac.name}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {ac.totalClients} clientes · {ac.totalClients - ac.respondedCount > 0 && `${ac.totalClients - ac.respondedCount} no respondieron`}
+                </div>
+              </div>
+              <div className="flex gap-6 items-center">
+                <div className="text-center">
+                  <div className="text-[10px] text-muted-foreground mb-0.5">Con regla 0</div>
+                  <Badge variant="outline" className={getNPSBadgeClass(Math.round(ac.avgWithRule))}>
+                    {ac.avgWithRule.toFixed(2)}
+                  </Badge>
+                </div>
+                <div className="text-center">
+                  <div className="text-[10px] text-muted-foreground mb-0.5">Solo resp.</div>
+                  <Badge variant="outline" className={getNPSBadgeClass(Math.round(ac.avgOnlyResponded))}>
+                    {ac.respondedCount > 0 ? ac.avgOnlyResponded.toFixed(2) : '-'}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+            
+            {/* Clients detail */}
+            <div className="text-xs text-muted-foreground p-3 bg-muted/10 flex flex-wrap gap-x-3 gap-y-1">
+              {ac.clients.map((client, idx) => (
+                <span key={client.clientId}>
+                  {client.clientName}
+                  <span className={cn("font-semibold ml-0.5", client.responded ? getNPSColor(client.currentScore!) : 'text-muted-foreground')}>
+                    ({client.responded ? client.currentScore : '0'})
+                  </span>
+                  {idx < ac.clients.length - 1 && ' ·'}
+                </span>
               ))}
-            </TableBody>
-          </Table>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Detail Table with Tabs */}
+      <div className="border rounded-lg bg-card">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <div className="border-b px-4 pt-3">
+            <TabsList className="h-9">
+              <TabsTrigger value="todos" className="text-xs">
+                Todos los clientes
+              </TabsTrigger>
+              <TabsTrigger value="riesgo" className="text-xs gap-1.5">
+                <AlertTriangle className="h-3 w-3" />
+                En riesgo (≤3)
+              </TabsTrigger>
+              <TabsTrigger value="noResp" className="text-xs gap-1.5">
+                <BellOff className="h-3 w-3" />
+                No respondieron
+              </TabsTrigger>
+              <TabsTrigger value="bajaron" className="text-xs gap-1.5">
+                <TrendingDown className="h-3 w-3" />
+                Bajaron
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent value={activeTab} className="m-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-left">Cliente</TableHead>
+                    <TableHead className="text-left">AC / Responsable</TableHead>
+                    <TableHead className="text-left">Plan</TableHead>
+                    <TableHead className="text-center">NPS actual</TableHead>
+                    <TableHead className="text-center">Respondio</TableHead>
+                    <TableHead className="text-center">vs mes ant.</TableHead>
+                    <TableHead className="text-left">Observacion</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredData.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                        No hay datos para mostrar en esta vista.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredData.map((data) => (
+                      <TableRow key={data.clientId}>
+                        <TableCell className="font-medium">{data.clientName}</TableCell>
+                        <TableCell className="text-muted-foreground text-sm">
+                          {data.accountManagerName || '-'}
+                        </TableCell>
+                        <TableCell>
+                          {data.plan ? (
+                            <Badge variant="outline" className="text-xs">
+                              {data.plan}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className={cn('text-xs font-semibold', getNPSBadgeClass(data.currentScore))}>
+                            {data.currentScore ?? 0}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {data.responded ? (
+                            <span className="text-emerald-600 text-xs">Si</span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">No</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <TrendIcon trend={data.trend} />
+                            {data.previousScore !== null && (
+                              <span className="text-xs text-muted-foreground">
+                                ({data.previousScore})
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                          {data.observation || '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* Plan de Acción - Clientes que bajaron */}
+      {clientNPSData.filter(c => c.trend === 'down').length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            Plan de accion — clientes con baja en calificacion
+          </h3>
+          
+          {clientNPSData.filter(c => c.trend === 'down').map(client => (
+            <div key={client.clientId} className="border rounded-lg overflow-hidden">
+              <div className="flex items-center gap-3 p-3 bg-muted/30 border-b">
+                <Badge variant="outline" className={getNPSBadgeClass(client.currentScore)}>
+                  {client.clientName}
+                </Badge>
+                <span className="text-sm">
+                  NPS {client.currentScore} · AC: {client.accountManagerName || 'Sin asignar'}
+                </span>
+                <Badge variant="outline" className="ml-auto bg-orange-500/10 text-orange-600 border-orange-500/20 text-xs">
+                  Requiere seguimiento
+                </Badge>
+              </div>
+              <div className="p-4 text-sm">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                  Situacion
+                </div>
+                <p className="text-muted-foreground">
+                  Bajo de {client.previousScore} a {client.currentScore}. 
+                  {client.observation ? ` ${client.observation}` : ' Se requiere analisis de la situacion con el cliente.'}
+                </p>
+                <div className="mt-3 bg-blue-500/5 border-l-2 border-blue-500 pl-3 py-2 rounded-r text-xs">
+                  <strong>Accion sugerida:</strong> Contactar al cliente para entender las razones de la baja y definir un plan de mejora.
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
