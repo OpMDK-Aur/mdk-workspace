@@ -495,10 +495,9 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   
   const supabase = createClient()
 
-  const handleActivoToggle = async () => {
+  const handleActivoChange = async (newActivo: boolean) => {
     setUpdatingActivo(true)
     try {
-      const newActivo = !isActivo
       const { error } = await supabase
         .from('clientes')
         .update({ activo: newActivo })
@@ -512,6 +511,10 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     } finally {
       setUpdatingActivo(false)
     }
+  }
+
+  const handleActivoToggle = async () => {
+    await handleActivoChange(!isActivo)
   }
 
   const handlePMChange = async (newIds: string[]) => {
@@ -1103,7 +1106,14 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         {/* ── Info del Cliente: Servicios, Contacto, Fechas, Etapa, Semaforos ── */}
         <div>
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Informacion del cliente</h2>
-          <ClientInfoCard client={client} unidadesDeNegocio={unidadesDeNegocio} userRole={currentProfile?.role} />
+          <ClientInfoCard 
+            client={client} 
+            unidadesDeNegocio={unidadesDeNegocio} 
+            userRole={currentProfile?.role}
+            isActivo={isActivo}
+            onActivoChange={handleActivoChange}
+            updatingActivo={updatingActivo}
+          />
         </div>
 
         {/* ── KPIs del periodo ── */}

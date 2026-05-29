@@ -67,6 +67,9 @@ interface ClientInfoCardProps {
   client: Client
   unidadesDeNegocio?: { unidad_de_negocio_id: string; unidad_de_negocio: { id: string; nombre: string } | null }[]
   userRole?: string
+  isActivo?: boolean
+  onActivoChange?: (newActivo: boolean) => Promise<void>
+  updatingActivo?: boolean
 }
 
 const ETAPA_OPTIONS: { value: ClientEtapa; label: string; description: string; isAlert?: boolean }[] = [
@@ -122,7 +125,7 @@ const SERVICE_COLORS: Record<string, string> = {
   'gray': 'bg-gray-500/10 text-gray-500 border-gray-500/20',
 }
 
-export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: ClientInfoCardProps) {
+export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isActivo = true, onActivoChange, updatingActivo = false }: ClientInfoCardProps) {
   const supabase = createClient()
   const isMaster = userRole === 'master'
   
@@ -175,10 +178,6 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
     client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
   )
   const [savingUnidad, setSavingUnidad] = useState(false)
-  
-  // Estado activo/inactivo
-  const [activo, setActivo] = useState(client.activo !== false) // null/undefined/true = activo
-  const [savingActivo, setSavingActivo] = useState(false)
   
   // Load available services
   useEffect(() => {
@@ -382,20 +381,9 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
         .from('clientes')
         .update({ unidades_negocio: newUnidades })
         .eq('id', client.id)
-    }
-    setUnidadesNegocio(newUnidades)
-    setSavingUnidad(false)
   }
-  
-  // Toggle estado activo/inactivo
-  const toggleActivo = async (newActivo: boolean) => {
-    setSavingActivo(true)
-    setActivo(newActivo)
-    await supabase
-      .from('clientes')
-      .update({ activo: newActivo })
-      .eq('id', client.id)
-    setSavingActivo(false)
+  setUnidadesNegocio(newUnidades)
+  setSavingUnidad(false)
   }
   
   const availableServicesFiltered = serviciosDisponibles.filter(
@@ -849,25 +837,25 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Power className="h-4 w-4 text-primary" />
             Estado del cliente
-            {savingActivo && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
+            {updatingActivo && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label className="text-sm font-medium">
-                {activo ? 'Activo' : 'Inactivo'}
+                {isActivo ? 'Activo' : 'Inactivo'}
               </Label>
               <p className="text-xs text-muted-foreground">
-                {activo 
-                  ? 'El cliente aparece en listados y puede recibir servicios' 
+                {isActivo
+                  ? 'El cliente aparece en listados y puede recibir servicios'
                   : 'El cliente esta oculto por defecto en listados'}
               </p>
             </div>
             <Switch
-              checked={activo}
-              onCheckedChange={toggleActivo}
-              disabled={savingActivo}
+              checked={isActivo}
+              onCheckedChange={(checked) => onActivoChange?.(checked)}
+              disabled={updatingActivo}
             />
           </div>
         </CardContent>
