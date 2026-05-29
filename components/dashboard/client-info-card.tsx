@@ -69,11 +69,13 @@ interface ClientInfoCardProps {
   userRole?: string
 }
 
-const ETAPA_OPTIONS: { value: ClientEtapa; label: string; description: string }[] = [
+const ETAPA_OPTIONS: { value: ClientEtapa; label: string; description: string; isAlert?: boolean }[] = [
   { value: 'activacion', label: 'Activacion', description: 'Cliente nuevo en proceso de activacion' },
   { value: '1_3_meses', label: '1 a 3 meses', description: 'Cliente activo de 1 a 3 meses' },
   { value: '4_6_meses', label: '4 a 6 meses', description: 'Cliente activo de 4 a 6 meses' },
   { value: '7_mas', label: '7+ meses', description: 'Cliente consolidado de mas de 7 meses' },
+  { value: 'solicito_baja', label: 'Solicito la Baja', description: 'El cliente solicito dar de baja el servicio', isAlert: true },
+  { value: 'inhabilitado_mora', label: 'Inhabilitado por mora', description: 'Cliente inhabilitado por falta de pago', isAlert: true },
 ]
 
 const SEMAFORO_OPTIONS = [
@@ -872,22 +874,33 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
       </Card>
 
       {/* Etapa del Cliente */}
-      <Card>
+      <Card className={cn(
+        (etapa === 'solicito_baja' || etapa === 'inhabilitado_mora') && "border-red-500/50 bg-red-500/10"
+      )}>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Circle className="h-4 w-4 text-primary" />
+          <CardTitle className={cn(
+            "text-sm font-medium flex items-center gap-2",
+            (etapa === 'solicito_baja' || etapa === 'inhabilitado_mora') && "text-red-500"
+          )}>
+            <Circle className={cn(
+              "h-4 w-4",
+              (etapa === 'solicito_baja' || etapa === 'inhabilitado_mora') ? "text-red-500" : "text-primary"
+            )} />
             Etapa del cliente
             {savingEtapa && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <Select value={etapa || ''} onValueChange={(v) => saveEtapa(v as ClientEtapa)}>
-            <SelectTrigger className="h-9">
+            <SelectTrigger className={cn(
+              "h-9",
+              (etapa === 'solicito_baja' || etapa === 'inhabilitado_mora') && "border-red-500/50 text-red-500"
+            )}>
               <SelectValue placeholder="Seleccionar etapa" />
             </SelectTrigger>
             <SelectContent>
               {ETAPA_OPTIONS.map(opt => (
-                <SelectItem key={opt.value} value={opt.value}>
+                <SelectItem key={opt.value} value={opt.value} className={cn(opt.isAlert && "text-red-500")}>
                   <div className="flex flex-col">
                     <span>{opt.label}</span>
                   </div>

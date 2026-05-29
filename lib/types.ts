@@ -41,7 +41,7 @@ export interface Profile {
   updated_at: string
 }
 
-export type ClientEtapa = 'activacion' | '1_3_meses' | '4_6_meses' | '7_mas'
+export type ClientEtapa = 'activacion' | '1_3_meses' | '4_6_meses' | '7_mas' | 'solicito_baja' | 'inhabilitado_mora'
 
 export interface ServicioContratado {
   id: string

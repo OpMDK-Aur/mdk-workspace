@@ -130,7 +130,6 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // Local state for clients list
   const [localClients, setLocalClients] = useState<Client[]>(clients)
   const [searchTerm, setSearchTerm] = useState('')
-  const [semaforoFilter, setSemaforoFilter] = useState<string>('all')
   const [planFilter, setPlanFilter] = useState<string>('all')
   const [pmFilter, setPmFilter] = useState<string>('all')
   const [amFilter, setAmFilter] = useState<string>('all')
@@ -188,7 +187,6 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // Saved filters
   interface SavedFilter {
     name: string
-    semaforo: string
     plan: string
     pm: string
     am: string
@@ -214,11 +212,10 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [saveFilterName, setSaveFilterName] = useState('')
   const [saveFilterOpen, setSaveFilterOpen] = useState(false)
 
-  const hasActiveFilters = semaforoFilter !== 'all' || planFilter !== 'all' || pmFilter !== 'all' || amFilter !== 'all' || platformFilter !== 'all' || unidadFilter !== 'all' || etapaFilter !== 'all' || activoFilter !== 'activos' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
+  const hasActiveFilters = planFilter !== 'all' || pmFilter !== 'all' || amFilter !== 'all' || platformFilter !== 'all' || unidadFilter !== 'all' || etapaFilter !== 'all' || activoFilter !== 'activos' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
 
   const clearAllFilters = () => {
     setSearchTerm('')
-    setSemaforoFilter('all')
     setPlanFilter('all')
     setPmFilter('all')
     setAmFilter('all')
@@ -236,7 +233,6 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     if (!saveFilterName.trim()) return
   const newFilter: SavedFilter = {
     name: saveFilterName.trim(),
-    semaforo: semaforoFilter,
     plan: planFilter,
       pm: pmFilter,
       am: amFilter,
@@ -260,7 +256,6 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   }
 
   const applyFilter = (filter: SavedFilter) => {
-    setSemaforoFilter(filter.semaforo)
     setPlanFilter(filter.plan)
     setPmFilter(filter.pm)
     setAmFilter(filter.am)
@@ -426,9 +421,6 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     const matchesSearch = client.nombre_del_negocio.toLowerCase().includes(searchTerm.toLowerCase()) ||
       client.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       client.apellido?.toLowerCase().includes(searchTerm.toLowerCase())
-    // Filter by semaforo - check if any unidad has this semaforo
-    const matchesSemaforo = semaforoFilter === 'all' || 
-      (client.semaforo_unidades && Object.values(client.semaforo_unidades).includes(semaforoFilter as SemaforoStatus))
     // Filter by plan - only for clients with MDK
     const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
     const matchesPlan = planFilter === 'all' || (clientUnidades.includes('MDK') && client.plan === planFilter)
@@ -446,7 +438,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     const totalFee = (client.fee_mdk || 0) + (client.fee_aurelia || 0)
     const matchesFeeMin = !feeMinFilter || totalFee >= parseFloat(feeMinFilter)
     const matchesFeeMax = !feeMaxFilter || totalFee <= parseFloat(feeMaxFilter)
-    return matchesActivo && matchesSearch && matchesSemaforo && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
+    return matchesActivo && matchesSearch && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
   }).sort((a, b) => {
     let valueA: string | number = ''
     let valueB: string | number = ''
@@ -892,18 +884,6 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                   <SelectItem value="todos">Todos</SelectItem>
                 </SelectContent>
               </Select>
-                <Select value={semaforoFilter} onValueChange={setSemaforoFilter}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue placeholder="Semaforo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="verde">Optimo</SelectItem>
-                    <SelectItem value="amarillo">Atencion</SelectItem>
-                    <SelectItem value="naranja">En riesgo</SelectItem>
-                    <SelectItem value="rojo">Critico</SelectItem>
-                  </SelectContent>
-                </Select>
               <Select value={planFilter} onValueChange={setPlanFilter}>
                 <SelectTrigger className="w-[140px]">
                   <SelectValue placeholder="Plan" />
@@ -960,12 +940,10 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                   <SelectItem value="all">Todas las unidades</SelectItem>
                   <SelectItem value="MDK">MDK</SelectItem>
                   <SelectItem value="Aurelia">Aurelia</SelectItem>
-                  <SelectItem value="Consultoría">Consultoria</SelectItem>
-                  <SelectItem value="Tecnología">Tecnologia</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={etapaFilter} onValueChange={setEtapaFilter}>
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-[160px]">
                   <SelectValue placeholder="Etapa" />
                 </SelectTrigger>
                 <SelectContent>
@@ -974,6 +952,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                   <SelectItem value="1_3_meses">1-3 meses</SelectItem>
                   <SelectItem value="4_6_meses">4-6 meses</SelectItem>
                   <SelectItem value="7_mas">7+ meses</SelectItem>
+                  <SelectItem value="solicito_baja">Solicito la Baja</SelectItem>
+                  <SelectItem value="inhabilitado_mora">Inhabilitado por mora</SelectItem>
                 </SelectContent>
               </Select>
               
@@ -1195,18 +1175,28 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                     const pm = profiles.find(p => p.id === client.project_manager_id)
                     const am = profiles.find(p => p.id === client.account_manager_id)
                     const isInactivo = client.activo === false
+                    const isEnRiesgo = client.etapa === 'solicito_baja' || client.etapa === 'inhabilitado_mora'
 
                     return (
                       <TableRow 
                         key={client.id} 
-                        className={cn("group", isInactivo && "opacity-60 bg-muted/30")}
+                        className={cn(
+                          "group",
+                          isInactivo && "opacity-60 bg-muted/30",
+                          isEnRiesgo && "bg-red-500/10 hover:bg-red-500/20"
+                        )}
                       >
                         {visibleColumns.includes('cliente') && (
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <span className="font-medium">{client.nombre_del_negocio}</span>
+                              <span className={cn("font-medium", isEnRiesgo && "text-red-500")}>{client.nombre_del_negocio}</span>
                               {isInactivo && (
                                 <Badge variant="secondary" className="text-xs">Inactivo</Badge>
+                              )}
+                              {isEnRiesgo && (
+                                <Badge variant="destructive" className="text-xs">
+                                  {client.etapa === 'solicito_baja' ? 'Baja' : 'Mora'}
+                                </Badge>
                               )}
                             </div>
                           </TableCell>
