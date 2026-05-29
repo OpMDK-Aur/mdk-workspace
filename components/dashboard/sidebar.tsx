@@ -94,7 +94,6 @@ const adminItems = [
 
 const timeTrackingItems = [
   { id: 'time-entries', moduleId: 'timer_entries', name: 'Timer entries', icon: Clock, href: '/dashboard/time' },
-  { id: 'time-admin', moduleId: 'timer_admin', name: 'Admin Marcaciones', icon: UserCog, href: '/dashboard/time/admin', masterOnly: true },
   { id: 'reports', moduleId: 'reports', name: 'Reports', icon: FileText, href: '/dashboard/reports' },
   { id: 'team', moduleId: 'team', name: 'Team', icon: Users, href: '/dashboard/team' },
 ]
@@ -239,11 +238,7 @@ export function Sidebar({
   const isModuleEnabled = (moduleId: string) => enabledModules.includes(moduleId)
   const filteredAreas = areas.filter(area => isModuleEnabled(area.moduleId))
   const filteredAdminItems = adminItems.filter(item => isModuleEnabled(item.moduleId))
-  const filteredTimeTrackingItems = timeTrackingItems.filter(item => {
-    const moduleEnabled = isModuleEnabled(item.moduleId)
-    const masterCheck = !('masterOnly' in item) || !item.masterOnly || isMaster
-    return moduleEnabled && masterCheck
-  })
+  const filteredTimeTrackingItems = timeTrackingItems.filter(item => isModuleEnabled(item.moduleId))
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

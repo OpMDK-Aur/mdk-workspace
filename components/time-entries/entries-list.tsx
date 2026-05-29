@@ -1,18 +1,17 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useTimerStore, type TimeEntry } from '@/lib/time-tracking/timer-store'
 import { createClient } from '@/lib/supabase/client'
-import type { Cliente, TipoDeTarea } from '@/lib/types'
+import type { Cliente, TipoDeTarea, Profile } from '@/lib/types'
 import {
   formatDuration,
   formatDurationShort,
-  formatTimeRange,
   getDayLabel,
 } from '@/lib/time-tracking/mock-data'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-
+import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -20,8 +19,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { Play, Trash2, DollarSign, Clock, Loader2 } from 'lucide-react'
+import { Play, Trash2, DollarSign, Clock, Loader2, ChevronLeft, ChevronRight, ChevronDown, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
 // Generate a color from client id for visual distinction
@@ -49,16 +54,99 @@ interface GroupedEntries {
   entries: TimeEntry[]
 }
 
-export function EntriesList() {
-  const { entries, continueEntry, deleteEntry, updateEntry, isLoading, loadEntries, isRunning, startedAt, getElapsedSeconds } = useTimerStore()
+interface EntriesListProps {
+  isMaster?: boolean
+  currentUserId?: string
+}
+
+export function EntriesList({ isMaster = false, currentUserId }: EntriesListProps) {
+  const { entries: storeEntries, continueEntry, deleteEntry, updateEntry, isLoading: storeLoading, loadEntries, isRunning, startedAt, getElapsedSeconds } = useTimerStore()
+  
+  // Admin mode state
+  const [adminEntries, setAdminEntries] = useState<TimeEntry[]>([])
+  const [adminLoading, setAdminLoading] = useState(false)
+  const [colaboradores, setColaboradores] = useState<Profile[]>([])
+  const [selectedColaboradores, setSelectedColaboradores] = useState<string[]>([])
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  })
+  
+  // Shared state
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
   const [runningElapsed, setRunningElapsed] = useState(0)
 
-  // Load entries from Supabase on mount
+  // Use store entries for regular users, admin entries for masters
+  const entries = isMaster ? adminEntries : storeEntries
+  const isLoading = isMaster ? adminLoading : storeLoading
+
+  // Load entries from Supabase on mount (for regular users)
   useEffect(() => {
-    loadEntries()
-  }, [loadEntries])
+    if (!isMaster) {
+      loadEntries()
+    }
+  }, [loadEntries, isMaster])
+
+  // Load colaboradores for admin mode
+  useEffect(() => {
+    if (!isMaster) return
+    
+    async function fetchColaboradores() {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, role')
+        .order('full_name')
+      if (data) setColaboradores(data)
+    }
+    
+    fetchColaboradores()
+  }, [isMaster])
+
+  // Load admin entries when filters change
+  const loadAdminEntries = useCallback(async () => {
+    if (!isMaster) return
+    
+    setAdminLoading(true)
+    try {
+      const supabase = createClient()
+      
+      // Parse month filter
+      const [year, month] = selectedMonth.split('-').map(Number)
+      const startDate = new Date(year, month - 1, 1)
+      const endDate = new Date(year, month, 0, 23, 59, 59)
+      
+      let query = supabase
+        .from('entradas_de_tiempo')
+        .select('*')
+        .gte('iniciado_en', startDate.toISOString())
+        .lte('iniciado_en', endDate.toISOString())
+        .order('iniciado_en', { ascending: false })
+      
+      // Filter by selected colaboradores
+      if (selectedColaboradores.length > 0) {
+        query = query.in('colaborador_id', selectedColaboradores)
+      }
+      
+      const { data, error } = await query
+      
+      if (error) {
+        console.error('Error loading admin entries:', error)
+        setAdminEntries([])
+      } else {
+        setAdminEntries(data || [])
+      }
+    } finally {
+      setAdminLoading(false)
+    }
+  }, [isMaster, selectedMonth, selectedColaboradores])
+
+  useEffect(() => {
+    if (isMaster) {
+      loadAdminEntries()
+    }
+  }, [isMaster, loadAdminEntries])
 
   // Fetch clientes and tipos de tarea from Supabase
   useEffect(() => {
@@ -102,6 +190,12 @@ export function EntriesList() {
     return tiposTarea.find((t) => t.id === tipoId)
   }
 
+  // Helper to get colaborador by id
+  const getColaborador = (colaboradorId: string | null): Profile | undefined => {
+    if (!colaboradorId) return undefined
+    return colaboradores.find((c) => c.id === colaboradorId)
+  }
+
   // Separate running entry from completed entries
   const { runningEntry, completedEntries } = useMemo(() => {
     const running = entries.find((e) => e.finalizado_en === null)
@@ -141,14 +235,51 @@ export function EntriesList() {
     return result
   }, [completedEntries])
 
+  // Calculate total hours for the month (admin mode)
+  const totalMonthSeconds = useMemo(() => {
+    return entries.reduce((acc, e) => acc + (e.duracion_seg || 0), 0)
+  }, [entries])
+
   const handleContinue = async (entry: TimeEntry) => {
     await continueEntry(entry)
     toast.success('Timer iniciado')
   }
 
   const handleDelete = async (id: string) => {
-    await deleteEntry(id)
-    toast.success('Entrada eliminada')
+    if (isMaster) {
+      // Direct delete for admin
+      const supabase = createClient()
+      await supabase.from('entradas_de_tiempo').delete().eq('id', id)
+      setAdminEntries(prev => prev.filter(e => e.id !== id))
+      toast.success('Entrada eliminada')
+    } else {
+      await deleteEntry(id)
+      toast.success('Entrada eliminada')
+    }
+  }
+
+  const handleUpdate = async (id: string, updates: Partial<TimeEntry>) => {
+    if (isMaster) {
+      // Direct update for admin
+      const supabase = createClient()
+      await supabase.from('entradas_de_tiempo').update(updates).eq('id', id)
+      setAdminEntries(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e))
+    } else {
+      await updateEntry(id, updates)
+    }
+  }
+
+  // Month navigation
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    const [year, month] = selectedMonth.split('-').map(Number)
+    const newDate = new Date(year, month - 1 + (direction === 'next' ? 1 : -1), 1)
+    setSelectedMonth(`${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`)
+  }
+
+  const formatMonthLabel = (monthStr: string) => {
+    const [year, month] = monthStr.split('-').map(Number)
+    const date = new Date(year, month - 1, 1)
+    return date.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
   }
 
   if (isLoading) {
@@ -160,74 +291,134 @@ export function EntriesList() {
     )
   }
 
-  if (entries.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 px-4">
-        <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-          <Clock className="h-8 w-8 text-muted-foreground" />
-        </div>
-        <h3 className="text-lg font-medium text-foreground mb-1">
-          No hay entradas de tiempo
-        </h3>
-        <p className="text-muted-foreground text-center max-w-sm">
-          Comienza a registrar tu tiempo usando el botón de play en la barra superior.
-        </p>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6">
-      {/* Running Entry - Always at top with pulsing indicator */}
-      {runningEntry && (
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
-            <div className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-verde opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-status-verde"></span>
-            </div>
-            <h3 className="font-medium text-foreground">En progreso</h3>
+      {/* Admin Filters */}
+      {isMaster && (
+        <div className="flex flex-wrap items-center gap-3 p-4 bg-card border border-border rounded-lg">
+          {/* Month Navigation */}
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigateMonth('prev')}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm font-medium min-w-[140px] text-center capitalize">
+              {formatMonthLabel(selectedMonth)}
+            </span>
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigateMonth('next')}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
-<RunningEntryRow
-  entry={runningEntry}
-  cliente={getCliente(runningEntry.cliente_id)}
-  tipoTarea={getTipoTarea(runningEntry.tipo_tarea_id)}
-  elapsedSeconds={runningElapsed}
-          />
+
+          {/* Colaborador Filter */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 gap-2 min-w-[180px] justify-between">
+                <Users className="h-4 w-4" />
+                <span>{selectedColaboradores.length === 0 ? 'Todos los colaboradores' : `${selectedColaboradores.length} seleccionado${selectedColaboradores.length > 1 ? 's' : ''}`}</span>
+                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64 max-h-64 overflow-y-auto">
+              {colaboradores.map(col => (
+                <DropdownMenuCheckboxItem
+                  key={col.id}
+                  checked={selectedColaboradores.includes(col.id)}
+                  onCheckedChange={(checked) => {
+                    setSelectedColaboradores(prev => 
+                      checked ? [...prev, col.id] : prev.filter(id => id !== col.id)
+                    )
+                  }}
+                >
+                  {col.full_name || col.email}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Clear Filters */}
+          {selectedColaboradores.length > 0 && (
+            <Button variant="ghost" size="sm" className="h-8" onClick={() => setSelectedColaboradores([])}>
+              Limpiar filtros
+            </Button>
+          )}
+
+          {/* Total Stats */}
+          <div className="ml-auto flex items-center gap-4 text-sm text-muted-foreground">
+            <span>{entries.length} entradas</span>
+            <span className="font-medium text-foreground">{formatDurationShort(totalMonthSeconds)} total</span>
+          </div>
         </div>
       )}
 
-      {/* Completed Entries grouped by day */}
-      {groupedEntries.map((group) => (
-        <div key={group.date}>
-          {/* Day Header */}
-          <div className="flex items-center justify-between mb-3 pb-2 border-b border-border">
-            <h3 className="font-medium text-foreground">{group.label}</h3>
-            <span className="text-sm text-muted-foreground">
-              {formatDurationShort(group.total)}
-            </span>
+      {entries.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 px-4">
+          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+            <Clock className="h-8 w-8 text-muted-foreground" />
           </div>
-
-          {/* Entries */}
-          <div className="space-y-2">
-            {group.entries.map((entry) => (
-              <EntryRow
-                key={entry.id}
-                entry={entry}
-                cliente={getCliente(entry.cliente_id)}
-                tipoTarea={getTipoTarea(entry.tipo_tarea_id)}
-                clientes={clientes}
-                tiposTarea={tiposTarea}
-                onContinue={() => handleContinue(entry)}
-                onUpdate={updateEntry}
-                onDelete={() => handleDelete(entry.id)}
-              />
-            ))}
-          </div>
+          <h3 className="text-lg font-medium text-foreground mb-1">
+            No hay entradas de tiempo
+          </h3>
+          <p className="text-muted-foreground text-center max-w-sm">
+            {isMaster 
+              ? 'No se encontraron entradas para los filtros seleccionados.'
+              : 'Comienza a registrar tu tiempo usando el botón de play en la barra superior.'}
+          </p>
         </div>
-      ))}
+      ) : (
+        <>
+          {/* Running Entry - Always at top with pulsing indicator (only for regular users) */}
+          {!isMaster && runningEntry && (
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
+                <div className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-verde opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-status-verde"></span>
+                </div>
+                <h3 className="font-medium text-foreground">En progreso</h3>
+              </div>
+              <RunningEntryRow
+                entry={runningEntry}
+                cliente={getCliente(runningEntry.cliente_id)}
+                tipoTarea={getTipoTarea(runningEntry.tipo_tarea_id)}
+                elapsedSeconds={runningElapsed}
+              />
+            </div>
+          )}
 
+          {/* Completed Entries grouped by day */}
+          {groupedEntries.map((group) => (
+            <div key={group.date}>
+              {/* Day Header */}
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-border">
+                <h3 className="font-medium text-foreground">{group.label}</h3>
+                <span className="text-sm text-muted-foreground">
+                  {formatDurationShort(group.total)}
+                </span>
+              </div>
 
+              {/* Entries */}
+              <div className="space-y-2">
+                {group.entries.map((entry) => (
+                  <EntryRow
+                    key={entry.id}
+                    entry={entry}
+                    cliente={getCliente(entry.cliente_id)}
+                    tipoTarea={getTipoTarea(entry.tipo_tarea_id)}
+                    colaborador={isMaster ? getColaborador(entry.colaborador_id) : undefined}
+                    clientes={clientes}
+                    tiposTarea={tiposTarea}
+                    colaboradores={isMaster ? colaboradores : []}
+                    showColaborador={isMaster}
+                    onContinue={() => handleContinue(entry)}
+                    onUpdate={handleUpdate}
+                    onDelete={() => handleDelete(entry.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   )
 }
@@ -279,7 +470,6 @@ function RunningEntryRow({ entry, cliente, tipoTarea, elapsedSeconds }: RunningE
           )}
         />
       </div>
-
     </div>
   )
 }
@@ -288,25 +478,30 @@ interface EntryRowProps {
   entry: TimeEntry
   cliente?: Cliente
   tipoTarea?: TipoDeTarea
-  clientes: Cliente[]
-  onContinue: () => void
-  onUpdate: (id: string, updates: Partial<TimeEntry>) => Promise<void>
-  onDelete: () => void
-}
-
-interface EntryRowProps {
-  entry: TimeEntry
-  cliente?: Cliente
-  tipoTarea?: TipoDeTarea
+  colaborador?: Profile
   clientes: Cliente[]
   tiposTarea?: TipoDeTarea[]
+  colaboradores?: Profile[]
+  showColaborador?: boolean
   onContinue: () => void
   onUpdate: (id: string, updates: Partial<TimeEntry>) => Promise<void>
   onDelete: () => void
 }
 
-function EntryRow({ entry, cliente, tipoTarea, clientes, tiposTarea = [], onContinue, onUpdate, onDelete }: EntryRowProps) {
-  const [editingField, setEditingField] = useState<'description' | 'client' | 'type' | 'start' | 'end' | null>(null)
+function EntryRow({ 
+  entry, 
+  cliente, 
+  tipoTarea, 
+  colaborador,
+  clientes, 
+  tiposTarea = [], 
+  colaboradores = [],
+  showColaborador = false,
+  onContinue, 
+  onUpdate, 
+  onDelete 
+}: EntryRowProps) {
+  const [editingField, setEditingField] = useState<'description' | 'client' | 'type' | 'start' | 'end' | 'colaborador' | null>(null)
   const [tempDescription, setTempDescription] = useState(entry.descripcion)
   const [tempClienteId, setTempClienteId] = useState(entry.cliente_id)
   const [tempTipoTareaId, setTempTipoTareaId] = useState(entry.tipo_tarea_id)
@@ -379,6 +574,13 @@ function EntryRow({ entry, cliente, tipoTarea, clientes, tiposTarea = [], onCont
     setEditingField(null)
   }
 
+  const handleSaveColaborador = async (newColaboradorId: string) => {
+    if (newColaboradorId !== entry.colaborador_id) {
+      await onUpdate(entry.id, { colaborador_id: newColaboradorId })
+    }
+    setEditingField(null)
+  }
+
   const handleSaveDateTime = async (field: 'start' | 'end', value: string) => {
     if (!value) { setEditingField(null); return }
     const newDate = new Date(value)
@@ -400,8 +602,41 @@ function EntryRow({ entry, cliente, tipoTarea, clientes, tiposTarea = [], onCont
 
   return (
     <div className="group flex items-center gap-3 p-3 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors">
+      {/* Colaborador Badge (Admin mode only) */}
+      {showColaborador && (
+        <div className="min-w-[120px]">
+          {editingField === 'colaborador' ? (
+            <Select 
+              value={entry.colaborador_id || ''} 
+              onValueChange={(val) => handleSaveColaborador(val)}
+              open={true}
+              onOpenChange={(open) => !open && setEditingField(null)}
+            >
+              <SelectTrigger className="h-7 text-xs w-[120px]">
+                <SelectValue placeholder="Colaborador" />
+              </SelectTrigger>
+              <SelectContent>
+                {colaboradores.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.full_name || c.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Badge 
+              variant="secondary" 
+              className="text-xs cursor-pointer hover:bg-secondary/80 truncate max-w-[120px]"
+              onClick={() => setEditingField('colaborador')}
+            >
+              {colaborador?.full_name?.split(' ')[0] || colaborador?.email?.split('@')[0] || 'Sin asignar'}
+            </Badge>
+          )}
+        </div>
+      )}
+
       {/* Client Color Dot + Client Selector */}
-      <div className="flex items-center gap-2 min-w-[180px]">
+      <div className="flex items-center gap-2 min-w-[140px]">
         <div
           className="h-3 w-3 rounded-full shrink-0 cursor-pointer"
           style={{ backgroundColor: cliente ? getClientColor(cliente.id) : '#9ca3af' }}
@@ -414,7 +649,7 @@ function EntryRow({ entry, cliente, tipoTarea, clientes, tiposTarea = [], onCont
             open={true}
             onOpenChange={(open) => !open && setEditingField(null)}
           >
-            <SelectTrigger className="h-7 text-xs w-[150px]">
+            <SelectTrigger className="h-7 text-xs w-[120px]">
               <SelectValue placeholder="Cliente" />
             </SelectTrigger>
             <SelectContent>
@@ -451,7 +686,7 @@ function EntryRow({ entry, cliente, tipoTarea, clientes, tiposTarea = [], onCont
             className="text-sm font-medium text-foreground truncate cursor-pointer hover:text-primary"
             onClick={handleStartEditDescription}
           >
-            {entry.descripcion || 'Añadir descripción'}
+            {entry.descripcion || 'Sin descripcion'}
           </p>
         )}
         {editingField === 'type' ? (
@@ -540,15 +775,17 @@ function EntryRow({ entry, cliente, tipoTarea, clientes, tiposTarea = [], onCont
 
       {/* Action Buttons */}
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={onContinue}
-          title="Continuar timer"
-        >
-          <Play className="h-3.5 w-3.5 fill-current" />
-        </Button>
+        {!showColaborador && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={onContinue}
+            title="Continuar timer"
+          >
+            <Play className="h-3.5 w-3.5 fill-current" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
