@@ -932,16 +932,17 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                   <SelectItem value="none">Sin plataformas</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={unidadFilter} onValueChange={setUnidadFilter}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="Unidad de Negocio" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas las unidades</SelectItem>
-                  <SelectItem value="MDK">MDK</SelectItem>
-                  <SelectItem value="Aurelia">Aurelia</SelectItem>
-                </SelectContent>
-              </Select>
+  <Select value={unidadFilter} onValueChange={setUnidadFilter}>
+  <SelectTrigger className="w-[160px]">
+  <SelectValue placeholder="Unidad de Negocio" />
+  </SelectTrigger>
+  <SelectContent>
+> <SelectItem value="all">Todas las unidades</SelectItem>
+  <SelectItem value="MDK">MDK</SelectItem>
+  <SelectItem value="Aurelia">Aurelia</SelectItem>
+  <SelectItem value="Consultoría">Consultoría</SelectItem>
+  </SelectContent>
+  </Select>
               <Select value={etapaFilter} onValueChange={setEtapaFilter}>
                 <SelectTrigger className="w-[160px]">
                   <SelectValue placeholder="Etapa" />
