@@ -455,37 +455,12 @@ function sortUnidades(unidades: UnidadDeNegocio[]): UnidadDeNegocio[] {
   })
 }
 
-// Status options for the semaphore (UUIDs from semaforo table)
-const SEMAFORO_OPTIONS = [
-  { id: 'd3f4361f-477e-4f7a-9f98-9868cddef57f', nombre: 'verde', label: 'Activo', color: '#22c55e', bgClass: 'bg-status-verde' },
-  { id: '04dca848-a17e-4626-b83a-5377aef062ec', nombre: 'amarillo', label: 'Atenci��n', color: '#eab308', bgClass: 'bg-status-amarillo' },
-  { id: 'c19b9591-862e-49a8-898c-b29ed35fcd3b', nombre: 'naranja', label: 'En riesgo', color: '#f97316', bgClass: 'bg-status-naranja' },
-  { id: '753e6c36-5a9f-4b4b-b5fa-aac7d6f281af', nombre: 'rojo', label: 'Crítico', color: '#ef4444', bgClass: 'bg-status-rojo' },
-  { id: '3876a424-6749-4205-b5b2-a59c49ca8eb9', nombre: 'inhabilitado', label: 'Inhabilitado por mora', color: '#7f1d1d', bgClass: 'bg-red-900' },
-  { id: '550f7375-4aec-4e76-a006-16b427d493e9', nombre: 'inactivo', label: 'Baja / Inactivo', color: '#64748b', bgClass: 'bg-slate-500' },
-]
-
-// Helper to get semaforo by ID
-const getSemaforoById = (id: string | null) => {
-  return SEMAFORO_OPTIONS.find(s => s.id === id) || SEMAFORO_OPTIONS[0]
-}
-
-// Helper to get semaforo color by name (verde, amarillo, etc)
-const getSemaforoByNombre = (nombre: string | null) => {
-  if (!nombre) return null
-  return SEMAFORO_OPTIONS.find(s => s.nombre === nombre) || null
-}
-
 // ── Main component ─────────────────────────────────────────────────────────────
 export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0, unidadesDeNegocio = [], metricasColaborador = [] }: ClientOverviewProps) {
-  const sortedUnidades = sortUnidades(unidadesDeNegocio)
   const [preset, setPreset]           = useState('last_30d')
   const [rows, setRows]               = useState<ScorecardRow[]>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
-  const [semaforoId, setSemaforoId] = useState(client.semaforo_id)
-  const currentSemaforo = getSemaforoById(semaforoId)
-  const [updatingStatus, setUpdatingStatus] = useState(false)
   const [pmIds, setPmIds] = useState<string[]>(() => {
     if (client.project_manager_ids?.length) return client.project_manager_ids
     return client.project_manager_id ? [client.project_manager_id] : []
@@ -518,45 +493,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [isActivo, setIsActivo] = useState(client.activo !== false) // null or true = activo
   const [updatingActivo, setUpdatingActivo] = useState(false)
   
-  // Selected unit for dynamic semaphore display - default to first (highest priority) unit
-  const firstUnidadId = sortedUnidades[0]?.unidad_de_negocio_id || null
-  const [selectedUnidadId, setSelectedUnidadId] = useState<string | null>(firstUnidadId)
-  
-  // Get the active semaphore based on selected unit
-  const getActiveSemaforo = () => {
-    const activeUnidadId = selectedUnidadId || firstUnidadId
-    if (activeUnidadId && client.semaforo_unidades) {
-      const unidadSemaforo = client.semaforo_unidades[activeUnidadId]
-      if (unidadSemaforo) {
-        const semaforoByNombre = getSemaforoByNombre(unidadSemaforo)
-        if (semaforoByNombre) return semaforoByNombre
-      }
-    }
-    return currentSemaforo
-  }
-  
-  const activeSemaforo = getActiveSemaforo()
-  const selectedUnidad = sortedUnidades.find(u => u.unidad_de_negocio_id === (selectedUnidadId || firstUnidadId))
-  
   const supabase = createClient()
-
-  const handleSemaforoChange = async (newSemaforoId: string) => {
-    setUpdatingStatus(true)
-    try {
-      const { error } = await supabase
-        .from('clientes')
-        .update({ semaforo_id: newSemaforoId })
-        .eq('id', client.id)
-      
-      if (!error) {
-        setSemaforoId(newSemaforoId)
-      }
-    } catch (e) {
-      console.error('Error updating semaforo:', e)
-    } finally {
-      setUpdatingStatus(false)
-    }
-  }
 
   const handleActivoToggle = async () => {
     setUpdatingActivo(true)
@@ -806,38 +743,6 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            {/* Semaphore - Editable Dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild disabled={updatingStatus || !!selectedUnidadId}>
-                <button 
-                  className={cn(
-                    "flex items-center justify-center w-8 h-8 rounded-full transition-all ring-2 ring-offset-2 ring-offset-background",
-                    selectedUnidadId ? "cursor-default" : "cursor-pointer hover:opacity-80"
-                  )}
-                  style={{ 
-                    backgroundColor: activeSemaforo.color,
-                    // @ts-expect-error - CSS custom property for ring color
-                    '--tw-ring-color': activeSemaforo.color 
-                  } as React.CSSProperties}
-                  title={selectedUnidadId ? `Semaforo de ${selectedUnidad?.unidad_de_negocio?.nombre}` : 'Cambiar semaforo global'}
-                >
-                  {updatingStatus && <RefreshCw className="h-4 w-4 text-white animate-spin" />}
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                {SEMAFORO_OPTIONS.map(opt => (
-                  <DropdownMenuItem 
-                    key={opt.id} 
-                    onClick={() => handleSemaforoChange(opt.id)}
-                    className="gap-2 cursor-pointer"
-                  >
-                    <div className="h-3 w-3 rounded-full" style={{ backgroundColor: opt.color }} />
-                    <span>{opt.label}</span>
-                    {semaforoId === opt.id && <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-primary" />}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-  </DropdownMenu>
   <div>
   <div className="flex items-center gap-2 flex-wrap">
     <h1 className="text-2xl font-bold text-foreground text-balance">{client.business_name}</h1>
@@ -860,9 +765,6 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
       )}
     </Badge>
   </div>
-  <p className="text-sm text-muted-foreground mt-0.5">
-    {activeSemaforo.label}
-  </p>
   </div>
   </div>
 
