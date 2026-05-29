@@ -841,6 +841,36 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
         </CardContent>
       </Card>
 
+      {/* Estado del Cliente (Activo/Inactivo) */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Power className="h-4 w-4 text-primary" />
+            Estado del cliente
+            {savingActivo && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-sm font-medium">
+                {activo ? 'Activo' : 'Inactivo'}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {activo 
+                  ? 'El cliente aparece en listados y puede recibir servicios' 
+                  : 'El cliente esta oculto por defecto en listados'}
+              </p>
+            </div>
+            <Switch
+              checked={activo}
+              onCheckedChange={toggleActivo}
+              disabled={savingActivo}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Etapa del Cliente */}
       <Card>
         <CardHeader className="pb-3">
