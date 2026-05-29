@@ -139,6 +139,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [fechaActivacionDesde, setFechaActivacionDesde] = useState<string>('')
   const [fechaActivacionHasta, setFechaActivacionHasta] = useState<string>('')
   const [etapaFilter, setEtapaFilter] = useState<string>('all')
+  const [activoFilter, setActivoFilter] = useState<string>('activos') // Default: solo activos
   
   // Advanced filter state
   const [feeMinFilter, setFeeMinFilter] = useState<string>('')
@@ -194,6 +195,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     platform: string
     unidad: string
     etapa: string
+    activo: string
     fechaActivacionDesde: string
     fechaActivacionHasta: string
     feeMin: string
@@ -212,7 +214,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [saveFilterName, setSaveFilterName] = useState('')
   const [saveFilterOpen, setSaveFilterOpen] = useState(false)
 
-  const hasActiveFilters = semaforoFilter !== 'all' || planFilter !== 'all' || pmFilter !== 'all' || amFilter !== 'all' || platformFilter !== 'all' || unidadFilter !== 'all' || etapaFilter !== 'all' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
+  const hasActiveFilters = semaforoFilter !== 'all' || planFilter !== 'all' || pmFilter !== 'all' || amFilter !== 'all' || platformFilter !== 'all' || unidadFilter !== 'all' || etapaFilter !== 'all' || activoFilter !== 'activos' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
 
   const clearAllFilters = () => {
     setSearchTerm('')
@@ -223,6 +225,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setPlatformFilter('all')
     setUnidadFilter('all')
     setEtapaFilter('all')
+    setActivoFilter('activos')
     setFeeMinFilter('')
     setFeeMaxFilter('')
     setFechaActivacionDesde('')
@@ -240,6 +243,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       platform: platformFilter,
       unidad: unidadFilter,
       etapa: etapaFilter,
+      activo: activoFilter,
       fechaActivacionDesde,
       fechaActivacionHasta,
       feeMin: feeMinFilter,
@@ -263,6 +267,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setPlatformFilter(filter.platform)
     setUnidadFilter(filter.unidad || 'all')
     setEtapaFilter(filter.etapa || 'all')
+    setActivoFilter(filter.activo || 'activos')
     setFechaActivacionDesde(filter.fechaActivacionDesde || '')
     setFechaActivacionHasta(filter.fechaActivacionHasta || '')
     setFeeMinFilter(filter.feeMin || '')
@@ -412,6 +417,12 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
 
   // Filter clients
   const filteredClients = localClients.filter(client => {
+    // Filter by activo status - null or true = activo (backwards compatible)
+    const isClientActivo = client.activo === true || client.activo === null || client.activo === undefined
+    const matchesActivo = activoFilter === 'todos' ||
+      (activoFilter === 'activos' && isClientActivo) ||
+      (activoFilter === 'inactivos' && client.activo === false)
+    
     const matchesSearch = client.nombre_del_negocio.toLowerCase().includes(searchTerm.toLowerCase()) ||
       client.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       client.apellido?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -435,7 +446,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     const totalFee = (client.fee_mdk || 0) + (client.fee_aurelia || 0)
     const matchesFeeMin = !feeMinFilter || totalFee >= parseFloat(feeMinFilter)
     const matchesFeeMax = !feeMaxFilter || totalFee <= parseFloat(feeMaxFilter)
-    return matchesSearch && matchesSemaforo && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
+    return matchesActivo && matchesSearch && matchesSemaforo && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
   }).sort((a, b) => {
     let valueA: string | number = ''
     let valueB: string | number = ''
@@ -500,7 +511,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
           <div>
             <h1 className="text-2xl font-bold text-foreground">Clientes</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {localClients.length} clientes en total
+              {filteredClients.length} de {localClients.length} clientes
+              {activoFilter === 'activos' && ` (${localClients.filter(c => c.activo === false).length} inactivos ocultos)`}
             </p>
           </div>
           {canCreate && (
@@ -870,6 +882,16 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                   />
                 </div>
               </div>
+              <Select value={activoFilter} onValueChange={setActivoFilter}>
+                <SelectTrigger className="w-[130px]">
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="activos">Activos</SelectItem>
+                  <SelectItem value="inactivos">Inactivos</SelectItem>
+                  <SelectItem value="todos">Todos</SelectItem>
+                </SelectContent>
+              </Select>
                 <Select value={semaforoFilter} onValueChange={setSemaforoFilter}>
                   <SelectTrigger className="w-[140px]">
                     <SelectValue placeholder="Semaforo" />
@@ -1172,15 +1194,21 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                     const hasMeta = !!client.meta_ads_account_id
                     const pm = profiles.find(p => p.id === client.project_manager_id)
                     const am = profiles.find(p => p.id === client.account_manager_id)
+                    const isInactivo = client.activo === false
 
                     return (
                       <TableRow 
                         key={client.id} 
-                        className="group"
+                        className={cn("group", isInactivo && "opacity-60 bg-muted/30")}
                       >
                         {visibleColumns.includes('cliente') && (
                           <TableCell>
-                            <div className="font-medium">{client.nombre_del_negocio}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{client.nombre_del_negocio}</span>
+                              {isInactivo && (
+                                <Badge variant="secondary" className="text-xs">Inactivo</Badge>
+                              )}
+                            </div>
                           </TableCell>
                         )}
                         {visibleColumns.includes('unidad_negocio') && (

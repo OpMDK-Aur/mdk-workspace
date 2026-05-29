@@ -37,11 +37,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { Switch } from '@/components/ui/switch'
 import {
   Briefcase, User, Mail, Phone, Calendar as CalendarIcon,
   Plus, X, CheckCircle2, Circle, Edit2, Save, Loader2,
   Megaphone, Search, TrendingUp, Users, Palette, Code,
   MessageCircle, Database, FileText, Settings, Trash2, Star,
+  Power,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -171,6 +173,10 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
     client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
   )
   const [savingUnidad, setSavingUnidad] = useState(false)
+  
+  // Estado activo/inactivo
+  const [activo, setActivo] = useState(client.activo !== false) // null/undefined/true = activo
+  const [savingActivo, setSavingActivo] = useState(false)
   
   // Load available services
   useEffect(() => {
@@ -377,6 +383,17 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
     }
     setUnidadesNegocio(newUnidades)
     setSavingUnidad(false)
+  }
+  
+  // Toggle estado activo/inactivo
+  const toggleActivo = async (newActivo: boolean) => {
+    setSavingActivo(true)
+    setActivo(newActivo)
+    await supabase
+      .from('clientes')
+      .update({ activo: newActivo })
+      .eq('id', client.id)
+    setSavingActivo(false)
   }
   
   const availableServicesFiltered = serviciosDisponibles.filter(

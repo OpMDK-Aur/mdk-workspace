@@ -514,6 +514,10 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [feeConsultoria, setFeeConsultoria] = useState(client.fee_consultoria ?? 0)
   const [savingFee, setSavingFee] = useState(false)
   
+  // Active/Inactive status
+  const [isActivo, setIsActivo] = useState(client.activo !== false) // null or true = activo
+  const [updatingActivo, setUpdatingActivo] = useState(false)
+  
   // Selected unit for dynamic semaphore display - default to first (highest priority) unit
   const firstUnidadId = sortedUnidades[0]?.unidad_de_negocio_id || null
   const [selectedUnidadId, setSelectedUnidadId] = useState<string | null>(firstUnidadId)
@@ -551,6 +555,25 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
       console.error('Error updating semaforo:', e)
     } finally {
       setUpdatingStatus(false)
+    }
+  }
+
+  const handleActivoToggle = async () => {
+    setUpdatingActivo(true)
+    try {
+      const newActivo = !isActivo
+      const { error } = await supabase
+        .from('clientes')
+        .update({ activo: newActivo })
+        .eq('id', client.id)
+      
+      if (!error) {
+        setIsActivo(newActivo)
+      }
+    } catch (e) {
+      console.error('Error updating activo status:', e)
+    } finally {
+      setUpdatingActivo(false)
     }
   }
 
@@ -818,6 +841,24 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   <div>
   <div className="flex items-center gap-2 flex-wrap">
     <h1 className="text-2xl font-bold text-foreground text-balance">{client.business_name}</h1>
+    {/* Active/Inactive status badge */}
+    <Badge 
+      variant={isActivo ? "default" : "secondary"}
+      className={cn(
+        "text-xs cursor-pointer transition-all",
+        isActivo 
+          ? "bg-green-500/20 text-green-500 hover:bg-green-500/30" 
+          : "bg-muted text-muted-foreground hover:bg-muted/80"
+      )}
+      onClick={handleActivoToggle}
+      title={isActivo ? "Clic para marcar como inactivo" : "Clic para marcar como activo"}
+    >
+      {updatingActivo ? (
+        <RefreshCw className="h-3 w-3 animate-spin" />
+      ) : (
+        isActivo ? "Activo" : "Inactivo"
+      )}
+    </Badge>
     {sortedUnidades.map((u) => {
       const isSelected = selectedUnidadId === u.unidad_de_negocio_id
       const unidadSemaforoNombre = client.semaforo_unidades?.[u.unidad_de_negocio_id]

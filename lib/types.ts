@@ -113,6 +113,8 @@ export interface Client {
   unidades_negocio?: UnidadNegocio[] | null
   /** @deprecated Use unidades_negocio instead */
   unidad_negocio?: UnidadNegocio | null
+  /** Estado del cliente: true=activo (default), false=inactivo */
+  activo?: boolean | null
   created_at: string
   updated_at: string
 }
@@ -394,6 +396,8 @@ export interface Cliente {
   apellido_contacto?: string | null
   telefono?: string | null
   estado?: string | null
+  /** Estado del cliente: true=activo (default), false=inactivo */
+  activo?: boolean | null
   created_at?: string
   updated_at?: string
 }
