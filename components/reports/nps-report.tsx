@@ -203,8 +203,12 @@ export function NPSReport() {
     }
     
     if (unidadFilter !== 'all') {
+      // Aurelia incluye también Tecnología
+      const unidadesToInclude: UnidadNegocio[] = unidadFilter === 'Aurelia' 
+        ? ['Aurelia', 'Tecnología'] 
+        : [unidadFilter]
       filteredClients = filteredClients.filter(c => 
-        c.unidades_negocio?.includes(unidadFilter)
+        c.unidades_negocio?.some(u => unidadesToInclude.includes(u))
       )
     }
 
@@ -342,16 +346,23 @@ export function NPSReport() {
     : '-'
 
   // Stats por unidad de negocio (sin filtro de unidad aplicado)
+  // Nota: Tecnología y Aurelia son lo mismo, así que unificamos
   const statsByUnidad = useMemo(() => {
-    const unidades: UnidadNegocio[] = ['MDK', 'Aurelia', 'Consultoría', 'Tecnología']
+    const unidadesDisplay: { key: string; label: string; includes: UnidadNegocio[] }[] = [
+      { key: 'MDK', label: 'MDK', includes: ['MDK'] },
+      { key: 'Aurelia', label: 'Aurelia', includes: ['Aurelia', 'Tecnología'] },
+      { key: 'Consultoría', label: 'Consultoría', includes: ['Consultoría'] },
+    ]
     
     // Recalcular sin el filtro de unidad para mostrar todas las unidades
     const allClientsFiltered = planFilter === 'all' 
       ? clients 
       : clients.filter(c => c.plan === planFilter)
 
-    return unidades.map(unidad => {
-      const unidadClients = allClientsFiltered.filter(c => c.unidades_negocio?.includes(unidad))
+    return unidadesDisplay.map(({ key, label, includes }) => {
+      const unidadClients = allClientsFiltered.filter(c => 
+        c.unidades_negocio?.some(u => includes.includes(u))
+      )
       
       const clientsWithNPS = unidadClients.map(client => {
         const clientHistory = npsHistorial.filter(h => h.cliente_id === client.id)
@@ -370,7 +381,7 @@ export function NPSReport() {
       const respondedScore = responded.reduce((sum, c) => sum + (c.currentScore ?? 0), 0)
 
       return {
-        unidad,
+        unidad: label,
         totalClients: clientsWithNPS.length,
         respondedCount: responded.length,
         avgWithRule: clientsWithNPS.length > 0 ? (totalScore / clientsWithNPS.length).toFixed(2) : '-',
@@ -494,7 +505,6 @@ export function NPSReport() {
             <SelectItem value="MDK">MDK</SelectItem>
             <SelectItem value="Aurelia">Aurelia</SelectItem>
             <SelectItem value="Consultoría">Consultoria</SelectItem>
-            <SelectItem value="Tecnología">Tecnologia</SelectItem>
           </SelectContent>
         </Select>
 
