@@ -214,7 +214,7 @@ export function NPSReport() {
       // Current month score
       const currentMonthRecords = clientHistory.filter(h => {
         const date = new Date(h.fecha)
-        return date.getMonth() + 1 === selectedMonth && date.getFullYear() === selectedYear
+        return date.getUTCMonth() + 1 === selectedMonth && date.getUTCFullYear() === selectedYear
       })
       const currentScore = currentMonthRecords.length > 0
         ? Math.round(currentMonthRecords.reduce((sum, r) => sum + r.score, 0) / currentMonthRecords.length)
@@ -225,7 +225,7 @@ export function NPSReport() {
       const prevYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear
       const prevMonthRecords = clientHistory.filter(h => {
         const date = new Date(h.fecha)
-        return date.getMonth() + 1 === prevMonth && date.getFullYear() === prevYear
+        return date.getUTCMonth() + 1 === prevMonth && date.getUTCFullYear() === prevYear
       })
       const previousScore = prevMonthRecords.length > 0
         ? Math.round(prevMonthRecords.reduce((sum, r) => sum + r.score, 0) / prevMonthRecords.length)
@@ -250,7 +250,7 @@ export function NPSReport() {
         }
         const monthRecords = clientHistory.filter(h => {
           const date = new Date(h.fecha)
-          return date.getMonth() + 1 === targetMonth && date.getFullYear() === targetYear
+          return date.getUTCMonth() + 1 === targetMonth && date.getUTCFullYear() === targetYear
         })
         if (monthRecords.length > 0) {
           const avgScore = Math.round(monthRecords.reduce((sum, r) => sum + r.score, 0) / monthRecords.length)
