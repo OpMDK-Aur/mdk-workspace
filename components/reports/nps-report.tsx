@@ -341,6 +341,44 @@ export function NPSReport() {
     ? (respondedClients.reduce((sum, c) => sum + (c.currentScore ?? 0), 0) / respondedClients.length).toFixed(2)
     : '-'
 
+  // Stats por unidad de negocio (sin filtro de unidad aplicado)
+  const statsByUnidad = useMemo(() => {
+    const unidades: UnidadNegocio[] = ['MDK', 'Aurelia', 'Consultoría', 'Tecnología']
+    
+    // Recalcular sin el filtro de unidad para mostrar todas las unidades
+    const allClientsFiltered = planFilter === 'all' 
+      ? clients 
+      : clients.filter(c => c.plan === planFilter)
+
+    return unidades.map(unidad => {
+      const unidadClients = allClientsFiltered.filter(c => c.unidades_negocio?.includes(unidad))
+      
+      const clientsWithNPS = unidadClients.map(client => {
+        const clientHistory = npsHistorial.filter(h => h.cliente_id === client.id)
+        const currentMonthRecords = clientHistory.filter(h => {
+          const date = new Date(h.fecha)
+          return date.getUTCMonth() + 1 === selectedMonth && date.getUTCFullYear() === selectedYear
+        })
+        const currentScore = currentMonthRecords.length > 0
+          ? Math.round(currentMonthRecords.reduce((sum, r) => sum + r.score, 0) / currentMonthRecords.length)
+          : null
+        return { clientId: client.id, currentScore, responded: currentScore !== null }
+      })
+
+      const responded = clientsWithNPS.filter(c => c.responded)
+      const totalScore = clientsWithNPS.reduce((sum, c) => sum + (c.currentScore ?? 0), 0)
+      const respondedScore = responded.reduce((sum, c) => sum + (c.currentScore ?? 0), 0)
+
+      return {
+        unidad,
+        totalClients: clientsWithNPS.length,
+        respondedCount: responded.length,
+        avgWithRule: clientsWithNPS.length > 0 ? (totalScore / clientsWithNPS.length).toFixed(2) : '-',
+        avgOnlyResponded: responded.length > 0 ? (respondedScore / responded.length).toFixed(2) : '-',
+      }
+    })
+  }, [clients, npsHistorial, selectedMonth, selectedYear, planFilter])
+
   // Export CSV
   const exportToCSV = () => {
     const headers = ['Cliente', 'AC / Responsable', 'Plan', 'NPS Actual', 'Respondió', 'NPS Anterior', 'Tendencia', 'Observación']
@@ -506,6 +544,47 @@ export function NPSReport() {
           <div className={cn("text-2xl font-semibold", (totalClients - respondedClients.length) > 0 ? 'text-orange-600' : 'text-muted-foreground')}>
             {totalClients - respondedClients.length}
           </div>
+        </div>
+      </div>
+
+      {/* NPS por Unidad de Negocio */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">NPS por Unidad de Negocio</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {statsByUnidad.map(stat => (
+            <div key={stat.unidad} className="bg-card border rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-semibold">{stat.unidad}</div>
+                <Badge variant="outline" className="text-xs">
+                  {stat.respondedCount}/{stat.totalClients}
+                </Badge>
+              </div>
+              <div className="flex items-baseline gap-3">
+                <div>
+                  <div className={cn(
+                    "text-xl font-bold",
+                    Number(stat.avgOnlyResponded) >= 4 ? 'text-emerald-600' : 
+                    Number(stat.avgOnlyResponded) >= 3 ? 'text-amber-600' : 
+                    stat.avgOnlyResponded === '-' ? 'text-muted-foreground' : 'text-red-600'
+                  )}>
+                    {stat.avgOnlyResponded}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">Respondientes</div>
+                </div>
+                <div className="text-muted-foreground">
+                  <div className={cn(
+                    "text-lg font-semibold",
+                    Number(stat.avgWithRule) >= 4 ? 'text-emerald-600/60' : 
+                    Number(stat.avgWithRule) >= 3 ? 'text-amber-600/60' : 
+                    stat.avgWithRule === '-' ? 'text-muted-foreground' : 'text-red-600/60'
+                  )}>
+                    {stat.avgWithRule}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">Con regla</div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
