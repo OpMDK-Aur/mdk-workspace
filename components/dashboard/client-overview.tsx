@@ -859,35 +859,9 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         isActivo ? "Activo" : "Inactivo"
       )}
     </Badge>
-    {sortedUnidades.map((u) => {
-      const isSelected = selectedUnidadId === u.unidad_de_negocio_id
-      const unidadSemaforoNombre = client.semaforo_unidades?.[u.unidad_de_negocio_id]
-      const unidadSemaforo = unidadSemaforoNombre ? getSemaforoByNombre(unidadSemaforoNombre) : null
-      
-      return (
-        <Badge 
-          key={u.unidad_de_negocio_id} 
-          className={cn(
-            "text-xs cursor-pointer transition-all",
-            isSelected 
-              ? "ring-2 ring-offset-2 ring-offset-background" 
-              : "hover:bg-zinc-700",
-            unidadSemaforo ? `bg-opacity-80` : "bg-zinc-800 text-white"
-          )}
-          style={unidadSemaforo ? { 
-            backgroundColor: unidadSemaforo.color,
-            color: 'white',
-            ...(isSelected ? { ringColor: unidadSemaforo.color } : {})
-          } : undefined}
-          onClick={() => setSelectedUnidadId(isSelected ? null : u.unidad_de_negocio_id)}
-        >
-          {u.unidad_de_negocio?.nombre}
-        </Badge>
-      )
-    })}
   </div>
   <p className="text-sm text-muted-foreground mt-0.5">
-    {selectedUnidad ? `${selectedUnidad.unidad_de_negocio?.nombre}: ${activeSemaforo.label}` : activeSemaforo.label}
+    {activeSemaforo.label}
   </p>
   </div>
   </div>
