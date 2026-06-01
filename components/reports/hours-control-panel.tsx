@@ -493,26 +493,26 @@ async function fetchMetricas(mes: number, anio: number) {
   const hoursMap = new Map<string, number>()
   entries.forEach(entry => {
     if (entry.colaborador_id && entry.cliente_id && entry.duracion_seg) {
-      const key = `${entry.colaborador_id}-${entry.cliente_id}`
+      const key = `${entry.colaborador_id}::${entry.cliente_id}`
       hoursMap.set(key, (hoursMap.get(key) || 0) + (entry.duracion_seg / 3600))
     }
   })
   
   // Create a set of existing metrica keys
-  const metricaKeys = new Set(metricas.map(m => `${m.colaborador_id}-${m.cliente_id}`))
+  const metricaKeys = new Set(metricas.map(m => `${m.colaborador_id}::${m.cliente_id}`))
   
   // Use metricas directly from DB - values are already calculated and stored
   const metricasWithHours: MetricaColaborador[] = metricas.map(m => ({
     ...m,
     minimo_no_negociable_horas: Number(m.minimo_no_negociable_horas) || 0,
     horas_objetivo: Number(m.horas_objetivo) || 0,
-    acumulado_mes_asignado: hoursMap.get(`${m.colaborador_id}-${m.cliente_id}`) || 0
+    acumulado_mes_asignado: hoursMap.get(`${m.colaborador_id}::${m.cliente_id}`) || 0
   }))
   
   // Add entries that don't have metricas (time tracked but no assignment defined)
   hoursMap.forEach((hours, key) => {
     if (!metricaKeys.has(key)) {
-      const [colaborador_id, cliente_id] = key.split('-')
+      const [colaborador_id, cliente_id] = key.split('::')
       const colaborador = colaboradoresMap.get(colaborador_id)
       const cliente = clientesMap.get(cliente_id)
       
