@@ -36,6 +36,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuCheckboxItem,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -61,6 +62,7 @@ import {
   Save,
   Trash2,
   Calendar,
+  ChevronDown,
 } from 'lucide-react'
 
 interface ClientsListContentProps {
@@ -130,15 +132,15 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // Local state for clients list
   const [localClients, setLocalClients] = useState<Client[]>(clients)
   const [searchTerm, setSearchTerm] = useState('')
-  const [semaforoFilter, setSemaforoFilter] = useState<string>('all')
-  const [planFilter, setPlanFilter] = useState<string>('all')
-  const [pmFilter, setPmFilter] = useState<string>('all')
-  const [amFilter, setAmFilter] = useState<string>('all')
-  const [platformFilter, setPlatformFilter] = useState<string>('all')
-  const [unidadFilter, setUnidadFilter] = useState<string>('all')
+  const [planFilters, setPlanFilters] = useState<string[]>([])
+  const [pmFilters, setPmFilters] = useState<string[]>([])
+  const [amFilters, setAmFilters] = useState<string[]>([])
+  const [platformFilters, setPlatformFilters] = useState<string[]>([])
+  const [unidadFilters, setUnidadFilters] = useState<string[]>([])
   const [fechaActivacionDesde, setFechaActivacionDesde] = useState<string>('')
   const [fechaActivacionHasta, setFechaActivacionHasta] = useState<string>('')
-  const [etapaFilter, setEtapaFilter] = useState<string>('all')
+  const [etapaFilters, setEtapaFilters] = useState<string[]>([])
+  const [activoFilter, setActivoFilter] = useState<string>('activos') // Default: solo activos
   
   // Advanced filter state
   const [feeMinFilter, setFeeMinFilter] = useState<string>('')
@@ -187,13 +189,13 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // Saved filters
   interface SavedFilter {
     name: string
-    semaforo: string
-    plan: string
-    pm: string
-    am: string
-    platform: string
-    unidad: string
-    etapa: string
+    plans: string[]
+    pms: string[]
+    ams: string[]
+    platforms: string[]
+    unidades: string[]
+    etapas: string[]
+    activo: string
     fechaActivacionDesde: string
     fechaActivacionHasta: string
     feeMin: string
@@ -212,42 +214,42 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [saveFilterName, setSaveFilterName] = useState('')
   const [saveFilterOpen, setSaveFilterOpen] = useState(false)
 
-  const hasActiveFilters = semaforoFilter !== 'all' || planFilter !== 'all' || pmFilter !== 'all' || amFilter !== 'all' || platformFilter !== 'all' || unidadFilter !== 'all' || etapaFilter !== 'all' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
+  const hasActiveFilters = planFilters.length > 0 || pmFilters.length > 0 || amFilters.length > 0 || platformFilters.length > 0 || unidadFilters.length > 0 || etapaFilters.length > 0 || activoFilter !== 'activos' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
 
   const clearAllFilters = () => {
     setSearchTerm('')
-    setSemaforoFilter('all')
-    setPlanFilter('all')
-    setPmFilter('all')
-    setAmFilter('all')
-    setPlatformFilter('all')
-    setUnidadFilter('all')
-    setEtapaFilter('all')
+    setPlanFilters([])
+    setPmFilters([])
+    setAmFilters([])
+    setPlatformFilters([])
+    setUnidadFilters([])
+    setEtapaFilters([])
+    setActivoFilter('activos')
     setFeeMinFilter('')
     setFeeMaxFilter('')
     setFechaActivacionDesde('')
     setFechaActivacionHasta('')
   }
 
-  const saveCurrentFilter = () => {
-    if (!saveFilterName.trim()) return
+const saveCurrentFilter = () => {
+  if (!saveFilterName.trim()) return
   const newFilter: SavedFilter = {
-    name: saveFilterName.trim(),
-    semaforo: semaforoFilter,
-    plan: planFilter,
-      pm: pmFilter,
-      am: amFilter,
-      platform: platformFilter,
-      unidad: unidadFilter,
-      etapa: etapaFilter,
-      fechaActivacionDesde,
-      fechaActivacionHasta,
-      feeMin: feeMinFilter,
-      feeMax: feeMaxFilter,
-      sortBy,
-      sortOrder,
-      columns: visibleColumns,
-    }
+  name: saveFilterName.trim(),
+  plans: planFilters,
+  pms: pmFilters,
+  ams: amFilters,
+  platforms: platformFilters,
+  unidades: unidadFilters,
+  etapas: etapaFilters,
+  activo: activoFilter,
+  fechaActivacionDesde,
+  fechaActivacionHasta,
+  feeMin: feeMinFilter,
+  feeMax: feeMaxFilter,
+  sortBy,
+  sortOrder,
+  columns: visibleColumns,
+  }
     const updated = [...savedFilters, newFilter]
     setSavedFilters(updated)
     localStorage.setItem('clientFiltersV2', JSON.stringify(updated))
@@ -255,21 +257,21 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setSaveFilterOpen(false)
   }
 
-  const applyFilter = (filter: SavedFilter) => {
-    setSemaforoFilter(filter.semaforo)
-    setPlanFilter(filter.plan)
-    setPmFilter(filter.pm)
-    setAmFilter(filter.am)
-    setPlatformFilter(filter.platform)
-    setUnidadFilter(filter.unidad || 'all')
-    setEtapaFilter(filter.etapa || 'all')
-    setFechaActivacionDesde(filter.fechaActivacionDesde || '')
-    setFechaActivacionHasta(filter.fechaActivacionHasta || '')
-    setFeeMinFilter(filter.feeMin || '')
-    setFeeMaxFilter(filter.feeMax || '')
-    setSortBy(filter.sortBy || 'nombre_del_negocio')
-    setSortOrder(filter.sortOrder || 'asc')
-    if (filter.columns?.length) {
+const applyFilter = (filter: SavedFilter) => {
+  setPlanFilters(filter.plans || [])
+  setPmFilters(filter.pms || [])
+  setAmFilters(filter.ams || [])
+  setPlatformFilters(filter.platforms || [])
+  setUnidadFilters(filter.unidades || [])
+  setEtapaFilters(filter.etapas || [])
+  setActivoFilter(filter.activo || 'activos')
+  setFechaActivacionDesde(filter.fechaActivacionDesde || '')
+  setFechaActivacionHasta(filter.fechaActivacionHasta || '')
+  setFeeMinFilter(filter.feeMin || '')
+  setFeeMaxFilter(filter.feeMax || '')
+  setSortBy(filter.sortBy || 'nombre_del_negocio')
+  setSortOrder(filter.sortOrder || 'asc')
+  if (filter.columns?.length) {
       setVisibleColumns(filter.columns)
       localStorage.setItem('clientVisibleColumns', JSON.stringify(filter.columns))
     }
@@ -412,30 +414,33 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
 
   // Filter clients
   const filteredClients = localClients.filter(client => {
-    const matchesSearch = client.nombre_del_negocio.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.apellido?.toLowerCase().includes(searchTerm.toLowerCase())
-    // Filter by semaforo - check if any unidad has this semaforo
-    const matchesSemaforo = semaforoFilter === 'all' || 
-      (client.semaforo_unidades && Object.values(client.semaforo_unidades).includes(semaforoFilter as SemaforoStatus))
-    // Filter by plan - only for clients with MDK
-    const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
-    const matchesPlan = planFilter === 'all' || (clientUnidades.includes('MDK') && client.plan === planFilter)
-    const matchesPm = pmFilter === 'all' || client.project_manager_id === pmFilter
-    const matchesAm = amFilter === 'all' || client.account_manager_id === amFilter
-    const matchesPlatform = platformFilter === 'all' || 
-      (platformFilter === 'google' && client.google_ads_customer_id) ||
-      (platformFilter === 'meta' && client.meta_ads_account_id) ||
-      (platformFilter === 'both' && client.google_ads_customer_id && client.meta_ads_account_id) ||
-      (platformFilter === 'none' && !client.google_ads_customer_id && !client.meta_ads_account_id)
-    const matchesUnidad = unidadFilter === 'all' || clientUnidades.includes(unidadFilter as UnidadNegocio)
-    const matchesEtapa = etapaFilter === 'all' || client.etapa === etapaFilter
-    const matchesFechaDesde = !fechaActivacionDesde || (client.fecha_activacion && client.fecha_activacion >= fechaActivacionDesde)
+  // Filter by activo status - null or true = activo (backwards compatible)
+  const isClientActivo = client.activo === true || client.activo === null || client.activo === undefined
+  const matchesActivo = activoFilter === 'todos' ||
+  (activoFilter === 'activos' && isClientActivo) ||
+  (activoFilter === 'inactivos' && client.activo === false)
+  
+  const matchesSearch = client.nombre_del_negocio.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  client.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  client.apellido?.toLowerCase().includes(searchTerm.toLowerCase())
+  // Filter by plan - empty array = all
+  const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
+  const matchesPlan = planFilters.length === 0 || (clientUnidades.includes('MDK') && planFilters.includes(client.plan || ''))
+  const matchesPm = pmFilters.length === 0 || pmFilters.includes(client.project_manager_id || '')
+  const matchesAm = amFilters.length === 0 || amFilters.includes(client.account_manager_id || '')
+  const matchesPlatform = platformFilters.length === 0 ||
+  (platformFilters.includes('google') && client.google_ads_customer_id) ||
+  (platformFilters.includes('meta') && client.meta_ads_account_id) ||
+  (platformFilters.includes('both') && client.google_ads_customer_id && client.meta_ads_account_id) ||
+  (platformFilters.includes('none') && !client.google_ads_customer_id && !client.meta_ads_account_id)
+  const matchesUnidad = unidadFilters.length === 0 || clientUnidades.some(u => unidadFilters.includes(u))
+  const matchesEtapa = etapaFilters.length === 0 || etapaFilters.includes(client.etapa || '')
+  const matchesFechaDesde = !fechaActivacionDesde || (client.fecha_activacion && client.fecha_activacion >= fechaActivacionDesde)
     const matchesFechaHasta = !fechaActivacionHasta || (client.fecha_activacion && client.fecha_activacion <= fechaActivacionHasta)
     const totalFee = (client.fee_mdk || 0) + (client.fee_aurelia || 0)
     const matchesFeeMin = !feeMinFilter || totalFee >= parseFloat(feeMinFilter)
     const matchesFeeMax = !feeMaxFilter || totalFee <= parseFloat(feeMaxFilter)
-    return matchesSearch && matchesSemaforo && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
+    return matchesActivo && matchesSearch && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
   }).sort((a, b) => {
     let valueA: string | number = ''
     let valueB: string | number = ''
@@ -500,7 +505,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
           <div>
             <h1 className="text-2xl font-bold text-foreground">Clientes</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {localClients.length} clientes en total
+              {filteredClients.length} de {localClients.length} clientes
+              {activoFilter === 'activos' && ` (${localClients.filter(c => c.activo === false).length} inactivos ocultos)`}
             </p>
           </div>
           {canCreate && (
@@ -870,90 +876,110 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                   />
                 </div>
               </div>
-                <Select value={semaforoFilter} onValueChange={setSemaforoFilter}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue placeholder="Semaforo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="verde">Optimo</SelectItem>
-                    <SelectItem value="amarillo">Atencion</SelectItem>
-                    <SelectItem value="naranja">En riesgo</SelectItem>
-                    <SelectItem value="rojo">Critico</SelectItem>
-                  </SelectContent>
-                </Select>
-              <Select value={planFilter} onValueChange={setPlanFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Plan" />
+              <Select value={activoFilter} onValueChange={setActivoFilter}>
+                <SelectTrigger className="w-[130px]">
+                  <SelectValue placeholder="Estado" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos los planes</SelectItem>
-                  <SelectItem value="Esencial">Esencial</SelectItem>
-                  <SelectItem value="Estrategico">Estrategico</SelectItem>
+                  <SelectItem value="activos">Activos</SelectItem>
+                  <SelectItem value="inactivos">Inactivos</SelectItem>
+                  <SelectItem value="todos">Todos</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={pmFilter} onValueChange={setPmFilter}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="Project Manager" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los PM</SelectItem>
+              
+              {/* Plan - Multi-select */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[140px] justify-between">
+                    <span>{planFilters.length === 0 ? 'Todos los planes' : `${planFilters.length} plan${planFilters.length > 1 ? 'es' : ''}`}</span>
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48">
+                  <DropdownMenuCheckboxItem checked={planFilters.includes('Esencial')} onCheckedChange={(checked) => setPlanFilters(prev => checked ? [...prev, 'Esencial'] : prev.filter(p => p !== 'Esencial'))}>Esencial</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={planFilters.includes('Estrategico')} onCheckedChange={(checked) => setPlanFilters(prev => checked ? [...prev, 'Estrategico'] : prev.filter(p => p !== 'Estrategico'))}>Estrategico</DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* PM - Multi-select */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[160px] justify-between">
+                    <span>{pmFilters.length === 0 ? 'Todos los PM' : `${pmFilters.length} PM`}</span>
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56 max-h-64 overflow-y-auto">
                   {projectManagers.map(pm => (
-                    <SelectItem key={pm.id} value={pm.id}>
-                      {pm.full_name || pm.email}
-                    </SelectItem>
+                    <DropdownMenuCheckboxItem key={pm.id} checked={pmFilters.includes(pm.id)} onCheckedChange={(checked) => setPmFilters(prev => checked ? [...prev, pm.id] : prev.filter(p => p !== pm.id))}>{pm.full_name || pm.email}</DropdownMenuCheckboxItem>
                   ))}
-                </SelectContent>
-              </Select>
-              <Select value={amFilter} onValueChange={setAmFilter}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="Account Manager" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los AM</SelectItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* AM - Multi-select */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[160px] justify-between">
+                    <span>{amFilters.length === 0 ? 'Todos los AM' : `${amFilters.length} AM`}</span>
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56 max-h-64 overflow-y-auto">
                   {accountManagers.map(am => (
-                    <SelectItem key={am.id} value={am.id}>
-                      {am.full_name || am.email}
-                    </SelectItem>
+                    <DropdownMenuCheckboxItem key={am.id} checked={amFilters.includes(am.id)} onCheckedChange={(checked) => setAmFilters(prev => checked ? [...prev, am.id] : prev.filter(a => a !== am.id))}>{am.full_name || am.email}</DropdownMenuCheckboxItem>
                   ))}
-                </SelectContent>
-              </Select>
-              <Select value={platformFilter} onValueChange={setPlatformFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Plataforma" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="google">Solo Google</SelectItem>
-                  <SelectItem value="meta">Solo Meta</SelectItem>
-                  <SelectItem value="both">Ambas</SelectItem>
-                  <SelectItem value="none">Sin plataformas</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={unidadFilter} onValueChange={setUnidadFilter}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="Unidad de Negocio" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas las unidades</SelectItem>
-                  <SelectItem value="MDK">MDK</SelectItem>
-                  <SelectItem value="Aurelia">Aurelia</SelectItem>
-                  <SelectItem value="Consultoría">Consultoria</SelectItem>
-                  <SelectItem value="Tecnología">Tecnologia</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={etapaFilter} onValueChange={setEtapaFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Etapa" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas las etapas</SelectItem>
-                  <SelectItem value="activacion">Activacion</SelectItem>
-                  <SelectItem value="1_3_meses">1-3 meses</SelectItem>
-                  <SelectItem value="4_6_meses">4-6 meses</SelectItem>
-                  <SelectItem value="7_mas">7+ meses</SelectItem>
-                </SelectContent>
-              </Select>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Platform - Multi-select */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[140px] justify-between">
+                    <span>{platformFilters.length === 0 ? 'Plataformas' : `${platformFilters.length} sel.`}</span>
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48">
+                  <DropdownMenuCheckboxItem checked={platformFilters.includes('google')} onCheckedChange={(checked) => setPlatformFilters(prev => checked ? [...prev, 'google'] : prev.filter(p => p !== 'google'))}>Google Ads</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={platformFilters.includes('meta')} onCheckedChange={(checked) => setPlatformFilters(prev => checked ? [...prev, 'meta'] : prev.filter(p => p !== 'meta'))}>Meta Ads</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={platformFilters.includes('both')} onCheckedChange={(checked) => setPlatformFilters(prev => checked ? [...prev, 'both'] : prev.filter(p => p !== 'both'))}>Ambas</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={platformFilters.includes('none')} onCheckedChange={(checked) => setPlatformFilters(prev => checked ? [...prev, 'none'] : prev.filter(p => p !== 'none'))}>Sin plataformas</DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Unidad - Multi-select */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[160px] justify-between">
+                    <span>{unidadFilters.length === 0 ? 'Todas las unidades' : `${unidadFilters.length} unidad${unidadFilters.length > 1 ? 'es' : ''}`}</span>
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48">
+                  <DropdownMenuCheckboxItem checked={unidadFilters.includes('MDK')} onCheckedChange={(checked) => setUnidadFilters(prev => checked ? [...prev, 'MDK'] : prev.filter(u => u !== 'MDK'))}>MDK</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={unidadFilters.includes('Aurelia')} onCheckedChange={(checked) => setUnidadFilters(prev => checked ? [...prev, 'Aurelia'] : prev.filter(u => u !== 'Aurelia'))}>Aurelia</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={unidadFilters.includes('Consultoría')} onCheckedChange={(checked) => setUnidadFilters(prev => checked ? [...prev, 'Consultoría'] : prev.filter(u => u !== 'Consultoría'))}>Consultoría</DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Etapa - Multi-select */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[160px] justify-between">
+                    <span>{etapaFilters.length === 0 ? 'Todas las etapas' : `${etapaFilters.length} etapa${etapaFilters.length > 1 ? 's' : ''}`}</span>
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuCheckboxItem checked={etapaFilters.includes('activacion')} onCheckedChange={(checked) => setEtapaFilters(prev => checked ? [...prev, 'activacion'] : prev.filter(e => e !== 'activacion'))}>Activacion</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={etapaFilters.includes('1_3_meses')} onCheckedChange={(checked) => setEtapaFilters(prev => checked ? [...prev, '1_3_meses'] : prev.filter(e => e !== '1_3_meses'))}>1-3 meses</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={etapaFilters.includes('4_6_meses')} onCheckedChange={(checked) => setEtapaFilters(prev => checked ? [...prev, '4_6_meses'] : prev.filter(e => e !== '4_6_meses'))}>4-6 meses</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={etapaFilters.includes('7_mas')} onCheckedChange={(checked) => setEtapaFilters(prev => checked ? [...prev, '7_mas'] : prev.filter(e => e !== '7_mas'))}>7+ meses</DropdownMenuCheckboxItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem checked={etapaFilters.includes('solicito_baja')} onCheckedChange={(checked) => setEtapaFilters(prev => checked ? [...prev, 'solicito_baja'] : prev.filter(e => e !== 'solicito_baja'))} className="text-red-500">Solicito la Baja</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={etapaFilters.includes('inhabilitado_mora')} onCheckedChange={(checked) => setEtapaFilters(prev => checked ? [...prev, 'inhabilitado_mora'] : prev.filter(e => e !== 'inhabilitado_mora'))} className="text-red-500">Inhabilitado por mora</DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               
               {/* Clear filters */}
               {hasActiveFilters && (
@@ -1172,15 +1198,31 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
                     const hasMeta = !!client.meta_ads_account_id
                     const pm = profiles.find(p => p.id === client.project_manager_id)
                     const am = profiles.find(p => p.id === client.account_manager_id)
+                    const isInactivo = client.activo === false
+                    const isEnRiesgo = client.etapa === 'solicito_baja' || client.etapa === 'inhabilitado_mora'
 
                     return (
                       <TableRow 
                         key={client.id} 
-                        className="group"
+                        className={cn(
+                          "group",
+                          isInactivo && "opacity-60 bg-muted/30",
+                          isEnRiesgo && "bg-red-500/10 hover:bg-red-500/20"
+                        )}
                       >
                         {visibleColumns.includes('cliente') && (
                           <TableCell>
-                            <div className="font-medium">{client.nombre_del_negocio}</div>
+                            <div className="flex items-center gap-2">
+                              <span className={cn("font-medium", isEnRiesgo && "text-red-500")}>{client.nombre_del_negocio}</span>
+                              {isInactivo && (
+                                <Badge variant="secondary" className="text-xs">Inactivo</Badge>
+                              )}
+                              {isEnRiesgo && (
+                                <Badge variant="destructive" className="text-xs">
+                                  {client.etapa === 'solicito_baja' ? 'Baja' : 'Mora'}
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
                         )}
                         {visibleColumns.includes('unidad_negocio') && (

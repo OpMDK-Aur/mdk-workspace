@@ -41,7 +41,7 @@ export interface Profile {
   updated_at: string
 }
 
-export type ClientEtapa = 'activacion' | '1_3_meses' | '4_6_meses' | '7_mas'
+export type ClientEtapa = 'activacion' | '1_3_meses' | '4_6_meses' | '7_mas' | 'solicito_baja' | 'inhabilitado_mora'
 
 export interface ServicioContratado {
   id: string
@@ -113,6 +113,8 @@ export interface Client {
   unidades_negocio?: UnidadNegocio[] | null
   /** @deprecated Use unidades_negocio instead */
   unidad_negocio?: UnidadNegocio | null
+  /** Estado del cliente: true=activo (default), false=inactivo */
+  activo?: boolean | null
   created_at: string
   updated_at: string
 }
@@ -394,6 +396,8 @@ export interface Cliente {
   apellido_contacto?: string | null
   telefono?: string | null
   estado?: string | null
+  /** Estado del cliente: true=activo (default), false=inactivo */
+  activo?: boolean | null
   created_at?: string
   updated_at?: string
 }

@@ -37,11 +37,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { Switch } from '@/components/ui/switch'
 import {
   Briefcase, User, Mail, Phone, Calendar as CalendarIcon,
   Plus, X, CheckCircle2, Circle, Edit2, Save, Loader2,
   Megaphone, Search, TrendingUp, Users, Palette, Code,
   MessageCircle, Database, FileText, Settings, Trash2, Star,
+  Power,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -65,13 +67,18 @@ interface ClientInfoCardProps {
   client: Client
   unidadesDeNegocio?: { unidad_de_negocio_id: string; unidad_de_negocio: { id: string; nombre: string } | null }[]
   userRole?: string
+  isActivo?: boolean
+  onActivoChange?: (newActivo: boolean) => Promise<void>
+  updatingActivo?: boolean
 }
 
-const ETAPA_OPTIONS: { value: ClientEtapa; label: string; description: string }[] = [
+const ETAPA_OPTIONS: { value: ClientEtapa; label: string; description: string; isAlert?: boolean }[] = [
   { value: 'activacion', label: 'Activacion', description: 'Cliente nuevo en proceso de activacion' },
   { value: '1_3_meses', label: '1 a 3 meses', description: 'Cliente activo de 1 a 3 meses' },
   { value: '4_6_meses', label: '4 a 6 meses', description: 'Cliente activo de 4 a 6 meses' },
   { value: '7_mas', label: '7+ meses', description: 'Cliente consolidado de mas de 7 meses' },
+  { value: 'solicito_baja', label: 'Solicito la Baja', description: 'El cliente solicito dar de baja el servicio', isAlert: true },
+  { value: 'inhabilitado_mora', label: 'Inhabilitado por mora', description: 'Cliente inhabilitado por falta de pago', isAlert: true },
 ]
 
 const SEMAFORO_OPTIONS = [
@@ -118,7 +125,7 @@ const SERVICE_COLORS: Record<string, string> = {
   'gray': 'bg-gray-500/10 text-gray-500 border-gray-500/20',
 }
 
-export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: ClientInfoCardProps) {
+export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isActivo = true, onActivoChange, updatingActivo = false }: ClientInfoCardProps) {
   const supabase = createClient()
   const isMaster = userRole === 'master'
   
@@ -374,9 +381,9 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
         .from('clientes')
         .update({ unidades_negocio: newUnidades })
         .eq('id', client.id)
-    }
-    setUnidadesNegocio(newUnidades)
-    setSavingUnidad(false)
+  }
+  setUnidadesNegocio(newUnidades)
+  setSavingUnidad(false)
   }
   
   const availableServicesFiltered = serviciosDisponibles.filter(
@@ -824,23 +831,64 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole }: Cli
         </CardContent>
       </Card>
 
-      {/* Etapa del Cliente */}
+      {/* Estado del Cliente (Activo/Inactivo) */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Circle className="h-4 w-4 text-primary" />
+            <Power className="h-4 w-4 text-primary" />
+            Estado del cliente
+            {updatingActivo && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-sm font-medium">
+                {isActivo ? 'Activo' : 'Inactivo'}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {isActivo
+                  ? 'El cliente aparece en listados y puede recibir servicios'
+                  : 'El cliente esta oculto por defecto en listados'}
+              </p>
+            </div>
+            <Switch
+              checked={isActivo}
+              onCheckedChange={(checked) => onActivoChange?.(checked)}
+              disabled={updatingActivo}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Etapa del Cliente */}
+      <Card className={cn(
+        (etapa === 'solicito_baja' || etapa === 'inhabilitado_mora') && "border-red-500/50 bg-red-500/10"
+      )}>
+        <CardHeader className="pb-3">
+          <CardTitle className={cn(
+            "text-sm font-medium flex items-center gap-2",
+            (etapa === 'solicito_baja' || etapa === 'inhabilitado_mora') && "text-red-500"
+          )}>
+            <Circle className={cn(
+              "h-4 w-4",
+              (etapa === 'solicito_baja' || etapa === 'inhabilitado_mora') ? "text-red-500" : "text-primary"
+            )} />
             Etapa del cliente
             {savingEtapa && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <Select value={etapa || ''} onValueChange={(v) => saveEtapa(v as ClientEtapa)}>
-            <SelectTrigger className="h-9">
+            <SelectTrigger className={cn(
+              "h-9",
+              (etapa === 'solicito_baja' || etapa === 'inhabilitado_mora') && "border-red-500/50 text-red-500"
+            )}>
               <SelectValue placeholder="Seleccionar etapa" />
             </SelectTrigger>
             <SelectContent>
               {ETAPA_OPTIONS.map(opt => (
-                <SelectItem key={opt.value} value={opt.value}>
+                <SelectItem key={opt.value} value={opt.value} className={cn(opt.isAlert && "text-red-500")}>
                   <div className="flex flex-col">
                     <span>{opt.label}</span>
                   </div>
