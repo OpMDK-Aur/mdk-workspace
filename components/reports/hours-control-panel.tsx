@@ -441,8 +441,8 @@ async function fetchMetricas(mes: number, anio: number) {
   const startDateStr = startDate.toISOString().split('T')[0]
   const endDateStr = endDate.toISOString().split('T')[0]
   
-  // Fetch metricas_colaboradores, entries, colaboradores, and clientes in parallel
-  const [metricasRes, entriesRes, colaboradoresRes, clientesRes] = await Promise.all([
+  // Fetch metricas_colaboradores, colaboradores, and clientes in parallel
+  const [metricasRes, colaboradoresRes, clientesRes] = await Promise.all([
     supabase
       .from('metricas_colaborador')
       .select(`
@@ -452,21 +452,39 @@ async function fetchMetricas(mes: number, anio: number) {
       `)
       .eq('mes', mes)
       .eq('anio', anio),
-    supabase
-      .from('entradas_de_tiempo')
-      .select('colaborador_id, cliente_id, duracion_seg')
-      .gte('iniciado_en', `${startDateStr}T00:00:00`)
-      .lte('iniciado_en', `${endDateStr}T23:59:59`)
-      .limit(10000),
     supabase.from('colaboradores').select('id, nombre, apellido'),
     supabase.from('clientes').select('id, nombre_del_negocio'),
   ])
   
+  // Fetch entries in multiple pages to bypass Supabase 1000 row limit
+  const allEntries: { colaborador_id: string; cliente_id: string; duracion_seg: number }[] = []
+  let page = 0
+  const pageSize = 1000
+  let hasMore = true
+  
+  while (hasMore) {
+    const { data: pageData, error: pageError } = await supabase
+      .from('entradas_de_tiempo')
+      .select('colaborador_id, cliente_id, duracion_seg')
+      .gte('iniciado_en', `${startDateStr}T00:00:00`)
+      .lte('iniciado_en', `${endDateStr}T23:59:59`)
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+    
+    if (pageError) throw pageError
+    
+    if (pageData && pageData.length > 0) {
+      allEntries.push(...pageData)
+      hasMore = pageData.length === pageSize
+      page++
+    } else {
+      hasMore = false
+    }
+  }
+  
   if (metricasRes.error) throw metricasRes.error
-  if (entriesRes.error) throw entriesRes.error
   
   const metricas = metricasRes.data || []
-  const entries = entriesRes.data || []
+  const entries = allEntries
   
   console.log("[v0] fetchMetricas - entries count:", entries.length, "metricas count:", metricas.length)
   console.log("[v0] fetchMetricas - date range:", `${startDateStr}T00:00:00`, "to", `${endDateStr}T23:59:59`)
