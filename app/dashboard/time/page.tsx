@@ -14,6 +14,8 @@ export default function TimePage() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       
+      console.log("[v0] User:", user?.id)
+      
       if (user) {
         setUserId(user.id)
         const { data: profile } = await supabase
@@ -22,6 +24,7 @@ export default function TimePage() {
           .eq('id', user.id)
           .single()
         
+        console.log("[v0] Profile role:", profile?.role)
         setIsMaster(profile?.role === 'master')
       }
       setLoading(false)
@@ -29,6 +32,8 @@ export default function TimePage() {
     
     checkRole()
   }, [])
+
+  console.log("[v0] TimePage render - isMaster:", isMaster, "loading:", loading)
 
   if (loading) {
     return (
