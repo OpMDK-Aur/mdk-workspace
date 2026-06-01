@@ -500,6 +500,17 @@ async function fetchMetricas(mes: number, anio: number) {
     }
   })
   
+  // Debug: Log hours for Maximiliano (ID: d93c2e19-077b-4720-8d1c-b649d21857c2)
+  const maxId = 'd93c2e19-077b-4720-8d1c-b649d21857c2'
+  let maxTotal = 0
+  hoursMap.forEach((hours, key) => {
+    if (key.startsWith(maxId)) {
+      console.log(`[v0] Maximiliano - ${key}: ${hours.toFixed(2)}h`)
+      maxTotal += hours
+    }
+  })
+  console.log(`[v0] Maximiliano TOTAL: ${maxTotal.toFixed(2)}h`)
+  
   // Create a set of existing metrica keys
   const metricaKeys = new Set(metricas.map(m => `${m.colaborador_id}-${m.cliente_id}`))
   
