@@ -456,7 +456,8 @@ async function fetchMetricas(mes: number, anio: number) {
       .from('entradas_de_tiempo')
       .select('colaborador_id, cliente_id, duracion_seg')
       .gte('iniciado_en', `${startDateStr}T00:00:00`)
-      .lte('iniciado_en', `${endDateStr}T23:59:59`),
+      .lte('iniciado_en', `${endDateStr}T23:59:59`)
+      .limit(10000),
     supabase.from('colaboradores').select('id, nombre, apellido'),
     supabase.from('clientes').select('id, nombre_del_negocio'),
   ])
