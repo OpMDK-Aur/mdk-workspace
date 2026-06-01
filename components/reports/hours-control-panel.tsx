@@ -441,19 +441,20 @@ async function fetchMetricas(mes: number, anio: number) {
   const startDateStr = startDate.toISOString().split('T')[0]
   const endDateStr = endDate.toISOString().split('T')[0]
   
-  // Fetch metricas_colaboradores with full colaborador (including role) and cliente (including fee)
+  // Fetch metricas_colaboradores - this is the single source of truth
+  // Values (horas_objetivo, minimo_no_negociable_horas) are pre-calculated and stored by the Colaboradores page
   const [metricasRes, colaboradoresRes, clientesRes] = await Promise.all([
     supabase
       .from('metricas_colaborador')
       .select(`
         *,
-        colaborador:colaborador_id(id, nombre, apellido, roles(id, nombre)),
-        cliente:cliente_id(id, nombre_del_negocio, fee_mdk)
+        colaborador:colaborador_id(id, nombre, apellido),
+        cliente:cliente_id(id, nombre_del_negocio)
       `)
       .eq('mes', mes)
       .eq('anio', anio),
-    supabase.from('colaboradores').select('id, nombre, apellido, roles(id, nombre)'),
-    supabase.from('clientes').select('id, nombre_del_negocio, fee_mdk'),
+    supabase.from('colaboradores').select('id, nombre, apellido'),
+    supabase.from('clientes').select('id, nombre_del_negocio'),
   ])
   
   // Fetch entries in multiple pages to bypass Supabase 1000 row limit
@@ -485,29 +486,10 @@ async function fetchMetricas(mes: number, anio: number) {
   
   const metricas = metricasRes.data || []
   const entries = allEntries
-  const colaboradoresData = colaboradoresRes.data || []
-  const clientesData = clientesRes.data || []
+  const colaboradoresMap = new Map((colaboradoresRes.data || []).map(c => [c.id, c]))
+  const clientesMap = new Map((clientesRes.data || []).map(c => [c.id, c]))
   
-  const colaboradoresMap = new Map(colaboradoresData.map(c => [c.id, c]))
-  const clientesMap = new Map(clientesData.map(c => [c.id, c]))
-  
-  // Helper function to calculate horas teoricas (same logic as colaboradores page)
-  const calcularHorasTeoricas = (fee: number, valorHora: number, colaborador: { roles?: { nombre?: string } | null } | null): number => {
-    if (valorHora === 0) return 0
-    
-    const rolNombre = colaborador?.roles?.nombre?.toLowerCase() || ''
-    
-    // Consultores don't have automatic calculation
-    const isConsultor = rolNombre.includes('consultor') || rolNombre === 'consultant'
-    if (isConsultor) return 0
-    
-    const isAccountManager = rolNombre.includes('account') || rolNombre === 'account_manager' || rolNombre === 'account manager'
-    const porcentaje = isAccountManager ? 0.20 : 0.075 // 20% for AC, 7.5% for PM and others
-    
-    return (fee * porcentaje) / valorHora
-  }
-  
-  // Calculate hours per colaborador-cliente pair
+  // Calculate hours per colaborador-cliente pair from time entries
   const hoursMap = new Map<string, number>()
   entries.forEach(entry => {
     if (entry.colaborador_id && entry.cliente_id && entry.duracion_seg) {
@@ -519,49 +501,28 @@ async function fetchMetricas(mes: number, anio: number) {
   // Create a set of existing metrica keys
   const metricaKeys = new Set(metricas.map(m => `${m.colaborador_id}-${m.cliente_id}`))
   
-  // Process metricas - calculate horas teoricas if stored values are 0
-  const valorHoraDefault = 150000 // Same default as colaboradores page
-  const metricasWithHours: MetricaColaborador[] = metricas.map(m => {
-    const cliente = m.cliente as { id: string; nombre_del_negocio: string; fee_mdk?: number } | null
-    const colaborador = m.colaborador as { id: string; nombre: string; apellido?: string; roles?: { nombre?: string } | null } | null
-    const valorHora = Number(m.valor_hora) || valorHoraDefault
-    const feeMdk = cliente?.fee_mdk || 0
-    
-    // Calculate horas teoricas
-    const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHora, colaborador)
-    
-    // Use stored values if they exist and are > 0, otherwise use calculated
-    const storedObjetivo = Number(m.horas_objetivo) || 0
-    const storedMinimo = Number(m.minimo_no_negociable_horas) || 0
-    const finalObjetivo = storedObjetivo > 0 ? storedObjetivo : horasTeoricas
-    const finalMinimo = storedMinimo > 0 ? storedMinimo : horasTeoricas / 2
-    
-    return {
-      ...m,
-      minimo_no_negociable_horas: finalMinimo,
-      horas_objetivo: finalObjetivo,
-      acumulado_mes_asignado: hoursMap.get(`${m.colaborador_id}-${m.cliente_id}`) || 0
-    }
-  })
+  // Use metricas directly from DB - values are already calculated and stored
+  const metricasWithHours: MetricaColaborador[] = metricas.map(m => ({
+    ...m,
+    minimo_no_negociable_horas: Number(m.minimo_no_negociable_horas) || 0,
+    horas_objetivo: Number(m.horas_objetivo) || 0,
+    acumulado_mes_asignado: hoursMap.get(`${m.colaborador_id}-${m.cliente_id}`) || 0
+  }))
   
-  // Add entries that don't have metricas (no min/max defined)
+  // Add entries that don't have metricas (time tracked but no assignment defined)
   hoursMap.forEach((hours, key) => {
     if (!metricaKeys.has(key)) {
       const [colaborador_id, cliente_id] = key.split('-')
-      const colaborador = colaboradoresMap.get(colaborador_id) as { id: string; nombre: string; apellido?: string; roles?: { nombre?: string } | null } | undefined
-      const cliente = clientesMap.get(cliente_id) as { id: string; nombre_del_negocio: string; fee_mdk?: number } | undefined
+      const colaborador = colaboradoresMap.get(colaborador_id)
+      const cliente = clientesMap.get(cliente_id)
       
       if (colaborador && cliente) {
-        // Calculate horas teoricas for entries without metrics too
-        const feeMdk = cliente.fee_mdk || 0
-        const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHoraDefault, colaborador)
-        
         metricasWithHours.push({
           id: `generated-${key}`,
           colaborador_id,
           cliente_id,
-          minimo_no_negociable_horas: horasTeoricas > 0 ? horasTeoricas / 2 : null,
-          horas_objetivo: horasTeoricas > 0 ? horasTeoricas : null,
+          minimo_no_negociable_horas: null,
+          horas_objetivo: null,
           acumulado_mes_asignado: hours,
           mes,
           anio,

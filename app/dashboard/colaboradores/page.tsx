@@ -201,7 +201,10 @@ export default function ColaboradoresPage() {
         .order('created_at')
 
       if (mets) {
-        setMetricas(mets.map(m => {
+        // Track which metricas need to be updated in DB (calculated values when stored are 0)
+        const metricasToUpdate: { id: string; horas_objetivo: number; minimo_no_negociable_horas: number; horas_teoricas_cliente: number }[] = []
+        
+        const processedMetricas = mets.map(m => {
           const colaborador = m.colaborador as Colaborador
           const cliente = m.cliente as Cliente
           const valorHora = Number(m.valor_hora) || 150000
@@ -216,8 +219,19 @@ export default function ColaboradoresPage() {
           // Use stored values from DB if they exist, otherwise calculate
           const storedObjetivo = Number(m.horas_objetivo) || 0
           const storedMinimo = Number(m.minimo_no_negociable_horas) || 0
+          const storedTeoricas = Number(m.horas_teoricas_cliente) || 0
           const finalObjetivo = storedObjetivo > 0 ? storedObjetivo : horasTeoricas
           const finalMinimo = storedMinimo > 0 ? storedMinimo : horasTeoricas / 2
+          
+          // If we calculated new values (stored was 0), mark for DB update
+          if ((storedObjetivo === 0 || storedMinimo === 0 || storedTeoricas === 0) && horasTeoricas > 0) {
+            metricasToUpdate.push({
+              id: m.id,
+              horas_objetivo: finalObjetivo,
+              minimo_no_negociable_horas: finalMinimo,
+              horas_teoricas_cliente: horasTeoricas,
+            })
+          }
           
           return {
             ...m,
@@ -229,7 +243,23 @@ export default function ColaboradoresPage() {
             acumulado_mes_asignado: acumuladoReal,
             valor_hora: valorHora,
           }
-        }))
+        })
+        
+        setMetricas(processedMetricas)
+        
+        // Auto-save calculated values to DB so they persist and are available to other components
+        if (metricasToUpdate.length > 0) {
+          for (const update of metricasToUpdate) {
+            await supabase
+              .from('metricas_colaborador')
+              .update({
+                horas_objetivo: update.horas_objetivo,
+                minimo_no_negociable_horas: update.minimo_no_negociable_horas,
+                horas_teoricas_cliente: update.horas_teoricas_cliente,
+              })
+              .eq('id', update.id)
+          }
+        }
       }
 
       setIsLoading(false)
