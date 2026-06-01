@@ -466,6 +466,9 @@ async function fetchMetricas(mes: number, anio: number) {
   
   const metricas = metricasRes.data || []
   const entries = entriesRes.data || []
+  
+  console.log("[v0] fetchMetricas - entries count:", entries.length, "metricas count:", metricas.length)
+  console.log("[v0] fetchMetricas - date range:", `${startDateStr}T00:00:00`, "to", `${endDateStr}T23:59:59`)
   const colaboradoresMap = new Map((colaboradoresRes.data || []).map(c => [c.id, c]))
   const clientesMap = new Map((clientesRes.data || []).map(c => [c.id, c]))
   
