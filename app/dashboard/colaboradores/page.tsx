@@ -189,7 +189,7 @@ export default function ColaboradoresPage() {
       })
 
       // Load metricas for selected period
-      const { data: mets } = await supabase
+      let { data: mets } = await supabase
         .from('metricas_colaborador')
         .select(`
           *,
@@ -200,7 +200,57 @@ export default function ColaboradoresPage() {
         .eq('anio', selectedYear)
         .order('created_at')
 
-      if (mets) {
+      // If no metricas for current month, copy from previous month
+      if (!mets || mets.length === 0) {
+        const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1
+        const prevYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear
+        
+        const { data: prevMets } = await supabase
+          .from('metricas_colaborador')
+          .select(`
+            colaborador_id,
+            cliente_id,
+            minimo_no_negociable_horas,
+            horas_objetivo,
+            horas_teoricas_cliente,
+            valor_hora
+          `)
+          .eq('mes', prevMonth)
+          .eq('anio', prevYear)
+        
+        if (prevMets && prevMets.length > 0) {
+          // Create new metricas for current month based on previous month
+          const newMetricas = prevMets.map(pm => ({
+            colaborador_id: pm.colaborador_id,
+            cliente_id: pm.cliente_id,
+            minimo_no_negociable_horas: pm.minimo_no_negociable_horas,
+            horas_objetivo: pm.horas_objetivo,
+            horas_teoricas_cliente: pm.horas_teoricas_cliente,
+            valor_hora: pm.valor_hora,
+            acumulado_mes_asignado: 0,
+            mes: selectedMonth,
+            anio: selectedYear,
+          }))
+          
+          await supabase.from('metricas_colaborador').insert(newMetricas)
+          
+          // Re-fetch the newly created metricas with full relations
+          const { data: newMets } = await supabase
+            .from('metricas_colaborador')
+            .select(`
+              *,
+              colaborador:colaborador_id(id, nombre, apellido, email, rol_id, roles(id, nombre)),
+              cliente:cliente_id(id, nombre_del_negocio, fee_mdk, fee_aurelia, fee_consultoria)
+            `)
+            .eq('mes', selectedMonth)
+            .eq('anio', selectedYear)
+            .order('created_at')
+          
+          mets = newMets
+        }
+      }
+
+      if (mets && mets.length > 0) {
         // Track which metricas need to be updated in DB (calculated values when stored are 0)
         const metricasToUpdate: { id: string; horas_objetivo: number; minimo_no_negociable_horas: number; horas_teoricas_cliente: number }[] = []
         
