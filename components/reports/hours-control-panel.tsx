@@ -441,19 +441,19 @@ async function fetchMetricas(mes: number, anio: number) {
   const startDateStr = startDate.toISOString().split('T')[0]
   const endDateStr = endDate.toISOString().split('T')[0]
   
-  // Fetch metricas_colaboradores, colaboradores, and clientes in parallel
+  // Fetch metricas_colaboradores with full colaborador (including role) and cliente (including fee)
   const [metricasRes, colaboradoresRes, clientesRes] = await Promise.all([
     supabase
       .from('metricas_colaborador')
       .select(`
         *,
-        colaborador:colaborador_id(id, nombre, apellido),
-        cliente:cliente_id(id, nombre_del_negocio)
+        colaborador:colaborador_id(id, nombre, apellido, roles(id, nombre)),
+        cliente:cliente_id(id, nombre_del_negocio, fee_mdk)
       `)
       .eq('mes', mes)
       .eq('anio', anio),
-    supabase.from('colaboradores').select('id, nombre, apellido'),
-    supabase.from('clientes').select('id, nombre_del_negocio'),
+    supabase.from('colaboradores').select('id, nombre, apellido, roles(id, nombre)'),
+    supabase.from('clientes').select('id, nombre_del_negocio, fee_mdk'),
   ])
   
   // Fetch entries in multiple pages to bypass Supabase 1000 row limit
@@ -485,11 +485,27 @@ async function fetchMetricas(mes: number, anio: number) {
   
   const metricas = metricasRes.data || []
   const entries = allEntries
+  const colaboradoresData = colaboradoresRes.data || []
+  const clientesData = clientesRes.data || []
   
-  console.log("[v0] fetchMetricas - entries count:", entries.length, "metricas count:", metricas.length)
-  console.log("[v0] fetchMetricas - date range:", `${startDateStr}T00:00:00`, "to", `${endDateStr}T23:59:59`)
-  const colaboradoresMap = new Map((colaboradoresRes.data || []).map(c => [c.id, c]))
-  const clientesMap = new Map((clientesRes.data || []).map(c => [c.id, c]))
+  const colaboradoresMap = new Map(colaboradoresData.map(c => [c.id, c]))
+  const clientesMap = new Map(clientesData.map(c => [c.id, c]))
+  
+  // Helper function to calculate horas teoricas (same logic as colaboradores page)
+  const calcularHorasTeoricas = (fee: number, valorHora: number, colaborador: { roles?: { nombre?: string } | null } | null): number => {
+    if (valorHora === 0) return 0
+    
+    const rolNombre = colaborador?.roles?.nombre?.toLowerCase() || ''
+    
+    // Consultores don't have automatic calculation
+    const isConsultor = rolNombre.includes('consultor') || rolNombre === 'consultant'
+    if (isConsultor) return 0
+    
+    const isAccountManager = rolNombre.includes('account') || rolNombre === 'account_manager' || rolNombre === 'account manager'
+    const porcentaje = isAccountManager ? 0.20 : 0.075 // 20% for AC, 7.5% for PM and others
+    
+    return (fee * porcentaje) / valorHora
+  }
   
   // Calculate hours per colaborador-cliente pair
   const hoursMap = new Map<string, number>()
@@ -500,46 +516,52 @@ async function fetchMetricas(mes: number, anio: number) {
     }
   })
   
-  // Debug: Log hours for Maximiliano (ID: d93c2e19-077b-4720-8d1c-b649d21857c2)
-  const maxId = 'd93c2e19-077b-4720-8d1c-b649d21857c2'
-  let maxTotal = 0
-  hoursMap.forEach((hours, key) => {
-    if (key.startsWith(maxId)) {
-      console.log(`[v0] Maximiliano - ${key}: ${hours.toFixed(2)}h`)
-      maxTotal += hours
-    }
-  })
-  console.log(`[v0] Maximiliano TOTAL: ${maxTotal.toFixed(2)}h`)
-  
   // Create a set of existing metrica keys
   const metricaKeys = new Set(metricas.map(m => `${m.colaborador_id}-${m.cliente_id}`))
   
-  // Start with metricas that have min/max defined
-  const metricasWithHours: MetricaColaborador[] = metricas.map(m => ({
-    ...m,
-    acumulado_mes_asignado: hoursMap.get(`${m.colaborador_id}-${m.cliente_id}`) || 0
-  }))
-  
-  console.log("[v0] Sample metricasWithHours:", metricasWithHours.slice(0, 3).map(m => ({
-    colaborador: m.colaborador?.nombre,
-    cliente: m.cliente?.nombre_del_negocio,
-    acumulado: m.acumulado_mes_asignado
-  })))
+  // Process metricas - calculate horas teoricas if stored values are 0
+  const valorHoraDefault = 150000 // Same default as colaboradores page
+  const metricasWithHours: MetricaColaborador[] = metricas.map(m => {
+    const cliente = m.cliente as { id: string; nombre_del_negocio: string; fee_mdk?: number } | null
+    const colaborador = m.colaborador as { id: string; nombre: string; apellido?: string; roles?: { nombre?: string } | null } | null
+    const valorHora = Number(m.valor_hora) || valorHoraDefault
+    const feeMdk = cliente?.fee_mdk || 0
+    
+    // Calculate horas teoricas
+    const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHora, colaborador)
+    
+    // Use stored values if they exist and are > 0, otherwise use calculated
+    const storedObjetivo = Number(m.horas_objetivo) || 0
+    const storedMinimo = Number(m.minimo_no_negociable_horas) || 0
+    const finalObjetivo = storedObjetivo > 0 ? storedObjetivo : horasTeoricas
+    const finalMinimo = storedMinimo > 0 ? storedMinimo : horasTeoricas / 2
+    
+    return {
+      ...m,
+      minimo_no_negociable_horas: finalMinimo,
+      horas_objetivo: finalObjetivo,
+      acumulado_mes_asignado: hoursMap.get(`${m.colaborador_id}-${m.cliente_id}`) || 0
+    }
+  })
   
   // Add entries that don't have metricas (no min/max defined)
   hoursMap.forEach((hours, key) => {
     if (!metricaKeys.has(key)) {
       const [colaborador_id, cliente_id] = key.split('-')
-      const colaborador = colaboradoresMap.get(colaborador_id)
-      const cliente = clientesMap.get(cliente_id)
+      const colaborador = colaboradoresMap.get(colaborador_id) as { id: string; nombre: string; apellido?: string; roles?: { nombre?: string } | null } | undefined
+      const cliente = clientesMap.get(cliente_id) as { id: string; nombre_del_negocio: string; fee_mdk?: number } | undefined
       
       if (colaborador && cliente) {
+        // Calculate horas teoricas for entries without metrics too
+        const feeMdk = cliente.fee_mdk || 0
+        const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHoraDefault, colaborador)
+        
         metricasWithHours.push({
           id: `generated-${key}`,
           colaborador_id,
           cliente_id,
-          minimo_no_negociable_horas: null,
-          horas_objetivo: null,
+          minimo_no_negociable_horas: horasTeoricas > 0 ? horasTeoricas / 2 : null,
+          horas_objetivo: horasTeoricas > 0 ? horasTeoricas : null,
           acumulado_mes_asignado: hours,
           mes,
           anio,
