@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react'
 import { EntriesList } from '@/components/time-entries/entries-list'
 import { createClient } from '@/lib/supabase/client'
 
-// Roles con acceso de administrador a marcaciones de tiempo
-const ADMIN_ROLES = ['master', 'direccion', 'administrador', 'project_manager']
+// Solo direccion tiene acceso de administrador a marcaciones de tiempo
+const ADMIN_ROLES = ['direccion']
 
 export default function TimePage() {
   const [isAdmin, setIsAdmin] = useState(false)
