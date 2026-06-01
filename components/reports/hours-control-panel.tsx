@@ -520,6 +520,12 @@ async function fetchMetricas(mes: number, anio: number) {
     acumulado_mes_asignado: hoursMap.get(`${m.colaborador_id}-${m.cliente_id}`) || 0
   }))
   
+  console.log("[v0] Sample metricasWithHours:", metricasWithHours.slice(0, 3).map(m => ({
+    colaborador: m.colaborador?.nombre,
+    cliente: m.cliente?.nombre_del_negocio,
+    acumulado: m.acumulado_mes_asignado
+  })))
+  
   // Add entries that don't have metricas (no min/max defined)
   hoursMap.forEach((hours, key) => {
     if (!metricaKeys.has(key)) {
