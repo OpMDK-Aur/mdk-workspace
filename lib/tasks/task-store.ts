@@ -1162,7 +1162,7 @@ updateTask: async (taskId, updates) => {
   const [{ data: tareaAnterior }, { data: { user } }] = await Promise.all([
     supabase
       .from('tareas')
-      .select('titulo, estado, asignado_a, asignados_a, fecha_vencimiento, cliente_id, cliente_ids')
+      .select('titulo, estado, creado_por, asignado_a, asignados_a, fecha_vencimiento, cliente_id, cliente_ids')
       .eq('id', taskId)
       .single(),
     supabase.auth.getUser(),
@@ -1325,7 +1325,7 @@ updateTask: async (taskId, updates) => {
       }
     }
 
-    // 4. Detect status change to "resuelto" or "resolviendo" — notify ALL assignees
+    // 4. Detect status change to "resuelto" or "resolviendo" — notify ALL assignees + creator
     if (updates.status !== undefined) {
       const notifyOnStatuses = ['resuelto', 'resolviendo']
       const prevStatus = tareaAnterior.estado?.toLowerCase().trim() || ''
@@ -1334,8 +1334,11 @@ updateTask: async (taskId, updates) => {
       const shouldNotify = notifyOnStatuses.includes(newStatus)
 
       if (statusChanged && shouldNotify) {
-        // Notify ALL assignees (including actor — they all need to know the status changed)
-        const toNotify = [...new Set(previousAssignedIds)]
+        // Collect all recipients: assignees + creator
+        const assigneeIds = [...new Set(previousAssignedIds)]
+        const creatorId = tareaAnterior.creado_por
+        const toNotify = [...new Set([...assigneeIds, ...(creatorId ? [creatorId] : [])])]
+        
         if (toNotify.length > 0) {
           const eventType = newStatus === 'resuelto' ? 'tarea_resuelta' : 'tarea_resolviendo'
           try {
