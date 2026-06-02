@@ -382,11 +382,11 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
       <div className="p-6 space-y-6">
         {/* Platform errors */}
         {Object.keys(platformErrors).length > 0 && (
-          <section className="space-y-1.5">
+          <section className="w-full space-y-1.5">
             {Object.entries(platformErrors).map(([platform, error]) => (
-              <div key={platform} className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs">
-                <span className="font-semibold capitalize text-destructive shrink-0">{platform} Ads:</span>
-                <span className="text-destructive/80 line-clamp-2 flex-1 min-w-0">{error}</span>
+              <div key={platform} className="w-full flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs overflow-hidden">
+                <span className="font-semibold capitalize text-destructive shrink-0 min-w-max">{platform} Ads:</span>
+                <span className="text-destructive/80 line-clamp-2 flex-1 min-w-0 break-words">{error}</span>
                 {platform === 'meta' && error.toLowerCase().includes('token') && (
                   <a
                     href="https://developers.facebook.com/tools/explorer/"
