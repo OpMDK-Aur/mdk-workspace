@@ -1062,15 +1062,15 @@ export const useTaskStore = create<TaskStore>()(
 updateTaskStatus: async (taskId, status) => {
   const supabase = createClient()
 
-  // Fetch task + current user before updating so we have context for notifications
-  const [{ data: tareaActual }, { data: { user } }] = await Promise.all([
-    supabase
-      .from('tareas')
-      .select('titulo, asignado_a, asignados_a, cliente_id')
-      .eq('id', taskId)
-      .single(),
-    supabase.auth.getUser(),
-  ])
+  // Fetch user first (avoid concurrent auth lock issues)
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  // Then fetch task data
+  const { data: tareaActual } = await supabase
+    .from('tareas')
+    .select('titulo, asignado_a, asignados_a, cliente_id')
+    .eq('id', taskId)
+    .single()
 
   let actorName = 'Alguien'
   let actorId: string | null = null
@@ -1159,15 +1159,15 @@ updateTask: async (taskId, updates) => {
   console.log('[v0] updateTask called with:', { taskId, updateKeys: Object.keys(updates) })
   const supabase = createClient()
 
-  // Fetch current task state + actor before updating, to diff changes
-  const [{ data: tareaAnterior }, { data: { user } }] = await Promise.all([
-    supabase
-      .from('tareas')
-      .select('titulo, estado, creado_por, asignado_a, asignados_a, fecha_vencimiento, cliente_id, cliente_ids')
-      .eq('id', taskId)
-      .single(),
-    supabase.auth.getUser(),
-  ])
+  // Fetch user first (avoid concurrent auth lock issues)
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  // Then fetch task data
+  const { data: tareaAnterior } = await supabase
+    .from('tareas')
+    .select('titulo, estado, creado_por, asignado_a, asignados_a, fecha_vencimiento, cliente_id, cliente_ids')
+    .eq('id', taskId)
+    .single()
 
   let actorName = 'Alguien'
   let actorId: string | null = null
