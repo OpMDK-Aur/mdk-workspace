@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import { X, Bell, MessageSquare, CheckSquare, UserPlus } from 'lucide-react'
+import { X, Bell, MessageSquare, UserPlus, CheckCircle, Calendar, Users } from 'lucide-react'
 
 interface NotificationAlert {
   id: string
@@ -15,13 +15,24 @@ interface NotificationAlert {
   referencia_tipo: string | null
 }
 
-const TIPO_ICONS: Record<string, typeof Bell> = {
-  mencion: MessageSquare,
-  comentario: UserPlus, // Used for "Nueva tarea asignada"
+const TIPO_CONFIG: Record<string, { icon: typeof Bell; accent: string }> = {
+  mencion:          { icon: MessageSquare, accent: 'bg-cyan-500/20 text-cyan-400' },
+  comentario:       { icon: UserPlus,      accent: 'bg-green-500/20 text-green-400' },
+  tarea_resuelta:   { icon: CheckCircle,   accent: 'bg-emerald-500/20 text-emerald-400' },
+  asignado_a_tarea: { icon: Users,         accent: 'bg-blue-500/20 text-blue-400' },
+  fecha_cambiada:   { icon: Calendar,      accent: 'bg-amber-500/20 text-amber-400' },
+  cliente_agregado: { icon: UserPlus,      accent: 'bg-violet-500/20 text-violet-400' },
 }
 
-// Only show real-time alerts for these notification types
-const ALERT_TYPES = ['mencion', 'comentario']
+// All types that show a real-time popup alert
+const ALERT_TYPES = [
+  'mencion',
+  'comentario',
+  'tarea_resuelta',
+  'asignado_a_tarea',
+  'fecha_cambiada',
+  'cliente_agregado',
+]
 
 // Play notification sound
 function playNotificationSound() {
@@ -130,7 +141,8 @@ export function NotificationAlertProvider() {
   return (
     <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 max-w-sm">
       {alerts.map((alert) => {
-        const Icon = TIPO_ICONS[alert.tipo] || Bell
+        const config = TIPO_CONFIG[alert.tipo] || { icon: Bell, accent: 'bg-primary/20 text-primary' }
+        const Icon = config.icon
         return (
           <div
             key={alert.id}
@@ -142,44 +154,21 @@ export function NotificationAlertProvider() {
             )}
             onClick={() => handleClick(alert)}
           >
-            <div className={cn(
-              'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center',
-              alert.tipo === 'mencion' && 'bg-cyan-500/20 text-cyan-400',
-              alert.tipo === 'comentario' && 'bg-green-500/20 text-green-400',
-              !['mencion', 'comentario'].includes(alert.tipo) && 'bg-primary/20 text-primary'
-            )}>
+            <div className={cn('flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center', config.accent)}>
               <Icon className="w-4 h-4" />
             </div>
-            
+
             <div className="flex-1 min-w-0">
-              {alert.tipo === 'comentario' ? (
-                // For task assignments: show title small, description prominent
-                <>
-                  <p className="text-xs font-medium text-muted-foreground">{alert.titulo}</p>
-                  {alert.descripcion && (
-                    <p className="text-sm font-semibold leading-snug mt-1 break-words">
-                      {alert.descripcion}
-                    </p>
-                  )}
-                </>
-              ) : (
-                // For mentions and other types: show title prominent
-                <>
-                  <p className="text-sm font-semibold leading-tight">{alert.titulo}</p>
-                  {alert.descripcion && (
-                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                      {alert.descripcion}
-                    </p>
-                  )}
-                </>
+              <p className="text-sm font-semibold leading-tight">{alert.titulo}</p>
+              {alert.descripcion && (
+                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                  {alert.descripcion}
+                </p>
               )}
             </div>
-            
+
             <button
-              onClick={(e) => {
-                e.stopPropagation()
-                dismissAlert(alert.id)
-              }}
+              onClick={(e) => { e.stopPropagation(); dismissAlert(alert.id) }}
               className="flex-shrink-0 p-1 rounded hover:bg-muted transition-colors"
             >
               <X className="w-4 h-4 text-muted-foreground" />

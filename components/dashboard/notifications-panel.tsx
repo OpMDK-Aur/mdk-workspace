@@ -36,7 +36,7 @@ import {
 
 interface Notificacion {
   id: string
-  tipo: 'reunion' | 'tarea_vence' | 'tarea_hoy' | 'comentario' | 'cpl_alerta' | 'impresiones_cero' | 'mencion'
+  tipo: 'reunion' | 'tarea_vence' | 'tarea_hoy' | 'comentario' | 'cpl_alerta' | 'impresiones_cero' | 'mencion' | 'tarea_resuelta' | 'asignado_a_tarea' | 'fecha_cambiada' | 'cliente_agregado'
   titulo: string
   descripcion: string | null
   referencia_id: string | null
@@ -51,13 +51,17 @@ interface NotificationsPanelProps {
 }
 
 const TIPO_CONFIG: Record<string, { icon: typeof Calendar; color: string; bgColor: string; label: string }> = {
-  reunion: { icon: Calendar, color: 'text-blue-400', bgColor: 'bg-blue-500/10', label: 'Reunión' },
-  tarea_vence: { icon: CheckSquare, color: 'text-red-400', bgColor: 'bg-red-500/10', label: 'Tarea Vencida' },
-  tarea_hoy: { icon: CheckSquare, color: 'text-amber-400', bgColor: 'bg-amber-500/10', label: 'Tarea Hoy' },
-  comentario: { icon: MessageSquare, color: 'text-green-400', bgColor: 'bg-green-500/10', label: 'Comentario' },
-  mencion: { icon: MessageSquare, color: 'text-cyan-400', bgColor: 'bg-cyan-500/10', label: 'Mención' },
-  cpl_alerta: { icon: TrendingDown, color: 'text-red-400', bgColor: 'bg-red-500/10', label: 'CPL Alerta' },
-  impresiones_cero: { icon: AlertTriangle, color: 'text-orange-400', bgColor: 'bg-orange-500/10', label: 'Sin impresiones' },
+  reunion:          { icon: Calendar,      color: 'text-blue-400',    bgColor: 'bg-blue-500/10',    label: 'Reunión' },
+  tarea_vence:      { icon: CheckSquare,   color: 'text-red-400',     bgColor: 'bg-red-500/10',     label: 'Tarea Vencida' },
+  tarea_hoy:        { icon: CheckSquare,   color: 'text-amber-400',   bgColor: 'bg-amber-500/10',   label: 'Tarea Hoy' },
+  comentario:       { icon: MessageSquare, color: 'text-green-400',   bgColor: 'bg-green-500/10',   label: 'Nueva tarea' },
+  mencion:          { icon: MessageSquare, color: 'text-cyan-400',    bgColor: 'bg-cyan-500/10',    label: 'Mención' },
+  tarea_resuelta:   { icon: CheckSquare,   color: 'text-emerald-400', bgColor: 'bg-emerald-500/10', label: 'Resuelta' },
+  asignado_a_tarea: { icon: CheckSquare,   color: 'text-blue-400',    bgColor: 'bg-blue-500/10',    label: 'Asignado' },
+  fecha_cambiada:   { icon: Calendar,      color: 'text-amber-400',   bgColor: 'bg-amber-500/10',   label: 'Fecha cambiada' },
+  cliente_agregado: { icon: MessageSquare, color: 'text-violet-400',  bgColor: 'bg-violet-500/10',  label: 'Cliente agregado' },
+  cpl_alerta:       { icon: TrendingDown,  color: 'text-red-400',     bgColor: 'bg-red-500/10',     label: 'CPL Alerta' },
+  impresiones_cero: { icon: AlertTriangle, color: 'text-orange-400',  bgColor: 'bg-orange-500/10',  label: 'Sin impresiones' },
 }
 
 function groupByDate(notifications: Notificacion[]) {

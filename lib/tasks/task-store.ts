@@ -1061,7 +1061,31 @@ export const useTaskStore = create<TaskStore>()(
 
 updateTaskStatus: async (taskId, status) => {
   const supabase = createClient()
-  
+
+  // Fetch task + current user before updating so we have context for notifications
+  const [{ data: tareaActual }, { data: { user } }] = await Promise.all([
+    supabase
+      .from('tareas')
+      .select('titulo, asignado_a, asignados_a, cliente_id')
+      .eq('id', taskId)
+      .single(),
+    supabase.auth.getUser(),
+  ])
+
+  let actorName = 'Alguien'
+  let actorId: string | null = null
+  if (user?.email) {
+    const { data: colab } = await supabase
+      .from('colaboradores')
+      .select('id, nombre, apellido')
+      .eq('email', user.email)
+      .single()
+    if (colab) {
+      actorName = [colab.nombre, colab.apellido].filter(Boolean).join(' ')
+      actorId = colab.id
+    }
+  }
+
   // Update in DB
   const { error } = await supabase
     .from('tareas')
@@ -1072,6 +1096,30 @@ updateTaskStatus: async (taskId, status) => {
     console.error('Error updating task status:', error)
   }
 
+  // If task is marked as resolved, notify all collaborators assigned to the task
+  if (status === 'resuelto' && tareaActual) {
+    const assignedIds: string[] = [
+      ...(tareaActual.asignados_a || []),
+      ...(tareaActual.asignado_a ? [tareaActual.asignado_a] : []),
+    ]
+    // Notify everyone except the actor
+    const toNotify = [...new Set(assignedIds)].filter(id => id !== actorId)
+    if (toNotify.length > 0) {
+      fetch('/api/notifications/task-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventType: 'tarea_resuelta',
+          taskId,
+          taskTitle: tareaActual.titulo,
+          actorName,
+          colaboradorIds: toNotify,
+          clienteId: tareaActual.cliente_id || null,
+        }),
+      }).catch(err => console.error('[v0] task-event notify error:', err))
+    }
+  }
+
   // If task is marked as completed, delete reminder notifications for this task
   if (status === 'realizada') {
     await supabase
@@ -1079,9 +1127,6 @@ updateTaskStatus: async (taskId, status) => {
       .delete()
       .eq('tipo', 'recordatorio')
       .eq('referencia_id', taskId)
-
-    // Also delete by title match for reminders without referencia_id
-    // (reminders created standalone without a task reference)
   }
   
   // Update local state
@@ -1104,7 +1149,31 @@ updateTaskStatus: async (taskId, status) => {
 
 updateTask: async (taskId, updates) => {
   const supabase = createClient()
-  
+
+  // Fetch current task state + actor before updating, to diff changes
+  const [{ data: tareaAnterior }, { data: { user } }] = await Promise.all([
+    supabase
+      .from('tareas')
+      .select('titulo, asignado_a, asignados_a, fecha_vencimiento, cliente_id, cliente_ids')
+      .eq('id', taskId)
+      .single(),
+    supabase.auth.getUser(),
+  ])
+
+  let actorName = 'Alguien'
+  let actorId: string | null = null
+  if (user?.email) {
+    const { data: colab } = await supabase
+      .from('colaboradores')
+      .select('id, nombre, apellido')
+      .eq('email', user.email)
+      .single()
+    if (colab) {
+      actorName = [colab.nombre, colab.apellido].filter(Boolean).join(' ')
+      actorId = colab.id
+    }
+  }
+
   // Map Task fields to DB fields
   const dbUpdates: Record<string, unknown> = {}
   if (updates.title !== undefined) dbUpdates.titulo = updates.title
@@ -1142,7 +1211,93 @@ updateTask: async (taskId, updates) => {
       console.error('Error updating task:', error)
     }
   }
-  
+
+  // --- Notify about relevant changes ---
+  if (tareaAnterior) {
+    const taskTitle = tareaAnterior.titulo || 'Sin título'
+    const previousAssignedIds: string[] = [
+      ...(tareaAnterior.asignados_a || []),
+      ...(tareaAnterior.asignado_a ? [tareaAnterior.asignado_a] : []),
+    ]
+
+    // 1. Detect newly added assignees
+    if (updates.assignees !== undefined) {
+      const newAssignedIds = updates.assignees.map(a => a.id)
+      const addedIds = newAssignedIds.filter(id => !previousAssignedIds.includes(id) && id !== actorId)
+      if (addedIds.length > 0) {
+        fetch('/api/notifications/task-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventType: 'asignado_a_tarea',
+            taskId,
+            taskTitle,
+            actorName,
+            colaboradorIds: addedIds,
+            clienteId: tareaAnterior.cliente_id || null,
+          }),
+        }).catch(err => console.error('[v0] task-event notify error:', err))
+      }
+    }
+
+    // 2. Detect due date change — notify all current assignees (except actor)
+    if (updates.dueDate !== undefined) {
+      const prevDate = tareaAnterior.fecha_vencimiento
+      const newDate = updates.dueDate ? (updates.dueDate instanceof Date ? updates.dueDate.toISOString() : String(updates.dueDate)) : null
+      const prevNorm = prevDate ? new Date(prevDate).toDateString() : null
+      const newNorm = newDate ? new Date(newDate).toDateString() : null
+      if (prevNorm !== newNorm) {
+        const toNotify = [...new Set(previousAssignedIds)].filter(id => id !== actorId)
+        if (toNotify.length > 0) {
+          fetch('/api/notifications/task-event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              eventType: 'fecha_cambiada',
+              taskId,
+              taskTitle,
+              actorName,
+              colaboradorIds: toNotify,
+              newDate: newDate || undefined,
+              clienteId: tareaAnterior.cliente_id || null,
+            }),
+          }).catch(err => console.error('[v0] task-event notify error:', err))
+        }
+      }
+    }
+
+    // 3. Detect newly added clients — notify all current assignees (except actor)
+    if (updates.clientIds !== undefined) {
+      const prevClientIds: string[] = tareaAnterior.cliente_ids || (tareaAnterior.cliente_id ? [tareaAnterior.cliente_id] : [])
+      const addedClientIds = updates.clientIds.filter(id => !prevClientIds.includes(id))
+      if (addedClientIds.length > 0) {
+        const toNotify = [...new Set(previousAssignedIds)].filter(id => id !== actorId)
+        if (toNotify.length > 0) {
+          // Fetch client names for the added clients
+          const { data: clientesData } = await supabase
+            .from('clientes')
+            .select('id, nombre_del_negocio')
+            .in('id', addedClientIds)
+          const clienteNames = (clientesData || []).map(c => c.nombre_del_negocio).filter(Boolean).join(', ')
+          fetch('/api/notifications/task-event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              eventType: 'cliente_agregado',
+              taskId,
+              taskTitle,
+              actorName,
+              colaboradorIds: toNotify,
+              clienteName: clienteNames || undefined,
+              clienteId: addedClientIds[0] || null,
+            }),
+          }).catch(err => console.error('[v0] task-event notify error:', err))
+        }
+      }
+    }
+  }
+  // --- End notifications ---
+
   // Update local state
   set((state) => ({
     tasks: state.tasks.map((t) =>
