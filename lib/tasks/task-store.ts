@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, getAuthUser } from '@/lib/supabase/client'
 import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskComment, TaskFile, TaskQuotation } from '@/lib/types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -974,7 +974,7 @@ export const useTaskStore = create<TaskStore>()(
   
   saveFilter: async (name, groups) => {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getAuthUser()
     
     const { data, error } = await supabase
       .from('filtros_tareas_guardados')
@@ -1016,7 +1016,7 @@ export const useTaskStore = create<TaskStore>()(
   
   loadSavedFilters: async () => {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getAuthUser()
     
     if (!user) return
     
@@ -1063,7 +1063,7 @@ updateTaskStatus: async (taskId, status) => {
   const supabase = createClient()
 
   // Fetch user first (avoid concurrent auth lock issues)
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthUser()
   
   // Then fetch task data
   const { data: tareaActual } = await supabase
@@ -1159,7 +1159,7 @@ updateTask: async (taskId, updates) => {
   const supabase = createClient()
 
   // Fetch user first (avoid concurrent auth lock issues)
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getAuthUser()
   
   // Then fetch task data
   const { data: tareaAnterior } = await supabase
@@ -1454,7 +1454,7 @@ addTask: async (taskData) => {
     let resolvedCreatedByAvatar = taskData.createdByAvatar || undefined
 
     if (!resolvedCreatedById) {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getAuthUser()
       if (user?.email) {
         const { data: colab } = await supabase
           .from('colaboradores')
