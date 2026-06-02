@@ -133,7 +133,6 @@ export const useTimerStore = create<TimerState>()(
             .from('entradas_de_tiempo')
             .select('id')
             .is('finalizado_en', null)
-            .is('duracion_seg', null)
             .order('iniciado_en', { ascending: false })
             .limit(1)
 
@@ -321,9 +320,7 @@ export const useTimerStore = create<TimerState>()(
             set({ entries: validEntries as TimeEntry[] })
 
             // Check if there's actually a running entry in the database
-            // An entry is truly running only if finalizado_en AND duracion_seg are both null
-            // Imported entries may have duracion_seg set but no finalizado_en — those are NOT running
-            const runningEntry = validEntries.find((e) => e.finalizado_en === null && e.duracion_seg === null)
+            const runningEntry = validEntries.find((e) => e.finalizado_en === null)
             if (runningEntry) {
               // Sync local state with the actual running entry from DB
               set({
@@ -378,6 +375,7 @@ export const useTimerStore = create<TimerState>()(
     }),
     {
       name: 'mdk-timer-storage',
+      skipHydration: true,
       partialize: (state) => ({
         isRunning: state.isRunning,
         startedAt: state.startedAt,
