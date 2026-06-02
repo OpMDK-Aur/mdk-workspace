@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, getAuthUser } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import { X, Bell, MessageSquare, CheckSquare } from 'lucide-react'
+import { X, Bell, MessageSquare, UserPlus, CheckCircle, Calendar, Users } from 'lucide-react'
 
 interface NotificationAlert {
   id: string
@@ -15,11 +15,28 @@ interface NotificationAlert {
   referencia_tipo: string | null
 }
 
-const TIPO_ICONS: Record<string, typeof Bell> = {
-  mencion: MessageSquare,
-  tarea_vence: CheckSquare,
-  comentario: MessageSquare,
+const TIPO_CONFIG: Record<string, { icon: typeof Bell; accent: string }> = {
+  mencion:           { icon: MessageSquare, accent: 'bg-cyan-500/20 text-cyan-400' },
+  comentario:        { icon: UserPlus,      accent: 'bg-green-500/20 text-green-400' },
+  tarea_resuelta:    { icon: CheckCircle,   accent: 'bg-emerald-500/20 text-emerald-400' },
+  tarea_resolviendo: { icon: CheckCircle,   accent: 'bg-blue-500/20 text-blue-400' },
+  asignado_a_tarea:  { icon: Users,         accent: 'bg-blue-500/20 text-blue-400' },
+  persona_agregada:  { icon: Users,         accent: 'bg-indigo-500/20 text-indigo-400' },
+  fecha_cambiada:    { icon: Calendar,      accent: 'bg-amber-500/20 text-amber-400' },
+  cliente_agregado:  { icon: UserPlus,      accent: 'bg-violet-500/20 text-violet-400' },
 }
+
+// All types that show a real-time popup alert
+const ALERT_TYPES = [
+  'mencion',
+  'comentario',
+  'tarea_resuelta',
+  'tarea_resolviendo',
+  'asignado_a_tarea',
+  'persona_agregada',
+  'fecha_cambiada',
+  'cliente_agregado',
+]
 
 // Play notification sound
 function playNotificationSound() {
@@ -55,7 +72,7 @@ export function NotificationAlertProvider() {
   useEffect(() => {
     async function getUser() {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getAuthUser()
       if (user?.email) {
         const { data: colaborador } = await supabase
           .from('colaboradores')
@@ -70,7 +87,7 @@ export function NotificationAlertProvider() {
     getUser()
   }, [])
 
-  // Subscribe to new notifications
+  // Subscribe to new notifications (real-time)
   useEffect(() => {
     if (!currentUserId) return
 
@@ -88,15 +105,21 @@ export function NotificationAlertProvider() {
         },
         (payload) => {
           const newNotif = payload.new as NotificationAlert
+          
+          // Only show real-time alerts for mentions and task assignments
+          if (!ALERT_TYPES.includes(newNotif.tipo)) {
+            return
+          }
+          
           setAlerts((prev) => [...prev, newNotif])
           
           // Play notification sound
           playNotificationSound()
           
-          // Auto-dismiss after 20 seconds
+          // Auto-dismiss after 15 seconds
           setTimeout(() => {
             setAlerts((prev) => prev.filter((a) => a.id !== newNotif.id))
-          }, 20000)
+          }, 15000)
         }
       )
       .subscribe()
@@ -122,7 +145,8 @@ export function NotificationAlertProvider() {
   return (
     <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 max-w-sm">
       {alerts.map((alert) => {
-        const Icon = TIPO_ICONS[alert.tipo] || Bell
+        const config = TIPO_CONFIG[alert.tipo] || { icon: Bell, accent: 'bg-primary/20 text-primary' }
+        const Icon = config.icon
         return (
           <div
             key={alert.id}
@@ -134,30 +158,21 @@ export function NotificationAlertProvider() {
             )}
             onClick={() => handleClick(alert)}
           >
-            <div className={cn(
-              'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center',
-              alert.tipo === 'mencion' && 'bg-cyan-500/20 text-cyan-400',
-              alert.tipo === 'tarea_vence' && 'bg-amber-500/20 text-amber-400',
-              alert.tipo === 'comentario' && 'bg-green-500/20 text-green-400',
-              !['mencion', 'tarea_vence', 'comentario'].includes(alert.tipo) && 'bg-primary/20 text-primary'
-            )}>
+            <div className={cn('flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center', config.accent)}>
               <Icon className="w-4 h-4" />
             </div>
-            
+
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium leading-tight">{alert.titulo}</p>
+              <p className="text-sm font-semibold leading-tight">{alert.titulo}</p>
               {alert.descripcion && (
-                <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                   {alert.descripcion}
                 </p>
               )}
             </div>
-            
+
             <button
-              onClick={(e) => {
-                e.stopPropagation()
-                dismissAlert(alert.id)
-              }}
+              onClick={(e) => { e.stopPropagation(); dismissAlert(alert.id) }}
               className="flex-shrink-0 p-1 rounded hover:bg-muted transition-colors"
             >
               <X className="w-4 h-4 text-muted-foreground" />

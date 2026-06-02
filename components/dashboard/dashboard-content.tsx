@@ -131,7 +131,6 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
   const [trendData, setTrendData] = useState<InvestmentTrendPoint[]>([])
   const [scorecardRows, setScorecardRows] = useState<ScorecardRow[]>([])
   const [loading, setLoading] = useState(false)
-  const [platformErrors, setPlatformErrors] = useState<Record<string, string>>({})
   const [scorecardView, setScorecardView] = useState<'clients' | 'campaigns'>('clients')
   const [scorecardClientId, setScorecardClientId] = useState<string | null>(null)
   const [scorecardCampaignIds, setScorecardCampaignIds] = useState<string[]>([])
@@ -153,7 +152,6 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
     }
 
     setLoading(true)
-    setPlatformErrors({})
     try {
       const allResults: Array<{ client: Client; data: AdsApiResponse }> = []
       const errors: Record<string, string> = {}
@@ -200,8 +198,6 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
           ])
         })
       )
-
-      if (Object.keys(errors).length > 0) setPlatformErrors(errors)
 
       // Aggregate KPIs
       let totalSpend = 0
@@ -380,28 +376,6 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
 
       {/* Main content */}
       <div className="p-6 space-y-6">
-        {/* Platform errors */}
-        {Object.keys(platformErrors).length > 0 && (
-          <section className="space-y-2">
-            {Object.entries(platformErrors).map(([platform, error]) => (
-              <div key={platform} className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
-                <span className="font-semibold capitalize text-destructive">{platform} Ads:</span>
-                <span className="text-destructive/80">{error}</span>
-                {platform === 'meta' && error.toLowerCase().includes('token') && (
-                  <a
-                    href="https://developers.facebook.com/tools/explorer/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="ml-auto shrink-0 underline text-destructive hover:text-destructive/80"
-                  >
-                    Renovar token
-                  </a>
-                )}
-              </div>
-            ))}
-          </section>
-        )}
-
         {/* Alerts Panel */}
         <section>
           <CampaignAlertsPanel

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, getAuthUser } from '@/lib/supabase/client'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -36,7 +36,7 @@ import {
 
 interface Notificacion {
   id: string
-  tipo: 'reunion' | 'tarea_vence' | 'comentario' | 'cpl_alerta' | 'impresiones_cero' | 'mencion'
+  tipo: 'reunion' | 'tarea_vence' | 'tarea_hoy' | 'comentario' | 'cpl_alerta' | 'impresiones_cero' | 'mencion' | 'tarea_resuelta' | 'tarea_resolviendo' | 'asignado_a_tarea' | 'persona_agregada' | 'fecha_cambiada' | 'cliente_agregado'
   titulo: string
   descripcion: string | null
   referencia_id: string | null
@@ -44,6 +44,7 @@ interface Notificacion {
   cliente_id: string | null
   leida: boolean
   created_at: string
+  cliente?: { nombre_del_negocio: string } | null
 }
 
 interface NotificationsPanelProps {
@@ -51,12 +52,19 @@ interface NotificationsPanelProps {
 }
 
 const TIPO_CONFIG: Record<string, { icon: typeof Calendar; color: string; bgColor: string; label: string }> = {
-  reunion: { icon: Calendar, color: 'text-blue-400', bgColor: 'bg-blue-500/10', label: 'Reunión' },
-  tarea_vence: { icon: CheckSquare, color: 'text-amber-400', bgColor: 'bg-amber-500/10', label: 'Tarea' },
-  comentario: { icon: MessageSquare, color: 'text-green-400', bgColor: 'bg-green-500/10', label: 'Comentario' },
-  mencion: { icon: MessageSquare, color: 'text-cyan-400', bgColor: 'bg-cyan-500/10', label: 'Mención' },
-  cpl_alerta: { icon: TrendingDown, color: 'text-red-400', bgColor: 'bg-red-500/10', label: 'CPL Alerta' },
-  impresiones_cero: { icon: AlertTriangle, color: 'text-orange-400', bgColor: 'bg-orange-500/10', label: 'Sin impresiones' },
+  reunion:          { icon: Calendar,      color: 'text-blue-400',    bgColor: 'bg-blue-500/10',    label: 'Reunión' },
+  tarea_vence:      { icon: CheckSquare,   color: 'text-red-400',     bgColor: 'bg-red-500/10',     label: 'Tarea Vencida' },
+  tarea_hoy:        { icon: CheckSquare,   color: 'text-amber-400',   bgColor: 'bg-amber-500/10',   label: 'Tarea Hoy' },
+  comentario:       { icon: MessageSquare, color: 'text-green-400',   bgColor: 'bg-green-500/10',   label: 'Nueva tarea' },
+  mencion:          { icon: MessageSquare, color: 'text-cyan-400',    bgColor: 'bg-cyan-500/10',    label: 'Mención' },
+  tarea_resuelta:    { icon: CheckSquare,   color: 'text-emerald-400', bgColor: 'bg-emerald-500/10', label: 'Resuelta' },
+  tarea_resolviendo: { icon: CheckSquare,   color: 'text-blue-400',    bgColor: 'bg-blue-500/10',    label: 'Resolviendo' },
+  asignado_a_tarea: { icon: CheckSquare,   color: 'text-blue-400',    bgColor: 'bg-blue-500/10',    label: 'Asignado' },
+  persona_agregada: { icon: CheckSquare,   color: 'text-indigo-400',  bgColor: 'bg-indigo-500/10',  label: 'Persona agregada' },
+  fecha_cambiada:   { icon: Calendar,      color: 'text-amber-400',   bgColor: 'bg-amber-500/10',   label: 'Fecha cambiada' },
+  cliente_agregado: { icon: MessageSquare, color: 'text-violet-400',  bgColor: 'bg-violet-500/10',  label: 'Cliente agregado' },
+  cpl_alerta:       { icon: TrendingDown,  color: 'text-red-400',     bgColor: 'bg-red-500/10',     label: 'CPL Alerta' },
+  impresiones_cero: { icon: AlertTriangle, color: 'text-orange-400',  bgColor: 'bg-orange-500/10',  label: 'Sin impresiones' },
 }
 
 function groupByDate(notifications: Notificacion[]) {
@@ -101,7 +109,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
       const supabase = createClient()
       
       // Get current user
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getAuthUser()
       if (!user) {
         setLoading(false)
         return
@@ -121,15 +129,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
       
       setCurrentUserId(colaborador.id)
       
-      // Only delete tarea_vence notifications, preserve task assignment and other types
-      const supabase2 = createClient()
-      await supabase2
-        .from('notificaciones')
-        .delete()
-        .eq('colaborador_id', colaborador.id)
-        .eq('tipo', 'tarea_vence')
-      
-      // Generate new notifications for overdue tasks only
+      // Generate fresh notifications for overdue and today tasks
       try {
         await fetch('/api/notifications/generate', { method: 'POST' })
       } catch {
@@ -194,6 +194,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
     if (!currentUserId) return
     setLoading(true)
     
+    const supabase = createClient()
     // Only delete tarea_vence notifications, preserve task assignment notifications
     await supabase
       .from('notificaciones')
@@ -226,7 +227,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
   const unreadCount = notificaciones.filter((n) => !n.leida).length
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full w-full overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
         <Button 
@@ -304,8 +305,8 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
         </div>
       </div>
 
-      {/* Content */}
-      <ScrollArea className="flex-1">
+      {/* Content — flex-1 + min-h-0 lets this shrink inside the flex column so scroll works */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32">
             <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
@@ -333,49 +334,49 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
                     <div
                       key={notif.id}
                       className={cn(
-                        "px-3 py-2.5 hover:bg-muted/50 cursor-pointer transition-colors",
+                        "w-full px-3 py-2 hover:bg-muted/50 cursor-pointer transition-colors overflow-hidden",
                         !notif.leida && "bg-muted/30"
                       )}
                       onClick={() => handleNotificationClick(notif)}
                     >
-                      <div className="flex items-start gap-2.5">
-                        <Avatar className={cn("h-7 w-7 shrink-0", config.bgColor)}>
-                          <AvatarFallback className={cn("text-xs", config.color)}>
-                            <Icon className="h-3.5 w-3.5" />
+                      <div className="flex items-start gap-2">
+                        <Avatar className={cn("h-6 w-6 shrink-0 mt-0.5", config.bgColor)}>
+                          <AvatarFallback className={cn("text-[10px]", config.color)}>
+                            <Icon className="h-3 w-3" />
                           </AvatarFallback>
                         </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0 overflow-hidden">
+                          <div className="flex flex-col gap-0.5">
                             <p className={cn(
-                              "text-sm leading-snug",
+                              "text-xs leading-snug break-words",
                               !notif.leida && "font-medium"
                             )}>
                               {notif.titulo}
                             </p>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="text-xs text-muted-foreground">
-                                {formatDistanceToNow(new Date(notif.created_at), { 
-                                  addSuffix: false, 
-                                  locale: es 
-                                })}
-                              </span>
-                              {!notif.leida && (
-                                <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
+                            <div className="flex items-center justify-between gap-1.5">
+                              {notif.descripcion && (
+                                <p className="text-[11px] text-muted-foreground line-clamp-1 flex-1 min-w-0">
+                                  {notif.descripcion}
+                                </p>
                               )}
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                  {formatDistanceToNow(new Date(notif.created_at), { 
+                                    addSuffix: false, 
+                                    locale: es 
+                                  })}
+                                </span>
+                                {!notif.leida && (
+                                  <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                                )}
+                              </div>
                             </div>
-                          </div>
-                          {notif.descripcion && (
-                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                              {notif.descripcion}
-                            </p>
-                          )}
-                          {notif.cliente?.nombre_del_negocio && (
-                            <div className="flex items-center gap-1.5 mt-1">
-                              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                            {notif.cliente?.nombre_del_negocio && (
+                              <span className="text-[10px] text-muted-foreground">
                                 {notif.cliente.nombre_del_negocio}
                               </span>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -385,7 +386,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
             ))}
           </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   )
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, getAuthUser } from '@/lib/supabase/client'
 import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskComment, TaskFile, TaskQuotation } from '@/lib/types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -974,7 +974,7 @@ export const useTaskStore = create<TaskStore>()(
   
   saveFilter: async (name, groups) => {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getAuthUser()
     
     const { data, error } = await supabase
       .from('filtros_tareas_guardados')
@@ -1016,7 +1016,7 @@ export const useTaskStore = create<TaskStore>()(
   
   loadSavedFilters: async () => {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getAuthUser()
     
     if (!user) return
     
@@ -1061,7 +1061,31 @@ export const useTaskStore = create<TaskStore>()(
 
 updateTaskStatus: async (taskId, status) => {
   const supabase = createClient()
+
+  // Fetch user first (avoid concurrent auth lock issues)
+  const { data: { user } } = await getAuthUser()
   
+  // Then fetch task data
+  const { data: tareaActual } = await supabase
+    .from('tareas')
+    .select('titulo, asignado_a, asignados_a, cliente_id')
+    .eq('id', taskId)
+    .single()
+
+  let actorName = 'Alguien'
+  let actorId: string | null = null
+  if (user?.email) {
+    const { data: colab } = await supabase
+      .from('colaboradores')
+      .select('id, nombre, apellido')
+      .eq('email', user.email)
+      .single()
+    if (colab) {
+      actorName = [colab.nombre, colab.apellido].filter(Boolean).join(' ')
+      actorId = colab.id
+    }
+  }
+
   // Update in DB
   const { error } = await supabase
     .from('tareas')
@@ -1072,16 +1096,45 @@ updateTaskStatus: async (taskId, status) => {
     console.error('Error updating task status:', error)
   }
 
-  // If task is marked as completed, delete reminder notifications for this task
-  if (status === 'realizada') {
+  // If task is marked as resolved, notify all collaborators assigned to the task
+  if (status === 'resuelto' && tareaActual) {
+    const assignedIds: string[] = [
+      ...(tareaActual.asignados_a || []),
+      ...(tareaActual.asignado_a ? [tareaActual.asignado_a] : []),
+    ]
+    // Notify everyone except the actor
+    const toNotify = [...new Set(assignedIds)].filter(id => id !== actorId)
+    if (toNotify.length > 0) {
+      console.log('[v0] Notifying about resolved task:', { taskId, toNotify, actorName })
+      try {
+        const response = await fetch('/api/notifications/task-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventType: 'tarea_resuelta',
+            taskId,
+            taskTitle: tareaActual.titulo,
+            actorName,
+            colaboradorIds: toNotify,
+            clienteId: tareaActual.cliente_id || null,
+          }),
+        })
+        const result = await response.json()
+        console.log('[v0] Task resolved notification sent:', result)
+      } catch (err) {
+        console.error('[v0] Error sending task-event notification:', err)
+      }
+    }
+  }
+
+  // If task is marked as a completed status, delete reminder notifications for this task
+  const completedForDelete = ['resuelto', 'realizada', 'completada', 'completado', 'cerrada', 'cerrado']
+  if (completedForDelete.includes(status as string)) {
     await supabase
       .from('notificaciones')
       .delete()
       .eq('tipo', 'recordatorio')
       .eq('referencia_id', taskId)
-
-    // Also delete by title match for reminders without referencia_id
-    // (reminders created standalone without a task reference)
   }
   
   // Update local state
@@ -1104,7 +1157,31 @@ updateTaskStatus: async (taskId, status) => {
 
 updateTask: async (taskId, updates) => {
   const supabase = createClient()
+
+  // Fetch user first (avoid concurrent auth lock issues)
+  const { data: { user } } = await getAuthUser()
   
+  // Then fetch task data
+  const { data: tareaAnterior } = await supabase
+    .from('tareas')
+    .select('titulo, estado, creado_por, asignado_a, asignados_a, fecha_vencimiento, cliente_id, cliente_ids')
+    .eq('id', taskId)
+    .single()
+
+  let actorName = 'Alguien'
+  let actorId: string | null = null
+  if (user?.email) {
+    const { data: colab } = await supabase
+      .from('colaboradores')
+      .select('id, nombre, apellido')
+      .eq('email', user.email)
+      .single()
+    if (colab) {
+      actorName = [colab.nombre, colab.apellido].filter(Boolean).join(' ')
+      actorId = colab.id
+    }
+  }
+
   // Map Task fields to DB fields
   const dbUpdates: Record<string, unknown> = {}
   if (updates.title !== undefined) dbUpdates.titulo = updates.title
@@ -1142,12 +1219,282 @@ updateTask: async (taskId, updates) => {
       console.error('Error updating task:', error)
     }
   }
-  
-  // Update local state
+
+  // --- Notify about relevant changes ---
+  if (tareaAnterior) {
+    const taskTitle = tareaAnterior.titulo || 'Sin título'
+    const previousAssignedIds: string[] = [
+      ...(tareaAnterior.asignados_a || []),
+      ...(tareaAnterior.asignado_a ? [tareaAnterior.asignado_a] : []),
+    ]
+
+    // 1. Detect newly added assignees — notify them AND all current assignees + creator
+    if (updates.assignees !== undefined) {
+      const newAssignedIds = updates.assignees.map(a => a.id)
+      const addedIds = newAssignedIds.filter(id => !previousAssignedIds.includes(id))
+      if (addedIds.length > 0) {
+        // Notify the new assignees that they were added
+        try {
+          await fetch('/api/notifications/task-event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              eventType: 'asignado_a_tarea',
+              taskId,
+              taskTitle,
+              actorName,
+              colaboradorIds: addedIds,
+              clienteId: tareaAnterior.cliente_id || null,
+            }),
+          })
+        } catch (err) {
+          console.error('[v0] Error sending assignee notification:', err)
+        }
+        
+        // Also notify all existing assignees + creator that someone new was added
+        const creatorId = tareaAnterior.creado_por
+        const existingToNotify = [...new Set([...previousAssignedIds, ...(creatorId ? [creatorId] : [])])]
+          .filter(id => !addedIds.includes(id)) // Don't double-notify the new assignees
+        if (existingToNotify.length > 0) {
+          try {
+            await fetch('/api/notifications/task-event', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                eventType: 'persona_agregada',
+                taskId,
+                taskTitle,
+                actorName,
+                colaboradorIds: existingToNotify,
+                clienteId: tareaAnterior.cliente_id || null,
+              }),
+            })
+          } catch (err) {
+            console.error('[v0] Error sending persona_agregada notification:', err)
+          }
+        }
+      }
+    }
+
+    // 2. Detect due date change — notify all current assignees + creator
+    if (updates.dueDate !== undefined) {
+      const prevDate = tareaAnterior.fecha_vencimiento
+      const newDate = updates.dueDate ? (updates.dueDate instanceof Date ? updates.dueDate.toISOString() : String(updates.dueDate)) : null
+      const prevNorm = prevDate ? new Date(prevDate).toDateString() : null
+      const newNorm = newDate ? new Date(newDate).toDateString() : null
+      if (prevNorm !== newNorm) {
+        // Notify all assignees + creator
+        const assigneeIds = [...new Set(previousAssignedIds)]
+        const creatorId = tareaAnterior.creado_por
+        const toNotify = [...new Set([...assigneeIds, ...(creatorId ? [creatorId] : [])])]
+        if (toNotify.length > 0) {
+          try {
+            const response = await fetch('/api/notifications/task-event', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                eventType: 'fecha_cambiada',
+                taskId,
+                taskTitle,
+                actorName,
+                colaboradorIds: toNotify,
+                newDate: newDate || undefined,
+                clienteId: tareaAnterior.cliente_id || null,
+              }),
+            })
+          } catch (err) {
+            console.error('[v0] Error sending due date notification:', err)
+          }
+        }
+      }
+    }
+
+    // 3. Detect newly added clients — notify all current assignees + creator
+    if (updates.clientIds !== undefined) {
+      const prevClientIds: string[] = tareaAnterior.cliente_ids || (tareaAnterior.cliente_id ? [tareaAnterior.cliente_id] : [])
+      const addedClientIds = updates.clientIds.filter(id => !prevClientIds.includes(id))
+      if (addedClientIds.length > 0) {
+        // Notify all assignees + creator
+        const assigneeIds = [...new Set(previousAssignedIds)]
+        const creatorId = tareaAnterior.creado_por
+        const toNotify = [...new Set([...assigneeIds, ...(creatorId ? [creatorId] : [])])]
+        if (toNotify.length > 0) {
+          // Fetch client names for the added clients
+          const { data: clientesData } = await supabase
+            .from('clientes')
+            .select('id, nombre_del_negocio')
+            .in('id', addedClientIds)
+          const clienteNames = (clientesData || []).map(c => c.nombre_del_negocio).filter(Boolean).join(', ')
+          try {
+            const response = await fetch('/api/notifications/task-event', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                eventType: 'cliente_agregado',
+                taskId,
+                taskTitle,
+                actorName,
+                colaboradorIds: toNotify,
+                clienteName: clienteNames || undefined,
+                clienteId: addedClientIds[0] || null,
+              }),
+            })
+          } catch (err) {
+            console.error('[v0] Error sending client added notification:', err)
+          }
+        }
+      }
+    }
+
+    // 4. Detect status change to "resuelto" or "resolviendo" — notify ALL assignees + creator
+    if (updates.status !== undefined) {
+      const notifyOnStatuses = ['resuelto', 'resolviendo']
+      const prevStatus = tareaAnterior?.estado?.toLowerCase().trim() || ''
+      const newStatus = (updates.status as string).toLowerCase().trim()
+      const statusChanged = prevStatus !== newStatus
+      const shouldNotify = notifyOnStatuses.includes(newStatus)
+
+      if (statusChanged && shouldNotify) {
+        // Collect all recipients: assignees + creator
+        const assigneeIds = [...new Set(previousAssignedIds)]
+        const creatorId = tareaAnterior.creado_por
+        const toNotify = [...new Set([...assigneeIds, ...(creatorId ? [creatorId] : [])])]
+        
+        if (toNotify.length > 0) {
+          const eventType = newStatus === 'resuelto' ? 'tarea_resuelta' : 'tarea_resolviendo'
+          try {
+            const response = await fetch('/api/notifications/task-event', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                eventType,
+                taskId,
+                taskTitle,
+                actorName,
+                colaboradorIds: toNotify,
+                clienteId: tareaAnterior.cliente_id || null,
+              }),
+            })
+            const result = await response.json()
+          } catch (err) {
+            console.error('[v0] Error sending status change notification:', err)
+          }
+        }
+      }
+    }
+  }
+  // --- End notifications ---
+
+  // Update local state (including activity for status changes)
   set((state) => ({
-    tasks: state.tasks.map((t) =>
-      t.id === taskId ? { ...t, ...updates, updatedAt: new Date() } : t
-    ),
+    tasks: state.tasks.map((t) => {
+      if (t.id !== taskId) return t
+      
+      // Build updated task
+      const updatedTask = { ...t, ...updates, updatedAt: new Date() }
+      
+      // Add activity for status change
+      if (updates.status !== undefined && updates.status !== t.status) {
+        const statusLabels: Record<string, string> = {
+          'pendiente_aprobacion': 'Pendiente aprobación',
+          'pendiente': 'Pendiente',
+          'resolviendo': 'Resolviendo',
+          'demorada': 'Demorada',
+          'resuelto': 'Resuelto',
+          'pausado': 'Pausado',
+        }
+        const newStatusLabel = statusLabels[updates.status] || updates.status
+        const activity = {
+          id: crypto.randomUUID(),
+          action: `Cambió el estado a "${newStatusLabel}"`,
+          timestamp: new Date(),
+          userId: actorId || 'unknown',
+          userName: actorName,
+        }
+        updatedTask.activities = [activity, ...(updatedTask.activities || [])]
+      }
+      
+      // Add activity for due date change
+      if (updates.dueDate !== undefined) {
+        const prevDate = t.dueDate ? new Date(t.dueDate).toLocaleDateString('es-ES') : null
+        const newDate = updates.dueDate ? new Date(updates.dueDate).toLocaleDateString('es-ES') : null
+        if (prevDate !== newDate) {
+          const activity = {
+            id: crypto.randomUUID(),
+            action: newDate 
+              ? `Cambió la fecha de vencimiento a ${newDate}`
+              : 'Eliminó la fecha de vencimiento',
+            timestamp: new Date(),
+            userId: actorId || 'unknown',
+            userName: actorName,
+          }
+          updatedTask.activities = [activity, ...(updatedTask.activities || [])]
+        }
+      }
+      
+      // Add activity for client added
+      if (updates.clientIds !== undefined) {
+        const prevIds = t.clientIds || []
+        const addedIds = updates.clientIds.filter(id => !prevIds.includes(id))
+        const removedIds = prevIds.filter(id => !updates.clientIds!.includes(id))
+        
+        if (addedIds.length > 0) {
+          const activity = {
+            id: crypto.randomUUID(),
+            action: `Agregó ${addedIds.length} cliente(s) a la tarea`,
+            timestamp: new Date(),
+            userId: actorId || 'unknown',
+            userName: actorName,
+          }
+          updatedTask.activities = [activity, ...(updatedTask.activities || [])]
+        }
+        
+        if (removedIds.length > 0) {
+          const activity = {
+            id: crypto.randomUUID(),
+            action: `Eliminó ${removedIds.length} cliente(s) de la tarea`,
+            timestamp: new Date(),
+            userId: actorId || 'unknown',
+            userName: actorName,
+          }
+          updatedTask.activities = [activity, ...(updatedTask.activities || [])]
+        }
+      }
+      
+      // Add activity for assignee changes
+      if (updates.assignees !== undefined) {
+        const prevAssigneeIds = t.assignees.map(a => a.id)
+        const newAssigneeIds = updates.assignees.map(a => a.id)
+        const addedAssignees = updates.assignees.filter(a => !prevAssigneeIds.includes(a.id))
+        const removedAssigneeIds = prevAssigneeIds.filter(id => !newAssigneeIds.includes(id))
+        
+        if (addedAssignees.length > 0) {
+          const names = addedAssignees.map(a => a.name).join(', ')
+          const activity = {
+            id: crypto.randomUUID(),
+            action: `Agregó a ${names} a la tarea`,
+            timestamp: new Date(),
+            userId: actorId || 'unknown',
+            userName: actorName,
+          }
+          updatedTask.activities = [activity, ...(updatedTask.activities || [])]
+        }
+        
+        if (removedAssigneeIds.length > 0) {
+          const removedNames = t.assignees.filter(a => removedAssigneeIds.includes(a.id)).map(a => a.name).join(', ')
+          const activity = {
+            id: crypto.randomUUID(),
+            action: `Eliminó a ${removedNames} de la tarea`,
+            timestamp: new Date(),
+            userId: actorId || 'unknown',
+            userName: actorName,
+          }
+          updatedTask.activities = [activity, ...(updatedTask.activities || [])]
+        }
+      }
+      
+      return updatedTask
+    }),
   }))
 },
 
@@ -1162,7 +1509,7 @@ addTask: async (taskData) => {
     let resolvedCreatedByAvatar = taskData.createdByAvatar || undefined
 
     if (!resolvedCreatedById) {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getAuthUser()
       if (user?.email) {
         const { data: colab } = await supabase
           .from('colaboradores')
@@ -1225,22 +1572,25 @@ addTask: async (taskData) => {
       }
     }
     
-    // Notify assigned users about the new task via server API (bypasses RLS)
-    const assignedColabIds = assigneeIds.filter(uid => uid && uid !== taskData.createdById)
-    if (assignedColabIds.length > 0) {
-      fetch('/api/notifications/tarea-asignada', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId: id,
-          titulo: taskData.title,
-          colaboradorIds: assignedColabIds,
-          clienteId: clientIds[0] || null,
-        }),
-      })
-        .then(res => res.json())
-        .catch(err => console.error('[v0] Error calling tarea-asignada API:', err))
-    }
+  // Notify assigned users about the new task via server API (bypasses RLS)
+  const assignedColabIds = assigneeIds.filter(uid => uid && uid !== taskData.createdById)
+  if (assignedColabIds.length > 0) {
+    fetch('/api/notifications/tarea-asignada', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: id,
+        titulo: taskData.title,
+        colaboradorIds: assignedColabIds,
+        clienteId: clientIds[0] || null,
+        clienteName: taskData.clientName || null,
+        createdById: resolvedCreatedById,
+        createdByName: resolvedCreatedByName,
+      }),
+    })
+      .then(res => res.json())
+      .catch(err => console.error('[v0] Error calling tarea-asignada API:', err))
+  }
     
     // Update local state
     set((state) => ({
@@ -1569,7 +1919,7 @@ export function useTaskStoreHydrated() {
   return hydrated
 }
 
-// ── Selectors ────────────────────────────────────────���────────────────────────
+// ── Selectors ───────��────────────────────────────────���────────────────────────
 
 export function useFilteredTasks() {
   const tasks = useTaskStore((s) => s.tasks)

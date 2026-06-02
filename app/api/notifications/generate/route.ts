@@ -27,30 +27,58 @@ export async function POST() {
     }
 
     const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000)
 
-    // Step 1: Delete tarea_vence notifications for tasks that are now resolved or no longer overdue
-    // Get all existing tarea_vence notifications for this user
-    const { data: existingVenceNotifs } = await supabase
+    // Step 1: Delete notifications for tasks that are now resolved or no longer in the time range
+    const { data: existingNotifs } = await supabase
       .from('notificaciones')
-      .select('id, referencia_id')
+      .select('id, referencia_id, tipo')
       .eq('colaborador_id', currentColaborador.id)
-      .eq('tipo', 'tarea_vence')
+      .in('tipo', ['tarea_vence', 'tarea_hoy'])
 
-    if (existingVenceNotifs && existingVenceNotifs.length > 0) {
-      const referencedTaskIds = existingVenceNotifs.map(n => n.referencia_id).filter(Boolean)
+    if (existingNotifs && existingNotifs.length > 0) {
+      const referencedTaskIds = existingNotifs.map(n => n.referencia_id).filter(Boolean)
 
-      // Find which of those tasks are now resolved/realizada
       const { data: resolvedTasks } = await supabase
         .from('tareas')
         .select('id, estado, fecha_vencimiento')
         .in('id', referencedTaskIds)
-        .or('estado.eq.realizada,estado.eq.resuelto,fecha_vencimiento.gte.' + now.toISOString())
+        .or(`asignado_a.eq.${currentColaborador.id},asignados_a.cs.{${currentColaborador.id}}`)
 
       if (resolvedTasks && resolvedTasks.length > 0) {
-        const resolvedIds = new Set(resolvedTasks.map(t => t.id))
-        const notifsToDelete = existingVenceNotifs
-          .filter(n => resolvedIds.has(n.referencia_id))
-          .map(n => n.id)
+        const completedStatuses = ['realizada', 'resuelto', 'completada', 'completado', 'done', 'finished', 'cerrada', 'cerrado']
+        
+        // Determine which notifications to delete
+        const notifsToDelete = existingNotifs.filter(notif => {
+          const task = resolvedTasks.find(t => t.id === notif.referencia_id)
+          if (!task) return true // Delete if task no longer exists
+          
+          // Delete if task is completed
+          if (completedStatuses.includes(task.estado?.toLowerCase())) {
+            return true
+          }
+          
+          // Delete if tarea_vence but date is now >= tomorrow (no longer overdue/today)
+          if (notif.tipo === 'tarea_vence') {
+            const taskDate = new Date(task.fecha_vencimiento)
+            const taskDateAtMidnight = new Date(taskDate.getFullYear(), taskDate.getMonth(), taskDate.getDate())
+            if (taskDateAtMidnight >= tomorrow) {
+              return true
+            }
+          }
+          
+          // Delete if tarea_hoy but date is now < today or > today (no longer today)
+          if (notif.tipo === 'tarea_hoy') {
+            const taskDate = new Date(task.fecha_vencimiento)
+            const taskDateAtMidnight = new Date(taskDate.getFullYear(), taskDate.getMonth(), taskDate.getDate())
+            if (taskDateAtMidnight < today || taskDateAtMidnight >= tomorrow) {
+              return true
+            }
+          }
+          
+          return false
+        }).map(n => n.id)
 
         if (notifsToDelete.length > 0) {
           await supabase
@@ -61,46 +89,87 @@ export async function POST() {
       }
     }
 
-    // Step 2: Get tasks that are OVERDUE and NOT resolved to create new notifications
-    const { data: tareas, error: tareasError } = await supabase
+    // Step 2: Get OVERDUE tasks (Tarea VENCIDA)
+    // Definition: fecha_vencimiento < today AND estado is NOT in completed statuses (realizada, resuelto, etc.)
+    // Check both asignado_a (single) and asignados_a (array) fields
+    const { data: tareasVencidas } = await supabase
       .from('tareas')
       .select('id, titulo, fecha_vencimiento, estado, cliente_id, asignado_a')
-      .eq('asignado_a', currentColaborador.id)
-      .not('estado', 'eq', 'realizada')
-      .not('estado', 'eq', 'resuelto')
+      .or(`asignado_a.eq.${currentColaborador.id},asignados_a.cs.{${currentColaborador.id}}`)
+      .not('estado', 'in', '(realizada,resuelto,completada,completado,done,finished,cerrada,cerrado)')
       .not('fecha_vencimiento', 'is', null)
-      .lt('fecha_vencimiento', now.toISOString())
+      .lt('fecha_vencimiento', today.toISOString())
       .order('fecha_vencimiento', { ascending: true })
 
-    if (tareasError) {
-      return NextResponse.json({ error: tareasError.message }, { status: 500 })
-    }
+    // Step 3: Get TODAY's tasks (Tarea de HOY)
+    // Definition: fecha_vencimiento = today AND estado is NOT in completed statuses
+    // Check both asignado_a (single) and asignados_a (array) fields
+    const { data: tareaasHoy } = await supabase
+      .from('tareas')
+      .select('id, titulo, fecha_vencimiento, estado, cliente_id, asignado_a')
+      .or(`asignado_a.eq.${currentColaborador.id},asignados_a.cs.{${currentColaborador.id}}`)
+      .not('estado', 'in', '(realizada,resuelto,completada,completado,done,finished,cerrada,cerrado)')
+      .not('fecha_vencimiento', 'is', null)
+      .gte('fecha_vencimiento', today.toISOString())
+      .lt('fecha_vencimiento', tomorrow.toISOString())
+      .order('fecha_vencimiento', { ascending: true })
 
-    // Step 3: Avoid duplicates - check which ones already have a notification
-    const taskIds = (tareas || []).map(t => t.id)
+    // Step 4: Avoid duplicates - check which ones already have notifications
+    const allTaskIds = [
+      ...(tareasVencidas || []).map(t => t.id),
+      ...(tareaasHoy || []).map(t => t.id),
+    ]
     
-    const { data: stillExistingNotifs } = taskIds.length > 0 
+    const { data: stillExistingNotifs } = allTaskIds.length > 0 
       ? await supabase
           .from('notificaciones')
-          .select('referencia_id')
+          .select('referencia_id, tipo')
           .eq('colaborador_id', currentColaborador.id)
-          .eq('tipo', 'tarea_vence')
-          .in('referencia_id', taskIds)
+          .in('tipo', ['tarea_vence', 'tarea_hoy'])
+          .in('referencia_id', allTaskIds)
       : { data: [] }
     
-    const existingTaskIds = new Set(stillExistingNotifs?.map(n => n.referencia_id) || [])
+    const existingTasksByType = new Map<string, Set<string>>()
+    stillExistingNotifs?.forEach(n => {
+      if (!existingTasksByType.has(n.tipo)) {
+        existingTasksByType.set(n.tipo, new Set())
+      }
+      existingTasksByType.get(n.tipo)!.add(n.referencia_id)
+    })
 
-    const notificationsToCreate = (tareas || [])
-      .filter(tarea => !existingTaskIds.has(tarea.id))
-      .map(tarea => ({
-        colaborador_id: currentColaborador.id,
-        tipo: 'tarea_vence',
-        titulo: `Tarea vencida: ${tarea.titulo}`,
-        descripcion: `Esta tarea venció el ${new Date(tarea.fecha_vencimiento).toLocaleDateString('es-AR')}`,
-        referencia_id: tarea.id,
-        referencia_tipo: 'tarea',
-        cliente_id: tarea.cliente_id,
-      }))
+    const notificationsToCreate = []
+
+    // Create notifications for overdue tasks
+    const vencidaIds = existingTasksByType.get('tarea_vence') || new Set()
+    notificationsToCreate.push(
+      ...(tareasVencidas || [])
+        .filter(tarea => !vencidaIds.has(tarea.id))
+        .map(tarea => ({
+          colaborador_id: currentColaborador.id,
+          tipo: 'tarea_vence',
+          titulo: `Tarea vencida: ${tarea.titulo}`,
+          descripcion: `Esta tarea venció el ${new Date(tarea.fecha_vencimiento).toLocaleDateString('es-AR')}`,
+          referencia_id: tarea.id,
+          referencia_tipo: 'tarea',
+          cliente_id: tarea.cliente_id,
+        }))
+    )
+
+    // Create notifications for today's tasks
+    const hoyIds = existingTasksByType.get('tarea_hoy') || new Set()
+    notificationsToCreate.push(
+      ...(tareaasHoy || [])
+        .filter(tarea => !hoyIds.has(tarea.id))
+        .map(tarea => ({
+          colaborador_id: currentColaborador.id,
+          tipo: 'tarea_hoy',
+          titulo: `Tarea de hoy: ${tarea.titulo}`,
+          descripcion: `Esta tarea vence hoy`,
+          referencia_id: tarea.id,
+          referencia_tipo: 'tarea',
+          cliente_id: tarea.cliente_id,
+        }))
+    )
 
     if (notificationsToCreate.length > 0) {
       const { error: insertError } = await supabase
@@ -115,7 +184,7 @@ export async function POST() {
     return NextResponse.json({ 
       success: true, 
       created: notificationsToCreate.length,
-      tasksChecked: tareas?.length || 0
+      tasksChecked: (tareasVencidas?.length || 0) + (tareaasHoy?.length || 0)
     })
 
   } catch (error) {

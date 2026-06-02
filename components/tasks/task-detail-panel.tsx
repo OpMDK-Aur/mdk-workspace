@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation, ClientPlan, TaskFile, TaskComment } from '@/lib/types'
 import { cn, linkifyText } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, getAuthUser } from '@/lib/supabase/client'
 import {
   useTaskStore,
   STATUS_CONFIG,
@@ -760,7 +760,7 @@ function TimeTracker({ task }: { task: Task }) {
   )
 }
 
-// ── Files Section ─────────────────────────────────────────────────────────────
+// ── Files Section ─────��───────────────────────────────────────────────────────
 
 // ── Comments Section (with rich text editor) ──────────────────────────────────
 
@@ -893,7 +893,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
   useEffect(() => {
     async function loadUser() {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getAuthUser()
       if (user?.email) {
         const { data: colab } = await supabase
           .from('colaboradores')
@@ -1606,7 +1606,7 @@ export function TaskDetailPanel() {
   useEffect(() => {
     async function loadCurrentUser() {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getAuthUser()
       if (user?.email) {
         const { data: colab } = await supabase
           .from('colaboradores')
