@@ -1156,6 +1156,7 @@ updateTaskStatus: async (taskId, status) => {
 },
 
 updateTask: async (taskId, updates) => {
+  console.log('[v0] updateTask called:', { taskId, updates: Object.keys(updates) })
   const supabase = createClient()
 
   // Fetch current task state + actor before updating, to diff changes
@@ -1167,6 +1168,14 @@ updateTask: async (taskId, updates) => {
       .single(),
     supabase.auth.getUser(),
   ])
+  
+  console.log('[v0] tareaAnterior data:', { 
+    id: taskId,
+    hasData: !!tareaAnterior,
+    estado: tareaAnterior?.estado,
+    creado_por: tareaAnterior?.creado_por,
+    asignados_a: tareaAnterior?.asignados_a,
+  })
 
   let actorName = 'Alguien'
   let actorId: string | null = null
@@ -1327,6 +1336,7 @@ updateTask: async (taskId, updates) => {
 
     // 4. Detect status change to "resuelto" or "resolviendo" — notify ALL assignees + creator
     if (updates.status !== undefined) {
+      console.log('[v0] Status update detected:', { prevStatus: tareaAnterior?.estado, newStatus: updates.status })
       const notifyOnStatuses = ['resuelto', 'resolviendo']
       const prevStatus = tareaAnterior.estado?.toLowerCase().trim() || ''
       const newStatus = (updates.status as string).toLowerCase().trim()

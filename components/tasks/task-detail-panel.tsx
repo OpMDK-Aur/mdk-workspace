@@ -232,8 +232,6 @@ function MultiAssigneeSelect({
   }
 
   const availableColaboradores = colaboradores.filter(c => !assignees.find(a => a.id === c.id))
-  
-  console.log('[v0] AssigneeSelector - colaboradores:', colaboradores.length, 'assignees:', assignees.length, 'available:', availableColaboradores.length)
 
   return (
     <div className="space-y-2">
