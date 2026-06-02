@@ -16,12 +16,13 @@ interface NotificationAlert {
 }
 
 const TIPO_CONFIG: Record<string, { icon: typeof Bell; accent: string }> = {
-  mencion:          { icon: MessageSquare, accent: 'bg-cyan-500/20 text-cyan-400' },
-  comentario:       { icon: UserPlus,      accent: 'bg-green-500/20 text-green-400' },
-  tarea_resuelta:   { icon: CheckCircle,   accent: 'bg-emerald-500/20 text-emerald-400' },
-  asignado_a_tarea: { icon: Users,         accent: 'bg-blue-500/20 text-blue-400' },
-  fecha_cambiada:   { icon: Calendar,      accent: 'bg-amber-500/20 text-amber-400' },
-  cliente_agregado: { icon: UserPlus,      accent: 'bg-violet-500/20 text-violet-400' },
+  mencion:           { icon: MessageSquare, accent: 'bg-cyan-500/20 text-cyan-400' },
+  comentario:        { icon: UserPlus,      accent: 'bg-green-500/20 text-green-400' },
+  tarea_resuelta:    { icon: CheckCircle,   accent: 'bg-emerald-500/20 text-emerald-400' },
+  tarea_resolviendo: { icon: CheckCircle,   accent: 'bg-blue-500/20 text-blue-400' },
+  asignado_a_tarea:  { icon: Users,         accent: 'bg-blue-500/20 text-blue-400' },
+  fecha_cambiada:    { icon: Calendar,      accent: 'bg-amber-500/20 text-amber-400' },
+  cliente_agregado:  { icon: UserPlus,      accent: 'bg-violet-500/20 text-violet-400' },
 }
 
 // All types that show a real-time popup alert
@@ -29,6 +30,7 @@ const ALERT_TYPES = [
   'mencion',
   'comentario',
   'tarea_resuelta',
+  'tarea_resolviendo',
   'asignado_a_tarea',
   'fecha_cambiada',
   'cliente_agregado',

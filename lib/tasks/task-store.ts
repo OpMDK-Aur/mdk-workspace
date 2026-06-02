@@ -1325,24 +1325,25 @@ updateTask: async (taskId, updates) => {
       }
     }
 
-    // 4. Detect status change to "resuelto" — notify all current assignees (except actor)
+    // 4. Detect status change to "resuelto" or "resolviendo" — notify ALL assignees
     if (updates.status !== undefined) {
-      const resolvedStatuses = ['resuelto', 'resuelta', 'completada', 'completado']
-      const prevStatus = tareaAnterior.estado?.toLowerCase() || ''
-      const newStatus = (updates.status as string).toLowerCase()
-      const wasNotResolved = !resolvedStatuses.includes(prevStatus)
-      const isNowResolved = resolvedStatuses.includes(newStatus)
-      
-      if (wasNotResolved && isNowResolved) {
-        const toNotify = [...new Set(previousAssignedIds)].filter(id => id !== actorId)
+      const notifyOnStatuses = ['resuelto', 'resolviendo']
+      const prevStatus = tareaAnterior.estado?.toLowerCase().trim() || ''
+      const newStatus = (updates.status as string).toLowerCase().trim()
+      const statusChanged = prevStatus !== newStatus
+      const shouldNotify = notifyOnStatuses.includes(newStatus)
+
+      if (statusChanged && shouldNotify) {
+        // Notify ALL assignees (including actor — they all need to know the status changed)
+        const toNotify = [...new Set(previousAssignedIds)]
         if (toNotify.length > 0) {
-          console.log('[v0] Notifying about resolved task:', { taskId, toNotify, newStatus })
+          const eventType = newStatus === 'resuelto' ? 'tarea_resuelta' : 'tarea_resolviendo'
           try {
             const response = await fetch('/api/notifications/task-event', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                eventType: 'tarea_resuelta',
+                eventType,
                 taskId,
                 taskTitle,
                 actorName,
@@ -1351,9 +1352,9 @@ updateTask: async (taskId, updates) => {
               }),
             })
             const result = await response.json()
-            console.log('[v0] Task resolved notification sent:', result)
+            console.log('[v0] Status change notification sent:', eventType, result)
           } catch (err) {
-            console.error('[v0] Error sending task resolved notification:', err)
+            console.error('[v0] Error sending status change notification:', err)
           }
         }
       }
