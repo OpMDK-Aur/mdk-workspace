@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import { X, Bell, MessageSquare, CheckSquare } from 'lucide-react'
+import { X, Bell, MessageSquare, CheckSquare, UserPlus } from 'lucide-react'
 
 interface NotificationAlert {
   id: string
@@ -17,9 +17,11 @@ interface NotificationAlert {
 
 const TIPO_ICONS: Record<string, typeof Bell> = {
   mencion: MessageSquare,
-  tarea_vence: CheckSquare,
-  comentario: MessageSquare,
+  comentario: UserPlus, // Used for "Nueva tarea asignada"
 }
+
+// Only show real-time alerts for these notification types
+const ALERT_TYPES = ['mencion', 'comentario']
 
 // Play notification sound
 function playNotificationSound() {
@@ -70,7 +72,7 @@ export function NotificationAlertProvider() {
     getUser()
   }, [])
 
-  // Subscribe to new notifications
+  // Subscribe to new notifications (real-time)
   useEffect(() => {
     if (!currentUserId) return
 
@@ -88,15 +90,21 @@ export function NotificationAlertProvider() {
         },
         (payload) => {
           const newNotif = payload.new as NotificationAlert
+          
+          // Only show real-time alerts for mentions and task assignments
+          if (!ALERT_TYPES.includes(newNotif.tipo)) {
+            return
+          }
+          
           setAlerts((prev) => [...prev, newNotif])
           
           // Play notification sound
           playNotificationSound()
           
-          // Auto-dismiss after 20 seconds
+          // Auto-dismiss after 15 seconds
           setTimeout(() => {
             setAlerts((prev) => prev.filter((a) => a.id !== newNotif.id))
-          }, 20000)
+          }, 15000)
         }
       )
       .subscribe()
@@ -137,9 +145,8 @@ export function NotificationAlertProvider() {
             <div className={cn(
               'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center',
               alert.tipo === 'mencion' && 'bg-cyan-500/20 text-cyan-400',
-              alert.tipo === 'tarea_vence' && 'bg-amber-500/20 text-amber-400',
               alert.tipo === 'comentario' && 'bg-green-500/20 text-green-400',
-              !['mencion', 'tarea_vence', 'comentario'].includes(alert.tipo) && 'bg-primary/20 text-primary'
+              !['mencion', 'comentario'].includes(alert.tipo) && 'bg-primary/20 text-primary'
             )}>
               <Icon className="w-4 h-4" />
             </div>
