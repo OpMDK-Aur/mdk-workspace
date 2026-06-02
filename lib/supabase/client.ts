@@ -7,14 +7,7 @@ export function createClient() {
   if (!client) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    client = createBrowserClient(url, key, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        // Disable lock stealing to prevent "Lock broken" errors with concurrent requests
-        lock: { mode: 'ifAvailable' } as unknown as boolean,
-      },
-    })
+    client = createBrowserClient(url, key)
   }
   return client
 }
