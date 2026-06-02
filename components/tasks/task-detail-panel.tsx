@@ -1654,7 +1654,6 @@ export function TaskDetailPanel() {
 
   // Handle status change with hito_poe interception
   const handleStatusChange = async (newStatus: TaskStatus) => {
-    console.log('[v0] handleStatusChange called:', { currentStatus: task.status, newStatus })
     // If changing to 'resuelto', check if task has hito_poe
     if (newStatus === 'resuelto') {
       // First check if we already have hitoPoe in memory
@@ -1684,7 +1683,6 @@ export function TaskDetailPanel() {
     }
     
     // Otherwise, update normally
-    console.log('[v0] Calling updateTask with status:', newStatus)
     updateTask(task.id, { status: newStatus })
   }
 

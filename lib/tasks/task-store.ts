@@ -1156,7 +1156,6 @@ updateTaskStatus: async (taskId, status) => {
 },
 
 updateTask: async (taskId, updates) => {
-  console.log('[v0] updateTask called with:', { taskId, updateKeys: Object.keys(updates) })
   const supabase = createClient()
 
   // Fetch user first (avoid concurrent auth lock issues)
@@ -1328,14 +1327,11 @@ updateTask: async (taskId, updates) => {
 
     // 4. Detect status change to "resuelto" or "resolviendo" — notify ALL assignees + creator
     if (updates.status !== undefined) {
-      console.log('[v0] Status update detected - prev:', tareaAnterior?.estado, 'new:', updates.status)
       const notifyOnStatuses = ['resuelto', 'resolviendo']
       const prevStatus = tareaAnterior?.estado?.toLowerCase().trim() || ''
       const newStatus = (updates.status as string).toLowerCase().trim()
       const statusChanged = prevStatus !== newStatus
       const shouldNotify = notifyOnStatuses.includes(newStatus)
-      
-      console.log('[v0] Status check:', { prevStatus, newStatus, statusChanged, shouldNotify })
 
       if (statusChanged && shouldNotify) {
         // Collect all recipients: assignees + creator
