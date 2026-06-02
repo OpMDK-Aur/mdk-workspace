@@ -344,16 +344,16 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
                             <Icon className="h-3.5 w-3.5" />
                           </AvatarFallback>
                         </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0 overflow-hidden">
+                          <div className="flex items-start gap-2">
                             <p className={cn(
-                              "text-sm leading-snug",
+                              "text-sm leading-snug flex-1 min-w-0 break-words",
                               !notif.leida && "font-medium"
                             )}>
                               {notif.titulo}
                             </p>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="text-xs text-muted-foreground">
+                            <div className="flex items-center gap-1.5 shrink-0 text-right">
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">
                                 {formatDistanceToNow(new Date(notif.created_at), { 
                                   addSuffix: false, 
                                   locale: es 

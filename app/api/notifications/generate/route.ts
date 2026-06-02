@@ -39,15 +39,24 @@ export async function POST() {
     if (existingVenceNotifs && existingVenceNotifs.length > 0) {
       const referencedTaskIds = existingVenceNotifs.map(n => n.referencia_id).filter(Boolean)
 
-      // Find which of those tasks are now resolved/realizada
+      // Find which of those tasks are now resolved/completed (any completed status)
       const { data: resolvedTasks } = await supabase
         .from('tareas')
         .select('id, estado, fecha_vencimiento')
         .in('id', referencedTaskIds)
-        .or('estado.eq.realizada,estado.eq.resuelto,fecha_vencimiento.gte.' + now.toISOString())
 
       if (resolvedTasks && resolvedTasks.length > 0) {
-        const resolvedIds = new Set(resolvedTasks.map(t => t.id))
+        // Task is resolved if estado is any of: realizada, resuelto, completada, completado, done, finished
+        // OR if fecha_vencimiento is now in the future (no longer overdue)
+        const completedStatuses = ['realizada', 'resuelto', 'completada', 'completado', 'done', 'finished', 'cerrada', 'cerrado']
+        const resolvedIds = new Set(
+          resolvedTasks
+            .filter(t => 
+              completedStatuses.includes(t.estado?.toLowerCase()) || 
+              (t.fecha_vencimiento && new Date(t.fecha_vencimiento) >= now)
+            )
+            .map(t => t.id)
+        )
         const notifsToDelete = existingVenceNotifs
           .filter(n => resolvedIds.has(n.referencia_id))
           .map(n => n.id)
@@ -62,12 +71,12 @@ export async function POST() {
     }
 
     // Step 2: Get tasks that are OVERDUE and NOT resolved to create new notifications
+    // Exclude all completed status variants
     const { data: tareas, error: tareasError } = await supabase
       .from('tareas')
       .select('id, titulo, fecha_vencimiento, estado, cliente_id, asignado_a')
       .eq('asignado_a', currentColaborador.id)
-      .not('estado', 'eq', 'realizada')
-      .not('estado', 'eq', 'resuelto')
+      .not('estado', 'in', '(realizada,resuelto,completada,completado,done,finished,cerrada,cerrado)')
       .not('fecha_vencimiento', 'is', null)
       .lt('fecha_vencimiento', now.toISOString())
       .order('fecha_vencimiento', { ascending: true })

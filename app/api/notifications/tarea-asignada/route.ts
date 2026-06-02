@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
+const COMPLETED_STATUSES = ['realizada', 'resuelto', 'completada', 'completado', 'done', 'finished', 'cerrada', 'cerrado']
+
 export async function POST(request: Request) {
   try {
     const { taskId, titulo, colaboradorIds, clienteId } = await request.json()
@@ -10,6 +12,17 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createClient()
+
+    // Check if task is already completed - don't notify for completed tasks
+    const { data: tarea } = await supabase
+      .from('tareas')
+      .select('estado')
+      .eq('id', taskId)
+      .single()
+
+    if (tarea && COMPLETED_STATUSES.includes(tarea.estado?.toLowerCase())) {
+      return NextResponse.json({ success: true, skipped: 'Task already completed' })
+    }
 
     const notifications = colaboradorIds.map((colaboradorId: string) => ({
       colaborador_id: colaboradorId,
@@ -26,14 +39,11 @@ export async function POST(request: Request) {
       .from('notificaciones')
       .insert(notifications)
 
-    console.log('[v0] tarea-asignada insert result:', { error, count: notifications.length })
-
     if (error) {
       console.error('[v0] Error inserting tarea-asignada notifications:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    console.log('[v0] tarea-asignada notifications created successfully:', { count: notifications.length })
     return NextResponse.json({ success: true, created: notifications.length })
   } catch (error) {
     console.error('[v0] tarea-asignada API error:', error)

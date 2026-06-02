@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
+const COMPLETED_STATUSES = ['realizada', 'resuelto', 'completada', 'completado', 'done', 'finished', 'cerrada', 'cerrado']
+
 export async function POST(request: Request) {
   try {
     const { taskId, tituloTarea, fecha, hora, colaboradorIds } = await request.json()
@@ -14,6 +16,17 @@ export async function POST(request: Request) {
 
     if (!user?.email) {
       return NextResponse.json({ error: 'No authenticated user' }, { status: 401 })
+    }
+
+    // Check if task is already completed - don't create reminder for completed tasks
+    const { data: tarea } = await supabase
+      .from('tareas')
+      .select('estado')
+      .eq('id', taskId)
+      .single()
+
+    if (tarea && COMPLETED_STATUSES.includes(tarea.estado?.toLowerCase())) {
+      return NextResponse.json({ success: true, skipped: 'Task already completed' })
     }
 
     // Create reminder for each assignee
