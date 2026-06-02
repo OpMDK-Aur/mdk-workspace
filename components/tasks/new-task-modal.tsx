@@ -1461,6 +1461,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
         description: quickDescription || null,
         clientId: firstClient?.id || '',
         clientIds: quickClientIds,
+        clientName: firstClient?.nombre_del_negocio || undefined,
         assigneeId: firstAssignee?.id || '',
         assignees,
         status: quickStatus as TaskStatus,
