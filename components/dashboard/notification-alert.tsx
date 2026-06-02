@@ -152,11 +152,26 @@ export function NotificationAlertProvider() {
             </div>
             
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold leading-tight">{alert.titulo}</p>
-              {alert.descripcion && (
-                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                  {alert.descripcion}
-                </p>
+              {alert.tipo === 'comentario' ? (
+                // For task assignments: show title small, description prominent
+                <>
+                  <p className="text-xs font-medium text-muted-foreground">{alert.titulo}</p>
+                  {alert.descripcion && (
+                    <p className="text-sm font-semibold leading-snug mt-1 break-words">
+                      {alert.descripcion}
+                    </p>
+                  )}
+                </>
+              ) : (
+                // For mentions and other types: show title prominent
+                <>
+                  <p className="text-sm font-semibold leading-tight">{alert.titulo}</p>
+                  {alert.descripcion && (
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                      {alert.descripcion}
+                    </p>
+                  )}
+                </>
               )}
             </div>
             
