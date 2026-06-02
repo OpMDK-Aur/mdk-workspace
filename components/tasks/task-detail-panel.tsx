@@ -232,6 +232,8 @@ function MultiAssigneeSelect({
   }
 
   const availableColaboradores = colaboradores.filter(c => !assignees.find(a => a.id === c.id))
+  
+  console.log('[v0] AssigneeSelector - colaboradores:', colaboradores.length, 'assignees:', assignees.length, 'available:', availableColaboradores.length)
 
   return (
     <div className="space-y-2">
@@ -1631,7 +1633,12 @@ export function TaskDetailPanel() {
       ])
 
       if (tiposRes.data) setTiposTarea(tiposRes.data)
-      if (colabRes.data) setColaboradores(colabRes.data)
+      if (colabRes.data) {
+        console.log('[v0] Colaboradores loaded:', colabRes.data)
+        setColaboradores(colabRes.data)
+      } else {
+        console.error('[v0] Error loading colaboradores:', colabRes.error)
+      }
       if (clientesRes.data) setClientes(clientesRes.data)
     }
     
