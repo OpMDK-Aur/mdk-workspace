@@ -760,7 +760,7 @@ function TimeTracker({ task }: { task: Task }) {
   )
 }
 
-// ── Files Section ─────────────────────────────────────────────────────────────
+// ── Files Section ─────��───────────────────────────────────────────────────────
 
 // ── Comments Section (with rich text editor) ──────────────────────────────────
 
@@ -1631,12 +1631,7 @@ export function TaskDetailPanel() {
       ])
 
       if (tiposRes.data) setTiposTarea(tiposRes.data)
-      if (colabRes.data) {
-        console.log('[v0] Colaboradores loaded:', colabRes.data)
-        setColaboradores(colabRes.data)
-      } else {
-        console.error('[v0] Error loading colaboradores:', colabRes.error)
-      }
+      if (colabRes.data) setColaboradores(colabRes.data)
       if (clientesRes.data) setClientes(clientesRes.data)
     }
     
