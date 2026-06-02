@@ -197,9 +197,10 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
   }
 
   // Separate running entry from completed entries
+  // A truly running entry has no finalizado_en AND no duracion_seg (imported entries have duracion_seg but no finalizado_en)
   const { runningEntry, completedEntries } = useMemo(() => {
-    const running = entries.find((e) => e.finalizado_en === null)
-    const completed = entries.filter((e) => e.finalizado_en !== null)
+    const running = entries.find((e) => e.finalizado_en === null && e.duracion_seg === null)
+    const completed = entries.filter((e) => e.finalizado_en !== null || e.duracion_seg !== null)
     return { runningEntry: running, completedEntries: completed }
   }, [entries])
 
