@@ -1247,24 +1247,24 @@ updateTask: async (taskId, updates) => {
               clienteId: tareaAnterior.cliente_id || null,
             }),
           })
-          const result = await response.json()
-          console.log('[v0] Assignee notification sent:', result)
         } catch (err) {
           console.error('[v0] Error sending assignee notification:', err)
         }
       }
     }
 
-    // 2. Detect due date change — notify all current assignees (except actor)
+    // 2. Detect due date change — notify all current assignees + creator
     if (updates.dueDate !== undefined) {
       const prevDate = tareaAnterior.fecha_vencimiento
       const newDate = updates.dueDate ? (updates.dueDate instanceof Date ? updates.dueDate.toISOString() : String(updates.dueDate)) : null
       const prevNorm = prevDate ? new Date(prevDate).toDateString() : null
       const newNorm = newDate ? new Date(newDate).toDateString() : null
       if (prevNorm !== newNorm) {
-        const toNotify = [...new Set(previousAssignedIds)].filter(id => id !== actorId)
+        // Notify all assignees + creator
+        const assigneeIds = [...new Set(previousAssignedIds)]
+        const creatorId = tareaAnterior.creado_por
+        const toNotify = [...new Set([...assigneeIds, ...(creatorId ? [creatorId] : [])])]
         if (toNotify.length > 0) {
-          console.log('[v0] Notifying about due date change:', { taskId, toNotify, newDate })
           try {
             const response = await fetch('/api/notifications/task-event', {
               method: 'POST',
@@ -1279,8 +1279,6 @@ updateTask: async (taskId, updates) => {
                 clienteId: tareaAnterior.cliente_id || null,
               }),
             })
-            const result = await response.json()
-            console.log('[v0] Due date notification sent:', result)
           } catch (err) {
             console.error('[v0] Error sending due date notification:', err)
           }
@@ -1288,14 +1286,16 @@ updateTask: async (taskId, updates) => {
       }
     }
 
-    // 3. Detect newly added clients — notify all current assignees (except actor)
+    // 3. Detect newly added clients — notify all current assignees + creator
     if (updates.clientIds !== undefined) {
       const prevClientIds: string[] = tareaAnterior.cliente_ids || (tareaAnterior.cliente_id ? [tareaAnterior.cliente_id] : [])
       const addedClientIds = updates.clientIds.filter(id => !prevClientIds.includes(id))
       if (addedClientIds.length > 0) {
-        const toNotify = [...new Set(previousAssignedIds)].filter(id => id !== actorId)
+        // Notify all assignees + creator
+        const assigneeIds = [...new Set(previousAssignedIds)]
+        const creatorId = tareaAnterior.creado_por
+        const toNotify = [...new Set([...assigneeIds, ...(creatorId ? [creatorId] : [])])]
         if (toNotify.length > 0) {
-          console.log('[v0] Notifying about added client:', { taskId, addedClientIds, toNotify })
           // Fetch client names for the added clients
           const { data: clientesData } = await supabase
             .from('clientes')
@@ -1316,8 +1316,6 @@ updateTask: async (taskId, updates) => {
                 clienteId: addedClientIds[0] || null,
               }),
             })
-            const result = await response.json()
-            console.log('[v0] Client added notification sent:', result)
           } catch (err) {
             console.error('[v0] Error sending client added notification:', err)
           }
@@ -1390,7 +1388,54 @@ updateTask: async (taskId, updates) => {
           userId: actorId || 'unknown',
           userName: actorName,
         }
-        updatedTask.activities = [activity, ...t.activities]
+        updatedTask.activities = [activity, ...(updatedTask.activities || [])]
+      }
+      
+      // Add activity for due date change
+      if (updates.dueDate !== undefined) {
+        const prevDate = t.dueDate ? new Date(t.dueDate).toLocaleDateString('es-ES') : null
+        const newDate = updates.dueDate ? new Date(updates.dueDate).toLocaleDateString('es-ES') : null
+        if (prevDate !== newDate) {
+          const activity = {
+            id: crypto.randomUUID(),
+            action: newDate 
+              ? `Cambió la fecha de vencimiento a ${newDate}`
+              : 'Eliminó la fecha de vencimiento',
+            timestamp: new Date(),
+            userId: actorId || 'unknown',
+            userName: actorName,
+          }
+          updatedTask.activities = [activity, ...(updatedTask.activities || [])]
+        }
+      }
+      
+      // Add activity for client added
+      if (updates.clientIds !== undefined) {
+        const prevIds = t.clientIds || []
+        const addedIds = updates.clientIds.filter(id => !prevIds.includes(id))
+        const removedIds = prevIds.filter(id => !updates.clientIds!.includes(id))
+        
+        if (addedIds.length > 0) {
+          const activity = {
+            id: crypto.randomUUID(),
+            action: `Agregó ${addedIds.length} cliente(s) a la tarea`,
+            timestamp: new Date(),
+            userId: actorId || 'unknown',
+            userName: actorName,
+          }
+          updatedTask.activities = [activity, ...(updatedTask.activities || [])]
+        }
+        
+        if (removedIds.length > 0) {
+          const activity = {
+            id: crypto.randomUUID(),
+            action: `Eliminó ${removedIds.length} cliente(s) de la tarea`,
+            timestamp: new Date(),
+            userId: actorId || 'unknown',
+            userName: actorName,
+          }
+          updatedTask.activities = [activity, ...(updatedTask.activities || [])]
+        }
       }
       
       return updatedTask
