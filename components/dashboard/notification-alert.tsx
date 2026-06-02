@@ -21,6 +21,7 @@ const TIPO_CONFIG: Record<string, { icon: typeof Bell; accent: string }> = {
   tarea_resuelta:    { icon: CheckCircle,   accent: 'bg-emerald-500/20 text-emerald-400' },
   tarea_resolviendo: { icon: CheckCircle,   accent: 'bg-blue-500/20 text-blue-400' },
   asignado_a_tarea:  { icon: Users,         accent: 'bg-blue-500/20 text-blue-400' },
+  persona_agregada:  { icon: Users,         accent: 'bg-indigo-500/20 text-indigo-400' },
   fecha_cambiada:    { icon: Calendar,      accent: 'bg-amber-500/20 text-amber-400' },
   cliente_agregado:  { icon: UserPlus,      accent: 'bg-violet-500/20 text-violet-400' },
 }
@@ -32,6 +33,7 @@ const ALERT_TYPES = [
   'tarea_resuelta',
   'tarea_resolviendo',
   'asignado_a_tarea',
+  'persona_agregada',
   'fecha_cambiada',
   'cliente_agregado',
 ]

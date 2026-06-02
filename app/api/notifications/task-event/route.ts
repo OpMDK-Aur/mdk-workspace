@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
 // Event types that trigger notifications
-export type TaskEventType = 'tarea_resuelta' | 'tarea_resolviendo' | 'asignado_a_tarea' | 'fecha_cambiada' | 'cliente_agregado'
+export type TaskEventType = 'tarea_resuelta' | 'tarea_resolviendo' | 'asignado_a_tarea' | 'persona_agregada' | 'fecha_cambiada' | 'cliente_agregado'
 
 export async function POST(request: Request) {
   try {
@@ -53,6 +53,10 @@ export async function POST(request: Request) {
       case 'asignado_a_tarea':
         titulo = `Te agregaron a una tarea: ${taskTitle}`
         descripcion = `Asignado por ${actorName}`
+        break
+      case 'persona_agregada':
+        titulo = `Nueva persona en tarea: ${taskTitle}`
+        descripcion = `Agregada por ${actorName}`
         break
       case 'fecha_cambiada':
         titulo = `Fecha de fin cambiada: ${taskTitle}`

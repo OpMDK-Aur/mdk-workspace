@@ -36,7 +36,7 @@ import {
 
 interface Notificacion {
   id: string
-  tipo: 'reunion' | 'tarea_vence' | 'tarea_hoy' | 'comentario' | 'cpl_alerta' | 'impresiones_cero' | 'mencion' | 'tarea_resuelta' | 'tarea_resolviendo' | 'asignado_a_tarea' | 'fecha_cambiada' | 'cliente_agregado'
+  tipo: 'reunion' | 'tarea_vence' | 'tarea_hoy' | 'comentario' | 'cpl_alerta' | 'impresiones_cero' | 'mencion' | 'tarea_resuelta' | 'tarea_resolviendo' | 'asignado_a_tarea' | 'persona_agregada' | 'fecha_cambiada' | 'cliente_agregado'
   titulo: string
   descripcion: string | null
   referencia_id: string | null
@@ -60,6 +60,7 @@ const TIPO_CONFIG: Record<string, { icon: typeof Calendar; color: string; bgColo
   tarea_resuelta:    { icon: CheckSquare,   color: 'text-emerald-400', bgColor: 'bg-emerald-500/10', label: 'Resuelta' },
   tarea_resolviendo: { icon: CheckSquare,   color: 'text-blue-400',    bgColor: 'bg-blue-500/10',    label: 'Resolviendo' },
   asignado_a_tarea: { icon: CheckSquare,   color: 'text-blue-400',    bgColor: 'bg-blue-500/10',    label: 'Asignado' },
+  persona_agregada: { icon: CheckSquare,   color: 'text-indigo-400',  bgColor: 'bg-indigo-500/10',  label: 'Persona agregada' },
   fecha_cambiada:   { icon: Calendar,      color: 'text-amber-400',   bgColor: 'bg-amber-500/10',   label: 'Fecha cambiada' },
   cliente_agregado: { icon: MessageSquare, color: 'text-violet-400',  bgColor: 'bg-violet-500/10',  label: 'Cliente agregado' },
   cpl_alerta:       { icon: TrendingDown,  color: 'text-red-400',     bgColor: 'bg-red-500/10',     label: 'CPL Alerta' },

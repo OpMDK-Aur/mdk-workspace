@@ -1228,14 +1228,14 @@ updateTask: async (taskId, updates) => {
       ...(tareaAnterior.asignado_a ? [tareaAnterior.asignado_a] : []),
     ]
 
-    // 1. Detect newly added assignees
+    // 1. Detect newly added assignees — notify them AND all current assignees + creator
     if (updates.assignees !== undefined) {
       const newAssignedIds = updates.assignees.map(a => a.id)
-      const addedIds = newAssignedIds.filter(id => !previousAssignedIds.includes(id) && id !== actorId)
+      const addedIds = newAssignedIds.filter(id => !previousAssignedIds.includes(id))
       if (addedIds.length > 0) {
-        console.log('[v0] Notifying newly added assignees:', { taskId, addedIds })
+        // Notify the new assignees that they were added
         try {
-          const response = await fetch('/api/notifications/task-event', {
+          await fetch('/api/notifications/task-event', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1249,6 +1249,29 @@ updateTask: async (taskId, updates) => {
           })
         } catch (err) {
           console.error('[v0] Error sending assignee notification:', err)
+        }
+        
+        // Also notify all existing assignees + creator that someone new was added
+        const creatorId = tareaAnterior.creado_por
+        const existingToNotify = [...new Set([...previousAssignedIds, ...(creatorId ? [creatorId] : [])])]
+          .filter(id => !addedIds.includes(id)) // Don't double-notify the new assignees
+        if (existingToNotify.length > 0) {
+          try {
+            await fetch('/api/notifications/task-event', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                eventType: 'persona_agregada',
+                taskId,
+                taskTitle,
+                actorName,
+                colaboradorIds: existingToNotify,
+                clienteId: tareaAnterior.cliente_id || null,
+              }),
+            })
+          } catch (err) {
+            console.error('[v0] Error sending persona_agregada notification:', err)
+          }
         }
       }
     }
@@ -1430,6 +1453,38 @@ updateTask: async (taskId, updates) => {
           const activity = {
             id: crypto.randomUUID(),
             action: `Eliminó ${removedIds.length} cliente(s) de la tarea`,
+            timestamp: new Date(),
+            userId: actorId || 'unknown',
+            userName: actorName,
+          }
+          updatedTask.activities = [activity, ...(updatedTask.activities || [])]
+        }
+      }
+      
+      // Add activity for assignee changes
+      if (updates.assignees !== undefined) {
+        const prevAssigneeIds = t.assignees.map(a => a.id)
+        const newAssigneeIds = updates.assignees.map(a => a.id)
+        const addedAssignees = updates.assignees.filter(a => !prevAssigneeIds.includes(a.id))
+        const removedAssigneeIds = prevAssigneeIds.filter(id => !newAssigneeIds.includes(id))
+        
+        if (addedAssignees.length > 0) {
+          const names = addedAssignees.map(a => a.name).join(', ')
+          const activity = {
+            id: crypto.randomUUID(),
+            action: `Agregó a ${names} a la tarea`,
+            timestamp: new Date(),
+            userId: actorId || 'unknown',
+            userName: actorName,
+          }
+          updatedTask.activities = [activity, ...(updatedTask.activities || [])]
+        }
+        
+        if (removedAssigneeIds.length > 0) {
+          const removedNames = t.assignees.filter(a => removedAssigneeIds.includes(a.id)).map(a => a.name).join(', ')
+          const activity = {
+            id: crypto.randomUUID(),
+            action: `Eliminó a ${removedNames} de la tarea`,
             timestamp: new Date(),
             userId: actorId || 'unknown',
             userName: actorName,
@@ -1864,7 +1919,7 @@ export function useTaskStoreHydrated() {
   return hydrated
 }
 
-// ── Selectors ────────────────────────────────────────���────────────────────────
+// ── Selectors ───────��────────────────────────────────���────────────────────────
 
 export function useFilteredTasks() {
   const tasks = useTaskStore((s) => s.tasks)
