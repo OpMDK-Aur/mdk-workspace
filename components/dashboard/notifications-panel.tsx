@@ -304,8 +304,8 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
         </div>
       </div>
 
-      {/* Content */}
-      <ScrollArea className="flex-1">
+      {/* Content — flex-1 + min-h-0 lets this shrink inside the flex column so scroll works */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32">
             <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
@@ -333,53 +333,49 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
                     <div
                       key={notif.id}
                       className={cn(
-                        "px-3 py-2.5 hover:bg-muted/50 cursor-pointer transition-colors",
+                        "px-3 py-2 hover:bg-muted/50 cursor-pointer transition-colors",
                         !notif.leida && "bg-muted/30"
                       )}
                       onClick={() => handleNotificationClick(notif)}
                     >
-                      <div className="flex items-start gap-2.5">
-                        <Avatar className={cn("h-7 w-7 shrink-0", config.bgColor)}>
-                          <AvatarFallback className={cn("text-xs", config.color)}>
-                            <Icon className="h-3.5 w-3.5" />
+                      <div className="flex items-start gap-2">
+                        <Avatar className={cn("h-6 w-6 shrink-0 mt-0.5", config.bgColor)}>
+                          <AvatarFallback className={cn("text-[10px]", config.color)}>
+                            <Icon className="h-3 w-3" />
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0 overflow-hidden">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-start gap-2">
-                          <p className={cn(
-                            "text-sm leading-snug flex-1 min-w-0 break-words",
-                            !notif.leida && "font-medium"
-                          )}>
-                            {notif.titulo}
-                          </p>
-                        </div>
-                        <div className="flex items-center justify-between gap-1.5">
-                          {notif.descripcion && (
-                            <p className="text-xs text-muted-foreground line-clamp-1 flex-1 min-w-0">
-                              {notif.descripcion}
+                          <div className="flex flex-col gap-0.5">
+                            <p className={cn(
+                              "text-xs leading-snug break-words",
+                              !notif.leida && "font-medium"
+                            )}>
+                              {notif.titulo}
                             </p>
-                          )}
-                          <div className="flex items-center gap-1 shrink-0">
-                            <span className="text-xs text-muted-foreground whitespace-nowrap">
-                              {formatDistanceToNow(new Date(notif.created_at), { 
-                                addSuffix: false, 
-                                locale: es 
-                              })}
-                            </span>
-                            {!notif.leida && (
-                              <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
+                            <div className="flex items-center justify-between gap-1.5">
+                              {notif.descripcion && (
+                                <p className="text-[11px] text-muted-foreground line-clamp-1 flex-1 min-w-0">
+                                  {notif.descripcion}
+                                </p>
+                              )}
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                  {formatDistanceToNow(new Date(notif.created_at), { 
+                                    addSuffix: false, 
+                                    locale: es 
+                                  })}
+                                </span>
+                                {!notif.leida && (
+                                  <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                                )}
+                              </div>
+                            </div>
+                            {notif.cliente?.nombre_del_negocio && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {notif.cliente.nombre_del_negocio}
+                              </span>
                             )}
                           </div>
-                        </div>
-                        {notif.cliente?.nombre_del_negocio && (
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded line-clamp-1">
-                              {notif.cliente.nombre_del_negocio}
-                            </span>
-                          </div>
-                        )}
-                      </div>
                         </div>
                       </div>
                     </div>
@@ -389,7 +385,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
             ))}
           </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   )
 }
