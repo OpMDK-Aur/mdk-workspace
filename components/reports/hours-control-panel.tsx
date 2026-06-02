@@ -51,7 +51,7 @@ interface MetricaColaborador {
 }
 
 interface HoursStatus {
-  status: 'ok' | 'warning' | 'danger'
+  status: 'ok' | 'warning' | 'danger' | 'no-limits'
   message: string
 }
 
@@ -60,6 +60,13 @@ function getHoursStatus(
   minimo: number,
   maximo: number
 ): HoursStatus {
+  // If no limits defined, return neutral status
+  if (minimo === 0 && maximo === 0) {
+    return {
+      status: 'no-limits',
+      message: 'Sin límites definidos',
+    }
+  }
   if (asignadas < minimo) {
     return {
       status: 'danger',
@@ -91,6 +98,14 @@ function getHoursStatus(
 }
 
 function StatusBadge({ status }: { status: HoursStatus }) {
+  if (status.status === 'no-limits') {
+    return (
+      <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/30">
+        <Clock className="w-3 h-3 mr-1" />
+        S/L
+      </Badge>
+    )
+  }
   if (status.status === 'ok') {
     return (
       <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
@@ -103,7 +118,7 @@ function StatusBadge({ status }: { status: HoursStatus }) {
     return (
       <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30">
         <AlertTriangle className="w-3 h-3 mr-1" />
-        Atención
+        Atencion
       </Badge>
     )
   }
@@ -115,7 +130,10 @@ function StatusBadge({ status }: { status: HoursStatus }) {
   )
 }
 
-function StatusIcon({ status }: { status: 'ok' | 'warning' | 'danger' }) {
+function StatusIcon({ status }: { status: 'ok' | 'warning' | 'danger' | 'no-limits' }) {
+  if (status === 'no-limits') {
+    return <Clock className="w-4 h-4 text-blue-500" />
+  }
   if (status === 'ok') {
     return <CheckCircle2 className="w-4 h-4 text-emerald-500" />
   }
@@ -256,6 +274,7 @@ function PaceIndicator({
 // - Gray: 0 to min (below minimum)
 // - Green: min to max (within range)
 // - Red: exceeds max (over limit)
+// - Blue: no limits defined (just shows hours)
 function HoursProgressBar({ 
   asignado, 
   minimo, 
@@ -267,6 +286,33 @@ function HoursProgressBar({
   maximo: number
   height?: string
 }) {
+  const hasLimits = minimo > 0 || maximo > 0
+  
+  // If no limits defined, show a simple display
+  if (!hasLimits) {
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center gap-3">
+          <div className={`relative flex-1 ${height} bg-zinc-800 rounded-full overflow-hidden`}>
+            <div 
+              className="absolute inset-y-0 left-0 bg-blue-500 transition-all duration-300 rounded-full"
+              style={{ width: '100%' }}
+            />
+          </div>
+          <span className="text-sm font-mono font-medium min-w-[70px] text-right text-blue-500">
+            {formatHoursToTime(asignado)}
+          </span>
+          <span className="text-xs font-medium min-w-[45px] text-right text-muted-foreground">
+            (S/L)
+          </span>
+        </div>
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>Sin límites definidos</span>
+        </div>
+      </div>
+    )
+  }
+  
   // Calculate percentages relative to max
   const minPercent = maximo > 0 ? (minimo / maximo) * 100 : 50
   const progressPercent = maximo > 0 ? (asignado / maximo) * 100 : 0
@@ -327,6 +373,28 @@ function CompactProgressBar({
   minimo: number
   maximo: number
 }) {
+  const hasLimits = minimo > 0 || maximo > 0
+  
+  // If no limits defined, show a simple display
+  if (!hasLimits) {
+    return (
+      <div className="flex items-center gap-2 min-w-[200px]">
+        <div className="relative flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+          <div 
+            className="absolute inset-y-0 left-0 bg-blue-500 transition-all duration-300 rounded-full"
+            style={{ width: '100%' }}
+          />
+        </div>
+        <span className="text-xs font-mono font-medium min-w-[60px] text-right text-blue-500">
+          {formatHoursToTime(asignado)}
+        </span>
+        <span className="text-xs font-medium min-w-[40px] text-right text-muted-foreground">
+          (S/L)
+        </span>
+      </div>
+    )
+  }
+  
   const minPercent = maximo > 0 ? (minimo / maximo) * 100 : 50
   const progressPercent = maximo > 0 ? (asignado / maximo) * 100 : 0
   const isOverMax = asignado > maximo
@@ -367,48 +435,110 @@ function CompactProgressBar({
 async function fetchMetricas(mes: number, anio: number) {
   const supabase = createClient()
   
-  // Fetch metricas_colaboradores
-  const { data: metricas, error: metricasError } = await supabase
-    .from('metricas_colaborador')
-    .select(`
-      *,
-      colaborador:colaborador_id(id, nombre, apellido),
-      cliente:cliente_id(id, nombre_del_negocio)
-    `)
-    .eq('mes', mes)
-    .eq('anio', anio)
-  
-  if (metricasError) throw metricasError
-  
   // Calculate the date range for the selected month
   const startDate = new Date(anio, mes - 1, 1)
   const endDate = new Date(anio, mes, 0) // Last day of the month
   const startDateStr = startDate.toISOString().split('T')[0]
   const endDateStr = endDate.toISOString().split('T')[0]
   
-  // Fetch actual hours from entradas_de_tiempo for the selected month
-  const { data: entries, error: entriesError } = await supabase
-    .from('entradas_de_tiempo')
-    .select('colaborador_id, cliente_id, duracion_seg')
-    .gte('iniciado_en', `${startDateStr}T00:00:00`)
-    .lte('iniciado_en', `${endDateStr}T23:59:59`)
+  // Fetch metricas_colaboradores - this is the single source of truth
+  // Values (horas_objetivo, minimo_no_negociable_horas) are pre-calculated and stored by the Colaboradores page
+  const [metricasRes, colaboradoresRes, clientesRes] = await Promise.all([
+    supabase
+      .from('metricas_colaborador')
+      .select(`
+        *,
+        colaborador:colaborador_id(id, nombre, apellido),
+        cliente:cliente_id(id, nombre_del_negocio)
+      `)
+      .eq('mes', mes)
+      .eq('anio', anio),
+    supabase.from('colaboradores').select('id, nombre, apellido'),
+    supabase.from('clientes').select('id, nombre_del_negocio'),
+  ])
   
-  if (entriesError) throw entriesError
+  // Fetch entries in multiple pages to bypass Supabase 1000 row limit
+  const allEntries: { colaborador_id: string; cliente_id: string; duracion_seg: number }[] = []
+  let page = 0
+  const pageSize = 1000
+  let hasMore = true
   
-  // Calculate hours per colaborador-cliente pair
+  while (hasMore) {
+    const { data: pageData, error: pageError } = await supabase
+      .from('entradas_de_tiempo')
+      .select('colaborador_id, cliente_id, duracion_seg')
+      .gte('iniciado_en', `${startDateStr}T00:00:00`)
+      .lte('iniciado_en', `${endDateStr}T23:59:59`)
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+    
+    if (pageError) throw pageError
+    
+    if (pageData && pageData.length > 0) {
+      allEntries.push(...pageData)
+      hasMore = pageData.length === pageSize
+      page++
+    } else {
+      hasMore = false
+    }
+  }
+  
+  if (metricasRes.error) throw metricasRes.error
+  
+  const metricas = metricasRes.data || []
+  const entries = allEntries
+  const colaboradoresMap = new Map((colaboradoresRes.data || []).map(c => [c.id, c]))
+  const clientesMap = new Map((clientesRes.data || []).map(c => [c.id, c]))
+  
+  // Calculate hours per colaborador-cliente pair from time entries
   const hoursMap = new Map<string, number>()
-  entries?.forEach(entry => {
+  entries.forEach(entry => {
     if (entry.colaborador_id && entry.cliente_id && entry.duracion_seg) {
-      const key = `${entry.colaborador_id}-${entry.cliente_id}`
+      const key = `${entry.colaborador_id}::${entry.cliente_id}`
       hoursMap.set(key, (hoursMap.get(key) || 0) + (entry.duracion_seg / 3600))
     }
   })
   
-  // Merge hours into metricas
-  const metricasWithHours = (metricas || []).map(m => ({
+  // Create a set of existing metrica keys
+  const metricaKeys = new Set(metricas.map(m => `${m.colaborador_id}::${m.cliente_id}`))
+  
+  // Use metricas directly from DB - values are already calculated and stored
+  const metricasWithHours: MetricaColaborador[] = metricas.map(m => ({
     ...m,
-    acumulado_mes_asignado: hoursMap.get(`${m.colaborador_id}-${m.cliente_id}`) || 0
+    minimo_no_negociable_horas: Number(m.minimo_no_negociable_horas) || 0,
+    horas_objetivo: Number(m.horas_objetivo) || 0,
+    acumulado_mes_asignado: hoursMap.get(`${m.colaborador_id}::${m.cliente_id}`) || 0
   }))
+  
+  // Add entries that don't have metricas (time tracked but no assignment defined)
+  hoursMap.forEach((hours, key) => {
+    if (!metricaKeys.has(key)) {
+      const [colaborador_id, cliente_id] = key.split('::')
+      const colaborador = colaboradoresMap.get(colaborador_id)
+      const cliente = clientesMap.get(cliente_id)
+      
+      if (colaborador && cliente) {
+        metricasWithHours.push({
+          id: `generated-${key}`,
+          colaborador_id,
+          cliente_id,
+          minimo_no_negociable_horas: null,
+          horas_objetivo: null,
+          acumulado_mes_asignado: hours,
+          mes,
+          anio,
+          colaborador: {
+            id: colaborador.id,
+            nombre: colaborador.nombre,
+            apellido: colaborador.apellido,
+          },
+          cliente: {
+            id: cliente.id,
+            nombre_del_negocio: cliente.nombre_del_negocio,
+          },
+        })
+      }
+    }
+  })
   
   return metricasWithHours as MetricaColaborador[]
 }
