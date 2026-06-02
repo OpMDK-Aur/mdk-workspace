@@ -88,7 +88,8 @@ export async function POST() {
       }
     }
 
-    // Step 2: Get tasks that are OVERDUE (vencidas - fecha < hoy)
+    // Step 2: Get OVERDUE tasks (Tarea VENCIDA)
+    // Definition: fecha_vencimiento < today AND estado is NOT in completed statuses (realizada, resuelto, etc.)
     const { data: tareasVencidas } = await supabase
       .from('tareas')
       .select('id, titulo, fecha_vencimiento, estado, cliente_id, asignado_a')
@@ -98,7 +99,8 @@ export async function POST() {
       .lt('fecha_vencimiento', today.toISOString())
       .order('fecha_vencimiento', { ascending: true })
 
-    // Step 3: Get tasks that are TODAY (fecha = hoy)
+    // Step 3: Get TODAY's tasks (Tarea de HOY)
+    // Definition: fecha_vencimiento = today AND estado is NOT in completed statuses
     const { data: tareaasHoy } = await supabase
       .from('tareas')
       .select('id, titulo, fecha_vencimiento, estado, cliente_id, asignado_a')
