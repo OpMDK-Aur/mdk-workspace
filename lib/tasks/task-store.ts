@@ -1355,7 +1355,6 @@ updateTask: async (taskId, updates) => {
               }),
             })
             const result = await response.json()
-            console.log('[v0] Status change notification sent:', eventType, result)
           } catch (err) {
             console.error('[v0] Error sending status change notification:', err)
           }
@@ -1365,11 +1364,37 @@ updateTask: async (taskId, updates) => {
   }
   // --- End notifications ---
 
-  // Update local state
+  // Update local state (including activity for status changes)
   set((state) => ({
-    tasks: state.tasks.map((t) =>
-      t.id === taskId ? { ...t, ...updates, updatedAt: new Date() } : t
-    ),
+    tasks: state.tasks.map((t) => {
+      if (t.id !== taskId) return t
+      
+      // Build updated task
+      const updatedTask = { ...t, ...updates, updatedAt: new Date() }
+      
+      // Add activity for status change
+      if (updates.status !== undefined && updates.status !== t.status) {
+        const statusLabels: Record<string, string> = {
+          'pendiente_aprobacion': 'Pendiente aprobación',
+          'pendiente': 'Pendiente',
+          'resolviendo': 'Resolviendo',
+          'demorada': 'Demorada',
+          'resuelto': 'Resuelto',
+          'pausado': 'Pausado',
+        }
+        const newStatusLabel = statusLabels[updates.status] || updates.status
+        const activity = {
+          id: crypto.randomUUID(),
+          action: `Cambió el estado a "${newStatusLabel}"`,
+          timestamp: new Date(),
+          userId: actorId || 'unknown',
+          userName: actorName,
+        }
+        updatedTask.activities = [activity, ...t.activities]
+      }
+      
+      return updatedTask
+    }),
   }))
 },
 
