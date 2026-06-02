@@ -122,15 +122,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
       
       setCurrentUserId(colaborador.id)
       
-      // Only delete tarea_vence notifications, preserve task assignment and other types
-      const supabase2 = createClient()
-      await supabase2
-        .from('notificaciones')
-        .delete()
-        .eq('colaborador_id', colaborador.id)
-        .eq('tipo', 'tarea_vence')
-      
-      // Generate new notifications for overdue tasks only
+      // Generate fresh notifications for overdue and today tasks
       try {
         await fetch('/api/notifications/generate', { method: 'POST' })
       } catch {
