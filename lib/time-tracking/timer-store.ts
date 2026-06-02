@@ -208,6 +208,9 @@ export const useTimerStore = create<TimerState>()(
 
       continueEntry: async (entry) => {
         const state = get()
+        // Always sync with DB first to ensure consistency
+        await get().loadEntries()
+        
         if (state.isRunning && state.currentEntryId) {
           await get().stopTimer()
         }
