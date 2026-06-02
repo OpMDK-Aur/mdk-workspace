@@ -1162,7 +1162,7 @@ updateTask: async (taskId, updates) => {
   const [{ data: tareaAnterior }, { data: { user } }] = await Promise.all([
     supabase
       .from('tareas')
-      .select('titulo, asignado_a, asignados_a, fecha_vencimiento, cliente_id, cliente_ids')
+      .select('titulo, estado, asignado_a, asignados_a, fecha_vencimiento, cliente_id, cliente_ids')
       .eq('id', taskId)
       .single(),
     supabase.auth.getUser(),
@@ -1320,6 +1320,40 @@ updateTask: async (taskId, updates) => {
             console.log('[v0] Client added notification sent:', result)
           } catch (err) {
             console.error('[v0] Error sending client added notification:', err)
+          }
+        }
+      }
+    }
+
+    // 4. Detect status change to "resuelto" — notify all current assignees (except actor)
+    if (updates.status !== undefined) {
+      const resolvedStatuses = ['resuelto', 'resuelta', 'completada', 'completado']
+      const prevStatus = tareaAnterior.estado?.toLowerCase() || ''
+      const newStatus = (updates.status as string).toLowerCase()
+      const wasNotResolved = !resolvedStatuses.includes(prevStatus)
+      const isNowResolved = resolvedStatuses.includes(newStatus)
+      
+      if (wasNotResolved && isNowResolved) {
+        const toNotify = [...new Set(previousAssignedIds)].filter(id => id !== actorId)
+        if (toNotify.length > 0) {
+          console.log('[v0] Notifying about resolved task:', { taskId, toNotify, newStatus })
+          try {
+            const response = await fetch('/api/notifications/task-event', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                eventType: 'tarea_resuelta',
+                taskId,
+                taskTitle,
+                actorName,
+                colaboradorIds: toNotify,
+                clienteId: tareaAnterior.cliente_id || null,
+              }),
+            })
+            const result = await response.json()
+            console.log('[v0] Task resolved notification sent:', result)
+          } catch (err) {
+            console.error('[v0] Error sending task resolved notification:', err)
           }
         }
       }
