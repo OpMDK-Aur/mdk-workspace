@@ -44,7 +44,7 @@ export async function POST() {
         .from('tareas')
         .select('id, estado, fecha_vencimiento')
         .in('id', referencedTaskIds)
-        .or(`asignado_a.eq.${currentColaborador.id},asignados_a.cs.["${currentColaborador.id}"]`)
+        .or(`asignado_a.eq.${currentColaborador.id},asignados_a.cs.{${currentColaborador.id}}`)
 
       if (resolvedTasks && resolvedTasks.length > 0) {
         const completedStatuses = ['realizada', 'resuelto', 'completada', 'completado', 'done', 'finished', 'cerrada', 'cerrado']
@@ -95,7 +95,7 @@ export async function POST() {
     const { data: tareasVencidas } = await supabase
       .from('tareas')
       .select('id, titulo, fecha_vencimiento, estado, cliente_id, asignado_a')
-      .or(`asignado_a.eq.${currentColaborador.id},asignados_a.cs.["${currentColaborador.id}"]`)
+      .or(`asignado_a.eq.${currentColaborador.id},asignados_a.cs.{${currentColaborador.id}}`)
       .not('estado', 'in', '(realizada,resuelto,completada,completado,done,finished,cerrada,cerrado)')
       .not('fecha_vencimiento', 'is', null)
       .lt('fecha_vencimiento', today.toISOString())
@@ -107,7 +107,7 @@ export async function POST() {
     const { data: tareaasHoy } = await supabase
       .from('tareas')
       .select('id, titulo, fecha_vencimiento, estado, cliente_id, asignado_a')
-      .or(`asignado_a.eq.${currentColaborador.id},asignados_a.cs.["${currentColaborador.id}"]`)
+      .or(`asignado_a.eq.${currentColaborador.id},asignados_a.cs.{${currentColaborador.id}}`)
       .not('estado', 'in', '(realizada,resuelto,completada,completado,done,finished,cerrada,cerrado)')
       .not('fecha_vencimiento', 'is', null)
       .gte('fecha_vencimiento', today.toISOString())
@@ -125,7 +125,7 @@ export async function POST() {
           .from('notificaciones')
           .select('referencia_id, tipo')
           .eq('colaborador_id', currentColaborador.id)
-          .in('referencia_tipo', ['tarea_vence', 'tarea_hoy'])
+          .in('tipo', ['tarea_vence', 'tarea_hoy'])
           .in('referencia_id', allTaskIds)
       : { data: [] }
     
