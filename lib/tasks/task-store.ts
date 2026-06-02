@@ -1152,130 +1152,129 @@ updateTask: async (taskId, updates) => {
 },
 
 addTask: async (taskData) => {
-  const supabase = createClient()
-  const id = crypto.randomUUID()
+  try {
+    const supabase = createClient()
+    const id = crypto.randomUUID()
 
-  // Always resolve the logged-in collaborator at insert time
-  let resolvedCreatedById = taskData.createdById || null
-  let resolvedCreatedByName = taskData.createdByName || 'Sistema'
-  let resolvedCreatedByAvatar = taskData.createdByAvatar || undefined
+    // Always resolve the logged-in collaborator at insert time
+    let resolvedCreatedById = taskData.createdById || null
+    let resolvedCreatedByName = taskData.createdByName || 'Sistema'
+    let resolvedCreatedByAvatar = taskData.createdByAvatar || undefined
 
-  if (!resolvedCreatedById) {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user?.email) {
-      const { data: colab } = await supabase
-        .from('colaboradores')
-        .select('id, nombre, apellido, avatar_url')
-        .eq('email', user.email)
-        .single()
-      if (colab) {
-        resolvedCreatedById = colab.id
-        resolvedCreatedByName = [colab.nombre, colab.apellido].filter(Boolean).join(' ')
-        resolvedCreatedByAvatar = colab.avatar_url || undefined
+    if (!resolvedCreatedById) {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.email) {
+        const { data: colab } = await supabase
+          .from('colaboradores')
+          .select('id, nombre, apellido, avatar_url')
+          .eq('email', user.email)
+          .single()
+        if (colab) {
+          resolvedCreatedById = colab.id
+          resolvedCreatedByName = [colab.nombre, colab.apellido].filter(Boolean).join(' ')
+          resolvedCreatedByAvatar = colab.avatar_url || undefined
+        }
       }
     }
-  }
-  
-  // Insert into tareas table
-  // Support both single clientId and multiple clientIds
-  const clientIds = taskData.clientIds || (taskData.clientId ? [taskData.clientId] : [])
-  
-  // Support both single assigneeId and multiple assigneeIds
-  const assigneeIds = taskData.assigneeIds || (taskData.assigneeId ? [taskData.assigneeId] : [])
-  
-  const { error } = await supabase
-  .from('tareas')
-  .insert({
-  id,
-  titulo: taskData.title,
-  descripcion: taskData.description,
-  tipo_tarea_id: taskData.type || null,
-  cliente_id: clientIds[0] || null,
-  cliente_ids: clientIds.length > 0 ? clientIds : null,
-  asignado_a: assigneeIds[0] || null,
-  asignados_a: assigneeIds.length > 0 ? assigneeIds : null,
-  estado: taskData.status || 'pendiente',
-  prioridad: taskData.priority || 'media',
-  fecha_vencimiento: taskData.dueDate || null,
-  creado_por: resolvedCreatedById,
-  })
-  
-  if (error) {
-    console.error('Error creating task:', error)
-    return
-  }
-  
-  // Also insert initial comment if there are comments
-  if (taskData.comments && taskData.comments.length > 0) {
-    for (const comment of taskData.comments) {
-      const isSystem = comment.userId === 'system' || !comment.userId
-      const { error: commentError } = await supabase
-        .from('comentarios_tareas')
-        .insert({
-          tarea_id: id,
-          contenido: comment.content,
-          autor_id: isSystem ? null : comment.userId,
-          autor_nombre: comment.userName,
-          es_sistema: isSystem,
-        })
-      if (commentError) {
-        console.error('[v0] Error creating comment:', commentError)
-      }
-    }
-  }
-  
-  // Notify assigned users about the new task via server API (bypasses RLS)
-  console.log('[v0] addTask assigneeIds:', assigneeIds, 'createdById:', taskData.createdById)
-  const assignedColabIds = assigneeIds.filter(uid => uid && uid !== taskData.createdById)
-  console.log('[v0] Filtered assignedColabIds for notification:', assignedColabIds)
-  if (assignedColabIds.length > 0) {
-    console.log('[v0] Calling tarea-asignada API with:', { taskId: id, titulo: taskData.title, colaboradorIds: assignedColabIds })
-    fetch('/api/notifications/tarea-asignada', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        taskId: id,
-        titulo: taskData.title,
-        colaboradorIds: assignedColabIds,
-        clienteId: clientIds[0] || null,
-      }),
+    
+    // Insert into tareas table
+    // Support both single clientId and multiple clientIds
+    const clientIds = taskData.clientIds || (taskData.clientId ? [taskData.clientId] : [])
+    
+    // Support both single assigneeId and multiple assigneeIds
+    const assigneeIds = taskData.assigneeIds || (taskData.assigneeId ? [taskData.assigneeId] : [])
+    
+    const { error } = await supabase
+    .from('tareas')
+    .insert({
+    id,
+    titulo: taskData.title,
+    descripcion: taskData.description,
+    tipo_tarea_id: taskData.type || null,
+    cliente_id: clientIds[0] || null,
+    cliente_ids: clientIds.length > 0 ? clientIds : null,
+    asignado_a: assigneeIds[0] || null,
+    asignados_a: assigneeIds.length > 0 ? assigneeIds : null,
+    estado: taskData.status || 'pendiente',
+    prioridad: taskData.priority || 'media',
+    fecha_vencimiento: taskData.dueDate || null,
+    creado_por: resolvedCreatedById,
     })
-      .then(res => res.json())
-      .then(data => console.log('[v0] tarea-asignada API response:', data))
-      .catch(err => console.error('[v0] Error calling tarea-asignada API:', err))
-  } else {
-    console.log('[v0] No assignees to notify (empty or self-assigned)')
+    
+    if (error) {
+      console.error('Error creating task:', error)
+      return undefined
+    }
+    
+    // Also insert initial comment if there are comments
+    if (taskData.comments && taskData.comments.length > 0) {
+      for (const comment of taskData.comments) {
+        const isSystem = comment.userId === 'system' || !comment.userId
+        const { error: commentError } = await supabase
+          .from('comentarios_tareas')
+          .insert({
+            tarea_id: id,
+            contenido: comment.content,
+            autor_id: isSystem ? null : comment.userId,
+            autor_nombre: comment.userName,
+            es_sistema: isSystem,
+          })
+        if (commentError) {
+          console.error('[v0] Error creating comment:', commentError)
+        }
+      }
+    }
+    
+    // Notify assigned users about the new task via server API (bypasses RLS)
+    const assignedColabIds = assigneeIds.filter(uid => uid && uid !== taskData.createdById)
+    if (assignedColabIds.length > 0) {
+      fetch('/api/notifications/tarea-asignada', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId: id,
+          titulo: taskData.title,
+          colaboradorIds: assignedColabIds,
+          clienteId: clientIds[0] || null,
+        }),
+      })
+        .then(res => res.json())
+        .catch(err => console.error('[v0] Error calling tarea-asignada API:', err))
+    }
+    
+    // Update local state
+    set((state) => ({
+      tasks: [
+        {
+          ...taskData,
+          id,
+          clientIds: taskData.clientIds || (taskData.clientId ? [taskData.clientId] : []),
+          clients: taskData.clients || (taskData.clientId ? [{ id: taskData.clientId, nombre_del_negocio: taskData.clientName || '' }] : []),
+          createdById: resolvedCreatedById,
+          createdByName: resolvedCreatedByName,
+          createdByAvatar: resolvedCreatedByAvatar,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          activities: [
+            { id: crypto.randomUUID(), action: 'Tarea creada', timestamp: new Date(), userId: taskData.createdById || 'current', userName: taskData.createdByName || 'Usuario' },
+          ],
+          timeSessions: [],
+          totalTimeSec: 0,
+          isTimerRunning: false,
+          timerStartedAt: null,
+          comments: taskData.comments || [],
+          files: taskData.files || [],
+          quotation: null,
+        },
+        ...state.tasks,
+      ],
+    }))
+    
+    return id
+  } catch (error) {
+    console.error('[v0] Unexpected error in addTask:', error)
+    return undefined
   }
-  
-  // Update local state
-  set((state) => ({
-    tasks: [
-      {
-        ...taskData,
-        id,
-        clientIds: taskData.clientIds || (taskData.clientId ? [taskData.clientId] : []),
-        clients: taskData.clients || (taskData.clientId ? [{ id: taskData.clientId, nombre_del_negocio: taskData.clientName || '' }] : []),
-        createdById: resolvedCreatedById,
-        createdByName: resolvedCreatedByName,
-        createdByAvatar: resolvedCreatedByAvatar,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        activities: [
-          { id: crypto.randomUUID(), action: 'Tarea creada', timestamp: new Date(), userId: taskData.createdById || 'current', userName: taskData.createdByName || 'Usuario' },
-        ],
-        timeSessions: [],
-        totalTimeSec: 0,
-        isTimerRunning: false,
-        timerStartedAt: null,
-        comments: taskData.comments || [],
-        files: taskData.files || [],
-        quotation: null,
-      },
-      ...state.tasks,
-    ],
-  }))
-  
-  return id
 },
 
   deleteTask: async (taskId) => {

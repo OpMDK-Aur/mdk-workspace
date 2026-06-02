@@ -1427,103 +1427,114 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     
     setIsCreating(true)
     
-    // Build clients array
-    const clients = quickClientIds
-      .map(id => dbClientes.find(c => c.id === id))
-      .filter((c): c is DbCliente => c !== undefined)
-      .map(c => ({ id: c.id, nombre_del_negocio: c.nombre_del_negocio }))
-    
-    // Build assignees array
-    const assignees = quickAssigneeIds
-      .map(id => dbColaboradores.find(a => a.id === id))
-      .filter((a): a is DbColaborador => a !== undefined)
-      .map(a => ({ id: a.id, nombre: a.nombre, avatar_url: a.avatar_url }))
-    
-    const firstClient = clients[0]
-    const firstAssignee = assignees[0]
-    
-    // Build initial comment if provided
-    const comments: TaskComment[] = []
-    if (quickComment.trim()) {
-      comments.push({
-        id: `comment-${Date.now()}`,
-        content: quickComment.trim(),
-        userId: currentUser?.id || 'system',
-        userName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
-        userAvatar: currentUser?.avatar_url || null,
-        createdAt: new Date(),
-      })
-    }
-    
-    const newTaskId = await addTask({
-      title: quickTitle,
-      description: quickDescription || null,
-      clientId: firstClient?.id || '',
-      clientIds: quickClientIds,
-      assigneeId: firstAssignee?.id || '',
-      assignees,
-      status: quickStatus as TaskStatus,
-      priority: (quickPriority || 'media') as TaskPriority,
-      type: quickType,
-      dueDate: quickDueDate ? new Date(quickDueDate + 'T12:00:00') : null,
-      customFields: {},
-      createdById: currentUser?.id || null,
-      comments,
-    } as any)
-
-    // Save pending attachments to tarea_adjuntos after task creation
-    if (pendingAttachments.length > 0 && newTaskId) {
-      await supabase.from('tarea_adjuntos').insert(
-        pendingAttachments.map(att => ({
-          tarea_id: newTaskId,
-          nombre: att.name,
-          url: att.url,
-          tipo: att.mimeType,
-          subido_por: currentUser?.id || null,
-        }))
-      )
-    }
-
-    // Create reminder if configured
-    if ((reminderDate || reminderTime) && newTaskId) {
-      const reminderRecipients = reminderMode === 'asignados' 
-        ? quickAssigneeIds 
-        : reminderCustomIds
+    try {
+      // Build clients array
+      const clients = quickClientIds
+        .map(id => dbClientes.find(c => c.id === id))
+        .filter((c): c is DbCliente => c !== undefined)
+        .map(c => ({ id: c.id, nombre_del_negocio: c.nombre_del_negocio }))
       
-      if (reminderRecipients.length > 0) {
-        await fetch('/api/notifications/recordatorio', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            taskId: newTaskId,
-            tituloTarea: quickTitle,
-            fecha: reminderDate || null,
-            hora: reminderTime || null,
-            colaboradorIds: reminderRecipients,
-          }),
+      // Build assignees array
+      const assignees = quickAssigneeIds
+        .map(id => dbColaboradores.find(a => a.id === id))
+        .filter((a): a is DbColaborador => a !== undefined)
+        .map(a => ({ id: a.id, nombre: a.nombre, avatar_url: a.avatar_url }))
+      
+      const firstClient = clients[0]
+      const firstAssignee = assignees[0]
+      
+      // Build initial comment if provided
+      const comments: TaskComment[] = []
+      if (quickComment.trim()) {
+        comments.push({
+          id: `comment-${Date.now()}`,
+          content: quickComment.trim(),
+          userId: currentUser?.id || 'system',
+          userName: currentUser ? [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ') : 'Sistema',
+          userAvatar: currentUser?.avatar_url || null,
+          createdAt: new Date(),
         })
       }
-    }
+      
+      const newTaskId = await addTask({
+        title: quickTitle,
+        description: quickDescription || null,
+        clientId: firstClient?.id || '',
+        clientIds: quickClientIds,
+        assigneeId: firstAssignee?.id || '',
+        assignees,
+        status: quickStatus as TaskStatus,
+        priority: (quickPriority || 'media') as TaskPriority,
+        type: quickType,
+        dueDate: quickDueDate ? new Date(quickDueDate + 'T12:00:00') : null,
+        customFields: {},
+        createdById: currentUser?.id || null,
+        comments,
+      } as any)
 
-    setIsCreating(false)
-    // Reset quick mode state
-    setQuickTitle('')
-    setQuickDescription('')
-    setQuickClientIds([])
-    setQuickType('')
-    setQuickPriority('')
-    setQuickStatus('pendiente')
-    setQuickAssigneeIds([])
-    setQuickDueDate('')
-    setQuickComment('')
-    setPendingAttachments([])
-    setReminderDate('')
-    setReminderTime('')
-    setReminderMode('asignados')
-    setReminderCustomIds([])
-    setActiveTab('tarea')
-    setQuickMode(false)
-    onOpenChange(false)
+      // Save pending attachments to tarea_adjuntos after task creation
+      if (pendingAttachments.length > 0 && newTaskId) {
+        try {
+          await supabase.from('tarea_adjuntos').insert(
+            pendingAttachments.map(att => ({
+              tarea_id: newTaskId,
+              nombre: att.name,
+              url: att.url,
+              tipo: att.mimeType,
+              subido_por: currentUser?.id || null,
+            }))
+          )
+        } catch (attachmentError) {
+          console.error('[v0] Error saving attachments:', attachmentError)
+          // Continue even if attachments fail
+        }
+      }
+
+      // Create reminder if configured (non-blocking)
+      if ((reminderDate || reminderTime) && newTaskId) {
+        const reminderRecipients = reminderMode === 'asignados' 
+          ? quickAssigneeIds 
+          : reminderCustomIds
+        
+        if (reminderRecipients.length > 0) {
+          // Fire and forget - don't block on reminder creation
+          fetch('/api/notifications/recordatorio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              taskId: newTaskId,
+              tituloTarea: quickTitle,
+              fecha: reminderDate || null,
+              hora: reminderTime || null,
+              colaboradorIds: reminderRecipients,
+            }),
+          }).catch(err => console.error('[v0] Error creating reminder:', err))
+        }
+      }
+
+      // Reset quick mode state
+      setQuickTitle('')
+      setQuickDescription('')
+      setQuickClientIds([])
+      setQuickType('')
+      setQuickPriority('')
+      setQuickStatus('pendiente')
+      setQuickAssigneeIds([])
+      setQuickDueDate('')
+      setQuickComment('')
+      setPendingAttachments([])
+      setReminderDate('')
+      setReminderTime('')
+      setReminderMode('asignados')
+      setReminderCustomIds([])
+      setActiveTab('tarea')
+      setQuickMode(false)
+      onOpenChange(false)
+    } catch (error) {
+      console.error('[v0] Error creating task:', error)
+    } finally {
+      setIsCreating(false)
+    }
   }
 
   // Rest of component code continues below
