@@ -226,7 +226,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
   const unreadCount = notificaciones.filter((n) => !n.leida).length
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full w-full overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
         <Button 
@@ -333,7 +333,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
                     <div
                       key={notif.id}
                       className={cn(
-                        "px-3 py-2 hover:bg-muted/50 cursor-pointer transition-colors",
+                        "w-full px-3 py-2 hover:bg-muted/50 cursor-pointer transition-colors overflow-hidden",
                         !notif.leida && "bg-muted/30"
                       )}
                       onClick={() => handleNotificationClick(notif)}
