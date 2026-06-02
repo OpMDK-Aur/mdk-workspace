@@ -78,6 +78,9 @@ export function ActiveTimerBar() {
   const [isStopping, setIsStopping] = useState(false)
 
   useEffect(() => {
+    // Rehydrate store from localStorage before any other operations
+    useTimerStore.persist.rehydrate()
+    
     async function init() {
       const supabase = createClient()
 

@@ -103,8 +103,20 @@ export const useTimerStore = create<TimerState>()(
       stopTimer: async () => {
         const state = get()
 
+        // Always clear local state first to prevent phantom timers
+        const clearState = {
+          isRunning: false,
+          startedAt: null,
+          currentEntryId: null,
+          description: '',
+          clientId: null,
+          tipoTareaId: null,
+          billable: true,
+          taskId: null,
+        }
+
         if (!state.startedAt) {
-          set({ isRunning: false, startedAt: null, currentEntryId: null })
+          set(clearState)
           return
         }
 
@@ -146,6 +158,7 @@ export const useTimerStore = create<TimerState>()(
 
           if (error) {
             console.error('Error stopping time entry:', error)
+            // Still clear local state even if DB update fails
           }
 
           set((s) => ({
@@ -157,16 +170,8 @@ export const useTimerStore = create<TimerState>()(
           }))
         }
 
-        set({
-          isRunning: false,
-          startedAt: null,
-          currentEntryId: null,
-          description: '',
-          clientId: null,
-          tipoTareaId: null,
-          billable: true,
-          taskId: null,
-        })
+        // Always clear state at the end
+        set(clearState)
       },
 
       setDescription: (desc) => set({ description: desc }),
@@ -203,6 +208,9 @@ export const useTimerStore = create<TimerState>()(
 
       continueEntry: async (entry) => {
         const state = get()
+        // Always sync with DB first to ensure consistency
+        await get().loadEntries()
+        
         if (state.isRunning && state.currentEntryId) {
           await get().stopTimer()
         }
@@ -282,7 +290,19 @@ export const useTimerStore = create<TimerState>()(
           // Get current user
           const { data: { user } } = await supabase.auth.getUser()
           if (!user) {
-            set({ entries: [], isLoading: false })
+            // Clear timer state if no user
+            set({ 
+              entries: [], 
+              isLoading: false,
+              isRunning: false,
+              startedAt: null,
+              currentEntryId: null,
+              description: '',
+              clientId: null,
+              tipoTareaId: null,
+              billable: true,
+              taskId: null,
+            })
             return
           }
           
@@ -299,8 +319,10 @@ export const useTimerStore = create<TimerState>()(
             const validEntries = data.filter((e) => e.iniciado_en && !isNaN(new Date(e.iniciado_en).getTime()))
             set({ entries: validEntries as TimeEntry[] })
 
+            // Check if there's actually a running entry in the database
             const runningEntry = validEntries.find((e) => e.finalizado_en === null)
             if (runningEntry) {
+              // Sync local state with the actual running entry from DB
               set({
                 isRunning: true,
                 startedAt: runningEntry.iniciado_en,
@@ -310,10 +332,36 @@ export const useTimerStore = create<TimerState>()(
                 tipoTareaId: runningEntry.tipo_tarea_id,
                 billable: runningEntry.facturable,
               })
+            } else {
+              // No running entry in DB - clear local timer state
+              // This fixes the issue where localStorage says timer is running but DB says otherwise
+              set({
+                isRunning: false,
+                startedAt: null,
+                currentEntryId: null,
+                description: '',
+                clientId: null,
+                tipoTareaId: null,
+                billable: true,
+                taskId: null,
+              })
             }
+          } else {
+            // Error loading or no data - clear timer state to be safe
+            set({
+              isRunning: false,
+              startedAt: null,
+              currentEntryId: null,
+            })
           }
         } catch (err) {
           console.error('Error loading entries:', err)
+          // On error, clear timer state to prevent phantom timers
+          set({
+            isRunning: false,
+            startedAt: null,
+            currentEntryId: null,
+          })
         } finally {
           set({ isLoading: false })
         }
@@ -327,6 +375,7 @@ export const useTimerStore = create<TimerState>()(
     }),
     {
       name: 'mdk-timer-storage',
+      skipHydration: true,
       partialize: (state) => ({
         isRunning: state.isRunning,
         startedAt: state.startedAt,

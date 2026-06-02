@@ -83,6 +83,9 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
 
   // Load entries from Supabase on mount (for regular users)
   useEffect(() => {
+    // Rehydrate store from localStorage to avoid lock conflicts
+    useTimerStore.persist.rehydrate()
+    
     if (!isMaster) {
       loadEntries()
     }
