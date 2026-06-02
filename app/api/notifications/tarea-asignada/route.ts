@@ -5,7 +5,7 @@ const COMPLETED_STATUSES = ['realizada', 'resuelto', 'completada', 'completado',
 
 export async function POST(request: Request) {
   try {
-    const { taskId, titulo, colaboradorIds, clienteId } = await request.json()
+    const { taskId, titulo, colaboradorIds, clienteId, clienteName, createdById, createdByName } = await request.json()
 
     if (!taskId || !titulo || !Array.isArray(colaboradorIds) || colaboradorIds.length === 0) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -24,11 +24,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, skipped: 'Task already completed' })
     }
 
+    // Build description: "Created by: [name] | Client: [client]"
+    const parts = []
+    if (createdByName) parts.push(`Creada por: ${createdByName}`)
+    if (clienteName) parts.push(`Cliente: ${clienteName}`)
+    const descripcion = parts.length > 0 ? parts.join(' | ') : titulo
+
     const notifications = colaboradorIds.map((colaboradorId: string) => ({
       colaborador_id: colaboradorId,
       tipo: 'comentario',
-      titulo: 'Nueva tarea',
-      descripcion: titulo,
+      titulo: `Nueva tarea: ${titulo}`,
+      descripcion,
       referencia_id: taskId,
       referencia_tipo: 'tarea',
       cliente_id: clienteId || null,

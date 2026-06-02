@@ -1225,22 +1225,25 @@ addTask: async (taskData) => {
       }
     }
     
-    // Notify assigned users about the new task via server API (bypasses RLS)
-    const assignedColabIds = assigneeIds.filter(uid => uid && uid !== taskData.createdById)
-    if (assignedColabIds.length > 0) {
-      fetch('/api/notifications/tarea-asignada', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId: id,
-          titulo: taskData.title,
-          colaboradorIds: assignedColabIds,
-          clienteId: clientIds[0] || null,
-        }),
-      })
-        .then(res => res.json())
-        .catch(err => console.error('[v0] Error calling tarea-asignada API:', err))
-    }
+  // Notify assigned users about the new task via server API (bypasses RLS)
+  const assignedColabIds = assigneeIds.filter(uid => uid && uid !== taskData.createdById)
+  if (assignedColabIds.length > 0) {
+    fetch('/api/notifications/tarea-asignada', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: id,
+        titulo: taskData.title,
+        colaboradorIds: assignedColabIds,
+        clienteId: clientIds[0] || null,
+        clienteName: taskData.clientName || null,
+        createdById: resolvedCreatedById,
+        createdByName: resolvedCreatedByName,
+      }),
+    })
+      .then(res => res.json())
+      .catch(err => console.error('[v0] Error calling tarea-asignada API:', err))
+  }
     
     // Update local state
     set((state) => ({

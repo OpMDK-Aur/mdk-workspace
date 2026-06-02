@@ -152,9 +152,9 @@ export function NotificationAlertProvider() {
             </div>
             
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium leading-tight">{alert.titulo}</p>
+              <p className="text-sm font-semibold leading-tight">{alert.titulo}</p>
               {alert.descripcion && (
-                <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                   {alert.descripcion}
                 </p>
               )}
