@@ -44,6 +44,7 @@ interface Notificacion {
   cliente_id: string | null
   leida: boolean
   created_at: string
+  cliente?: { nombre_del_negocio: string } | null
 }
 
 interface NotificationsPanelProps {
@@ -191,6 +192,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
     if (!currentUserId) return
     setLoading(true)
     
+    const supabase = createClient()
     // Only delete tarea_vence notifications, preserve task assignment notifications
     await supabase
       .from('notificaciones')

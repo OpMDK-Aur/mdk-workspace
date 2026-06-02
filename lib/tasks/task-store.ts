@@ -1127,8 +1127,9 @@ updateTaskStatus: async (taskId, status) => {
     }
   }
 
-  // If task is marked as completed, delete reminder notifications for this task
-  if (status === 'realizada') {
+  // If task is marked as a completed status, delete reminder notifications for this task
+  const completedForDelete = ['resuelto', 'realizada', 'completada', 'completado', 'cerrada', 'cerrado']
+  if (completedForDelete.includes(status as string)) {
     await supabase
       .from('notificaciones')
       .delete()
