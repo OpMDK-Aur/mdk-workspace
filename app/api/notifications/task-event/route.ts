@@ -29,7 +29,10 @@ export async function POST(request: Request) {
       clienteId?: string
     } = await request.json()
 
+    console.log('[v0] task-event API received:', { eventType, taskId, colaboradorIds })
+
     if (!eventType || !taskId || !taskTitle || !Array.isArray(colaboradorIds) || colaboradorIds.length === 0) {
+      console.log('[v0] task-event API missing required fields')
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
@@ -72,6 +75,8 @@ export async function POST(request: Request) {
       leida: false,
     }))
 
+    console.log('[v0] Inserting notifications:', notifications)
+
     const { error } = await supabase
       .from('notificaciones')
       .insert(notifications)
@@ -81,6 +86,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    console.log('[v0] Notifications inserted successfully')
     return NextResponse.json({ success: true, created: notifications.length })
   } catch (error) {
     console.error('[v0] task-event API error:', error)

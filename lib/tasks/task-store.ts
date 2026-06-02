@@ -1105,18 +1105,25 @@ updateTaskStatus: async (taskId, status) => {
     // Notify everyone except the actor
     const toNotify = [...new Set(assignedIds)].filter(id => id !== actorId)
     if (toNotify.length > 0) {
-      fetch('/api/notifications/task-event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventType: 'tarea_resuelta',
-          taskId,
-          taskTitle: tareaActual.titulo,
-          actorName,
-          colaboradorIds: toNotify,
-          clienteId: tareaActual.cliente_id || null,
-        }),
-      }).catch(err => console.error('[v0] task-event notify error:', err))
+      console.log('[v0] Notifying about resolved task:', { taskId, toNotify, actorName })
+      try {
+        const response = await fetch('/api/notifications/task-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventType: 'tarea_resuelta',
+            taskId,
+            taskTitle: tareaActual.titulo,
+            actorName,
+            colaboradorIds: toNotify,
+            clienteId: tareaActual.cliente_id || null,
+          }),
+        })
+        const result = await response.json()
+        console.log('[v0] Task resolved notification sent:', result)
+      } catch (err) {
+        console.error('[v0] Error sending task-event notification:', err)
+      }
     }
   }
 
@@ -1225,18 +1232,25 @@ updateTask: async (taskId, updates) => {
       const newAssignedIds = updates.assignees.map(a => a.id)
       const addedIds = newAssignedIds.filter(id => !previousAssignedIds.includes(id) && id !== actorId)
       if (addedIds.length > 0) {
-        fetch('/api/notifications/task-event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            eventType: 'asignado_a_tarea',
-            taskId,
-            taskTitle,
-            actorName,
-            colaboradorIds: addedIds,
-            clienteId: tareaAnterior.cliente_id || null,
-          }),
-        }).catch(err => console.error('[v0] task-event notify error:', err))
+        console.log('[v0] Notifying newly added assignees:', { taskId, addedIds })
+        try {
+          const response = await fetch('/api/notifications/task-event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              eventType: 'asignado_a_tarea',
+              taskId,
+              taskTitle,
+              actorName,
+              colaboradorIds: addedIds,
+              clienteId: tareaAnterior.cliente_id || null,
+            }),
+          })
+          const result = await response.json()
+          console.log('[v0] Assignee notification sent:', result)
+        } catch (err) {
+          console.error('[v0] Error sending assignee notification:', err)
+        }
       }
     }
 
@@ -1249,19 +1263,26 @@ updateTask: async (taskId, updates) => {
       if (prevNorm !== newNorm) {
         const toNotify = [...new Set(previousAssignedIds)].filter(id => id !== actorId)
         if (toNotify.length > 0) {
-          fetch('/api/notifications/task-event', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              eventType: 'fecha_cambiada',
-              taskId,
-              taskTitle,
-              actorName,
-              colaboradorIds: toNotify,
-              newDate: newDate || undefined,
-              clienteId: tareaAnterior.cliente_id || null,
-            }),
-          }).catch(err => console.error('[v0] task-event notify error:', err))
+          console.log('[v0] Notifying about due date change:', { taskId, toNotify, newDate })
+          try {
+            const response = await fetch('/api/notifications/task-event', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                eventType: 'fecha_cambiada',
+                taskId,
+                taskTitle,
+                actorName,
+                colaboradorIds: toNotify,
+                newDate: newDate || undefined,
+                clienteId: tareaAnterior.cliente_id || null,
+              }),
+            })
+            const result = await response.json()
+            console.log('[v0] Due date notification sent:', result)
+          } catch (err) {
+            console.error('[v0] Error sending due date notification:', err)
+          }
         }
       }
     }
@@ -1273,25 +1294,32 @@ updateTask: async (taskId, updates) => {
       if (addedClientIds.length > 0) {
         const toNotify = [...new Set(previousAssignedIds)].filter(id => id !== actorId)
         if (toNotify.length > 0) {
+          console.log('[v0] Notifying about added client:', { taskId, addedClientIds, toNotify })
           // Fetch client names for the added clients
           const { data: clientesData } = await supabase
             .from('clientes')
             .select('id, nombre_del_negocio')
             .in('id', addedClientIds)
           const clienteNames = (clientesData || []).map(c => c.nombre_del_negocio).filter(Boolean).join(', ')
-          fetch('/api/notifications/task-event', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              eventType: 'cliente_agregado',
-              taskId,
-              taskTitle,
-              actorName,
-              colaboradorIds: toNotify,
-              clienteName: clienteNames || undefined,
-              clienteId: addedClientIds[0] || null,
-            }),
-          }).catch(err => console.error('[v0] task-event notify error:', err))
+          try {
+            const response = await fetch('/api/notifications/task-event', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                eventType: 'cliente_agregado',
+                taskId,
+                taskTitle,
+                actorName,
+                colaboradorIds: toNotify,
+                clienteName: clienteNames || undefined,
+                clienteId: addedClientIds[0] || null,
+              }),
+            })
+            const result = await response.json()
+            console.log('[v0] Client added notification sent:', result)
+          } catch (err) {
+            console.error('[v0] Error sending client added notification:', err)
+          }
         }
       }
     }
