@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, getAuthUser } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { X, Bell, MessageSquare, UserPlus, CheckCircle, Calendar, Users } from 'lucide-react'
 
@@ -70,7 +70,7 @@ export function NotificationAlertProvider() {
   useEffect(() => {
     async function getUser() {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getAuthUser()
       if (user?.email) {
         const { data: colaborador } = await supabase
           .from('colaboradores')

@@ -6,7 +6,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
 import type { Profile, Client } from '@/lib/types'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, getAuthUser } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -176,7 +176,7 @@ export function Sidebar({
   useEffect(() => {
     async function fetchNotificationCount() {
       // Get current user's colaborador_id
-      const { data: { user: authUser } } = await supabase.auth.getUser()
+      const { data: { user: authUser } } = await getAuthUser()
       if (!authUser?.email) return
       
       const { data: colaborador } = await supabase

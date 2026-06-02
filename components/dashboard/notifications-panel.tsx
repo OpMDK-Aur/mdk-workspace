@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, getAuthUser } from '@/lib/supabase/client'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -108,7 +108,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
       const supabase = createClient()
       
       // Get current user
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getAuthUser()
       if (!user) {
         setLoading(false)
         return

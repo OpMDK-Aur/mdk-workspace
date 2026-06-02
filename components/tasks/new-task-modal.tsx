@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { TaskStatus, TaskPriority, TaskType, TaskComment, TaskFile } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, getAuthUser } from '@/lib/supabase/client'
 import {
   useTaskStore,
   PRIORITY_CONFIG,
@@ -959,7 +959,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     
     async function loadData() {
       // Get logged-in collaborator by email (colaboradores has no user_id column)
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getAuthUser()
       if (user?.email) {
         const { data: colab } = await supabase
           .from('colaboradores')
