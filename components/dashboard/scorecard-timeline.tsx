@@ -9,10 +9,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
-import { Loader2, Download, Rows3, ChevronDown, Search } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { format, parseISO } from 'date-fns'
-import { es } from 'date-fns/locale'
+import { Calendar } from '@/components/ui/calendar'
+import type { DateRange as DayPickerDateRange } from 'react-day-picker'
+import { Loader2, Download, ChevronDown, Search, CalendarDays } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -180,6 +179,37 @@ export function ScorecardTimeline({
   const [campaignPopoverOpen, setCampaignPopoverOpen] = useState(false)
   const [campaignSearch, setCampaignSearch] = useState('')
 
+  // ---------------------------------------------------------------------------
+  // Local date range (independent from global filters)
+  // ---------------------------------------------------------------------------
+  type DatePreset = 'today' | 'yesterday' | 'last_7' | 'last_14' | 'last_30' | 'custom'
+
+  function buildRange(preset: DatePreset, customFrom?: string, customTo?: string): { start: string; end: string } {
+    const today = startOfDay(new Date())
+    const f = (d: Date) => format(d, 'yyyy-MM-dd')
+    switch (preset) {
+      case 'today':      return { start: f(today),           end: f(today) }
+      case 'yesterday':  return { start: f(subDays(today,1)), end: f(subDays(today,1)) }
+      case 'last_7':     return { start: f(subDays(today,6)), end: f(today) }
+      case 'last_14':    return { start: f(subDays(today,13)),end: f(today) }
+      case 'last_30':    return { start: f(subDays(today,29)),end: f(today) }
+      case 'custom':     return { start: customFrom ?? f(subDays(today,29)), end: customTo ?? f(today) }
+    }
+  }
+
+  const PRESETS: { key: DatePreset; label: string }[] = [
+    { key: 'last_30',   label: 'Últimos 30' },
+    { key: 'last_14',   label: 'Últimos 14' },
+    { key: 'last_7',    label: 'Últimos 7' },
+    { key: 'yesterday', label: 'Ayer' },
+    { key: 'today',     label: 'Hoy' },
+  ]
+
+  const [activePreset, setActivePreset] = useState<DatePreset>('last_14')
+  const [localDateRange, setLocalDateRange] = useState(() => buildRange('last_14'))
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [calendarSel, setCalendarSel] = useState<DayPickerDateRange | undefined>()
+
   // Unique campaigns from scorecardRows for the selected client
   const availableCampaigns = useMemo(() => {
     if (!localClientId) return []
@@ -266,8 +296,8 @@ export function ScorecardTimeline({
       return
     }
 
-    const start = filters.dateRange.start || ''
-    const end   = filters.dateRange.end   || ''
+    const start = localDateRange.start || ''
+    const end   = localDateRange.end   || ''
     if (!start || !end) return
 
     setLoading(true)
@@ -307,7 +337,7 @@ export function ScorecardTimeline({
       .catch(e => { setError(e.message); setData([]) })
       .finally(() => setLoading(false))
 
-  }, [activeClient?.id, accountId, platform, granularity, localCampaignId, filters.dateRange.start, filters.dateRange.end])
+  }, [activeClient?.id, accountId, platform, granularity, localCampaignId, localDateRange.start, localDateRange.end])
 
   const toggleMetric = (key: string) => {
     setVisibleMetricKeys(prev => {
@@ -467,53 +497,7 @@ export function ScorecardTimeline({
             </div>
           )}
 
-          {/* Row selector (metric visibility) */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                <Rows3 className="h-3.5 w-3.5" />
-                Seleccionar filas
-                <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                  {visibleMetricKeys.size}
-                </Badge>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-64 p-0">
-              <div className="px-3 py-2.5 border-b border-border">
-                <p className="text-xs font-semibold">Filas visibles</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">Mostrar u ocultar metricas</p>
-              </div>
-              <ScrollArea className="h-64">
-                <div className="p-2">
-                  {METRICS.map(metric => (
-                    <label
-                      key={metric.key as string}
-                      className={cn(
-                        'flex items-start gap-2.5 px-2 py-1.5 rounded-md cursor-pointer',
-                        metric.status === 'coming_soon' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-muted'
-                      )}
-                    >
-                      <Checkbox
-                        checked={visibleMetricKeys.has(metric.key as string)}
-                        onCheckedChange={() => metric.status !== 'coming_soon' && toggleMetric(metric.key as string)}
-                        disabled={metric.status === 'coming_soon'}
-                        className="h-3.5 w-3.5 mt-0.5"
-                      />
-                      <div>
-                        <p className="text-xs font-medium text-foreground">{metric.label}</p>
-                        <p className="text-[10px] text-muted-foreground">{metric.sublabel}</p>
-                      </div>
-                      {metric.status === 'coming_soon' && (
-                        <Badge variant="outline" className="text-[9px] h-4 px-1 ml-auto shrink-0 border-muted-foreground/30 text-muted-foreground">
-                          Prox.
-                        </Badge>
-                      )}
-                    </label>
-                  ))}
-                </div>
-              </ScrollArea>
-            </PopoverContent>
-          </Popover>
+          {/* Row selector (metric visibility) — removed per request */}
 
           {/* Platform badge */}
           <Badge variant="outline" className={cn(
@@ -522,6 +506,64 @@ export function ScorecardTimeline({
           )}>
             {platform === 'meta' ? 'Meta' : 'Google'}
           </Badge>
+
+          {/* Date presets */}
+          <div className="flex items-center gap-1">
+            {PRESETS.map(p => (
+              <button
+                key={p.key}
+                onClick={() => {
+                  setActivePreset(p.key)
+                  setLocalDateRange(buildRange(p.key))
+                }}
+                className={cn(
+                  'h-8 px-3 text-xs rounded-md border transition-all font-medium',
+                  activePreset === p.key
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-transparent text-muted-foreground border-border/60 hover:border-border hover:text-foreground'
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+
+            {/* Custom date picker */}
+            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  className={cn(
+                    'h-8 px-3 text-xs rounded-md border transition-all font-medium inline-flex items-center gap-1.5',
+                    activePreset === 'custom'
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-transparent text-muted-foreground border-border/60 hover:border-border hover:text-foreground'
+                  )}
+                >
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  {activePreset === 'custom'
+                    ? `${format(parseISO(localDateRange.start), 'd MMM', { locale: es })} – ${format(parseISO(localDateRange.end), 'd MMM', { locale: es })}`
+                    : 'Personalizado'}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-auto p-0">
+                <Calendar
+                  mode="range"
+                  selected={calendarSel}
+                  onSelect={sel => {
+                    setCalendarSel(sel)
+                    if (sel?.from && sel?.to) {
+                      const from = format(sel.from, 'yyyy-MM-dd')
+                      const to   = format(sel.to,   'yyyy-MM-dd')
+                      setActivePreset('custom')
+                      setLocalDateRange(buildRange('custom', from, to))
+                      setCalendarOpen(false)
+                    }
+                  }}
+                  numberOfMonths={2}
+                  locale={es}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
 
           {/* Granularity toggle */}
           <div className="flex rounded-md border border-input">
