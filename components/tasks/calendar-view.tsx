@@ -184,10 +184,10 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
               </button>
             </PopoverTrigger>
             <PopoverContent
-              className="w-80 max-w-[calc(100vw-1rem)] p-0 shadow-lg"
+              className="w-72 p-0 shadow-lg border"
               align="end"
-              side="bottom"
-              sideOffset={4}
+              side="top"
+              sideOffset={8}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="sticky top-0 bg-gradient-to-r from-background to-background/95 px-4 py-3 border-b backdrop-blur-sm z-10">
@@ -200,8 +200,8 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                   </span>
                 </div>
               </div>
-              <ScrollArea className="h-96 w-full">
-                <div className="px-3 py-2 space-y-2">
+              <ScrollArea className="h-80 w-full">
+                <div className="px-2 py-2 space-y-1">
                   {tasks.map((task, index) => {
                     const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
                     const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && task.status !== 'resuelto'
@@ -212,50 +212,50 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                         key={task.id}
                         onClick={() => onTaskClick(task.id)}
                         className={cn(
-                          'w-full text-left rounded-lg px-3 py-2.5 transition-all duration-200',
-                          'bg-card/50 border border-border/60 hover:border-primary/40 hover:bg-card/80',
-                          'hover:shadow-md hover:translate-x-0.5',
-                          isOverdue && !isSystemTask && 'border-red-400/40 bg-red-400/5'
+                          'w-full text-left rounded-md px-2.5 py-2 transition-all duration-200',
+                          'bg-card/40 border border-border/40 hover:border-primary/50 hover:bg-card/60',
+                          'hover:shadow-sm hover:translate-x-0.5',
+                          isOverdue && !isSystemTask && 'border-red-400/50 bg-red-400/10'
                         )}
                       >
-                        <div className="flex items-start gap-2 mb-1.5">
-                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                            {isSystemTask && <RotateCcw className="h-3.5 w-3.5 text-teal-500 shrink-0 mt-0.5" />}
-                            {isOverdue && !isSystemTask && <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0 mt-0.5" />}
-                            <span className="truncate flex-1 text-sm font-medium text-foreground leading-tight">
+                        <div className="flex items-start gap-1.5 mb-1">
+                          <div className="flex items-center gap-1 flex-1 min-w-0">
+                            {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />}
+                            {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />}
+                            <span className="truncate flex-1 text-xs font-medium text-foreground leading-tight">
                               {task.title}
                             </span>
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div className="flex items-center gap-0.5 shrink-0">
                             {task.assignees && task.assignees.length > 0 ? (
-                              <div className="flex -space-x-1.5">
-                                {task.assignees.slice(0, 3).map((a, i) => (
-                                  <Avatar key={a.id} className="h-5 w-5 border-2 border-card ring-1 ring-border/50" style={{ zIndex: 3 - i }}>
+                              <div className="flex -space-x-1">
+                                {task.assignees.slice(0, 2).map((a, i) => (
+                                  <Avatar key={a.id} className="h-4 w-4 border border-card" style={{ zIndex: 2 - i }}>
                                     {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
-                                    <AvatarFallback className="text-[7px] font-semibold">{getInitials(a.nombre)}</AvatarFallback>
+                                    <AvatarFallback className="text-[6px]">{getInitials(a.nombre)}</AvatarFallback>
                                   </Avatar>
                                 ))}
-                                {task.assignees.length > 3 && (
-                                  <div className="h-5 w-5 rounded-full bg-muted border-2 border-card ring-1 ring-border/50 flex items-center justify-center text-[7px] font-semibold text-muted-foreground" style={{ zIndex: 0 }}>
-                                    +{task.assignees.length - 3}
+                                {task.assignees.length > 2 && (
+                                  <div className="h-4 w-4 rounded-full bg-muted border border-card flex items-center justify-center text-[6px] font-medium" style={{ zIndex: 0 }}>
+                                    +{task.assignees.length - 2}
                                   </div>
                                 )}
                               </div>
                             ) : (task.assigneeAvatar || task.assigneeName) ? (
-                              <Avatar className="h-5 w-5 border-2 border-card ring-1 ring-border/50 shrink-0">
+                              <Avatar className="h-4 w-4 shrink-0">
                                 {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
-                                <AvatarFallback className="text-[7px] font-semibold">{getInitials(task.assigneeName)}</AvatarFallback>
+                                <AvatarFallback className="text-[6px]">{getInitials(task.assigneeName)}</AvatarFallback>
                               </Avatar>
                             ) : null}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           {isSystemTask ? (
-                            <Badge variant="outline" className="h-5 px-2 text-[10px] border-0 bg-teal-100/80 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 font-semibold">
+                            <Badge variant="outline" className="h-4 px-1.5 text-[8px] border-0 bg-teal-100/60 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 font-medium">
                               Semanal
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className={cn('h-5 px-2 text-[10px] border-0 font-semibold', priorityConfig.bgColor, priorityConfig.color)}>
+                            <Badge variant="outline" className={cn('h-4 px-1.5 text-[8px] border-0 font-medium', priorityConfig.bgColor, priorityConfig.color)}>
                               {priorityConfig.label}
                             </Badge>
                           )}
