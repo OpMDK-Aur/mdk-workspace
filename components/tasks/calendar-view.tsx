@@ -184,8 +184,8 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
               </button>
             </PopoverTrigger>
             <PopoverContent
-              className="w-96 max-w-[calc(100vw-2rem)] p-0 shadow-lg"
-              align="center"
+              className="w-80 max-w-[calc(100vw-1rem)] p-0 shadow-lg"
+              align="end"
               side="bottom"
               sideOffset={4}
               onClick={(e) => e.stopPropagation()}
