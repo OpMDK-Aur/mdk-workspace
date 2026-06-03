@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import type { ScorecardRow, Client, DateRangePreset } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -11,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   AlertTriangle,
   Search,
@@ -25,6 +26,7 @@ import {
   ChevronUp,
   Info,
   CalendarDays,
+  Filter,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { format, subDays } from 'date-fns'
@@ -452,7 +454,7 @@ const FILTER_OPTIONS: { value: FilterOption; label: string }[] = [
   { value: 'cpl_issues', label: 'CPL' },
 ]
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// ── Main Component ──────────────────────────────────────────────────────��─────
 
 interface CampaignAlertsPanelProps {
   rows: ScorecardRow[]
@@ -468,6 +470,20 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
   const [dateRange, setDateRange] = useState<AlertDateRange>(() => buildAlertDateRange('last_14d'))
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [calendarSelection, setCalendarSelection] = useState<DayPickerDateRange | undefined>(undefined)
+  
+  // Campaign selection with localStorage persistence
+  const [selectedCampaignIds, setSelectedCampaignIds] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set()
+    const saved = localStorage.getItem('campaign-alerts-selection')
+    return saved ? new Set(JSON.parse(saved)) : new Set()
+  })
+  
+  // Sync to localStorage whenever selection changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('campaign-alerts-selection', JSON.stringify(Array.from(selectedCampaignIds)))
+    }
+  }, [selectedCampaignIds])
 
   function handlePresetChange(preset: AlertDatePreset) {
     if (preset === 'custom') {
@@ -489,6 +505,55 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
     }
   }
 
+  // Campaign selection handlers
+  function handleToggleCampaign(campaignId: string) {
+    setSelectedCampaignIds(prev => {
+      const next = new Set(prev)
+      if (next.has(campaignId)) {
+        next.delete(campaignId)
+      } else {
+        next.add(campaignId)
+      }
+      return next
+    })
+  }
+
+  function handleSelectAll() {
+    const allIds = new Set(rows.map(r => r.campaignId).filter((id): id is string => id != null))
+    setSelectedCampaignIds(allIds)
+  }
+
+  function handleClearSelection() {
+    setSelectedCampaignIds(new Set())
+  }
+
+  // Get unique campaigns grouped by client
+  const campaignsByClient = useMemo(() => {
+    const grouped = new Map<string, Array<{ id: string; name: string; platform: string }>>()
+    const clientNames = new Map<string, string>()
+    
+    for (const row of rows) {
+      if (!row.campaignId) continue
+      
+      if (!grouped.has(row.clientId)) {
+        grouped.set(row.clientId, [])
+        clientNames.set(row.clientId, row.clientName)
+      }
+      
+      // Avoid duplicates
+      const campaigns = grouped.get(row.clientId)!
+      if (!campaigns.find(c => c.id === row.campaignId)) {
+        campaigns.push({
+          id: row.campaignId,
+          name: row.campaignName,
+          platform: row.platform,
+        })
+      }
+    }
+    
+    return { grouped, clientNames }
+  }, [rows])
+
   // Calculate average CPL for threshold
   const averageCPL = useMemo(() => {
     const validCPLs = rows.filter(r => r.cpl > 0 && r.spend >= THRESHOLDS.MIN_SPEND_FOR_ALERTS)
@@ -496,8 +561,15 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
     return validCPLs.reduce((sum, r) => sum + r.cpl, 0) / validCPLs.length
   }, [rows])
 
-  // Detect all alerts
-  const allAlerts = useMemo(() => detectAlerts(rows, clients, averageCPL), [rows, clients, averageCPL])
+  // Filter rows based on selected campaigns
+  // Empty set = show all campaigns (default)
+  const filteredRows = useMemo(() => {
+    if (selectedCampaignIds.size === 0) return rows
+    return rows.filter(r => selectedCampaignIds.has(r.campaignId ?? ''))
+  }, [rows, selectedCampaignIds])
+
+  // Detect all alerts using filtered rows
+  const allAlerts = useMemo(() => detectAlerts(filteredRows, clients, averageCPL), [filteredRows, clients, averageCPL])
 
   // Group alerts by client
   const groupedAlerts = useMemo(() => {
@@ -691,7 +763,76 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
 
           <div className="h-4 w-px bg-border/60 mx-1" />
 
-          {/* Alert type filters */}
+          {/* Campaign selection */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all',
+                  selectedCampaignIds.size > 0
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-transparent text-muted-foreground border-border/60 hover:border-border hover:text-foreground'
+                )}
+              >
+                <Filter className="h-3 w-3" />
+                {selectedCampaignIds.size > 0
+                  ? `${selectedCampaignIds.size} campana${selectedCampaignIds.size !== 1 ? 's' : ''}`
+                  : 'Todas las campanas'}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-0" align="start">
+              <div className="p-3 border-b space-y-2">
+                <div className="text-xs font-semibold">Seleccionar campanas</div>
+                <div className="flex gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs h-7"
+                    onClick={handleSelectAll}
+                  >
+                    Seleccionar todo
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs h-7"
+                    onClick={handleClearSelection}
+                  >
+                    Limpiar
+                  </Button>
+                </div>
+              </div>
+              
+              <ScrollArea className="max-h-96">
+                <div className="p-3 space-y-3">
+                  {Array.from(campaignsByClient.grouped.entries()).map(([clientId, campaigns]) => (
+                    <div key={clientId} className="space-y-1.5">
+                      <div className="text-xs font-semibold text-foreground px-1">
+                        {campaignsByClient.clientNames.get(clientId)}
+                      </div>
+                      <div className="space-y-1 pl-3">
+                        {campaigns.map(campaign => (
+                          <label key={campaign.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 px-1.5 py-1 rounded text-xs">
+                            <Checkbox
+                              checked={selectedCampaignIds.has(campaign.id)}
+                              onCheckedChange={() => handleToggleCampaign(campaign.id)}
+                              className="h-3.5 w-3.5"
+                            />
+                            <span className="flex-1 truncate">{campaign.name}</span>
+                            <Badge variant="outline" className="h-4 px-1 text-[9px]">
+                              {campaign.platform === 'meta' ? 'Meta' : 'Google'}
+                            </Badge>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
+
+          <div className="h-4 w-px bg-border/60 mx-1" />
           {FILTER_OPTIONS.map(opt => (
             <button
               key={opt.value}
