@@ -179,7 +179,7 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
             : client.meta_ads_account_id!
 
           await Promise.all([
-            fetchMeta ? fetch(buildApiUrl('/api/ads/meta', filters, { account_id: metaAccountId }))
+            fetchMeta ? fetch(buildApiUrl('/api/ads/meta', filters, { account_id: metaAccountId, ...bustParam }))
               .then(r => r.json())
               .then(d => {
                 if (d.error) errors['meta'] = d.error

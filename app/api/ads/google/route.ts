@@ -232,6 +232,7 @@ export async function GET(request: NextRequest) {
 
     // Primary query — campaign resource does NOT support segments.conversion_action_name
     // alongside metrics.clicks/cost_micros/impressions (Google Ads API restriction)
+    // Only fetch ENABLED campaigns to show active campaigns in alerts
     const gaqlQuery = `
       SELECT
         campaign.id,
@@ -248,7 +249,7 @@ export async function GET(request: NextRequest) {
         segments.date
       FROM campaign
       WHERE ${dateClause}
-        AND campaign.status != 'REMOVED'
+        AND campaign.status = 'ENABLED'
       ORDER BY metrics.cost_micros DESC
     `
 
@@ -266,7 +267,7 @@ export async function GET(request: NextRequest) {
         segments.date
       FROM campaign
       WHERE ${dateClause}
-        AND campaign.status != 'REMOVED'
+        AND campaign.status = 'ENABLED'
       ORDER BY metrics.cost_micros DESC
     `
 
@@ -281,7 +282,7 @@ export async function GET(request: NextRequest) {
         metrics.all_conversions
       FROM campaign
       WHERE ${dateClause}
-        AND campaign.status != 'REMOVED'
+        AND campaign.status = 'ENABLED'
         AND metrics.all_conversions > 0
     `
 

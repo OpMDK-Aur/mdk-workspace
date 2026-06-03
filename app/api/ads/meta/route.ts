@@ -131,6 +131,40 @@ function getDateRange(preset: string): { since: string; until: string } {
 }
 
 // ---------------------------------------------------------------------------
+// Fetch active campaign IDs — to filter insights to only active campaigns
+// ---------------------------------------------------------------------------
+
+async function fetchActiveCampaignIds(
+  accountId: string,
+  accessToken: string
+): Promise<Set<string>> {
+  const activeIds = new Set<string>()
+  
+  let url: string | null = `${META_BASE_URL}/act_${accountId}/campaigns?${new URLSearchParams({
+    access_token: accessToken,
+    fields: 'id,effective_status',
+    filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE'] }]),
+    limit: '500',
+  })}`
+
+  while (url) {
+    const res = await fetch(url)
+    if (!res.ok) break
+    
+    const json = await res.json()
+    if (json.error) break
+    
+    for (const campaign of json.data ?? []) {
+      activeIds.add(campaign.id)
+    }
+    
+    url = json.paging?.next ?? null
+  }
+
+  return activeIds
+}
+
+// ---------------------------------------------------------------------------
 // Paginated insights fetch — single endpoint, no N+1
 // ---------------------------------------------------------------------------
 
@@ -206,10 +240,13 @@ export async function GET(request: NextRequest) {
     // Normalize: always strip act_ — the URL builder adds it
     const accountId = rawAccountId.replace(/^act_/, '')
 
-    // Cache lookup
-    const cached = await getCachedAdsData('meta', accountId, dateRange, startDate, endDate)
-    if (cached) {
-      return NextResponse.json({ ...cached, from_cache: true })
+    // Cache lookup — skip if bust=1
+    const bustCache = params.get('bust') === '1'
+    if (!bustCache) {
+      const cached = await getCachedAdsData('meta', accountId, dateRange, startDate, endDate)
+      if (cached) {
+        return NextResponse.json({ ...cached, from_cache: true })
+      }
     }
 
     const range = (startDate && endDate)
@@ -218,14 +255,24 @@ export async function GET(request: NextRequest) {
 
     // Single paginated request — no N+1
     let insightRows: MetaInsightRow[]
+    let activeCampaignIds: Set<string>
     try {
-      insightRows = await fetchAllInsightPages(accountId, accessToken, range)
+      // Fetch both in parallel: insights and active campaign IDs
+      const [insights, activeIds] = await Promise.all([
+        fetchAllInsightPages(accountId, accessToken, range),
+        fetchActiveCampaignIds(accountId, accessToken),
+      ])
+      insightRows = insights
+      activeCampaignIds = activeIds
     } catch (err: any) {
       return NextResponse.json({ error: err.message }, { status: 400 })
     }
 
-    // Build campaigns
-    const campaigns: CampaignResult[] = insightRows.map(row => {
+    // Filter to only active campaigns
+    const activeInsightRows = insightRows.filter(row => activeCampaignIds.has(row.campaign_id))
+
+    // Build campaigns from filtered rows
+    const campaigns: CampaignResult[] = activeInsightRows.map(row => {
       const spend = toNum(row.spend)
       const leads = extractLeads(row.actions)
       const cpl = leads > 0 && spend > 0 ? spend / leads : 0
