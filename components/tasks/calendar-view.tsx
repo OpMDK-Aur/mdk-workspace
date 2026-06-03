@@ -218,11 +218,11 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                           isOverdue && !isSystemTask && 'border-red-400/50 bg-red-400/10'
                         )}
                       >
-                        <div className="flex items-start gap-1.5 mb-1">
-                          <div className="flex items-center gap-1 flex-1 min-w-0">
+                        <div className="flex items-start gap-1.5 mb-1.5">
+                          <div className="flex items-start gap-1 flex-1 min-w-0">
                             {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />}
                             {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />}
-                            <span className="truncate flex-1 text-xs font-medium text-foreground leading-tight">
+                            <span className="flex-1 text-xs font-medium text-foreground break-words line-clamp-3">
                               {task.title}
                             </span>
                           </div>
