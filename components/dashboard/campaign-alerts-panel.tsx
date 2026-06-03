@@ -780,14 +780,14 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
                   : 'Todas las campanas'}
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-96 p-0" align="start">
-              <div className="p-4 border-b space-y-3">
+            <PopoverContent className="w-80 max-w-[90vw] p-0" align="end" side="bottom" sideOffset={4}>
+              <div className="p-3 border-b space-y-2">
                 <div className="text-sm font-bold">Seleccionar campañas</div>
                 <div className="flex gap-2">
                   <Button
                     size="sm"
                     variant="default"
-                    className="text-xs h-8 flex-1"
+                    className="text-xs h-7 flex-1"
                     onClick={handleSelectAll}
                   >
                     Seleccionar todo
@@ -795,7 +795,7 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
                   <Button
                     size="sm"
                     variant="outline"
-                    className="text-xs h-8 flex-1"
+                    className="text-xs h-7 flex-1"
                     onClick={handleClearSelection}
                   >
                     Limpiar
@@ -803,27 +803,22 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
                 </div>
               </div>
               
-              <ScrollArea className="max-h-96">
-                <div className="p-4 space-y-4">
+              <ScrollArea className="h-80">
+                <div className="p-3 space-y-3">
                   {Array.from(campaignsByClient.grouped.entries()).map(([clientId, campaigns]) => (
-                    <div key={clientId} className="space-y-2.5">
-                      <div className="text-sm font-semibold text-foreground">
+                    <div key={clientId} className="space-y-1.5">
+                      <div className="text-xs font-bold text-foreground uppercase tracking-wide">
                         {campaignsByClient.clientNames.get(clientId)}
                       </div>
-                      <div className="space-y-2 pl-4 border-l border-border/60">
+                      <div className="space-y-0.5">
                         {campaigns.map(campaign => (
-                          <label key={campaign.id} className="flex items-start gap-2.5 cursor-pointer hover:bg-muted/60 px-2.5 py-1.5 rounded transition-colors">
+                          <label key={campaign.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/60 px-2 py-1.5 rounded transition-colors">
                             <Checkbox
                               checked={selectedCampaignIds.has(campaign.id)}
                               onCheckedChange={() => handleToggleCampaign(campaign.id)}
-                              className="h-4 w-4 mt-0.5 shrink-0"
+                              className="h-4 w-4 shrink-0"
                             />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm text-foreground truncate font-medium">{campaign.name}</div>
-                            </div>
-                            <Badge variant="outline" className="h-5 px-1.5 text-[9px] font-medium shrink-0">
-                              {campaign.platform === 'meta' ? 'Meta' : 'Google'}
-                            </Badge>
+                            <span className="flex-1 text-xs text-foreground truncate">{campaign.name}</span>
                           </label>
                         ))}
                       </div>
