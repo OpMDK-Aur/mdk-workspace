@@ -19,7 +19,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Loader2, Download, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Minus, AlertTriangle, BellOff } from 'lucide-react'
+import { Loader2, Download, TrendingUp, TrendingDown, Minus, AlertTriangle, BellOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import type { Client, ClientPlan, Profile, UnidadNegocio } from '@/lib/types'
@@ -91,7 +91,12 @@ const getNPSColor = (score: number): string => {
   return 'text-red-600'
 }
 
-export function NPSReport() {
+interface NPSReportProps {
+  month: number
+  year: number
+}
+
+export function NPSReport({ month, year }: NPSReportProps) {
   const [clients, setClients] = useState<Client[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [npsHistorial, setNpsHistorial] = useState<NPSHistorial[]>([])
@@ -99,18 +104,13 @@ export function NPSReport() {
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('todos')
 
-  // Filters
-  const now = new Date()
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
-  const [selectedYear, setSelectedYear] = useState(now.getFullYear())
+  // Use props for month/year
+  const selectedMonth = month
+  const selectedYear = year
+
+  // Internal filters (specific to this report)
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
   const [unidadFilter, setUnidadFilter] = useState<UnidadNegocio | 'all'>('all')
-
-  // Years for selector
-  const years = useMemo(() => {
-    const currentYear = now.getFullYear()
-    return [currentYear - 1, currentYear, currentYear + 1]
-  }, [])
 
   // Fetch data
   useEffect(() => {
@@ -161,30 +161,8 @@ export function NPSReport() {
     fetchData()
   }, [selectedMonth, selectedYear])
 
-  // Navigation
-  const goToPreviousMonth = () => {
-    if (selectedMonth === 1) {
-      setSelectedMonth(12)
-      setSelectedYear(selectedYear - 1)
-    } else {
-      setSelectedMonth(selectedMonth - 1)
-    }
-  }
-
-  const goToNextMonth = () => {
-    if (selectedMonth === 12) {
-      setSelectedMonth(1)
-      setSelectedYear(selectedYear + 1)
-    } else {
-      setSelectedMonth(selectedMonth + 1)
-    }
-  }
-
-  const goToCurrentMonth = () => {
-    setSelectedMonth(now.getMonth() + 1)
-    setSelectedYear(now.getFullYear())
-  }
-
+  // Check if viewing current month
+  const now = new Date()
   const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
 
   // Get profile name
@@ -439,52 +417,6 @@ export function NPSReport() {
     <div className="space-y-6">
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goToPreviousMonth}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-
-          <div className="flex items-center gap-2">
-            <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(Number(v))}>
-              <SelectTrigger className="w-[130px] h-8 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MONTHS.map((month, i) => (
-                  <SelectItem key={i} value={String(i + 1)}>
-                    {month}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(Number(v))}>
-              <SelectTrigger className="w-[90px] h-8 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {years.map((year) => (
-                  <SelectItem key={year} value={String(year)}>
-                    {year}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goToNextMonth}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-
-          {!isCurrentMonth && (
-            <Button variant="outline" size="sm" className="h-8 text-xs ml-2" onClick={goToCurrentMonth}>
-              Hoy
-            </Button>
-          )}
-        </div>
-
-        <div className="h-6 w-px bg-border" />
-
         <Select value={planFilter} onValueChange={(v) => setPlanFilter(v as ClientPlan | 'all')}>
           <SelectTrigger className="w-[130px] h-8 text-sm">
             <SelectValue placeholder="Plan" />

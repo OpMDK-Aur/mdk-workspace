@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Loader2, Download, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
+import { Loader2, Download, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getServiceMapKPIs, createMissingTasks } from '@/lib/service-map'
 import type { ServiceMapKPIs, ClientPlan } from '@/lib/types'
@@ -30,37 +30,32 @@ interface Colaborador {
   nombre: string
 }
 
-const MONTHS = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-]
-
 const PLAN_COLORS: Record<ClientPlan, string> = {
   Esencial: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
   Estrategico: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
 }
 
-export function ServiceMapReport() {
+interface ServiceMapReportProps {
+  month: number
+  year: number
+}
+
+export function ServiceMapReport({ month, year }: ServiceMapReportProps) {
   const [kpis, setKpis] = useState<ServiceMapKPIs[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Filters
-  const now = new Date()
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
-  const [selectedYear, setSelectedYear] = useState(now.getFullYear())
+  // Use props for month/year
+  const selectedMonth = month
+  const selectedYear = year
+
+  // Internal filters (specific to this report)
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
   const [pmFilter, setPmFilter] = useState<string>('all')
   const [amFilter, setAmFilter] = useState<string>('all')
 
   // Colaboradores for filters
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
-
-  // Years for selector
-  const years = useMemo(() => {
-    const currentYear = now.getFullYear()
-    return [currentYear - 1, currentYear, currentYear + 1]
-  }, [])
 
   // Load colaboradores
   useEffect(() => {
@@ -114,30 +109,8 @@ export function ServiceMapReport() {
     fetchKPIs()
   }, [selectedMonth, selectedYear, planFilter, pmFilter, amFilter])
 
-  // Navigation handlers
-  const goToPreviousMonth = () => {
-    if (selectedMonth === 1) {
-      setSelectedMonth(12)
-      setSelectedYear(selectedYear - 1)
-    } else {
-      setSelectedMonth(selectedMonth - 1)
-    }
-  }
-
-  const goToNextMonth = () => {
-    if (selectedMonth === 12) {
-      setSelectedMonth(1)
-      setSelectedYear(selectedYear + 1)
-    } else {
-      setSelectedMonth(selectedMonth + 1)
-    }
-  }
-
-  const goToCurrentMonth = () => {
-    setSelectedMonth(now.getMonth() + 1)
-    setSelectedYear(now.getFullYear())
-  }
-
+  // Check if viewing current month
+  const now = new Date()
   const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
 
   // Summary stats
@@ -193,53 +166,6 @@ export function ServiceMapReport() {
     <div className="space-y-6">
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4">
-        {/* Month navigation */}
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goToPreviousMonth}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-
-          <div className="flex items-center gap-2">
-            <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(Number(v))}>
-              <SelectTrigger className="w-[130px] h-8 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MONTHS.map((month, i) => (
-                  <SelectItem key={i} value={String(i + 1)}>
-                    {month}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(Number(v))}>
-              <SelectTrigger className="w-[90px] h-8 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {years.map((year) => (
-                  <SelectItem key={year} value={String(year)}>
-                    {year}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goToNextMonth}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-
-          {!isCurrentMonth && (
-            <Button variant="outline" size="sm" className="h-8 text-xs ml-2" onClick={goToCurrentMonth}>
-              Hoy
-            </Button>
-          )}
-        </div>
-
-        <div className="h-6 w-px bg-border" />
-
         {/* Plan filter */}
         <Select value={planFilter} onValueChange={(v) => setPlanFilter(v as ClientPlan | 'all')}>
           <SelectTrigger className="w-[130px] h-8 text-sm">
@@ -247,8 +173,8 @@ export function ServiceMapReport() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los planes</SelectItem>
-                  <SelectItem value="Esencial">Esencial</SelectItem>
-                  <SelectItem value="Estrategico">Estrategico</SelectItem>
+            <SelectItem value="Esencial">Esencial</SelectItem>
+            <SelectItem value="Estrategico">Estrategico</SelectItem>
           </SelectContent>
         </Select>
 
