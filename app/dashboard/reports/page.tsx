@@ -2,8 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import useSWR from 'swr'
-import { format, subDays, isWithinInterval, startOfDay, endOfDay } from 'date-fns'
-import { DateRange } from 'react-day-picker'
+import { startOfMonth, endOfMonth, isWithinInterval, startOfDay, endOfDay, format } from 'date-fns'
 import { HoursChart } from '@/components/reports/hours-chart'
 import { ClientDonutChart } from '@/components/reports/client-donut-chart'
 import { ClientSummaryTable } from '@/components/reports/client-summary-table'
@@ -12,12 +11,6 @@ import { ServiceMapReport } from '@/components/reports/service-map-report'
 import { NPSReport } from '@/components/reports/nps-report'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { Calendar } from '@/components/ui/calendar'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
 import {
   Select,
   SelectContent,
@@ -27,12 +20,28 @@ import {
 } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import { cn } from '@/lib/utils'
-import { CalendarIcon, Download, Users, Loader2, ClipboardCheck, Map, Star } from 'lucide-react'
+import { Download, Users, Loader2, ClipboardCheck, Map, Star, Building2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/lib/types'
 import type { ClientSummary } from '@/lib/time-tracking/types'
 import { toast } from 'sonner'
+
+const MONTHS = [
+  { value: 1, label: 'Enero' },
+  { value: 2, label: 'Febrero' },
+  { value: 3, label: 'Marzo' },
+  { value: 4, label: 'Abril' },
+  { value: 5, label: 'Mayo' },
+  { value: 6, label: 'Junio' },
+  { value: 7, label: 'Julio' },
+  { value: 8, label: 'Agosto' },
+  { value: 9, label: 'Septiembre' },
+  { value: 10, label: 'Octubre' },
+  { value: 11, label: 'Noviembre' },
+  { value: 12, label: 'Diciembre' },
+]
+
+const YEARS = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i)
 
 interface TimeEntry {
   id: string
@@ -79,20 +88,13 @@ async function fetchReportsData() {
 }
 
 export default function ReportsPage() {
-  const [date, setDate] = useState<DateRange | undefined>(undefined)
-  const [selectedMembers, setSelectedMembers] = useState<string[]>([])
+  const currentDate = new Date()
+  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1)
+  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
+  const [selectedColaborador, setSelectedColaborador] = useState<string>('all')
+  const [selectedCliente, setSelectedCliente] = useState<string>('all')
   const [selectedMatrixColab, setSelectedMatrixColab] = useState<string>('all')
   const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
-  const [isClient, setIsClient] = useState(false)
-
-  // Set date only on client to avoid hydration mismatch
-  useEffect(() => {
-    setDate({
-      from: subDays(new Date(), 6),
-      to: new Date(),
-    })
-    setIsClient(true)
-  }, [])
 
   // Fetch data with SWR
   const { data, isLoading } = useSWR('reports-data', fetchReportsData)
@@ -101,28 +103,34 @@ export default function ReportsPage() {
   const allEntries = data?.entries || []
   const users = data?.users || []
 
-  // Filter entries by date range and selected members
+  // Filter entries by month/year and selected collaborador/cliente
   const filteredEntries = useMemo(() => {
+    const monthStart = startOfMonth(new Date(selectedYear, selectedMonth - 1))
+    const monthEnd = endOfMonth(new Date(selectedYear, selectedMonth - 1))
+    
     return allEntries.filter((entry) => {
       const entryDate = new Date(entry.iniciado_en)
       
-      // Filter by date range
-      if (date?.from && date?.to) {
-        const isInRange = isWithinInterval(entryDate, {
-          start: startOfDay(date.from),
-          end: endOfDay(date.to),
-        })
-        if (!isInRange) return false
+      // Filter by month/year
+      const isInRange = isWithinInterval(entryDate, {
+        start: monthStart,
+        end: monthEnd,
+      })
+      if (!isInRange) return false
+      
+      // Filter by selected colaborador (global filter)
+      if (selectedColaborador !== 'all' && entry.colaborador_id !== selectedColaborador) {
+        return false
       }
       
-      // Filter by selected members
-      if (selectedMembers.length > 0 && entry.colaborador_id) {
-        if (!selectedMembers.includes(entry.colaborador_id)) return false
+      // Filter by selected cliente (global filter)
+      if (selectedCliente !== 'all' && entry.cliente_id !== selectedCliente) {
+        return false
       }
       
       return true
     })
-  }, [allEntries, date, selectedMembers])
+  }, [allEntries, selectedMonth, selectedYear, selectedColaborador, selectedCliente])
 
   // Calculate client summaries from filtered entries
   const clientSummaries: ClientSummary[] = useMemo(() => {
@@ -230,7 +238,8 @@ export default function ReportsPage() {
 
   // Calculate daily hours for the chart (with optional collaborator filter)
   const dailyHours = useMemo(() => {
-    if (!date?.from || !date?.to) return []
+    const monthStart = startOfMonth(new Date(selectedYear, selectedMonth - 1))
+    const monthEnd = endOfMonth(new Date(selectedYear, selectedMonth - 1))
     
     // Filter entries by selected collaborator for the day chart
     const entriesForDayChart = selectedDayColab === 'all' 
@@ -238,10 +247,9 @@ export default function ReportsPage() {
       : filteredEntries.filter(e => e.colaborador_id === selectedDayColab)
     
     const days: { date: string, hours: number, billableHours: number }[] = []
-    const currentDate = new Date(date.from)
-    const endDate = new Date(date.to)
+    const currentDate = new Date(monthStart)
     
-    while (currentDate <= endDate) {
+    while (currentDate <= monthEnd) {
       const dayStart = startOfDay(currentDate)
       const dayEnd = endOfDay(currentDate)
       
@@ -254,7 +262,7 @@ export default function ReportsPage() {
       const billable = dayEntries.filter((e) => e.facturable).reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
       
       days.push({
-        date: format(currentDate, 'EEE'),
+        date: format(currentDate, 'd'),
         hours: Math.round(hours * 10) / 10,
         billableHours: Math.round(billable * 10) / 10,
       })
@@ -263,7 +271,7 @@ export default function ReportsPage() {
     }
     
     return days
-  }, [date, filteredEntries, selectedDayColab])
+  }, [selectedMonth, selectedYear, filteredEntries, selectedDayColab])
 
   const handleExport = () => {
     toast.success('Export started', {
@@ -288,56 +296,73 @@ export default function ReportsPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
-        {/* Date Range Picker */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className={cn(
-                'justify-start text-left font-normal w-[280px]',
-                !date && 'text-muted-foreground'
-              )}
-            >
-              <CalendarIcon className="mr-2 h-4 w-4" />
-              {date?.from ? (
-                date.to ? (
-                  <>
-                    {format(date.from, 'LLL dd, y')} - {format(date.to, 'LLL dd, y')}
-                  </>
-                ) : (
-                  format(date.from, 'LLL dd, y')
-                )
-              ) : (
-                <span>Pick a date range</span>
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <Calendar
-              initialFocus
-              mode="range"
-              defaultMonth={date?.from}
-              selected={date}
-              onSelect={setDate}
-              numberOfMonths={2}
-            />
-          </PopoverContent>
-        </Popover>
-
-        {/* Team Member Filter */}
+        {/* Month Selector */}
         <Select
-          value={selectedMembers.length > 0 ? selectedMembers[0] : 'all'}
-          onValueChange={(val) => setSelectedMembers(val === 'all' ? [] : [val])}
+          value={selectedMonth.toString()}
+          onValueChange={(val) => setSelectedMonth(parseInt(val))}
+        >
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="Mes" />
+          </SelectTrigger>
+          <SelectContent>
+            {MONTHS.map((month) => (
+              <SelectItem key={month.value} value={month.value.toString()}>
+                {month.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Year Selector */}
+        <Select
+          value={selectedYear.toString()}
+          onValueChange={(val) => setSelectedYear(parseInt(val))}
+        >
+          <SelectTrigger className="w-[100px]">
+            <SelectValue placeholder="Año" />
+          </SelectTrigger>
+          <SelectContent>
+            {YEARS.map((year) => (
+              <SelectItem key={year} value={year.toString()}>
+                {year}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Colaborador Filter */}
+        <Select
+          value={selectedColaborador}
+          onValueChange={setSelectedColaborador}
         >
           <SelectTrigger className="w-[200px]">
             <Users className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="All team members" />
+            <SelectValue placeholder="Colaborador" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los colaboradores</SelectItem>
             {users.map((user) => (
               <SelectItem key={user.id} value={user.id}>
                 {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Cliente Filter */}
+        <Select
+          value={selectedCliente}
+          onValueChange={setSelectedCliente}
+        >
+          <SelectTrigger className="w-[200px]">
+            <Building2 className="h-4 w-4 mr-2" />
+            <SelectValue placeholder="Cliente" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los clientes</SelectItem>
+            {clients.map((client) => (
+              <SelectItem key={client.id} value={client.id}>
+                {client.nombre_del_negocio || client.business_name || 'Sin nombre'}
               </SelectItem>
             ))}
           </SelectContent>
@@ -714,15 +739,26 @@ export default function ReportsPage() {
         </TabsContent>
 
           <TabsContent value="hours-control">
-            <HoursControlPanel />
+            <HoursControlPanel 
+              month={selectedMonth}
+              year={selectedYear}
+              colaboradorId={selectedColaborador !== 'all' ? selectedColaborador : undefined}
+              clienteId={selectedCliente !== 'all' ? selectedCliente : undefined}
+            />
           </TabsContent>
 
           <TabsContent value="service-map">
-            <ServiceMapReport />
+            <ServiceMapReport 
+              month={selectedMonth}
+              year={selectedYear}
+            />
           </TabsContent>
 
           <TabsContent value="nps">
-            <NPSReport />
+            <NPSReport 
+              month={selectedMonth}
+              year={selectedYear}
+            />
           </TabsContent>
         </Tabs>
     </div>

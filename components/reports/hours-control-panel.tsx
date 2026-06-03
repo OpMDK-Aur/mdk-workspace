@@ -1,26 +1,10 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useMemo } from 'react'
 import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Label } from '@/components/ui/label'
 import { Loader2, AlertTriangle, CheckCircle2, XCircle, Users, Building2, TrendingUp, TrendingDown, Minus, Clock } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -543,12 +527,22 @@ async function fetchMetricas(mes: number, anio: number) {
   return metricasWithHours as MetricaColaborador[]
 }
 
-export function HoursControlPanel() {
-  const currentDate = new Date()
-  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1)
-  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
-  const [filterColaborador, setFilterColaborador] = useState<string>('all')
-  const [filterCliente, setFilterCliente] = useState<string>('all')
+interface HoursControlPanelProps {
+  month: number
+  year: number
+  colaboradorId?: string
+  clienteId?: string
+}
+
+export function HoursControlPanel({ 
+  month: selectedMonth, 
+  year: selectedYear,
+  colaboradorId,
+  clienteId,
+}: HoursControlPanelProps) {
+  // Use props for filtering instead of local state
+  const filterColaborador = colaboradorId || 'all'
+  const filterCliente = clienteId || 'all'
 
   const { data: metricas, isLoading, error } = useSWR(
     `metricas-${selectedMonth}-${selectedYear}`,
@@ -696,23 +690,6 @@ export function HoursControlPanel() {
     return { totalOk, totalWarning, totalDanger, total: byColaborador.length }
   }, [byColaborador])
 
-  const months = [
-    { value: 1, label: 'Enero' },
-    { value: 2, label: 'Febrero' },
-    { value: 3, label: 'Marzo' },
-    { value: 4, label: 'Abril' },
-    { value: 5, label: 'Mayo' },
-    { value: 6, label: 'Junio' },
-    { value: 7, label: 'Julio' },
-    { value: 8, label: 'Agosto' },
-    { value: 9, label: 'Septiembre' },
-    { value: 10, label: 'Octubre' },
-    { value: 11, label: 'Noviembre' },
-    { value: 12, label: 'Diciembre' },
-  ]
-
-  const years = Array.from({ length: 5 }, (_, i) => currentDate.getFullYear() - 2 + i)
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -735,91 +712,49 @@ export function HoursControlPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Period selector and summary */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div className="flex items-center gap-4">
-          <div className="space-y-1">
-            <Label className="text-sm font-medium">Mes</Label>
-            <Select 
-              value={selectedMonth.toString()} 
-              onValueChange={(v) => setSelectedMonth(parseInt(v))}
-            >
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {months.map(m => (
-                  <SelectItem key={m.value} value={m.value.toString()}>
-                    {m.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-sm font-medium">Año</Label>
-            <Select 
-              value={selectedYear.toString()} 
-              onValueChange={(v) => setSelectedYear(parseInt(v))}
-            >
-              <SelectTrigger className="w-[100px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {years.map(y => (
-                  <SelectItem key={y} value={y.toString()}>
-                    {y}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+      {/* Quick summary */}
+      <div className="flex items-center gap-4">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/30">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <span className="font-medium text-emerald-600">{summary.totalOk}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Colaboradores dentro del rango</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
-        {/* Quick summary */}
-        <div className="flex items-center gap-4">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/30">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  <span className="font-medium text-emerald-600">{summary.totalOk}</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Colaboradores dentro del rango</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/30">
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                <span className="font-medium text-amber-600">{summary.totalWarning}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Colaboradores cerca del límite</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/30">
-                  <AlertTriangle className="w-4 h-4 text-amber-500" />
-                  <span className="font-medium text-amber-600">{summary.totalWarning}</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Colaboradores cerca del límite</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-red-500/10 border border-red-500/30">
-                  <XCircle className="w-4 h-4 text-red-500" />
-                  <span className="font-medium text-red-600">{summary.totalDanger}</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Colaboradores fuera de rango</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-red-500/10 border border-red-500/30">
+                <XCircle className="w-4 h-4 text-red-500" />
+                <span className="font-medium text-red-600">{summary.totalDanger}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Colaboradores fuera de rango</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       {/* Main tabs */}
@@ -836,24 +771,6 @@ export function HoursControlPanel() {
         </TabsList>
 
         <TabsContent value="by-colaborador" className="space-y-4">
-          {/* Filter */}
-          <div className="flex items-center gap-4">
-            <Label className="text-sm font-medium">Filtrar:</Label>
-            <Select value={filterColaborador} onValueChange={setFilterColaborador}>
-              <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="Seleccionar colaborador" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los colaboradores</SelectItem>
-                {colaboradores.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.nombre}{c.apellido ? ` ${c.apellido}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           {/* Cards for each colaborador */}
           {byColaborador.length === 0 ? (
             <Card>
@@ -958,24 +875,6 @@ export function HoursControlPanel() {
         </TabsContent>
 
         <TabsContent value="by-cliente" className="space-y-4">
-          {/* Filter */}
-          <div className="flex items-center gap-4">
-            <Label className="text-sm font-medium">Filtrar:</Label>
-            <Select value={filterCliente} onValueChange={setFilterCliente}>
-              <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="Seleccionar cliente" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los clientes</SelectItem>
-                {clientes.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.nombre_del_negocio}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           {/* Cards for each cliente */}
           {byCliente.length === 0 ? (
             <Card>
