@@ -1,6 +1,7 @@
 -- ==============================================
 -- IMPORTACION CLOCKIFY MAYO 2026 - DATOS REALES
--- Total: 678 registros
+-- Total: 679 registros
+-- Generado automaticamente desde CSVs detallados
 -- ==============================================
 
 -- BLOQUE 1 de 7
@@ -201,16 +202,17 @@ INSERT INTO entradas_de_tiempo (id, colaborador_id, cliente_id, descripcion, fec
 (gen_random_uuid(),'d93c2e19-077b-4720-8d1c-b649d21857c2','bae8b148-bd0b-4250-a8c3-6bc4c277b02f','chequeo de datos','2026-05-07',2151,'clockify_import',NOW()),
 (gen_random_uuid(),'6b7dd611-15f3-4ab4-b031-56a37da3f52c','bc5f7364-1992-4a05-a5bf-c5239d7d5abe','Optimizacion de zonas geograficas','2026-05-07',1762,'clockify_import',NOW()),
 (gen_random_uuid(),'79728389-2e6c-437a-83b7-a19a296db24a','35a646cc-feb7-4ced-b7c5-01731825f5a1','','2026-05-07',5526,'clockify_import',NOW()),
+(gen_random_uuid(),'6b7dd611-15f3-4ab4-b031-56a37da3f52c','65aad380-2434-494b-aa5d-37c275fa4ca1','Coordinacion interna CUP.','2026-05-07',1465,'clockify_import',NOW()),
 (gen_random_uuid(),'2d33bba1-f9f8-4cf1-b4c9-ed26165bb93c','b1dbb4e9-69f7-43bc-83f6-9485b455b4cd','placa vn','2026-05-07',4739,'clockify_import',NOW()),
 (gen_random_uuid(),'b4fbde1b-4e90-4313-9b5d-a5ea3476221b','614e6ee0-566c-4414-bbe4-81ef4b6a3f4a','Minuta Daguero','2026-05-07',2468,'clockify_import',NOW()),
 (gen_random_uuid(),'6b7dd611-15f3-4ab4-b031-56a37da3f52c','c3434404-3fdb-4dca-ab71-0938d1e82f28','Whatsapp y gestion de subdominio','2026-05-07',1482,'clockify_import',NOW()),
 (gen_random_uuid(),'b4fbde1b-4e90-4313-9b5d-a5ea3476221b','614e6ee0-566c-4414-bbe4-81ef4b6a3f4a','Reunión Daghero','2026-05-07',2932,'clockify_import',NOW()),
 (gen_random_uuid(),'6b7dd611-15f3-4ab4-b031-56a37da3f52c','6ed467d8-fd9b-4bd1-893d-c502d5b3c82b','Alienación interna con Lucho','2026-05-07',2644,'clockify_import',NOW()),
-(gen_random_uuid(),'d93c2e19-077b-4720-8d1c-b649d21857c2','bae8b148-bd0b-4250-a8c3-6bc4c277b02f','chequeo de datos','2026-05-07',6997,'clockify_import',NOW()),
-(gen_random_uuid(),'79728389-2e6c-437a-83b7-a19a296db24a','6ed467d8-fd9b-4bd1-893d-c502d5b3c82b','','2026-05-07',8241,'clockify_import',NOW());
+(gen_random_uuid(),'d93c2e19-077b-4720-8d1c-b649d21857c2','bae8b148-bd0b-4250-a8c3-6bc4c277b02f','chequeo de datos','2026-05-07',6997,'clockify_import',NOW());
 
 -- BLOQUE 3 de 7
 INSERT INTO entradas_de_tiempo (id, colaborador_id, cliente_id, descripcion, fecha, duracion_seg, creado_desde, created_at) VALUES
+(gen_random_uuid(),'79728389-2e6c-437a-83b7-a19a296db24a','6ed467d8-fd9b-4bd1-893d-c502d5b3c82b','','2026-05-07',8241,'clockify_import',NOW()),
 (gen_random_uuid(),'b4fbde1b-4e90-4313-9b5d-a5ea3476221b','614e6ee0-566c-4414-bbe4-81ef4b6a3f4a','Informe Daghero','2026-05-07',5919,'clockify_import',NOW()),
 (gen_random_uuid(),'79728389-2e6c-437a-83b7-a19a296db24a','2eb756a4-ff8f-4c7d-b94a-4c43cff062ba','','2026-05-07',2244,'clockify_import',NOW()),
 (gen_random_uuid(),'2d33bba1-f9f8-4cf1-b4c9-ed26165bb93c','b1dbb4e9-69f7-43bc-83f6-9485b455b4cd','orden de cliente','2026-05-07',1296,'clockify_import',NOW()),
@@ -309,11 +311,11 @@ INSERT INTO entradas_de_tiempo (id, colaborador_id, cliente_id, descripcion, fec
 (gen_random_uuid(),'79728389-2e6c-437a-83b7-a19a296db24a','2eb756a4-ff8f-4c7d-b94a-4c43cff062ba','','2026-05-05',2017,'clockify_import',NOW()),
 (gen_random_uuid(),'2d33bba1-f9f8-4cf1-b4c9-ed26165bb93c','38bb55aa-a84e-4374-84c6-1e1b6d35c5a7','placas zamora','2026-05-05',3739,'clockify_import',NOW()),
 (gen_random_uuid(),'d93c2e19-077b-4720-8d1c-b649d21857c2','c6d25e75-9187-4dea-ba0c-c06d6ae462e7','Reunión de Seguimiento','2026-05-05',3600,'clockify_import',NOW()),
-(gen_random_uuid(),'6b7dd611-15f3-4ab4-b031-56a37da3f52c','bc5f7364-1992-4a05-a5bf-c5239d7d5abe','Whatsapp, monitoreo y optimizacion de campaña','2026-05-05',1293,'clockify_import',NOW()),
-(gen_random_uuid(),'6b7dd611-15f3-4ab4-b031-56a37da3f52c','be4ac531-c3a3-4c00-a1e2-5b52bff478b7','Reu con Fran por salida de Eli','2026-05-05',942,'clockify_import',NOW());
+(gen_random_uuid(),'6b7dd611-15f3-4ab4-b031-56a37da3f52c','bc5f7364-1992-4a05-a5bf-c5239d7d5abe','Whatsapp, monitoreo y optimizacion de campaña','2026-05-05',1293,'clockify_import',NOW());
 
 -- BLOQUE 4 de 7
 INSERT INTO entradas_de_tiempo (id, colaborador_id, cliente_id, descripcion, fecha, duracion_seg, creado_desde, created_at) VALUES
+(gen_random_uuid(),'6b7dd611-15f3-4ab4-b031-56a37da3f52c','be4ac531-c3a3-4c00-a1e2-5b52bff478b7','Reu con Fran por salida de Eli','2026-05-05',942,'clockify_import',NOW()),
 (gen_random_uuid(),'b4fbde1b-4e90-4313-9b5d-a5ea3476221b','4ace8fe5-cb05-40f5-82ef-10a6f6541b31','Tracking de campañas Del Sur Autos - Activando Captiva','2026-05-05',7547,'clockify_import',NOW()),
 (gen_random_uuid(),'6b7dd611-15f3-4ab4-b031-56a37da3f52c','35a646cc-feb7-4ced-b7c5-01731825f5a1','Revision de plan de accion','2026-05-05',1860,'clockify_import',NOW()),
 (gen_random_uuid(),'79728389-2e6c-437a-83b7-a19a296db24a','35a646cc-feb7-4ced-b7c5-01731825f5a1','','2026-05-05',5840,'clockify_import',NOW()),
@@ -412,11 +414,11 @@ INSERT INTO entradas_de_tiempo (id, colaborador_id, cliente_id, descripcion, fec
 (gen_random_uuid(),'e8180368-8789-4f9f-9f63-8bdd8eb3d513','be4ac531-c3a3-4c00-a1e2-5b52bff478b7','','2026-05-04',660,'clockify_import',NOW()),
 (gen_random_uuid(),'79728389-2e6c-437a-83b7-a19a296db24a','2eb756a4-ff8f-4c7d-b94a-4c43cff062ba','','2026-05-04',566,'clockify_import',NOW()),
 (gen_random_uuid(),'79728389-2e6c-437a-83b7-a19a296db24a','2d2e3d76-2705-49d7-9294-8d32fbde0cbd','','2026-05-04',44,'clockify_import',NOW()),
-(gen_random_uuid(),'79728389-2e6c-437a-83b7-a19a296db24a','7d0f8c35-8d13-480e-8f15-f37acccd724e','','2026-05-04',543,'clockify_import',NOW()),
-(gen_random_uuid(),'d93c2e19-077b-4720-8d1c-b649d21857c2','24ed738f-f855-48ac-9da5-fa9c95873092','Reuni+on Area de Calidad','2026-05-04',3600,'clockify_import',NOW());
+(gen_random_uuid(),'79728389-2e6c-437a-83b7-a19a296db24a','7d0f8c35-8d13-480e-8f15-f37acccd724e','','2026-05-04',543,'clockify_import',NOW());
 
 -- BLOQUE 5 de 7
 INSERT INTO entradas_de_tiempo (id, colaborador_id, cliente_id, descripcion, fecha, duracion_seg, creado_desde, created_at) VALUES
+(gen_random_uuid(),'d93c2e19-077b-4720-8d1c-b649d21857c2','24ed738f-f855-48ac-9da5-fa9c95873092','Reuni+on Area de Calidad','2026-05-04',3600,'clockify_import',NOW()),
 (gen_random_uuid(),'b4fbde1b-4e90-4313-9b5d-a5ea3476221b','be4ac531-c3a3-4c00-a1e2-5b52bff478b7','Mensaje de inicio de semana','2026-05-04',1136,'clockify_import',NOW()),
 (gen_random_uuid(),'6b7dd611-15f3-4ab4-b031-56a37da3f52c','bc5f7364-1992-4a05-a5bf-c5239d7d5abe','Activación de campañas','2026-05-04',1136,'clockify_import',NOW()),
 (gen_random_uuid(),'79728389-2e6c-437a-83b7-a19a296db24a','71ad70dd-a0ca-4f7c-a847-ee1d30bf91af','','2026-05-04',359,'clockify_import',NOW()),
@@ -515,11 +517,11 @@ INSERT INTO entradas_de_tiempo (id, colaborador_id, cliente_id, descripcion, fec
 (gen_random_uuid(),'40484520-c49a-470c-8068-8122dcf99a36','be4ac531-c3a3-4c00-a1e2-5b52bff478b7','reunion','2026-05-08',4415,'clockify_import',NOW()),
 (gen_random_uuid(),'b9bc1549-a988-4ed1-b9af-a91ba611a7cf','be4ac531-c3a3-4c00-a1e2-5b52bff478b7','','2026-05-08',6280,'clockify_import',NOW()),
 (gen_random_uuid(),'40484520-c49a-470c-8068-8122dcf99a36','be4ac531-c3a3-4c00-a1e2-5b52bff478b7','aurelia crm | conversations2','2026-05-08',3220,'clockify_import',NOW()),
-(gen_random_uuid(),'340d82eb-f257-4ec1-82d0-8291cb70ebad','5f42e52e-3213-4c06-b105-e337fc88569a','Ajustar notificación inteligente','2026-05-08',11203,'clockify_import',NOW()),
-(gen_random_uuid(),'340d82eb-f257-4ec1-82d0-8291cb70ebad','be4ac531-c3a3-4c00-a1e2-5b52bff478b7','','2026-05-08',1648,'clockify_import',NOW());
+(gen_random_uuid(),'340d82eb-f257-4ec1-82d0-8291cb70ebad','5f42e52e-3213-4c06-b105-e337fc88569a','Ajustar notificación inteligente','2026-05-08',11203,'clockify_import',NOW());
 
 -- BLOQUE 6 de 7
 INSERT INTO entradas_de_tiempo (id, colaborador_id, cliente_id, descripcion, fecha, duracion_seg, creado_desde, created_at) VALUES
+(gen_random_uuid(),'340d82eb-f257-4ec1-82d0-8291cb70ebad','be4ac531-c3a3-4c00-a1e2-5b52bff478b7','','2026-05-08',1648,'clockify_import',NOW()),
 (gen_random_uuid(),'340d82eb-f257-4ec1-82d0-8291cb70ebad','c57cca1b-30ba-4a1d-b2d2-c10084810952','','2026-05-08',1980,'clockify_import',NOW()),
 (gen_random_uuid(),'340d82eb-f257-4ec1-82d0-8291cb70ebad','5f42e52e-3213-4c06-b105-e337fc88569a','','2026-05-08',359,'clockify_import',NOW()),
 (gen_random_uuid(),'340d82eb-f257-4ec1-82d0-8291cb70ebad','c57cca1b-30ba-4a1d-b2d2-c10084810952','','2026-05-08',275,'clockify_import',NOW()),
@@ -618,11 +620,11 @@ INSERT INTO entradas_de_tiempo (id, colaborador_id, cliente_id, descripcion, fec
 (gen_random_uuid(),'b9bc1549-a988-4ed1-b9af-a91ba611a7cf','6ed467d8-fd9b-4bd1-893d-c502d5b3c82b','','2026-05-05',934,'clockify_import',NOW()),
 (gen_random_uuid(),'b8e27803-4c61-4201-a9ba-21d45a43a5c2','e8a7e60f-f8f3-4a5c-8a79-5bcb9e5ef563','Monitoreo General Sistemas de Cargas','2026-05-05',2718,'clockify_import',NOW()),
 (gen_random_uuid(),'340d82eb-f257-4ec1-82d0-8291cb70ebad','5f42e52e-3213-4c06-b105-e337fc88569a','Volver a solicitar verificación','2026-05-05',4398,'clockify_import',NOW()),
-(gen_random_uuid(),'340d82eb-f257-4ec1-82d0-8291cb70ebad','2eb756a4-ff8f-4c7d-b94a-4c43cff062ba','#105200','2026-05-05',939,'clockify_import',NOW()),
-(gen_random_uuid(),'b8e27803-4c61-4201-a9ba-21d45a43a5c2','bae8b148-bd0b-4250-a8c3-6bc4c277b02f','Monitoreo General Nobis','2026-05-05',3512,'clockify_import',NOW());
+(gen_random_uuid(),'340d82eb-f257-4ec1-82d0-8291cb70ebad','2eb756a4-ff8f-4c7d-b94a-4c43cff062ba','#105200','2026-05-05',939,'clockify_import',NOW());
 
 -- BLOQUE 7 de 7
 INSERT INTO entradas_de_tiempo (id, colaborador_id, cliente_id, descripcion, fecha, duracion_seg, creado_desde, created_at) VALUES
+(gen_random_uuid(),'b8e27803-4c61-4201-a9ba-21d45a43a5c2','bae8b148-bd0b-4250-a8c3-6bc4c277b02f','Monitoreo General Nobis','2026-05-05',3512,'clockify_import',NOW()),
 (gen_random_uuid(),'340d82eb-f257-4ec1-82d0-8291cb70ebad','3274afc7-6efc-423b-b55b-f2ab1a251313','','2026-05-05',678,'clockify_import',NOW()),
 (gen_random_uuid(),'b9bc1549-a988-4ed1-b9af-a91ba611a7cf','7b69f808-26f4-4625-ae97-6ea5841485db','','2026-05-05',3913,'clockify_import',NOW()),
 (gen_random_uuid(),'340d82eb-f257-4ec1-82d0-8291cb70ebad','3274afc7-6efc-423b-b55b-f2ab1a251313','','2026-05-05',297,'clockify_import',NOW()),
