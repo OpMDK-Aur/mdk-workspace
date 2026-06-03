@@ -184,10 +184,10 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
               </button>
             </PopoverTrigger>
             <PopoverContent
-              className="w-80 p-0 shadow-lg"
-              align="start"
-              side="right"
-              sideOffset={8}
+              className="w-96 max-w-[calc(100vw-2rem)] p-0 shadow-lg"
+              align="center"
+              side="bottom"
+              sideOffset={4}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="sticky top-0 bg-gradient-to-r from-background to-background/95 px-4 py-3 border-b backdrop-blur-sm z-10">
@@ -200,8 +200,8 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                   </span>
                 </div>
               </div>
-              <ScrollArea className="max-h-80">
-                <div className="p-3 space-y-2">
+              <ScrollArea className="h-96 w-full">
+                <div className="px-3 py-2 space-y-2">
                   {tasks.map((task, index) => {
                     const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
                     const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && task.status !== 'resuelto'
