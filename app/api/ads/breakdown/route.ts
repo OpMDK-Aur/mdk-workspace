@@ -10,18 +10,26 @@ async function fetchMetaBreakdown(
   accessToken: string,
   since: string,
   until: string,
-  granularity: 'daily' | 'monthly'
+  granularity: 'daily' | 'monthly',
+  campaignId?: string
 ) {
   const timeIncrement = granularity === 'daily' ? '1' : 'monthly'
   const fields = 'date_start,date_stop,impressions,clicks,spend,ctr,cpc,actions'
-  const url = `https://graph.facebook.com/v25.0/act_${accountId}/insights?${new URLSearchParams({
+  
+  // If filtering by campaign, use campaign-level endpoint
+  const baseEndpoint = campaignId
+    ? `https://graph.facebook.com/v25.0/${campaignId}/insights`
+    : `https://graph.facebook.com/v25.0/act_${accountId}/insights`
+  
+  const params: Record<string, string> = {
     access_token: accessToken,
-    level: 'account',
+    level: campaignId ? 'campaign' : 'account',
     fields,
     time_range: JSON.stringify({ since, until }),
     time_increment: timeIncrement,
     limit: '500',
-  })}`
+  }
+  const url = `${baseEndpoint}?${new URLSearchParams(params)}`
 
   const res = await fetch(url)
   const json = await res.json()
@@ -169,7 +177,7 @@ export async function GET(request: NextRequest) {
       const accessToken = process.env.META_ADS_ACCESS_TOKEN
       if (!accessToken) return NextResponse.json({ error: 'META_ADS_ACCESS_TOKEN not configured' }, { status: 500 })
       if (!accountId) return NextResponse.json({ error: 'account_id required for meta' }, { status: 400 })
-      const rows = await fetchMetaBreakdown(accountId.replace(/^act_/, ''), accessToken, startDate, endDate, granularity)
+      const rows = await fetchMetaBreakdown(accountId.replace(/^act_/, ''), accessToken, startDate, endDate, granularity, campaignId)
       return NextResponse.json({ platform, granularity, rows })
     }
 
