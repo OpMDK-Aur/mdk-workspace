@@ -130,6 +130,8 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
   const [campaignTypes, setCampaignTypes] = useState<CampaignTypeData[]>([])
   const [trendData, setTrendData] = useState<InvestmentTrendPoint[]>([])
   const [scorecardRows, setScorecardRows] = useState<ScorecardRow[]>([])
+  const [alertsRows, setAlertsRows] = useState<ScorecardRow[]>([])
+  const [alertsLoading, setAlertsLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [scorecardView, setScorecardView] = useState<'clients' | 'campaigns'>('clients')
   const [scorecardClientId, setScorecardClientId] = useState<string | null>(null)
@@ -179,7 +181,7 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
             : client.meta_ads_account_id!
 
           await Promise.all([
-            fetchMeta ? fetch(buildApiUrl('/api/ads/meta', filters, { account_id: metaAccountId }))
+            fetchMeta ? fetch(buildApiUrl('/api/ads/meta', filters, { account_id: metaAccountId, ...bustParam }))
               .then(r => r.json())
               .then(d => {
                 if (d.error) errors['meta'] = d.error
@@ -323,7 +325,93 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
     if (fetchKey === lastFetchKey.current) return
     lastFetchKey.current = fetchKey
     fetchData(targetClients, filters)
+    // Also seed alerts with default last_14d on first load
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    const fmt = (d: Date) => d.toISOString().split('T')[0]
+    const alertFilters: DashboardFilters = {
+      ...filters,
+      dateRange: { preset: 'last_14d', start: fmt(new Date(today.getTime() - 14 * 86400000)), end: fmt(today) },
+    }
+    fetchAlertsData(targetClients, alertFilters)
   }, [fetchKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fetchAlertsData = useCallback(async (clients: Client[], alertFilters: DashboardFilters) => {
+    if (clients.length === 0) return
+    setAlertsLoading(true)
+    try {
+      const allResults: Array<{ client: Client; data: AdsApiResponse }> = []
+      await Promise.all(
+        clients.map(async client => {
+          const { platform, adAccountId } = alertFilters
+          const fetchMeta = (platform === 'all' || platform === 'meta') && client.meta_ads_account_id
+            && (!adAccountId || client.meta_ads_account_id.split(',').map(s => s.trim()).includes(adAccountId))
+          const fetchGoogle = (platform === 'all' || platform === 'google') && client.google_ads_customer_id
+            && (!adAccountId || client.google_ads_customer_id.split(',').map(s => s.trim()).includes(adAccountId))
+
+          const allGoogleIds = client.google_ads_customer_id
+            ? client.google_ads_customer_id.split(',').map(s => s.trim()).filter(Boolean)
+            : []
+          const googleIdsToFetch = fetchGoogle
+            ? (adAccountId && allGoogleIds.includes(adAccountId) ? [adAccountId] : allGoogleIds)
+            : []
+          const metaAccountId = (adAccountId && client.meta_ads_account_id?.split(',').map(s => s.trim()).includes(adAccountId))
+            ? adAccountId
+            : client.meta_ads_account_id!
+
+          await Promise.all([
+            fetchMeta ? fetch(buildApiUrl('/api/ads/meta', alertFilters, { account_id: metaAccountId, bust: '1' }))
+              .then(r => r.json())
+              .then(d => { if (!d.error) allResults.push({ client, data: d }) })
+              .catch(() => {}) : Promise.resolve(),
+            ...googleIdsToFetch.map(customerId =>
+              fetch(buildApiUrl('/api/ads/google', alertFilters, { customer_id: customerId, bust: '1' }))
+                .then(r => r.json())
+                .then(d => { if (!d.error) allResults.push({ client, data: d }) })
+                .catch(() => {})
+            ),
+          ])
+        })
+      )
+
+      // Build scorecard rows for alerts (campaign-level only)
+      const newRows: ScorecardRow[] = []
+      for (const { client, data } of allResults) {
+        for (const campaign of data.campaigns) {
+          const campaignCpl = campaign.leads > 0 ? campaign.spend / campaign.leads : 0
+          newRows.push({
+            clientId: client.id,
+            clientName: client.business_name,
+            accountId: data.account_id || null,
+            accountName: data.account_name || null,
+            campaignId: campaign.id,
+            campaignName: campaign.name,
+            platform: data.platform as 'meta' | 'google',
+            budget: campaign.budget || null,
+            daysToEnd: null,
+            leads: campaign.leads,
+            leadType: campaign.lead_type || campaign.channel_label || campaign.campaign_type || campaign.advertising_channel_type || '',
+            cpl: campaignCpl,
+            ctr: campaign.ctr,
+            impressions: campaign.impressions,
+            clicks: campaign.clicks,
+            spend: campaign.spend,
+            crmContacts: 0,
+          })
+        }
+      }
+      setAlertsRows(newRows)
+    } finally {
+      setAlertsLoading(false)
+    }
+  }, [])
+
+  const handleAlertsDateRangeChange = useCallback((range: { preset: string; start: string; end: string }) => {
+    const alertFilters: DashboardFilters = {
+      ...filters,
+      dateRange: { preset: range.preset as DashboardFilters['dateRange']['preset'], start: range.start, end: range.end },
+    }
+    fetchAlertsData(targetClients, alertFilters)
+  }, [filters, targetClients, fetchAlertsData])
 
   const scorecardDisplayRows = scorecardView === 'clients'
     ? scorecardRows.filter(r => !r.campaignId)
@@ -379,9 +467,10 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
         {/* Alerts Panel */}
         <section>
           <CampaignAlertsPanel
-            rows={scorecardRows}
+            rows={alertsRows}
             clients={clients}
-            loading={loading}
+            loading={alertsLoading}
+            onDateRangeChange={handleAlertsDateRangeChange}
           />
         </section>
 

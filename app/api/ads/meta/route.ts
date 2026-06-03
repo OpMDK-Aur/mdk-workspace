@@ -51,9 +51,10 @@ const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
 const META_BASE_URL = `https://graph.facebook.com/${META_API_VERSION}`
 
 // ---------------------------------------------------------------------------
-// Lead extraction — prioritized action types, no loose heuristics
+// Lead/Result extraction — prioritized action types based on campaign objective
 // ---------------------------------------------------------------------------
 
+// Lead-focused action types (for lead gen, messages, conversions campaigns)
 const LEAD_ACTION_PRIORITY = [
   'lead',
   'leadgen_grouped',
@@ -65,6 +66,59 @@ const LEAD_ACTION_PRIORITY = [
   'complete_registration',
 ]
 
+// Traffic/Engagement action types (for traffic, engagement, awareness campaigns)
+const TRAFFIC_ACTION_PRIORITY = [
+  'link_click',
+  'landing_page_view',
+  'post_engagement',
+  'page_engagement',
+  'post',
+  'comment',
+  'like',
+  'video_view',
+  'omni_view_content',
+]
+
+// Objectives that should use traffic metrics instead of leads
+const TRAFFIC_OBJECTIVES = [
+  'LINK_CLICKS',
+  'OUTCOME_TRAFFIC',
+  'POST_ENGAGEMENT',
+  'OUTCOME_ENGAGEMENT', 
+  'PAGE_LIKES',
+  'VIDEO_VIEWS',
+  'REACH',
+  'OUTCOME_AWARENESS',
+  'BRAND_AWARENESS',
+]
+
+function extractResults(
+  objective: string,
+  actions: Array<{ action_type: string; value: string }> | undefined
+): number {
+  if (!actions || actions.length === 0) return 0
+  
+  // Determine which action types to prioritize based on objective
+  const isTrafficObjective = TRAFFIC_OBJECTIVES.includes(objective)
+  const priorityList = isTrafficObjective ? TRAFFIC_ACTION_PRIORITY : LEAD_ACTION_PRIORITY
+  
+  // Try priority list first
+  for (const type of priorityList) {
+    const match = actions.find(a => a.action_type === type)
+    if (match) return Math.round(parseFloat(match.value) || 0)
+  }
+  
+  // If no match in priority list, try the other list as fallback
+  const fallbackList = isTrafficObjective ? LEAD_ACTION_PRIORITY : TRAFFIC_ACTION_PRIORITY
+  for (const type of fallbackList) {
+    const match = actions.find(a => a.action_type === type)
+    if (match) return Math.round(parseFloat(match.value) || 0)
+  }
+  
+  return 0
+}
+
+// Legacy function for backwards compatibility
 function extractLeads(actions: Array<{ action_type: string; value: string }> | undefined): number {
   if (!actions || actions.length === 0) return 0
   for (const type of LEAD_ACTION_PRIORITY) {
@@ -76,11 +130,23 @@ function extractLeads(actions: Array<{ action_type: string; value: string }> | u
 
 function getLeadType(objective: string, actions: Array<{ action_type: string }> | undefined): string {
   const types = new Set(actions?.map(a => a.action_type) ?? [])
+  
+  // Check for specific action types to determine result label
   if (types.has('onsite_conversion.messaging_conversation_started_7d')) return 'Conversacion iniciada'
   if (types.has('lead') || types.has('leadgen_grouped') || types.has('onsite_conversion.lead_grouped')) return 'Lead'
+  if (types.has('link_click') || types.has('landing_page_view')) return 'Clic en enlace'
+  if (types.has('post_engagement') || types.has('page_engagement')) return 'Interaccion'
+  if (types.has('video_view')) return 'Reproduccion'
+  
+  // Fallback to objective-based labeling
   if (objective === 'OUTCOME_LEADS') return 'Lead'
   if (objective === 'MESSAGES') return 'Conversacion iniciada'
   if (objective === 'OUTCOME_SALES' || objective === 'CONVERSIONS') return 'Conversion'
+  if (objective === 'LINK_CLICKS' || objective === 'OUTCOME_TRAFFIC') return 'Clic en enlace'
+  if (objective === 'POST_ENGAGEMENT' || objective === 'OUTCOME_ENGAGEMENT') return 'Interaccion'
+  if (objective === 'VIDEO_VIEWS') return 'Reproduccion'
+  if (objective === 'REACH' || objective === 'OUTCOME_AWARENESS' || objective === 'BRAND_AWARENESS') return 'Alcance'
+  
   return 'Resultado'
 }
 
@@ -128,6 +194,40 @@ function getDateRange(preset: string): { since: string; until: string } {
       return { since: localDateString(start), until: localDateString(now) }
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Fetch active campaign IDs — to filter insights to only active campaigns
+// ---------------------------------------------------------------------------
+
+async function fetchActiveCampaignIds(
+  accountId: string,
+  accessToken: string
+): Promise<Set<string>> {
+  const activeIds = new Set<string>()
+  
+  let url: string | null = `${META_BASE_URL}/act_${accountId}/campaigns?${new URLSearchParams({
+    access_token: accessToken,
+    fields: 'id,effective_status',
+    filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE'] }]),
+    limit: '500',
+  })}`
+
+  while (url) {
+    const res = await fetch(url)
+    if (!res.ok) break
+    
+    const json = await res.json()
+    if (json.error) break
+    
+    for (const campaign of json.data ?? []) {
+      activeIds.add(campaign.id)
+    }
+    
+    url = json.paging?.next ?? null
+  }
+
+  return activeIds
 }
 
 // ---------------------------------------------------------------------------
@@ -206,10 +306,13 @@ export async function GET(request: NextRequest) {
     // Normalize: always strip act_ — the URL builder adds it
     const accountId = rawAccountId.replace(/^act_/, '')
 
-    // Cache lookup
-    const cached = await getCachedAdsData('meta', accountId, dateRange, startDate, endDate)
-    if (cached) {
-      return NextResponse.json({ ...cached, from_cache: true })
+    // Cache lookup — skip if bust=1
+    const bustCache = params.get('bust') === '1'
+    if (!bustCache) {
+      const cached = await getCachedAdsData('meta', accountId, dateRange, startDate, endDate)
+      if (cached) {
+        return NextResponse.json({ ...cached, from_cache: true })
+      }
     }
 
     const range = (startDate && endDate)
@@ -218,16 +321,27 @@ export async function GET(request: NextRequest) {
 
     // Single paginated request — no N+1
     let insightRows: MetaInsightRow[]
+    let activeCampaignIds: Set<string>
     try {
-      insightRows = await fetchAllInsightPages(accountId, accessToken, range)
+      // Fetch both in parallel: insights and active campaign IDs
+      const [insights, activeIds] = await Promise.all([
+        fetchAllInsightPages(accountId, accessToken, range),
+        fetchActiveCampaignIds(accountId, accessToken),
+      ])
+      insightRows = insights
+      activeCampaignIds = activeIds
     } catch (err: any) {
       return NextResponse.json({ error: err.message }, { status: 400 })
     }
 
-    // Build campaigns
-    const campaigns: CampaignResult[] = insightRows.map(row => {
+    // Filter to only active campaigns
+    const activeInsightRows = insightRows.filter(row => activeCampaignIds.has(row.campaign_id))
+
+    // Build campaigns from filtered rows
+    const campaigns: CampaignResult[] = activeInsightRows.map(row => {
       const spend = toNum(row.spend)
-      const leads = extractLeads(row.actions)
+      // Use extractResults which considers campaign objective for traffic vs lead campaigns
+      const leads = extractResults(row.objective, row.actions)
       const cpl = leads > 0 && spend > 0 ? spend / leads : 0
 
       return {

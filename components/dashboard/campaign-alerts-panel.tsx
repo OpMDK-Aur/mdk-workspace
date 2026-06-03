@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import type { ScorecardRow, Client } from '@/lib/types'
+import { useState, useMemo, useEffect } from 'react'
+import type { ScorecardRow, Client, DateRangePreset } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -9,6 +9,9 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Calendar } from '@/components/ui/calendar'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   AlertTriangle,
   Search,
@@ -22,8 +25,45 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
+  CalendarDays,
+  Filter,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { format, subDays } from 'date-fns'
+import { es } from 'date-fns/locale'
+import type { DateRange as DayPickerDateRange } from 'react-day-picker'
+
+// ── Date Presets ──────────────────────────────────────────────────────────────
+
+type AlertDatePreset = 'last_14d' | 'last_7d' | 'yesterday' | 'today' | 'custom'
+
+interface AlertDateRange {
+  preset: AlertDatePreset
+  start: string
+  end: string
+}
+
+const DATE_PRESETS: { value: AlertDatePreset; label: string }[] = [
+  { value: 'last_14d',   label: 'Últimos 14 días' },
+  { value: 'last_7d',    label: 'Últimos 7 días' },
+  { value: 'yesterday',  label: 'Ayer' },
+  { value: 'today',      label: 'Hoy' },
+  { value: 'custom',     label: 'Personalizado' },
+]
+
+function buildAlertDateRange(preset: AlertDatePreset, customStart?: string, customEnd?: string): AlertDateRange {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const fmt = (d: Date) => format(d, 'yyyy-MM-dd')
+  switch (preset) {
+    case 'last_14d':   return { preset, start: fmt(subDays(today, 14)), end: fmt(today) }
+    case 'last_7d':    return { preset, start: fmt(subDays(today, 7)),  end: fmt(today) }
+    case 'yesterday': { const y = subDays(today, 1); return { preset, start: fmt(y), end: fmt(y) } }
+    case 'today':      return { preset, start: fmt(today), end: fmt(today) }
+    case 'custom':     return { preset, start: customStart ?? fmt(subDays(today, 14)), end: customEnd ?? fmt(today) }
+    default:           return { preset: 'last_14d', start: fmt(subDays(today, 14)), end: fmt(today) }
+  }
+}
 
 // ── Alert Types ───────────────────────────────────────────────────────────────
 
@@ -414,18 +454,106 @@ const FILTER_OPTIONS: { value: FilterOption; label: string }[] = [
   { value: 'cpl_issues', label: 'CPL' },
 ]
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// ── Main Component ─────────────────────────────��────────────────────────��─────
 
 interface CampaignAlertsPanelProps {
   rows: ScorecardRow[]
   clients: Client[]
   loading?: boolean
+  onDateRangeChange?: (range: { preset: string; start: string; end: string }) => void
 }
 
-export function CampaignAlertsPanel({ rows, clients, loading }: CampaignAlertsPanelProps) {
+export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange }: CampaignAlertsPanelProps) {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterOption>('all')
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
+  const [dateRange, setDateRange] = useState<AlertDateRange>(() => buildAlertDateRange('last_14d'))
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [calendarSelection, setCalendarSelection] = useState<DayPickerDateRange | undefined>(undefined)
+  
+  // Campaign selection with localStorage persistence
+  const [selectedCampaignIds, setSelectedCampaignIds] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set()
+    const saved = localStorage.getItem('campaign-alerts-selection')
+    return saved ? new Set(JSON.parse(saved)) : new Set()
+  })
+  const [campaignSearch, setCampaignSearch] = useState('')
+  
+  // Sync to localStorage whenever selection changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('campaign-alerts-selection', JSON.stringify(Array.from(selectedCampaignIds)))
+    }
+  }, [selectedCampaignIds])
+
+  function handlePresetChange(preset: AlertDatePreset) {
+    if (preset === 'custom') {
+      setCalendarOpen(true)
+      return
+    }
+    const range = buildAlertDateRange(preset)
+    setDateRange(range)
+    onDateRangeChange?.(range)
+  }
+
+  function handleCalendarSelect(sel: DayPickerDateRange | undefined) {
+    setCalendarSelection(sel)
+    if (sel?.from && sel?.to) {
+      const range = buildAlertDateRange('custom', format(sel.from, 'yyyy-MM-dd'), format(sel.to, 'yyyy-MM-dd'))
+      setDateRange(range)
+      onDateRangeChange?.(range)
+      setCalendarOpen(false)
+    }
+  }
+
+  // Campaign selection handlers
+  function handleToggleCampaign(campaignId: string) {
+    setSelectedCampaignIds(prev => {
+      const next = new Set(prev)
+      if (next.has(campaignId)) {
+        next.delete(campaignId)
+      } else {
+        next.add(campaignId)
+      }
+      return next
+    })
+  }
+
+  function handleSelectAll() {
+    const allIds = new Set(rows.map(r => r.campaignId).filter((id): id is string => id != null))
+    setSelectedCampaignIds(allIds)
+  }
+
+  function handleClearSelection() {
+    setSelectedCampaignIds(new Set())
+  }
+
+  // Get unique campaigns grouped by client
+  const campaignsByClient = useMemo(() => {
+    const grouped = new Map<string, Array<{ id: string; name: string; platform: string }>>()
+    const clientNames = new Map<string, string>()
+    
+    for (const row of rows) {
+      if (!row.campaignId) continue
+      
+      if (!grouped.has(row.clientId)) {
+        grouped.set(row.clientId, [])
+        clientNames.set(row.clientId, row.clientName)
+      }
+      
+      // Avoid duplicates
+      const campaigns = grouped.get(row.clientId)!
+      if (!campaigns.find(c => c.id === row.campaignId)) {
+        campaigns.push({
+          id: row.campaignId,
+          name: row.campaignName,
+          platform: row.platform,
+        })
+      }
+    }
+    
+    return { grouped, clientNames }
+  }, [rows])
 
   // Calculate average CPL for threshold
   const averageCPL = useMemo(() => {
@@ -434,8 +562,15 @@ export function CampaignAlertsPanel({ rows, clients, loading }: CampaignAlertsPa
     return validCPLs.reduce((sum, r) => sum + r.cpl, 0) / validCPLs.length
   }, [rows])
 
-  // Detect all alerts
-  const allAlerts = useMemo(() => detectAlerts(rows, clients, averageCPL), [rows, clients, averageCPL])
+  // Filter rows based on selected campaigns
+  // Empty set = show all campaigns (default)
+  const filteredRows = useMemo(() => {
+    if (selectedCampaignIds.size === 0) return rows
+    return rows.filter(r => selectedCampaignIds.has(r.campaignId ?? ''))
+  }, [rows, selectedCampaignIds])
+
+  // Detect all alerts using filtered rows
+  const allAlerts = useMemo(() => detectAlerts(filteredRows, clients, averageCPL), [filteredRows, clients, averageCPL])
 
   // Group alerts by client
   const groupedAlerts = useMemo(() => {
@@ -581,8 +716,152 @@ export function CampaignAlertsPanel({ rows, clients, loading }: CampaignAlertsPa
       </CardHeader>
 
       <CardContent className="pt-0">
-        {/* Filter chips */}
-        <div className="flex flex-wrap gap-1.5 mb-4">
+        {/* Date presets + filter chips */}
+        <div className="flex flex-wrap items-center gap-1.5 mb-4">
+          {/* Date presets */}
+          {DATE_PRESETS.filter(p => p.value !== 'custom').map(preset => (
+            <button
+              key={preset.value}
+              onClick={() => handlePresetChange(preset.value)}
+              className={cn(
+                'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-all',
+                dateRange.preset === preset.value
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-transparent text-muted-foreground border-border/60 hover:border-border hover:text-foreground'
+              )}
+            >
+              {preset.label}
+            </button>
+          ))}
+
+          {/* Custom date picker */}
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all',
+                  dateRange.preset === 'custom'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-transparent text-muted-foreground border-border/60 hover:border-border hover:text-foreground'
+                )}
+              >
+                <CalendarDays className="h-3 w-3" />
+                {dateRange.preset === 'custom'
+                  ? `${format(new Date(dateRange.start), 'd MMM', { locale: es })} - ${format(new Date(dateRange.end), 'd MMM', { locale: es })}`
+                  : 'Personalizado'}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="range"
+                selected={calendarSelection}
+                onSelect={handleCalendarSelect}
+                numberOfMonths={2}
+                locale={es}
+              />
+            </PopoverContent>
+          </Popover>
+
+          <div className="h-4 w-px bg-border/60 mx-1" />
+
+          {/* Campaign selection */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all',
+                  selectedCampaignIds.size > 0
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-transparent text-muted-foreground border-border/60 hover:border-border hover:text-foreground'
+                )}
+              >
+                <Filter className="h-3 w-3" />
+                {selectedCampaignIds.size > 0
+                  ? `${selectedCampaignIds.size} campaña${selectedCampaignIds.size !== 1 ? 's' : ''}`
+                  : 'Todas las campañas'}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 max-w-[90vw] p-0" align="end" side="bottom" sideOffset={4}>
+              {/* Header */}
+              <div className="p-3 border-b space-y-2.5">
+                <div className="text-sm font-bold">Seleccionar campañas</div>
+
+                {/* Search box */}
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <Input
+                    placeholder="Buscar cliente o campaña..."
+                    value={campaignSearch}
+                    onChange={e => setCampaignSearch(e.target.value)}
+                    className="h-8 pl-8 text-xs"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2">
+                  <Button size="sm" variant="default" className="text-xs h-7 flex-1" onClick={handleSelectAll}>
+                    Seleccionar todo
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-xs h-7 flex-1" onClick={handleClearSelection}>
+                    Limpiar
+                  </Button>
+                </div>
+              </div>
+
+              <ScrollArea className="h-72">
+                <div className="p-3 space-y-3">
+                  {Array.from(campaignsByClient.grouped.entries())
+                    .map(([clientId, campaigns]) => {
+                      const clientName = campaignsByClient.clientNames.get(clientId) ?? ''
+                      const searchLower = campaignSearch.toLowerCase()
+                      const filteredCampaigns = campaigns.filter(c =>
+                        !campaignSearch ||
+                        clientName.toLowerCase().includes(searchLower) ||
+                        c.name.toLowerCase().includes(searchLower)
+                      )
+                      if (filteredCampaigns.length === 0) return null
+                      return (
+                        <div key={clientId} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-foreground uppercase tracking-wide">{clientName}</span>
+                            <span className="text-[10px] text-muted-foreground">{filteredCampaigns.length}</span>
+                          </div>
+                          <div className="space-y-0.5">
+                            {filteredCampaigns.map(campaign => (
+                              <label key={campaign.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/60 px-2 py-1.5 rounded transition-colors group">
+                                <Checkbox
+                                  checked={selectedCampaignIds.has(campaign.id)}
+                                  onCheckedChange={() => handleToggleCampaign(campaign.id)}
+                                  className="h-4 w-4 shrink-0"
+                                />
+                                <span className="flex-1 text-xs text-foreground truncate group-hover:text-clip">{campaign.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })
+                  }
+                  {Array.from(campaignsByClient.grouped.entries()).every(([clientId, campaigns]) => {
+                    const clientName = campaignsByClient.clientNames.get(clientId) ?? ''
+                    const searchLower = campaignSearch.toLowerCase()
+                    return campaigns.every(c =>
+                      campaignSearch &&
+                      !clientName.toLowerCase().includes(searchLower) &&
+                      !c.name.toLowerCase().includes(searchLower)
+                    )
+                  }) && (
+                    <div className="text-center text-xs text-muted-foreground py-6">
+                      Sin resultados para &quot;{campaignSearch}&quot;
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
+
+          <div className="h-4 w-px bg-border/60 mx-1" />
           {FILTER_OPTIONS.map(opt => (
             <button
               key={opt.value}
