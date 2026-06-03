@@ -322,16 +322,47 @@ export const useTimerStore = create<TimerState>()(
             // Check if there's actually a running entry in the database
             const runningEntry = validEntries.find((e) => e.finalizado_en === null)
             if (runningEntry) {
-              // Sync local state with the actual running entry from DB
-              set({
-                isRunning: true,
-                startedAt: runningEntry.iniciado_en,
-                currentEntryId: runningEntry.id,
-                description: runningEntry.descripcion,
-                clientId: runningEntry.cliente_id,
-                tipoTareaId: runningEntry.tipo_tarea_id,
-                billable: runningEntry.facturable,
-              })
+              // Validate that the running entry is not too old (more than 24 hours)
+              const startTime = new Date(runningEntry.iniciado_en).getTime()
+              const elapsed = Date.now() - startTime
+              const MAX_REASONABLE_MS = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+              
+              if (elapsed > MAX_REASONABLE_MS || elapsed < 0) {
+                // Entry is too old or invalid - auto-stop it
+                console.warn('[Timer] Found stale running entry, auto-stopping:', runningEntry.id)
+                const supabase = createClient()
+                const now = new Date().toISOString()
+                await supabase
+                  .from('entradas_de_tiempo')
+                  .update({ 
+                    finalizado_en: now, 
+                    duracion_seg: Math.min(Math.floor(elapsed / 1000), MAX_REASONABLE_MS / 1000) 
+                  })
+                  .eq('id', runningEntry.id)
+                
+                // Clear local timer state
+                set({
+                  isRunning: false,
+                  startedAt: null,
+                  currentEntryId: null,
+                  description: '',
+                  clientId: null,
+                  tipoTareaId: null,
+                  billable: true,
+                  taskId: null,
+                })
+              } else {
+                // Sync local state with the actual running entry from DB
+                set({
+                  isRunning: true,
+                  startedAt: runningEntry.iniciado_en,
+                  currentEntryId: runningEntry.id,
+                  description: runningEntry.descripcion,
+                  clientId: runningEntry.cliente_id,
+                  tipoTareaId: runningEntry.tipo_tarea_id,
+                  billable: runningEntry.facturable,
+                })
+              }
             } else {
               // No running entry in DB - clear local timer state
               // This fixes the issue where localStorage says timer is running but DB says otherwise
@@ -370,7 +401,37 @@ export const useTimerStore = create<TimerState>()(
       getElapsedSeconds: () => {
         const state = get()
         if (!state.isRunning || !state.startedAt) return 0
-        return Math.floor((Date.now() - new Date(state.startedAt).getTime()) / 1000)
+        
+        const startTime = new Date(state.startedAt).getTime()
+        // Validate startedAt is not invalid or too old (more than 24 hours)
+        if (isNaN(startTime)) return 0
+        
+        const elapsed = Math.floor((Date.now() - startTime) / 1000)
+        
+        // If elapsed time is more than 24 hours, something is wrong - return 0
+        // and trigger a state reset
+        const MAX_REASONABLE_SECONDS = 24 * 60 * 60 // 24 hours
+        if (elapsed > MAX_REASONABLE_SECONDS || elapsed < 0) {
+          // Schedule state reset (can't call set directly in getter)
+          setTimeout(() => {
+            const currentState = get()
+            if (currentState.isRunning && currentState.startedAt === state.startedAt) {
+              set({
+                isRunning: false,
+                startedAt: null,
+                currentEntryId: null,
+                description: '',
+                clientId: null,
+                tipoTareaId: null,
+                billable: true,
+                taskId: null,
+              })
+            }
+          }, 0)
+          return 0
+        }
+        
+        return elapsed
       },
     }),
     {
