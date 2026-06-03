@@ -477,6 +477,7 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
     const saved = localStorage.getItem('campaign-alerts-selection')
     return saved ? new Set(JSON.parse(saved)) : new Set()
   })
+  const [campaignSearch, setCampaignSearch] = useState('')
   
   // Sync to localStorage whenever selection changes
   useEffect(() => {
@@ -776,54 +777,85 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
               >
                 <Filter className="h-3 w-3" />
                 {selectedCampaignIds.size > 0
-                  ? `${selectedCampaignIds.size} campana${selectedCampaignIds.size !== 1 ? 's' : ''}`
-                  : 'Todas las campanas'}
+                  ? `${selectedCampaignIds.size} campaña${selectedCampaignIds.size !== 1 ? 's' : ''}`
+                  : 'Todas las campañas'}
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-80 max-w-[90vw] p-0" align="end" side="bottom" sideOffset={4}>
-              <div className="p-3 border-b space-y-2">
+              {/* Header */}
+              <div className="p-3 border-b space-y-2.5">
                 <div className="text-sm font-bold">Seleccionar campañas</div>
+
+                {/* Search box */}
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <Input
+                    placeholder="Buscar cliente o campaña..."
+                    value={campaignSearch}
+                    onChange={e => setCampaignSearch(e.target.value)}
+                    className="h-8 pl-8 text-xs"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Actions */}
                 <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="default"
-                    className="text-xs h-7 flex-1"
-                    onClick={handleSelectAll}
-                  >
+                  <Button size="sm" variant="default" className="text-xs h-7 flex-1" onClick={handleSelectAll}>
                     Seleccionar todo
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs h-7 flex-1"
-                    onClick={handleClearSelection}
-                  >
+                  <Button size="sm" variant="outline" className="text-xs h-7 flex-1" onClick={handleClearSelection}>
                     Limpiar
                   </Button>
                 </div>
               </div>
-              
-              <ScrollArea className="h-80">
+
+              <ScrollArea className="h-72">
                 <div className="p-3 space-y-3">
-                  {Array.from(campaignsByClient.grouped.entries()).map(([clientId, campaigns]) => (
-                    <div key={clientId} className="space-y-1.5">
-                      <div className="text-xs font-bold text-foreground uppercase tracking-wide">
-                        {campaignsByClient.clientNames.get(clientId)}
-                      </div>
-                      <div className="space-y-0.5">
-                        {campaigns.map(campaign => (
-                          <label key={campaign.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/60 px-2 py-1.5 rounded transition-colors">
-                            <Checkbox
-                              checked={selectedCampaignIds.has(campaign.id)}
-                              onCheckedChange={() => handleToggleCampaign(campaign.id)}
-                              className="h-4 w-4 shrink-0"
-                            />
-                            <span className="flex-1 text-xs text-foreground truncate">{campaign.name}</span>
-                          </label>
-                        ))}
-                      </div>
+                  {Array.from(campaignsByClient.grouped.entries())
+                    .map(([clientId, campaigns]) => {
+                      const clientName = campaignsByClient.clientNames.get(clientId) ?? ''
+                      const searchLower = campaignSearch.toLowerCase()
+                      const filteredCampaigns = campaigns.filter(c =>
+                        !campaignSearch ||
+                        clientName.toLowerCase().includes(searchLower) ||
+                        c.name.toLowerCase().includes(searchLower)
+                      )
+                      if (filteredCampaigns.length === 0) return null
+                      return (
+                        <div key={clientId} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-foreground uppercase tracking-wide">{clientName}</span>
+                            <span className="text-[10px] text-muted-foreground">{filteredCampaigns.length}</span>
+                          </div>
+                          <div className="space-y-0.5">
+                            {filteredCampaigns.map(campaign => (
+                              <label key={campaign.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/60 px-2 py-1.5 rounded transition-colors group">
+                                <Checkbox
+                                  checked={selectedCampaignIds.has(campaign.id)}
+                                  onCheckedChange={() => handleToggleCampaign(campaign.id)}
+                                  className="h-4 w-4 shrink-0"
+                                />
+                                <span className="flex-1 text-xs text-foreground truncate group-hover:text-clip">{campaign.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })
+                  }
+                  {Array.from(campaignsByClient.grouped.entries()).every(([clientId, campaigns]) => {
+                    const clientName = campaignsByClient.clientNames.get(clientId) ?? ''
+                    const searchLower = campaignSearch.toLowerCase()
+                    return campaigns.every(c =>
+                      campaignSearch &&
+                      !clientName.toLowerCase().includes(searchLower) &&
+                      !c.name.toLowerCase().includes(searchLower)
+                    )
+                  }) && (
+                    <div className="text-center text-xs text-muted-foreground py-6">
+                      Sin resultados para &quot;{campaignSearch}&quot;
                     </div>
-                  ))}
+                  )}
                 </div>
               </ScrollArea>
             </PopoverContent>
