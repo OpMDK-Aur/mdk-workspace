@@ -22,7 +22,6 @@ import type { Task } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -34,6 +33,8 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { NewTaskModal } from './new-task-modal'
 
 function getInitials(name: string): string {
@@ -121,10 +122,10 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                 isOverdue && !isSystemTask && 'ring-1 ring-red-400/60'
               )}
             >
-              <div className="flex items-center gap-1">
-                {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-500 shrink-0" />}
-                {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-500 shrink-0" />}
-                <span className="truncate flex-1 text-[11px] font-medium text-gray-900 dark:text-foreground leading-tight">
+              <div className="flex items-start gap-1">
+                {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />}
+                {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />}
+                <span className="flex-1 text-[11px] font-medium text-gray-900 dark:text-foreground break-words line-clamp-2">
                   {task.title}
                 </span>
               </div>
@@ -176,9 +177,96 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
           )
         })}
         {tasks.length > 3 && (
-          <p className="text-[11px] text-gray-500 dark:text-muted-foreground text-center py-0.5">
-            +{tasks.length - 3} mas
-          </p>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="w-full text-[11px] text-primary hover:text-primary/80 font-medium text-center py-0.5 hover:bg-primary/10 rounded transition-colors">
+                +{tasks.length - 3} más
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              className="w-72 p-0 shadow-lg border"
+              align="end"
+              side="top"
+              sideOffset={8}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 bg-gradient-to-r from-background to-background/95 px-4 py-3 border-b backdrop-blur-sm z-10">
+                <div className="flex items-center justify-between">
+                  <span className="text-base font-semibold text-foreground capitalize">
+                    {format(date, "EEEE d 'de' MMMM", { locale: es })}
+                  </span>
+                  <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
+                    {tasks.length} tareas
+                  </span>
+                </div>
+              </div>
+              <ScrollArea className="h-80 w-full">
+                <div className="px-2 py-2 space-y-1">
+                  {tasks.map((task, index) => {
+                    const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
+                    const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && task.status !== 'resuelto'
+                    const isSystemTask = task.isSystemTask
+
+                    return (
+                      <button
+                        key={task.id}
+                        onClick={() => onTaskClick(task.id)}
+                        className={cn(
+                          'w-full text-left rounded-md px-2.5 py-2 transition-all duration-200',
+                          'bg-card/40 border border-border/40 hover:border-primary/50 hover:bg-card/60',
+                          'hover:shadow-sm hover:translate-x-0.5',
+                          isOverdue && !isSystemTask && 'border-red-400/50 bg-red-400/10'
+                        )}
+                      >
+                        <div className="flex items-start gap-1.5 mb-1.5">
+                          <div className="flex items-start gap-1 flex-1 min-w-0">
+                            {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />}
+                            {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />}
+                            <span className="flex-1 text-xs font-medium text-foreground break-words line-clamp-3">
+                              {task.title}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            {task.assignees && task.assignees.length > 0 ? (
+                              <div className="flex -space-x-1">
+                                {task.assignees.slice(0, 2).map((a, i) => (
+                                  <Avatar key={a.id} className="h-4 w-4 border border-card" style={{ zIndex: 2 - i }}>
+                                    {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
+                                    <AvatarFallback className="text-[6px]">{getInitials(a.nombre)}</AvatarFallback>
+                                  </Avatar>
+                                ))}
+                                {task.assignees.length > 2 && (
+                                  <div className="h-4 w-4 rounded-full bg-muted border border-card flex items-center justify-center text-[6px] font-medium" style={{ zIndex: 0 }}>
+                                    +{task.assignees.length - 2}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (task.assigneeAvatar || task.assigneeName) ? (
+                              <Avatar className="h-4 w-4 shrink-0">
+                                {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
+                                <AvatarFallback className="text-[6px]">{getInitials(task.assigneeName)}</AvatarFallback>
+                              </Avatar>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {isSystemTask ? (
+                            <Badge variant="outline" className="h-4 px-1.5 text-[8px] border-0 bg-teal-100/60 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 font-medium">
+                              Semanal
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className={cn('h-4 px-1.5 text-[8px] border-0 font-medium', priorityConfig.bgColor, priorityConfig.color)}>
+                              {priorityConfig.label}
+                            </Badge>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
         )}
       </div>
     </div>
