@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import type { ScorecardRow, Client } from '@/lib/types'
+import type { ScorecardRow, Client, DateRangePreset } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Calendar } from '@/components/ui/calendar'
 import {
   AlertTriangle,
   Search,
@@ -22,8 +24,44 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
+  CalendarDays,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { format, subDays } from 'date-fns'
+import { es } from 'date-fns/locale'
+import type { DateRange as DayPickerDateRange } from 'react-day-picker'
+
+// ── Date Presets ──────────────────────────────────────────────────────────────
+
+type AlertDatePreset = 'last_14d' | 'last_7d' | 'yesterday' | 'today' | 'custom'
+
+interface AlertDateRange {
+  preset: AlertDatePreset
+  start: string
+  end: string
+}
+
+const DATE_PRESETS: { value: AlertDatePreset; label: string }[] = [
+  { value: 'last_14d',   label: 'Últimos 14 días' },
+  { value: 'last_7d',    label: 'Últimos 7 días' },
+  { value: 'yesterday',  label: 'Ayer' },
+  { value: 'today',      label: 'Hoy' },
+  { value: 'custom',     label: 'Personalizado' },
+]
+
+function buildAlertDateRange(preset: AlertDatePreset, customStart?: string, customEnd?: string): AlertDateRange {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const fmt = (d: Date) => format(d, 'yyyy-MM-dd')
+  switch (preset) {
+    case 'last_14d':   return { preset, start: fmt(subDays(today, 14)), end: fmt(today) }
+    case 'last_7d':    return { preset, start: fmt(subDays(today, 7)),  end: fmt(today) }
+    case 'yesterday': { const y = subDays(today, 1); return { preset, start: fmt(y), end: fmt(y) } }
+    case 'today':      return { preset, start: fmt(today), end: fmt(today) }
+    case 'custom':     return { preset, start: customStart ?? fmt(subDays(today, 14)), end: customEnd ?? fmt(today) }
+    default:           return { preset: 'last_14d', start: fmt(subDays(today, 14)), end: fmt(today) }
+  }
+}
 
 // ── Alert Types ───────────────────────────────────────────────────────────────
 
@@ -420,12 +458,36 @@ interface CampaignAlertsPanelProps {
   rows: ScorecardRow[]
   clients: Client[]
   loading?: boolean
+  onDateRangeChange?: (range: { preset: string; start: string; end: string }) => void
 }
 
-export function CampaignAlertsPanel({ rows, clients, loading }: CampaignAlertsPanelProps) {
+export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange }: CampaignAlertsPanelProps) {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterOption>('all')
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
+  const [dateRange, setDateRange] = useState<AlertDateRange>(() => buildAlertDateRange('last_14d'))
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [calendarSelection, setCalendarSelection] = useState<DayPickerDateRange | undefined>(undefined)
+
+  function handlePresetChange(preset: AlertDatePreset) {
+    if (preset === 'custom') {
+      setCalendarOpen(true)
+      return
+    }
+    const range = buildAlertDateRange(preset)
+    setDateRange(range)
+    onDateRangeChange?.(range)
+  }
+
+  function handleCalendarSelect(sel: DayPickerDateRange | undefined) {
+    setCalendarSelection(sel)
+    if (sel?.from && sel?.to) {
+      const range = buildAlertDateRange('custom', format(sel.from, 'yyyy-MM-dd'), format(sel.to, 'yyyy-MM-dd'))
+      setDateRange(range)
+      onDateRangeChange?.(range)
+      setCalendarOpen(false)
+    }
+  }
 
   // Calculate average CPL for threshold
   const averageCPL = useMemo(() => {
@@ -581,8 +643,55 @@ export function CampaignAlertsPanel({ rows, clients, loading }: CampaignAlertsPa
       </CardHeader>
 
       <CardContent className="pt-0">
-        {/* Filter chips */}
-        <div className="flex flex-wrap gap-1.5 mb-4">
+        {/* Date presets + filter chips */}
+        <div className="flex flex-wrap items-center gap-1.5 mb-4">
+          {/* Date presets */}
+          {DATE_PRESETS.filter(p => p.value !== 'custom').map(preset => (
+            <button
+              key={preset.value}
+              onClick={() => handlePresetChange(preset.value)}
+              className={cn(
+                'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-all',
+                dateRange.preset === preset.value
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-transparent text-muted-foreground border-border/60 hover:border-border hover:text-foreground'
+              )}
+            >
+              {preset.label}
+            </button>
+          ))}
+
+          {/* Custom date picker */}
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all',
+                  dateRange.preset === 'custom'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-transparent text-muted-foreground border-border/60 hover:border-border hover:text-foreground'
+                )}
+              >
+                <CalendarDays className="h-3 w-3" />
+                {dateRange.preset === 'custom'
+                  ? `${format(new Date(dateRange.start), 'd MMM', { locale: es })} - ${format(new Date(dateRange.end), 'd MMM', { locale: es })}`
+                  : 'Personalizado'}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="range"
+                selected={calendarSelection}
+                onSelect={handleCalendarSelect}
+                numberOfMonths={2}
+                locale={es}
+              />
+            </PopoverContent>
+          </Popover>
+
+          <div className="h-4 w-px bg-border/60 mx-1" />
+
+          {/* Alert type filters */}
           {FILTER_OPTIONS.map(opt => (
             <button
               key={opt.value}
