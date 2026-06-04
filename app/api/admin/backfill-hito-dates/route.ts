@@ -1,5 +1,13 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
+
+// Use admin client to bypass RLS
+function getAdminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
 
 // Backfill fecha_vencimiento for all hito tasks based on their type
 // - MENSAJE DE INICIO DE SEMANA: deadline is the Monday of that week
@@ -36,37 +44,51 @@ function getFridaysInMonth(year: number, month: number): Date[] {
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = getAdminClient()
 
-    // Fetch all hito tasks - either with hito_poe OR with "[Hito]" prefix in title
-    const { data: hitoTasks, error: fetchError } = await supabase
-      .from('tareas')
-      .select('id, titulo, hito_poe, created_at, fecha_vencimiento')
-      .or('hito_poe.not.is.null,titulo.ilike.[Hito]%')
-
-    if (fetchError) {
-      console.error('[backfill-hito-dates] Error fetching tasks:', fetchError)
-      return NextResponse.json({ success: false, error: fetchError.message }, { status: 500 })
+    // Fetch ALL hito tasks using pagination (Supabase default limit is 1000)
+    let allHitoTasks: { id: string; titulo: string; hito_poe: string | null; created_at: string; fecha_vencimiento: string | null }[] = []
+    let page = 0
+    const pageSize = 1000
+    
+    while (true) {
+      const { data: hitoTasks, error: fetchError } = await supabase
+        .from('tareas')
+        .select('id, titulo, hito_poe, created_at, fecha_vencimiento')
+        .or('hito_poe.not.is.null,titulo.ilike.[Hito]%')
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+      
+      if (fetchError) {
+        console.error('[backfill-hito-dates] Error fetching tasks:', fetchError)
+        return NextResponse.json({ success: false, error: fetchError.message }, { status: 500 })
+      }
+      
+      if (!hitoTasks || hitoTasks.length === 0) break
+      
+      allHitoTasks = allHitoTasks.concat(hitoTasks)
+      page++
+      
+      if (hitoTasks.length < pageSize) break
     }
 
-    if (!hitoTasks || hitoTasks.length === 0) {
+    if (allHitoTasks.length === 0) {
       return NextResponse.json({ success: true, message: 'No hito tasks found', updated: 0 })
     }
 
     // Fetch hitos_config to get hito names
-    const hitoIds = [...new Set(hitoTasks.map(t => t.hito_poe).filter(Boolean))]
+    const hitoIds = [...new Set(allHitoTasks.map(t => t.hito_poe).filter(Boolean))]
     const { data: hitosConfig } = await supabase
       .from('hitos_config')
       .select('id, nombre')
-      .in('id', hitoIds)
+      .in('id', hitoIds as string[])
 
     const hitosMap = new Map((hitosConfig || []).map(h => [h.id, h.nombre]))
 
-    console.log(`[backfill-hito-dates] Processing ${hitoTasks.length} hito tasks`)
+    console.log(`[backfill-hito-dates] Processing ${allHitoTasks.length} hito tasks`)
 
     const updates: { id: string; fecha_vencimiento: string; tipo: string }[] = []
 
-    for (const task of hitoTasks) {
+    for (const task of allHitoTasks) {
       // Use hito name from config, or fall back to task title
       const hitoNombre = (task.hito_poe ? hitosMap.get(task.hito_poe) : null) || task.titulo || ''
       const hitoNombreUpper = hitoNombre.toUpperCase()
@@ -152,7 +174,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      totalTasks: hitoTasks.length,
+      totalTasks: allHitoTasks.length,
       updated: successCount,
       errors: errorCount,
       breakdown: {
