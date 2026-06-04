@@ -437,7 +437,7 @@ async function fetchMetricas(mes: number, anio: number) {
       `)
       .eq('mes', mes)
       .eq('anio', anio),
-    supabase.from('colaboradores').select('id, nombre, apellido'),
+    supabase.from('colaboradores').select('id, nombre, apellido, email'),
     supabase.from('clientes').select('id, nombre_del_negocio'),
     // Also fetch profiles to match time entries by user auth ID
     supabase.from('profiles').select('id, full_name, email'),
@@ -479,11 +479,39 @@ async function fetchMetricas(mes: number, anio: number) {
   // This handles cases where colaborador_id is a profiles.id instead of colaboradores.id
   const profilesMap = new Map((profilesRes.data || []).map(p => [p.id, p]))
   
+  // Build a map of email -> colaborador for cross-referencing
+  // This helps when profiles.id != colaboradores.id but they share the same email
+  const colaboradoresByEmail = new Map(
+    (colaboradoresRes.data || [])
+      .filter(c => c.email)
+      .map(c => [c.email!.toLowerCase(), c])
+  )
+  
+  // Build a map of profiles.id -> colaborador via email matching
+  // This allows finding the real colaborador when the entry uses profiles.id
+  const profileIdToColaborador = new Map<string, typeof colaboradoresMap extends Map<string, infer V> ? V : never>()
+  for (const profile of (profilesRes.data || [])) {
+    if (profile.email) {
+      const colaborador = colaboradoresByEmail.get(profile.email.toLowerCase())
+      if (colaborador) {
+        profileIdToColaborador.set(profile.id, colaborador)
+      }
+    }
+  }
+  
+  console.log('[v0] colaboradores count:', colaboradoresMap.size)
+  console.log('[v0] profiles count:', profilesMap.size)
+  console.log('[v0] profileIdToColaborador mappings:', profileIdToColaborador.size)
+  console.log('[v0] entries count:', entries.length)
+  
   // Calculate hours per colaborador-cliente pair from time entries
+  // IMPORTANT: Normalize colaborador_id from profiles.id to colaboradores.id via email matching
   const hoursMap = new Map<string, number>()
   entries.forEach(entry => {
     if (entry.colaborador_id && entry.cliente_id && entry.duracion_seg) {
-      const key = `${entry.colaborador_id}::${entry.cliente_id}`
+      // Try to map profiles.id to colaboradores.id via email
+      const normalizedColaboradorId = profileIdToColaborador.get(entry.colaborador_id)?.id || entry.colaborador_id
+      const key = `${normalizedColaboradorId}::${entry.cliente_id}`
       hoursMap.set(key, (hoursMap.get(key) || 0) + (entry.duracion_seg / 3600))
     }
   })
@@ -543,6 +571,8 @@ async function fetchMetricas(mes: number, anio: number) {
             nombre_del_negocio: cliente.nombre_del_negocio,
           },
         })
+      } else {
+        console.log('[v0] Skipped entry - colaborador_id:', colaborador_id, 'cliente_id:', cliente_id, 'colaboradorInfo:', !!colaboradorInfo, 'cliente:', !!cliente)
       }
     }
   })
