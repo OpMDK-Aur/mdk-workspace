@@ -142,7 +142,7 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
         setProfiles(profilesData || [])
         setNpsHistorial(npsData || [])
       } catch (err) {
-        console.error('[v0] Error fetching NPS data:', err)
+        console.error('Error fetching NPS data:', err)
         setError(err instanceof Error ? err.message : 'Error al cargar datos')
       }
 
@@ -165,16 +165,21 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
     // Use full_name if available
     if (profile.full_name) return profile.full_name
     
-    // Fallback: format email (take part before @ and capitalize)
-    if (profile.email) {
-      const namePart = profile.email.split('@')[0]
+    // Fallback: format email or username
+    const namePart = profile.email?.split('@')[0] || ''
+    if (namePart) {
+      // Remove trailing numbers like _43621
+      let cleanName = namePart.replace(/_\d+$/, '')
       // Convert underscores/dots to spaces and capitalize each word
-      return namePart
+      // Handle camelCase names like "valentinaferraris" -> "Valentina Ferraris"
+      cleanName = cleanName
+        .replace(/([a-z])([A-Z])/g, '$1 $2') // Split camelCase
         .replace(/[._]/g, ' ')
-        .replace(/_\d+$/, '') // Remove trailing numbers like _43621
         .split(' ')
+        .filter(word => word.length > 0)
         .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
         .join(' ')
+      return cleanName
     }
     
     return null
