@@ -708,7 +708,7 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
   }
 }
 
-// ���─ Store ─────────────────────────────────────────────────────────────────────
+// ���─ Store ──────────────────────────────────────────────────────────────────���──
 
 // Advanced filter types
 export interface FilterRule {
@@ -1136,6 +1136,23 @@ updateTaskStatus: async (taskId, status) => {
       .delete()
       .eq('tipo', 'recordatorio')
       .eq('referencia_id', taskId)
+  }
+
+  // Sync mapa_servicio_instancias estado for hito tasks
+  // Map task status to instance estado: resuelto -> listo, no_realizado -> no_realizado
+  const statusToInstanceEstado: Record<string, string> = {
+    'resuelto': 'listo',
+    'no_realizado': 'no_realizado',
+  }
+  if (statusToInstanceEstado[status]) {
+    const { error: instanceError } = await supabase
+      .from('mapa_servicio_instancias')
+      .update({ estado: statusToInstanceEstado[status] })
+      .eq('tarea_id', taskId)
+    
+    if (instanceError) {
+      console.error('Error syncing instance estado:', instanceError)
+    }
   }
   
   // Update local state
