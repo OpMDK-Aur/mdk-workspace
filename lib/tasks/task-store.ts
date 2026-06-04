@@ -708,7 +708,7 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
   }
 }
 
-// ���─ Store ──────────────────────────────────────────────────────────────────���──
+// ���─ Store ──────────────────────────────────────────────────────────────────�����──
 
 // Advanced filter types
 export interface FilterRule {
@@ -1235,6 +1235,24 @@ updateTask: async (taskId, updates) => {
     
     if (error) {
       console.error('Error updating task:', error)
+    }
+    
+    // Sync mapa_servicio_instancias estado when task status changes
+    if (updates.status) {
+      const statusToInstanceEstado: Record<string, string> = {
+        'resuelto': 'listo',
+        'no_realizado': 'no_realizado',
+      }
+      if (statusToInstanceEstado[updates.status]) {
+        const { error: instanceError } = await supabase
+          .from('mapa_servicio_instancias')
+          .update({ estado: statusToInstanceEstado[updates.status] })
+          .eq('tarea_id', taskId)
+        
+        if (instanceError) {
+          console.error('Error syncing instance estado:', instanceError)
+        }
+      }
     }
   }
 
