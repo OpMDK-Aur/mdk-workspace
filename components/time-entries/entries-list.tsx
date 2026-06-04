@@ -98,10 +98,15 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
     async function fetchColaboradores() {
       const supabase = createClient()
       const { data } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, role')
-        .order('full_name')
-      if (data) setColaboradores(data)
+        .from('colaboradores')
+        .select('id, nombre, apellido, email')
+        .order('nombre')
+      if (data) setColaboradores(data.map(c => ({
+        id: c.id,
+        full_name: `${c.nombre}${c.apellido ? ' ' + c.apellido : ''}`,
+        email: c.email,
+        role: null,
+      })))
     }
     
     fetchColaboradores()

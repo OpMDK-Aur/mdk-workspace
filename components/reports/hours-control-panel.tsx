@@ -437,7 +437,7 @@ async function fetchMetricas(mes: number, anio: number) {
       `)
       .eq('mes', mes)
       .eq('anio', anio),
-    supabase.from('colaboradores').select('id, nombre, apellido'),
+    supabase.from('colaboradores').select('id, nombre, apellido, email'),
     supabase.from('clientes').select('id, nombre_del_negocio'),
   ])
   
@@ -474,11 +474,21 @@ async function fetchMetricas(mes: number, anio: number) {
   const clientesMap = new Map((clientesRes.data || []).map(c => [c.id, c]))
   
   // Calculate hours per colaborador-cliente pair from time entries
+  // Also track hours without cliente assigned per colaborador
   const hoursMap = new Map<string, number>()
+  const hoursNoClienteMap = new Map<string, number>() // colaborador_id -> hours without cliente
   entries.forEach(entry => {
-    if (entry.colaborador_id && entry.cliente_id && entry.duracion_seg) {
-      const key = `${entry.colaborador_id}::${entry.cliente_id}`
-      hoursMap.set(key, (hoursMap.get(key) || 0) + (entry.duracion_seg / 3600))
+    if (entry.colaborador_id && entry.duracion_seg) {
+      if (entry.cliente_id) {
+        const key = `${entry.colaborador_id}::${entry.cliente_id}`
+        hoursMap.set(key, (hoursMap.get(key) || 0) + (entry.duracion_seg / 3600))
+      } else {
+        // Entry without cliente - track separately per colaborador
+        hoursNoClienteMap.set(
+          entry.colaborador_id, 
+          (hoursNoClienteMap.get(entry.colaborador_id) || 0) + (entry.duracion_seg / 3600)
+        )
+      }
     }
   })
   
@@ -521,6 +531,32 @@ async function fetchMetricas(mes: number, anio: number) {
           },
         })
       }
+    }
+  })
+  
+  // Add entries WITHOUT cliente assigned (shown as "Sin cliente asignado")
+  hoursNoClienteMap.forEach((hours, colaborador_id) => {
+    const colaborador = colaboradoresMap.get(colaborador_id)
+    if (colaborador && hours > 0) {
+      metricasWithHours.push({
+        id: `no-cliente-${colaborador_id}`,
+        colaborador_id,
+        cliente_id: 'sin-cliente',
+        minimo_no_negociable_horas: null,
+        horas_objetivo: null,
+        acumulado_mes_asignado: hours,
+        mes,
+        anio,
+        colaborador: {
+          id: colaborador.id,
+          nombre: colaborador.nombre,
+          apellido: colaborador.apellido,
+        },
+        cliente: {
+          id: 'sin-cliente',
+          nombre_del_negocio: 'Sin cliente asignado',
+        },
+      })
     }
   })
   

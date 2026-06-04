@@ -8,9 +8,12 @@ import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
-import { Loader2, Download, Rows3 } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Calendar } from '@/components/ui/calendar'
+import type { DateRange as DayPickerDateRange } from 'react-day-picker'
+import { Loader2, Download, ChevronDown, Search, CalendarDays } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, subDays, startOfDay } from 'date-fns'
 import { es } from 'date-fns/locale'
 
 // ---------------------------------------------------------------------------
@@ -70,11 +73,9 @@ function fmt(value: number | null | undefined, metricFormat: MetricConfig['forma
   if (isNaN(n) || n === 0) return '-'
   switch (metricFormat) {
     case 'currency':
-      if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`
-      if (n >= 1_000)     return `$${(n / 1_000).toFixed(2)}K`
-      return `$${n.toFixed(2)}`
+      return `$${n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
     case 'number':
-      return n >= 1_000 ? `${(n / 1_000).toFixed(1)}K` : n.toLocaleString('es-AR')
+      return n.toLocaleString('es-AR')
     case 'integer':
       return Math.round(n).toLocaleString('es-AR')
     case 'percent':
@@ -172,45 +173,104 @@ export function ScorecardTimeline({
   const [error, setError] = useState<string | null>(null)
   const [accountName, setAccountName] = useState<string | null>(null)
 
-  // Derive active client and account from global filters
+  // Local client/campaign selectors
+  const [localClientId, setLocalClientId] = useState<string | null>(null)
+  const [localCampaignId, setLocalCampaignId] = useState<string | null>(null)
+  const [localPlatform, setLocalPlatform] = useState<'meta' | 'google'>('meta')
+  const [clientSearch, setClientSearch] = useState('')
+  const [clientPopoverOpen, setClientPopoverOpen] = useState(false)
+  const [campaignPopoverOpen, setCampaignPopoverOpen] = useState(false)
+  const [campaignSearch, setCampaignSearch] = useState('')
+
+  // ---------------------------------------------------------------------------
+  // Local date range (independent from global filters)
+  // ---------------------------------------------------------------------------
+  type DatePreset = 'today' | 'yesterday' | 'last_7' | 'last_14' | 'last_30' | 'custom'
+
+  function buildRange(preset: DatePreset, customFrom?: string, customTo?: string): { start: string; end: string } {
+    const today = startOfDay(new Date())
+    const f = (d: Date) => format(d, 'yyyy-MM-dd')
+    switch (preset) {
+      case 'today':      return { start: f(today),           end: f(today) }
+      case 'yesterday':  return { start: f(subDays(today,1)), end: f(subDays(today,1)) }
+      case 'last_7':     return { start: f(subDays(today,6)), end: f(today) }
+      case 'last_14':    return { start: f(subDays(today,13)),end: f(today) }
+      case 'last_30':    return { start: f(subDays(today,29)),end: f(today) }
+      case 'custom':     return { start: customFrom ?? f(subDays(today,29)), end: customTo ?? f(today) }
+    }
+  }
+
+  const PRESETS: { key: DatePreset; label: string }[] = [
+    { key: 'last_30',   label: 'Últimos 30' },
+    { key: 'last_14',   label: 'Últimos 14' },
+    { key: 'last_7',    label: 'Últimos 7' },
+    { key: 'yesterday', label: 'Ayer' },
+    { key: 'today',     label: 'Hoy' },
+  ]
+
+  const [activePreset, setActivePreset] = useState<DatePreset>('last_14')
+  const [localDateRange, setLocalDateRange] = useState(() => buildRange('last_14'))
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [calendarSel, setCalendarSel] = useState<DayPickerDateRange | undefined>()
+
+  // Unique campaigns from scorecardRows for the selected client
+  const availableCampaigns = useMemo(() => {
+    if (!localClientId) return []
+    return scorecardRows
+      .filter(r => r.clientId === localClientId && !!r.campaignId && r.platform === localPlatform)
+      .reduce<Array<{ id: string; name: string }>>((acc, r) => {
+        if (!acc.find(c => c.id === r.campaignId)) {
+          acc.push({ id: r.campaignId!, name: r.campaignName })
+        }
+        return acc
+      }, [])
+  }, [scorecardRows, localClientId, localPlatform])
+
+  // Resolve active client + account from local selection or global filters
   const { activeClient, platform, accountId } = useMemo(() => {
+    // Prefer local selection
+    if (localClientId) {
+      const client = clients.find(c => c.id === localClientId)
+      if (client) {
+        const metaIds = client.meta_ads_account_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
+        const googleIds = client.google_ads_customer_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
+        if (localPlatform === 'meta' && metaIds.length > 0) {
+          return { activeClient: client, platform: 'meta' as const, accountId: metaIds[0] }
+        }
+        if (localPlatform === 'google' && googleIds.length > 0) {
+          return { activeClient: client, platform: 'google' as const, accountId: googleIds[0] }
+        }
+        // Auto-detect platform
+        if (metaIds.length > 0) return { activeClient: client, platform: 'meta' as const, accountId: metaIds[0] }
+        if (googleIds.length > 0) return { activeClient: client, platform: 'google' as const, accountId: googleIds[0] }
+      }
+    }
+
+    // Fallback: derive from global filters
     const targetClients = filters.clientIds.length > 0
       ? clients.filter(c => filters.clientIds.includes(c.id))
       : clients
 
-    // If specific ad account is selected
     if (filters.adAccountId) {
       for (const client of targetClients) {
         const metaIds = client.meta_ads_account_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
         const googleIds = client.google_ads_customer_id?.split(',').map(s => s.trim()).filter(Boolean) ?? []
-        
-        if (metaIds.includes(filters.adAccountId)) {
-          return { activeClient: client, platform: 'meta' as const, accountId: filters.adAccountId }
-        }
-        if (googleIds.includes(filters.adAccountId)) {
-          return { activeClient: client, platform: 'google' as const, accountId: filters.adAccountId }
-        }
+        if (metaIds.includes(filters.adAccountId)) return { activeClient: client, platform: 'meta' as const, accountId: filters.adAccountId }
+        if (googleIds.includes(filters.adAccountId)) return { activeClient: client, platform: 'google' as const, accountId: filters.adAccountId }
       }
     }
-
-    // Use platform filter to determine which account to use
     for (const client of targetClients) {
       if (filters.platform !== 'google' && client.meta_ads_account_id) {
         const ids = client.meta_ads_account_id.split(',').map(s => s.trim()).filter(Boolean)
-        if (ids.length > 0) {
-          return { activeClient: client, platform: 'meta' as const, accountId: ids[0] }
-        }
+        if (ids.length > 0) return { activeClient: client, platform: 'meta' as const, accountId: ids[0] }
       }
       if (filters.platform !== 'meta' && client.google_ads_customer_id) {
         const ids = client.google_ads_customer_id.split(',').map(s => s.trim()).filter(Boolean)
-        if (ids.length > 0) {
-          return { activeClient: client, platform: 'google' as const, accountId: ids[0] }
-        }
+        if (ids.length > 0) return { activeClient: client, platform: 'google' as const, accountId: ids[0] }
       }
     }
-
     return { activeClient: null, platform: 'meta' as const, accountId: null }
-  }, [clients, filters.clientIds, filters.adAccountId, filters.platform])
+  }, [clients, localClientId, localPlatform, filters.clientIds, filters.adAccountId, filters.platform])
 
   // Load account name
   useEffect(() => {
@@ -239,8 +299,8 @@ export function ScorecardTimeline({
       return
     }
 
-    const start = filters.dateRange.start || ''
-    const end   = filters.dateRange.end   || ''
+    const start = localDateRange.start || ''
+    const end   = localDateRange.end   || ''
     if (!start || !end) return
 
     setLoading(true)
@@ -254,6 +314,7 @@ export function ScorecardTimeline({
     })
     if (platform === 'meta') params.set('account_id', accountId)
     else params.set('customer_id', accountId)
+    if (localCampaignId) params.set('campaign_id', localCampaignId)
 
     // Fetch CRM contacts in parallel if client has CRM configured
     const crmFetch: Promise<Record<string, number>> = (activeClient.crm_type && (activeClient.ghl_location_id || activeClient.ghl_token))
@@ -279,7 +340,7 @@ export function ScorecardTimeline({
       .catch(e => { setError(e.message); setData([]) })
       .finally(() => setLoading(false))
 
-  }, [activeClient?.id, accountId, platform, granularity, filters.dateRange.start, filters.dateRange.end])
+  }, [activeClient?.id, accountId, platform, granularity, localCampaignId, localDateRange.start, localDateRange.end])
 
   const toggleMetric = (key: string) => {
     setVisibleMetricKeys(prev => {
@@ -294,78 +355,152 @@ export function ScorecardTimeline({
   const totals  = data.length > 0 ? computeTotals(data) : null
   const exportLabel = activeClient?.business_name ?? 'cliente'
 
-  if (!activeClient || !accountId) return (
-    <Card>
-      <CardContent className="flex flex-col items-center justify-center py-14 text-center gap-2">
-        <p className="text-sm font-medium text-muted-foreground">Sin datos disponibles</p>
-        <p className="text-xs text-muted-foreground/60">Selecciona un cliente o cuenta en los filtros superiores</p>
-      </CardContent>
-    </Card>
-  )
-
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between flex-wrap gap-3 pb-4">
         <div>
           <CardTitle className="text-base font-semibold">Scorecard temporal</CardTitle>
-          <p className="text-xs text-muted-foreground mt-0.5">{activeClient.business_name}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{activeClient?.business_name ?? 'Selecciona un cliente'}</p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Display context from global filters */}
-          {accountName && (
-            <Badge variant="outline" className="h-7 px-2 text-xs font-normal">
-              {accountName}
-            </Badge>
-          )}
-
-          {/* Row selector (metric visibility) */}
-          <Popover>
+          {/* Client selector */}
+          <Popover open={clientPopoverOpen} onOpenChange={setClientPopoverOpen}>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                <Rows3 className="h-3.5 w-3.5" />
-                Seleccionar filas
-                <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                  {visibleMetricKeys.size}
-                </Badge>
+              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs max-w-[180px]">
+                <span className="truncate">
+                  {localClientId
+                    ? clients.find(c => c.id === localClientId)?.business_name ?? 'Cliente'
+                    : 'Seleccionar cliente'}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-64 p-0">
-              <div className="px-3 py-2.5 border-b border-border">
-                <p className="text-xs font-semibold">Filas visibles</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">Mostrar u ocultar metricas</p>
+            <PopoverContent align="start" className="w-72 p-0">
+              <div className="p-2 border-b">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <Input
+                    placeholder="Buscar cliente..."
+                    value={clientSearch}
+                    onChange={e => setClientSearch(e.target.value)}
+                    className="h-8 pl-8 text-xs"
+                    autoFocus
+                  />
+                </div>
               </div>
               <ScrollArea className="h-64">
-                <div className="p-2">
-                  {METRICS.map(metric => (
-                    <label
-                      key={metric.key as string}
-                      className={cn(
-                        'flex items-start gap-2.5 px-2 py-1.5 rounded-md cursor-pointer',
-                        metric.status === 'coming_soon' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-muted'
-                      )}
-                    >
-                      <Checkbox
-                        checked={visibleMetricKeys.has(metric.key as string)}
-                        onCheckedChange={() => metric.status !== 'coming_soon' && toggleMetric(metric.key as string)}
-                        disabled={metric.status === 'coming_soon'}
-                        className="h-3.5 w-3.5 mt-0.5"
-                      />
-                      <div>
-                        <p className="text-xs font-medium text-foreground">{metric.label}</p>
-                        <p className="text-[10px] text-muted-foreground">{metric.sublabel}</p>
-                      </div>
-                      {metric.status === 'coming_soon' && (
-                        <Badge variant="outline" className="text-[9px] h-4 px-1 ml-auto shrink-0 border-muted-foreground/30 text-muted-foreground">
-                          Prox.
-                        </Badge>
-                      )}
-                    </label>
-                  ))}
+                <div className="p-1.5 space-y-0.5">
+                  {clients
+                    .filter(c => !clientSearch || c.business_name.toLowerCase().includes(clientSearch.toLowerCase()))
+                    .map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          setLocalClientId(c.id)
+                          setLocalCampaignId(null)
+                          // Auto-detect platform
+                          const hasMeta = !!(c.meta_ads_account_id?.trim())
+                          setLocalPlatform(hasMeta ? 'meta' : 'google')
+                          setClientSearch('')
+                          setClientPopoverOpen(false)
+                        }}
+                        className={cn(
+                          'w-full text-left text-xs px-2.5 py-2 rounded hover:bg-muted transition-colors',
+                          localClientId === c.id && 'bg-primary/10 text-primary font-medium'
+                        )}
+                      >
+                        {c.business_name}
+                      </button>
+                    ))}
                 </div>
               </ScrollArea>
             </PopoverContent>
           </Popover>
+
+          {/* Campaign selector — only shows when client is selected and has campaigns */}
+          {localClientId && availableCampaigns.length > 0 && (
+            <Popover open={campaignPopoverOpen} onOpenChange={setCampaignPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs max-w-[200px]">
+                  <span className="truncate">
+                    {localCampaignId
+                      ? availableCampaigns.find(c => c.id === localCampaignId)?.name ?? 'Campaña'
+                      : 'Todas las campañas'}
+                  </span>
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-80 p-0">
+                <div className="p-2 border-b">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <Input
+                      placeholder="Buscar campaña..."
+                      value={campaignSearch}
+                      onChange={e => setCampaignSearch(e.target.value)}
+                      className="h-8 pl-8 text-xs"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+                <ScrollArea className="h-64">
+                  <div className="p-1.5 space-y-0.5">
+                    <button
+                      onClick={() => { setLocalCampaignId(null); setCampaignPopoverOpen(false) }}
+                      className={cn(
+                        'w-full text-left text-xs px-2.5 py-2 rounded hover:bg-muted transition-colors italic text-muted-foreground',
+                        !localCampaignId && 'bg-primary/10 text-primary font-medium not-italic'
+                      )}
+                    >
+                      Todas las campañas
+                    </button>
+                    {availableCampaigns
+                      .filter(c => !campaignSearch || c.name.toLowerCase().includes(campaignSearch.toLowerCase()))
+                      .map(c => (
+                        <button
+                          key={c.id}
+                          onClick={() => { setLocalCampaignId(c.id); setCampaignSearch(''); setCampaignPopoverOpen(false) }}
+                          className={cn(
+                            'w-full text-left text-xs px-2.5 py-2 rounded hover:bg-muted transition-colors',
+                            localCampaignId === c.id && 'bg-primary/10 text-primary font-medium'
+                          )}
+                        >
+                          {c.name}
+                        </button>
+                      ))}
+                  </div>
+                </ScrollArea>
+              </PopoverContent>
+            </Popover>
+          )}
+
+          {/* Platform toggle — only when client has both platforms */}
+          {localClientId && (() => {
+            const c = clients.find(cl => cl.id === localClientId)
+            const hasMeta = !!(c?.meta_ads_account_id?.trim())
+            const hasGoogle = !!(c?.google_ads_customer_id?.trim())
+            return hasMeta && hasGoogle
+          })() && (
+            <div className="flex rounded-md border border-input">
+              <Button
+                variant="ghost" size="sm"
+                className={cn('h-8 rounded-r-none text-xs px-3', localPlatform === 'meta' && 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground')}
+                onClick={() => { setLocalPlatform('meta'); setLocalCampaignId(null) }}
+              >
+                Meta
+              </Button>
+              <Button
+                variant="ghost" size="sm"
+                className={cn('h-8 rounded-l-none text-xs px-3 border-l', localPlatform === 'google' && 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground')}
+                onClick={() => { setLocalPlatform('google'); setLocalCampaignId(null) }}
+              >
+                Google
+              </Button>
+            </div>
+          )}
+
+          {/* Row selector (metric visibility) — removed per request */}
 
           {/* Platform badge */}
           <Badge variant="outline" className={cn(
@@ -374,6 +509,64 @@ export function ScorecardTimeline({
           )}>
             {platform === 'meta' ? 'Meta' : 'Google'}
           </Badge>
+
+          {/* Date presets */}
+          <div className="flex items-center gap-1">
+            {PRESETS.map(p => (
+              <button
+                key={p.key}
+                onClick={() => {
+                  setActivePreset(p.key)
+                  setLocalDateRange(buildRange(p.key))
+                }}
+                className={cn(
+                  'h-8 px-3 text-xs rounded-md border transition-all font-medium',
+                  activePreset === p.key
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-transparent text-muted-foreground border-border/60 hover:border-border hover:text-foreground'
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+
+            {/* Custom date picker */}
+            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  className={cn(
+                    'h-8 px-3 text-xs rounded-md border transition-all font-medium inline-flex items-center gap-1.5',
+                    activePreset === 'custom'
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-transparent text-muted-foreground border-border/60 hover:border-border hover:text-foreground'
+                  )}
+                >
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  {activePreset === 'custom'
+                    ? `${format(parseISO(localDateRange.start), 'd MMM', { locale: es })} – ${format(parseISO(localDateRange.end), 'd MMM', { locale: es })}`
+                    : 'Personalizado'}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-auto p-0">
+                <Calendar
+                  mode="range"
+                  selected={calendarSel}
+                  onSelect={sel => {
+                    setCalendarSel(sel)
+                    if (sel?.from && sel?.to) {
+                      const from = format(sel.from, 'yyyy-MM-dd')
+                      const to   = format(sel.to,   'yyyy-MM-dd')
+                      setActivePreset('custom')
+                      setLocalDateRange(buildRange('custom', from, to))
+                      setCalendarOpen(false)
+                    }
+                  }}
+                  numberOfMonths={2}
+                  locale={es}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
 
           {/* Granularity toggle */}
           <div className="flex rounded-md border border-input">
@@ -423,13 +616,19 @@ export function ScorecardTimeline({
           </div>
         )}
 
-        {!loading && data.length === 0 && !error && (
+        {!loading && (!activeClient || !accountId) && !error && (
+          <div className="py-10 text-center text-sm text-muted-foreground">
+            Selecciona un cliente para ver el scorecard
+          </div>
+        )}
+
+        {!loading && activeClient && accountId && data.length === 0 && !error && (
           <div className="py-10 text-center text-sm text-muted-foreground">
             Sin datos en el periodo seleccionado
           </div>
         )}
 
-        {!loading && data.length > 0 && (
+        {!loading && activeClient && accountId && data.length > 0 && (
           <ScrollArea className="w-full pb-4">
             <div className="min-w-max">
               <table className="w-full text-sm border-collapse">

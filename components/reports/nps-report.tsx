@@ -4,13 +4,6 @@ import { useState, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   Table,
   TableBody,
   TableCell,
@@ -94,9 +87,11 @@ const getNPSColor = (score: number): string => {
 interface NPSReportProps {
   month: number
   year: number
+  planFilter?: ClientPlan | 'all'
+  unidadFilter?: UnidadNegocio | 'all'
 }
 
-export function NPSReport({ month, year }: NPSReportProps) {
+export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all' }: NPSReportProps) {
   const [clients, setClients] = useState<Client[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [npsHistorial, setNpsHistorial] = useState<NPSHistorial[]>([])
@@ -107,10 +102,6 @@ export function NPSReport({ month, year }: NPSReportProps) {
   // Use props for month/year
   const selectedMonth = month
   const selectedYear = year
-
-  // Internal filters (specific to this report)
-  const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
-  const [unidadFilter, setUnidadFilter] = useState<UnidadNegocio | 'all'>('all')
 
   // Fetch data
   useEffect(() => {
@@ -415,33 +406,8 @@ export function NPSReport({ month, year }: NPSReportProps) {
 
   return (
     <div className="space-y-6">
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-4">
-        <Select value={planFilter} onValueChange={(v) => setPlanFilter(v as ClientPlan | 'all')}>
-          <SelectTrigger className="w-[130px] h-8 text-sm">
-            <SelectValue placeholder="Plan" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los planes</SelectItem>
-            <SelectItem value="Esencial">Esencial</SelectItem>
-            <SelectItem value="Estrategico">Estrategico</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select value={unidadFilter} onValueChange={(v) => setUnidadFilter(v as UnidadNegocio | 'all')}>
-          <SelectTrigger className="w-[150px] h-8 text-sm">
-            <SelectValue placeholder="Unidad" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas las unidades</SelectItem>
-            <SelectItem value="MDK">MDK</SelectItem>
-            <SelectItem value="Aurelia">Aurelia</SelectItem>
-            <SelectItem value="Consultoría">Consultoria</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <div className="flex-1" />
-
+      {/* Export button */}
+      <div className="flex justify-end">
         <Button variant="outline" size="sm" className="h-8 gap-2" onClick={exportToCSV} disabled={clientNPSData.length === 0}>
           <Download className="h-4 w-4" />
           Exportar CSV

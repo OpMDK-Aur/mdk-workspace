@@ -155,7 +155,7 @@ function mapTareaToTask(
     type: tarea.tipo_tarea_id || '', // UUID from tipo_de_tareas
     typeName: tarea.tipo_de_tareas?.nombre || '', // Display name
     dueDate: tarea.fecha_vencimiento ? new Date(tarea.fecha_vencimiento) : null,
-    isActive: tarea.estado !== 'completada' && tarea.estado !== 'resuelto',
+      isActive: tarea.estado !== 'completada' && tarea.estado !== 'resuelto' && tarea.estado !== 'no_realizado',
     customFields: {},
     timeSessions: [],
     totalTimeSec: 0,
@@ -524,9 +524,10 @@ export const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; b
   pausada:              { label: 'Pausada',             color: 'text-amber-700 dark:text-amber-400',   bgColor: 'bg-amber-100 dark:bg-amber-500/10',       borderColor: 'border-amber-400/40 dark:border-amber-500/30' },
   pendiente_aprobacion: { label: 'Pendiente aprobacion',color: 'text-purple-700 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-500/10',     borderColor: 'border-purple-400/40 dark:border-purple-500/30' },
   resuelto:             { label: 'Resuelto',            color: 'text-green-700 dark:text-green-400',   bgColor: 'bg-green-100 dark:bg-green-500/10',       borderColor: 'border-green-400/40 dark:border-green-500/30' },
+  no_realizado:         { label: 'No realizado',        color: 'text-red-700 dark:text-red-400',       bgColor: 'bg-red-100 dark:bg-red-500/10',           borderColor: 'border-red-400/40 dark:border-red-500/30' },
 }
 
-export const STATUS_ORDER: TaskStatus[] = ['pendiente_aprobacion', 'pendiente', 'resolviendo', 'demorada', 'pausada', 'resuelto']
+export const STATUS_ORDER: TaskStatus[] = ['pendiente_aprobacion', 'pendiente', 'resolviendo', 'demorada', 'pausada', 'resuelto', 'no_realizado']
 
 export const PRIORITY_CONFIG: Record<TaskPriority, { label: string; color: string; bgColor: string }> = {
   alta:  { label: 'Alta',  color: 'text-red-800 dark:text-red-300',    bgColor: 'bg-red-100 dark:bg-red-900/50' },
@@ -707,7 +708,7 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
   }
 }
 
-// ���─ Store ─────────────────────────────────────────────────────────────────────
+// ���─ Store ──────────────────────────────────────────────────────────────────�����──
 
 // Advanced filter types
 export interface FilterRule {
@@ -1128,13 +1129,30 @@ updateTaskStatus: async (taskId, status) => {
   }
 
   // If task is marked as a completed status, delete reminder notifications for this task
-  const completedForDelete = ['resuelto', 'realizada', 'completada', 'completado', 'cerrada', 'cerrado']
+  const completedForDelete = ['resuelto', 'no_realizado', 'realizada', 'completada', 'completado', 'cerrada', 'cerrado']
   if (completedForDelete.includes(status as string)) {
     await supabase
       .from('notificaciones')
       .delete()
       .eq('tipo', 'recordatorio')
       .eq('referencia_id', taskId)
+  }
+
+  // Sync mapa_servicio_instancias estado for hito tasks
+  // Map task status to instance estado: resuelto -> listo, no_realizado -> no_realizado
+  const statusToInstanceEstado: Record<string, string> = {
+    'resuelto': 'listo',
+    'no_realizado': 'no_realizado',
+  }
+  if (statusToInstanceEstado[status]) {
+    const { error: instanceError } = await supabase
+      .from('mapa_servicio_instancias')
+      .update({ estado: statusToInstanceEstado[status] })
+      .eq('tarea_id', taskId)
+    
+    if (instanceError) {
+      console.error('Error syncing instance estado:', instanceError)
+    }
   }
   
   // Update local state
@@ -1217,6 +1235,24 @@ updateTask: async (taskId, updates) => {
     
     if (error) {
       console.error('Error updating task:', error)
+    }
+    
+    // Sync mapa_servicio_instancias estado when task status changes
+    if (updates.status) {
+      const statusToInstanceEstado: Record<string, string> = {
+        'resuelto': 'listo',
+        'no_realizado': 'no_realizado',
+      }
+      if (statusToInstanceEstado[updates.status]) {
+        const { error: instanceError } = await supabase
+          .from('mapa_servicio_instancias')
+          .update({ estado: statusToInstanceEstado[updates.status] })
+          .eq('tarea_id', taskId)
+        
+        if (instanceError) {
+          console.error('Error syncing instance estado:', instanceError)
+        }
+      }
     }
   }
 
@@ -1904,7 +1940,7 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
   )
 )
 
-// ── Hydration Hook ────────────────────────────────────────────────────────────
+// ── Hydration Hook ──────────────────���─────────────────────────────────────────
 /**
  * Hook to ensure store is hydrated before using persisted state.
  * Use this in components to prevent hydration mismatches.

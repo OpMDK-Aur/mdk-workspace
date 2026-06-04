@@ -5,13 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   Table,
   TableBody,
   TableCell,
@@ -49,12 +42,7 @@ export function ServiceMapReport({ month, year }: ServiceMapReportProps) {
   const selectedMonth = month
   const selectedYear = year
 
-  // Internal filters (specific to this report)
-  const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
-  const [pmFilter, setPmFilter] = useState<string>('all')
-  const [amFilter, setAmFilter] = useState<string>('all')
-
-  // Colaboradores for filters
+  // Colaboradores for name lookups
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
 
   // Load colaboradores
@@ -107,7 +95,7 @@ export function ServiceMapReport({ month, year }: ServiceMapReportProps) {
     }
 
     fetchKPIs()
-  }, [selectedMonth, selectedYear, planFilter, pmFilter, amFilter])
+  }, [selectedMonth, selectedYear])
 
   // Check if viewing current month
   const now = new Date()
@@ -166,44 +154,6 @@ export function ServiceMapReport({ month, year }: ServiceMapReportProps) {
     <div className="space-y-6">
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4">
-        {/* Plan filter */}
-        <Select value={planFilter} onValueChange={(v) => setPlanFilter(v as ClientPlan | 'all')}>
-          <SelectTrigger className="w-[130px] h-8 text-sm">
-            <SelectValue placeholder="Plan" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los planes</SelectItem>
-            <SelectItem value="Esencial">Esencial</SelectItem>
-            <SelectItem value="Estrategico">Estrategico</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {/* PM filter */}
-        <Select value={pmFilter} onValueChange={setPmFilter}>
-          <SelectTrigger className="w-[150px] h-8 text-sm">
-            <SelectValue placeholder="PM" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los PM</SelectItem>
-            {colaboradores.map((c) => (
-              <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* AM filter */}
-        <Select value={amFilter} onValueChange={setAmFilter}>
-          <SelectTrigger className="w-[150px] h-8 text-sm">
-            <SelectValue placeholder="AM" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los AM</SelectItem>
-            {colaboradores.map((c) => (
-              <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
         <div className="flex-1" />
 
         {/* Export */}
