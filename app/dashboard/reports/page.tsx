@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label'
 import { Download, Users, Loader2, ClipboardCheck, Map, Star, Building2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/lib/types'
+import type { ClientPlan, UnidadNegocio } from '@/lib/types'
 import type { ClientSummary } from '@/lib/time-tracking/types'
 import { toast } from 'sonner'
 
@@ -95,6 +96,8 @@ export default function ReportsPage() {
   const [selectedCliente, setSelectedCliente] = useState<string>('all')
   const [selectedMatrixColab, setSelectedMatrixColab] = useState<string>('all')
   const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
+  const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
+  const [unidadFilter, setUnidadFilter] = useState<UnidadNegocio | 'all'>('all')
 
   // Fetch data with SWR
   const { data, isLoading } = useSWR('reports-data', fetchReportsData)
@@ -365,6 +368,31 @@ export default function ReportsPage() {
                 {client.nombre_del_negocio || client.business_name || 'Sin nombre'}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+
+        {/* Plan Filter */}
+        <Select value={planFilter} onValueChange={(v) => setPlanFilter(v as ClientPlan | 'all')}>
+          <SelectTrigger className="w-[150px]">
+            <SelectValue placeholder="Plan" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los planes</SelectItem>
+            <SelectItem value="Esencial">Esencial</SelectItem>
+            <SelectItem value="Estrategico">Estrategico</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* Unidad Filter */}
+        <Select value={unidadFilter} onValueChange={(v) => setUnidadFilter(v as UnidadNegocio | 'all')}>
+          <SelectTrigger className="w-[170px]">
+            <SelectValue placeholder="Unidad" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas las unidades</SelectItem>
+            <SelectItem value="MDK">MDK</SelectItem>
+            <SelectItem value="Aurelia">Aurelia</SelectItem>
+            <SelectItem value="Consultoría">Consultoría</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -758,6 +786,8 @@ export default function ReportsPage() {
             <NPSReport 
               month={selectedMonth}
               year={selectedYear}
+              planFilter={planFilter}
+              unidadFilter={unidadFilter}
             />
           </TabsContent>
         </Tabs>
