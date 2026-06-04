@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Loader2, Download, TrendingUp, TrendingDown, Minus, AlertTriangle, BellOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import type { Client, ClientPlan, Profile, UnidadNegocio } from '@/lib/types'
+import type { Client, ClientPlan, Profile, UnidadNegocio, Colaborador } from '@/lib/types'
 
 interface NPSHistorial {
   id: string
@@ -94,6 +94,7 @@ interface NPSReportProps {
 export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all' }: NPSReportProps) {
   const [clients, setClients] = useState<Client[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [npsHistorial, setNpsHistorial] = useState<NPSHistorial[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -128,6 +129,13 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
 
         if (profilesError) throw profilesError
 
+        // Fetch colaboradores for AC names (account_manager_id references colaboradores)
+        const { data: colaboradoresData, error: colaboradoresError } = await supabase
+          .from('colaboradores')
+          .select('id, nombre, email')
+
+        if (colaboradoresError) throw colaboradoresError
+
         // Fetch NPS history (last 12 months)
         const startDate = new Date(selectedYear - 1, selectedMonth - 1, 1)
         const { data: npsData, error: npsError } = await supabase
@@ -140,6 +148,7 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
 
         setClients(clientsData || [])
         setProfiles(profilesData || [])
+        setColaboradores(colaboradoresData || [])
         setNpsHistorial(npsData || [])
       } catch (err) {
         console.error('Error fetching NPS data:', err)
@@ -156,9 +165,15 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
   const now = new Date()
   const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
 
-  // Get profile name - prefer full_name, fallback to formatted email
+  // Get AC name - first try colaboradores, then profiles
   const getProfileName = (id: string | null): string | null => {
     if (!id) return null
+    
+    // First try to find in colaboradores (account_manager_id references colaboradores table)
+    const colaborador = colaboradores.find(c => c.id === id)
+    if (colaborador?.nombre) return colaborador.nombre
+    
+    // Fallback to profiles
     const profile = profiles.find(p => p.id === id)
     if (!profile) return null
     
