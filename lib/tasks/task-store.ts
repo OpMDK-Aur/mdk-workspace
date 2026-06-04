@@ -1239,20 +1239,16 @@ updateTask: async (taskId, updates) => {
     
     // Sync mapa_servicio_instancias estado when task status changes
     if (updates.status) {
-      console.log('[v0] updateTask status change:', { taskId, newStatus: updates.status })
       const statusToInstanceEstado: Record<string, string> = {
         'resuelto': 'listo',
         'no_realizado': 'no_realizado',
       }
       if (statusToInstanceEstado[updates.status]) {
-        console.log('[v0] Syncing instance estado:', { taskId, estado: statusToInstanceEstado[updates.status] })
-        const { data: instanceData, error: instanceError } = await supabase
+        const { error: instanceError } = await supabase
           .from('mapa_servicio_instancias')
           .update({ estado: statusToInstanceEstado[updates.status] })
           .eq('tarea_id', taskId)
-          .select()
         
-        console.log('[v0] Instance sync result:', { updated: instanceData?.length || 0, error: instanceError })
         if (instanceError) {
           console.error('Error syncing instance estado:', instanceError)
         }
