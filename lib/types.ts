@@ -419,7 +419,7 @@ export interface Colaborador {
   activo?: boolean
 }
 
-export type TaskStatus = 'pendiente' | 'resolviendo' | 'demorada' | 'pausada' | 'pendiente_aprobacion' | 'resuelto'
+export type TaskStatus = 'pendiente' | 'resolviendo' | 'demorada' | 'pausada' | 'pendiente_aprobacion' | 'resuelto' | 'no_realizado'
 export type TaskPriority = 'alta' | 'media' | 'baja'
 // TaskType is now dynamic - it's the UUID of tipo_de_tareas
 export type TaskType = string
