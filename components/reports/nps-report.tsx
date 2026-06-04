@@ -156,11 +156,28 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
   const now = new Date()
   const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
 
-  // Get profile name
+  // Get profile name - prefer full_name, fallback to formatted email
   const getProfileName = (id: string | null): string | null => {
     if (!id) return null
     const profile = profiles.find(p => p.id === id)
-    return profile?.full_name || null
+    if (!profile) return null
+    
+    // Use full_name if available
+    if (profile.full_name) return profile.full_name
+    
+    // Fallback: format email (take part before @ and capitalize)
+    if (profile.email) {
+      const namePart = profile.email.split('@')[0]
+      // Convert underscores/dots to spaces and capitalize each word
+      return namePart
+        .replace(/[._]/g, ' ')
+        .replace(/_\d+$/, '') // Remove trailing numbers like _43621
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ')
+    }
+    
+    return null
   }
 
   // Process client NPS data
@@ -596,15 +613,15 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-left">Cliente</TableHead>
-                    <TableHead className="text-left">Plan</TableHead>
-                    <TableHead className="text-center">NPS Actual</TableHead>
-                    <TableHead className="text-center">NPS Anterior</TableHead>
-                    <TableHead className="text-center">Tendencia</TableHead>
-                    <TableHead className="text-center">Historico (6 meses)</TableHead>
-                    <TableHead className="text-center">Encuestas</TableHead>
-                    <TableHead className="text-center">Ultima Encuesta</TableHead>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="text-left w-[200px]">Cliente</TableHead>
+                    <TableHead className="text-center w-[100px]">Plan</TableHead>
+                    <TableHead className="text-center w-[90px]">NPS Actual</TableHead>
+                    <TableHead className="text-center w-[90px]">NPS Anterior</TableHead>
+                    <TableHead className="text-center w-[80px]">Tendencia</TableHead>
+                    <TableHead className="text-center w-[180px]">Historico (6 meses)</TableHead>
+                    <TableHead className="text-center w-[80px]">Encuestas</TableHead>
+                    <TableHead className="text-center w-[120px]">Ultima Encuesta</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -617,8 +634,10 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
                   ) : (
                     filteredData.map((data) => (
                       <TableRow key={data.clientId}>
-                        <TableCell className="font-medium">{data.clientName}</TableCell>
-                        <TableCell>
+                        <TableCell className="font-medium truncate max-w-[200px]" title={data.clientName || ''}>
+                          {data.clientName}
+                        </TableCell>
+                        <TableCell className="text-center">
                           {data.plan ? (
                             <Badge variant="outline" className="text-xs">
                               {data.plan}
