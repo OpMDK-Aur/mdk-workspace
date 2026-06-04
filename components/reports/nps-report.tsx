@@ -165,7 +165,16 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
 
   // Process client NPS data
   const clientNPSData: ClientNPSData[] = useMemo(() => {
-    let filteredClients = clients
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    // Filter clients whose fecha_activacion is before today
+    let filteredClients = clients.filter(c => {
+      if (!c.fecha_activacion) return true // Include clients without activation date
+      const activationDate = new Date(c.fecha_activacion)
+      activationDate.setHours(0, 0, 0, 0)
+      return activationDate < today
+    })
     
     if (planFilter !== 'all') {
       filteredClients = filteredClients.filter(c => c.plan === planFilter)
