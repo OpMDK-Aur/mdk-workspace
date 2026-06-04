@@ -168,9 +168,10 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     
-    // Filter clients whose fecha_activacion is before today
+    // Filter clients: must have fecha_activacion AND it must be before today
     let filteredClients = clients.filter(c => {
-      if (!c.fecha_activacion) return true // Include clients without activation date
+      // Exclude clients without fecha_activacion
+      if (!c.fecha_activacion) return false
       const activationDate = new Date(c.fecha_activacion)
       activationDate.setHours(0, 0, 0, 0)
       return activationDate < today
