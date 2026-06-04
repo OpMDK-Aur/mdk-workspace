@@ -38,11 +38,11 @@ export async function GET() {
   try {
     const supabase = await createClient()
 
-    // Fetch all hito tasks (with hito_poe) that don't have fecha_vencimiento OR we want to recalculate
+    // Fetch all hito tasks - either with hito_poe OR with "[Hito]" prefix in title
     const { data: hitoTasks, error: fetchError } = await supabase
       .from('tareas')
       .select('id, titulo, hito_poe, created_at, fecha_vencimiento')
-      .not('hito_poe', 'is', null)
+      .or('hito_poe.not.is.null,titulo.ilike.[Hito]%')
 
     if (fetchError) {
       console.error('[backfill-hito-dates] Error fetching tasks:', fetchError)
@@ -67,7 +67,9 @@ export async function GET() {
     const updates: { id: string; fecha_vencimiento: string; tipo: string }[] = []
 
     for (const task of hitoTasks) {
-      const hitoNombre = (hitosMap.get(task.hito_poe) || task.titulo || '').toUpperCase()
+      // Use hito name from config, or fall back to task title
+      const hitoNombre = (task.hito_poe ? hitosMap.get(task.hito_poe) : null) || task.titulo || ''
+      const hitoNombreUpper = hitoNombre.toUpperCase()
       
       // Determine the month/year from created_at
       const createdAt = task.created_at ? new Date(task.created_at) : new Date()
@@ -77,7 +79,7 @@ export async function GET() {
       let fechaVencimiento: Date | null = null
       let tipo = 'regular'
 
-      if (hitoNombre.includes('INICIO DE SEMANA') || hitoNombre.includes('INICIO SEMANA')) {
+      if (hitoNombreUpper.includes('INICIO DE SEMANA') || hitoNombreUpper.includes('INICIO SEMANA')) {
         // Monday tasks - find which Monday this task corresponds to
         tipo = 'inicio_semana'
         const mondays = getMondaysInMonth(year, month)
@@ -94,7 +96,7 @@ export async function GET() {
           fechaVencimiento = mondays[mondays.length - 1]
         }
         
-      } else if (hitoNombre.includes('FIN DE SEMANA') || hitoNombre.includes('FIN SEMANA')) {
+      } else if (hitoNombreUpper.includes('FIN DE SEMANA') || hitoNombreUpper.includes('FIN SEMANA')) {
         // Friday tasks - find which Friday this task corresponds to
         tipo = 'fin_semana'
         const fridays = getFridaysInMonth(year, month)
