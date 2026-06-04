@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/close-month",
       "schedule": "5 0 1 * *"
+    },
+    {
+      "path": "/api/cron/expire-hito-tasks",
+      "schedule": "10 0 * * *"
     }
   ]
 }
