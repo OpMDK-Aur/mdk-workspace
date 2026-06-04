@@ -168,13 +168,30 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     
+    // Excluded client names (case insensitive)
+    const excludedClients = ['preme', 'nexa home', 'mdk interno', 'gestion interna', 'gestión interna']
+    
     // Filter clients: must have fecha_activacion AND it must be before today
+    // Only include clients with unidad_negocio Consultoría or MDK
+    // Exclude specific clients
     let filteredClients = clients.filter(c => {
       // Exclude clients without fecha_activacion
       if (!c.fecha_activacion) return false
       const activationDate = new Date(c.fecha_activacion)
       activationDate.setHours(0, 0, 0, 0)
-      return activationDate < today
+      if (activationDate >= today) return false
+      
+      // Only include Consultoría or MDK
+      const hasValidUnidad = c.unidades_negocio?.some(u => 
+        u === 'Consultoría' || u === 'MDK'
+      )
+      if (!hasValidUnidad) return false
+      
+      // Exclude specific clients by name
+      const clientName = (c.nombre_del_negocio || c.business_name || '').toLowerCase()
+      if (excludedClients.some(excluded => clientName.includes(excluded))) return false
+      
+      return true
     })
     
     if (planFilter !== 'all') {
