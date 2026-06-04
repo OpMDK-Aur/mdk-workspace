@@ -473,6 +473,16 @@ async function fetchMetricas(mes: number, anio: number) {
   const colaboradoresMap = new Map((colaboradoresRes.data || []).map(c => [c.id, c]))
   const clientesMap = new Map((clientesRes.data || []).map(c => [c.id, c]))
   
+  console.log('[v0] fetchMetricas debug:', {
+    entriesCount: entries.length,
+    colaboradoresCount: colaboradoresMap.size,
+    clientesCount: clientesMap.size,
+    dateRange: { startDateStr, endDateStr },
+    sampleEntries: entries.slice(0, 3).map(e => ({ colaborador_id: e.colaborador_id, cliente_id: e.cliente_id, duracion_seg: e.duracion_seg })),
+    uniqueColaboradorIdsInEntries: [...new Set(entries.map(e => e.colaborador_id))],
+    colaboradoresIds: [...colaboradoresMap.keys()],
+  })
+  
   // Calculate hours per colaborador-cliente pair from time entries
   const hoursMap = new Map<string, number>()
   entries.forEach(entry => {
@@ -499,6 +509,10 @@ async function fetchMetricas(mes: number, anio: number) {
       const [colaborador_id, cliente_id] = key.split('::')
       const colaborador = colaboradoresMap.get(colaborador_id)
       const cliente = clientesMap.get(cliente_id)
+      
+      if (!colaborador || !cliente) {
+        console.log('[v0] Skipped entry - no match:', { colaborador_id, cliente_id, hasColaborador: !!colaborador, hasCliente: !!cliente, hours })
+      }
       
       if (colaborador && cliente) {
         metricasWithHours.push({
