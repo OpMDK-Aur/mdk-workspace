@@ -427,7 +427,7 @@ async function fetchMetricas(mes: number, anio: number) {
   
   // Fetch metricas_colaboradores - this is the single source of truth
   // Values (horas_objetivo, minimo_no_negociable_horas) are pre-calculated and stored by the Colaboradores page
-  const [metricasRes, colaboradoresRes, clientesRes] = await Promise.all([
+  const [metricasRes, colaboradoresRes, clientesRes, profilesRes] = await Promise.all([
     supabase
       .from('metricas_colaborador')
       .select(`
@@ -439,6 +439,8 @@ async function fetchMetricas(mes: number, anio: number) {
       .eq('anio', anio),
     supabase.from('colaboradores').select('id, nombre, apellido'),
     supabase.from('clientes').select('id, nombre_del_negocio'),
+    // Also fetch profiles to match time entries by user auth ID
+    supabase.from('profiles').select('id, full_name, email'),
   ])
   
   // Fetch entries in multiple pages to bypass Supabase 1000 row limit
@@ -473,6 +475,10 @@ async function fetchMetricas(mes: number, anio: number) {
   const colaboradoresMap = new Map((colaboradoresRes.data || []).map(c => [c.id, c]))
   const clientesMap = new Map((clientesRes.data || []).map(c => [c.id, c]))
   
+  // Build a map of profiles (user auth IDs) to their display info
+  // This handles cases where colaborador_id is a profiles.id instead of colaboradores.id
+  const profilesMap = new Map((profilesRes.data || []).map(p => [p.id, p]))
+  
   // Calculate hours per colaborador-cliente pair from time entries
   const hoursMap = new Map<string, number>()
   entries.forEach(entry => {
@@ -497,10 +503,31 @@ async function fetchMetricas(mes: number, anio: number) {
   hoursMap.forEach((hours, key) => {
     if (!metricaKeys.has(key)) {
       const [colaborador_id, cliente_id] = key.split('::')
+      
+      // Try to find colaborador in colaboradores table first, then fall back to profiles
+      let colaboradorInfo: { id: string; nombre: string; apellido: string | null } | null = null
+      
       const colaborador = colaboradoresMap.get(colaborador_id)
+      if (colaborador) {
+        colaboradorInfo = colaborador
+      } else {
+        // Fallback: look up in profiles table (for users who track time via their auth user ID)
+        const profile = profilesMap.get(colaborador_id)
+        if (profile) {
+          // Parse full_name or use email/id as fallback
+          const fullName = profile.full_name || profile.email || colaborador_id
+          const parts = fullName.split(' ')
+          colaboradorInfo = {
+            id: profile.id,
+            nombre: parts[0] || fullName,
+            apellido: parts.slice(1).join(' ') || null,
+          }
+        }
+      }
+      
       const cliente = clientesMap.get(cliente_id)
       
-      if (colaborador && cliente) {
+      if (colaboradorInfo && cliente) {
         metricasWithHours.push({
           id: `generated-${key}`,
           colaborador_id,
@@ -510,11 +537,7 @@ async function fetchMetricas(mes: number, anio: number) {
           acumulado_mes_asignado: hours,
           mes,
           anio,
-          colaborador: {
-            id: colaborador.id,
-            nombre: colaborador.nombre,
-            apellido: colaborador.apellido,
-          },
+          colaborador: colaboradorInfo,
           cliente: {
             id: cliente.id,
             nombre_del_negocio: cliente.nombre_del_negocio,
