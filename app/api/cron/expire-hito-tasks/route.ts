@@ -39,14 +39,7 @@ export async function GET(request: Request) {
     // Fetch all non-terminal hito tasks
     const { data: hitoTasks, error: fetchError } = await supabase
       .from('tareas')
-      .select(`
-        id, 
-        titulo, 
-        estado, 
-        fecha_vencimiento,
-        hito_poe,
-        hitos_config:hito_poe(id, nombre)
-      `)
+      .select('id, titulo, estado, fecha_vencimiento, hito_poe')
       .not('hito_poe', 'is', null)
       .not('estado', 'in', '("resuelto","no_realizado")')
 
@@ -67,14 +60,22 @@ export async function GET(request: Request) {
       })
     }
 
+    // Fetch hitos_config to get hito names
+    const hitoIds = [...new Set(hitoTasks.map(t => t.hito_poe).filter(Boolean))]
+    const { data: hitosConfig } = await supabase
+      .from('hitos_config')
+      .select('id, nombre')
+      .in('id', hitoIds)
+    
+    const hitosMap = new Map((hitosConfig || []).map(h => [h.id, h.nombre]))
+
     console.log(`[cron/expire-hito-tasks] Found ${hitoTasks.length} pending hito tasks`)
 
     // Categorize and filter tasks that should be marked as no_realizado
     const tasksToExpire: string[] = []
     
     for (const task of hitoTasks) {
-      const hitoConfig = task.hitos_config as { id: string; nombre: string } | null
-      const hitoNombre = hitoConfig?.nombre?.toUpperCase() || task.titulo?.toUpperCase() || ''
+      const hitoNombre = (hitosMap.get(task.hito_poe) || task.titulo || '').toUpperCase()
       const fechaVencimiento = task.fecha_vencimiento ? new Date(task.fecha_vencimiento) : null
       
       if (!fechaVencimiento) continue
