@@ -473,34 +473,23 @@ async function fetchMetricas(mes: number, anio: number) {
   const colaboradoresMap = new Map((colaboradoresRes.data || []).map(c => [c.id, c]))
   const clientesMap = new Map((clientesRes.data || []).map(c => [c.id, c]))
   
-  console.log('[v0] fetchMetricas debug:', {
-    entriesCount: entries.length,
-    colaboradoresCount: colaboradoresMap.size,
-    clientesCount: clientesMap.size,
-    dateRange: { startDateStr, endDateStr },
-    sampleEntries: entries.slice(0, 3).map(e => ({ colaborador_id: e.colaborador_id, cliente_id: e.cliente_id, duracion_seg: e.duracion_seg })),
-    uniqueColaboradorIdsInEntries: [...new Set(entries.map(e => e.colaborador_id))],
-    colaboradoresIds: [...colaboradoresMap.keys()],
-  })
-  
   // Calculate hours per colaborador-cliente pair from time entries
+  // Also track hours without cliente assigned per colaborador
   const hoursMap = new Map<string, number>()
-  let skippedNoCliente = 0
-  let skippedHoursNoCliente = 0
+  const hoursNoClienteMap = new Map<string, number>() // colaborador_id -> hours without cliente
   entries.forEach(entry => {
-    if (entry.colaborador_id && entry.cliente_id && entry.duracion_seg) {
-      const key = `${entry.colaborador_id}::${entry.cliente_id}`
-      hoursMap.set(key, (hoursMap.get(key) || 0) + (entry.duracion_seg / 3600))
-    } else if (entry.colaborador_id && entry.duracion_seg && !entry.cliente_id) {
-      skippedNoCliente++
-      skippedHoursNoCliente += entry.duracion_seg / 3600
+    if (entry.colaborador_id && entry.duracion_seg) {
+      if (entry.cliente_id) {
+        const key = `${entry.colaborador_id}::${entry.cliente_id}`
+        hoursMap.set(key, (hoursMap.get(key) || 0) + (entry.duracion_seg / 3600))
+      } else {
+        // Entry without cliente - track separately per colaborador
+        hoursNoClienteMap.set(
+          entry.colaborador_id, 
+          (hoursNoClienteMap.get(entry.colaborador_id) || 0) + (entry.duracion_seg / 3600)
+        )
+      }
     }
-  })
-  
-  console.log('[v0] Entries without cliente_id:', { 
-    skippedNoCliente, 
-    skippedHoursNoCliente: skippedHoursNoCliente.toFixed(2) + 'h',
-    totalEntriesWithCliente: entries.filter(e => e.cliente_id).length
   })
   
   // Create a set of existing metrica keys
@@ -520,10 +509,6 @@ async function fetchMetricas(mes: number, anio: number) {
       const [colaborador_id, cliente_id] = key.split('::')
       const colaborador = colaboradoresMap.get(colaborador_id)
       const cliente = clientesMap.get(cliente_id)
-      
-      if (!colaborador || !cliente) {
-        console.log('[v0] Skipped entry - no match:', { colaborador_id, cliente_id, hasColaborador: !!colaborador, hasCliente: !!cliente, hours })
-      }
       
       if (colaborador && cliente) {
         metricasWithHours.push({
@@ -546,6 +531,32 @@ async function fetchMetricas(mes: number, anio: number) {
           },
         })
       }
+    }
+  })
+  
+  // Add entries WITHOUT cliente assigned (shown as "Sin cliente asignado")
+  hoursNoClienteMap.forEach((hours, colaborador_id) => {
+    const colaborador = colaboradoresMap.get(colaborador_id)
+    if (colaborador && hours > 0) {
+      metricasWithHours.push({
+        id: `no-cliente-${colaborador_id}`,
+        colaborador_id,
+        cliente_id: 'sin-cliente',
+        minimo_no_negociable_horas: null,
+        horas_objetivo: null,
+        acumulado_mes_asignado: hours,
+        mes,
+        anio,
+        colaborador: {
+          id: colaborador.id,
+          nombre: colaborador.nombre,
+          apellido: colaborador.apellido,
+        },
+        cliente: {
+          id: 'sin-cliente',
+          nombre_del_negocio: 'Sin cliente asignado',
+        },
+      })
     }
   })
   
