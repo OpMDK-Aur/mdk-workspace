@@ -485,11 +485,22 @@ async function fetchMetricas(mes: number, anio: number) {
   
   // Calculate hours per colaborador-cliente pair from time entries
   const hoursMap = new Map<string, number>()
+  let skippedNoCliente = 0
+  let skippedHoursNoCliente = 0
   entries.forEach(entry => {
     if (entry.colaborador_id && entry.cliente_id && entry.duracion_seg) {
       const key = `${entry.colaborador_id}::${entry.cliente_id}`
       hoursMap.set(key, (hoursMap.get(key) || 0) + (entry.duracion_seg / 3600))
+    } else if (entry.colaborador_id && entry.duracion_seg && !entry.cliente_id) {
+      skippedNoCliente++
+      skippedHoursNoCliente += entry.duracion_seg / 3600
     }
+  })
+  
+  console.log('[v0] Entries without cliente_id:', { 
+    skippedNoCliente, 
+    skippedHoursNoCliente: skippedHoursNoCliente.toFixed(2) + 'h',
+    totalEntriesWithCliente: entries.filter(e => e.cliente_id).length
   })
   
   // Create a set of existing metrica keys
