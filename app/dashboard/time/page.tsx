@@ -19,13 +19,15 @@ export default function TimePage() {
       
       if (user) {
         setUserId(user.id)
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
+        // Check role from colaboradores table with roles join
+        const { data: colaborador } = await supabase
+          .from('colaboradores')
+          .select('rol_id, roles(nombre)')
           .eq('id', user.id)
           .single()
         
-        setIsAdmin(ADMIN_ROLES.includes(profile?.role || ''))
+        const roleName = (colaborador?.roles as { nombre: string } | null)?.nombre || ''
+        setIsAdmin(ADMIN_ROLES.includes(roleName))
       }
       setLoading(false)
     }

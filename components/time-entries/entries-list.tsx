@@ -99,13 +99,13 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
       const supabase = createClient()
       const { data } = await supabase
         .from('colaboradores')
-        .select('id, nombre, apellido, email, rol')
+        .select('id, nombre, apellido, email')
         .order('nombre')
       if (data) setColaboradores(data.map(c => ({
         id: c.id,
         full_name: `${c.nombre}${c.apellido ? ' ' + c.apellido : ''}`,
         email: c.email,
-        role: c.rol,
+        role: null,
       })))
     }
     
