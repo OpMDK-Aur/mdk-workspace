@@ -957,14 +957,6 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           </div>
         </div>
 
-        {/* ── NPS Score (arriba de todo) ── */}
-        <ClientNPS 
-          clientId={client.id} 
-          currentUserId={currentProfile?.id}
-          projectManagerId={client.project_manager_id}
-          accountManagerId={client.account_manager_id}
-        />
-
         {/* ── Info row: PM / AM / Fee / Dedicacion / Plataformas ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card>
@@ -1428,6 +1420,14 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             <ClientCRMs clientId={client.id} />
           </div>
         </div>
+
+        {/* ── NPS Score (abajo de todo) ── */}
+        <ClientNPS 
+          clientId={client.id} 
+          currentUserId={currentProfile?.id}
+          projectManagerId={client.project_manager_id}
+          accountManagerId={client.account_manager_id}
+        />
 
         {/* ── Tareas, Cotizaciones, Adjuntos ── */}
         <div className="grid md:grid-cols-2 gap-4">
