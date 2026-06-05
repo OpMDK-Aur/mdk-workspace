@@ -9,9 +9,11 @@ const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
 const GOOGLE_ADS_API_VERSION = 'v23'
 
 type DailyPoint = { date: string; spend: number; leads: number; impressions: number; clicks: number }
+type CampaignPoint = { name: string; spend: number; leads: number; cpl: number; impressions: number; clicks: number; ctr: number }
 type AccountMetrics = {
   spend: number; leads: number; cpl: number; impressions: number; clicks: number; ctr: number
   daily: DailyPoint[]
+  campaigns: CampaignPoint[]
 }
 
 // Helper to fetch Meta metrics directly from Graph API
@@ -40,7 +42,7 @@ async function fetchMetaMetrics(
     
     const data = await response.json()
     if (!data.data || data.data.length === 0) {
-      return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0, daily: [] }
+      return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0, daily: [], campaigns: [] }
     }
     
     const getLeads = (row: { actions?: Array<{ action_type: string; value: string }> }) => {
@@ -78,7 +80,34 @@ async function fetchMetaMetrics(
     const cpl = leads > 0 ? spend / leads : 0
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0
     
-    return { spend, leads, cpl, impressions, clicks, ctr, daily }
+    // Second call: campaign-level breakdown for the same period
+    const campaigns: CampaignPoint[] = []
+    try {
+      const campUrl = `https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}/insights?access_token=${accessToken}&fields=campaign_name,${fields}&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=200`
+      const campResp = await fetch(campUrl)
+      if (campResp.ok) {
+        const campData = await campResp.json()
+        for (const row of campData.data || []) {
+          const cImpr = parseInt(row.impressions || '0', 10)
+          const cClicks = parseInt(row.clicks || '0', 10)
+          const cSpend = parseFloat(row.spend || '0')
+          const cLeads = getLeads(row)
+          campaigns.push({
+            name: row.campaign_name || 'Sin nombre',
+            spend: cSpend,
+            leads: cLeads,
+            cpl: cLeads > 0 ? cSpend / cLeads : 0,
+            impressions: cImpr,
+            clicks: cClicks,
+            ctr: cImpr > 0 ? (cClicks / cImpr) * 100 : 0,
+          })
+        }
+      }
+    } catch (e) {
+      console.error('[v0] Error fetching Meta campaigns:', e)
+    }
+    
+    return { spend, leads, cpl, impressions, clicks, ctr, daily, campaigns }
   } catch (error) {
     console.error('[v0] Error fetching Meta metrics:', error)
     return null
@@ -132,7 +161,7 @@ async function fetchGoogleMetrics(
     
     const data = await response.json()
     if (!data.results || data.results.length === 0) {
-      return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0, daily: [] }
+      return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0, daily: [], campaigns: [] }
     }
     
     // Each row is one day. Build daily breakdown and totals.
@@ -165,7 +194,64 @@ async function fetchGoogleMetrics(
     const cpl = leads > 0 ? spend / leads : 0
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0
     
-    return { spend, leads, cpl, impressions, clicks, ctr, daily }
+    // Second query: campaign-level breakdown for the same period
+    const campaigns: CampaignPoint[] = []
+    try {
+      const campQuery = `
+        SELECT 
+          campaign.name,
+          metrics.impressions,
+          metrics.clicks,
+          metrics.cost_micros,
+          metrics.conversions
+        FROM campaign
+        WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
+      `
+      const campResp = await fetch(`https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}/googleAds:search`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'developer-token': developerToken,
+          'login-customer-id': loginCustomerId,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: campQuery }),
+      })
+      if (campResp.ok) {
+        const campData = await campResp.json()
+        // Rows are per campaign per day; aggregate by campaign name
+        const byCampaign = new Map<string, { spend: number; leads: number; impressions: number; clicks: number }>()
+        for (const result of campData.results || []) {
+          const m = result.metrics || {}
+          const name = result.campaign?.name || 'Sin nombre'
+          const entry = byCampaign.get(name) || { spend: 0, leads: 0, impressions: 0, clicks: 0 }
+          entry.impressions += parseInt(m.impressions || '0', 10)
+          entry.clicks += parseInt(m.clicks || '0', 10)
+          entry.spend += parseInt(m.costMicros || m.cost_micros || '0', 10) / 1000000
+          entry.leads += parseFloat(m.conversions || '0')
+          byCampaign.set(name, entry)
+        }
+        for (const [name, e] of byCampaign) {
+          const cLeads = Math.round(e.leads)
+          campaigns.push({
+            name,
+            spend: e.spend,
+            leads: cLeads,
+            cpl: cLeads > 0 ? e.spend / cLeads : 0,
+            impressions: e.impressions,
+            clicks: e.clicks,
+            ctr: e.impressions > 0 ? (e.clicks / e.impressions) * 100 : 0,
+          })
+        }
+      } else {
+        const errText = await campResp.text().catch(() => '')
+        console.error('[v0] Google Ads campaign query error:', campResp.status, errText.slice(0, 300))
+      }
+    } catch (e) {
+      console.error('[v0] Error fetching Google campaigns:', e)
+    }
+    
+    return { spend, leads, cpl, impressions, clicks, ctr, daily, campaigns }
   } catch (error) {
     console.error('[v0] Error fetching Google metrics:', error)
     return null
@@ -359,6 +445,19 @@ ${metricsByAccount.map(m => {
     `    ${d.date}: ${d.leads} leads | $${d.spend.toFixed(2)} inversión | ${d.impressions.toLocaleString()} impresiones | ${d.clicks.toLocaleString()} clics`
   ).join('\n')
   return `• ${m.platform} (${m.account}):\n${rows}`
+}).join('\n')}
+
+DESGLOSE POR CAMPAÑA (datos reales por campaña):
+${metricsByAccount.map(m => {
+  if (!m.campaigns || m.campaigns.length === 0) {
+    return `• ${m.platform} (${m.account}): sin datos de campañas disponibles`
+  }
+  const rows = m.campaigns
+    .sort((a, b) => b.spend - a.spend)
+    .map(c => 
+      `    "${c.name}": ${c.leads} leads | $${c.spend.toFixed(2)} inversión | CPL $${c.cpl.toFixed(2)} | ${c.impressions.toLocaleString()} impresiones | ${c.clicks.toLocaleString()} clics | CTR ${c.ctr.toFixed(2)}%`
+    ).join('\n')
+  return `• ${m.platform} (${m.account}):\n${rows}`
 }).join('\n')}`
     }
 
@@ -386,7 +485,7 @@ ${metricasText}
 
 IMPORTANTE SOBRE LAS METRICAS:
 ${metricsByAccount.length > 0
-  ? 'Las métricas anteriores son DATOS REALES obtenidos directamente desde las APIs de Meta Ads y/o Google Ads para el periodo seleccionado. NO son estimaciones. Trátalas como cifras oficiales y exactas. NUNCA digas que son estimativas, aproximadas o simuladas. Tienes ACCESO al DESGLOSE DIARIO por cuenta (sección "DESGLOSE DIARIO POR CUENTA"): úsalo cuando el usuario pida datos, gráficos o tendencias por día. NUNCA digas que no tienes los datos desglosados por día si la sección de desglose diario contiene filas. Si el usuario pide un rango específico de días (ej. del 1 al 5), filtra el desglose diario a esas fechas y construye el gráfico con un punto por día.'
+  ? 'Las métricas anteriores son DATOS REALES obtenidos directamente desde las APIs de Meta Ads y/o Google Ads para el periodo seleccionado. NO son estimaciones. Trátalas como cifras oficiales y exactas. NUNCA digas que son estimativas, aproximadas o simuladas. Tienes ACCESO al DESGLOSE DIARIO por cuenta (sección "DESGLOSE DIARIO POR CUENTA") y al DESGLOSE POR CAMPAÑA (sección "DESGLOSE POR CAMPAÑA"). Úsalos cuando el usuario pida datos, gráficos o tendencias por día o por campaña. NUNCA digas que no tienes los datos desglosados por día o por campaña si esas secciones contienen filas. Si el usuario pide un rango específico de días (ej. del 1 al 5), filtra el desglose diario a esas fechas y construye el gráfico con un punto por día. Si pide datos por campaña, usa la sección de desglose por campaña.'
   : 'No se pudieron obtener métricas reales de las cuentas publicitarias para este periodo (puede que no haya tokens conectados, que la cuenta no tenga actividad en el periodo, o que haya un error de conexión). Si el usuario pide análisis de números, indícale claramente que no hay datos disponibles y NO inventes ni estimes cifras.'}
 
 COMO RESPONDER:
