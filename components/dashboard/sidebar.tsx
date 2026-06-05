@@ -261,6 +261,13 @@ export function Sidebar({
     const isActive = isItemActive(item.href)
     const isComingSoon = item.badge === 'proximamente'
     
+    const handleNavClick = () => {
+      // Collapse sidebar when navigating (only if not already collapsed)
+      if (!isCollapsed) {
+        setIsCollapsed(true)
+      }
+    }
+    
     if (collapsed) {
       return (
         <Tooltip key={item.id}>
@@ -315,6 +322,7 @@ export function Sidebar({
       <Link
         key={item.id}
         href={item.href}
+        onClick={handleNavClick}
         className={cn(
           'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
           isActive
