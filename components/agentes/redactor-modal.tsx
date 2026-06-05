@@ -105,6 +105,12 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
   // Period selection state
   const [periodStart, setPeriodStart] = useState('')
   const [periodEnd, setPeriodEnd] = useState('')
+  
+  // Task selection state for marking as sent
+  const [showTaskSelector, setShowTaskSelector] = useState(false)
+  const [clientTasks, setClientTasks] = useState<Array<{ id: string; titulo: string }>>([])
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [loadingTasks, setLoadingTasks] = useState(false)
 
   // Fetch clients
   useEffect(() => {
@@ -260,22 +266,85 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
   const handleMarkAsSent = async () => {
     if (!selectedClient) return
     
+    setLoadingTasks(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      // Get today's date
+      const today = new Date().toISOString().split('T')[0]
       
-      await supabase.from('tareas').insert({
-        titulo: `Mensaje ${messageType === 'inicio' ? 'inicio' : 'cierre'} semana - ${selectedClient.nombre_del_negocio}`,
-        descripcion: draft,
-        cliente_ids: [selectedClient.id],
-        creado_por: user?.id,
-        estado: 'resuelto',
-      })
+      // First, try to find a [Hito] task for this client today
+      const { data: hitoTasks } = await supabase
+        .from('tareas')
+        .select('id, titulo')
+        .or(`cliente_id.eq.${selectedClient.id},cliente_ids.cs.{${selectedClient.id}}`)
+        .ilike('titulo', '%[Hito]%Seguimiento%')
+        .in('estado', ['pendiente', 'en_progreso', 'todo'])
+        .gte('created_at', today)
+        .limit(5)
 
-      toast.success('Mensaje marcado como enviado')
-      onOpenChange(false)
+      if (hitoTasks && hitoTasks.length === 1) {
+        // Found exactly one matching Hito task - mark it as completed
+        await supabase
+          .from('tareas')
+          .update({ estado: 'resuelto', fecha_completada: new Date().toISOString() })
+          .eq('id', hitoTasks[0].id)
+        
+        toast.success(`Tarea "${hitoTasks[0].titulo}" marcada como realizada`)
+        onOpenChange(false)
+        return
+      }
+
+      // If no Hito task found or multiple found, get all pending tasks for this client
+      const { data: allTasks } = await supabase
+        .from('tareas')
+        .select('id, titulo')
+        .or(`cliente_id.eq.${selectedClient.id},cliente_ids.cs.{${selectedClient.id}}`)
+        .in('estado', ['pendiente', 'en_progreso', 'todo'])
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (allTasks && allTasks.length > 0) {
+        // Show task selector
+        setClientTasks(allTasks)
+        setShowTaskSelector(true)
+      } else {
+        // No pending tasks found - create a new one
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        await supabase.from('tareas').insert({
+          titulo: `[Hito] Mensaje ${messageType === 'inicio' ? 'inicio' : 'cierre'} semana - ${selectedClient.nombre_del_negocio}`,
+          descripcion: draft,
+          cliente_ids: [selectedClient.id],
+          creado_por: user?.id,
+          estado: 'resuelto',
+          fecha_completada: new Date().toISOString(),
+        })
+
+        toast.success('Mensaje marcado como enviado (nueva tarea creada)')
+        onOpenChange(false)
+      }
     } catch (error) {
       console.error('Error marking as sent:', error)
-      toast.error('Error al guardar')
+      toast.error('Error al buscar tareas')
+    } finally {
+      setLoadingTasks(false)
+    }
+  }
+
+  const handleSelectTask = async (taskId: string) => {
+    try {
+      const task = clientTasks.find(t => t.id === taskId)
+      
+      await supabase
+        .from('tareas')
+        .update({ estado: 'resuelto', fecha_completada: new Date().toISOString() })
+        .eq('id', taskId)
+      
+      toast.success(`Tarea "${task?.titulo}" marcada como realizada`)
+      setShowTaskSelector(false)
+      onOpenChange(false)
+    } catch (error) {
+      console.error('Error updating task:', error)
+      toast.error('Error al marcar la tarea')
     }
   }
 
@@ -484,6 +553,38 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
                   <Loader2 className="h-8 w-8 animate-spin text-[#7F77DD] mb-4" />
                   <p className="text-muted-foreground">Generando mensaje...</p>
                 </div>
+              ) : showTaskSelector ? (
+                // Task selector view
+                <div className="space-y-4">
+                  <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                    <p className="text-sm text-amber-200">
+                      No se encontro una tarea de Hito especifica. Selecciona la tarea que deseas marcar como realizada:
+                    </p>
+                  </div>
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    {clientTasks.map((task) => (
+                      <button
+                        key={task.id}
+                        onClick={() => handleSelectTask(task.id)}
+                        className={cn(
+                          'w-full p-3 rounded-lg border text-left transition-all hover:border-[#7F77DD]/50',
+                          selectedTaskId === task.id
+                            ? 'border-[#7F77DD] bg-[#7F77DD]/10'
+                            : 'border-border'
+                        )}
+                      >
+                        <p className="text-sm font-medium truncate">{task.titulo}</p>
+                      </button>
+                    ))}
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setShowTaskSelector(false)}
+                  >
+                    Volver al borrador
+                  </Button>
+                </div>
               ) : (
                 <>
                   <Textarea
@@ -504,8 +605,13 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
                     <Button
                       className="flex-1 gap-2 bg-[#7F77DD] hover:bg-[#6B63C7]"
                       onClick={handleMarkAsSent}
+                      disabled={loadingTasks}
                     >
-                      <CheckCircle2 className="h-4 w-4" />
+                      {loadingTasks ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4" />
+                      )}
                       Marcar como enviado
                     </Button>
                   </div>
