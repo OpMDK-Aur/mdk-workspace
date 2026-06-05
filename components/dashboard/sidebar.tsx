@@ -112,9 +112,9 @@ const adminItems: NavItem[] = [
 // Integraciones section (formerly Platforms)
 const platformItems: NavItem[] = [
   { id: 'ad-accounts', name: 'Cuentas publicitarias', href: '/dashboard/platform', icon: Megaphone },
-  { id: 'apps', name: 'Apps', href: '/dashboard/platform?tab=apps', icon: AppWindow },
+  { id: 'apps', name: 'Apps', href: '/dashboard/apps', icon: AppWindow },
   { id: 'crm', name: 'CRM', href: '/dashboard/crm', icon: Database },
-  { id: 'webhooks', name: 'Webhooks', href: '/dashboard/platform?tab=webhooks', icon: Webhook },
+  { id: 'webhooks', name: 'Webhooks', href: '/dashboard/webhooks', icon: Webhook },
 ]
 
 export function Sidebar({
