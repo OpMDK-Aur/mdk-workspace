@@ -127,9 +127,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { clientId, periodo, cuentas, messages, month, year } = await req.json()
+    const { clientId, periodo, cuentas, messages, month, year, attachments } = await req.json()
     
-    console.log('[v0] Analista request:', { clientId, month, year, periodo })
+    console.log('[v0] Analista request:', { clientId, month, year, periodo, attachmentsCount: attachments?.length || 0 })
 
     // Calculate period from month/year if not provided directly
     let effectivePeriodo = periodo
@@ -370,10 +370,9 @@ FORMATO DEL INFORME:
 - Destacar números importantes en **negrita**
 - Organizar por secciones claras
 - Terminar con un CSV descargable de resumen
-`
+\`
 
     // Check if there are image attachments for vision
-    const { attachments } = await req.json().catch(() => ({ attachments: [] }))
     const hasImages = attachments?.some((a: { type: string }) => a.type?.startsWith('image/'))
     
     // Build messages - if user sent messages, use them; otherwise create initial request
