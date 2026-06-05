@@ -49,36 +49,44 @@ export default function NPSPage() {
     async function loadData() {
       const supabase = createClient()
       
-      // Cargar Project Managers (role = 'project_manager' o 'direccion')
-      const { data: pmData } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, role')
-        .in('role', ['project_manager', 'direccion'])
-        .order('full_name', { ascending: true })
-      
-      if (pmData) {
-        setProjectManagers(pmData)
-      }
-      
-      // Cargar Account Managers (role = 'account_manager' o 'direccion')
-      const { data: amData } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, role')
-        .in('role', ['account_manager', 'direccion'])
-        .order('full_name', { ascending: true })
-      
-      if (amData) {
-        setAccountManagers(amData)
-      }
-      
-      // Cargar clientes
+      // Cargar clientes con sus PM y AM asignados
       const { data: clientesData } = await supabase
         .from('clientes')
-        .select('id, nombre_del_negocio')
+        .select('id, nombre_del_negocio, project_manager_id, account_manager_id')
         .order('nombre_del_negocio', { ascending: true })
       
       if (clientesData) {
         setClientes(clientesData)
+        
+        // Obtener IDs únicos de PM y AM de los clientes
+        const pmIds = [...new Set(clientesData.map(c => c.project_manager_id).filter(Boolean))]
+        const amIds = [...new Set(clientesData.map(c => c.account_manager_id).filter(Boolean))]
+        
+        // Cargar datos de Project Managers
+        if (pmIds.length > 0) {
+          const { data: pmData } = await supabase
+            .from('profiles')
+            .select('id, full_name, email')
+            .in('id', pmIds)
+            .order('full_name', { ascending: true })
+          
+          if (pmData) {
+            setProjectManagers(pmData)
+          }
+        }
+        
+        // Cargar datos de Account Managers
+        if (amIds.length > 0) {
+          const { data: amData } = await supabase
+            .from('profiles')
+            .select('id, full_name, email')
+            .in('id', amIds)
+            .order('full_name', { ascending: true })
+          
+          if (amData) {
+            setAccountManagers(amData)
+          }
+        }
       }
     }
     loadData()
