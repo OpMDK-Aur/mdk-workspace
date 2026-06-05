@@ -760,7 +760,7 @@ function TimeTracker({ task }: { task: Task }) {
   )
 }
 
-// ── Files Section ─────��───────────────────────────────────────────────────────
+// ── Files Section ─���───��───────────────────────────────────────────────────────
 
 // ── Comments Section (with rich text editor) ──────────────────────────────────
 
@@ -883,7 +883,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
 
   // Sort comments by date
   const sortedComments = useMemo(() => {
-    return [...task.comments].sort((a, b) => {
+    return [...(task.comments || [])].sort((a, b) => {
       const dateA = new Date(a.createdAt).getTime()
       const dateB = new Date(b.createdAt).getTime()
       return sortOrder === 'newest' ? dateB - dateA : dateA - dateB
@@ -1138,8 +1138,8 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
       {/* Header - hidden in compact mode */}
       {!compact && (
         <div className="flex items-center justify-between px-5 py-3.5 border-b shrink-0">
-          <p className="text-sm font-semibold">Comentarios ({task.comments.length})</p>
-          {task.comments.length > 1 && (
+                <p className="text-sm font-semibold">Comentarios ({(task.comments || []).length})</p>
+                {(task.comments || []).length > 1 && (
             <Button
               variant="ghost"
               size="sm"
@@ -1154,7 +1154,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
       )}
 
       {/* Comments list - scrollable */}
-      {!compact && task.comments.length > 0 && (
+              {!compact && (task.comments || []).length > 0 && (
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
           {sortedComments.map((c) => (
             <div key={c.id} className="group flex items-start gap-3 w-full">
@@ -2108,8 +2108,8 @@ export function TaskDetailPanel() {
                           <div className="mb-3">
                             <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Persona</p>
                             <div className="space-y-1 max-h-32 overflow-y-auto">
-                              {Array.from(new Set(task.comments.map(c => c.userId))).map(uid => {
-                                const comment = task.comments.find(c => c.userId === uid)
+                      {Array.from(new Set((task.comments || []).map(c => c.userId))).map(uid => {
+                        const comment = (task.comments || []).find(c => c.userId === uid)
                                 if (!comment) return null
                                 return (
                                   <div
@@ -2126,7 +2126,7 @@ export function TaskDetailPanel() {
                                   </div>
                                 )
                               })}
-                              {task.comments.length === 0 && <p className="text-[11px] text-muted-foreground">Sin comentarios</p>}
+                              {(task.comments || []).length === 0 && <p className="text-[11px] text-muted-foreground">Sin comentarios</p>}
                             </div>
                           </div>
 
@@ -2175,7 +2175,7 @@ export function TaskDetailPanel() {
                   {/* Activity feed - filtered */}
                   <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
                     {(() => {
-                      const filteredComments = task.comments.filter(c => {
+                      const filteredComments = (task.comments || []).filter(c => {
                         if (filterPersona && c.userId !== filterPersona) return false
                         if (filterConAdjuntos && (!c.attachments || c.attachments.length === 0)) return false
                         if (filterFechaDesde && new Date(c.createdAt) < new Date(filterFechaDesde)) return false
@@ -2217,7 +2217,7 @@ export function TaskDetailPanel() {
                           ) : (
                             filteredComments.length > 0 && (
                               <div className={cn(!hasFilters && "pt-2 border-t mt-2")}>
-                                {!hasFilters && <p className="text-xs font-semibold mb-3">Comentarios ({task.comments.length})</p>}
+                                {!hasFilters && <p className="text-xs font-semibold mb-3">Comentarios ({(task.comments || []).length})</p>}
                                 {filteredComments.map((c) => (
                                   <CommentItem key={c.id} comment={c} taskId={task.id} />
                                 ))}
