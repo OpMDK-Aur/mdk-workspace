@@ -44,6 +44,8 @@ import {
   MessageSquare,
   Trash2,
   ListTodo,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -115,6 +117,9 @@ export default function AnalistaPage() {
 
   // Artifact preview panel
   const [artifact, setArtifact] = useState<Artifact | null>(null)
+
+  // Sidebar collapse
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   // Fetch clients
   useEffect(() => {
@@ -432,19 +437,54 @@ export default function AnalistaPage() {
   const years = [currentYear - 1, currentYear, currentYear + 1]
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full overflow-hidden">
+      {/* Collapsed rail */}
+      {sidebarCollapsed && (
+        <aside className="w-14 border-r bg-card flex flex-col items-center py-4 gap-3 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarCollapsed(false)}
+            aria-label="Expandir barra lateral"
+          >
+            <PanelLeftOpen className="h-5 w-5" />
+          </Button>
+          <div className="p-2 rounded-lg bg-[#EEEDFE]">
+            <FileText className="h-5 w-5 text-[#7F77DD]" />
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleNewChat}
+            aria-label="Nueva consulta"
+          >
+            <Sparkles className="h-5 w-5" />
+          </Button>
+        </aside>
+      )}
+
       {/* Sidebar */}
-      <aside className="w-[280px] border-r bg-card flex flex-col">
+      {!sidebarCollapsed && (
+      <aside className="w-[280px] border-r bg-card flex flex-col shrink-0 min-h-0">
         {/* Header */}
         <div className="p-4 border-b space-y-3">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-[#EEEDFE]">
+            <div className="p-2 rounded-lg bg-[#EEEDFE] shrink-0">
               <FileText className="h-5 w-5 text-[#7F77DD]" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <h2 className="font-semibold leading-tight">Analista</h2>
-              <p className="text-xs text-muted-foreground">Informes de cierre</p>
+              <p className="text-xs text-muted-foreground truncate">Informes de cierre</p>
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0 h-8 w-8"
+              onClick={() => setSidebarCollapsed(true)}
+              aria-label="Contraer barra lateral"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </Button>
           </div>
 
           {/* Navegación */}
@@ -548,7 +588,7 @@ export default function AnalistaPage() {
         </div>
 
         {/* Conversations history */}
-        <div className="flex-1 p-4 overflow-auto">
+        <div className="flex-1 min-h-0 p-4 overflow-y-auto">
           <h3 className="text-sm font-medium text-muted-foreground mb-3">Conversaciones</h3>
           <div className="space-y-1">
             {conversaciones.map((conv) => (
@@ -590,6 +630,7 @@ export default function AnalistaPage() {
           </div>
         </div>
       </aside>
+      )}
 
       {/* Main Chat Area */}
       <main className="flex-1 flex flex-col min-w-0">
