@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Loader2, Download, TrendingUp, TrendingDown, Minus, AlertTriangle, BellOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import type { Client, ClientPlan, Profile, UnidadNegocio } from '@/lib/types'
+import type { Client, ClientPlan, Profile, UnidadNegocio, Colaborador } from '@/lib/types'
 
 interface NPSHistorial {
   id: string
@@ -94,6 +94,7 @@ interface NPSReportProps {
 export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all' }: NPSReportProps) {
   const [clients, setClients] = useState<Client[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [npsHistorial, setNpsHistorial] = useState<NPSHistorial[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -128,6 +129,13 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
 
         if (profilesError) throw profilesError
 
+        // Fetch colaboradores for AC names (account_manager_id references colaboradores)
+        const { data: colaboradoresData, error: colaboradoresError } = await supabase
+          .from('colaboradores')
+          .select('id, nombre, apellido, email')
+
+        if (colaboradoresError) throw colaboradoresError
+
         // Fetch NPS history (last 12 months)
         const startDate = new Date(selectedYear - 1, selectedMonth - 1, 1)
         const { data: npsData, error: npsError } = await supabase
@@ -140,9 +148,10 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
 
         setClients(clientsData || [])
         setProfiles(profilesData || [])
+        setColaboradores(colaboradoresData || [])
         setNpsHistorial(npsData || [])
       } catch (err) {
-        console.error('[v0] Error fetching NPS data:', err)
+        console.error('Error fetching NPS data:', err)
         setError(err instanceof Error ? err.message : 'Error al cargar datos')
       }
 
@@ -156,16 +165,77 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
   const now = new Date()
   const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
 
-  // Get profile name
+  // Get AC name - first try colaboradores, then profiles
   const getProfileName = (id: string | null): string | null => {
     if (!id) return null
+    
+    // First try to find in colaboradores (account_manager_id references colaboradores table)
+    const colaborador = colaboradores.find(c => c.id === id) as { id: string; nombre: string; apellido?: string; email?: string } | undefined
+    if (colaborador?.nombre) {
+      // Combine nombre + apellido for full name
+      const fullName = colaborador.apellido 
+        ? `${colaborador.nombre} ${colaborador.apellido}`
+        : colaborador.nombre
+      return fullName
+    }
+    
+    // Fallback to profiles
     const profile = profiles.find(p => p.id === id)
-    return profile?.full_name || null
+    if (!profile) return null
+    
+    // Use full_name if available
+    if (profile.full_name) return profile.full_name
+    
+    // Fallback: format email or username
+    const namePart = profile.email?.split('@')[0] || ''
+    if (namePart) {
+      // Remove trailing numbers like _43621
+      let cleanName = namePart.replace(/_\d+$/, '')
+      // Convert underscores/dots to spaces and capitalize each word
+      // Handle camelCase names like "valentinaferraris" -> "Valentina Ferraris"
+      cleanName = cleanName
+        .replace(/([a-z])([A-Z])/g, '$1 $2') // Split camelCase
+        .replace(/[._]/g, ' ')
+        .split(' ')
+        .filter(word => word.length > 0)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ')
+      return cleanName
+    }
+    
+    return null
   }
 
   // Process client NPS data
   const clientNPSData: ClientNPSData[] = useMemo(() => {
-    let filteredClients = clients
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    // Excluded client names (case insensitive)
+    const excludedClients = ['preme', 'nexa home', 'mdk interno', 'gestion interna', 'gestión interna']
+    
+    // Filter clients: must have fecha_activacion AND it must be before today
+    // Only include clients with unidad_negocio Consultoría or MDK
+    // Exclude specific clients
+    let filteredClients = clients.filter(c => {
+      // Exclude clients without fecha_activacion
+      if (!c.fecha_activacion) return false
+      const activationDate = new Date(c.fecha_activacion)
+      activationDate.setHours(0, 0, 0, 0)
+      if (activationDate >= today) return false
+      
+      // Only include Consultoría or MDK
+      const hasValidUnidad = c.unidades_negocio?.some(u => 
+        u === 'Consultoría' || u === 'MDK'
+      )
+      if (!hasValidUnidad) return false
+      
+      // Exclude specific clients by name
+      const clientName = (c.nombre_del_negocio || c.business_name || '').toLowerCase()
+      if (excludedClients.some(excluded => clientName.includes(excluded))) return false
+      
+      return true
+    })
     
     if (planFilter !== 'all') {
       filteredClients = filteredClients.filter(c => c.plan === planFilter)
@@ -569,15 +639,15 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-left">Cliente</TableHead>
-                    <TableHead className="text-left">Plan</TableHead>
-                    <TableHead className="text-center">NPS Actual</TableHead>
-                    <TableHead className="text-center">NPS Anterior</TableHead>
-                    <TableHead className="text-center">Tendencia</TableHead>
-                    <TableHead className="text-center">Historico (6 meses)</TableHead>
-                    <TableHead className="text-center">Encuestas</TableHead>
-                    <TableHead className="text-center">Ultima Encuesta</TableHead>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="text-left w-[200px]">Cliente</TableHead>
+                    <TableHead className="text-center w-[100px]">Plan</TableHead>
+                    <TableHead className="text-center w-[90px]">NPS Actual</TableHead>
+                    <TableHead className="text-center w-[90px]">NPS Anterior</TableHead>
+                    <TableHead className="text-center w-[80px]">Tendencia</TableHead>
+                    <TableHead className="text-center w-[180px]">Historico (6 meses)</TableHead>
+                    <TableHead className="text-center w-[80px]">Encuestas</TableHead>
+                    <TableHead className="text-center w-[120px]">Ultima Encuesta</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -590,8 +660,10 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
                   ) : (
                     filteredData.map((data) => (
                       <TableRow key={data.clientId}>
-                        <TableCell className="font-medium">{data.clientName}</TableCell>
-                        <TableCell>
+                        <TableCell className="font-medium truncate max-w-[200px]" title={data.clientName || ''}>
+                          {data.clientName}
+                        </TableCell>
+                        <TableCell className="text-center">
                           {data.plan ? (
                             <Badge variant="outline" className="text-xs">
                               {data.plan}

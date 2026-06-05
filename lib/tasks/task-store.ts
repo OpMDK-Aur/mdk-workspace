@@ -1567,6 +1567,35 @@ addTask: async (taskData) => {
     // Support both single assigneeId and multiple assigneeIds
     const assigneeIds = taskData.assigneeIds || (taskData.assigneeId ? [taskData.assigneeId] : [])
     
+    // Calculate due date for hito tasks if not provided
+    let dueDate = taskData.dueDate || null
+    const isHitoTask = taskData.hitoPoe || taskData.title?.startsWith('[Hito]')
+    
+    if (isHitoTask && !dueDate) {
+      const now = new Date()
+      const titleUpper = (taskData.title || '').toUpperCase()
+      
+      if (titleUpper.includes('INICIO DE SEMANA') || titleUpper.includes('INICIO SEMANA')) {
+        // Due on Monday of the current week
+        const dayOfWeek = now.getDay()
+        const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+        const monday = new Date(now)
+        monday.setDate(now.getDate() + daysToMonday)
+        dueDate = monday.toISOString().split('T')[0]
+      } else if (titleUpper.includes('FIN DE SEMANA') || titleUpper.includes('FIN SEMANA')) {
+        // Due on Friday of the current week
+        const dayOfWeek = now.getDay()
+        const daysToFriday = dayOfWeek === 0 ? -2 : 5 - dayOfWeek
+        const friday = new Date(now)
+        friday.setDate(now.getDate() + daysToFriday)
+        dueDate = friday.toISOString().split('T')[0]
+      } else {
+        // Regular hito: due on last day of month
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+        dueDate = lastDay.toISOString().split('T')[0]
+      }
+    }
+    
     const { error } = await supabase
     .from('tareas')
     .insert({
@@ -1580,7 +1609,8 @@ addTask: async (taskData) => {
     asignados_a: assigneeIds.length > 0 ? assigneeIds : null,
     estado: taskData.status || 'pendiente',
     prioridad: taskData.priority || 'media',
-    fecha_vencimiento: taskData.dueDate || null,
+    fecha_vencimiento: dueDate,
+    hito_poe: taskData.hitoPoe || null,
     creado_por: resolvedCreatedById,
     })
     
