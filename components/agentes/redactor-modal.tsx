@@ -210,6 +210,10 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
         }),
       })
 
+      if (response.status === 401) {
+        toast.error('Tu sesión expiró. Recargá la página e iniciá sesión de nuevo.')
+        throw new Error('Unauthorized')
+      }
       if (!response.ok) throw new Error('Failed to generate')
 
       // Read the stream
