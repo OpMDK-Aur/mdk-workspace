@@ -7,12 +7,18 @@ export const maxDuration = 60
 async function fetchAccountMetrics(
   platform: 'meta' | 'google',
   accountId: string,
-  baseUrl: string
+  baseUrl: string,
+  periodo?: { start: string; end: string }
 ): Promise<{ spend: number; leads: number; cpl: number; impressions: number; clicks: number } | null> {
   try {
+    // Build date params - use custom period if provided, otherwise last_7d
+    const dateParams = periodo?.start && periodo?.end
+      ? `start_date=${periodo.start}&end_date=${periodo.end}`
+      : 'date_range=last_7d'
+    
     const endpoint = platform === 'meta' 
-      ? `${baseUrl}/api/ads/meta?account_id=${accountId}&date_range=last_7d`
-      : `${baseUrl}/api/ads/google?customer_id=${accountId}&date_range=last_7d`
+      ? `${baseUrl}/api/ads/meta?account_id=${accountId}&${dateParams}`
+      : `${baseUrl}/api/ads/google?customer_id=${accountId}&${dateParams}`
     
     const response = await fetch(endpoint)
     if (!response.ok) return null
@@ -40,7 +46,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { clientId, tipo, cuentas } = await req.json()
+    const { clientId, tipo, cuentas, periodo } = await req.json()
 
     // Get agent config
     const { data: agentConfig } = await supabase
@@ -99,7 +105,7 @@ export async function POST(req: Request) {
         : []
     for (const accountId of metaAccounts) {
       if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
-        const metrics = await fetchAccountMetrics('meta', accountId, baseUrl)
+        const metrics = await fetchAccountMetrics('meta', accountId, baseUrl, periodo)
         if (metrics) {
           metricsByAccount.push({
             account: accountId,
@@ -118,7 +124,7 @@ export async function POST(req: Request) {
         : []
     for (const accountId of googleAccounts) {
       if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
-        const metrics = await fetchAccountMetrics('google', accountId, baseUrl)
+        const metrics = await fetchAccountMetrics('google', accountId, baseUrl, periodo)
         if (metrics) {
           metricsByAccount.push({
             account: accountId,
@@ -154,6 +160,11 @@ ${metricsByAccount.map(m =>
 ).join('\n')}`
     }
 
+    // Format period for display
+    const periodoTexto = periodo?.start && periodo?.end 
+      ? `${periodo.start} al ${periodo.end}`
+      : 'últimos 7 días'
+
     const tipoMensaje = tipo === 'inicio' ? 'inicio de semana' : 'cierre de semana'
     const cuentasText = metricsByAccount.length > 0 
       ? `Cuentas analizadas: ${metricsByAccount.map(m => `${m.platform} (${m.account})`).join(', ')}`
@@ -163,62 +174,95 @@ ${metricsByAccount.map(m =>
     const planCliente = client.plan || 'Esencial'
     const isEstrategico = planCliente === 'Estratégico'
 
-    // Templates específicos según tipo de mensaje y plan
+    // Templates EXACTOS según tipo de mensaje y plan
     const templateInicioEstrategico = `
-TEMPLATE MENSAJE DE LUNES - PLAN ESTRATÉGICO:
-¡Hola [Nombre]! 👋 Buen lunes.
+GENERA EL SIGUIENTE MENSAJE DE LUNES PARA PLAN ESTRATÉGICO:
 
-Desde el equipo de Operaciones de MDK te compartimos los hitos clave en los que vamos a estar trabajando en tu cuenta esta semana:
+¡Hola [Nombre del contacto principal]! 👋 Buen lunes.
 
-🎯 **Foco principal:** [El hito más importante de esta semana según contexto]
+Desde el equipo de Operaciones de **MDK** te compartimos los hitos clave en los que vamos a estar trabajando en tu cuenta esta semana:
+
+🎯 **Foco principal:** [Ej: Optimización de campañas post-informe de cierre / Lanzamiento de la nueva segmentación]
 
 ✅ **Checklist de la semana:**
 — [Item 1: acción concreta]
 — [Item 2: seguimiento o ajuste técnico]
 — [Item 3: preparación de reporte o análisis]
 
-🚀 **Objetivo:** [Resultado esperado vinculado a métricas]
+🚀 **Objetivo:** [Resultado esperado. Ej: Recuperar el CPL a los niveles de la semana 2 del mes anterior.]
 
 REGLAS:
-- Incluir entre 2 y 4 items concretos en el checklist
-- El objetivo debe estar vinculado a las métricas reales (CPL, leads, etc)
-- NO copiar el template textual, adaptarlo al contexto del cliente
+- Reemplaza [Nombre del contacto principal] con el nombre real del cliente
+- El foco principal debe estar basado en el contexto e historial del cliente
+- Incluir entre 2 y 4 items concretos en el checklist basados en lo que realmente se va a trabajar
+- El objetivo debe estar vinculado a las métricas reales proporcionadas
+- NO usar los ejemplos textuales, adaptarlos al contexto real
 - Máximo 150 palabras`
 
     const templateInicioEsencial = `
-TEMPLATE MENSAJE DE LUNES - PLAN ESENCIAL:
-¡Hola [Nombre]! 👋 Buen lunes.
+GENERA EL SIGUIENTE MENSAJE DE LUNES PARA PLAN ESENCIAL:
+
+¡Hola [Nombre del contacto principal]! 👋 Buen lunes.
 
 Esta semana en tu cuenta vamos a estar trabajando en:
 
-🎯 [Una sola línea con el foco de la semana]
+🎯 [Una sola línea con el foco de la semana. Ej: Optimización de campañas y revisión de trackeo.]
 
-🚀 Objetivo: [Una sola línea con el resultado esperado]
+🚀 Objetivo: [Una sola línea. Ej: Mantener el CPL dentro del rango acordado.]
 
 Cualquier consulta, acá estamos. 💪
 
 REGLAS:
-- Mensaje corto y directo
+- Reemplaza [Nombre del contacto principal] con el nombre real
+- Mensaje MUY corto y directo
 - Solo UNA línea para foco y UNA para objetivo
-- NO agregar más items ni checklist
-- Máximo 60 palabras`
+- NO agregar checklist ni más items
+- Máximo 60 palabras totales`
 
-    const templateCierre = `
-TEMPLATE MENSAJE DE CIERRE DE SEMANA:
-Genera un resumen de cierre semanal que incluya:
-- Resumen de lo realizado en la semana
-- Métricas principales (inversión, leads, CPL)
-- Comparativa vs semana anterior si hay datos
-- Próximos pasos o foco para la siguiente semana
+    const templateCierreEstrategico = `
+GENERA EL SIGUIENTE MENSAJE DE CIERRE DE SEMANA PARA PLAN ESTRATÉGICO:
+
+¡Hola **[Nombre del contacto]**! 👋 Cerramos la semana en **MDK** con los avances y métricas clave de tu cuenta:
+
+✅ **Hitos Completados:**
+- **Logro 1:** [Ej: Campaña de X lanzada con éxito]
+- **Logro 2:** [Ej: Ajuste técnico de la plataforma finalizado]
+
+📊 **Métricas de Gestión (Corte al viernes):**
+- **Inversión:** $[valor] 
+- **Leads:** [cantidad] ([variación] vs. semana pasada)
+- **CPL:** $[valor]
+
+🔜 **Próxima semana:** [Una línea con el foco de la siguiente semana]
 
 REGLAS:
-- Tono profesional pero cercano
-- Incluir datos concretos de las métricas
-- Máximo 200 palabras`
+- Usa las métricas REALES proporcionadas
+- Los hitos deben reflejar el trabajo real realizado según el historial
+- Incluir comparativa vs semana anterior si hay datos disponibles
+- Máximo 180 palabras`
+
+    const templateCierreEsencial = `
+GENERA EL SIGUIENTE MENSAJE DE CIERRE DE SEMANA PARA PLAN ESENCIAL:
+
+¡Hola [Nombre del contacto]! 👋 Cerramos la semana con tu cuenta al día.
+
+✅ Lo que hicimos: [Una sola línea. Ej: Optimizamos las campañas de búsqueda y ajustamos el presupuesto diario.]
+
+📊 Número de la semana: [Un solo KPI relevante. Ej: CPL esta semana: $XX — estable vs semana anterior.]
+
+⏭️ La semana que viene: [Una sola acción. Ej: Arrancamos con los nuevos creativos aprobados.]
+
+¡Buen finde! 🙌
+
+REGLAS:
+- Usa las métricas REALES proporcionadas
+- Mensaje MUY corto
+- Solo UNA línea para cada sección
+- Máximo 80 palabras totales`
 
     const templateToUse = tipo === 'inicio' 
       ? (isEstrategico ? templateInicioEstrategico : templateInicioEsencial)
-      : templateCierre
+      : (isEstrategico ? templateCierreEstrategico : templateCierreEsencial)
 
     const systemPrompt = `${agentConfig.system_prompt}
 
@@ -226,17 +270,18 @@ CONTEXTO DEL CLIENTE:
 - Cliente: ${client.nombre_del_negocio}
 - Plan: ${planCliente}
 - Tipo de mensaje: ${tipoMensaje}
+- Periodo de métricas: ${periodoTexto}
 - ${cuentasText}
 
 HISTORIAL DEL CLIENTE:
 ${clienteMemoriaText}
 
-METRICAS DE CUENTAS PUBLICITARIAS:
+METRICAS DE CUENTAS PUBLICITARIAS (${periodoTexto}):
 ${metricasText}
 
 ${templateToUse}
 
-IMPORTANTE: Genera el mensaje siguiendo EXACTAMENTE el template indicado para el plan ${planCliente}. Usa las métricas reales proporcionadas.
+IMPORTANTE: Genera el mensaje siguiendo EXACTAMENTE la estructura del template. Usa los datos reales del cliente y las métricas proporcionadas. NO incluyas las reglas ni instrucciones en el mensaje final.
 `
 
     const userMessage: UIMessage[] = [{ 

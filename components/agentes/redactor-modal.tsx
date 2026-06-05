@@ -26,6 +26,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { Input } from '@/components/ui/input'
 import { 
   Check, 
   ChevronsUpDown, 
@@ -35,7 +36,8 @@ import {
   CheckCircle2,
   Loader2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Calendar
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -61,6 +63,32 @@ interface ClientOption {
   google_ads_customer_ids: string[] | null
 }
 
+// Helper to get last week's Monday and Sunday
+function getLastWeekDates() {
+  const today = new Date()
+  const dayOfWeek = today.getDay()
+  
+  // Calculate last Monday (if today is Monday, go back 7 days)
+  const daysToLastMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+  const lastMonday = new Date(today)
+  lastMonday.setDate(today.getDate() - daysToLastMonday - 7)
+  
+  // Last Sunday is 6 days after last Monday
+  const lastSunday = new Date(lastMonday)
+  lastSunday.setDate(lastMonday.getDate() + 6)
+  
+  return {
+    start: lastMonday.toISOString().split('T')[0],
+    end: lastSunday.toISOString().split('T')[0]
+  }
+}
+
+// Helper to format date for display
+function formatDateDisplay(dateStr: string) {
+  const date = new Date(dateStr + 'T12:00:00')
+  return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+}
+
 export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
   const supabase = createClient()
   
@@ -73,6 +101,10 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([])
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
+  
+  // Period selection state
+  const [periodStart, setPeriodStart] = useState('')
+  const [periodEnd, setPeriodEnd] = useState('')
 
   // Fetch clients
   useEffect(() => {
@@ -92,6 +124,10 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
       setMessageType(null)
       setSelectedAccounts([])
       setDraft('')
+      // Set default period to last week
+      const lastWeek = getLastWeekDates()
+      setPeriodStart(lastWeek.start)
+      setPeriodEnd(lastWeek.end)
     }
   }, [open, supabase])
 
@@ -133,8 +169,9 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
     switch (step) {
       case 1: return !!selectedClient
       case 2: return !!messageType
-      case 3: return true // Can proceed even without accounts
-      case 4: return !!draft
+      case 3: return !!periodStart && !!periodEnd
+      case 4: return true // Can proceed even without accounts
+      case 5: return !!draft
       default: return false
     }
   }
@@ -151,6 +188,10 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
           clientId: selectedClient.id,
           tipo: messageType,
           cuentas: selectedAccounts,
+          periodo: {
+            start: periodStart,
+            end: periodEnd
+          }
         }),
       })
 
@@ -202,7 +243,7 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
         }
       }
       
-      setStep(4)
+      setStep(5)
     } catch (error) {
       console.error('Error generating draft:', error)
       toast.error('Error al generar el borrador')
@@ -239,7 +280,7 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
   }
 
   const handleNext = () => {
-    if (step === 3) {
+    if (step === 4) {
       handleGenerateDraft()
     } else {
       setStep(step + 1)
@@ -255,7 +296,7 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
 
         {/* Step Indicator */}
         <div className="flex items-center justify-center gap-2 py-4">
-          {[1, 2, 3, 4].map((s) => (
+          {[1, 2, 3, 4, 5].map((s) => (
             <div key={s} className="flex items-center">
               <div
                 className={cn(
@@ -267,10 +308,10 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
               >
                 {s}
               </div>
-              {s < 4 && (
+              {s < 5 && (
                 <div
                   className={cn(
-                    'w-12 h-0.5 mx-1',
+                    'w-8 h-0.5 mx-1',
                     step > s ? 'bg-[#7F77DD]' : 'bg-muted'
                   )}
                 />
@@ -360,8 +401,46 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
             </div>
           )}
 
-          {/* Step 3: Ad Accounts */}
+          {/* Step 3: Period Selection */}
           {step === 3 && (
+            <div className="space-y-4">
+              <h3 className="font-medium">Periodo de metricas</h3>
+              <p className="text-sm text-muted-foreground">
+                Selecciona el rango de fechas para obtener las metricas publicitarias.
+              </p>
+              
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-muted/50">
+                <Calendar className="h-5 w-5 text-muted-foreground shrink-0" />
+                <div className="flex-1 grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Desde</Label>
+                    <Input
+                      type="date"
+                      value={periodStart}
+                      onChange={(e) => setPeriodStart(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Hasta</Label>
+                    <Input
+                      type="date"
+                      value={periodEnd}
+                      onChange={(e) => setPeriodEnd(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-xs text-muted-foreground text-center">
+                Por defecto: ultima semana ({formatDateDisplay(periodStart)} - {formatDateDisplay(periodEnd)})
+              </p>
+            </div>
+          )}
+
+          {/* Step 4: Ad Accounts */}
+          {step === 4 && (
             <div className="space-y-4">
               <h3 className="font-medium">Cuentas publicitarias</h3>
               {adAccounts.length === 0 ? (
@@ -396,8 +475,8 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
             </div>
           )}
 
-          {/* Step 4: Draft */}
-          {step === 4 && (
+          {/* Step 5: Draft */}
+          {step === 5 && (
             <div className="space-y-4">
               <h3 className="font-medium">Borrador generado</h3>
               {loading ? (
@@ -437,7 +516,7 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
         </div>
 
         {/* Footer Navigation */}
-        {step < 4 && (
+        {step < 5 && (
           <div className="flex justify-between pt-4 border-t">
             <Button
               variant="outline"
