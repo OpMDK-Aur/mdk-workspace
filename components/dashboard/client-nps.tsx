@@ -21,7 +21,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart'
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, ReferenceLine } from 'recharts'
 
 interface NPSRecord {
   id: string
@@ -438,39 +438,35 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
 
             {/* Chart */}
             {filteredRecords.length >= 2 && (
-              <div className="h-32">
-                <ChartContainer config={chartConfig}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                      <XAxis 
-                        dataKey="fecha" 
-                        tick={{ fontSize: 10 }} 
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <YAxis 
-                        domain={[1, 5]} 
-                        ticks={[1, 2, 3, 4, 5]}
-                        tick={{ fontSize: 10 }}
-                        tickLine={false}
-                        axisLine={false}
-                        width={20}
-                      />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <ReferenceLine y={4} stroke="#22c55e" strokeDasharray="3 3" strokeOpacity={0.5} />
-                      <ReferenceLine y={3} stroke="#eab308" strokeDasharray="3 3" strokeOpacity={0.5} />
-                      <Line
-                        type="monotone"
-                        dataKey="score"
-                        stroke="hsl(var(--primary))"
-                        strokeWidth={2}
-                        dot={{ r: 4, fill: 'hsl(var(--primary))' }}
-                        activeDot={{ r: 6 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </ChartContainer>
-              </div>
+              <ChartContainer config={chartConfig} className="aspect-auto h-32 w-full">
+                <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  <XAxis 
+                    dataKey="fecha" 
+                    tick={{ fontSize: 10 }} 
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis 
+                    domain={[1, 5]} 
+                    ticks={[1, 2, 3, 4, 5]}
+                    tick={{ fontSize: 10 }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={20}
+                  />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ReferenceLine y={4} stroke="#22c55e" strokeDasharray="3 3" strokeOpacity={0.5} />
+                  <ReferenceLine y={3} stroke="#eab308" strokeDasharray="3 3" strokeOpacity={0.5} />
+                  <Line
+                    type="monotone"
+                    dataKey="score"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={2}
+                    dot={{ r: 4, fill: 'hsl(var(--primary))' }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ChartContainer>
             )}
           </div>
 
