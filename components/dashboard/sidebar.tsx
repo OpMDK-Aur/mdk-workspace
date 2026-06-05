@@ -113,7 +113,7 @@ const adminItems: NavItem[] = [
 const platformItems: NavItem[] = [
   { id: 'ad-accounts', name: 'Cuentas publicitarias', href: '/dashboard/platform', icon: Megaphone },
   { id: 'apps', name: 'Apps', href: '/dashboard/apps', icon: AppWindow },
-  { id: 'crm', name: 'CRM', href: '/dashboard/crm', icon: Database },
+  { id: 'crm', name: 'CRM', href: '/dashboard/crm', icon: Database, badge: 'proximamente' },
   { id: 'webhooks', name: 'Webhooks', href: '/dashboard/webhooks', icon: Webhook },
 ]
 
