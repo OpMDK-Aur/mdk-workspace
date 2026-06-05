@@ -2054,6 +2054,7 @@ export function useTasksByStatus() {
     pausada: [],
     pendiente_aprobacion: [],
     resuelto: [],
+    no_realizado: [],
   }
   tasks.forEach((task) => {
     if (grouped[task.status]) {
