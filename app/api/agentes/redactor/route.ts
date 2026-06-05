@@ -3,6 +3,34 @@ import { consumeStream, convertToModelMessages, streamText, type UIMessage } fro
 
 export const maxDuration = 60
 
+// Helper to fetch metrics from internal APIs
+async function fetchAccountMetrics(
+  platform: 'meta' | 'google',
+  accountId: string,
+  baseUrl: string
+): Promise<{ spend: number; leads: number; cpl: number; impressions: number; clicks: number } | null> {
+  try {
+    const endpoint = platform === 'meta' 
+      ? `${baseUrl}/api/ads/meta?account_id=${accountId}&date_range=last_7d`
+      : `${baseUrl}/api/ads/google?customer_id=${accountId}&date_range=last_7d`
+    
+    const response = await fetch(endpoint)
+    if (!response.ok) return null
+    
+    const data = await response.json()
+    return {
+      spend: data.totals?.spend ?? 0,
+      leads: data.totals?.leads ?? 0,
+      cpl: data.totals?.cpl ?? 0,
+      impressions: data.totals?.impressions ?? 0,
+      clicks: data.totals?.clicks ?? 0,
+    }
+  } catch (error) {
+    console.error(`Error fetching ${platform} metrics for ${accountId}:`, error)
+    return null
+  }
+}
+
 export async function POST(req: Request) {
   const supabase = await createClient()
   
@@ -25,10 +53,10 @@ export async function POST(req: Request) {
       return new Response('Agent not found', { status: 404 })
     }
 
-    // Get client data
+    // Get client data with ad account IDs
     const { data: client } = await supabase
       .from('clientes')
-      .select('*')
+      .select('*, meta_ads_account_ids, google_ads_customer_ids')
       .eq('id', clientId)
       .single()
 
@@ -44,25 +72,84 @@ export async function POST(req: Request) {
       .order('created_at', { ascending: false })
       .limit(5)
 
-    // Get recent metrics (last 7 days would require metricas_ads with date filtering)
-    // For now, get latest metrics
-    const { data: metricas } = await supabase
-      .from('metricas_ads')
-      .select('*')
-      .eq('cliente_id', clientId)
-      .order('created_at', { ascending: false })
-      .limit(1)
+    // Build base URL for internal API calls
+    const baseUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}` 
+      : process.env.NEXTAUTH_URL || 'http://localhost:3000'
+
+    // Fetch metrics for selected accounts
+    const metricsByAccount: Array<{
+      account: string
+      platform: string
+      spend: number
+      leads: number
+      cpl: number
+      impressions: number
+      clicks: number
+    }> = []
+
+    // Determine which accounts to fetch based on selection
+    const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
+    
+    // Fetch Meta accounts metrics
+    const metaAccounts = client.meta_ads_account_ids || []
+    for (const accountId of metaAccounts) {
+      if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
+        const metrics = await fetchAccountMetrics('meta', accountId, baseUrl)
+        if (metrics) {
+          metricsByAccount.push({
+            account: accountId,
+            platform: 'Meta Ads',
+            ...metrics
+          })
+        }
+      }
+    }
+
+    // Fetch Google accounts metrics
+    const googleAccounts = client.google_ads_customer_ids || []
+    for (const accountId of googleAccounts) {
+      if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
+        const metrics = await fetchAccountMetrics('google', accountId, baseUrl)
+        if (metrics) {
+          metricsByAccount.push({
+            account: accountId,
+            platform: 'Google Ads',
+            ...metrics
+          })
+        }
+      }
+    }
 
     // Build context
     const clienteMemoriaText = memoria?.map(m => `- ${m.contenido}`).join('\n') || 'Sin historial'
-    const metricasText = metricas?.[0] 
-      ? `Inversion: $${metricas[0].inversion || 0}, Leads: ${metricas[0].conversiones || 0}, CPL: $${metricas[0].cpl || 0}`
-      : 'Sin metricas disponibles'
+    
+    // Build metrics text from real account data
+    let metricasText = 'Sin metricas disponibles'
+    if (metricsByAccount.length > 0) {
+      const totalSpend = metricsByAccount.reduce((sum, m) => sum + m.spend, 0)
+      const totalLeads = metricsByAccount.reduce((sum, m) => sum + m.leads, 0)
+      const totalCpl = totalLeads > 0 ? totalSpend / totalLeads : 0
+      const totalImpressions = metricsByAccount.reduce((sum, m) => sum + m.impressions, 0)
+      const totalClicks = metricsByAccount.reduce((sum, m) => sum + m.clicks, 0)
+
+      metricasText = `RESUMEN GLOBAL (últimos 7 días):
+- Inversión total: $${totalSpend.toFixed(2)}
+- Leads/Conversiones totales: ${totalLeads}
+- CPL promedio: $${totalCpl.toFixed(2)}
+- Impresiones: ${totalImpressions.toLocaleString()}
+- Clics: ${totalClicks.toLocaleString()}
+
+DESGLOSE POR CUENTA:
+${metricsByAccount.map(m => 
+  `• ${m.platform} (${m.account}): $${m.spend.toFixed(2)} invertido, ${m.leads} leads, CPL: $${m.cpl.toFixed(2)}`
+).join('\n')}`
+    }
 
     const tipoMensaje = tipo === 'inicio' ? 'inicio de semana' : 'cierre de semana'
-    const cuentasText = cuentas?.length > 0 
-      ? `Cuentas seleccionadas: ${cuentas.join(', ')}`
-      : 'Sin cuentas seleccionadas'
+    const cuentasText = metricsByAccount.length > 0 
+      ? `Cuentas analizadas: ${metricsByAccount.map(m => `${m.platform} (${m.account})`).join(', ')}`
+      : 'Sin cuentas publicitarias configuradas'
 
     const systemPrompt = `${agentConfig.system_prompt}
 
@@ -74,7 +161,7 @@ CONTEXTO:
 HISTORIAL DEL CLIENTE:
 ${clienteMemoriaText}
 
-METRICAS RECIENTES:
+METRICAS DE CUENTAS PUBLICITARIAS:
 ${metricasText}
 
 Genera un mensaje de WhatsApp para ${tipoMensaje}. Maximo ${(agentConfig.parametros as any)?.max_palabras || 300} palabras.
