@@ -98,7 +98,7 @@ export function TaskBoard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
-  const hasSimpleFilters = filters.priority || filters.status || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned
+  const hasSimpleFilters = filters.priority || filters.statusIds.length > 0 || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned
   const hasAdvancedFilters = advancedFilters.length > 0
   const hasFilters = hasSimpleFilters || hasAdvancedFilters
 
@@ -182,19 +182,35 @@ export function TaskBoard() {
               variant="outline"
               className={cn(
                 'cursor-pointer px-2.5 py-1 h-7 gap-1 shrink-0',
-                filters.status && 'bg-purple-500/10 text-purple-400 border-purple-500/30'
+                filters.statusIds.length > 0 && 'bg-purple-500/10 text-purple-400 border-purple-500/30'
               )}
             >
-              {filters.status ? STATUS_CONFIG[filters.status].label : 'Estado'}
+              {filters.statusIds.length === 0
+                ? 'Estado'
+                : filters.statusIds.length === 1
+                ? STATUS_CONFIG[filters.statusIds[0]].label
+                : `${filters.statusIds.length} estados`}
               <ChevronDown className="h-3 w-3" />
             </Badge>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
+            <DropdownMenuItem
+              onClick={() => setFilter('statusIds', [])}
+              className={cn(filters.statusIds.length === 0 && 'bg-muted')}
+            >
+              Todos
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             {STATUS_ORDER.map((s) => (
               <DropdownMenuCheckboxItem
                 key={s}
-                checked={filters.status === s}
-                onCheckedChange={(checked) => setFilter('status', checked ? s : null)}
+                checked={filters.statusIds.includes(s)}
+                onCheckedChange={(checked) => {
+                  const newIds = checked
+                    ? [...filters.statusIds, s]
+                    : filters.statusIds.filter(id => id !== s)
+                  setFilter('statusIds', newIds)
+                }}
               >
                 <Badge variant="outline" className={cn('text-xs border-0', STATUS_CONFIG[s].bgColor, STATUS_CONFIG[s].color)}>
                   {STATUS_CONFIG[s].label}

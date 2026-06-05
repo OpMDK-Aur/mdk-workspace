@@ -739,7 +739,7 @@ interface TaskStore {
   // Legacy simple filters (for quick access)
   filters: {
   priority: TaskPriority | null
-  status: TaskStatus | null
+  statusIds: TaskStatus[]
   assigneeIds: string[]
   showUnassigned: boolean
   type: TaskType | null
@@ -803,7 +803,7 @@ export const useTaskStore = create<TaskStore>()(
   view: 'calendar',
   filters: {
   priority: null,
-  status: null,
+  statusIds: [],
   assigneeIds: [],
   showUnassigned: false,
   type: null,
@@ -968,7 +968,7 @@ export const useTaskStore = create<TaskStore>()(
     filters: { ...state.filters, [key]: value },
   })),
   clearFilters: () => set({
-  filters: { priority: null, status: null, assigneeIds: [], showUnassigned: false, type: null, dueThisWeek: false, searchQuery: '', clientIds: [] },
+  filters: { priority: null, statusIds: [], assigneeIds: [], showUnassigned: false, type: null, dueThisWeek: false, searchQuery: '', clientIds: [] },
   advancedFilters: [],
   }),
   
@@ -1997,7 +1997,7 @@ export function useFilteredTasks() {
   // Apply simple filters first
   let filteredTasks = tasks.filter((task) => {
   if (filters.priority && task.priority !== filters.priority) return false
-  if (filters.status && task.status !== filters.status) return false
+  if (filters.statusIds.length > 0 && !filters.statusIds.includes(task.status)) return false
   // Show unassigned filter - only show tasks without assignee
   if (filters.showUnassigned) {
     const hasNoAssignee = !task.assigneeId || task.assigneeId === ''
