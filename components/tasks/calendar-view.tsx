@@ -110,6 +110,7 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
           const statusConfig = STATUS_CONFIG[task.status] || STATUS_CONFIG.pendiente
           const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && task.status !== 'resuelto'
           const isSystemTask = task.isSystemTask
+          const isResuelto = task.status === 'resuelto'
           
           return (
             <button
@@ -119,7 +120,8 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                 'w-full text-left rounded px-1.5 py-1 text-xs transition-colors',
                 'bg-white dark:bg-card border border-gray-200 dark:border-border',
                 'hover:border-primary/50 hover:shadow-sm',
-                isOverdue && !isSystemTask && 'ring-1 ring-red-400/60'
+                isOverdue && !isSystemTask && 'ring-1 ring-red-400/60',
+                isResuelto && 'border-green-500/60 bg-green-500/5'
               )}
             >
               <div className="flex items-start gap-1">
@@ -206,6 +208,7 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                     const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
                     const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && task.status !== 'resuelto'
                     const isSystemTask = task.isSystemTask
+                    const isResuelto = task.status === 'resuelto'
 
                     return (
                       <button
@@ -215,7 +218,8 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                           'w-full text-left rounded-md px-2.5 py-2 transition-all duration-200',
                           'bg-card/40 border border-border/40 hover:border-primary/50 hover:bg-card/60',
                           'hover:shadow-sm hover:translate-x-0.5',
-                          isOverdue && !isSystemTask && 'border-red-400/50 bg-red-400/10'
+                          isOverdue && !isSystemTask && 'border-red-400/50 bg-red-400/10',
+                          isResuelto && 'border-green-500/60 bg-green-500/5'
                         )}
                       >
                         <div className="flex items-start gap-1.5 mb-1.5">
