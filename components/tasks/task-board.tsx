@@ -114,40 +114,42 @@ export function TaskBoard() {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center gap-4 p-4 border-b bg-card overflow-x-auto">
-        {/* New Task */}
-        <Button className="gap-1.5 shrink-0" onClick={() => { setNewTaskMode('manual'); setNewTaskOpen(true) }}>
-          <Plus className="h-4 w-4" />
-          Nueva tarea
-        </Button>
-        <Button variant="outline" className="gap-1.5 shrink-0" onClick={() => setMeetingOpen(true)}>
-          <Calendar className="h-4 w-4" />
-          Agendar reunion
-        </Button>
+      <div className="flex flex-wrap items-center gap-2 p-4 border-b bg-card">
+        {/* Left section: Actions */}
+        <div className="flex items-center gap-2">
+          <Button className="gap-1.5" onClick={() => { setNewTaskMode('manual'); setNewTaskOpen(true) }}>
+            <Plus className="h-4 w-4" />
+            Nueva tarea
+          </Button>
+          <Button variant="outline" className="gap-1.5" onClick={() => setMeetingOpen(true)}>
+            <Calendar className="h-4 w-4" />
+            Agendar reunion
+          </Button>
+        </div>
 
-        {/* Advanced Filter Builder */}
-        <FilterBuilder
-          filters={advancedFilters}
-          savedFilters={savedFilters}
-          onChange={setAdvancedFilters}
-          onSaveFilter={saveFilter}
-          onLoadFilter={loadSavedFilter}
-          onDeleteSavedFilter={deleteSavedFilter}
-        />
+        {/* Center section: Filters */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Advanced Filter Builder */}
+          <FilterBuilder
+            filters={advancedFilters}
+            savedFilters={savedFilters}
+            onChange={setAdvancedFilters}
+            onSaveFilter={saveFilter}
+            onLoadFilter={loadSavedFilter}
+            onDeleteSavedFilter={deleteSavedFilter}
+          />
 
-        {/* Quick filter chips */}
-        <div className="flex items-center gap-1.5 shrink-0">
-            {/* All tasks chip */}
-            <Badge
-              variant="outline"
-              className={cn(
-                'cursor-pointer px-2.5 py-1 h-7',
-                !hasFilters && 'bg-primary/10 text-primary border-primary/30'
-              )}
-              onClick={clearFilters}
-            >
-              Todas
-            </Badge>
+          {/* All tasks chip */}
+          <Badge
+            variant="outline"
+            className={cn(
+              'cursor-pointer px-2.5 py-1 h-7',
+              !hasFilters && 'bg-primary/10 text-primary border-primary/30'
+            )}
+            onClick={clearFilters}
+          >
+            Todas
+          </Badge>
 
             {/* Priority filter */}
             <DropdownMenu>
@@ -312,58 +314,61 @@ export function TaskBoard() {
                 <X className="h-4 w-4" />
               </Button>
             )}
-          </div>
-
-        {/* Search tasks */}
-        <div className="relative shrink-0">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Buscar tareas..."
-            value={filters.searchQuery}
-            onChange={(e) => setFilter('searchQuery', e.target.value)}
-            className="pl-9 w-[180px] h-8"
-          />
         </div>
 
-        {/* View Toggle - Icon only */}
-        <div className="flex items-center rounded-lg border bg-muted/30 p-0.5 shrink-0 ml-auto">
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              'h-8 w-8 rounded-md',
-              view === 'kanban' && 'bg-background shadow-sm'
-            )}
-            onClick={() => setView('kanban')}
-            title="Kanban"
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              'h-8 w-8 rounded-md',
-              view === 'list' && 'bg-background shadow-sm'
-            )}
-            onClick={() => setView('list')}
-            title="Lista"
-          >
-            <List className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              'h-8 w-8 rounded-md',
-              view === 'calendar' && 'bg-background shadow-sm'
-            )}
-            onClick={() => setView('calendar')}
-            title="Calendario"
-          >
-            <Calendar className="h-4 w-4" />
-          </Button>
+        {/* Right section: Search and View Toggle */}
+        <div className="flex items-center gap-2 ml-auto">
+          {/* Search tasks */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Buscar tareas..."
+              value={filters.searchQuery}
+              onChange={(e) => setFilter('searchQuery', e.target.value)}
+              className="pl-9 w-[160px] h-8"
+            />
+          </div>
+
+          {/* View Toggle - Icon only */}
+          <div className="flex items-center rounded-lg border bg-muted/30 p-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                'h-8 w-8 rounded-md',
+                view === 'kanban' && 'bg-background shadow-sm'
+              )}
+              onClick={() => setView('kanban')}
+              title="Kanban"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                'h-8 w-8 rounded-md',
+                view === 'list' && 'bg-background shadow-sm'
+              )}
+              onClick={() => setView('list')}
+              title="Lista"
+            >
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                'h-8 w-8 rounded-md',
+                view === 'calendar' && 'bg-background shadow-sm'
+              )}
+              onClick={() => setView('calendar')}
+              title="Calendario"
+            >
+              <Calendar className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
