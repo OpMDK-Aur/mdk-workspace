@@ -40,7 +40,7 @@ export default function NPSPage() {
   const [pmFilter, setPmFilter] = useState<string | 'all'>('all')
   const [amFilter, setAmFilter] = useState<string | 'all'>('all')
   const [clienteFilter, setClienteFilter] = useState<string | 'all'>('all')
-  const [users, setUsers] = useState<Array<{ id: string; nombre: string }>>([])
+  const [users, setUsers] = useState<Array<{ id: string; nombre: string; apellido: string | null }>>([])
   const [clientes, setClientes] = useState<Array<{ id: string; nombre_del_negocio: string }>>([])
 
   // Cargar usuarios y clientes
@@ -48,10 +48,10 @@ export default function NPSPage() {
     async function loadData() {
       const supabase = createClient()
       
-      // Cargar colaboradores
+      // Cargar colaboradores con nombre completo
       const { data: usersData } = await supabase
         .from('colaboradores')
-        .select('id, nombre')
+        .select('id, nombre, apellido')
         .order('nombre', { ascending: true })
       
       if (usersData) {
@@ -151,7 +151,9 @@ export default function NPSPage() {
           <SelectContent>
             <SelectItem value="all">Todos los PM</SelectItem>
             {users.map(user => (
-              <SelectItem key={user.id} value={user.id}>{user.nombre}</SelectItem>
+              <SelectItem key={user.id} value={user.id}>
+                {user.nombre} {user.apellido || ''}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -164,7 +166,9 @@ export default function NPSPage() {
           <SelectContent>
             <SelectItem value="all">Todos los AM</SelectItem>
             {users.map(user => (
-              <SelectItem key={user.id} value={user.id}>{user.nombre}</SelectItem>
+              <SelectItem key={user.id} value={user.id}>
+                {user.nombre} {user.apellido || ''}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>

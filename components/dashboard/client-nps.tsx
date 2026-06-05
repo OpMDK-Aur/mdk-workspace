@@ -61,7 +61,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
   const [dialogOpen, setDialogOpen] = useState(false)
   const [pmFilter, setPmFilter] = useState<string | null>(projectManagerId || null)
   const [amFilter, setAmFilter] = useState<string | null>(accountManagerId || null)
-  const [allUsers, setAllUsers] = useState<Array<{ id: string; nombre: string }>>([])
+  const [allUsers, setAllUsers] = useState<Array<{ id: string; nombre: string; apellido: string | null }>>([])
   const [usersLoading, setUsersLoading] = useState(true)
   const [form, setForm] = useState({
     score: 3,
@@ -98,7 +98,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
     try {
       const { data, error } = await supabase
         .from('colaboradores')
-        .select('id, nombre')
+        .select('id, nombre, apellido')
         .order('nombre', { ascending: true })
       
       if (error) {
@@ -317,7 +317,9 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
           <SelectContent>
             <SelectItem value="">Todos los PM</SelectItem>
             {allUsers.map(user => (
-              <SelectItem key={user.id} value={user.id}>{user.nombre}</SelectItem>
+              <SelectItem key={user.id} value={user.id}>
+                {user.nombre} {user.apellido || ''}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -329,7 +331,9 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
           <SelectContent>
             <SelectItem value="">Todos los AM</SelectItem>
             {allUsers.map(user => (
-              <SelectItem key={user.id} value={user.id}>{user.nombre}</SelectItem>
+              <SelectItem key={user.id} value={user.id}>
+                {user.nombre} {user.apellido || ''}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>

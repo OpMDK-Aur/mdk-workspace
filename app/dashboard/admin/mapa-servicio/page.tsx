@@ -40,7 +40,7 @@ export default function MapaServicioPage() {
   const [pmFilter, setPmFilter] = useState<string | 'all'>('all')
   const [amFilter, setAmFilter] = useState<string | 'all'>('all')
   const [clienteFilter, setClienteFilter] = useState<string | 'all'>('all')
-  const [users, setUsers] = useState<Array<{ id: string; nombre: string }>>([])
+  const [users, setUsers] = useState<Array<{ id: string; nombre: string; apellido: string | null }>>([])
   const [clientes, setClientes] = useState<Array<{ id: string; nombre_del_negocio: string }>>([])
 
   // Cargar usuarios y clientes
@@ -48,14 +48,14 @@ export default function MapaServicioPage() {
     async function loadData() {
       const supabase = createClient()
       
-      // Cargar colaboradores
+      // Cargar colaboradores con nombre completo
       const { data: usersData, error: usersError } = await supabase
         .from('colaboradores')
-        .select('id, nombre')
+        .select('id, nombre, apellido')
         .order('nombre', { ascending: true })
       
       if (usersError) {
-        console.error('[v0] Error loading users:', usersError)
+        console.error('Error loading users:', usersError)
       } else if (usersData) {
         setUsers(usersData)
       }
@@ -67,7 +67,7 @@ export default function MapaServicioPage() {
         .order('nombre_del_negocio', { ascending: true })
       
       if (clientesError) {
-        console.error('[v0] Error loading clientes:', clientesError)
+        console.error('Error loading clientes:', clientesError)
       } else if (clientesData) {
         setClientes(clientesData)
       }
@@ -155,7 +155,9 @@ export default function MapaServicioPage() {
           <SelectContent>
             <SelectItem value="all">Todos los PM</SelectItem>
             {users.map(user => (
-              <SelectItem key={user.id} value={user.id}>{user.nombre}</SelectItem>
+              <SelectItem key={user.id} value={user.id}>
+                {user.nombre} {user.apellido || ''}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -168,7 +170,9 @@ export default function MapaServicioPage() {
           <SelectContent>
             <SelectItem value="all">Todos los AM</SelectItem>
             {users.map(user => (
-              <SelectItem key={user.id} value={user.id}>{user.nombre}</SelectItem>
+              <SelectItem key={user.id} value={user.id}>
+                {user.nombre} {user.apellido || ''}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
