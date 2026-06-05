@@ -1,10 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { openai } from '@ai-sdk/openai'
 import { streamText } from 'ai'
+import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
 
 export const maxDuration = 120
 
 const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
+const GOOGLE_ADS_API_VERSION = 'v23'
 
 // Helper to fetch Meta metrics directly from Graph API
 async function fetchMetaMetrics(
@@ -63,6 +65,8 @@ async function fetchMetaMetrics(
 async function fetchGoogleMetrics(
   customerId: string,
   accessToken: string,
+  developerToken: string,
+  loginCustomerId: string,
   periodo?: { start: string; end: string }
 ): Promise<{ spend: number; leads: number; cpl: number; impressions: number; clicks: number; ctr: number } | null> {
   try {
@@ -83,18 +87,20 @@ async function fetchGoogleMetrics(
       WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
     `
     
-    const response = await fetch(`https://googleads.googleapis.com/v18/customers/${cleanCustomerId}/googleAds:search`, {
+    const response = await fetch(`https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}/googleAds:search`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '',
+        'developer-token': developerToken,
+        'login-customer-id': loginCustomerId,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ query }),
     })
     
     if (!response.ok) {
-      console.error('[v0] Google Ads API error:', response.status)
+      const errText = await response.text().catch(() => '')
+      console.error('[v0] Google Ads API error:', response.status, errText.slice(0, 300))
       return null
     }
     
@@ -103,11 +109,20 @@ async function fetchGoogleMetrics(
       return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0 }
     }
     
-    const row = data.results[0].metrics || {}
-    const impressions = parseInt(row.impressions || '0', 10)
-    const clicks = parseInt(row.clicks || '0', 10)
-    const spend = (parseInt(row.costMicros || '0', 10) / 1000000)
-    const leads = Math.round(parseFloat(row.conversions || '0'))
+    // Aggregate all rows (one per day) into totals
+    let impressions = 0
+    let clicks = 0
+    let costMicros = 0
+    let conversions = 0
+    for (const result of data.results) {
+      const m = result.metrics || {}
+      impressions += parseInt(m.impressions || '0', 10)
+      clicks += parseInt(m.clicks || '0', 10)
+      costMicros += parseInt(m.costMicros || m.cost_micros || '0', 10)
+      conversions += parseFloat(m.conversions || '0')
+    }
+    const spend = costMicros / 1000000
+    const leads = Math.round(conversions)
     const cpl = leads > 0 ? spend / leads : 0
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0
     
@@ -191,21 +206,13 @@ export async function POST(req: Request) {
       return true
     }) || []
 
-    // Get access tokens from plataformas_tokens for direct API calls
-    const { data: metaTokens } = await supabase
-      .from('plataformas_tokens')
-      .select('access_token')
-      .eq('plataforma', 'meta_ads')
-      .limit(1)
-
-    const { data: googleTokens } = await supabase
-      .from('plataformas_tokens')
-      .select('access_token')
-      .eq('plataforma', 'google_ads')
-      .limit(1)
-    
-    const metaAccessToken = metaTokens?.[0]?.access_token
-    const googleAccessToken = googleTokens?.[0]?.access_token
+    // Get access tokens for direct API calls
+    // Meta: from environment variable (same as /api/ads/meta)
+    const metaAccessToken = process.env.META_ADS_ACCESS_TOKEN
+    // Google: use centralized helper that refreshes the token and reads from DB/env
+    const { accessToken: googleAccessToken } = await getGoogleAdsAccessToken()
+    const googleDeveloperToken = getGoogleAdsDeveloperToken()
+    const googleLoginCustomerId = getGoogleAdsLoginCustomerId()
 
     // Fetch metrics for accounts
     const metricsByAccount: Array<{
@@ -221,7 +228,7 @@ export async function POST(req: Request) {
 
     const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
     
-    console.log('[v0] Tokens found:', { meta: !!metaAccessToken, google: !!googleAccessToken })
+    console.log('[v0] Tokens found:', { meta: !!metaAccessToken, google: !!googleAccessToken, googleDevToken: !!googleDeveloperToken })
     
     // Fetch Meta accounts metrics
     const metaAccounts = client.meta_ads_account_ids?.length 
@@ -252,10 +259,10 @@ export async function POST(req: Request) {
         ? [client.google_ads_customer_id]
         : []
     
-    if (googleAccessToken && googleAccounts.length > 0) {
+    if (googleAccessToken && googleDeveloperToken && googleAccounts.length > 0) {
       for (const accountId of googleAccounts) {
         if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
-          const metrics = await fetchGoogleMetrics(accountId, googleAccessToken, effectivePeriodo)
+          const metrics = await fetchGoogleMetrics(accountId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, effectivePeriodo)
           if (metrics) {
             metricsByAccount.push({
               account: accountId,
@@ -327,6 +334,11 @@ ${tareasText}
 METRICAS DE CUENTAS PUBLICITARIAS:
 ${metricasText}
 
+IMPORTANTE SOBRE LAS METRICAS:
+${metricsByAccount.length > 0
+  ? 'Las métricas anteriores son DATOS REALES obtenidos directamente desde las APIs de Meta Ads y/o Google Ads para el periodo seleccionado. NO son estimaciones. Trátalas como cifras oficiales y exactas. NUNCA digas que son estimativas, aproximadas o simuladas.'
+  : 'No se pudieron obtener métricas reales de las cuentas publicitarias para este periodo (puede que no haya tokens conectados, que la cuenta no tenga actividad en el periodo, o que haya un error de conexión). Si el usuario pide análisis de números, indícale claramente que no hay datos disponibles y NO inventes ni estimes cifras.'}
+
 COMO RESPONDER:
 - Conversa de forma natural y directa. Si el usuario hace una pregunta corta, responde corto.
 - Usa las métricas y el contexto de arriba para fundamentar tus respuestas.
@@ -340,10 +352,11 @@ Cuando una visualización ayude a explicar los datos (o cuando el usuario la pid
 Para GRAFICOS de barras, lineas, areas o pie, usa un bloque de codigo con la palabra chart:
 
 ` + "```" + `chart
-{"type":"bar","title":"Inversion por Plataforma","data":[{"name":"Meta Ads","value":1500},{"name":"Google Ads","value":2300}],"xKey":"name","yKey":"value","color":"#7F77DD"}
+{"type":"bar","title":"Inversion por Plataforma","data":[{"name":"Meta Ads","value":1500},{"name":"Google Ads","value":2300}],"xKey":"name","yKey":"value","format":"currency"}
 ` + "```" + `
 
 Tipos disponibles: "bar", "line", "area", "pie"
+Campo "format" (opcional): "currency" para dinero ($), "percent" para porcentajes (%), "number" para cantidades. Úsalo para que los ejes y tooltips muestren los valores con el formato correcto (ej. inversión y CPL usan "currency", CTR usa "percent", leads/clics/impresiones usan "number").
 
 Para generar ARCHIVOS descargables (CSV de datos, reportes), usa un bloque de codigo con la palabra file:
 
@@ -359,7 +372,8 @@ Para generar IMAGENES (banners, gráficos visuales, ilustraciones para reportes)
 
 REGLAS DE VISUALIZACION:
 - Usa gráficos cuando compares números entre plataformas, periodos o categorías.
-- Usa colores: "#7F77DD" (morado), "#10B981" (verde), "#F59E0B" (amarillo), "#EF4444" (rojo)
+- No necesitas especificar colores: las gráficas usan automáticamente la paleta del sistema. Especifica siempre el campo "format" correcto ("currency", "percent" o "number") para que los valores se muestren bien.
+- Usa "pie" para distribución/proporción, "bar" para comparar categorías, "line"/"area" para tendencias en el tiempo.
 - Ofrece un CSV descargable cuando el usuario pida exportar datos o cuando generes un informe completo.
 
 ANALISIS DE IMAGENES:
