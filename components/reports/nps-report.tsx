@@ -253,13 +253,19 @@ export function NPSReport({
     }
     
     if (unidadFilter !== 'all') {
-      // Aurelia incluye también Tecnología
-      const unidadesToInclude: UnidadNegocio[] = unidadFilter === 'Aurelia' 
-        ? ['Aurelia', 'Tecnología'] 
-        : [unidadFilter]
-      filteredClients = filteredClients.filter(c => 
-        c.unidades_negocio?.some(u => unidadesToInclude.includes(u))
-      )
+      if (unidadFilter === 'Aurelia') {
+        // Para Aurelia: solo clientes que tengan ÚNICAMENTE Aurelia/Tecnología (no mezclado con otras unidades)
+        const aureliaUnidades: UnidadNegocio[] = ['Aurelia', 'Tecnología']
+        filteredClients = filteredClients.filter(c => 
+          c.unidades_negocio?.length > 0 &&
+          c.unidades_negocio.every(u => aureliaUnidades.includes(u))
+        )
+      } else {
+        // Para otras unidades: que tengan esa unidad
+        filteredClients = filteredClients.filter(c => 
+          c.unidades_negocio?.some(u => u === unidadFilter)
+        )
+      }
     }
 
     // Filter by PM
@@ -412,10 +418,11 @@ export function NPSReport({
 
   // Stats por unidad de negocio (sin filtro de unidad aplicado)
   // Nota: Tecnología y Aurelia son lo mismo, así que unificamos
+  // Para Aurelia: solo clientes que tengan ÚNICAMENTE Aurelia/Tecnología
   const statsByUnidad = useMemo(() => {
-    const unidadesDisplay: { key: string; label: string; includes: UnidadNegocio[] }[] = [
+    const unidadesDisplay: { key: string; label: string; includes: UnidadNegocio[]; exclusive?: boolean }[] = [
       { key: 'MDK', label: 'MDK', includes: ['MDK'] },
-      { key: 'Aurelia', label: 'Aurelia', includes: ['Aurelia', 'Tecnología'] },
+      { key: 'Aurelia', label: 'Aurelia', includes: ['Aurelia', 'Tecnología'], exclusive: true },
       { key: 'Consultoría', label: 'Consultoría', includes: ['Consultoría'] },
     ]
     
@@ -424,10 +431,16 @@ export function NPSReport({
       ? clients 
       : clients.filter(c => c.plan === planFilter)
 
-    return unidadesDisplay.map(({ key, label, includes }) => {
-      const unidadClients = allClientsFiltered.filter(c => 
-        c.unidades_negocio?.some(u => includes.includes(u))
-      )
+    return unidadesDisplay.map(({ key, label, includes, exclusive }) => {
+      const unidadClients = allClientsFiltered.filter(c => {
+        if (exclusive) {
+          // Para Aurelia: solo clientes que tengan ÚNICAMENTE estas unidades
+          return c.unidades_negocio?.length > 0 &&
+            c.unidades_negocio.every(u => includes.includes(u))
+        }
+        // Para otras: que tengan al menos una de las unidades
+        return c.unidades_negocio?.some(u => includes.includes(u))
+      })
       
       const clientsWithNPS = unidadClients.map(client => {
         const clientHistory = npsHistorial.filter(h => h.cliente_id === client.id)
