@@ -1165,7 +1165,7 @@ updateTaskStatus: async (taskId, status) => {
             updatedAt: new Date(),
             activities: [
               { id: crypto.randomUUID(), action: `Cambio a ${STATUS_CONFIG[status].label}`, timestamp: new Date(), userId: 'current', userName: 'Usuario' },
-              ...t.activities,
+              ...(t.activities || []),
             ].slice(0, 10),
           }
         : t
@@ -1721,7 +1721,7 @@ addTask: async (taskData) => {
             updatedAt: new Date(),
             activities: [
               { id: crypto.randomUUID(), action: t.isActive ? 'Tarea desactivada' : 'Tarea reactivada', timestamp: new Date(), userId: 'current', userName: 'Usuario' },
-              ...t.activities,
+              ...(t.activities || []),
             ].slice(0, 10),
           }
         : t
@@ -1855,7 +1855,7 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
               updatedAt: now,
               activities: [
                 { id: crypto.randomUUID(), action: 'Agregó comentario', timestamp: now, userId, userName },
-                ...t.activities,
+                ...(t.activities || []),
               ].slice(0, 10),
             }
           : t
@@ -1926,7 +1926,7 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
             updatedAt: new Date(),
             activities: [
               { id: crypto.randomUUID(), action: `Subio archivo: ${file.name}`, timestamp: new Date(), userId: file.uploadedBy, userName: file.uploadedByName },
-              ...t.activities,
+              ...(t.activities || []),
             ].slice(0, 10),
           }
         : t
@@ -1951,7 +1951,7 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
             activities: quotation
               ? [
                   { id: crypto.randomUUID(), action: `Actualizo cotizacion: ${quotation.hours}h`, timestamp: new Date(), userId: 'current', userName: 'Usuario' },
-                  ...t.activities,
+                  ...(t.activities || []),
                 ].slice(0, 10)
               : t.activities,
           }
