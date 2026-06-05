@@ -19,12 +19,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator, Pencil, Check, X, Shield, Users } from 'lucide-react'
+import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator, Pencil, Check, X, Shield, Users, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -144,6 +153,15 @@ export default function ColaboradoresPage() {
   // Permissions tab state
   const [editedColaboradores, setEditedColaboradores] = useState<Set<string>>(new Set())
   const [savingPermissions, setSavingPermissions] = useState(false)
+  
+  // Create user dialog state
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [newUserName, setNewUserName] = useState('')
+  const [newUserLastName, setNewUserLastName] = useState('')
+  const [newUserEmail, setNewUserEmail] = useState('')
+  const [newUserRole, setNewUserRole] = useState('')
+  const [newUserPuesto, setNewUserPuesto] = useState('')
+  const [creatingUser, setCreatingUser] = useState(false)
   
   // Edicion de fees del cliente
   const [editingFeeClientId, setEditingFeeClientId] = useState<string | null>(null)
@@ -346,6 +364,70 @@ export default function ColaboradoresPage() {
     }
     
     setSavingPermissions(false)
+  }
+
+  // ─── CREATE USER HANDLER ──────────────────────────────────────────────────────
+
+  const handleCreateUser = async () => {
+    if (!newUserName.trim() || !newUserEmail.trim()) {
+      toast.error('Nombre y email son requeridos')
+      return
+    }
+
+    setCreatingUser(true)
+
+    try {
+      // Create the colaborador record
+      const { data: newColab, error: insertError } = await supabase
+        .from('colaboradores')
+        .insert({
+          nombre: newUserName.trim(),
+          apellido: newUserLastName.trim() || null,
+          email: newUserEmail.trim().toLowerCase(),
+          rol_id: newUserRole || null,
+          puesto: newUserPuesto || null,
+          modulos_habilitados: ['dashboard', 'tareas'],
+          activo: true,
+          onboarding_completado: false,
+        })
+        .select()
+        .single()
+
+      if (insertError) {
+        console.error('Error creating user:', insertError)
+        if (insertError.code === '23505') {
+          toast.error('Ya existe un usuario con ese email')
+        } else {
+          toast.error('Error al crear usuario: ' + insertError.message)
+        }
+        setCreatingUser(false)
+        return
+      }
+
+      // Add to local state
+      if (newColab) {
+        const roleObj = roles.find(r => r.id === newUserRole)
+        setColaboradores([...colaboradores, {
+          ...newColab,
+          roles: roleObj || null,
+        } as Colaborador])
+      }
+
+      // Reset form and close dialog
+      setNewUserName('')
+      setNewUserLastName('')
+      setNewUserEmail('')
+      setNewUserRole('')
+      setNewUserPuesto('')
+      setShowCreateDialog(false)
+      
+      toast.success(`Usuario ${newUserName} creado correctamente. Debe completar el onboarding para comenzar.`)
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('Error al crear usuario')
+    }
+
+    setCreatingUser(false)
   }
 
   // ─── METRICS TAB HANDLERS ─────────────────────────────────────────────────────
@@ -625,6 +707,10 @@ export default function ColaboradoresPage() {
           <h1 className="text-2xl font-bold">Colaboradores</h1>
           <p className="text-muted-foreground">Gestiona permisos, roles y metricas de los colaboradores</p>
         </div>
+        <Button onClick={() => setShowCreateDialog(true)}>
+          <UserPlus className="h-4 w-4 mr-2" />
+          Crear usuario
+        </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -1095,6 +1181,109 @@ export default function ColaboradoresPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Create User Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Crear nuevo usuario</DialogTitle>
+            <DialogDescription>
+              Ingresa los datos del nuevo colaborador. Debera completar el onboarding para activar su cuenta.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="name" className="text-right">
+                Nombre
+              </Label>
+              <Input
+                id="name"
+                value={newUserName}
+                onChange={(e) => setNewUserName(e.target.value)}
+                className="col-span-3"
+                placeholder="Nombre"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="lastname" className="text-right">
+                Apellido
+              </Label>
+              <Input
+                id="lastname"
+                value={newUserLastName}
+                onChange={(e) => setNewUserLastName(e.target.value)}
+                className="col-span-3"
+                placeholder="Apellido"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="email" className="text-right">
+                Email
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                value={newUserEmail}
+                onChange={(e) => setNewUserEmail(e.target.value)}
+                className="col-span-3"
+                placeholder="email@ejemplo.com"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="role" className="text-right">
+                Rol
+              </Label>
+              <Select value={newUserRole} onValueChange={setNewUserRole}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Seleccionar rol" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles.map(role => (
+                    <SelectItem key={role.id} value={role.id}>
+                      {role.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="puesto" className="text-right">
+                Puesto
+              </Label>
+              <Select value={newUserPuesto} onValueChange={setNewUserPuesto}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Seleccionar puesto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PUESTOS.map(puesto => (
+                    <SelectItem key={puesto} value={puesto}>
+                      {puesto}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCreateUser} disabled={creatingUser}>
+              {creatingUser ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Creando...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Crear usuario
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

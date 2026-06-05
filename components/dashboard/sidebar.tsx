@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
-import type { Profile, Client } from '@/lib/types'
+import type { Profile } from '@/lib/types'
 import { createClient, getAuthUser } from '@/lib/supabase/client'
 import { isMaster, canSeeSection } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
@@ -37,15 +37,11 @@ import {
   Settings,
   LogOut,
   ChevronDown,
-  Rocket,
-  UserPlus,
   Bell,
-  Search,
   Home,
   PanelLeftClose,
   PanelLeft,
   ChevronRight,
-  X,
   Clock,
   BarChart3,
   Building2,
@@ -59,7 +55,6 @@ import {
   AppWindow,
   Database,
   Webhook,
-  UserCircle,
 } from 'lucide-react'
 import { UserSettingsDialog } from './user-settings-dialog'
 import { NotificationsPanel } from './notifications-panel'
@@ -67,9 +62,6 @@ import { NotificationsPanel } from './notifications-panel'
 interface SidebarProps {
   user: User
   profile: Profile | null
-  clients: Client[]
-  selectedClientId: string | null
-  onSelectClient: (id: string | null) => void
 }
 
 // Navigation structure
@@ -117,7 +109,7 @@ const adminItems: NavItem[] = [
   { id: 'colaboradores', name: 'Colaboradores', href: '/dashboard/colaboradores', icon: Users },
 ]
 
-// Platforms section
+// Integraciones section (formerly Platforms)
 const platformItems: NavItem[] = [
   { id: 'ad-accounts', name: 'Cuentas publicitarias', href: '/dashboard/platform', icon: Megaphone },
   { id: 'apps', name: 'Apps', href: '/dashboard/platform?tab=apps', icon: AppWindow },
@@ -125,33 +117,9 @@ const platformItems: NavItem[] = [
   { id: 'webhooks', name: 'Webhooks', href: '/dashboard/platform?tab=webhooks', icon: Webhook },
 ]
 
-// Config section
-const configItems: NavItem[] = [
-  { id: 'profile', name: 'Mi perfil', href: '/dashboard/perfil', icon: UserCircle },
-  { id: 'create-user', name: 'Crear usuario', href: '/dashboard/users', icon: UserPlus, masterOnly: true },
-]
-
-function getSemaforoColor(unidades_negocio: string[] | undefined, semaforo_unidades: Record<string, string> | undefined) {
-  if (!unidades_negocio || !semaforo_unidades || unidades_negocio.length === 0) {
-    return 'bg-muted-foreground'
-  }
-  
-  const semaforo = semaforo_unidades[unidades_negocio[0]]
-  switch (semaforo) {
-    case 'verde': return 'bg-status-verde'
-    case 'amarillo': return 'bg-status-amarillo'
-    case 'naranja': return 'bg-status-naranja'
-    case 'rojo': return 'bg-status-rojo'
-    default: return 'bg-muted-foreground'
-  }
-}
-
 export function Sidebar({
   user,
   profile,
-  clients,
-  selectedClientId,
-  onSelectClient,
 }: SidebarProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -161,9 +129,6 @@ export function Sidebar({
   const [wasCollapsed, setWasCollapsed] = useState(false)
   const [notificationCount, setNotificationCount] = useState(0)
   const [notificationsPanelOpen, setNotificationsPanelOpen] = useState(false)
-  const [clientSearch, setClientSearch] = useState('')
-  const [searchFocused, setSearchFocused] = useState(false)
-  const searchInputRef = useRef<HTMLInputElement>(null)
   
   // Collapsible section states - open by default if pathname matches
   const [tareasOpen, setTareasOpen] = useState(() =>
@@ -177,9 +142,6 @@ export function Sidebar({
   const [platformsOpen, setPlatformsOpen] = useState(() =>
     platformItems.some(item => pathname.startsWith(item.href.split('?')[0]))
   )
-  const [configOpen, setConfigOpen] = useState(() =>
-    configItems.some(item => pathname.startsWith(item.href.split('?')[0]))
-  )
   
   // Task count for badge
   const [taskCount, setTaskCount] = useState(0)
@@ -188,24 +150,6 @@ export function Sidebar({
   const userRole = profile?.role_name || profile?.role || 'Usuario'
   const userModulos = profile?.modulos_habilitados || []
   const userIsMaster = isMaster(userRole)
-
-  // Keyboard shortcut for search (Cmd+K / Ctrl+K)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        searchInputRef.current?.focus()
-        setSearchFocused(true)
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
-  // Filter clients based on search
-  const filteredClients = clients.filter(client => 
-    client.nombre_del_negocio?.toLowerCase().includes(clientSearch.toLowerCase())
-  )
 
   // Fetch unread notification count
   useEffect(() => {
@@ -464,17 +408,12 @@ export function Sidebar({
                 </div>
               )}
 
-              {/* Platforms section */}
+              {/* Integraciones section */}
               {(userIsMaster || canSeeSection(userRole, userModulos, 'plataformas')) && (
                 <div className="space-y-1 pt-2 border-t border-border">
                   {platformItems.map(item => renderNavItem(item, true))}
                 </div>
               )}
-
-              {/* Config section */}
-              <div className="space-y-1 pt-2 border-t border-border">
-                {configItems.map(item => renderNavItem(item, true))}
-              </div>
             </div>
           </ScrollArea>
 
@@ -518,7 +457,7 @@ export function Sidebar({
               <DropdownMenuContent align="end" side="right" className="w-56">
                 <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
                   <Settings className="mr-2 h-4 w-4" />
-                  Configuracion
+                  Mi perfil
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} className="text-destructive">
@@ -682,11 +621,11 @@ export function Sidebar({
                   </Collapsible>
                 )}
 
-                {/* Platforms section */}
+                {/* Integraciones section */}
                 {(userIsMaster || canSeeSection(userRole, userModulos, 'plataformas')) && (
                   <Collapsible open={platformsOpen} onOpenChange={setPlatformsOpen}>
                     <CollapsibleTrigger className="flex items-center justify-between w-full py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors">
-                      <span>Plataformas</span>
+                      <span>Integraciones</span>
                       <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', platformsOpen && 'rotate-90')} />
                     </CollapsibleTrigger>
                     <CollapsibleContent className="space-y-1">
@@ -694,103 +633,6 @@ export function Sidebar({
                     </CollapsibleContent>
                   </Collapsible>
                 )}
-
-                {/* Configuration section */}
-                <Collapsible open={configOpen} onOpenChange={setConfigOpen}>
-                  <CollapsibleTrigger className="flex items-center justify-between w-full py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors">
-                    <span>Configuracion</span>
-                    <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', configOpen && 'rotate-90')} />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="space-y-1">
-                    {configItems.map(item => renderNavItem(item))}
-                  </CollapsibleContent>
-                </Collapsible>
-
-                {/* Clients list */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      Clientes
-                    </h3>
-                  </div>
-                  
-                  {/* Search input */}
-                  <div className="relative mb-2">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                    <input
-                      ref={searchInputRef}
-                      type="text"
-                      value={clientSearch}
-                      onChange={(e) => setClientSearch(e.target.value)}
-                      onFocus={() => setSearchFocused(true)}
-                      onBlur={() => setSearchFocused(false)}
-                      placeholder="Buscar cliente..."
-                      className={cn(
-                        'w-full h-8 pl-8 pr-8 rounded-md border bg-background text-sm placeholder:text-muted-foreground',
-                        'focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary',
-                        'transition-all'
-                      )}
-                    />
-                    {clientSearch && (
-                      <button
-                        onClick={() => setClientSearch('')}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 rounded-sm hover:bg-muted flex items-center justify-center"
-                      >
-                        <X className="h-3 w-3 text-muted-foreground" />
-                      </button>
-                    )}
-                    {!clientSearch && !searchFocused && (
-                      <kbd className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                        <span className="text-xs">⌘</span>K
-                      </kbd>
-                    )}
-                  </div>
-                  
-                  <div className="space-y-1">
-                    {!clientSearch && (
-                      <Link
-                        href="/dashboard/clients"
-                        className={cn(
-                          'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                          pathname === '/dashboard/clients'
-                            ? 'bg-muted font-medium text-foreground'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        )}
-                      >
-                        <Rocket className="h-3.5 w-3.5" />
-                        <span>Todos los clientes</span>
-                      </Link>
-                    )}
-                    {filteredClients.length === 0 && clientSearch && (
-                      <p className="px-3 py-2 text-sm text-muted-foreground">
-                        No se encontraron clientes
-                      </p>
-                    )}
-                    {(clientSearch ? filteredClients : filteredClients.slice(0, 10)).map((client) => {
-                      const clientHref = `/dashboard/clients/${client.id}`
-                      const isClientPage = pathname === clientHref
-                      return (
-                        <Link
-                          key={client.id}
-                          href={clientHref}
-                          onClick={() => setClientSearch('')}
-                          className={cn(
-                            'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                            isClientPage
-                              ? 'bg-muted font-medium text-foreground'
-                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                          )}
-                        >
-                          <div className={cn(
-                            'h-2.5 w-2.5 rounded-full flex-shrink-0 ring-1 ring-inset ring-black/10',
-                            getSemaforoColor(client.unidades_negocio, client.semaforo_unidades)
-                          )} />
-                          <span className="truncate">{client.nombre_del_negocio}</span>
-                        </Link>
-                      )
-                    })}
-                  </div>
-                </div>
               </div>
             </ScrollArea>
 
@@ -821,7 +663,7 @@ export function Sidebar({
                 <DropdownMenuContent align="end" side="top" className="w-56">
                   <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
                     <Settings className="mr-2 h-4 w-4" />
-                    Configuracion
+                    Mi perfil
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout} className="text-destructive">

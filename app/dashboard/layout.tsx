@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { DashboardShell } from '@/components/dashboard/dashboard-shell'
-import type { Client } from '@/lib/types'
 
 // Cache revalidation
 export const revalidate = 60
@@ -46,19 +45,10 @@ export default async function DashboardLayout({
     redirect('/onboarding')
   }
 
-  // All users see all clients
-  const { data: clientsData } = await supabase
-    .from('clientes')
-    .select('*')
-    .order('nombre_del_negocio')
-  
-  const clients = (clientsData || []) as Client[]
-
   return (
     <DashboardShell 
       user={user} 
-      profile={profile} 
-      clients={clients || []}
+      profile={profile}
     >
       {children}
     </DashboardShell>
