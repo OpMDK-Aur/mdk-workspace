@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { Client, AgentLog } from '@/lib/types'
+import type { Client } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -28,10 +28,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { 
-  FileText, 
-  ArrowLeft, 
-  Send, 
+import {
+  FileText,
+  ArrowLeft,
+  Send,
   Check,
   ChevronsUpDown,
   Loader2,
@@ -39,12 +39,26 @@ import {
   Paperclip,
   X,
   Image as ImageIcon,
-  File
+  File,
+  Plus,
+  MessageSquare,
+  Trash2,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { toast } from 'sonner'
-import { MessageContent } from '@/components/chat/message-content'
+import { MessageContent, type Artifact } from '@/components/chat/message-content'
+import { CopyButton } from '@/components/chat/copy-button'
+import { ArtifactPanel } from '@/components/chat/artifact-panel'
+import {
+  listConversaciones,
+  createConversacion,
+  loadMensajes,
+  saveMensaje,
+  renameConversacion,
+  deleteConversacion,
+  type AnalistaConversacion,
+} from '@/lib/analista/conversaciones'
 
 const MONTHS = [
   { value: '1', label: 'Enero' },
@@ -67,25 +81,39 @@ const SUGGESTIONS = [
   'Recomendaciones de optimizacion',
 ]
 
+type ChatMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  attachments?: Array<{ name: string; url: string; type: string }>
+}
+
 export default function AnalistaPage() {
   const supabase = createClient()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  
+
   // State
   const [clients, setClients] = useState<Client[]>([])
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
   const [clientOpen, setClientOpen] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1))
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()))
-  const [history, setHistory] = useState<AgentLog[]>([])
   const [isActive, setIsActive] = useState(false)
   const [inputValue, setInputValue] = useState('')
-  const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string; attachments?: Array<{ name: string; url: string; type: string }> }>>([])
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ file: File; preview?: string }>>([])
   const [uploadingFiles, setUploadingFiles] = useState(false)
+
+  // Conversations (persisted, reopenable, auto-renamed)
+  const [conversaciones, setConversaciones] = useState<AnalistaConversacion[]>([])
+  const [currentConvId, setCurrentConvId] = useState<string | null>(null)
+  const [titleGenerated, setTitleGenerated] = useState(false)
+
+  // Artifact preview panel
+  const [artifact, setArtifact] = useState<Artifact | null>(null)
 
   // Fetch clients
   useEffect(() => {
@@ -100,56 +128,129 @@ export default function AnalistaPage() {
     fetchClients()
   }, [supabase])
 
-  // Fetch history
+  // Fetch saved conversations
+  const refreshConversaciones = useCallback(async () => {
+    const data = await listConversaciones()
+    setConversaciones(data)
+  }, [])
+
   useEffect(() => {
-    async function fetchHistory() {
-      const { data } = await supabase
-        .from('agentes_log')
-        .select('*')
-        .eq('agente', 'analista')
-        .order('ejecutado_en', { ascending: false })
-        .limit(5)
-      if (data) setHistory(data)
-    }
-    fetchHistory()
-  }, [supabase])
+    refreshConversaciones()
+  }, [refreshConversaciones])
 
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages])
 
-  const handleStartAnalysis = () => {
+  const clientNameById = useCallback(
+    (id: string | null) => clients.find((c) => c.id === id)?.nombre_del_negocio,
+    [clients],
+  )
+
+  const handleStartAnalysis = async () => {
     if (!selectedClient) {
       toast.error('Selecciona un cliente primero')
       return
     }
+
+    const conv = await createConversacion({
+      clienteId: selectedClient.id,
+      titulo: `${selectedClient.nombre_del_negocio} - ${MONTHS[parseInt(selectedMonth) - 1]?.label} ${selectedYear}`,
+      mes: parseInt(selectedMonth),
+      anio: parseInt(selectedYear),
+    })
+
+    setCurrentConvId(conv?.id ?? null)
+    setTitleGenerated(false)
     setIsActive(true)
+    setArtifact(null)
     setAttachments([])
-    setChatMessages([{
+
+    const greeting: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'assistant',
       content: `Hola, soy tu analista para **${selectedClient.nombre_del_negocio}** (${MONTHS[parseInt(selectedMonth) - 1]?.label} ${selectedYear}).\n\nPuedes pedirme lo que necesites: un análisis puntual, comparar métricas, generar un informe completo, crear gráficos, exportar datos a CSV o incluso generar imágenes para tus reportes. También puedes adjuntar capturas o archivos para que los analice.\n\n¿En qué te ayudo?`,
-    }])
+    }
+    setChatMessages([greeting])
+    if (conv) {
+      saveMensaje({ conversacionId: conv.id, rol: 'assistant', contenido: greeting.content })
+      refreshConversaciones()
+    }
+  }
+
+  // New empty conversation (keeps client/period selection)
+  const handleNewChat = () => {
+    setIsActive(false)
+    setChatMessages([])
+    setCurrentConvId(null)
+    setArtifact(null)
+    setInputValue('')
+    setAttachments([])
+  }
+
+  // Open an existing conversation
+  const handleOpenConversacion = async (conv: AnalistaConversacion) => {
+    const client = clients.find((c) => c.id === conv.cliente_id) || null
+    setSelectedClient(client)
+    if (conv.periodo_mes) setSelectedMonth(String(conv.periodo_mes))
+    if (conv.periodo_anio) setSelectedYear(String(conv.periodo_anio))
+
+    const mensajes = await loadMensajes(conv.id)
+    setChatMessages(
+      mensajes.map((m) => ({ id: m.id, role: m.rol, content: m.contenido })),
+    )
+    setCurrentConvId(conv.id)
+    setTitleGenerated(true)
+    setArtifact(null)
+    setIsActive(true)
+  }
+
+  const handleDeleteConversacion = async (e: React.MouseEvent, convId: string) => {
+    e.stopPropagation()
+    await deleteConversacion(convId)
+    if (convId === currentConvId) handleNewChat()
+    refreshConversaciones()
+    toast.success('Conversación eliminada')
+  }
+
+  // Auto-generate a title from the first exchange (Claude-style)
+  const maybeGenerateTitle = async (convId: string, userMsg: string, assistantMsg: string) => {
+    if (titleGenerated) return
+    setTitleGenerated(true)
+    try {
+      const res = await fetch('/api/agentes/analista/titulo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userMessage: userMsg, assistantMessage: assistantMsg }),
+      })
+      if (res.ok) {
+        const { titulo } = await res.json()
+        if (titulo) {
+          await renameConversacion(convId, titulo)
+          refreshConversaciones()
+        }
+      }
+    } catch (e) {
+      console.error('[v0] title generation failed:', e)
+    }
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length === 0) return
-    
-    const newAttachments = files.map(file => {
-      const preview = file.type.startsWith('image/') 
-        ? URL.createObjectURL(file) 
-        : undefined
+
+    const newAttachments = files.map((file) => {
+      const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined
       return { file, preview }
     })
-    
-    setAttachments(prev => [...prev, ...newAttachments])
+
+    setAttachments((prev) => [...prev, ...newAttachments])
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const handleRemoveAttachment = (index: number) => {
-    setAttachments(prev => {
+    setAttachments((prev) => {
       const newAttachments = [...prev]
       if (newAttachments[index].preview) {
         URL.revokeObjectURL(newAttachments[index].preview!)
@@ -161,20 +262,17 @@ export default function AnalistaPage() {
 
   const uploadAttachments = async (): Promise<Array<{ name: string; url: string; type: string }>> => {
     if (attachments.length === 0) return []
-    
+
     setUploadingFiles(true)
     const uploadedFiles: Array<{ name: string; url: string; type: string }> = []
-    
+
     try {
       for (const attachment of attachments) {
         const formData = new FormData()
         formData.append('file', attachment.file)
-        
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        })
-        
+
+        const response = await fetch('/api/upload', { method: 'POST', body: formData })
+
         if (response.ok) {
           const data = await response.json()
           uploadedFiles.push({
@@ -190,45 +288,42 @@ export default function AnalistaPage() {
     } finally {
       setUploadingFiles(false)
     }
-    
+
     return uploadedFiles
   }
 
   const handleSendMessage = async (content: string) => {
     if ((!content?.trim() && attachments.length === 0) || isLoading || !selectedClient) return
-    
-    // Upload attachments first
+
     const uploadedFiles = await uploadAttachments()
-    
-    const userMessage = { 
-      id: crypto.randomUUID(), 
-      role: 'user' as const, 
+
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
       content,
-      attachments: uploadedFiles.length > 0 ? uploadedFiles : undefined
+      attachments: uploadedFiles.length > 0 ? uploadedFiles : undefined,
     }
     const newMessages = [...chatMessages, userMessage]
     setChatMessages(newMessages)
     setInputValue('')
     setAttachments([])
     setIsLoading(true)
-    
-    // Build content with attachments description for the API
-    let messageContent = content
-    if (uploadedFiles.length > 0) {
-      const attachmentDesc = uploadedFiles.map(f => `[Archivo adjunto: ${f.name} (${f.type})]`).join('\n')
-      messageContent = `${content}\n\n${attachmentDesc}`
+
+    const convId = currentConvId
+    if (convId) {
+      saveMensaje({ conversacionId: convId, rol: 'user', contenido: content })
     }
-    
+
     try {
       const response = await fetch('/api/agentes/analista', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: newMessages.map(m => ({ 
-            role: m.role, 
-            content: m.attachments 
-              ? `${m.content}\n\n${m.attachments.map(a => `[Archivo: ${a.name}]`).join('\n')}`
-              : m.content 
+          messages: newMessages.map((m) => ({
+            role: m.role,
+            content: m.attachments
+              ? `${m.content}\n\n${m.attachments.map((a) => `[Archivo: ${a.name}]`).join('\n')}`
+              : m.content,
           })),
           clientId: selectedClient.id,
           month: parseInt(selectedMonth),
@@ -236,52 +331,52 @@ export default function AnalistaPage() {
           attachments: uploadedFiles,
         }),
       })
-      
-      if (!response.ok) {
-        throw new Error('Error en la respuesta')
-      }
-      
+
+      if (!response.ok) throw new Error('Error en la respuesta')
+
       const reader = response.body?.getReader()
       if (!reader) throw new Error('No reader')
-      
+
       const decoder = new TextDecoder()
       let assistantContent = ''
       let buffer = ''
       const assistantId = crypto.randomUUID()
-      
-      // Add empty assistant message
-      setChatMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '' }])
-      
+
+      setChatMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }])
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        
-        // Accumulate in a buffer so SSE events split across chunks are not lost
+
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
-        // Keep the last (possibly incomplete) line in the buffer
         buffer = lines.pop() || ''
-        
+
         for (const line of lines) {
           const trimmed = line.trim()
           if (!trimmed.startsWith('data:')) continue
-          
+
           const data = trimmed.slice(5).trim()
           if (data === '[DONE]') continue
-          
+
           try {
             const json = JSON.parse(data)
-            // AI SDK v6 UI message stream: text comes as text-delta with `delta`
             if (json.type === 'text-delta' && typeof json.delta === 'string') {
               assistantContent += json.delta
-              setChatMessages(prev => 
-                prev.map(m => m.id === assistantId ? { ...m, content: assistantContent } : m)
+              setChatMessages((prev) =>
+                prev.map((m) => (m.id === assistantId ? { ...m, content: assistantContent } : m)),
               )
             }
           } catch {
             // Skip invalid JSON
           }
         }
+      }
+
+      // Persist assistant message + auto-title
+      if (convId && assistantContent) {
+        saveMensaje({ conversacionId: convId, rol: 'assistant', contenido: assistantContent })
+        maybeGenerateTitle(convId, content, assistantContent)
       }
     } catch (error) {
       console.error('[v0] Error sending message:', error)
@@ -300,16 +395,15 @@ export default function AnalistaPage() {
 
   const handleSaveAsReport = async () => {
     if (chatMessages.length === 0 || !selectedClient) return
-    
-    const lastAssistantMessage = chatMessages.filter(m => m.role === 'assistant').pop()
+
+    const lastAssistantMessage = chatMessages.filter((m) => m.role === 'assistant').pop()
     if (!lastAssistantMessage) return
-    
+
     const messageText = lastAssistantMessage.content
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      
-      // Get tipo_de_tareas for 'Informe'
+
       const { data: tipoTarea } = await supabase
         .from('tipo_de_tareas')
         .select('id')
@@ -356,16 +450,12 @@ export default function AnalistaPage() {
         {/* New Query Section */}
         <div className="p-4 space-y-3 border-b">
           <h3 className="text-sm font-medium text-muted-foreground">Nueva consulta</h3>
-          
+
           {/* Client Combobox */}
           <Popover open={clientOpen} onOpenChange={setClientOpen}>
             <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                className="w-full justify-between"
-              >
-                {selectedClient?.nombre_del_negocio || 'Seleccionar cliente...'}
+              <Button variant="outline" role="combobox" className="w-full justify-between">
+                <span className="truncate">{selectedClient?.nombre_del_negocio || 'Seleccionar cliente...'}</span>
                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
@@ -386,7 +476,7 @@ export default function AnalistaPage() {
                         <Check
                           className={cn(
                             'mr-2 h-4 w-4',
-                            selectedClient?.id === client.id ? 'opacity-100' : 'opacity-0'
+                            selectedClient?.id === client.id ? 'opacity-100' : 'opacity-0',
                           )}
                         />
                         {client.nombre_del_negocio}
@@ -423,7 +513,7 @@ export default function AnalistaPage() {
             </Select>
           </div>
 
-          <Button 
+          <Button
             className="w-full bg-[#7F77DD] hover:bg-[#6B63C7]"
             onClick={handleStartAnalysis}
             disabled={!selectedClient}
@@ -431,30 +521,54 @@ export default function AnalistaPage() {
             <Sparkles className="h-4 w-4 mr-2" />
             Iniciar analisis
           </Button>
+
+          {isActive && (
+            <Button variant="outline" className="w-full" onClick={handleNewChat}>
+              <Plus className="h-4 w-4 mr-2" />
+              Nueva conversación
+            </Button>
+          )}
         </div>
 
-        {/* History */}
+        {/* Conversations history */}
         <div className="flex-1 p-4 overflow-auto">
-          <h3 className="text-sm font-medium text-muted-foreground mb-3">Historial</h3>
-          <div className="space-y-2">
-            {history.map((log) => (
+          <h3 className="text-sm font-medium text-muted-foreground mb-3">Conversaciones</h3>
+          <div className="space-y-1">
+            {conversaciones.map((conv) => (
               <button
-                key={log.id}
-                className="w-full text-left p-2 rounded-lg hover:bg-muted/50 transition-colors"
-                onClick={() => {
-                  // Could load the log result here
-                }}
+                key={conv.id}
+                className={cn(
+                  'group w-full text-left p-2 rounded-lg transition-colors flex items-start gap-2',
+                  conv.id === currentConvId ? 'bg-[#EEEDFE]' : 'hover:bg-muted/50',
+                )}
+                onClick={() => handleOpenConversacion(conv)}
               >
-                <p className="text-sm font-medium truncate">
-                  {log.cliente_id ? 'Cliente' : 'General'}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {format(new Date(log.ejecutado_en), "d MMM, HH:mm", { locale: es })}
-                </p>
+                <MessageSquare
+                  className={cn(
+                    'h-4 w-4 mt-0.5 shrink-0',
+                    conv.id === currentConvId ? 'text-[#7F77DD]' : 'text-muted-foreground',
+                  )}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{conv.titulo}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {clientNameById(conv.cliente_id) || 'General'} ·{' '}
+                    {format(new Date(conv.updated_at), 'd MMM', { locale: es })}
+                  </p>
+                </div>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => handleDeleteConversacion(e, conv.id)}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
+                  aria-label="Eliminar conversación"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </span>
               </button>
             ))}
-            {history.length === 0 && (
-              <p className="text-sm text-muted-foreground">Sin historial</p>
+            {conversaciones.length === 0 && (
+              <p className="text-sm text-muted-foreground">Sin conversaciones</p>
             )}
           </div>
         </div>
@@ -471,7 +585,7 @@ export default function AnalistaPage() {
       </aside>
 
       {/* Main Chat Area */}
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col min-w-0">
         {!isActive ? (
           /* Empty State */
           <div className="flex-1 flex flex-col items-center justify-center p-8">
@@ -486,9 +600,9 @@ export default function AnalistaPage() {
             </p>
             <div className="flex flex-wrap gap-2 justify-center">
               {SUGGESTIONS.map((s) => (
-                <Badge 
-                  key={s} 
-                  variant="secondary" 
+                <Badge
+                  key={s}
+                  variant="secondary"
                   className="cursor-pointer hover:bg-[#7F77DD]/20 transition-colors px-3 py-1.5"
                 >
                   {s}
@@ -512,36 +626,35 @@ export default function AnalistaPage() {
               )}
             </div>
 
-            {/* Messages */}
-            <ScrollArea className="flex-1 p-4">
-              <div className="max-w-3xl mx-auto space-y-4">
-                {chatMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={cn(
-                      'flex',
-                      message.role === 'user' ? 'justify-end' : 'justify-start'
-                    )}
-                  >
+            {/* Messages + optional artifact panel */}
+            <div className="flex-1 flex min-h-0">
+              <ScrollArea className="flex-1 p-4">
+                <div className="max-w-3xl mx-auto space-y-4">
+                  {chatMessages.map((message) => (
                     <div
-                      className={cn(
-                        'max-w-[80%] rounded-2xl px-4 py-3',
-                        message.role === 'user'
-                          ? 'bg-[#7F77DD] text-white'
-                          : 'bg-muted'
-                      )}
+                      key={message.id}
+                      className={cn('flex', message.role === 'user' ? 'justify-end' : 'justify-start')}
                     >
                       {message.role === 'assistant' ? (
-                        message.content ? (
-                          <MessageContent content={message.content} />
-                        ) : (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#7F77DD]" />
-                            Escribiendo...
+                        <div className="group max-w-[90%]">
+                          <div className="rounded-2xl px-4 py-3 bg-muted">
+                            {message.content ? (
+                              <MessageContent content={message.content} onOpenArtifact={setArtifact} />
+                            ) : (
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#7F77DD]" />
+                                Escribiendo...
+                              </div>
+                            )}
                           </div>
-                        )
+                          {message.content && (
+                            <div className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <CopyButton content={message.content} />
+                            </div>
+                          )}
+                        </div>
                       ) : (
-                        <>
+                        <div className="max-w-[80%] rounded-2xl px-4 py-3 bg-[#7F77DD] text-white">
                           <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                           {message.attachments && message.attachments.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-2">
@@ -557,27 +670,31 @@ export default function AnalistaPage() {
                               ))}
                             </div>
                           )}
-                        </>
+                        </div>
                       )}
                     </div>
-                  </div>
-                ))}
+                  ))}
 
-                {isLoading && (
-                  <div className="flex justify-start">
-                    <div className="bg-muted rounded-2xl px-4 py-3">
-                      <div className="flex gap-1">
-                        <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '300ms' }} />
+                  {isLoading && (
+                    <div className="flex justify-start">
+                      <div className="bg-muted rounded-2xl px-4 py-3">
+                        <div className="flex gap-1">
+                          <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
+                  <div ref={messagesEndRef} />
+                </div>
+              </ScrollArea>
+
+              {artifact && (
+                <ArtifactPanel artifact={artifact} onClose={() => setArtifact(null)} />
+              )}
+            </div>
 
             {/* Input */}
             <div className="p-4 border-t">
@@ -586,16 +703,12 @@ export default function AnalistaPage() {
                 {attachments.length > 0 && (
                   <div className="mb-3 flex flex-wrap gap-2">
                     {attachments.map((att, index) => (
-                      <div 
-                        key={index} 
+                      <div
+                        key={index}
                         className="relative group flex items-center gap-2 px-3 py-2 rounded-lg bg-muted border"
                       >
                         {att.preview ? (
-                          <img 
-                            src={att.preview} 
-                            alt={att.file.name} 
-                            className="h-8 w-8 object-cover rounded"
-                          />
+                          <img src={att.preview || "/placeholder.svg"} alt={att.file.name} className="h-8 w-8 object-cover rounded" />
                         ) : (
                           <File className="h-5 w-5 text-muted-foreground" />
                         )}
@@ -610,7 +723,7 @@ export default function AnalistaPage() {
                     ))}
                   </div>
                 )}
-                
+
                 <div className="relative flex items-end gap-2">
                   <input
                     ref={fileInputRef}
@@ -630,7 +743,7 @@ export default function AnalistaPage() {
                   >
                     <Paperclip className="h-4 w-4" />
                   </Button>
-                  
+
                   <div className="relative flex-1">
                     <Textarea
                       ref={textareaRef}
@@ -655,14 +768,10 @@ export default function AnalistaPage() {
                     </Button>
                   </div>
                 </div>
-                
+
                 {chatMessages.length > 0 && (
                   <div className="mt-3 flex justify-center">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={handleSaveAsReport}
-                    >
+                    <Button variant="outline" size="sm" onClick={handleSaveAsReport}>
                       Guardar como informe
                     </Button>
                   </div>
