@@ -61,8 +61,8 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
   const [dialogOpen, setDialogOpen] = useState(false)
   const [pmFilter, setPmFilter] = useState<string | null>(projectManagerId || null)
   const [amFilter, setAmFilter] = useState<string | null>(accountManagerId || null)
-  const [projectManagers, setProjectManagers] = useState<Array<{ id: string; full_name: string | null }>>([])
-  const [accountManagers, setAccountManagers] = useState<Array<{ id: string; full_name: string | null }>>([])
+  const [projectManagers, setProjectManagers] = useState<Array<{ id: string; full_name: string | null; email: string }>>([])
+  const [accountManagers, setAccountManagers] = useState<Array<{ id: string; full_name: string | null; email: string }>>([])
   const [usersLoading, setUsersLoading] = useState(true)
   const [form, setForm] = useState({
     score: 3,
@@ -100,7 +100,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
       // Cargar Project Managers
       const { data: pmData } = await supabase
         .from('profiles')
-        .select('id, full_name, role')
+        .select('id, full_name, email, role')
         .in('role', ['project_manager', 'direccion'])
         .order('full_name', { ascending: true })
       
@@ -111,7 +111,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
       // Cargar Account Managers
       const { data: amData } = await supabase
         .from('profiles')
-        .select('id, full_name, role')
+        .select('id, full_name, email, role')
         .in('role', ['account_manager', 'direccion'])
         .order('full_name', { ascending: true })
       
@@ -330,7 +330,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
             <SelectItem value="">Todos los PM</SelectItem>
             {projectManagers.map(pm => (
               <SelectItem key={pm.id} value={pm.id}>
-                {pm.full_name || 'Sin nombre'}
+                {pm.full_name || pm.email}
               </SelectItem>
             ))}
           </SelectContent>
@@ -344,7 +344,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
             <SelectItem value="">Todos los AM</SelectItem>
             {accountManagers.map(am => (
               <SelectItem key={am.id} value={am.id}>
-                {am.full_name || 'Sin nombre'}
+                {am.full_name || am.email}
               </SelectItem>
             ))}
           </SelectContent>

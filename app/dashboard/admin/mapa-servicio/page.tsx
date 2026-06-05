@@ -40,8 +40,8 @@ export default function MapaServicioPage() {
   const [pmFilter, setPmFilter] = useState<string | 'all'>('all')
   const [amFilter, setAmFilter] = useState<string | 'all'>('all')
   const [clienteFilter, setClienteFilter] = useState<string | 'all'>('all')
-  const [projectManagers, setProjectManagers] = useState<Array<{ id: string; full_name: string | null }>>([])
-  const [accountManagers, setAccountManagers] = useState<Array<{ id: string; full_name: string | null }>>([])
+  const [projectManagers, setProjectManagers] = useState<Array<{ id: string; full_name: string | null; email: string; role: string }>>([])
+  const [accountManagers, setAccountManagers] = useState<Array<{ id: string; full_name: string | null; email: string; role: string }>>([])
   const [clientes, setClientes] = useState<Array<{ id: string; nombre_del_negocio: string }>>([])
 
   // Cargar usuarios y clientes
@@ -50,22 +50,26 @@ export default function MapaServicioPage() {
       const supabase = createClient()
       
       // Cargar Project Managers (role = project_manager o direccion)
-      const { data: pmData } = await supabase
+      const { data: pmData, error: pmError } = await supabase
         .from('profiles')
-        .select('id, full_name, role')
+        .select('id, full_name, email, role')
         .in('role', ['project_manager', 'direccion'])
         .order('full_name', { ascending: true })
+      
+      console.log('[v0] Mapa PM query:', { pmData, pmError })
       
       if (pmData) {
         setProjectManagers(pmData)
       }
       
       // Cargar Account Managers (role = account_manager o direccion)
-      const { data: amData } = await supabase
+      const { data: amData, error: amError } = await supabase
         .from('profiles')
-        .select('id, full_name, role')
+        .select('id, full_name, email, role')
         .in('role', ['account_manager', 'direccion'])
         .order('full_name', { ascending: true })
+      
+      console.log('[v0] Mapa AM query:', { amData, amError })
       
       if (amData) {
         setAccountManagers(amData)
@@ -165,7 +169,7 @@ export default function MapaServicioPage() {
             <SelectItem value="all">Todos los PM</SelectItem>
             {projectManagers.map(pm => (
               <SelectItem key={pm.id} value={pm.id}>
-                {pm.full_name || 'Sin nombre'}
+                {pm.full_name || pm.email}
               </SelectItem>
             ))}
           </SelectContent>
@@ -180,7 +184,7 @@ export default function MapaServicioPage() {
             <SelectItem value="all">Todos los AM</SelectItem>
             {accountManagers.map(am => (
               <SelectItem key={am.id} value={am.id}>
-                {am.full_name || 'Sin nombre'}
+                {am.full_name || am.email}
               </SelectItem>
             ))}
           </SelectContent>
