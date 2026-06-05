@@ -5,6 +5,7 @@ import type { ScorecardRow, ScorecardColumn, Client, DashboardFilters } from '@/
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { CellNote } from './cell-note'
 
 import {
   Table,
@@ -153,6 +154,7 @@ export function ScorecardTable({
   const [campaignPopoverOpen, setCampaignPopoverOpen] = useState(false)
   const [campaignSearch, setCampaignSearch] = useState('')
   const [accountNamesMap, setAccountNamesMap] = useState<Map<string, string>>(new Map())
+  const [cellNotes, setCellNotes] = useState<Map<string, string>>(new Map())
 
   const visibleColumns = columns.filter(c => c.visible)
   const visibleSegments = segments.filter(s => s.visible)
@@ -416,7 +418,7 @@ export function ScorecardTable({
               </TableHeader>
               <TableBody>
                 {filteredRows.map((row, i) => (
-                  <TableRow key={`${row.clientId}-${row.campaignId || i}`}>
+                  <TableRow key={`${row.clientId}-${row.campaignId || i}`} className="group">
                     <TableCell className="font-medium">{row.clientName}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{getAccountName(row)}</TableCell>
                     {view === 'campaigns' && (
@@ -425,11 +427,29 @@ export function ScorecardTable({
                       </TableCell>
                     )}
                     <TableCell>{getPlatformBadge(row.platform)}</TableCell>
-                    {visibleColumns.map(col => (
-                      <TableCell key={col.key} className="text-right tabular-nums">
-                        {formatValue(row[col.key as keyof ScorecardRow], col.format)}
-                      </TableCell>
-                    ))}
+                    {visibleColumns.map(col => {
+                      const cellKey = `${row.id || row.campaignName}-${col.key}`
+                      return (
+                        <TableCell key={col.key} className="text-right tabular-nums">
+                          <div className="flex items-center justify-between gap-2">
+                            <span>{formatValue(row[col.key as keyof ScorecardRow], col.format)}</span>
+                            <CellNote
+                              value={cellNotes.get(cellKey) || ''}
+                              onChange={(note) => {
+                                const newNotes = new Map(cellNotes)
+                                if (note) {
+                                  newNotes.set(cellKey, note)
+                                } else {
+                                  newNotes.delete(cellKey)
+                                }
+                                setCellNotes(newNotes)
+                              }}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity"
+                            />
+                          </div>
+                        </TableCell>
+                      )
+                    })}
                     {visibleSegments.map(seg => (
                       <TableCell key={seg.key} className="text-right tabular-nums text-muted-foreground">
                         {String((row as Record<string, unknown>)[seg.key] ?? '-')}
