@@ -78,6 +78,51 @@ export async function POST(req: Request) {
       .order('created_at', { ascending: false })
       .limit(5)
 
+    // Get tasks completed/resolved for this client during the period
+    const tareasQuery = supabase
+      .from('tareas')
+      .select('titulo, descripcion, estado, fecha_completada, created_at')
+      .in('estado', ['completada', 'resuelto'])
+      .order('fecha_completada', { ascending: false })
+    
+    // Filter by client (can be in cliente_id or cliente_ids array)
+    // We'll fetch all and filter in JS since Supabase doesn't support OR with contains
+    const { data: allTareas } = await tareasQuery
+
+    // Filter tasks that belong to this client
+    const tareas = allTareas?.filter(t => {
+      // Check if task was completed in the selected period
+      const completedDate = t.fecha_completada || t.created_at
+      if (periodo?.start && periodo?.end && completedDate) {
+        const taskDate = completedDate.split('T')[0]
+        if (taskDate < periodo.start || taskDate > periodo.end) {
+          return false
+        }
+      }
+      return true
+    }).slice(0, 10) || []
+
+    // Also get tasks specifically for this client
+    const { data: clientTareas } = await supabase
+      .from('tareas')
+      .select('titulo, descripcion, estado, fecha_completada, created_at')
+      .or(`cliente_id.eq.${clientId},cliente_ids.cs.{${clientId}}`)
+      .in('estado', ['completada', 'resuelto'])
+      .order('fecha_completada', { ascending: false })
+      .limit(10)
+
+    // Filter by period
+    const tareasDelPeriodo = clientTareas?.filter(t => {
+      const completedDate = t.fecha_completada || t.created_at
+      if (periodo?.start && periodo?.end && completedDate) {
+        const taskDate = completedDate.split('T')[0]
+        return taskDate >= periodo.start && taskDate <= periodo.end
+      }
+      return true
+    }) || []
+
+    console.log('[v0] Tareas del periodo:', { count: tareasDelPeriodo.length, periodo })
+
     // Build base URL for internal API calls
     const baseUrl = process.env.VERCEL_URL 
       ? `https://${process.env.VERCEL_URL}` 
@@ -97,15 +142,26 @@ export async function POST(req: Request) {
     // Determine which accounts to fetch based on selection
     const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
     
+    console.log('[v0] Ad accounts found:', { 
+      metaPlural: client.meta_ads_account_ids, 
+      metaSingular: client.meta_ads_account_id,
+      googlePlural: client.google_ads_customer_ids,
+      googleSingular: client.google_ads_customer_id,
+      selectedCuentas 
+    })
+    
     // Fetch Meta accounts metrics (check plural first, then singular as fallback)
     const metaAccounts = client.meta_ads_account_ids?.length 
       ? client.meta_ads_account_ids 
       : client.meta_ads_account_id 
         ? [client.meta_ads_account_id]
         : []
+    console.log('[v0] Meta accounts to fetch:', metaAccounts)
     for (const accountId of metaAccounts) {
       if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
+        console.log('[v0] Fetching Meta metrics for:', accountId)
         const metrics = await fetchAccountMetrics('meta', accountId, baseUrl, periodo)
+        console.log('[v0] Meta metrics result:', metrics)
         if (metrics) {
           metricsByAccount.push({
             account: accountId,
@@ -122,9 +178,12 @@ export async function POST(req: Request) {
       : client.google_ads_customer_id
         ? [client.google_ads_customer_id]
         : []
+    console.log('[v0] Google accounts to fetch:', googleAccounts)
     for (const accountId of googleAccounts) {
       if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
+        console.log('[v0] Fetching Google metrics for:', accountId)
         const metrics = await fetchAccountMetrics('google', accountId, baseUrl, periodo)
+        console.log('[v0] Google metrics result:', metrics)
         if (metrics) {
           metricsByAccount.push({
             account: accountId,
@@ -135,8 +194,15 @@ export async function POST(req: Request) {
       }
     }
 
+    console.log('[v0] Total metrics collected:', metricsByAccount.length)
+
     // Build context
     const clienteMemoriaText = memoria?.map(m => `- ${m.contenido}`).join('\n') || 'Sin historial'
+    
+    // Build tasks text from completed tasks in the period
+    const tareasText = tareasDelPeriodo.length > 0
+      ? tareasDelPeriodo.map(t => `- ${t.titulo}${t.descripcion ? `: ${t.descripcion.substring(0, 100)}` : ''}`).join('\n')
+      : 'Sin tareas registradas en este periodo'
     
     // Build metrics text from real account data
     let metricasText = 'Sin metricas disponibles'
@@ -276,12 +342,20 @@ CONTEXTO DEL CLIENTE:
 HISTORIAL DEL CLIENTE:
 ${clienteMemoriaText}
 
+TAREAS COMPLETADAS EN EL PERIODO (${periodoTexto}):
+${tareasText}
+
 METRICAS DE CUENTAS PUBLICITARIAS (${periodoTexto}):
 ${metricasText}
 
 ${templateToUse}
 
-IMPORTANTE: Genera el mensaje siguiendo EXACTAMENTE la estructura del template. Usa los datos reales del cliente y las métricas proporcionadas. NO incluyas las reglas ni instrucciones en el mensaje final.
+IMPORTANTE: 
+- Genera el mensaje siguiendo EXACTAMENTE la estructura del template
+- Usa los datos reales del cliente, las tareas completadas y las métricas proporcionadas
+- Los "Hitos Completados" deben basarse en las TAREAS COMPLETADAS listadas arriba
+- NO incluyas las reglas ni instrucciones en el mensaje final
+- Reemplaza [Nombre del contacto] con el nombre real del cliente
 `
 
     const userMessage: UIMessage[] = [{ 
