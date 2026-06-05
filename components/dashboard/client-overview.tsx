@@ -1103,35 +1103,15 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
               )}
             </CardContent>
           </Card>
-
-          <Card>
-            <CardContent className="pt-5 pb-5">
-              <p className="text-xs text-muted-foreground font-medium mb-3">Notas NPS</p>
-              {npsNotas.length > 0 ? (
-                <div className="flex flex-col gap-2 max-h-32 overflow-y-auto">
-                  {npsNotas.map(nota => (
-                    <div key={nota.id} className="flex items-start gap-2">
-                      <div className={cn(
-                        'h-5 w-5 rounded flex items-center justify-center shrink-0 text-white text-[10px] font-bold',
-                        nota.score >= 4 ? 'bg-status-verde' : nota.score >= 3 ? 'bg-status-amarillo' : 'bg-status-rojo'
-                      )}>
-                        {nota.score}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[11px] text-foreground leading-tight break-words">{nota.comentario}</p>
-                        {nota.encuestado_nombre && (
-                          <p className="text-[10px] text-muted-foreground truncate">{nota.encuestado_nombre}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">Sin notas registradas</p>
-              )}
-            </CardContent>
-          </Card>
         </div>
+
+        {/* ── NPS Score (arriba de Horas del Equipo) ── */}
+        <ClientNPS 
+          clientId={client.id} 
+          currentUserId={currentProfile?.id}
+          projectManagerId={client.project_manager_id}
+          accountManagerId={client.account_manager_id}
+        />
 
         {/* ── Horas del Equipo ── */}
         <div>
@@ -1410,14 +1390,6 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             </div>
           )}
         </div>
-
-        {/* ── NPS Score (debajo de PM/AM) ── */}
-        <ClientNPS 
-          clientId={client.id} 
-          currentUserId={currentProfile?.id}
-          projectManagerId={client.project_manager_id}
-          accountManagerId={client.account_manager_id}
-        />
 
         {/* ── Landings y CRMs ── */}
         <div className="grid md:grid-cols-2 gap-4">
