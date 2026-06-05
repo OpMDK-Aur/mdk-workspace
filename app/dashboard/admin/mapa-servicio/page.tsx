@@ -39,21 +39,40 @@ export default function MapaServicioPage() {
   const [unidadFilter, setUnidadFilter] = useState<UnidadNegocio | 'all'>('all')
   const [pmFilter, setPmFilter] = useState<string | 'all'>('all')
   const [amFilter, setAmFilter] = useState<string | 'all'>('all')
-  const [users, setUsers] = useState<Array<{ id: string; full_name: string }>>([])
+  const [clienteFilter, setClienteFilter] = useState<string | 'all'>('all')
+  const [users, setUsers] = useState<Array<{ id: string; nombre: string }>>([])
+  const [clientes, setClientes] = useState<Array<{ id: string; nombre_del_negocio: string }>>([])
 
-  // Cargar usuarios para PM/AM
+  // Cargar usuarios y clientes
   useEffect(() => {
-    async function loadUsers() {
+    async function loadData() {
       const supabase = createClient()
-      const { data } = await supabase
+      
+      // Cargar colaboradores
+      const { data: usersData, error: usersError } = await supabase
         .from('colaboradores')
-        .select('id, full_name')
-        .order('full_name', { ascending: true })
-      if (data) {
-        setUsers(data)
+        .select('id, nombre')
+        .order('nombre', { ascending: true })
+      
+      if (usersError) {
+        console.error('[v0] Error loading users:', usersError)
+      } else if (usersData) {
+        setUsers(usersData)
+      }
+      
+      // Cargar clientes
+      const { data: clientesData, error: clientesError } = await supabase
+        .from('clientes')
+        .select('id, nombre_del_negocio')
+        .order('nombre_del_negocio', { ascending: true })
+      
+      if (clientesError) {
+        console.error('[v0] Error loading clientes:', clientesError)
+      } else if (clientesData) {
+        setClientes(clientesData)
       }
     }
-    loadUsers()
+    loadData()
   }, [])
 
   return (
@@ -136,7 +155,7 @@ export default function MapaServicioPage() {
           <SelectContent>
             <SelectItem value="all">Todos los PM</SelectItem>
             {users.map(user => (
-              <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
+              <SelectItem key={user.id} value={user.id}>{user.nombre}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -149,12 +168,25 @@ export default function MapaServicioPage() {
           <SelectContent>
             <SelectItem value="all">Todos los AM</SelectItem>
             {users.map(user => (
-              <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
+              <SelectItem key={user.id} value={user.id}>{user.nombre}</SelectItem>
             ))}
           </SelectContent>
         </Select>
 
-        {(pmFilter !== 'all' || amFilter !== 'all') && (
+        {/* Cliente Filter */}
+        <Select value={clienteFilter} onValueChange={(v) => setClienteFilter(v)}>
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder="Cliente" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los clientes</SelectItem>
+            {clientes.map(cliente => (
+              <SelectItem key={cliente.id} value={cliente.id}>{cliente.nombre_del_negocio}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {(pmFilter !== 'all' || amFilter !== 'all' || clienteFilter !== 'all') && (
           <Button
             size="sm"
             variant="ghost"
@@ -162,6 +194,7 @@ export default function MapaServicioPage() {
             onClick={() => {
               setPmFilter('all')
               setAmFilter('all')
+              setClienteFilter('all')
             }}
           >
             <X className="h-3 w-3 mr-1" />
@@ -177,6 +210,7 @@ export default function MapaServicioPage() {
         planFilter={planFilter}
         pmFilter={pmFilter}
         amFilter={amFilter}
+        clienteFilter={clienteFilter}
       />
     </div>
   )

@@ -34,9 +34,10 @@ interface ServiceMapReportProps {
   planFilter?: string | 'all'
   pmFilter?: string | 'all'
   amFilter?: string | 'all'
+  clienteFilter?: string | 'all'
 }
 
-export function ServiceMapReport({ month, year, planFilter = 'all', pmFilter = 'all', amFilter = 'all' }: ServiceMapReportProps) {
+export function ServiceMapReport({ month, year, planFilter = 'all', pmFilter = 'all', amFilter = 'all', clienteFilter = 'all' }: ServiceMapReportProps) {
   const [kpis, setKpis] = useState<ServiceMapKPIs[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -96,7 +97,7 @@ export function ServiceMapReport({ month, year, planFilter = 'all', pmFilter = '
     }
 
     fetchKPIs()
-  }, [selectedMonth, selectedYear, planFilter, pmFilter, amFilter])
+  }, [selectedMonth, selectedYear, planFilter, pmFilter, amFilter, clienteFilter])
 
   // Check if viewing current month
   const now = new Date()

@@ -61,8 +61,9 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
   const [dialogOpen, setDialogOpen] = useState(false)
   const [pmFilter, setPmFilter] = useState<string | null>(projectManagerId || null)
   const [amFilter, setAmFilter] = useState<string | null>(accountManagerId || null)
-  const [allUsers, setAllUsers] = useState<Array<{ id: string; full_name: string }>>([])
+  const [allUsers, setAllUsers] = useState<Array<{ id: string; nombre: string }>>([])
   const [usersLoading, setUsersLoading] = useState(true)
+  const [form, setForm] = useState({
     score: 3,
     comentario: '',
     encuestado_nombre: '',
@@ -97,17 +98,16 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
     try {
       const { data, error } = await supabase
         .from('colaboradores')
-        .select('id, full_name')
-        .order('full_name', { ascending: true })
+        .select('id, nombre')
+        .order('nombre', { ascending: true })
       
       if (error) {
-        console.error('[v0] Error loading users:', error.message)
+        console.error('Error loading users:', error.message)
       } else if (data) {
-        console.log('[v0] Users loaded:', data)
         setAllUsers(data)
       }
     } catch (err) {
-      console.error('[v0] Exception fetching users:', err)
+      console.error('Exception fetching users:', err)
     } finally {
       setUsersLoading(false)
     }
@@ -317,7 +317,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
           <SelectContent>
             <SelectItem value="">Todos los PM</SelectItem>
             {allUsers.map(user => (
-              <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
+              <SelectItem key={user.id} value={user.id}>{user.nombre}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -329,7 +329,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
           <SelectContent>
             <SelectItem value="">Todos los AM</SelectItem>
             {allUsers.map(user => (
-              <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
+              <SelectItem key={user.id} value={user.id}>{user.nombre}</SelectItem>
             ))}
           </SelectContent>
         </Select>

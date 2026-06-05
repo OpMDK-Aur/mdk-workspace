@@ -89,9 +89,20 @@ interface NPSReportProps {
   year: number
   planFilter?: ClientPlan | 'all'
   unidadFilter?: UnidadNegocio | 'all'
+  pmFilter?: string | 'all'
+  amFilter?: string | 'all'
+  clienteFilter?: string | 'all'
 }
 
-export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all' }: NPSReportProps) {
+export function NPSReport({ 
+  month, 
+  year, 
+  planFilter = 'all', 
+  unidadFilter = 'all',
+  pmFilter = 'all',
+  amFilter = 'all',
+  clienteFilter = 'all'
+}: NPSReportProps) {
   const [clients, setClients] = useState<Client[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
@@ -251,6 +262,21 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
       )
     }
 
+    // Filter by PM
+    if (pmFilter !== 'all') {
+      filteredClients = filteredClients.filter(c => c.project_manager_id === pmFilter)
+    }
+
+    // Filter by AM
+    if (amFilter !== 'all') {
+      filteredClients = filteredClients.filter(c => c.account_manager_id === amFilter)
+    }
+
+    // Filter by Cliente
+    if (clienteFilter !== 'all') {
+      filteredClients = filteredClients.filter(c => c.id === clienteFilter)
+    }
+
     return filteredClients.map(client => {
       const clientHistory = npsHistorial.filter(h => h.cliente_id === client.id)
       
@@ -329,7 +355,7 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
         ultimaEncuesta,
       }
     })
-  }, [clients, npsHistorial, selectedMonth, selectedYear, planFilter, unidadFilter, profiles])
+  }, [clients, npsHistorial, selectedMonth, selectedYear, planFilter, unidadFilter, pmFilter, amFilter, clienteFilter, profiles])
 
   // Group by Account Manager
   const acData: ACData[] = useMemo(() => {

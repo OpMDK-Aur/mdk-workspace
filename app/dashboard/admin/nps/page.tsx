@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { NPSReport } from '@/components/reports/nps-report'
 import {
   Select,
@@ -9,6 +9,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
+import { X } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 import type { ClientPlan, UnidadNegocio } from '@/lib/types'
 
 const MONTHS = [
@@ -34,6 +37,39 @@ export default function NPSPage() {
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
   const [unidadFilter, setUnidadFilter] = useState<UnidadNegocio | 'all'>('all')
+  const [pmFilter, setPmFilter] = useState<string | 'all'>('all')
+  const [amFilter, setAmFilter] = useState<string | 'all'>('all')
+  const [clienteFilter, setClienteFilter] = useState<string | 'all'>('all')
+  const [users, setUsers] = useState<Array<{ id: string; nombre: string }>>([])
+  const [clientes, setClientes] = useState<Array<{ id: string; nombre_del_negocio: string }>>([])
+
+  // Cargar usuarios y clientes
+  useEffect(() => {
+    async function loadData() {
+      const supabase = createClient()
+      
+      // Cargar colaboradores
+      const { data: usersData } = await supabase
+        .from('colaboradores')
+        .select('id, nombre')
+        .order('nombre', { ascending: true })
+      
+      if (usersData) {
+        setUsers(usersData)
+      }
+      
+      // Cargar clientes
+      const { data: clientesData } = await supabase
+        .from('clientes')
+        .select('id, nombre_del_negocio')
+        .order('nombre_del_negocio', { ascending: true })
+      
+      if (clientesData) {
+        setClientes(clientesData)
+      }
+    }
+    loadData()
+  }, [])
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -106,6 +142,61 @@ export default function NPSPage() {
             <SelectItem value="Consultoria">Consultoria</SelectItem>
           </SelectContent>
         </Select>
+
+        {/* Project Manager Filter */}
+        <Select value={pmFilter} onValueChange={(v) => setPmFilter(v)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Project Manager" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los PM</SelectItem>
+            {users.map(user => (
+              <SelectItem key={user.id} value={user.id}>{user.nombre}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Account Manager Filter */}
+        <Select value={amFilter} onValueChange={(v) => setAmFilter(v)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Account Manager" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los AM</SelectItem>
+            {users.map(user => (
+              <SelectItem key={user.id} value={user.id}>{user.nombre}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Cliente Filter */}
+        <Select value={clienteFilter} onValueChange={(v) => setClienteFilter(v)}>
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder="Cliente" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los clientes</SelectItem>
+            {clientes.map(cliente => (
+              <SelectItem key={cliente.id} value={cliente.id}>{cliente.nombre_del_negocio}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {(pmFilter !== 'all' || amFilter !== 'all' || clienteFilter !== 'all') && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2 text-xs"
+            onClick={() => {
+              setPmFilter('all')
+              setAmFilter('all')
+              setClienteFilter('all')
+            }}
+          >
+            <X className="h-3 w-3 mr-1" />
+            Limpiar filtros
+          </Button>
+        )}
       </div>
 
       {/* NPS Report Component */}
@@ -114,6 +205,9 @@ export default function NPSPage() {
         year={selectedYear} 
         planFilter={planFilter}
         unidadFilter={unidadFilter}
+        pmFilter={pmFilter}
+        amFilter={amFilter}
+        clienteFilter={clienteFilter}
       />
     </div>
   )
