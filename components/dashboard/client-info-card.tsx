@@ -153,10 +153,20 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
   const [savingContact, setSavingContact] = useState(false)
   
   // Dates state
-  const [fechaVenta, setFechaVenta] = useState<Date | undefined>(client.fecha_venta ? new Date(client.fecha_venta) : undefined)
-  const [fechaActivacion, setFechaActivacion] = useState<Date | undefined>(client.fecha_activacion ? new Date(client.fecha_activacion) : undefined)
-  const [fechaInicioTrabajo, setFechaInicioTrabajo] = useState<Date | undefined>(client.fecha_inicio_trabajo ? new Date(client.fecha_inicio_trabajo) : undefined)
-  const [fechaBaja, setFechaBaja] = useState<Date | undefined>(client.fecha_baja ? new Date(client.fecha_baja) : undefined)
+  // Parse date-only strings (YYYY-MM-DD) as local dates to avoid UTC off-by-one
+  // hydration mismatches between server and client timezones.
+  const parseLocalDate = (value: string | null | undefined): Date | undefined => {
+    if (!value) return undefined
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
+    if (match) {
+      return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    }
+    return new Date(value)
+  }
+  const [fechaVenta, setFechaVenta] = useState<Date | undefined>(parseLocalDate(client.fecha_venta))
+  const [fechaActivacion, setFechaActivacion] = useState<Date | undefined>(parseLocalDate(client.fecha_activacion))
+  const [fechaInicioTrabajo, setFechaInicioTrabajo] = useState<Date | undefined>(parseLocalDate(client.fecha_inicio_trabajo))
+  const [fechaBaja, setFechaBaja] = useState<Date | undefined>(parseLocalDate(client.fecha_baja))
   const [savingDates, setSavingDates] = useState(false)
   
   // Etapa state

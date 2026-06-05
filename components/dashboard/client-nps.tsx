@@ -336,12 +336,12 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
 
       {/* Filters */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <Select value={pmFilter || ''} onValueChange={(val) => setPmFilter(val || null)}>
+        <Select value={pmFilter || 'all'} onValueChange={(val) => setPmFilter(val === 'all' ? null : val)}>
           <SelectTrigger className="w-[180px] h-8 text-xs">
             <SelectValue placeholder="Project Manager" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todos los PM</SelectItem>
+            <SelectItem value="all">Todos los PM</SelectItem>
             {projectManagers.map(pm => (
               <SelectItem key={pm.id} value={pm.id}>
                 {pm.full_name || pm.email}
@@ -350,12 +350,12 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
           </SelectContent>
         </Select>
 
-        <Select value={amFilter || ''} onValueChange={(val) => setAmFilter(val || null)}>
+        <Select value={amFilter || 'all'} onValueChange={(val) => setAmFilter(val === 'all' ? null : val)}>
           <SelectTrigger className="w-[180px] h-8 text-xs">
             <SelectValue placeholder="Account Manager" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todos los AM</SelectItem>
+            <SelectItem value="all">Todos los AM</SelectItem>
             {accountManagers.map(am => (
               <SelectItem key={am.id} value={am.id}>
                 {am.full_name || am.email}
