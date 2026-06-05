@@ -59,8 +59,10 @@ const MONTHS = [
 
 const SUGGESTIONS = [
   'Resumen ejecutivo del mes',
-  'Analisis de campanas por plataforma',
-  'Recomendaciones de optimizacion',
+  'Analisis de campañas por plataforma',
+  'Recomendaciones de optimización',
+  'Cuáles son mis KPIs principales?',
+  'Qué campañas necesitan mejora?',
 ]
 
 export default function AnalistaPage() {
@@ -407,35 +409,71 @@ export default function AnalistaPage() {
               )}
             </div>
 
-            {/* Messages */}
-            <ScrollArea className="flex-1 p-4">
-              <div className="max-w-3xl mx-auto space-y-4">
-                {chatMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={cn(
-                      'flex',
-                      message.role === 'user' ? 'justify-end' : 'justify-start'
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'max-w-[80%] rounded-2xl px-4 py-3',
-                        message.role === 'user'
-                          ? 'bg-[#7F77DD] text-white'
-                          : 'bg-muted'
-                      )}
-                    >
-                      {message.role === 'assistant' ? (
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                          <ReactMarkdown>{message.content}</ReactMarkdown>
+            {/* Chat Area */}
+            <div className="flex-1 flex flex-col bg-background overflow-hidden">
+              {/* Messages */}
+              <ScrollArea className="flex-1 p-4">
+                <div className="max-w-3xl mx-auto space-y-4">
+                  {chatMessages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full min-h-96 text-center">
+                      <Sparkles className="h-12 w-12 text-muted-foreground/40 mb-4" />
+                      <h2 className="text-2xl font-semibold text-foreground mb-2">Hola, soy tu Analista</h2>
+                      <p className="text-muted-foreground mb-6 max-w-md">
+                        Selecciona un cliente y período para comenzar. Te ayudaré a analizar tus campañas de Google Ads y Meta.
+                      </p>
+                      {selectedClient && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-md">
+                          {SUGGESTIONS.map((suggestion, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => handleSendMessage(suggestion)}
+                              className="p-3 rounded-lg border border-muted-foreground/20 hover:border-primary/40 hover:bg-primary/5 text-sm text-foreground transition-colors text-left"
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
                         </div>
-                      ) : (
-                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                       )}
                     </div>
-                  </div>
-                ))}
+                  ) : (
+                    <>
+                      {chatMessages.map((message) => (
+                        <div
+                          key={message.id}
+                          className={cn(
+                            'flex',
+                            message.role === 'user' ? 'justify-end' : 'justify-start'
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              'max-w-[80%] rounded-2xl px-4 py-3',
+                              message.role === 'user'
+                                ? 'bg-[#7F77DD] text-white'
+                                : 'bg-muted'
+                            )}
+                          >
+                            {message.role === 'assistant' ? (
+                              <div className="prose prose-sm dark:prose-invert max-w-none">
+                                <ReactMarkdown>{message.content}</ReactMarkdown>
+                              </div>
+                            ) : (
+                              <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {isLoading && (
+                        <div className="flex justify-start">
+                          <div className="bg-muted rounded-2xl px-4 py-3 flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span className="text-sm text-muted-foreground">Analizando...</span>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <div ref={messagesEndRef} />
 
                 {isLoading && (
                   <div className="flex justify-start">

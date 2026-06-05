@@ -19,17 +19,6 @@ export async function POST(req: Request) {
       year: number 
     } = await req.json()
 
-    // Get agent config
-    const { data: agentConfig } = await supabase
-      .from('agentes_config')
-      .select('*')
-      .eq('slug', 'analista')
-      .single()
-
-    if (!agentConfig) {
-      return new Response('Agent not found', { status: 404 })
-    }
-
     // Get client data
     const { data: client } = await supabase
       .from('clientes')
@@ -63,19 +52,29 @@ export async function POST(req: Request) {
       ? JSON.stringify(metricas, null, 2)
       : 'Sin metricas disponibles para este periodo'
 
-    const systemPrompt = `${agentConfig.system_prompt}
+    const MONTHS_MAP = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
-CONTEXTO DEL CLIENTE:
-- Nombre: ${client.nombre_del_negocio}
-- Plan: ${client.plan || 'No definido'}
-- Periodo: ${month}/${year}
+    const systemPrompt = `Eres un analista experto en marketing digital y publicidad en línea. Tu rol es ayudar a ${client.nombre_del_negocio} a entender y optimizar su desempeño en campañas de Google Ads y Meta Ads.
 
-HISTORIAL DEL CLIENTE:
+## Contexto del Cliente
+- Negocio: ${client.nombre_del_negocio}
+- Plan/Cuenta: ${client.plan || 'No especificado'}
+- Periodo de Análisis: ${MONTHS_MAP[month]} ${year}
+
+## Historial y Notas Previas
 ${clienteMemoriaText}
 
-METRICAS DEL PERIODO:
+## Datos Disponibles del Periodo
 ${metricasText}
-`
+
+## Tus Responsabilidades
+- Proporcionar insights accionables basados en los datos disponibles
+- Identificar oportunidades de optimización
+- Explicar métricas de marketing de forma clara y accesible
+- Hacer recomendaciones basadas en las tendencias observadas
+- Mantener un tono profesional pero amigable
+
+Sé conversacional, haz preguntas cuando necesites clarificación, y profundiza en los temas que el usuario quiera explorar.`
 
     const result = streamText({
       model: 'openai/gpt-4o-mini',
