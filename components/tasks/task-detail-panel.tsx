@@ -2184,7 +2184,7 @@ export function TaskDetailPanel() {
                       })
                       const hasFilters = filterPersona || filterConAdjuntos || filterFechaDesde || filterFechaHasta
 
-                      if (task.activities.length === 0 && task.comments.length === 0) {
+                      if ((task.activities || []).length === 0 && (task.comments || []).length === 0) {
                         return (
                           <div className="flex items-center justify-center h-24">
                             <p className="text-xs text-muted-foreground">Sin actividad aun</p>
@@ -2195,7 +2195,7 @@ export function TaskDetailPanel() {
                       return (
                         <>
                           {/* Activities - hidden when filters active */}
-                          {!hasFilters && task.activities.slice(0, 20).map((activity) => (
+                          {!hasFilters && (task.activities || []).slice(0, 20).map((activity) => (
                             <div key={activity.id} className="flex items-start gap-3 text-xs">
                               <Avatar className="h-6 w-6 mt-0.5 shrink-0">
                                 <AvatarFallback className="text-[9px]">{getInitials(activity.userName)}</AvatarFallback>
