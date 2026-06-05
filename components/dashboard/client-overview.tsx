@@ -1239,7 +1239,12 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           <div className="rounded-xl border bg-card p-5">
             <ClientCRMs clientId={client.id} />
           </div>
-          <ClientNPS clientId={client.id} currentUserId={currentProfile?.id} />
+          <ClientNPS 
+            clientId={client.id} 
+            currentUserId={currentProfile?.id}
+            projectManagerId={client.project_manager_id}
+            accountManagerId={client.account_manager_id}
+          />
         </div>
 
         {/* ── Tareas, Cotizaciones, Adjuntos ── */}

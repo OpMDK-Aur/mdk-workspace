@@ -7,7 +7,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Plus, Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Plus, Loader2, TrendingUp, TrendingDown, Minus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   ChartContainer,
@@ -28,6 +35,8 @@ interface NPSRecord {
 interface ClientNPSProps {
   clientId: string
   currentUserId?: string
+  projectManagerId?: string | null
+  accountManagerId?: string | null
 }
 
 function getNPSCategory(score: number): { label: string; color: string; bgColor: string } {
@@ -43,12 +52,16 @@ function formatDate(dateStr: string): string {
   return date.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' })
 }
 
-export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
+export function ClientNPS({ clientId, currentUserId, projectManagerId, accountManagerId }: ClientNPSProps) {
   const [records, setRecords] = useState<NPSRecord[]>([])
+  const [filteredRecords, setFilteredRecords] = useState<NPSRecord[]>([])
   const [currentScore, setCurrentScore] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [pmFilter, setPmFilter] = useState<string | null>(projectManagerId || null)
+  const [amFilter, setAmFilter] = useState<string | null>(accountManagerId || null)
+  const [allUsers, setAllUsers] = useState<Array<{ id: string; full_name: string }>>([])
   const [form, setForm] = useState({
     score: 3,
     comentario: '',
@@ -61,7 +74,34 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
 
   useEffect(() => {
     fetchNPS()
+    fetchUsers()
   }, [clientId])
+
+  useEffect(() => {
+    // Apply filters to records
+    let filtered = records
+    
+    if (pmFilter) {
+      filtered = filtered.filter(r => r.encuestado_nombre) // PM filter placeholder
+    }
+    
+    if (amFilter) {
+      filtered = filtered.filter(r => r.encuestado_nombre) // AM filter placeholder
+    }
+    
+    setFilteredRecords(filtered)
+  }, [records, pmFilter, amFilter])
+
+  const fetchUsers = async () => {
+    const { data } = await supabase
+      .from('colaboradores')
+      .select('id, full_name')
+      .order('full_name', { ascending: true })
+    
+    if (data) {
+      setAllUsers(data)
+    }
+  }
 
   const fetchNPS = async () => {
     setLoading(true)
@@ -172,10 +212,59 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
               <Plus className="h-4 w-4" />
             </Button>
           </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Registrar Encuesta NPS</DialogTitle>
-            </DialogHeader>
+
+      {/* Filters */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <Select value={pmFilter || ''} onValueChange={(val) => setPmFilter(val || null)}>
+          <SelectTrigger className="w-[180px] h-8 text-xs">
+            <SelectValue placeholder="Project Manager" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Todos los PM</SelectItem>
+            {allUsers.map(user => (
+              <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={amFilter || ''} onValueChange={(val) => setAmFilter(val || null)}>
+          <SelectTrigger className="w-[180px] h-8 text-xs">
+            <SelectValue placeholder="Account Manager" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Todos los AM</SelectItem>
+            {allUsers.map(user => (
+              <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {(pmFilter || amFilter) && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              setPmFilter(null)
+              setAmFilter(null)
+            }}
+          >
+            <X className="h-3 w-3 mr-1" />
+            Limpiar
+          </Button>
+        )}
+      </div>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogTrigger asChild>
+          <Button variant="ghost" size="sm" className="h-7 px-2">
+            <Plus className="h-4 w-4" />
+          </Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar Encuesta NPS</DialogTitle>
+          </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
                 <Label>Score (1-5)</Label>
@@ -256,7 +345,7 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
         <div className="flex items-center justify-center py-8">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
-      ) : currentScore === null && records.length === 0 ? (
+      ) : currentScore === null && filteredRecords.length === 0 ? (
         <div className="text-center py-8">
           <p className="text-sm text-muted-foreground mb-2">Sin datos de NPS</p>
           <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
@@ -299,13 +388,13 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
                 </div>
               )}
               <p className="text-xs text-muted-foreground mt-1">
-                {records.length} encuesta{records.length !== 1 ? 's' : ''} registrada{records.length !== 1 ? 's' : ''}
+                {filteredRecords.length} encuesta{filteredRecords.length !== 1 ? 's' : ''} registrada{filteredRecords.length !== 1 ? 's' : ''}
               </p>
             </div>
           </div>
 
           {/* Chart */}
-          {records.length >= 2 && (
+          {filteredRecords.length >= 2 && (
             <div className="h-32 mt-4">
               <ChartContainer config={chartConfig}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -342,11 +431,11 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
           )}
 
           {/* Recent Records */}
-          {records.length > 0 && (
+          {filteredRecords.length > 0 && (
             <div className="space-y-2 mt-4">
               <p className="text-xs font-medium text-muted-foreground uppercase">Historial reciente</p>
               <div className="space-y-1 max-h-32 overflow-y-auto">
-                {records.slice(-5).reverse().map(record => (
+                {filteredRecords.slice(-5).reverse().map(record => (
                   <div key={record.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 text-sm">
                     <div className={cn(
                       "w-6 h-6 rounded flex items-center justify-center text-white text-xs font-medium",
