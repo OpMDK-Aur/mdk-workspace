@@ -51,5 +51,5 @@ export async function completeOnboarding(payload: {
   }
 
   revalidatePath('/', 'layout')
-  redirect('/dashboard')
+  redirect('/dashboard/tasks')
 }
