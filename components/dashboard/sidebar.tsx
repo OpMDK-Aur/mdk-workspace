@@ -457,8 +457,8 @@ export function Sidebar({
                 {primaryItems.map(item => renderNavItem(item, true))}
               </div>
 
-              {/* Admin section - only if visible */}
-              {(userIsMaster || canSeeSection(userRole, userModulos, 'administracion')) && (
+              {/* Admin section - ONLY for Master users */}
+              {userIsMaster && (
                 <div className="space-y-1 pt-2 border-t border-border">
                   {adminItems.map(item => renderNavItem(item, true))}
                 </div>
@@ -669,8 +669,8 @@ export function Sidebar({
                   {primaryItems.map(item => renderNavItem(item))}
                 </div>
 
-                {/* Administration section */}
-                {(userIsMaster || canSeeSection(userRole, userModulos, 'administracion')) && (
+                {/* Administration section - ONLY for Master users */}
+                {userIsMaster && (
                   <Collapsible open={adminOpen} onOpenChange={setAdminOpen}>
                     <CollapsibleTrigger className="flex items-center justify-between w-full py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors">
                       <span>Administracion</span>
