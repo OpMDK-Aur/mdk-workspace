@@ -40,7 +40,8 @@ export default function NPSPage() {
   const [pmFilter, setPmFilter] = useState<string | 'all'>('all')
   const [amFilter, setAmFilter] = useState<string | 'all'>('all')
   const [clienteFilter, setClienteFilter] = useState<string | 'all'>('all')
-  const [users, setUsers] = useState<Array<{ id: string; nombre: string; apellido: string | null }>>([])
+  const [projectManagers, setProjectManagers] = useState<Array<{ id: string; full_name: string | null }>>([])
+  const [accountManagers, setAccountManagers] = useState<Array<{ id: string; full_name: string | null }>>([])
   const [clientes, setClientes] = useState<Array<{ id: string; nombre_del_negocio: string }>>([])
 
   // Cargar usuarios y clientes
@@ -48,14 +49,26 @@ export default function NPSPage() {
     async function loadData() {
       const supabase = createClient()
       
-      // Cargar colaboradores con nombre completo
-      const { data: usersData } = await supabase
-        .from('colaboradores')
-        .select('id, nombre, apellido')
-        .order('nombre', { ascending: true })
+      // Cargar Project Managers (role = project_manager o direccion)
+      const { data: pmData } = await supabase
+        .from('profiles')
+        .select('id, full_name, role')
+        .in('role', ['project_manager', 'direccion'])
+        .order('full_name', { ascending: true })
       
-      if (usersData) {
-        setUsers(usersData)
+      if (pmData) {
+        setProjectManagers(pmData)
+      }
+      
+      // Cargar Account Managers (role = account_manager o direccion)
+      const { data: amData } = await supabase
+        .from('profiles')
+        .select('id, full_name, role')
+        .in('role', ['account_manager', 'direccion'])
+        .order('full_name', { ascending: true })
+      
+      if (amData) {
+        setAccountManagers(amData)
       }
       
       // Cargar clientes
@@ -150,9 +163,9 @@ export default function NPSPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los PM</SelectItem>
-            {users.map(user => (
-              <SelectItem key={user.id} value={user.id}>
-                {user.nombre} {user.apellido || ''}
+            {projectManagers.map(pm => (
+              <SelectItem key={pm.id} value={pm.id}>
+                {pm.full_name || 'Sin nombre'}
               </SelectItem>
             ))}
           </SelectContent>
@@ -165,9 +178,9 @@ export default function NPSPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los AM</SelectItem>
-            {users.map(user => (
-              <SelectItem key={user.id} value={user.id}>
-                {user.nombre} {user.apellido || ''}
+            {accountManagers.map(am => (
+              <SelectItem key={am.id} value={am.id}>
+                {am.full_name || 'Sin nombre'}
               </SelectItem>
             ))}
           </SelectContent>

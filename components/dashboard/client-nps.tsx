@@ -61,7 +61,8 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
   const [dialogOpen, setDialogOpen] = useState(false)
   const [pmFilter, setPmFilter] = useState<string | null>(projectManagerId || null)
   const [amFilter, setAmFilter] = useState<string | null>(accountManagerId || null)
-  const [allUsers, setAllUsers] = useState<Array<{ id: string; nombre: string; apellido: string | null }>>([])
+  const [projectManagers, setProjectManagers] = useState<Array<{ id: string; full_name: string | null }>>([])
+  const [accountManagers, setAccountManagers] = useState<Array<{ id: string; full_name: string | null }>>([])
   const [usersLoading, setUsersLoading] = useState(true)
   const [form, setForm] = useState({
     score: 3,
@@ -96,18 +97,29 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
   const loadUsers = async () => {
     setUsersLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('colaboradores')
-        .select('id, nombre, apellido')
-        .order('nombre', { ascending: true })
+      // Cargar Project Managers
+      const { data: pmData } = await supabase
+        .from('profiles')
+        .select('id, full_name, role')
+        .in('role', ['project_manager', 'direccion'])
+        .order('full_name', { ascending: true })
       
-      if (error) {
-        console.error('Error loading users:', error.message)
-      } else if (data) {
-        setAllUsers(data)
+      if (pmData) {
+        setProjectManagers(pmData)
+      }
+      
+      // Cargar Account Managers
+      const { data: amData } = await supabase
+        .from('profiles')
+        .select('id, full_name, role')
+        .in('role', ['account_manager', 'direccion'])
+        .order('full_name', { ascending: true })
+      
+      if (amData) {
+        setAccountManagers(amData)
       }
     } catch (err) {
-      console.error('Exception fetching users:', err)
+      console.error('Error loading users:', err)
     } finally {
       setUsersLoading(false)
     }
@@ -316,9 +328,9 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="">Todos los PM</SelectItem>
-            {allUsers.map(user => (
-              <SelectItem key={user.id} value={user.id}>
-                {user.nombre} {user.apellido || ''}
+            {projectManagers.map(pm => (
+              <SelectItem key={pm.id} value={pm.id}>
+                {pm.full_name || 'Sin nombre'}
               </SelectItem>
             ))}
           </SelectContent>
@@ -330,9 +342,9 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="">Todos los AM</SelectItem>
-            {allUsers.map(user => (
-              <SelectItem key={user.id} value={user.id}>
-                {user.nombre} {user.apellido || ''}
+            {accountManagers.map(am => (
+              <SelectItem key={am.id} value={am.id}>
+                {am.full_name || 'Sin nombre'}
               </SelectItem>
             ))}
           </SelectContent>

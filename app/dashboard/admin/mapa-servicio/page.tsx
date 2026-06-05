@@ -40,7 +40,8 @@ export default function MapaServicioPage() {
   const [pmFilter, setPmFilter] = useState<string | 'all'>('all')
   const [amFilter, setAmFilter] = useState<string | 'all'>('all')
   const [clienteFilter, setClienteFilter] = useState<string | 'all'>('all')
-  const [users, setUsers] = useState<Array<{ id: string; nombre: string; apellido: string | null }>>([])
+  const [projectManagers, setProjectManagers] = useState<Array<{ id: string; full_name: string | null }>>([])
+  const [accountManagers, setAccountManagers] = useState<Array<{ id: string; full_name: string | null }>>([])
   const [clientes, setClientes] = useState<Array<{ id: string; nombre_del_negocio: string }>>([])
 
   // Cargar usuarios y clientes
@@ -48,27 +49,35 @@ export default function MapaServicioPage() {
     async function loadData() {
       const supabase = createClient()
       
-      // Cargar colaboradores con nombre completo
-      const { data: usersData, error: usersError } = await supabase
-        .from('colaboradores')
-        .select('id, nombre, apellido')
-        .order('nombre', { ascending: true })
+      // Cargar Project Managers (role = project_manager o direccion)
+      const { data: pmData } = await supabase
+        .from('profiles')
+        .select('id, full_name, role')
+        .in('role', ['project_manager', 'direccion'])
+        .order('full_name', { ascending: true })
       
-      if (usersError) {
-        console.error('Error loading users:', usersError)
-      } else if (usersData) {
-        setUsers(usersData)
+      if (pmData) {
+        setProjectManagers(pmData)
+      }
+      
+      // Cargar Account Managers (role = account_manager o direccion)
+      const { data: amData } = await supabase
+        .from('profiles')
+        .select('id, full_name, role')
+        .in('role', ['account_manager', 'direccion'])
+        .order('full_name', { ascending: true })
+      
+      if (amData) {
+        setAccountManagers(amData)
       }
       
       // Cargar clientes
-      const { data: clientesData, error: clientesError } = await supabase
+      const { data: clientesData } = await supabase
         .from('clientes')
         .select('id, nombre_del_negocio')
         .order('nombre_del_negocio', { ascending: true })
       
-      if (clientesError) {
-        console.error('Error loading clientes:', clientesError)
-      } else if (clientesData) {
+      if (clientesData) {
         setClientes(clientesData)
       }
     }
@@ -154,9 +163,9 @@ export default function MapaServicioPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los PM</SelectItem>
-            {users.map(user => (
-              <SelectItem key={user.id} value={user.id}>
-                {user.nombre} {user.apellido || ''}
+            {projectManagers.map(pm => (
+              <SelectItem key={pm.id} value={pm.id}>
+                {pm.full_name || 'Sin nombre'}
               </SelectItem>
             ))}
           </SelectContent>
@@ -169,9 +178,9 @@ export default function MapaServicioPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los AM</SelectItem>
-            {users.map(user => (
-              <SelectItem key={user.id} value={user.id}>
-                {user.nombre} {user.apellido || ''}
+            {accountManagers.map(am => (
+              <SelectItem key={am.id} value={am.id}>
+                {am.full_name || 'Sin nombre'}
               </SelectItem>
             ))}
           </SelectContent>
