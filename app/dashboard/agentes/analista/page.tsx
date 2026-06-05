@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useChat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
 import { createClient } from '@/lib/supabase/client'
 import type { Client, AgentLog } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -64,6 +65,14 @@ const SUGGESTIONS = [
   'Recomendaciones de optimizacion',
 ]
 
+function getMessageText(parts: Array<{ type: string; text?: string }> | undefined): string {
+  if (!parts || !Array.isArray(parts)) return ''
+  return parts
+    .filter((p): p is { type: 'text'; text: string } => p.type === 'text' && typeof p.text === 'string')
+    .map((p) => p.text)
+    .join('')
+}
+
 export default function AnalistaPage() {
   const supabase = createClient()
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -77,16 +86,16 @@ export default function AnalistaPage() {
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()))
   const [history, setHistory] = useState<AgentLog[]>([])
   const [isActive, setIsActive] = useState(false)
+  const [inputValue, setInputValue] = useState('')
 
   // Chat
-  const { messages, input, setInput, append, isLoading, setMessages } = useChat({
-    api: '/api/agentes/analista',
-    body: {
-      clientId: selectedClient?.id,
-      month: parseInt(selectedMonth),
-      year: parseInt(selectedYear),
-    },
+  const { messages, sendMessage, status, setMessages } = useChat({
+    transport: new DefaultChatTransport({
+      api: '/api/agentes/analista',
+    }),
   })
+  
+  const isLoading = status === 'streaming' || status === 'submitted'
 
   // Fetch clients
   useEffect(() => {
@@ -129,16 +138,19 @@ export default function AnalistaPage() {
     setMessages([])
   }
 
-  const handleSendMessage = async (content: string) => {
-    if (!content.trim() || isLoading) return
-    await append({ role: 'user', content })
-    setInput('')
+  const handleSendMessage = (content: string) => {
+    if (!content?.trim() || isLoading || !selectedClient) return
+    sendMessage(
+      { text: content },
+      { body: { clientId: selectedClient.id, month: parseInt(selectedMonth), year: parseInt(selectedYear) } }
+    )
+    setInputValue('')
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSendMessage(input)
+      handleSendMessage(inputValue)
     }
   }
 
@@ -147,6 +159,8 @@ export default function AnalistaPage() {
     
     const lastAssistantMessage = messages.filter(m => m.role === 'assistant').pop()
     if (!lastAssistantMessage) return
+    
+    const messageText = getMessageText(lastAssistantMessage.parts)
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -161,7 +175,7 @@ export default function AnalistaPage() {
 
       await supabase.from('tareas').insert({
         titulo: `Informe ${selectedClient.nombre_del_negocio} - ${MONTHS[parseInt(selectedMonth) - 1]?.label} ${selectedYear}`,
-        descripcion: lastAssistantMessage.content,
+        descripcion: messageText,
         tipo_id: tipoTarea?.id,
         cliente_ids: [selectedClient.id],
         creado_por: user?.id,
@@ -357,7 +371,9 @@ export default function AnalistaPage() {
             {/* Messages */}
             <ScrollArea className="flex-1 p-4">
               <div className="max-w-3xl mx-auto space-y-4">
-                {messages.map((message) => (
+                {messages.map((message) => {
+                  const text = getMessageText(message.parts)
+                  return (
                   <div
                     key={message.id}
                     className={cn(
@@ -375,14 +391,15 @@ export default function AnalistaPage() {
                     >
                       {message.role === 'assistant' ? (
                         <div className="prose prose-sm dark:prose-invert max-w-none">
-                          <ReactMarkdown>{message.content}</ReactMarkdown>
+                          <ReactMarkdown>{text}</ReactMarkdown>
                         </div>
                       ) : (
-                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                        <p className="text-sm whitespace-pre-wrap">{text}</p>
                       )}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
 
                 {isLoading && (
                   <div className="flex justify-start">
@@ -406,8 +423,8 @@ export default function AnalistaPage() {
                 <div className="relative">
                   <Textarea
                     ref={textareaRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Escribe tu mensaje..."
                     className="min-h-[48px] max-h-[200px] pr-12 resize-none"
@@ -416,8 +433,8 @@ export default function AnalistaPage() {
                   <Button
                     size="icon"
                     className="absolute right-2 bottom-2 h-8 w-8 bg-[#7F77DD] hover:bg-[#6B63C7]"
-                    onClick={() => handleSendMessage(input)}
-                    disabled={!input.trim() || isLoading}
+                    onClick={() => handleSendMessage(inputValue)}
+                    disabled={!inputValue?.trim() || isLoading}
                   >
                     {isLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
