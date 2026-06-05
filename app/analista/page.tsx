@@ -480,7 +480,7 @@ export default function AnalistaPage() {
                   </Button>
                 </div>
                 
-                {messages.length > 0 && (
+                {chatMessages.length > 0 && (
                   <div className="mt-3 flex justify-center">
                     <Button 
                       variant="outline" 
