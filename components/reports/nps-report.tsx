@@ -260,8 +260,14 @@ export function NPSReport({
           c.unidades_negocio?.length > 0 &&
           c.unidades_negocio.every(u => aureliaUnidades.includes(u))
         )
+      } else if (unidadFilter === 'Consultoria') {
+        // Para Consultoría: solo clientes que tengan ÚNICAMENTE Consultoría
+        filteredClients = filteredClients.filter(c => 
+          c.unidades_negocio?.length === 1 &&
+          c.unidades_negocio[0] === 'Consultoría'
+        )
       } else {
-        // Para otras unidades: que tengan esa unidad
+        // Para MDK: que tengan MDK (puede estar mezclado)
         filteredClients = filteredClients.filter(c => 
           c.unidades_negocio?.some(u => u === unidadFilter)
         )
@@ -418,12 +424,12 @@ export function NPSReport({
 
   // Stats por unidad de negocio (sin filtro de unidad aplicado)
   // Nota: Tecnología y Aurelia son lo mismo, así que unificamos
-  // Para Aurelia: solo clientes que tengan ÚNICAMENTE Aurelia/Tecnología
+  // Para Aurelia y Consultoría: solo clientes que tengan ÚNICAMENTE esa unidad
   const statsByUnidad = useMemo(() => {
     const unidadesDisplay: { key: string; label: string; includes: UnidadNegocio[]; exclusive?: boolean }[] = [
       { key: 'MDK', label: 'MDK', includes: ['MDK'] },
       { key: 'Aurelia', label: 'Aurelia', includes: ['Aurelia', 'Tecnología'], exclusive: true },
-      { key: 'Consultoría', label: 'Consultoría', includes: ['Consultoría'] },
+      { key: 'Consultoría', label: 'Consultoría', includes: ['Consultoría'], exclusive: true },
     ]
     
     // Recalcular sin el filtro de unidad para mostrar todas las unidades
