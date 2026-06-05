@@ -1,8 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useChat } from '@ai-sdk/react'
-import { DefaultChatTransport } from 'ai'
 import { createClient } from '@/lib/supabase/client'
 import type { Client, AgentLog } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -65,14 +63,6 @@ const SUGGESTIONS = [
   'Recomendaciones de optimizacion',
 ]
 
-function getMessageText(parts: Array<{ type: string; text?: string }> | undefined): string {
-  if (!parts || !Array.isArray(parts)) return ''
-  return parts
-    .filter((p): p is { type: 'text'; text: string } => p.type === 'text' && typeof p.text === 'string')
-    .map((p) => p.text)
-    .join('')
-}
-
 export default function AnalistaPage() {
   const supabase = createClient()
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -87,15 +77,8 @@ export default function AnalistaPage() {
   const [history, setHistory] = useState<AgentLog[]>([])
   const [isActive, setIsActive] = useState(false)
   const [inputValue, setInputValue] = useState('')
-
-  // Chat
-  const { messages, sendMessage, status, setMessages } = useChat({
-    transport: new DefaultChatTransport({
-      api: '/api/agentes/analista',
-    }),
-  })
-  
-  const isLoading = status === 'streaming' || status === 'submitted'
+  const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string }>>([])
+  const [isLoading, setIsLoading] = useState(false)
 
   // Fetch clients
   useEffect(() => {
@@ -127,7 +110,7 @@ export default function AnalistaPage() {
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [chatMessages])
 
   const handleStartAnalysis = () => {
     if (!selectedClient) {
@@ -135,16 +118,72 @@ export default function AnalistaPage() {
       return
     }
     setIsActive(true)
-    setMessages([])
+    setChatMessages([])
   }
 
-  const handleSendMessage = (content: string) => {
+  const handleSendMessage = async (content: string) => {
     if (!content?.trim() || isLoading || !selectedClient) return
-    sendMessage(
-      { text: content },
-      { body: { clientId: selectedClient.id, month: parseInt(selectedMonth), year: parseInt(selectedYear) } }
-    )
+    
+    const userMessage = { id: crypto.randomUUID(), role: 'user' as const, content }
+    const newMessages = [...chatMessages, userMessage]
+    setChatMessages(newMessages)
     setInputValue('')
+    setIsLoading(true)
+    
+    try {
+      const response = await fetch('/api/agentes/analista', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
+          clientId: selectedClient.id,
+          month: parseInt(selectedMonth),
+          year: parseInt(selectedYear),
+        }),
+      })
+      
+      if (!response.ok) {
+        throw new Error('Error en la respuesta')
+      }
+      
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('No reader')
+      
+      const decoder = new TextDecoder()
+      let assistantContent = ''
+      const assistantId = crypto.randomUUID()
+      
+      // Add empty assistant message
+      setChatMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '' }])
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        
+        const chunk = decoder.decode(value, { stream: true })
+        // Parse SSE format
+        const lines = chunk.split('\n')
+        for (const line of lines) {
+          if (line.startsWith('0:')) {
+            // Text content
+            try {
+              const text = JSON.parse(line.slice(2))
+              assistantContent += text
+              setChatMessages(prev => 
+                prev.map(m => m.id === assistantId ? { ...m, content: assistantContent } : m)
+              )
+            } catch {
+              // Skip parse errors
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[v0] Error sending message:', error)
+      toast.error('Error al enviar mensaje')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -155,12 +194,12 @@ export default function AnalistaPage() {
   }
 
   const handleSaveAsReport = async () => {
-    if (messages.length === 0 || !selectedClient) return
+    if (chatMessages.length === 0 || !selectedClient) return
     
-    const lastAssistantMessage = messages.filter(m => m.role === 'assistant').pop()
+    const lastAssistantMessage = chatMessages.filter(m => m.role === 'assistant').pop()
     if (!lastAssistantMessage) return
     
-    const messageText = getMessageText(lastAssistantMessage.parts)
+    const messageText = lastAssistantMessage.content
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -371,9 +410,7 @@ export default function AnalistaPage() {
             {/* Messages */}
             <ScrollArea className="flex-1 p-4">
               <div className="max-w-3xl mx-auto space-y-4">
-                {messages.map((message) => {
-                  const text = getMessageText(message.parts)
-                  return (
+                {chatMessages.map((message) => (
                   <div
                     key={message.id}
                     className={cn(
@@ -391,15 +428,14 @@ export default function AnalistaPage() {
                     >
                       {message.role === 'assistant' ? (
                         <div className="prose prose-sm dark:prose-invert max-w-none">
-                          <ReactMarkdown>{text}</ReactMarkdown>
+                          <ReactMarkdown>{message.content}</ReactMarkdown>
                         </div>
                       ) : (
-                        <p className="text-sm whitespace-pre-wrap">{text}</p>
+                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                       )}
                     </div>
                   </div>
-                  )
-                })}
+                ))}
 
                 {isLoading && (
                   <div className="flex justify-start">
