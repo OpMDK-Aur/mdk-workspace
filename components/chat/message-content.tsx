@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import { ChartBlock } from './chart-block'
 import { FileBlock } from './file-block'
 import { ImageBlock } from './image-block'
+import { PdfBlock } from './pdf-block'
 
 interface MessageContentProps {
   content: string
@@ -11,9 +12,9 @@ interface MessageContentProps {
 
 export function MessageContent({ content }: MessageContentProps) {
   // Parse content for special blocks (```chart, ```file and ```image)
-  const parts: Array<{ type: 'text' | 'chart' | 'file' | 'image'; content: string }> = []
+  const parts: Array<{ type: 'text' | 'chart' | 'file' | 'image' | 'pdf'; content: string }> = []
   
-  const regex = /```(chart|file|image)\n([\s\S]*?)```/g
+  const regex = /```(chart|file|image|pdf)\n([\s\S]*?)```/g
   let lastIndex = 0
   let match
 
@@ -24,7 +25,7 @@ export function MessageContent({ content }: MessageContentProps) {
     }
     
     // Add the special block
-    parts.push({ type: match[1] as 'chart' | 'file' | 'image', content: match[2].trim() })
+    parts.push({ type: match[1] as 'chart' | 'file' | 'image' | 'pdf', content: match[2].trim() })
     lastIndex = regex.lastIndex
   }
 
@@ -76,6 +77,16 @@ export function MessageContent({ content }: MessageContentProps) {
           } catch (e) {
             console.error('Failed to parse image config:', e)
             return <pre key={index} className="text-red-500">Error parsing image: {part.content}</pre>
+          }
+        }
+
+        if (part.type === 'pdf') {
+          try {
+            const config = JSON.parse(part.content)
+            return <PdfBlock key={index} config={config} />
+          } catch (e) {
+            console.error('Failed to parse pdf config:', e)
+            return <pre key={index} className="text-red-500">Error parsing pdf: {part.content}</pre>
           }
         }
         

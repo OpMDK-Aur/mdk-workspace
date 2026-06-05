@@ -514,16 +514,25 @@ Para generar ARCHIVOS descargables (CSV de datos, reportes), usa un bloque de co
 ` + "```" + `
 
 Para generar IMAGENES (banners, gráficos visuales, ilustraciones para reportes), usa un bloque de codigo con la palabra image y describe lo que quieres generar:
-
-` + "```" + `image
-{"prompt":"Descripcion detallada en ingles de la imagen a generar, estilo profesional para reporte de marketing","alt":"Texto alternativo descriptivo"}
-` + "```" + `
+  
+  ` + "```" + `image
+  {"prompt":"Descripcion detallada en ingles de la imagen a generar, estilo profesional para reporte de marketing","alt":"Texto alternativo descriptivo"}
+  ` + "```" + `
+  
+  Para generar un INFORME EN PDF descargable, usa un bloque de codigo con la palabra pdf. El sistema genera el PDF real automáticamente a partir de este JSON, así que SIEMPRE incluye el bloque pdf completo con los datos. NUNCA digas "voy a generar el PDF y te lo envío en breve" sin incluir el bloque: el PDF solo existe si emites el bloque pdf.
+  
+  ` + "```" + `pdf
+  {"name":"informe-junio-2026.pdf","title":"Informe de Cierre - ICS Salud","subtitle":"Periodo: Junio 2026","sections":[{"heading":"Resumen Ejecutivo","text":"Durante el periodo se generaron 224 leads con una inversión total de $4,500."},{"heading":"Métricas por Plataforma","table":{"headers":["Plataforma","Inversión","Leads","CPL","CTR"],"rows":[["Meta Ads","$1,500","45","$33.33","2.10%"],["Google Ads","$2,300","62","$37.10","3.40%"]]}},{"heading":"Recomendaciones","bullets":["Aumentar inversión en campañas con mejor CPL.","Realizar pruebas A/B en campañas con menor CTR."]}]}
+  ` + "```" + `
+  
+  Estructura del PDF: "title" (obligatorio), "subtitle" (opcional), y "sections" (array). Cada sección puede tener "heading", "text", "bullets" (array de strings) y/o "table" ({headers:[], rows:[[]]}). Usa tablas para las métricas y datos numéricos.
 
 REGLAS DE VISUALIZACION:
 - Usa gráficos cuando compares números entre plataformas, periodos o categorías.
 - No necesitas especificar colores: las gráficas usan automáticamente la paleta del sistema. Especifica siempre el campo "format" correcto ("currency", "percent" o "number") para que los valores se muestren bien.
 - Usa "pie" para distribución/proporción, "bar" para comparar categorías, "line"/"area" para tendencias en el tiempo.
-- Ofrece un CSV descargable cuando el usuario pida exportar datos o cuando generes un informe completo.
+  - Ofrece un CSV descargable cuando el usuario pida exportar datos o cuando generes un informe completo.
+  - Cuando el usuario pida un PDF o un informe descargable, SIEMPRE emite un bloque pdf completo con los datos reales (no prometas enviarlo "en breve"). Al generar un informe completo, incluye también el bloque pdf además de los gráficos.
 
 ANALISIS DE IMAGENES:
 Si el usuario adjunta imágenes (capturas de dashboards, reportes, anuncios), analízalas detalladamente, extrae los datos que puedas ver y úsalos en tu análisis.
@@ -560,7 +569,7 @@ FORMATO:
         })
       : [{
           role: 'user',
-          content: `Genera un informe de análisis completo para ${client.nombre_del_negocio} del periodo ${periodoTexto}. Incluye gráficos de visualización y un CSV descargable con los datos.`
+          content: `Genera un informe de análisis completo para ${client.nombre_del_negocio} del periodo ${periodoTexto}. Incluye gráficos de visualización, un CSV descargable y un informe en PDF (bloque pdf) con los datos.`
         }]
 
     // Use GPT-4o for vision when images present, otherwise gpt-4o-mini
