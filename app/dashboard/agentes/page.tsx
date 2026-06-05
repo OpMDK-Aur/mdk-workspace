@@ -72,7 +72,7 @@ export default function AgentesPage() {
     } else if (slug === 'revops') {
       setRevopsOpen(true)
     } else if (slug === 'analista') {
-      window.location.href = '/dashboard/agentes/analista'
+      window.location.href = '/analista'
     }
   }
 
