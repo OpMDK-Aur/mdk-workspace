@@ -1201,8 +1201,11 @@ const applyFilter = (filter: SavedFilter) => {
               filteredClients.map((client) => {
                 const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
                 const pm = profiles.find(p => p.id === client.project_manager_id)
+                const am = profiles.find(p => p.id === client.account_manager_id)
                 const isInactivo = client.activo === false
                 const isEnRiesgo = client.etapa === 'solicito_baja' || client.etapa === 'inhabilitado_mora'
+                const hasGoogle = !!client.google_ads_customer_id
+                const hasMeta = !!client.meta_ads_account_id
                 
                 return (
                   <Link key={client.id} href={`/dashboard/clients/${client.id}`}>
@@ -1221,7 +1224,7 @@ const applyFilter = (filter: SavedFilter) => {
                             )}>
                               {client.nombre_del_negocio}
                             </h3>
-                            {client.nombre && (
+                            {visibleColumns.includes('contacto') && (client.nombre || client.apellido) && (
                               <p className="text-sm text-muted-foreground truncate">
                                 {client.nombre} {client.apellido || ''}
                               </p>
@@ -1231,56 +1234,124 @@ const applyFilter = (filter: SavedFilter) => {
                         </div>
                         
                         {/* Unidades de negocio */}
-                        <div className="flex flex-wrap gap-1">
-                          {clientUnidades.length > 0 ? (
-                            clientUnidades.map(unidad => {
-                              const semaforo = client.semaforo_unidades?.[unidad]
-                              const semaforoBadge = getSemaforoBadge(semaforo)
-                              return (
-                                <Badge 
-                                  key={unidad} 
-                                  variant="outline" 
-                                  className={cn('text-xs gap-1', semaforoBadge.className)}
-                                >
-                                  <span 
-                                    className="h-1.5 w-1.5 rounded-full" 
-                                    style={{ backgroundColor: semaforoBadge.color }}
-                                  />
-                                  {unidad}
-                                </Badge>
-                              )
-                            })
-                          ) : (
-                            <Badge variant="outline" className="text-xs text-muted-foreground">Sin unidad</Badge>
-                          )}
-                          {isInactivo && (
-                            <Badge variant="secondary" className="text-xs">Inactivo</Badge>
-                          )}
-                          {isEnRiesgo && (
-                            <Badge variant="destructive" className="text-xs">
-                              {client.etapa === 'solicito_baja' ? 'Baja' : 'Mora'}
-                            </Badge>
-                          )}
-                        </div>
+                        {visibleColumns.includes('unidad_negocio') && (
+                          <div className="flex flex-wrap gap-1">
+                            {clientUnidades.length > 0 ? (
+                              clientUnidades.map(unidad => {
+                                const semaforo = client.semaforo_unidades?.[unidad]
+                                const semaforoBadge = getSemaforoBadge(semaforo)
+                                return (
+                                  <Badge 
+                                    key={unidad} 
+                                    variant="outline" 
+                                    className={cn('text-xs gap-1', semaforoBadge.className)}
+                                  >
+                                    <span 
+                                      className="h-1.5 w-1.5 rounded-full" 
+                                      style={{ backgroundColor: semaforoBadge.color }}
+                                    />
+                                    {unidad}
+                                  </Badge>
+                                )
+                              })
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-muted-foreground">Sin unidad</Badge>
+                            )}
+                            {isInactivo && (
+                              <Badge variant="secondary" className="text-xs">Inactivo</Badge>
+                            )}
+                            {isEnRiesgo && (
+                              <Badge variant="destructive" className="text-xs">
+                                {client.etapa === 'solicito_baja' ? 'Baja' : 'Mora'}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
                         
-                        {/* Info grid */}
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          {clientUnidades.includes('MDK') && client.plan && (
+                        {/* Info grid - respects visible columns */}
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
+                          {visibleColumns.includes('plan') && clientUnidades.includes('MDK') && client.plan && (
                             <div>
                               <span className="text-muted-foreground">Plan:</span>{' '}
                               <span className="font-medium">{client.plan}</span>
                             </div>
                           )}
-                          {client.fee_mdk && (
+                          {visibleColumns.includes('fee_mdk') && client.fee_mdk && (
                             <div>
-                              <span className="text-muted-foreground">Fee:</span>{' '}
+                              <span className="text-muted-foreground">Fee MDK:</span>{' '}
                               <span className="font-medium">{formatCurrency(client.fee_mdk)}</span>
                             </div>
                           )}
-                          {pm && (
-                            <div className="col-span-2 truncate">
+                          {visibleColumns.includes('fee_aurelia') && client.fee_aurelia && (
+                            <div>
+                              <span className="text-muted-foreground">Fee Aurelia:</span>{' '}
+                              <span className="font-medium">{formatCurrency(client.fee_aurelia)}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('fee_consultoria') && client.fee_consultoria && (
+                            <div>
+                              <span className="text-muted-foreground">Fee Cons.:</span>{' '}
+                              <span className="font-medium">{formatCurrency(client.fee_consultoria)}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('pm') && pm && (
+                            <div className="truncate">
                               <span className="text-muted-foreground">PM:</span>{' '}
                               <span>{pm.full_name}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('am') && am && (
+                            <div className="truncate">
+                              <span className="text-muted-foreground">AM:</span>{' '}
+                              <span>{am.full_name}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('plataformas') && (hasGoogle || hasMeta) && (
+                            <div className="col-span-2 flex gap-1">
+                              {hasGoogle && <Badge variant="secondary" className="text-xs">Google</Badge>}
+                              {hasMeta && <Badge variant="secondary" className="text-xs">Meta</Badge>}
+                            </div>
+                          )}
+                          {visibleColumns.includes('nps') && client.nps_score != null && (
+                            <div>
+                              <span className="text-muted-foreground">NPS:</span>{' '}
+                              <span className="font-medium">{client.nps_score}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('etapa') && client.etapa && (
+                            <div>
+                              <span className="text-muted-foreground">Etapa:</span>{' '}
+                              <span>{client.etapa.replace(/_/g, ' ')}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('fecha_activacion') && client.fecha_activacion && (
+                            <div>
+                              <span className="text-muted-foreground">Activacion:</span>{' '}
+                              <span>{new Date(client.fecha_activacion).toLocaleDateString('es-AR')}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('fecha_venta') && client.fecha_venta && (
+                            <div>
+                              <span className="text-muted-foreground">Venta:</span>{' '}
+                              <span>{new Date(client.fecha_venta).toLocaleDateString('es-AR')}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('fecha_inicio_trabajo') && client.fecha_inicio_trabajo && (
+                            <div>
+                              <span className="text-muted-foreground">Inicio:</span>{' '}
+                              <span>{new Date(client.fecha_inicio_trabajo).toLocaleDateString('es-AR')}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('crm') && client.crm_tipo && (
+                            <div>
+                              <span className="text-muted-foreground">CRM:</span>{' '}
+                              <span>{client.crm_tipo}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('discord') && client.discord_channel_name && (
+                            <div className="col-span-2 truncate">
+                              <span className="text-muted-foreground">Discord:</span>{' '}
+                              <span>{client.discord_channel_name}</span>
                             </div>
                           )}
                         </div>
