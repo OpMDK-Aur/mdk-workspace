@@ -1090,11 +1090,11 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 </div>
               ) : (
                 <>
-                  <div className="flex items-end gap-2">
-                    <p className="text-2xl font-bold text-foreground break-all">{formatCurrencyFull(feeMdk + feeAurelia + feeConsultoria)}</p>
-                    <p className="text-xs text-muted-foreground mb-1 shrink-0">/ mes</p>
+                  <div className="flex flex-col">
+                    <p className="text-xl font-bold text-foreground leading-tight whitespace-nowrap">{formatCurrencyFull(feeMdk + feeAurelia + feeConsultoria)}</p>
+                    <p className="text-xs text-muted-foreground">/ mes</p>
                   </div>
-                  <div className="flex flex-wrap gap-3 mt-2">
+                  <div className="flex flex-col gap-0.5 mt-2">
                     {feeMdk > 0 && <span className="text-[11px] text-muted-foreground">MDK: {formatCurrencyFull(feeMdk)}</span>}
                     {feeAurelia > 0 && <span className="text-[11px] text-muted-foreground">Aurelia: {formatCurrencyFull(feeAurelia)}</span>}
                     {feeConsultoria > 0 && <span className="text-[11px] text-muted-foreground">Consultoría: {formatCurrencyFull(feeConsultoria)}</span>}
