@@ -537,6 +537,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   // Active/Inactive status
   const [isActivo, setIsActivo] = useState(client.activo !== false) // null or true = activo
   const [updatingActivo, setUpdatingActivo] = useState(false)
+  const [showActivity, setShowActivity] = useState(false)
 
   // Ad account names (resolved from the platform account listing endpoints)
   const [metaNames, setMetaNames] = useState<Record<string, string>>({})
@@ -952,8 +953,10 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const totalMinimo = teamMembers.reduce((acc, m) => acc + m.minimo, 0)
 
   return (
-    <div className="flex-1 overflow-y-auto bg-background">
-      <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+    <div className="flex-1 min-h-0 bg-background flex overflow-hidden">
+      {/* Main scrollable content — re-centers/shifts left when the activity panel opens */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-5xl mx-auto px-6 py-8 space-y-8 transition-all duration-300 ease-in-out">
 
         {/* Back + header */}
         <div className="flex items-start gap-4">
@@ -991,6 +994,15 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   </div>
   </div>
   </div>
+          <Button
+            variant={showActivity ? 'default' : 'outline'}
+            size="sm"
+            className="gap-1.5 shrink-0"
+            onClick={() => setShowActivity(v => !v)}
+          >
+            <MessageSquare className="h-4 w-4" />
+            {showActivity ? 'Ocultar actividad' : 'Ver actividad'}
+          </Button>
         </div>
 
         {/* ── Info row: PM / AM / Fee / Dedicacion / Plataformas ── */}
@@ -1466,29 +1478,6 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           <ClientCotizaciones clientId={client.id} currentUserId={currentProfile?.id} />
         </div>
 
-        {/* ── Comentarios / Adjuntos / Minutas del Cliente ── */}
-        <ClientActivityTabs
-          clientId={client.id}
-          clientPlan={(client.unidades_negocio || []).includes('MDK') || client.unidad_negocio === 'MDK' ? client.plan : null}
-          unidadNegocio={client.unidades_negocio?.[0] || client.unidad_negocio}
-          currentUser={currentProfile ? {
-            id: currentProfile.id,
-            nombre: currentProfile.nombre,
-            apellido: currentProfile.apellido,
-            avatar_url: currentProfile.avatar_url,
-          } : null}
-        >
-          <ClientComments 
-            clientId={client.id} 
-            currentUser={currentProfile ? {
-              id: currentProfile.id,
-              nombre: currentProfile.nombre,
-              apellido: currentProfile.apellido,
-              avatar_url: currentProfile.avatar_url,
-            } : null}
-          />
-        </ClientActivityTabs>
-
         {/* ── Memoria del Cliente ── */}
         <ClientMemoria clienteId={client.id} />
 
@@ -1531,6 +1520,57 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         </div>
 
       </div>
+        </div>
+
+      {/* ── Sliding activity panel (right) ── */}
+      <aside
+        className={cn(
+          'shrink-0 h-full border-l border-border bg-card overflow-hidden transition-[width] duration-300 ease-in-out',
+          showActivity ? 'w-full sm:w-[420px] lg:w-[460px]' : 'w-0'
+        )}
+        aria-hidden={!showActivity}
+      >
+        <div className="w-full sm:w-[420px] lg:w-[460px] h-full flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+            <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-primary" />
+              Actividad
+            </h2>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={() => setShowActivity(false)}
+              aria-label="Cerrar actividad"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <ClientActivityTabs
+              clientId={client.id}
+              clientPlan={(client.unidades_negocio || []).includes('MDK') || client.unidad_negocio === 'MDK' ? client.plan : null}
+              unidadNegocio={client.unidades_negocio?.[0] || client.unidad_negocio}
+              currentUser={currentProfile ? {
+                id: currentProfile.id,
+                nombre: currentProfile.nombre,
+                apellido: currentProfile.apellido,
+                avatar_url: currentProfile.avatar_url,
+              } : null}
+            >
+              <ClientComments 
+                clientId={client.id} 
+                currentUser={currentProfile ? {
+                  id: currentProfile.id,
+                  nombre: currentProfile.nombre,
+                  apellido: currentProfile.apellido,
+                  avatar_url: currentProfile.avatar_url,
+                } : null}
+              />
+            </ClientActivityTabs>
+          </div>
+        </div>
+      </aside>
     </div>
   )
 }
