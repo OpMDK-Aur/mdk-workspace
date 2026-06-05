@@ -1,9 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { consumeStream, convertToModelMessages, streamText, type UIMessage } from 'ai'
+import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
 
 export const maxDuration = 60
 
 const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
+const GOOGLE_ADS_API_VERSION = 'v23'
 
 // Helper to fetch Meta metrics directly from Graph API
 async function fetchMetaMetrics(
@@ -63,13 +65,15 @@ async function fetchMetaMetrics(
 async function fetchGoogleMetrics(
   customerId: string,
   accessToken: string,
+  developerToken: string,
+  loginCustomerId: string,
   periodo?: { start: string; end: string }
 ): Promise<{ spend: number; leads: number; cpl: number; impressions: number; clicks: number } | null> {
   try {
     const today = new Date()
     const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
-    const startDate = (periodo?.start || sevenDaysAgo.toISOString().split('T')[0]).replace(/-/g, '')
-    const endDate = (periodo?.end || today.toISOString().split('T')[0]).replace(/-/g, '')
+    const startDate = periodo?.start || sevenDaysAgo.toISOString().split('T')[0]
+    const endDate = periodo?.end || today.toISOString().split('T')[0]
     
     const cleanCustomerId = customerId.replace(/-/g, '')
     
@@ -80,21 +84,22 @@ async function fetchGoogleMetrics(
         metrics.cost_micros,
         metrics.conversions
       FROM customer
-      WHERE segments.date BETWEEN '${startDate.slice(0, 4)}-${startDate.slice(4, 6)}-${startDate.slice(6, 8)}' AND '${endDate.slice(0, 4)}-${endDate.slice(4, 6)}-${endDate.slice(6, 8)}'
+      WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
     `
     
-    const response = await fetch(`https://googleads.googleapis.com/v18/customers/${cleanCustomerId}/googleAds:search`, {
+    const response = await fetch(`https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}/googleAds:search`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '',
+        'developer-token': developerToken,
+        'login-customer-id': loginCustomerId,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ query }),
     })
     
     if (!response.ok) {
-      console.error('[v0] Google Ads API error:', response.status, await response.text())
+      console.error('[v0] Google Ads API error:', response.status, (await response.text()).slice(0, 300))
       return null
     }
     
@@ -103,11 +108,20 @@ async function fetchGoogleMetrics(
       return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0 }
     }
     
-    const row = data.results[0].metrics || {}
-    const impressions = parseInt(row.impressions || '0', 10)
-    const clicks = parseInt(row.clicks || '0', 10)
-    const spend = (parseInt(row.costMicros || '0', 10) / 1000000)
-    const leads = Math.round(parseFloat(row.conversions || '0'))
+    // Aggregate across all returned rows (one per day)
+    let impressions = 0
+    let clicks = 0
+    let costMicros = 0
+    let conversions = 0
+    for (const result of data.results) {
+      const m = result.metrics || {}
+      impressions += parseInt(m.impressions || '0', 10)
+      clicks += parseInt(m.clicks || '0', 10)
+      costMicros += parseInt(m.costMicros || m.cost_micros || '0', 10)
+      conversions += parseFloat(m.conversions || '0')
+    }
+    const spend = costMicros / 1000000
+    const leads = Math.round(conversions)
     const cpl = leads > 0 ? spend / leads : 0
     
     return { spend, leads, cpl, impressions, clicks }
@@ -203,21 +217,13 @@ export async function POST(req: Request) {
 
     console.log('[v0] Tareas del periodo:', { count: tareasDelPeriodo.length, periodo })
 
-    // Get access tokens from plataformas_tokens
-    const { data: metaTokens } = await supabase
-      .from('plataformas_tokens')
-      .select('access_token')
-      .eq('plataforma', 'meta_ads')
-      .limit(1)
-
-    const { data: googleTokens } = await supabase
-      .from('plataformas_tokens')
-      .select('access_token')
-      .eq('plataforma', 'google_ads')
-      .limit(1)
-    
-    const metaAccessToken = metaTokens?.[0]?.access_token
-    const googleAccessToken = googleTokens?.[0]?.access_token
+    // Get access tokens for direct API calls (same approach as the Analista agent)
+    // Meta: from environment variable
+    const metaAccessToken = process.env.META_ADS_ACCESS_TOKEN
+    // Google: centralized helper that refreshes the token and reads from DB/env
+    const { accessToken: googleAccessToken } = await getGoogleAdsAccessToken()
+    const googleDeveloperToken = getGoogleAdsDeveloperToken()
+    const googleLoginCustomerId = getGoogleAdsLoginCustomerId()
 
     // Fetch metrics for selected accounts
     const metricsByAccount: Array<{
@@ -233,7 +239,7 @@ export async function POST(req: Request) {
     // Determine which accounts to fetch based on selection
     const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
     
-    console.log('[v0] Tokens found:', { meta: !!metaAccessToken, google: !!googleAccessToken })
+    console.log('[v0] Tokens found:', { meta: !!metaAccessToken, google: !!googleAccessToken, googleDevToken: !!googleDeveloperToken })
     
     // Fetch Meta accounts metrics (check plural first, then singular as fallback)
     const metaAccounts = client.meta_ads_account_ids?.length 
@@ -267,12 +273,12 @@ export async function POST(req: Request) {
         ? [client.google_ads_customer_id]
         : []
     
-    if (googleAccessToken && googleAccounts.length > 0) {
+    if (googleAccessToken && googleDeveloperToken && googleAccounts.length > 0) {
       console.log('[v0] Google accounts to fetch:', googleAccounts)
       for (const accountId of googleAccounts) {
         if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
           console.log('[v0] Fetching Google metrics for:', accountId)
-          const metrics = await fetchGoogleMetrics(accountId, googleAccessToken, periodo)
+          const metrics = await fetchGoogleMetrics(accountId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, periodo)
           console.log('[v0] Google metrics result:', metrics)
           if (metrics) {
             metricsByAccount.push({
