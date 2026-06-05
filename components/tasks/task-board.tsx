@@ -114,261 +114,249 @@ export function TaskBoard() {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 p-4 border-b bg-card">
-        {/* Left section: Actions */}
-        <div className="flex items-center gap-2">
-          <Button className="gap-1.5" onClick={() => { setNewTaskMode('manual'); setNewTaskOpen(true) }}>
-            <Plus className="h-4 w-4" />
-            Nueva tarea
-          </Button>
-          <Button variant="outline" className="gap-1.5" onClick={() => setMeetingOpen(true)}>
-            <Calendar className="h-4 w-4" />
-            Agendar reunion
-          </Button>
-        </div>
+      <div className="flex items-center gap-3 p-4 border-b bg-card overflow-x-auto">
+        {/* Actions */}
+        <Button className="gap-1.5 shrink-0" onClick={() => { setNewTaskMode('manual'); setNewTaskOpen(true) }}>
+          <Plus className="h-4 w-4" />
+          Nueva tarea
+        </Button>
+        <Button variant="outline" className="gap-1.5 shrink-0" onClick={() => setMeetingOpen(true)}>
+          <Calendar className="h-4 w-4" />
+          Agendar reunion
+        </Button>
 
-        {/* Center section: Filters */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          {/* Advanced Filter Builder */}
-          <FilterBuilder
-            filters={advancedFilters}
-            savedFilters={savedFilters}
-            onChange={setAdvancedFilters}
-            onSaveFilter={saveFilter}
-            onLoadFilter={loadSavedFilter}
-            onDeleteSavedFilter={deleteSavedFilter}
-          />
+        {/* Filters */}
+        <FilterBuilder
+          filters={advancedFilters}
+          savedFilters={savedFilters}
+          onChange={setAdvancedFilters}
+          onSaveFilter={saveFilter}
+          onLoadFilter={loadSavedFilter}
+          onDeleteSavedFilter={deleteSavedFilter}
+        />
 
-          {/* All tasks chip */}
-          <Badge
-            variant="outline"
-            className={cn(
-              'cursor-pointer px-2.5 py-1 h-7',
-              !hasFilters && 'bg-primary/10 text-primary border-primary/30'
-            )}
+        <Badge
+          variant="outline"
+          className={cn(
+            'cursor-pointer px-2.5 py-1 h-7 shrink-0',
+            !hasFilters && 'bg-primary/10 text-primary border-primary/30'
+          )}
+          onClick={clearFilters}
+        >
+          Todas
+        </Badge>
+
+        {/* Priority filter */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Badge
+              variant="outline"
+              className={cn(
+                'cursor-pointer px-2.5 py-1 h-7 gap-1 shrink-0',
+                filters.priority && 'bg-red-500/10 text-red-400 border-red-500/30'
+              )}
+            >
+              Prioridad
+              <ChevronDown className="h-3 w-3" />
+            </Badge>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            {(['alta', 'media', 'baja'] as TaskPriority[]).map((p) => (
+              <DropdownMenuCheckboxItem
+                key={p}
+                checked={filters.priority === p}
+                onCheckedChange={(checked) => setFilter('priority', checked ? p : null)}
+              >
+                <Badge variant="outline" className={cn('text-xs border-0', PRIORITY_CONFIG[p].bgColor, PRIORITY_CONFIG[p].color)}>
+                  {PRIORITY_CONFIG[p].label}
+                </Badge>
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Status filter */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Badge
+              variant="outline"
+              className={cn(
+                'cursor-pointer px-2.5 py-1 h-7 gap-1 shrink-0',
+                filters.status && 'bg-purple-500/10 text-purple-400 border-purple-500/30'
+              )}
+            >
+              {filters.status ? STATUS_CONFIG[filters.status].label : 'Estado'}
+              <ChevronDown className="h-3 w-3" />
+            </Badge>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            {STATUS_ORDER.map((s) => (
+              <DropdownMenuCheckboxItem
+                key={s}
+                checked={filters.status === s}
+                onCheckedChange={(checked) => setFilter('status', checked ? s : null)}
+              >
+                <Badge variant="outline" className={cn('text-xs border-0', STATUS_CONFIG[s].bgColor, STATUS_CONFIG[s].color)}>
+                  {STATUS_CONFIG[s].label}
+                </Badge>
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Assignee filter */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Badge
+              variant="outline"
+              className={cn(
+                'cursor-pointer px-2.5 py-1 h-7 gap-1 shrink-0',
+                (filters.assigneeIds.length > 0 || filters.showUnassigned) && 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+              )}
+            >
+              {filters.showUnassigned
+                ? 'Sin asignar'
+                : filters.assigneeIds.length === 0
+                ? 'Asignado'
+                : filters.assigneeIds.length === 1
+                ? ASSIGNEES.find((a) => a.id === filters.assigneeIds[0])?.name ?? 'Asignado'
+                : `${filters.assigneeIds.length} asignados`}
+              <ChevronDown className="h-3 w-3" />
+            </Badge>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem
+              onClick={() => {
+                setFilter('assigneeIds', [])
+                setFilter('showUnassigned', false)
+              }}
+              className={cn(
+                !filters.showUnassigned && filters.assigneeIds.length === 0 && 'bg-muted'
+              )}
+            >
+              Todos
+            </DropdownMenuItem>
+            <DropdownMenuCheckboxItem
+              checked={filters.showUnassigned === true}
+              onCheckedChange={(checked) => {
+                setFilter('showUnassigned', checked)
+                if (checked) setFilter('assigneeIds', [])
+              }}
+            >
+              Sin asignar
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
+            {ASSIGNEES.map((a) => (
+              <DropdownMenuCheckboxItem
+                key={a.id}
+                checked={filters.assigneeIds.includes(a.id)}
+                onCheckedChange={(checked) => {
+                  setFilter('showUnassigned', false)
+                  const newIds = checked
+                    ? [...filters.assigneeIds, a.id]
+                    : filters.assigneeIds.filter(id => id !== a.id)
+                  setFilter('assigneeIds', newIds)
+                }}
+              >
+                {a.name}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Type filter */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Badge
+              variant="outline"
+              className={cn(
+                'cursor-pointer px-2.5 py-1 h-7 gap-1 shrink-0',
+                filters.type && 'bg-violet-500/10 text-violet-400 border-violet-500/30'
+              )}
+            >
+              {filters.type ? TYPE_CONFIG[filters.type].label : 'Tipo'}
+              <ChevronDown className="h-3 w-3" />
+            </Badge>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            {(Object.keys(TYPE_CONFIG) as TaskType[]).map((t) => (
+              <DropdownMenuCheckboxItem
+                key={t}
+                checked={filters.type === t}
+                onCheckedChange={(checked) => setFilter('type', checked ? t : null)}
+              >
+                <Badge variant="outline" className={cn('text-xs border-0', TYPE_CONFIG[t].color)}>
+                  {TYPE_CONFIG[t].label}
+                </Badge>
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {hasFilters && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
             onClick={clearFilters}
           >
-            Todas
-          </Badge>
+            <X className="h-4 w-4" />
+          </Button>
+        )}
 
-            {/* Priority filter */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    'cursor-pointer px-2.5 py-1 h-7 gap-1',
-                    filters.priority && 'bg-red-500/10 text-red-400 border-red-500/30'
-                  )}
-                >
-                  Prioridad
-                  <ChevronDown className="h-3 w-3" />
-                </Badge>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                {(['alta', 'media', 'baja'] as TaskPriority[]).map((p) => (
-                  <DropdownMenuCheckboxItem
-                    key={p}
-                    checked={filters.priority === p}
-                    onCheckedChange={(checked) => setFilter('priority', checked ? p : null)}
-                  >
-                    <Badge variant="outline" className={cn('text-xs border-0', PRIORITY_CONFIG[p].bgColor, PRIORITY_CONFIG[p].color)}>
-                      {PRIORITY_CONFIG[p].label}
-                    </Badge>
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+        {/* Spacer */}
+        <div className="flex-1 min-w-4" />
 
-            {/* Status filter */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    'cursor-pointer px-2.5 py-1 h-7 gap-1',
-                    filters.status && 'bg-purple-500/10 text-purple-400 border-purple-500/30'
-                  )}
-                >
-                  {filters.status ? STATUS_CONFIG[filters.status].label : 'Estado'}
-                  <ChevronDown className="h-3 w-3" />
-                </Badge>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                {STATUS_ORDER.map((s) => (
-                  <DropdownMenuCheckboxItem
-                    key={s}
-                    checked={filters.status === s}
-                    onCheckedChange={(checked) => setFilter('status', checked ? s : null)}
-                  >
-                    <Badge variant="outline" className={cn('text-xs border-0', STATUS_CONFIG[s].bgColor, STATUS_CONFIG[s].color)}>
-                      {STATUS_CONFIG[s].label}
-                    </Badge>
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* Assignee filter (multi-select) */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    'cursor-pointer px-2.5 py-1 h-7 gap-1',
-                    (filters.assigneeIds.length > 0 || filters.showUnassigned) && 'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                  )}
-                >
-                  {filters.showUnassigned
-                    ? 'Sin asignar'
-                    : filters.assigneeIds.length === 0
-                    ? 'Asignado'
-                    : filters.assigneeIds.length === 1
-                    ? ASSIGNEES.find((a) => a.id === filters.assigneeIds[0])?.name ?? 'Asignado'
-                    : `${filters.assigneeIds.length} asignados`}
-                  <ChevronDown className="h-3 w-3" />
-                </Badge>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                {/* Todos option */}
-                <DropdownMenuItem
-                  onClick={() => {
-                    setFilter('assigneeIds', [])
-                    setFilter('showUnassigned', false)
-                  }}
-                  className={cn(
-                    !filters.showUnassigned && filters.assigneeIds.length === 0 && 'bg-muted'
-                  )}
-                >
-                  Todos
-                </DropdownMenuItem>
-                
-                {/* Sin asignar option */}
-                <DropdownMenuCheckboxItem
-                  checked={filters.showUnassigned === true}
-                  onCheckedChange={(checked) => {
-                    setFilter('showUnassigned', checked)
-                    if (checked) setFilter('assigneeIds', [])
-                  }}
-                >
-                  Sin asignar
-                </DropdownMenuCheckboxItem>
-                
-                <DropdownMenuSeparator />
-                
-                {ASSIGNEES.map((a) => (
-                  <DropdownMenuCheckboxItem
-                    key={a.id}
-                    checked={filters.assigneeIds.includes(a.id)}
-                    onCheckedChange={(checked) => {
-                      setFilter('showUnassigned', false)
-                      const newIds = checked
-                        ? [...filters.assigneeIds, a.id]
-                        : filters.assigneeIds.filter(id => id !== a.id)
-                      setFilter('assigneeIds', newIds)
-                    }}
-                  >
-                    {a.name}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* Type filter */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    'cursor-pointer px-2.5 py-1 h-7 gap-1',
-                    filters.type && 'bg-violet-500/10 text-violet-400 border-violet-500/30'
-                  )}
-                >
-                  {filters.type ? TYPE_CONFIG[filters.type].label : 'Tipo'}
-                  <ChevronDown className="h-3 w-3" />
-                </Badge>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                {(Object.keys(TYPE_CONFIG) as TaskType[]).map((t) => (
-                  <DropdownMenuCheckboxItem
-                    key={t}
-                    checked={filters.type === t}
-                    onCheckedChange={(checked) => setFilter('type', checked ? t : null)}
-                  >
-                    <Badge variant="outline" className={cn('text-xs border-0', TYPE_CONFIG[t].color)}>
-                      {TYPE_CONFIG[t].label}
-                    </Badge>
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* Clear filters */}
-            {hasFilters && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                onClick={clearFilters}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            )}
+        {/* Search */}
+        <div className="relative shrink-0">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Buscar tareas..."
+            value={filters.searchQuery}
+            onChange={(e) => setFilter('searchQuery', e.target.value)}
+            className="pl-9 w-[150px] h-8"
+          />
         </div>
 
-        {/* Right section: Search and View Toggle */}
-        <div className="flex items-center gap-2 ml-auto">
-          {/* Search tasks */}
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Buscar tareas..."
-              value={filters.searchQuery}
-              onChange={(e) => setFilter('searchQuery', e.target.value)}
-              className="pl-9 w-[160px] h-8"
-            />
-          </div>
-
-          {/* View Toggle - Icon only */}
-          <div className="flex items-center rounded-lg border bg-muted/30 p-0.5">
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                'h-8 w-8 rounded-md',
-                view === 'kanban' && 'bg-background shadow-sm'
-              )}
-              onClick={() => setView('kanban')}
-              title="Kanban"
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                'h-8 w-8 rounded-md',
-                view === 'list' && 'bg-background shadow-sm'
-              )}
-              onClick={() => setView('list')}
-              title="Lista"
-            >
-              <List className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                'h-8 w-8 rounded-md',
-                view === 'calendar' && 'bg-background shadow-sm'
-              )}
-              onClick={() => setView('calendar')}
-              title="Calendario"
-            >
-              <Calendar className="h-4 w-4" />
-            </Button>
-          </div>
+        {/* View Toggle */}
+        <div className="flex items-center rounded-lg border bg-muted/30 p-0.5 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'h-8 w-8 rounded-md',
+              view === 'kanban' && 'bg-background shadow-sm'
+            )}
+            onClick={() => setView('kanban')}
+            title="Kanban"
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'h-8 w-8 rounded-md',
+              view === 'list' && 'bg-background shadow-sm'
+            )}
+            onClick={() => setView('list')}
+            title="Lista"
+          >
+            <List className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'h-8 w-8 rounded-md',
+              view === 'calendar' && 'bg-background shadow-sm'
+            )}
+            onClick={() => setView('calendar')}
+            title="Calendario"
+          >
+            <Calendar className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
