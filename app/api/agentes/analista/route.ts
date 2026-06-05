@@ -339,38 +339,38 @@ INSTRUCCIONES:
 CAPACIDADES DE VISUALIZACION - OBLIGATORIAS:
 Debes generar al menos 2-3 gráficos por informe usando estos bloques especiales.
 
-Para GRÁFICOS de barras, líneas, áreas o pie, usa EXACTAMENTE este formato:
+Para GRAFICOS de barras, lineas, areas o pie, usa EXACTAMENTE este formato (en un bloque de codigo con la palabra chart):
 
-\`\`\`chart
-{"type":"bar","title":"Inversión por Plataforma","data":[{"name":"Meta Ads","value":1500},{"name":"Google Ads","value":2300}],"xKey":"name","yKey":"value","color":"#7F77DD"}
-\`\`\`
+` + "```" + `chart
+{"type":"bar","title":"Inversion por Plataforma","data":[{"name":"Meta Ads","value":1500},{"name":"Google Ads","value":2300}],"xKey":"name","yKey":"value","color":"#7F77DD"}
+` + "```" + `
 
 Tipos disponibles: "bar", "line", "area", "pie"
 
-Para generar ARCHIVOS descargables (CSV de datos, reportes):
+Para generar ARCHIVOS descargables (CSV de datos, reportes), usa un bloque de codigo con la palabra file:
 
-\`\`\`file
+` + "```" + `file
 {"name":"metricas-mayo-2026.csv","type":"text/csv","content":"Plataforma,Inversion,Leads,CPL\\nMeta Ads,1500,45,33.33\\nGoogle Ads,2300,62,37.10"}
-\`\`\`
+` + "```" + `
 
 REGLAS DE VISUALIZACION:
-- SIEMPRE genera un gráfico de barras comparando inversión entre plataformas si hay datos
-- SIEMPRE genera un gráfico de pie mostrando distribución de leads por plataforma
-- Si hay datos históricos, genera un gráfico de líneas mostrando tendencias
+- SIEMPRE genera un grafico de barras comparando inversion entre plataformas si hay datos
+- SIEMPRE genera un grafico de pie mostrando distribucion de leads por plataforma
+- Si hay datos historicos, genera un grafico de lineas mostrando tendencias
 - Al final del informe, SIEMPRE genera un CSV descargable con los datos del periodo
-- Los gráficos deben ir INLINE con el texto, no al final
+- Los graficos deben ir INLINE con el texto, no al final
 - Usa colores: "#7F77DD" (morado), "#10B981" (verde), "#F59E0B" (amarillo), "#EF4444" (rojo)
 
-ANÁLISIS DE IMÁGENES:
-Si el usuario adjunta imágenes (capturas de dashboards, reportes, anuncios), analízalas detalladamente, extrae los datos que puedas ver y úsalos en tu análisis.
+ANALISIS DE IMAGENES:
+Si el usuario adjunta imagenes (capturas de dashboards, reportes, anuncios), analizalas detalladamente, extrae los datos que puedas ver y usalos en tu analisis.
 
 FORMATO DEL INFORME:
 - Usar markdown para estructura
-- Incluir los gráficos DENTRO del contenido, no al final
-- Destacar números importantes en **negrita**
+- Incluir los graficos DENTRO del contenido, no al final
+- Destacar numeros importantes en **negrita**
 - Organizar por secciones claras
 - Terminar con un CSV descargable de resumen
-\`
+`
 
     // Check if there are image attachments for vision
     const hasImages = attachments?.some((a: { type: string }) => a.type?.startsWith('image/'))
