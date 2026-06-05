@@ -501,6 +501,9 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [preset, setPreset]           = useState('last_30d')
   const [platformFilter, setPlatformFilter] = useState<'all' | 'meta' | 'google'>('all')
   const [campaignFilter, setCampaignFilter] = useState<string>('all')
+  // Team hours recomputed for the selected date range (seeded with the server-provided monthly data)
+  const [teamHours, setTeamHours] = useState<HorasColaborador[]>(horasPorColaborador)
+  const [loadingHours, setLoadingHours] = useState(false)
   const [rows, setRows]               = useState<ScorecardRow[]>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
@@ -806,6 +809,48 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
   useEffect(() => { fetchData(preset) }, [preset, fetchData])
 
+  // Recompute team hours (entradas_de_tiempo) for the selected date range
+  const fetchTeamHours = useCallback(async (p: string) => {
+    setLoadingHours(true)
+    const { start, end } = resolveDateRange(p)
+    try {
+      const { data, error } = await supabase
+        .from('entradas_de_tiempo')
+        .select('duracion_seg, colaborador_id, colaboradores:colaborador_id(id, nombre, apellido, avatar_url)')
+        .eq('cliente_id', client.id)
+        .gte('iniciado_en', `${start}T00:00:00`)
+        .lte('iniciado_en', `${end}T23:59:59`)
+        .not('finalizado_en', 'is', null)
+      if (error) throw error
+      const map = new Map<string, HorasColaborador>()
+      for (const e of (data ?? []) as unknown as Array<{ duracion_seg: number | null; colaborador_id: string | null; colaboradores: { id: string; nombre: string; apellido: string; avatar_url: string | null } | { id: string; nombre: string; apellido: string; avatar_url: string | null }[] | null }>) {
+        const col = Array.isArray(e.colaboradores) ? e.colaboradores[0] ?? null : e.colaboradores
+        const id = col?.id || e.colaborador_id
+        if (!id) continue
+        const horas = (e.duracion_seg ?? 0) / 3600
+        const prev = map.get(id)
+        if (prev) {
+          prev.horas += horas
+        } else {
+          map.set(id, {
+            id,
+            nombre: col?.nombre ?? '',
+            apellido: col?.apellido ?? '',
+            avatar_url: col?.avatar_url ?? null,
+            horas,
+          })
+        }
+      }
+      setTeamHours(Array.from(map.values()).sort((a, b) => b.horas - a.horas))
+    } catch {
+      setTeamHours([])
+    } finally {
+      setLoadingHours(false)
+    }
+  }, [client.id, supabase])
+
+  useEffect(() => { fetchTeamHours(preset) }, [preset, fetchTeamHours])
+
   // Reset campaign filter if it no longer exists in the data
   useEffect(() => {
     if (campaignFilter !== 'all' && !rows.some(r => r.campaignId === campaignFilter)) {
@@ -873,7 +918,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     })
   }
   // Add/override with actual tracked hours (covers people without assigned metrics)
-  for (const h of horasPorColaborador) {
+  for (const h of teamHours) {
     const existing = teamMap.get(h.id)
     if (existing) {
       existing.horas = h.horas
@@ -938,23 +983,6 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   </div>
   </div>
   </div>
-
-          {/* Date filter */}
-          <div className="flex items-center gap-2 shrink-0">
-            <Select value={preset} onValueChange={setPreset}>
-              <SelectTrigger className="h-9 w-44 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {DATE_PRESETS.map(p => (
-                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => fetchData(preset)} disabled={loading}>
-              <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
-            </Button>
-          </div>
         </div>
 
         {/* ── Info row: PM / AM / Fee / Dedicacion / Plataformas ── */}
@@ -1115,7 +1143,30 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
         {/* ── Horas del Equipo ── */}
         <div>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Horas del equipo</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Horas del equipo</h2>
+            <div className="flex items-center gap-2 shrink-0">
+              <Select value={preset} onValueChange={setPreset}>
+                <SelectTrigger className="h-8 w-40 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DATE_PRESETS.map(p => (
+                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => { fetchTeamHours(preset); fetchData(preset) }}
+                disabled={loadingHours || loading}
+              >
+                <RefreshCw className={cn('h-4 w-4', (loadingHours || loading) && 'animate-spin')} />
+              </Button>
+            </div>
+          </div>
           <Card>
             <CardContent className="pt-5 pb-5">
               {/* Resumen general */}
