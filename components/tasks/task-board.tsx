@@ -126,60 +126,6 @@ export function TaskBoard() {
             Agendar reunion
           </Button>
 
-          {/* View Toggle */}
-          <div className="flex items-center rounded-lg border bg-muted/30 p-0.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                'h-8 px-3 rounded-md',
-                view === 'kanban' && 'bg-background shadow-sm'
-              )}
-              onClick={() => setView('kanban')}
-            >
-              <LayoutGrid className="h-4 w-4 mr-1.5" />
-              Kanban
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                'h-8 px-3 rounded-md',
-                view === 'list' && 'bg-background shadow-sm'
-              )}
-              onClick={() => setView('list')}
-            >
-              <List className="h-4 w-4 mr-1.5" />
-              Lista
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                'h-8 px-3 rounded-md',
-                view === 'calendar' && 'bg-background shadow-sm'
-              )}
-              onClick={() => setView('calendar')}
-            >
-              <Calendar className="h-4 w-4 mr-1.5" />
-              Calendario
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Search tasks */}
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Buscar tareas..."
-              value={filters.searchQuery}
-              onChange={(e) => setFilter('searchQuery', e.target.value)}
-              className="pl-9 w-[200px] h-8"
-            />
-          </div>
-
           {/* Advanced Filter Builder */}
           <FilterBuilder
             filters={advancedFilters}
@@ -367,6 +313,60 @@ export function TaskBoard() {
                 <X className="h-4 w-4" />
               </Button>
             )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Search tasks */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Buscar tareas..."
+              value={filters.searchQuery}
+              onChange={(e) => setFilter('searchQuery', e.target.value)}
+              className="pl-9 w-[200px] h-8"
+            />
+          </div>
+
+          {/* View Toggle - Icon only */}
+          <div className="flex items-center rounded-lg border bg-muted/30 p-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                'h-8 w-8 rounded-md',
+                view === 'kanban' && 'bg-background shadow-sm'
+              )}
+              onClick={() => setView('kanban')}
+              title="Kanban"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                'h-8 w-8 rounded-md',
+                view === 'list' && 'bg-background shadow-sm'
+              )}
+              onClick={() => setView('list')}
+              title="Lista"
+            >
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                'h-8 w-8 rounded-md',
+                view === 'calendar' && 'bg-background shadow-sm'
+              )}
+              onClick={() => setView('calendar')}
+              title="Calendario"
+            >
+              <Calendar className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </div>
