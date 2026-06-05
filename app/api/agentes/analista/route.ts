@@ -8,12 +8,18 @@ export const maxDuration = 120
 const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
 const GOOGLE_ADS_API_VERSION = 'v23'
 
+type DailyPoint = { date: string; spend: number; leads: number; impressions: number; clicks: number }
+type AccountMetrics = {
+  spend: number; leads: number; cpl: number; impressions: number; clicks: number; ctr: number
+  daily: DailyPoint[]
+}
+
 // Helper to fetch Meta metrics directly from Graph API
 async function fetchMetaMetrics(
   accountId: string,
   accessToken: string,
   periodo?: { start: string; end: string }
-): Promise<{ spend: number; leads: number; cpl: number; impressions: number; clicks: number; ctr: number } | null> {
+): Promise<AccountMetrics | null> {
   try {
     const today = new Date()
     const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
@@ -23,7 +29,8 @@ async function fetchMetaMetrics(
     const timeRange = JSON.stringify({ since: startDate, until: endDate })
     const fields = 'impressions,clicks,spend,actions'
     
-    const url = `https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}/insights?access_token=${accessToken}&fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=account`
+    // time_increment=1 returns one row per day so we can build daily breakdowns
+    const url = `https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}/insights?access_token=${accessToken}&fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=account&time_increment=1`
     
     const response = await fetch(url)
     if (!response.ok) {
@@ -33,28 +40,45 @@ async function fetchMetaMetrics(
     
     const data = await response.json()
     if (!data.data || data.data.length === 0) {
-      return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0 }
+      return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0, daily: [] }
     }
     
-    const row = data.data[0]
-    const impressions = parseInt(row.impressions || '0', 10)
-    const clicks = parseInt(row.clicks || '0', 10)
-    const spend = parseFloat(row.spend || '0')
-    
-    let leads = 0
-    if (row.actions) {
-      const leadAction = row.actions.find((a: { action_type: string; value: string }) => 
+    const getLeads = (row: { actions?: Array<{ action_type: string; value: string }> }) => {
+      if (!row.actions) return 0
+      const leadAction = row.actions.find((a) => 
         a.action_type === 'lead' || a.action_type === 'onsite_conversion.lead_grouped'
       )
-      if (leadAction) {
-        leads = parseInt(leadAction.value, 10)
-      }
+      return leadAction ? parseInt(leadAction.value, 10) : 0
+    }
+    
+    let impressions = 0
+    let clicks = 0
+    let spend = 0
+    let leads = 0
+    const daily: DailyPoint[] = []
+    
+    for (const row of data.data) {
+      const dImpr = parseInt(row.impressions || '0', 10)
+      const dClicks = parseInt(row.clicks || '0', 10)
+      const dSpend = parseFloat(row.spend || '0')
+      const dLeads = getLeads(row)
+      impressions += dImpr
+      clicks += dClicks
+      spend += dSpend
+      leads += dLeads
+      daily.push({
+        date: row.date_start || row.date_stop || '',
+        spend: dSpend,
+        leads: dLeads,
+        impressions: dImpr,
+        clicks: dClicks,
+      })
     }
     
     const cpl = leads > 0 ? spend / leads : 0
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0
     
-    return { spend, leads, cpl, impressions, clicks, ctr }
+    return { spend, leads, cpl, impressions, clicks, ctr, daily }
   } catch (error) {
     console.error('[v0] Error fetching Meta metrics:', error)
     return null
@@ -68,7 +92,7 @@ async function fetchGoogleMetrics(
   developerToken: string,
   loginCustomerId: string,
   periodo?: { start: string; end: string }
-): Promise<{ spend: number; leads: number; cpl: number; impressions: number; clicks: number; ctr: number } | null> {
+): Promise<AccountMetrics | null> {
   try {
     const today = new Date()
     const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
@@ -79,12 +103,14 @@ async function fetchGoogleMetrics(
     
     const query = `
       SELECT 
+        segments.date,
         metrics.impressions,
         metrics.clicks,
         metrics.cost_micros,
         metrics.conversions
       FROM customer
       WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
+      ORDER BY segments.date ASC
     `
     
     const response = await fetch(`https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}/googleAds:search`, {
@@ -106,27 +132,40 @@ async function fetchGoogleMetrics(
     
     const data = await response.json()
     if (!data.results || data.results.length === 0) {
-      return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0 }
+      return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0, daily: [] }
     }
     
-    // Aggregate all rows (one per day) into totals
+    // Each row is one day. Build daily breakdown and totals.
     let impressions = 0
     let clicks = 0
     let costMicros = 0
     let conversions = 0
+    const daily: DailyPoint[] = []
     for (const result of data.results) {
       const m = result.metrics || {}
-      impressions += parseInt(m.impressions || '0', 10)
-      clicks += parseInt(m.clicks || '0', 10)
-      costMicros += parseInt(m.costMicros || m.cost_micros || '0', 10)
-      conversions += parseFloat(m.conversions || '0')
+      const seg = result.segments || {}
+      const dImpr = parseInt(m.impressions || '0', 10)
+      const dClicks = parseInt(m.clicks || '0', 10)
+      const dCostMicros = parseInt(m.costMicros || m.cost_micros || '0', 10)
+      const dConv = parseFloat(m.conversions || '0')
+      impressions += dImpr
+      clicks += dClicks
+      costMicros += dCostMicros
+      conversions += dConv
+      daily.push({
+        date: seg.date || '',
+        spend: dCostMicros / 1000000,
+        leads: Math.round(dConv),
+        impressions: dImpr,
+        clicks: dClicks,
+      })
     }
     const spend = costMicros / 1000000
     const leads = Math.round(conversions)
     const cpl = leads > 0 ? spend / leads : 0
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0
     
-    return { spend, leads, cpl, impressions, clicks, ctr }
+    return { spend, leads, cpl, impressions, clicks, ctr, daily }
   } catch (error) {
     console.error('[v0] Error fetching Google metrics:', error)
     return null
@@ -309,7 +348,18 @@ ${metricsByAccount.map(m =>
     - Impresiones: ${m.impressions.toLocaleString()}
     - Clics: ${m.clicks.toLocaleString()}
     - CTR: ${m.ctr.toFixed(2)}%`
-).join('\n')}`
+).join('\n')}
+
+DESGLOSE DIARIO POR CUENTA (datos reales día por día):
+${metricsByAccount.map(m => {
+  if (!m.daily || m.daily.length === 0) {
+    return `• ${m.platform} (${m.account}): sin datos diarios disponibles`
+  }
+  const rows = m.daily.map(d => 
+    `    ${d.date}: ${d.leads} leads | $${d.spend.toFixed(2)} inversión | ${d.impressions.toLocaleString()} impresiones | ${d.clicks.toLocaleString()} clics`
+  ).join('\n')
+  return `• ${m.platform} (${m.account}):\n${rows}`
+}).join('\n')}`
     }
 
     const periodoTexto = effectivePeriodo?.start && effectivePeriodo?.end 
@@ -336,7 +386,7 @@ ${metricasText}
 
 IMPORTANTE SOBRE LAS METRICAS:
 ${metricsByAccount.length > 0
-  ? 'Las métricas anteriores son DATOS REALES obtenidos directamente desde las APIs de Meta Ads y/o Google Ads para el periodo seleccionado. NO son estimaciones. Trátalas como cifras oficiales y exactas. NUNCA digas que son estimativas, aproximadas o simuladas.'
+  ? 'Las métricas anteriores son DATOS REALES obtenidos directamente desde las APIs de Meta Ads y/o Google Ads para el periodo seleccionado. NO son estimaciones. Trátalas como cifras oficiales y exactas. NUNCA digas que son estimativas, aproximadas o simuladas. Tienes ACCESO al DESGLOSE DIARIO por cuenta (sección "DESGLOSE DIARIO POR CUENTA"): úsalo cuando el usuario pida datos, gráficos o tendencias por día. NUNCA digas que no tienes los datos desglosados por día si la sección de desglose diario contiene filas. Si el usuario pide un rango específico de días (ej. del 1 al 5), filtra el desglose diario a esas fechas y construye el gráfico con un punto por día.'
   : 'No se pudieron obtener métricas reales de las cuentas publicitarias para este periodo (puede que no haya tokens conectados, que la cuenta no tenga actividad en el periodo, o que haya un error de conexión). Si el usuario pide análisis de números, indícale claramente que no hay datos disponibles y NO inventes ni estimes cifras.'}
 
 COMO RESPONDER:
