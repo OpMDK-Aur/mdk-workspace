@@ -204,17 +204,20 @@ export async function POST(req: Request) {
     console.log('[v0] Tareas del periodo:', { count: tareasDelPeriodo.length, periodo })
 
     // Get access tokens from plataformas_tokens
-    const { data: metaToken } = await supabase
+    const { data: metaTokens } = await supabase
       .from('plataformas_tokens')
       .select('access_token')
       .eq('plataforma', 'meta_ads')
-      .single()
+      .limit(1)
 
-    const { data: googleToken } = await supabase
+    const { data: googleTokens } = await supabase
       .from('plataformas_tokens')
       .select('access_token')
       .eq('plataforma', 'google_ads')
-      .single()
+      .limit(1)
+    
+    const metaAccessToken = metaTokens?.[0]?.access_token
+    const googleAccessToken = googleTokens?.[0]?.access_token
 
     // Fetch metrics for selected accounts
     const metricsByAccount: Array<{
@@ -230,7 +233,7 @@ export async function POST(req: Request) {
     // Determine which accounts to fetch based on selection
     const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
     
-    console.log('[v0] Tokens found:', { meta: !!metaToken?.access_token, google: !!googleToken?.access_token })
+    console.log('[v0] Tokens found:', { meta: !!metaAccessToken, google: !!googleAccessToken })
     
     // Fetch Meta accounts metrics (check plural first, then singular as fallback)
     const metaAccounts = client.meta_ads_account_ids?.length 
@@ -239,12 +242,12 @@ export async function POST(req: Request) {
         ? [client.meta_ads_account_id]
         : []
     
-    if (metaToken?.access_token && metaAccounts.length > 0) {
+    if (metaAccessToken && metaAccounts.length > 0) {
       console.log('[v0] Meta accounts to fetch:', metaAccounts)
       for (const accountId of metaAccounts) {
         if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
           console.log('[v0] Fetching Meta metrics for:', accountId)
-          const metrics = await fetchMetaMetrics(accountId, metaToken.access_token, periodo)
+          const metrics = await fetchMetaMetrics(accountId, metaAccessToken, periodo)
           console.log('[v0] Meta metrics result:', metrics)
           if (metrics) {
             metricsByAccount.push({
@@ -264,12 +267,12 @@ export async function POST(req: Request) {
         ? [client.google_ads_customer_id]
         : []
     
-    if (googleToken?.access_token && googleAccounts.length > 0) {
+    if (googleAccessToken && googleAccounts.length > 0) {
       console.log('[v0] Google accounts to fetch:', googleAccounts)
       for (const accountId of googleAccounts) {
         if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
           console.log('[v0] Fetching Google metrics for:', accountId)
-          const metrics = await fetchGoogleMetrics(accountId, googleToken.access_token, periodo)
+          const metrics = await fetchGoogleMetrics(accountId, googleAccessToken, periodo)
           console.log('[v0] Google metrics result:', metrics)
           if (metrics) {
             metricsByAccount.push({
