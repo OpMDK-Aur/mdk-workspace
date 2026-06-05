@@ -43,6 +43,7 @@ import {
   Plus,
   MessageSquare,
   Trash2,
+  ListTodo,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -435,15 +436,31 @@ export default function AnalistaPage() {
       {/* Sidebar */}
       <aside className="w-[280px] border-r bg-card flex flex-col">
         {/* Header */}
-        <div className="p-4 border-b">
-          <div className="flex items-center gap-3 mb-2">
+        <div className="p-4 border-b space-y-3">
+          <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-[#EEEDFE]">
               <FileText className="h-5 w-5 text-[#7F77DD]" />
             </div>
             <div>
-              <h2 className="font-semibold">Analista</h2>
+              <h2 className="font-semibold leading-tight">Analista</h2>
               <p className="text-xs text-muted-foreground">Informes de cierre</p>
             </div>
+          </div>
+
+          {/* Navegación */}
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="flex-1 justify-center" asChild>
+              <a href="/dashboard/agentes">
+                <ArrowLeft className="h-4 w-4 mr-1.5" />
+                Agentes
+              </a>
+            </Button>
+            <Button variant="outline" size="sm" className="flex-1 justify-center" asChild>
+              <a href="/dashboard/tasks">
+                <ListTodo className="h-4 w-4 mr-1.5" />
+                Tareas
+              </a>
+            </Button>
           </div>
         </div>
 
@@ -572,16 +589,6 @@ export default function AnalistaPage() {
             )}
           </div>
         </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t">
-          <Button variant="ghost" className="w-full justify-start" asChild>
-            <a href="/dashboard/agentes">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Volver a Agentes
-            </a>
-          </Button>
-        </div>
       </aside>
 
       {/* Main Chat Area */}
@@ -614,13 +621,18 @@ export default function AnalistaPage() {
           /* Active Chat */
           <>
             {/* Header */}
-            <div className="p-4 border-b flex items-center gap-3">
-              <h2 className="font-semibold">{selectedClient?.nombre_del_negocio}</h2>
-              <span className="text-muted-foreground">
-                {MONTHS[parseInt(selectedMonth) - 1]?.label} {selectedYear}
-              </span>
+            <div className="px-5 py-3 border-b flex items-center gap-3 bg-card">
+              <div className="p-1.5 rounded-md bg-[#EEEDFE] shrink-0">
+                <FileText className="h-4 w-4 text-[#7F77DD]" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-semibold leading-tight truncate">{selectedClient?.nombre_del_negocio}</h2>
+                <p className="text-xs text-muted-foreground">
+                  {MONTHS[parseInt(selectedMonth) - 1]?.label} {selectedYear}
+                </p>
+              </div>
               {isLoading && (
-                <Badge variant="secondary" className="animate-pulse">
+                <Badge variant="secondary" className="animate-pulse ml-auto">
                   En curso
                 </Badge>
               )}
