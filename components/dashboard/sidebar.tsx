@@ -93,12 +93,16 @@ interface NavSection {
 // Main navigation items (no section header)
 const mainItems: NavItem[] = [
   { id: 'tasks', name: 'Tareas', href: '/dashboard/tasks', icon: LayoutDashboard, badge: 'tasks' },
+]
+
+// Sub-items for Tareas (nested under mainItems)
+const tareasSubItems: NavItem[] = [
   { id: 'time', name: 'Entradas de tiempo', href: '/dashboard/time', icon: Clock },
   { id: 'reports', name: 'Reportes', href: '/dashboard/reports', icon: BarChart3 },
 ]
 
-// Clients section
-const clientsItems: NavItem[] = [
+// Primary navigation items (below Tareas)
+const primaryItems: NavItem[] = [
   { id: 'clients', name: 'Clientes', href: '/dashboard/clients', icon: Building2 },
   { id: 'performance', name: 'Performance', href: '/dashboard/page', icon: LineChart },
   { id: 'agentes', name: 'Agentes', href: '/dashboard/agentes', icon: Cpu, badge: 'proximamente' },
@@ -162,6 +166,11 @@ export function Sidebar({
   const searchInputRef = useRef<HTMLInputElement>(null)
   
   // Collapsible section states - open by default if pathname matches
+  const [tareasOpen, setTareasOpen] = useState(() =>
+    pathname.startsWith('/dashboard/tasks') || 
+    pathname.startsWith('/dashboard/time') || 
+    pathname.startsWith('/dashboard/reports')
+  )
   const [adminOpen, setAdminOpen] = useState(() => 
     adminItems.some(item => pathname.startsWith(item.href.split('?')[0]))
   )
@@ -437,14 +446,15 @@ export function Sidebar({
 
           <ScrollArea className="flex-1 min-h-0">
             <div className="p-2 space-y-4">
-              {/* Main items */}
+              {/* Main items (Tareas + sub-items) */}
               <div className="space-y-1">
                 {mainItems.map(item => renderNavItem(item, true))}
+                {tareasSubItems.map(item => renderNavItem(item, true))}
               </div>
 
-              {/* Clients section */}
+              {/* Primary items (Clientes, Performance, Agentes) */}
               <div className="space-y-1 pt-2 border-t border-border">
-                {clientsItems.map(item => renderNavItem(item, true))}
+                {primaryItems.map(item => renderNavItem(item, true))}
               </div>
 
               {/* Admin section - only if visible */}
@@ -602,14 +612,61 @@ export function Sidebar({
 
             <ScrollArea className="flex-1 min-h-0">
               <div className="p-4 space-y-4">
-                {/* Main navigation */}
+                {/* Main navigation - Tareas with collapsible sub-items */}
                 <div className="space-y-1">
-                  {mainItems.map(item => renderNavItem(item))}
+                  {/* Tareas as collapsible parent */}
+                  <Collapsible open={tareasOpen} onOpenChange={setTareasOpen}>
+                    <div className="flex items-center">
+                      <Link
+                        href="/dashboard/tasks"
+                        className={cn(
+                          'flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                          isItemActive('/dashboard/tasks')
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-foreground hover:bg-muted'
+                        )}
+                      >
+                        <LayoutDashboard className="h-4 w-4" />
+                        <span>Tareas</span>
+                        {taskCount > 0 && (
+                          <Badge className="ml-auto h-5 px-1.5 text-[10px] bg-primary text-primary-foreground">
+                            {taskCount > 99 ? '99+' : taskCount}
+                          </Badge>
+                        )}
+                      </Link>
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0"
+                        >
+                          <ChevronRight className={cn('h-4 w-4 transition-transform', tareasOpen && 'rotate-90')} />
+                        </Button>
+                      </CollapsibleTrigger>
+                    </div>
+                    <CollapsibleContent className="space-y-1 mt-1">
+                      {tareasSubItems.map(item => (
+                        <Link
+                          key={item.id}
+                          href={item.href}
+                          className={cn(
+                            'w-full flex items-center gap-3 pl-7 pr-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                            isItemActive(item.href)
+                              ? 'bg-primary/10 text-primary'
+                              : 'text-foreground hover:bg-muted'
+                          )}
+                        >
+                          <item.icon className="h-4 w-4" />
+                          <span>{item.name}</span>
+                        </Link>
+                      ))}
+                    </CollapsibleContent>
+                  </Collapsible>
                 </div>
 
-                {/* Clients section */}
+                {/* Primary items (Clientes, Performance, Agentes) */}
                 <div className="space-y-1">
-                  {clientsItems.map(item => renderNavItem(item))}
+                  {primaryItems.map(item => renderNavItem(item))}
                 </div>
 
                 {/* Administration section */}
