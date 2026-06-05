@@ -159,10 +159,72 @@ ${metricsByAccount.map(m =>
       ? `Cuentas analizadas: ${metricsByAccount.map(m => `${m.platform} (${m.account})`).join(', ')}`
       : 'Sin cuentas publicitarias configuradas'
 
+    // Determine plan type for template selection
+    const planCliente = client.plan || 'Esencial'
+    const isEstrategico = planCliente === 'Estratégico'
+
+    // Templates específicos según tipo de mensaje y plan
+    const templateInicioEstrategico = `
+TEMPLATE MENSAJE DE LUNES - PLAN ESTRATÉGICO:
+¡Hola [Nombre]! 👋 Buen lunes.
+
+Desde el equipo de Operaciones de MDK te compartimos los hitos clave en los que vamos a estar trabajando en tu cuenta esta semana:
+
+🎯 **Foco principal:** [El hito más importante de esta semana según contexto]
+
+✅ **Checklist de la semana:**
+— [Item 1: acción concreta]
+— [Item 2: seguimiento o ajuste técnico]
+— [Item 3: preparación de reporte o análisis]
+
+🚀 **Objetivo:** [Resultado esperado vinculado a métricas]
+
+REGLAS:
+- Incluir entre 2 y 4 items concretos en el checklist
+- El objetivo debe estar vinculado a las métricas reales (CPL, leads, etc)
+- NO copiar el template textual, adaptarlo al contexto del cliente
+- Máximo 150 palabras`
+
+    const templateInicioEsencial = `
+TEMPLATE MENSAJE DE LUNES - PLAN ESENCIAL:
+¡Hola [Nombre]! 👋 Buen lunes.
+
+Esta semana en tu cuenta vamos a estar trabajando en:
+
+🎯 [Una sola línea con el foco de la semana]
+
+🚀 Objetivo: [Una sola línea con el resultado esperado]
+
+Cualquier consulta, acá estamos. 💪
+
+REGLAS:
+- Mensaje corto y directo
+- Solo UNA línea para foco y UNA para objetivo
+- NO agregar más items ni checklist
+- Máximo 60 palabras`
+
+    const templateCierre = `
+TEMPLATE MENSAJE DE CIERRE DE SEMANA:
+Genera un resumen de cierre semanal que incluya:
+- Resumen de lo realizado en la semana
+- Métricas principales (inversión, leads, CPL)
+- Comparativa vs semana anterior si hay datos
+- Próximos pasos o foco para la siguiente semana
+
+REGLAS:
+- Tono profesional pero cercano
+- Incluir datos concretos de las métricas
+- Máximo 200 palabras`
+
+    const templateToUse = tipo === 'inicio' 
+      ? (isEstrategico ? templateInicioEstrategico : templateInicioEsencial)
+      : templateCierre
+
     const systemPrompt = `${agentConfig.system_prompt}
 
-CONTEXTO:
+CONTEXTO DEL CLIENTE:
 - Cliente: ${client.nombre_del_negocio}
+- Plan: ${planCliente}
 - Tipo de mensaje: ${tipoMensaje}
 - ${cuentasText}
 
@@ -172,7 +234,9 @@ ${clienteMemoriaText}
 METRICAS DE CUENTAS PUBLICITARIAS:
 ${metricasText}
 
-Genera un mensaje de WhatsApp para ${tipoMensaje}. Maximo ${(agentConfig.parametros as any)?.max_palabras || 300} palabras.
+${templateToUse}
+
+IMPORTANTE: Genera el mensaje siguiendo EXACTAMENTE el template indicado para el plan ${planCliente}. Usa las métricas reales proporcionadas.
 `
 
     const userMessage: UIMessage[] = [{ 
