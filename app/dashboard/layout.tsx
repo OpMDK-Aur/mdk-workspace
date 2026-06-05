@@ -37,6 +37,7 @@ export default async function DashboardLayout({
     role_name: colaborador?.roles?.nombre,
     departamento_name: colaborador?.departamentos?.nombre,
     modulos_habilitados: colaborador?.modulos_habilitados || ['dashboard'],
+    puesto: colaborador?.puesto || null,
   } : null
 
   // If profile is null (RLS blocked read), do NOT redirect to onboarding

@@ -39,6 +39,7 @@ interface TeamMember {
   avatar_url: string | null
   accent_hue: number | null
   role: string
+  puesto: string | null
   is_tracking: boolean
   current_task: string | null
   current_client: string | null
@@ -149,8 +150,8 @@ function TeamMemberCard({ member, isAdmin, onEditRole }: TeamMemberCardProps) {
   const targetHours = 40
   const progressPercent = Math.min((member.weekly_hours / targetHours) * 100, 100)
 
-  // Map role to display name
-  const roleDisplayName = member.role === 'project_manager' ? 'Project Manager' : member.role
+  // Display puesto instead of role
+  const roleDisplayName = member.puesto || 'Sin puesto'
 
   // Generate avatar background color from accent_hue
   const avatarBgColor = member.accent_hue !== null 

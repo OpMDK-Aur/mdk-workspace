@@ -161,14 +161,8 @@ function getStatusLabel(s: string | null) {
   }
 }
 
-function getRoleName(role: string) {
-  switch (role) {
-    case 'direccion':       return 'Direccion'
-    case 'project_manager': return 'Project Manager'
-    case 'account_manager': return 'Account Manager'
-    case 'consultor':       return 'Consultor'
-    default:                return role
-  }
+function getPuestoDisplay(profile: Profile) {
+  return profile.puesto || 'Sin puesto'
 }
 
 function initials(name: string | null) {
@@ -284,7 +278,7 @@ function EditableMultiPersonChip({
                       </Avatar>
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate leading-tight">{p.full_name ?? p.email}</p>
-                        <p className="text-[10px] text-muted-foreground">{getRoleName(p.role)}</p>
+                        <p className="text-[10px] text-muted-foreground">{getPuestoDisplay(p)}</p>
                       </div>
                     </div>
                   ))}

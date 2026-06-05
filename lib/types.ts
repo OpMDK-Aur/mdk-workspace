@@ -1,4 +1,10 @@
-export type UserRole = 'master' | 'direccion' | 'project_manager' | 'account_manager' | 'consultor' | 'administrador'
+export type UserRole = 'Master' | 'Usuario' | 'Lector'
+
+export type Puesto =
+  | 'Administrador/a' | 'Director/a' | 'CEO'
+  | 'Project Manager' | 'Account Manager'
+  | 'Desarrollador' | 'Diseñador/a' | 'Analista' | 'Coordinador'
+  | 'Especialista' | 'Administrador'
 
 export type SemaforoStatus = 'verde' | 'amarillo' | 'naranja' | 'rojo'
 
@@ -37,6 +43,7 @@ export interface Profile {
   theme: 'light' | 'dark' | 'system' | null
   accent_hue: number | null
   onboarding_completed: boolean | null
+  puesto?: string | null
   created_at: string
   updated_at: string
 }

@@ -8,6 +8,7 @@ export async function completeOnboarding(payload: {
   full_name: string
   avatar_url: string | null
   role: string
+  puesto: string | null
   theme: 'light' | 'dark' | 'system'
   accent_hue: number
 }) {
@@ -26,6 +27,7 @@ export async function completeOnboarding(payload: {
     nombre: payload.full_name.split(' ')[0],
     apellido: payload.full_name.split(' ').slice(1).join(' ') || '',
     avatar_url: payload.avatar_url ?? '',
+    puesto: payload.puesto,
     theme: payload.theme,
     accent_hue: payload.accent_hue,
     onboarding_completado: true,

@@ -70,36 +70,36 @@ const AVATARS = [
   },
 ]
 
-// ─── ROLE OPTIONS ──────────────────────────────────────────────────────────────
+// ─── ROLE OPTIONS (internal permission roles) ──────────────────────────────────
 const ROLES = [
   {
-    value: 'project_manager',
-    label: 'Project Manager',
-    description: 'Lidera proyectos y coordina equipos',
+    value: 'Usuario',
+    label: 'Usuario',
+    description: 'Acceso completo a los modulos asignados',
   },
   {
-    value: 'account_manager',
-    label: 'Account Manager',
-    description: 'Gestiona relaciones con clientes',
-  },
-  {
-    value: 'director',
-    label: 'Director',
-    description: 'Supervisa estrategia y operaciones',
-  },
-  {
-    value: 'consultor',
-    label: 'Consultor',
-    description: 'Asesora y desarrolla soluciones',
-  },
-  {
-    value: 'designer',
-    label: 'Disenador',
-    description: 'Disena experiencias visuales',
+    value: 'Lector',
+    label: 'Lector',
+    description: 'Solo lectura en los modulos asignados',
   },
 ] as const
 
 type RoleValue = typeof ROLES[number]['value']
+
+// ─── PUESTO OPTIONS (job title for display) ────────────────────────────────────
+const PUESTOS = [
+  { value: 'Project Manager', label: 'Project Manager' },
+  { value: 'Account Manager', label: 'Account Manager' },
+  { value: 'Director/a', label: 'Director/a' },
+  { value: 'CEO', label: 'CEO' },
+  { value: 'Desarrollador', label: 'Desarrollador' },
+  { value: 'Diseñador/a', label: 'Diseñador/a' },
+  { value: 'Analista', label: 'Analista' },
+  { value: 'Coordinador', label: 'Coordinador' },
+  { value: 'Especialista', label: 'Especialista' },
+] as const
+
+type PuestoValue = typeof PUESTOS[number]['value']
 
 // ─── COLOR PALETTES ────────────────────────────────────────────────────────────
 const COLOR_PALETTES = [
@@ -175,7 +175,8 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
   const [selectedAvatar, setSelectedAvatar] = useState<typeof AVATARS[0] | null>(null)
   const [customAvatarUrl, setCustomAvatarUrl] = useState<string | null>(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
-  const [selectedRole, setSelectedRole] = useState<RoleValue | null>(null)
+  const [selectedRole, setSelectedRole] = useState<RoleValue>('Usuario')
+  const [selectedPuesto, setSelectedPuesto] = useState<PuestoValue | null>(null)
   const [selectedHue, setSelectedHue] = useState(48)
   const [selectedTheme, setSelectedTheme] = useState<'light' | 'dark' | 'system'>('system')
   const [saving, setSaving] = useState(false)
@@ -291,7 +292,8 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
     await completeOnboarding({
       full_name: name,
       avatar_url: avatarUrl,
-      role: selectedRole || 'editor',
+      role: selectedRole,
+      puesto: selectedPuesto,
       theme: selectedTheme,
       accent_hue: selectedHue,
     })
@@ -455,40 +457,39 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
     </div>
   )
 
-  // ── STEP 2: Elegir rol ──────────────────────────────────────────────────────
+  // ── STEP 2: Elegir puesto ──────────────────────────────────────────────────────
   const StepRole = (
     <div className="animate-fade-up space-y-6">
       <div className="space-y-1">
         <p className="text-primary text-sm font-semibold tracking-widest uppercase">Paso 2 de 3</p>
-        <h2 className="text-3xl font-bold text-white">Cual es tu rol?</h2>
+        <h2 className="text-3xl font-bold text-white">Cual es tu puesto?</h2>
         <p className="text-white/50">Esto nos ayuda a personalizar tu experiencia.</p>
       </div>
 
-      <div className="space-y-3">
-        {ROLES.map(role => (
+      <div className="space-y-3 max-h-[280px] overflow-y-auto pr-1">
+        {PUESTOS.map(puesto => (
           <button
-            key={role.value}
-            onClick={() => setSelectedRole(role.value)}
+            key={puesto.value}
+            onClick={() => setSelectedPuesto(puesto.value)}
             className={cn(
               'w-full p-4 rounded-2xl border-2 flex items-center gap-4 transition-all duration-200 text-left',
-              selectedRole === role.value
+              selectedPuesto === puesto.value
                 ? 'border-primary bg-primary/10 scale-[1.02]'
                 : 'border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/8'
             )}
           >
             <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-sm">
-              {role.label.charAt(0)}
+              {puesto.label.charAt(0)}
             </div>
             <div className="flex-1">
               <p className={cn(
                 'font-semibold',
-                selectedRole === role.value ? 'text-white' : 'text-white/80'
+                selectedPuesto === puesto.value ? 'text-white' : 'text-white/80'
               )}>
-                {role.label}
+                {puesto.label}
               </p>
-              <p className="text-white/40 text-sm">{role.description}</p>
             </div>
-            {selectedRole === role.value && (
+            {selectedPuesto === puesto.value && (
               <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center">
                 <Check className="h-3.5 w-3.5 text-white" />
               </div>
@@ -509,7 +510,7 @@ export function OnboardingFlow({ userName }: OnboardingFlowProps) {
         <Button
           className="flex-1 h-11 bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl gap-2 transition-all hover:shadow-lg hover:shadow-primary/25"
           onClick={() => setStep(3)}
-          disabled={!selectedRole}
+          disabled={!selectedPuesto}
         >
           Continuar
           <ChevronRight className="h-4 w-4" />

@@ -90,6 +90,7 @@ interface Profile {
   modulos_habilitados: string[]
   avatar_url: string | null
   activo: boolean
+  puesto: string | null
 }
 
 interface Role {
@@ -113,13 +114,12 @@ interface UserManagementContentProps {
 }
 
 function getRoleBadgeClass(role: string) {
-  switch (role) {
-    case 'master': return 'bg-purple-500/10 text-purple-500 border-purple-500/20'
-    case 'administrador': return 'bg-primary/10 text-primary border-primary/20'
-    case 'project_manager': return 'bg-status-verde/10 text-status-verde border-status-verde/20'
-    case 'account_manager': return 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/20'
-    default: return 'bg-muted text-muted-foreground'
-  }
+  // Color based on internal role (Master/Usuario/Lector)
+  const normalizedRole = role.toLowerCase()
+  if (normalizedRole === 'master') return 'bg-purple-500/10 text-purple-500 border-purple-500/20'
+  if (normalizedRole === 'usuario') return 'bg-primary/10 text-primary border-primary/20'
+  if (normalizedRole === 'lector') return 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/20'
+  return 'bg-muted text-muted-foreground'
 }
 
 export function UserManagementContent({
@@ -537,7 +537,7 @@ export function UserManagementContent({
                           {isCurrentUser && <span className="text-xs text-muted-foreground ml-1">(vos)</span>}
                         </p>
                         <Badge variant="outline" className={cn('text-xs', getRoleBadgeClass(profile.role))}>
-                          {profile.role_name || profile.role}
+                          {profile.puesto || 'Sin puesto'}
                         </Badge>
                         {profile.departamento_name && (
                           <Badge variant="secondary" className="text-xs">
