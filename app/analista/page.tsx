@@ -161,11 +161,23 @@ export default function AnalistaPage() {
         if (done) break
         
         const chunk = decoder.decode(value, { stream: true })
-        // Parse SSE format
+        // Parse SSE format: data: {"type":"text-delta","delta":"..."}
         const lines = chunk.split('\n')
         for (const line of lines) {
-          if (line.startsWith('0:')) {
-            // Text content
+          if (line.startsWith('data: ')) {
+            try {
+              const json = JSON.parse(line.slice(6))
+              if (json.type === 'text-delta' && json.delta) {
+                assistantContent += json.delta
+                setChatMessages(prev => 
+                  prev.map(m => m.id === assistantId ? { ...m, content: assistantContent } : m)
+                )
+              }
+            } catch {
+              // Skip parse errors
+            }
+          } else if (line.startsWith('0:')) {
+            // Fallback: old format
             try {
               const text = JSON.parse(line.slice(2))
               assistantContent += text
