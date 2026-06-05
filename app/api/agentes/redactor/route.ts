@@ -3,36 +3,116 @@ import { consumeStream, convertToModelMessages, streamText, type UIMessage } fro
 
 export const maxDuration = 60
 
-// Helper to fetch metrics from internal APIs
-async function fetchAccountMetrics(
-  platform: 'meta' | 'google',
+const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
+
+// Helper to fetch Meta metrics directly from Graph API
+async function fetchMetaMetrics(
   accountId: string,
-  baseUrl: string,
+  accessToken: string,
   periodo?: { start: string; end: string }
 ): Promise<{ spend: number; leads: number; cpl: number; impressions: number; clicks: number } | null> {
   try {
-    // Build date params - use custom period if provided, otherwise last_7d
-    const dateParams = periodo?.start && periodo?.end
-      ? `start_date=${periodo.start}&end_date=${periodo.end}`
-      : 'date_range=last_7d'
+    // Build date params
+    const today = new Date()
+    const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const startDate = periodo?.start || sevenDaysAgo.toISOString().split('T')[0]
+    const endDate = periodo?.end || today.toISOString().split('T')[0]
     
-    const endpoint = platform === 'meta' 
-      ? `${baseUrl}/api/ads/meta?account_id=${accountId}&${dateParams}`
-      : `${baseUrl}/api/ads/google?customer_id=${accountId}&${dateParams}`
+    const timeRange = JSON.stringify({ since: startDate, until: endDate })
+    const fields = 'impressions,clicks,spend,actions'
     
-    const response = await fetch(endpoint)
-    if (!response.ok) return null
+    const url = `https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}/insights?access_token=${accessToken}&fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=account`
+    
+    const response = await fetch(url)
+    if (!response.ok) {
+      console.error('[v0] Meta API error:', response.status, await response.text())
+      return null
+    }
     
     const data = await response.json()
-    return {
-      spend: data.totals?.spend ?? 0,
-      leads: data.totals?.leads ?? 0,
-      cpl: data.totals?.cpl ?? 0,
-      impressions: data.totals?.impressions ?? 0,
-      clicks: data.totals?.clicks ?? 0,
+    if (!data.data || data.data.length === 0) {
+      return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0 }
     }
+    
+    const row = data.data[0]
+    const impressions = parseInt(row.impressions || '0', 10)
+    const clicks = parseInt(row.clicks || '0', 10)
+    const spend = parseFloat(row.spend || '0')
+    
+    // Extract leads from actions
+    let leads = 0
+    if (row.actions) {
+      const leadAction = row.actions.find((a: { action_type: string; value: string }) => 
+        a.action_type === 'lead' || a.action_type === 'onsite_conversion.lead_grouped'
+      )
+      if (leadAction) {
+        leads = parseInt(leadAction.value, 10)
+      }
+    }
+    
+    const cpl = leads > 0 ? spend / leads : 0
+    
+    return { spend, leads, cpl, impressions, clicks }
   } catch (error) {
-    console.error(`Error fetching ${platform} metrics for ${accountId}:`, error)
+    console.error('[v0] Error fetching Meta metrics:', error)
+    return null
+  }
+}
+
+// Helper to fetch Google Ads metrics directly
+async function fetchGoogleMetrics(
+  customerId: string,
+  accessToken: string,
+  periodo?: { start: string; end: string }
+): Promise<{ spend: number; leads: number; cpl: number; impressions: number; clicks: number } | null> {
+  try {
+    const today = new Date()
+    const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const startDate = (periodo?.start || sevenDaysAgo.toISOString().split('T')[0]).replace(/-/g, '')
+    const endDate = (periodo?.end || today.toISOString().split('T')[0]).replace(/-/g, '')
+    
+    const cleanCustomerId = customerId.replace(/-/g, '')
+    
+    const query = `
+      SELECT 
+        metrics.impressions,
+        metrics.clicks,
+        metrics.cost_micros,
+        metrics.conversions
+      FROM customer
+      WHERE segments.date BETWEEN '${startDate.slice(0, 4)}-${startDate.slice(4, 6)}-${startDate.slice(6, 8)}' AND '${endDate.slice(0, 4)}-${endDate.slice(4, 6)}-${endDate.slice(6, 8)}'
+    `
+    
+    const response = await fetch(`https://googleads.googleapis.com/v18/customers/${cleanCustomerId}/googleAds:search`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query }),
+    })
+    
+    if (!response.ok) {
+      console.error('[v0] Google Ads API error:', response.status, await response.text())
+      return null
+    }
+    
+    const data = await response.json()
+    if (!data.results || data.results.length === 0) {
+      return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0 }
+    }
+    
+    const row = data.results[0].metrics || {}
+    const impressions = parseInt(row.impressions || '0', 10)
+    const clicks = parseInt(row.clicks || '0', 10)
+    const spend = (parseInt(row.costMicros || '0', 10) / 1000000)
+    const leads = Math.round(parseFloat(row.conversions || '0'))
+    const cpl = leads > 0 ? spend / leads : 0
+    
+    return { spend, leads, cpl, impressions, clicks }
+  } catch (error) {
+    console.error('[v0] Error fetching Google metrics:', error)
     return null
   }
 }
@@ -123,10 +203,18 @@ export async function POST(req: Request) {
 
     console.log('[v0] Tareas del periodo:', { count: tareasDelPeriodo.length, periodo })
 
-    // Build base URL for internal API calls
-    const baseUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}` 
-      : process.env.NEXTAUTH_URL || 'http://localhost:3000'
+    // Get access tokens from plataformas_tokens
+    const { data: metaToken } = await supabase
+      .from('plataformas_tokens')
+      .select('access_token')
+      .eq('plataforma', 'meta_ads')
+      .single()
+
+    const { data: googleToken } = await supabase
+      .from('plataformas_tokens')
+      .select('access_token')
+      .eq('plataforma', 'google_ads')
+      .single()
 
     // Fetch metrics for selected accounts
     const metricsByAccount: Array<{
@@ -142,13 +230,7 @@ export async function POST(req: Request) {
     // Determine which accounts to fetch based on selection
     const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
     
-    console.log('[v0] Ad accounts found:', { 
-      metaPlural: client.meta_ads_account_ids, 
-      metaSingular: client.meta_ads_account_id,
-      googlePlural: client.google_ads_customer_ids,
-      googleSingular: client.google_ads_customer_id,
-      selectedCuentas 
-    })
+    console.log('[v0] Tokens found:', { meta: !!metaToken?.access_token, google: !!googleToken?.access_token })
     
     // Fetch Meta accounts metrics (check plural first, then singular as fallback)
     const metaAccounts = client.meta_ads_account_ids?.length 
@@ -156,18 +238,21 @@ export async function POST(req: Request) {
       : client.meta_ads_account_id 
         ? [client.meta_ads_account_id]
         : []
-    console.log('[v0] Meta accounts to fetch:', metaAccounts)
-    for (const accountId of metaAccounts) {
-      if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
-        console.log('[v0] Fetching Meta metrics for:', accountId)
-        const metrics = await fetchAccountMetrics('meta', accountId, baseUrl, periodo)
-        console.log('[v0] Meta metrics result:', metrics)
-        if (metrics) {
-          metricsByAccount.push({
-            account: accountId,
-            platform: 'Meta Ads',
-            ...metrics
-          })
+    
+    if (metaToken?.access_token && metaAccounts.length > 0) {
+      console.log('[v0] Meta accounts to fetch:', metaAccounts)
+      for (const accountId of metaAccounts) {
+        if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
+          console.log('[v0] Fetching Meta metrics for:', accountId)
+          const metrics = await fetchMetaMetrics(accountId, metaToken.access_token, periodo)
+          console.log('[v0] Meta metrics result:', metrics)
+          if (metrics) {
+            metricsByAccount.push({
+              account: accountId,
+              platform: 'Meta Ads',
+              ...metrics
+            })
+          }
         }
       }
     }
@@ -178,18 +263,21 @@ export async function POST(req: Request) {
       : client.google_ads_customer_id
         ? [client.google_ads_customer_id]
         : []
-    console.log('[v0] Google accounts to fetch:', googleAccounts)
-    for (const accountId of googleAccounts) {
-      if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
-        console.log('[v0] Fetching Google metrics for:', accountId)
-        const metrics = await fetchAccountMetrics('google', accountId, baseUrl, periodo)
-        console.log('[v0] Google metrics result:', metrics)
-        if (metrics) {
-          metricsByAccount.push({
-            account: accountId,
-            platform: 'Google Ads',
-            ...metrics
-          })
+    
+    if (googleToken?.access_token && googleAccounts.length > 0) {
+      console.log('[v0] Google accounts to fetch:', googleAccounts)
+      for (const accountId of googleAccounts) {
+        if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
+          console.log('[v0] Fetching Google metrics for:', accountId)
+          const metrics = await fetchGoogleMetrics(accountId, googleToken.access_token, periodo)
+          console.log('[v0] Google metrics result:', metrics)
+          if (metrics) {
+            metricsByAccount.push({
+              account: accountId,
+              platform: 'Google Ads',
+              ...metrics
+            })
+          }
         }
       }
     }
