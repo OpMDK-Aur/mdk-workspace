@@ -98,7 +98,7 @@ const mainItems: NavItem[] = [
 // Sub-items for Tareas (nested under mainItems)
 const tareasSubItems: NavItem[] = [
   { id: 'time', name: 'Entradas de tiempo', href: '/dashboard/time', icon: Clock },
-  { id: 'reports', name: 'Reportes', href: '/dashboard/reports', icon: BarChart3 },
+  { id: 'reports', name: 'Mis horas', href: '/dashboard/reports', icon: BarChart3 },
 ]
 
 // Primary navigation items (below Tareas)
@@ -110,9 +110,9 @@ const primaryItems: NavItem[] = [
 
 // Administration section
 const adminItems: NavItem[] = [
-  { id: 'time-settings', name: 'Control de horas', href: '/dashboard/reports?tab=hours-control', icon: ClockCheck },
-  { id: 'service-map', name: 'Mapa de servicio', href: '/dashboard/reports?tab=service-map', icon: Map },
-  { id: 'nps', name: 'NPS', href: '/dashboard/reports?tab=nps', icon: Smile },
+  { id: 'time-settings', name: 'Control de horas', href: '/dashboard/admin/horas', icon: ClockCheck },
+  { id: 'service-map', name: 'Mapa de servicio', href: '/dashboard/admin/mapa-servicio', icon: Map },
+  { id: 'nps', name: 'NPS', href: '/dashboard/admin/nps', icon: Smile },
   { id: 'facturacion', name: 'Facturacion', href: '/dashboard/saldos', icon: FileText },
   { id: 'colaboradores', name: 'Colaboradores', href: '/dashboard/colaboradores', icon: Users },
 ]
