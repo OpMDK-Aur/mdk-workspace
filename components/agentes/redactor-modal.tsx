@@ -55,6 +55,8 @@ interface AdAccount {
 interface ClientOption {
   id: string
   nombre_del_negocio: string
+  meta_ads_account_id: string | null
+  google_ads_customer_id: string | null
   meta_ads_account_ids: string[] | null
   google_ads_customer_ids: string[] | null
 }
@@ -77,7 +79,7 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
     async function fetchClients() {
       const { data } = await supabase
         .from('clientes')
-        .select('id, nombre_del_negocio, meta_ads_account_ids, google_ads_customer_ids')
+        .select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids')
         .eq('activo', true)
         .order('nombre_del_negocio')
       if (data) setClients(data as ClientOption[])
@@ -102,17 +104,26 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
 
     const accounts: AdAccount[] = []
     
-    if (selectedClient.meta_ads_account_ids) {
-      selectedClient.meta_ads_account_ids.forEach((id: string) => {
-        accounts.push({ id, platform: 'meta', label: `Meta · ${id}` })
-      })
-    }
+    // Check plural fields first, then singular as fallback
+    const metaIds = selectedClient.meta_ads_account_ids?.length 
+      ? selectedClient.meta_ads_account_ids 
+      : selectedClient.meta_ads_account_id 
+        ? [selectedClient.meta_ads_account_id]
+        : []
     
-    if (selectedClient.google_ads_customer_ids) {
-      selectedClient.google_ads_customer_ids.forEach((id: string) => {
-        accounts.push({ id, platform: 'google', label: `Google · ${id}` })
-      })
-    }
+    const googleIds = selectedClient.google_ads_customer_ids?.length
+      ? selectedClient.google_ads_customer_ids
+      : selectedClient.google_ads_customer_id
+        ? [selectedClient.google_ads_customer_id]
+        : []
+    
+    metaIds.forEach((id: string) => {
+      accounts.push({ id, platform: 'meta', label: `Meta Ads · ${id}` })
+    })
+    
+    googleIds.forEach((id: string) => {
+      accounts.push({ id, platform: 'google', label: `Google Ads · ${id}` })
+    })
 
     setAdAccounts(accounts)
     setSelectedAccounts(accounts.map(a => a.id)) // Select all by default

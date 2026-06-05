@@ -53,10 +53,10 @@ export async function POST(req: Request) {
       return new Response('Agent not found', { status: 404 })
     }
 
-    // Get client data with ad account IDs
+    // Get client data with ad account IDs (both singular and plural fields)
     const { data: client } = await supabase
       .from('clientes')
-      .select('*, meta_ads_account_ids, google_ads_customer_ids')
+      .select('*, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids')
       .eq('id', clientId)
       .single()
 
@@ -91,8 +91,12 @@ export async function POST(req: Request) {
     // Determine which accounts to fetch based on selection
     const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
     
-    // Fetch Meta accounts metrics
-    const metaAccounts = client.meta_ads_account_ids || []
+    // Fetch Meta accounts metrics (check plural first, then singular as fallback)
+    const metaAccounts = client.meta_ads_account_ids?.length 
+      ? client.meta_ads_account_ids 
+      : client.meta_ads_account_id 
+        ? [client.meta_ads_account_id]
+        : []
     for (const accountId of metaAccounts) {
       if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
         const metrics = await fetchAccountMetrics('meta', accountId, baseUrl)
@@ -106,8 +110,12 @@ export async function POST(req: Request) {
       }
     }
 
-    // Fetch Google accounts metrics
-    const googleAccounts = client.google_ads_customer_ids || []
+    // Fetch Google accounts metrics (check plural first, then singular as fallback)
+    const googleAccounts = client.google_ads_customer_ids?.length
+      ? client.google_ads_customer_ids
+      : client.google_ads_customer_id
+        ? [client.google_ads_customer_id]
+        : []
     for (const accountId of googleAccounts) {
       if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
         const metrics = await fetchAccountMetrics('google', accountId, baseUrl)
