@@ -61,7 +61,7 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
   return (
     <div 
       className={cn(
-        'min-h-[120px] border-r border-b p-1.5 transition-colors',
+        'min-h-[120px] border-r border-b p-1.5 transition-colors w-full',
         !isCurrentMonth && 'bg-muted/30',
         today && 'bg-primary/5 ring-1 ring-inset ring-primary/20',
         pastDay && isCurrentMonth && 'bg-muted/20'
@@ -367,6 +367,7 @@ export function CalendarView() {
             <div 
               key={day} 
               className="py-2 text-center text-xs font-medium text-muted-foreground border-r last:border-r-0"
+              style={{ width: 'calc(100% / 7)' }}
             >
               {day}
             </div>
@@ -375,7 +376,7 @@ export function CalendarView() {
         
         {/* Calendar grid */}
         <div className="flex-1 overflow-auto">
-          <div className="grid grid-cols-7">
+          <div className="grid grid-cols-7" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
             {calendarDays.map((date) => {
               const dateKey = format(date, 'yyyy-MM-dd')
               const dayTasks = tasksByDate.get(dateKey) || []

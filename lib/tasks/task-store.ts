@@ -1998,16 +1998,16 @@ export function useFilteredTasks() {
   // Show unassigned filter - only show tasks without assignee
   if (filters.showUnassigned) {
     const hasNoAssignee = !task.assigneeId || task.assigneeId === ''
-    const hasNoAdditionalAssignees = !task.assigneeIds || task.assigneeIds.length === 0
+    const hasNoAdditionalAssignees = !task.assignees || task.assignees.length === 0
     if (!hasNoAssignee || !hasNoAdditionalAssignees) return false
   }
   // Multi-assignee filter - check if task's assignee is in the selected list
   if (filters.assigneeIds.length > 0) {
   // Check primary assignee
   const hasMatchingAssignee = task.assigneeId && filters.assigneeIds.includes(task.assigneeId)
-  // Check additional assignees if they exist
-  const hasMatchingAdditionalAssignee = task.assigneeIds?.some(id => filters.assigneeIds.includes(id)) ?? false
-  if (!hasMatchingAssignee && !hasMatchingAdditionalAssignee) return false
+  // Check assignees array (multi-assignee support)
+  const hasMatchingInAssigneesArray = task.assignees?.some(a => filters.assigneeIds.includes(a.id)) ?? false
+  if (!hasMatchingAssignee && !hasMatchingInAssigneesArray) return false
   }
   if (filters.type && task.type !== filters.type) return false
   if (filters.dueThisWeek && task.dueDate) {
