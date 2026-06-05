@@ -437,7 +437,7 @@ export default function AnalistaPage() {
   const years = [currentYear - 1, currentYear, currentYear + 1]
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-dvh overflow-hidden">
       {/* Collapsed rail */}
       {sidebarCollapsed && (
         <aside className="w-14 border-r bg-card flex flex-col items-center py-4 gap-3 shrink-0">
