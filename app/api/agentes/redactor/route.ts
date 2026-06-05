@@ -41,29 +41,24 @@ export async function POST(req: Request) {
 
   try {
     const { clientId, tipo, cuentas } = await req.json()
-    console.log('[v0] Redactor request:', { clientId, tipo, cuentas })
 
     // Get agent config
-    const { data: agentConfig, error: agentError } = await supabase
+    const { data: agentConfig } = await supabase
       .from('agentes_config')
       .select('*')
       .eq('slug', 'redactor')
       .single()
-
-    console.log('[v0] Agent config:', { agentConfig, agentError })
 
     if (!agentConfig) {
       return new Response('Agent not found', { status: 404 })
     }
 
     // Get client data with ad account IDs (both singular and plural fields)
-    const { data: client, error: clientError } = await supabase
+    const { data: client } = await supabase
       .from('clientes')
       .select('*, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids')
       .eq('id', clientId)
       .single()
-
-    console.log('[v0] Client data:', { client: client?.nombre_del_negocio, clientError, metaIds: client?.meta_ads_account_ids, googleIds: client?.google_ads_customer_ids })
 
     if (!client) {
       return new Response('Client not found', { status: 404 })
