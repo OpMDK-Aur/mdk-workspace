@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { Client } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -53,12 +52,19 @@ interface AdAccount {
   label: string
 }
 
+interface ClientOption {
+  id: string
+  nombre_del_negocio: string
+  meta_ads_account_ids: string[] | null
+  google_ads_customer_ids: string[] | null
+}
+
 export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
   const supabase = createClient()
   
   const [step, setStep] = useState(1)
-  const [clients, setClients] = useState<Client[]>([])
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null)
+  const [clients, setClients] = useState<ClientOption[]>([])
+  const [selectedClient, setSelectedClient] = useState<ClientOption | null>(null)
   const [clientOpen, setClientOpen] = useState(false)
   const [messageType, setMessageType] = useState<MessageType | null>(null)
   const [adAccounts, setAdAccounts] = useState<AdAccount[]>([])
@@ -74,7 +80,7 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
         .select('id, nombre_del_negocio, meta_ads_account_ids, google_ads_customer_ids')
         .eq('activo', true)
         .order('nombre_del_negocio')
-      if (data) setClients(data as Client[])
+      if (data) setClients(data as ClientOption[])
     }
     if (open) {
       fetchClients()

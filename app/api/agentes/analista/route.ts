@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { streamText } from 'ai'
+import { consumeStream, convertToModelMessages, streamText, type UIMessage } from 'ai'
 
 export const maxDuration = 60
 
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { messages, clientId, month, year } = await req.json()
+    const { messages, clientId, month, year }: { messages: UIMessage[], clientId: string, month: number, year: number } = await req.json()
 
     // Get agent config
     const { data: agentConfig } = await supabase
@@ -72,10 +72,12 @@ METRICAS DEL PERIODO:
 ${metricasText}
 `
 
+    const modelMessages = await convertToModelMessages(messages)
+
     const result = streamText({
-      model: 'anthropic/claude-opus-4-20250514',
+      model: 'anthropic/claude-sonnet-4-20250514',
       system: systemPrompt,
-      messages,
+      messages: modelMessages,
       abortSignal: req.signal,
     })
 
@@ -88,7 +90,10 @@ ${metricasText}
       estado: 'ok',
     }).then(() => {})
 
-    return result.toDataStreamResponse()
+    return result.toUIMessageStreamResponse({
+      originalMessages: messages,
+      consumeSseStream: consumeStream,
+    })
   } catch (error) {
     console.error('Error in analista agent:', error)
     return new Response('Internal error', { status: 500 })

@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { streamText } from 'ai'
+import { consumeStream, convertToModelMessages, streamText, type UIMessage } from 'ai'
 
 export const maxDuration = 60
 
@@ -80,10 +80,18 @@ ${metricasText}
 Genera un mensaje de WhatsApp para ${tipoMensaje}. Maximo ${(agentConfig.parametros as any)?.max_palabras || 300} palabras.
 `
 
+    const userMessage: UIMessage[] = [{ 
+      id: crypto.randomUUID(),
+      role: 'user', 
+      content: `Genera el mensaje de ${tipoMensaje} para ${client.nombre_del_negocio}`,
+      parts: [{ type: 'text', text: `Genera el mensaje de ${tipoMensaje} para ${client.nombre_del_negocio}` }]
+    }]
+    const modelMessages = await convertToModelMessages(userMessage)
+
     const result = streamText({
-      model: 'anthropic/claude-opus-4-20250514',
+      model: 'anthropic/claude-sonnet-4-20250514',
       system: systemPrompt,
-      messages: [{ role: 'user', content: `Genera el mensaje de ${tipoMensaje} para ${client.nombre_del_negocio}` }],
+      messages: modelMessages,
       abortSignal: req.signal,
     })
 
@@ -96,7 +104,10 @@ Genera un mensaje de WhatsApp para ${tipoMensaje}. Maximo ${(agentConfig.paramet
       estado: 'ok',
     }).then(() => {})
 
-    return result.toDataStreamResponse()
+    return result.toUIMessageStreamResponse({
+      originalMessages: userMessage,
+      consumeSseStream: consumeStream,
+    })
   } catch (error) {
     console.error('Error in redactor agent:', error)
     return new Response('Internal error', { status: 500 })
