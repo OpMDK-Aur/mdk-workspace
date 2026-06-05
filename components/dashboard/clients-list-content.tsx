@@ -1192,7 +1192,7 @@ const applyFilter = (filter: SavedFilter) => {
 
         {/* Clients - Cards View */}
         {viewMode === 'cards' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredClients.length === 0 ? (
               <div className="col-span-full text-center py-12 text-muted-foreground">
                 No se encontraron clientes
@@ -1219,13 +1219,13 @@ const applyFilter = (filter: SavedFilter) => {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <h3 className={cn(
-                              "font-semibold truncate group-hover:text-primary transition-colors",
+                              "font-semibold group-hover:text-primary transition-colors",
                               isEnRiesgo && "text-red-500"
                             )}>
                               {client.nombre_del_negocio}
                             </h3>
                             {visibleColumns.includes('contacto') && (client.nombre || client.apellido) && (
-                              <p className="text-sm text-muted-foreground truncate">
+                              <p className="text-sm text-muted-foreground">
                                 {client.nombre} {client.apellido || ''}
                               </p>
                             )}
@@ -1269,7 +1269,7 @@ const applyFilter = (filter: SavedFilter) => {
                         )}
                         
                         {/* Info grid - respects visible columns */}
-                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
+                        <div className="flex flex-col gap-1 text-sm">
                           {visibleColumns.includes('plan') && clientUnidades.includes('MDK') && client.plan && (
                             <div>
                               <span className="text-muted-foreground">Plan:</span>{' '}
@@ -1290,24 +1290,24 @@ const applyFilter = (filter: SavedFilter) => {
                           )}
                           {visibleColumns.includes('fee_consultoria') && client.fee_consultoria && (
                             <div>
-                              <span className="text-muted-foreground">Fee Cons.:</span>{' '}
+                              <span className="text-muted-foreground">Fee Consultoria:</span>{' '}
                               <span className="font-medium">{formatCurrency(client.fee_consultoria)}</span>
                             </div>
                           )}
                           {visibleColumns.includes('pm') && pm && (
-                            <div className="truncate">
+                            <div>
                               <span className="text-muted-foreground">PM:</span>{' '}
                               <span>{pm.full_name}</span>
                             </div>
                           )}
                           {visibleColumns.includes('am') && am && (
-                            <div className="truncate">
+                            <div>
                               <span className="text-muted-foreground">AM:</span>{' '}
                               <span>{am.full_name}</span>
                             </div>
                           )}
                           {visibleColumns.includes('plataformas') && (hasGoogle || hasMeta) && (
-                            <div className="col-span-2 flex gap-1">
+                            <div className="flex gap-1">
                               {hasGoogle && <Badge variant="secondary" className="text-xs">Google</Badge>}
                               {hasMeta && <Badge variant="secondary" className="text-xs">Meta</Badge>}
                             </div>
@@ -1349,7 +1349,7 @@ const applyFilter = (filter: SavedFilter) => {
                             </div>
                           )}
                           {visibleColumns.includes('discord') && client.discord_channel_name && (
-                            <div className="col-span-2 truncate">
+                            <div>
                               <span className="text-muted-foreground">Discord:</span>{' '}
                               <span>{client.discord_channel_name}</span>
                             </div>
