@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import useSWR from 'swr'
 import { startOfMonth, endOfMonth, isWithinInterval, startOfDay, endOfDay, format } from 'date-fns'
 import { HoursChart } from '@/components/reports/hours-chart'
@@ -89,6 +90,9 @@ async function fetchReportsData() {
 }
 
 export default function ReportsPage() {
+  const searchParams = useSearchParams()
+  const tabFromUrl = searchParams.get('tab')
+  
   const currentDate = new Date()
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
@@ -98,6 +102,14 @@ export default function ReportsPage() {
   const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
   const [unidadFilter, setUnidadFilter] = useState<UnidadNegocio | 'all'>('all')
+  const [activeTab, setActiveTab] = useState(tabFromUrl || 'by-client')
+  
+  // Update active tab when URL changes
+  useEffect(() => {
+    if (tabFromUrl) {
+      setActiveTab(tabFromUrl)
+    }
+  }, [tabFromUrl])
 
   // Fetch data with SWR
   const { data, isLoading } = useSWR('reports-data', fetchReportsData)
@@ -426,7 +438,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Charts and Tables with Tabs */}
-      <Tabs defaultValue="by-client" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="by-client">Por Cliente</TabsTrigger>
           <TabsTrigger value="by-collaborator">Por Colaborador</TabsTrigger>

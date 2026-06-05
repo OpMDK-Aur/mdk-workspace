@@ -110,8 +110,8 @@ const primaryItems: NavItem[] = [
 
 // Administration section
 const adminItems: NavItem[] = [
-  { id: 'time-settings', name: 'Control de horas', href: '/dashboard/time/settings', icon: ClockCheck },
-  { id: 'service-map', name: 'Mapa de servicio', href: '/dashboard/config/hitos', icon: Map },
+  { id: 'time-settings', name: 'Control de horas', href: '/dashboard/reports?tab=hours-control', icon: ClockCheck },
+  { id: 'service-map', name: 'Mapa de servicio', href: '/dashboard/reports?tab=service-map', icon: Map },
   { id: 'nps', name: 'NPS', href: '/dashboard/reports?tab=nps', icon: Smile },
   { id: 'facturacion', name: 'Facturacion', href: '/dashboard/saldos', icon: FileText },
   { id: 'colaboradores', name: 'Colaboradores', href: '/dashboard/colaboradores', icon: Users },
