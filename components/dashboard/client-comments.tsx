@@ -115,6 +115,12 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   // Edit comment
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
+  const [editingImages, setEditingImages] = useState<string[]>([])
+  const [showEditColabPopover, setShowEditColabPopover] = useState(false)
+  const [editColabSearchQuery, setEditColabSearchQuery] = useState('')
+  const [uploadingEditImage, setUploadingEditImage] = useState(false)
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const editImageInputRef = useRef<HTMLInputElement>(null)
   
   // Image upload
   const [pendingImages, setPendingImages] = useState<string[]>([])
@@ -407,25 +413,97 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   const startEditComment = (comment: ComentarioCliente) => {
     setEditingCommentId(comment.id)
     setEditingContent(comment.contenido)
+    setEditingImages(comment.imagenes || [])
   }
   
   // Cancel editing
   const cancelEditComment = () => {
     setEditingCommentId(null)
     setEditingContent('')
+    setEditingImages([])
+    setShowEditColabPopover(false)
+    setEditColabSearchQuery('')
+  }
+  
+  // Insert collaborator mention while editing
+  const insertEditColabMention = (colab: Colaborador) => {
+    setEditingContent(prev => `${prev}@${colab.nombre} `)
+    setShowEditColabPopover(false)
+    setEditColabSearchQuery('')
+    editTextareaRef.current?.focus()
+  }
+  
+  // Filtered collaborators for the edit popover
+  const filteredEditColabs = useMemo(() => {
+    if (!editColabSearchQuery) return colaboradores.slice(0, 10)
+    const query = editColabSearchQuery.toLowerCase()
+    return colaboradores
+      .filter(c => c.nombre.toLowerCase().includes(query))
+      .slice(0, 10)
+  }, [colaboradores, editColabSearchQuery])
+  
+  // Upload image while editing
+  const handleEditImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    setUploadingEditImage(true)
+
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith('image/')) {
+        setError('Solo se permiten archivos de imagen')
+        continue
+      }
+
+      const sanitizedName = file.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9_.-]/g, '')
+      const fileName = `comentarios/${clientId}/${Date.now()}-${sanitizedName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('cliente-adjuntos')
+        .upload(fileName, file)
+
+      if (uploadError) {
+        console.error('[v0] Error uploading image:', uploadError)
+        setError(`Error al subir imagen: ${uploadError.message}`)
+        continue
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('cliente-adjuntos')
+        .getPublicUrl(fileName)
+
+      setEditingImages(prev => [...prev, publicUrl])
+    }
+
+    setUploadingEditImage(false)
+    if (editImageInputRef.current) {
+      editImageInputRef.current.value = ''
+    }
+  }
+  
+  // Remove an image while editing
+  const removeEditingImage = (url: string) => {
+    setEditingImages(prev => prev.filter(img => img !== url))
   }
   
   // Save edited comment
   const handleSaveEdit = async () => {
-    if (!editingCommentId || !editingContent.trim() || !currentUser) return
+    if (!editingCommentId || (!editingContent.trim() && editingImages.length === 0) || !currentUser) return
     
     const editorName = `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
     const now = new Date().toISOString()
+    const newContent = editingContent.trim()
+    const newImages = editingImages.length > 0 ? editingImages : null
     
     const { error: updateError } = await supabase
       .from('comentarios_clientes')
       .update({ 
-        contenido: editingContent.trim(),
+        contenido: newContent,
+        imagenes: newImages,
         actualizado_en: now,
         editado_por: currentUser.id
       })
@@ -439,15 +517,35 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
         c.id === editingCommentId 
           ? { 
               ...c, 
-              contenido: editingContent.trim(), 
+              contenido: newContent,
+              imagenes: newImages,
               actualizado_en: now,
               editado_por: currentUser.id,
               editor: { id: currentUser.id, nombre: editorName }
             }
           : c
       ))
-      setEditingCommentId(null)
-      setEditingContent('')
+      
+      // Notify newly mentioned collaborators
+      const mentionedIds = extractMentionedColaboradores(newContent)
+      if (mentionedIds.length > 0) {
+        const notifications = mentionedIds.map(colabId => ({
+          usuario_id: colabId,
+          tipo: 'mencion',
+          titulo: `${editorName} te mencionó en un comentario`,
+          contenido: newContent.slice(0, 100) + (newContent.length > 100 ? '...' : ''),
+          leida: false,
+          enlace: `/dashboard/clients/${clientId}`,
+        }))
+        const { error: notifError } = await supabase
+          .from('notificaciones')
+          .insert(notifications)
+        if (notifError) {
+          console.error('[v0] Error creating notifications:', notifError)
+        }
+      }
+      
+      cancelEditComment()
     }
   }
 
@@ -552,8 +650,9 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
           </Link>
         )
       } else if (match[3]) {
-        // User mention @Name
-        const mentionName = match[3].trim()
+        // User mention @Name — strip the leading "@" so we don't double/triple it
+        // (the AtSign icon below already renders the visual "@").
+        const mentionName = match[3].replace(/^@/, '').trim()
         const colab = currentUser?.nombre === mentionName ? currentUser : undefined
         
         parts.push(
@@ -562,7 +661,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-medium"
           >
             <AtSign className="h-3 w-3 shrink-0" />
-            @{colab?.nombre || mentionName}
+            {colab?.nombre || mentionName}
           </span>
         )
       } else if (match[4]) {
@@ -956,29 +1055,126 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                       {editingCommentId === comment.id ? (
                         <div className="mt-2 space-y-2">
                           <Textarea
+                            ref={editTextareaRef}
                             value={editingContent}
                             onChange={(e) => setEditingContent(e.target.value)}
                             className="min-h-[60px] text-sm"
                             autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === '@' || (e.key === '2' && e.shiftKey)) {
+                                setTimeout(() => setShowEditColabPopover(true), 50)
+                              }
+                            }}
                           />
-                          <div className="flex items-center gap-2 justify-end">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={cancelEditComment}
-                              className="h-7 text-xs"
-                            >
-                              Cancelar
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={handleSaveEdit}
-                              className="h-7 text-xs gap-1"
-                              disabled={!editingContent.trim()}
-                            >
-                              <Check className="h-3 w-3" />
-                              Guardar
-                            </Button>
+                          {/* Editing images preview */}
+                          {editingImages.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {editingImages.map((url, idx) => (
+                                <div key={idx} className="relative group/img">
+                                  <img
+                                    src={url}
+                                    alt={`Imagen ${idx + 1}`}
+                                    className="h-16 w-16 object-cover rounded-md border"
+                                  />
+                                  <button
+                                    onClick={() => removeEditingImage(url)}
+                                    className="absolute -top-1 -right-1 h-5 w-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1">
+                              {/* Mention collaborator while editing */}
+                              <Popover open={showEditColabPopover} onOpenChange={setShowEditColabPopover}>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                                  >
+                                    <AtSign className="h-3 w-3" />
+                                    <span className="hidden sm:inline">Mencionar</span>
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-64 p-0" align="start">
+                                  <Command>
+                                    <CommandInput
+                                      placeholder="Buscar colaborador..."
+                                      value={editColabSearchQuery}
+                                      onValueChange={setEditColabSearchQuery}
+                                      className="h-9"
+                                    />
+                                    <CommandList>
+                                      <CommandEmpty>No se encontraron colaboradores</CommandEmpty>
+                                      <CommandGroup heading="Colaboradores">
+                                        {filteredEditColabs.map(colab => (
+                                          <CommandItem
+                                            key={colab.id}
+                                            value={colab.nombre}
+                                            onSelect={() => insertEditColabMention(colab)}
+                                            className="gap-2"
+                                          >
+                                            <Avatar className="h-5 w-5">
+                                              <AvatarImage src={colab.avatar_url || undefined} />
+                                              <AvatarFallback className="text-[10px]">
+                                                {colab.nombre[0]}
+                                              </AvatarFallback>
+                                            </Avatar>
+                                            <span className="text-xs">{colab.nombre}</span>
+                                          </CommandItem>
+                                        ))}
+                                      </CommandGroup>
+                                    </CommandList>
+                                  </Command>
+                                </PopoverContent>
+                              </Popover>
+                              {/* Attach image while editing */}
+                              <input
+                                ref={editImageInputRef}
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                className="hidden"
+                                onChange={handleEditImageUpload}
+                              />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                                onClick={() => editImageInputRef.current?.click()}
+                                disabled={uploadingEditImage}
+                              >
+                                {uploadingEditImage ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <ImagePlus className="h-3 w-3" />
+                                )}
+                                <span className="hidden sm:inline">Imagen</span>
+                              </Button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={cancelEditComment}
+                                className="h-7 text-xs"
+                              >
+                                Cancelar
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={handleSaveEdit}
+                                className="h-7 text-xs gap-1"
+                                disabled={!editingContent.trim() && editingImages.length === 0}
+                              >
+                                <Check className="h-3 w-3" />
+                                Guardar
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ) : (
@@ -1042,7 +1238,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                       <button
                         key={suggestion}
                         onClick={() => {
-                          handleInputChange({ target: { value: suggestion } } as React.ChangeEvent<HTMLInputElement>)
+                          setAiInput(suggestion)
                         }}
                         className="text-[11px] px-2.5 py-1 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
                       >
