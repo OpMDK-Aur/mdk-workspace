@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -51,6 +52,17 @@ export function ClientTareas({ clientId, onTaskClick }: ClientTareasProps) {
   const [activeTab, setActiveTab] = useState('pendiente')
 
   const supabase = createClient()
+  const router = useRouter()
+
+  // Navigate to the task in the tasks board (deep-link via ?task=<id>),
+  // unless a custom handler is provided.
+  const handleTaskClick = (taskId: string) => {
+    if (onTaskClick) {
+      onTaskClick(taskId)
+    } else {
+      router.push(`/dashboard/tasks?task=${taskId}`)
+    }
+  }
 
   useEffect(() => {
     fetchTareas()
@@ -109,7 +121,7 @@ export function ClientTareas({ clientId, onTaskClick }: ClientTareasProps) {
       <div
         key={tarea.id}
         className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer group"
-        onClick={() => onTaskClick?.(tarea.id)}
+        onClick={() => handleTaskClick(tarea.id)}
       >
         <div className={`w-1 h-full min-h-[40px] rounded-full ${prioridad.color}`} />
         <div className="flex-1 min-w-0">

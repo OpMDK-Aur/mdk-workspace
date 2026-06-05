@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   DollarSign, Target, TrendingDown, MousePointerClick, Eye,
-  Users, Megaphone, MessageSquare, Calendar, Clock,
+  Users, MessageSquare, Calendar, Clock,
   ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown, Pencil, Check, X,
 } from 'lucide-react'
 import {
@@ -499,6 +499,8 @@ function sortUnidades(unidades: UnidadDeNegocio[]): UnidadDeNegocio[] {
 // ── Main component ─────────────────────────────────────────────────────────────
 export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0, unidadesDeNegocio = [], metricasColaborador = [], horasPorColaborador = [], npsNotas = [] }: ClientOverviewProps) {
   const [preset, setPreset]           = useState('last_30d')
+  const [platformFilter, setPlatformFilter] = useState<'all' | 'meta' | 'google'>('all')
+  const [campaignFilter, setCampaignFilter] = useState<string>('all')
   const [rows, setRows]               = useState<ScorecardRow[]>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
@@ -711,26 +713,45 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     const collected: ScorecardRow[] = []
 
     try {
-      // Meta — endpoint expects `account_id`, returns campaigns[].id/.name
+      // Meta — endpoint expects `account_id`, returns { campaigns[], totals }
       const metaAccountIds = metaIds.length > 0 ? metaIds : (client.meta_ads_account_id ? [client.meta_ads_account_id] : [])
       if (metaAccountIds.length > 0) {
         for (const account_id of metaAccountIds) {
           const params = new URLSearchParams({
-            q: 'campaigns',
-            fields: 'id,name',
-            account_id: account_id,
+            account_id,
+            date_range: p,
+            start_date: start,
+            end_date: end,
           })
           const res = await fetch(`/api/ads/meta?${params}`)
-          const json = (await res.json()) as { data: Array<{ id: string; name: string }> }
-          for (const campaign of json.data) {
-            rows.push({
-              campaignId: campaign.id,
-              campaignName: campaign.name,
-              platform: 'meta',
-              spend: 0,
-              budget: 0,
-              leadType: '',
-            })
+          const data = await res.json()
+          if (!res.ok) {
+            throw new Error(data.error || 'Error al cargar Meta Ads')
+          }
+          if (data.campaigns) {
+            for (const c of data.campaigns) {
+              const spend = Number(c.spend ?? 0)
+              const leads = Number(c.leads ?? 0)
+              const impressions = Number(c.impressions ?? 0)
+              const clicks = Number(c.clicks ?? 0)
+              collected.push({
+                clientId:     client.id,
+                clientName:   client.business_name,
+                campaignId:   c.id,
+                campaignName: c.name,
+                platform:     'meta',
+                budget:       null,
+                daysToEnd:    null,
+                leads,
+                leadType:     c.lead_type ?? '',
+                cpl:          Number(c.cpl ?? (leads > 0 ? spend / leads : 0)),
+                ctr:          Number(c.ctr ?? (impressions > 0 ? (clicks / impressions) * 100 : 0)),
+                impressions,
+                clicks,
+                spend,
+                crmContacts:  0,
+              })
+            }
           }
         }
       }
@@ -781,28 +802,44 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     } finally {
       setLoading(false)
     }
-  }, [client])
+  }, [client, metaIds, googleIds])
 
   useEffect(() => { fetchData(preset) }, [preset, fetchData])
 
+  // Reset campaign filter if it no longer exists in the data
+  useEffect(() => {
+    if (campaignFilter !== 'all' && !rows.some(r => r.campaignId === campaignFilter)) {
+      setCampaignFilter('all')
+    }
+  }, [rows, campaignFilter])
+
+  // Apply platform + campaign filters before aggregating
+  const filteredRows = rows.filter(r => {
+    if (platformFilter !== 'all' && r.platform !== platformFilter) return false
+    if (campaignFilter !== 'all' && r.campaignId !== campaignFilter) return false
+    return true
+  })
+
+  // Unique campaign options for the campaign filter (respecting the platform filter)
+  const campaignOptions = Array.from(
+    new Map(
+      rows
+        .filter(r => platformFilter === 'all' || r.platform === platformFilter)
+        .filter(r => r.campaignId)
+        .map(r => [r.campaignId as string, r.campaignName])
+    ).entries()
+  )
+
   // Aggregate totals
-  const totalSpend    = rows.reduce((s, r) => s + r.spend, 0)
-  const totalLeads    = rows.reduce((s, r) => s + r.leads, 0)
+  const totalSpend    = filteredRows.reduce((s, r) => s + r.spend, 0)
+  const totalLeads    = filteredRows.reduce((s, r) => s + r.leads, 0)
   const avgCpl        = totalLeads > 0 ? totalSpend / totalLeads : 0
-  const totalClicks   = rows.reduce((s, r) => s + r.clicks, 0)
-  const totalImpr     = rows.reduce((s, r) => s + r.impressions, 0)
+  const totalClicks   = filteredRows.reduce((s, r) => s + r.clicks, 0)
+  const totalImpr     = filteredRows.reduce((s, r) => s + r.impressions, 0)
   const avgCtr        = totalImpr > 0 ? (totalClicks / totalImpr) * 100 : 0
 
   // Top 5 campaigns by leads
-  const top5 = [...rows].sort((a, b) => b.leads - a.leads).slice(0, 5)
-
-  // Campaign types
-  const typeMap: Record<string, number> = {}
-  for (const r of rows) {
-    const t = r.leadType || 'Otro'
-    typeMap[t] = (typeMap[t] ?? 0) + 1
-  }
-  const campaignTypes = Object.entries(typeMap).sort((a, b) => b[1] - a[1])
+  const top5 = [...filteredRows].sort((a, b) => b.leads - a.leads).slice(0, 5)
 
   const totalFee = (client.fee_mdk ?? 0) + (client.fee_aurelia ?? 0)
 
@@ -919,6 +956,14 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             </Button>
           </div>
         </div>
+
+        {/* ── NPS Score (arriba de todo) ── */}
+        <ClientNPS 
+          clientId={client.id} 
+          currentUserId={currentProfile?.id}
+          projectManagerId={client.project_manager_id}
+          accountManagerId={client.account_manager_id}
+        />
 
         {/* ── Info row: PM / AM / Fee / Dedicacion / Plataformas ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -1256,7 +1301,32 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
         {/* ── KPIs del periodo ── */}
         <div>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">KPIs del periodo</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">KPIs del periodo</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={platformFilter} onValueChange={(v) => setPlatformFilter(v as 'all' | 'meta' | 'google')}>
+                <SelectTrigger className="h-8 w-[130px] text-xs">
+                  <SelectValue placeholder="Plataforma" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las plataformas</SelectItem>
+                  <SelectItem value="meta">Meta Ads</SelectItem>
+                  <SelectItem value="google">Google Ads</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={campaignFilter} onValueChange={setCampaignFilter}>
+                <SelectTrigger className="h-8 w-[170px] text-xs">
+                  <SelectValue placeholder="Campaña" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las campañas</SelectItem>
+                  {campaignOptions.map(([id, name]) => (
+                    <SelectItem key={id} value={id} className="text-xs">{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           {error && (
             <p className="text-sm text-destructive mb-3">{error}</p>
           )}
@@ -1285,11 +1355,11 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           <div>
             <ClientBudgetAlertCard
               loading={loading}
-              alert={rows.length > 0
+              alert={filteredRows.length > 0
                 ? computeClientBudgetAlerts(
                     client.id,
                     client.business_name,
-                    rows.map(r => ({
+                    filteredRows.map(r => ({
                       campaignId:   r.campaignId,
                       campaignName: r.campaignName,
                       platform:     r.platform,
@@ -1303,32 +1373,6 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             />
           </div>
         )}
-
-        {/* ── Tipo de campaña ── */}
-        <div>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Tipo de campanas</h2>
-          <Card>
-            <CardContent className="pt-5 pb-5">
-              {loading ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Cargando...
-                </div>
-              ) : campaignTypes.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Sin datos para el periodo</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {campaignTypes.map(([type, count]) => (
-                    <Badge key={type} variant="secondary" className="gap-1.5 py-1 px-3">
-                      <Megaphone className="h-3 w-3" />
-                      {type}
-                      <span className="text-muted-foreground ml-1">{count}</span>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
 
         {/* ── Top 5 campanas ── */}
         <div>
@@ -1375,20 +1419,14 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           )}
         </div>
 
-        {/* ── Landings, CRMs y NPS ── */}
-        <div className="grid md:grid-cols-3 gap-4">
-          <div className="rounded-xl border bg-card p-5">
+        {/* ── Landings y CRMs ── */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="rounded-xl border bg-card p-4">
             <ClientLandings clientId={client.id} />
           </div>
-          <div className="rounded-xl border bg-card p-5">
+          <div className="rounded-xl border bg-card p-4">
             <ClientCRMs clientId={client.id} />
           </div>
-          <ClientNPS 
-            clientId={client.id} 
-            currentUserId={currentProfile?.id}
-            projectManagerId={client.project_manager_id}
-            accountManagerId={client.account_manager_id}
-          />
         </div>
 
         {/* ── Tareas, Cotizaciones, Adjuntos ── */}

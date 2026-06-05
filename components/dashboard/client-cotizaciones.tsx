@@ -45,8 +45,8 @@ const ESTADOS = [
 ]
 
 const MONEDAS = [
-  { value: 'USD', label: 'USD ($)' },
   { value: 'ARS', label: 'ARS ($)' },
+  { value: 'USD', label: 'USD ($)' },
   { value: 'EUR', label: 'EUR (€)' },
   { value: 'MXN', label: 'MXN ($)' },
 ]
@@ -62,7 +62,7 @@ export function ClientCotizaciones({ clientId, currentUserId }: ClientCotizacion
     titulo: '',
     descripcion: '',
     monto: '',
-    moneda: 'USD',
+    moneda: 'ARS',
     estado: 'borrador',
     fecha_emision: format(new Date(), 'yyyy-MM-dd'),
     fecha_vencimiento: '',
@@ -155,7 +155,7 @@ export function ClientCotizaciones({ clientId, currentUserId }: ClientCotizacion
       titulo: '',
       descripcion: '',
       monto: '',
-      moneda: 'USD',
+      moneda: 'ARS',
       estado: 'borrador',
       fecha_emision: format(new Date(), 'yyyy-MM-dd'),
       fecha_vencimiento: '',
@@ -214,6 +214,14 @@ export function ClientCotizaciones({ clientId, currentUserId }: ClientCotizacion
     aceptadas: cotizaciones.filter(c => c.estado === 'aceptada').reduce((sum, c) => sum + c.monto, 0),
     pendientes: cotizaciones.filter(c => c.estado === 'enviada').reduce((sum, c) => sum + c.monto, 0),
   }
+
+  // Currency used for the totals summary: most frequent currency among quotes (defaults to ARS)
+  const monedaTotales = (() => {
+    if (cotizaciones.length === 0) return 'ARS'
+    const counts: Record<string, number> = {}
+    for (const c of cotizaciones) counts[c.moneda] = (counts[c.moneda] ?? 0) + 1
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0]
+  })()
 
   return (
     <div className="rounded-xl border bg-card p-5">
@@ -350,15 +358,15 @@ export function ClientCotizaciones({ clientId, currentUserId }: ClientCotizacion
         <div className="grid grid-cols-3 gap-2 mb-4">
           <div className="rounded-lg bg-muted/50 p-2 text-center">
             <p className="text-[10px] text-muted-foreground uppercase">Total</p>
-            <p className="text-sm font-semibold">{formatMonto(totales.total, 'USD')}</p>
+            <p className="text-sm font-semibold">{formatMonto(totales.total, monedaTotales)}</p>
           </div>
           <div className="rounded-lg bg-green-500/10 p-2 text-center">
             <p className="text-[10px] text-green-600 uppercase">Aceptadas</p>
-            <p className="text-sm font-semibold text-green-600">{formatMonto(totales.aceptadas, 'USD')}</p>
+            <p className="text-sm font-semibold text-green-600">{formatMonto(totales.aceptadas, monedaTotales)}</p>
           </div>
           <div className="rounded-lg bg-blue-500/10 p-2 text-center">
             <p className="text-[10px] text-blue-600 uppercase">Pendientes</p>
-            <p className="text-sm font-semibold text-blue-600">{formatMonto(totales.pendientes, 'USD')}</p>
+            <p className="text-sm font-semibold text-blue-600">{formatMonto(totales.pendientes, monedaTotales)}</p>
           </div>
         </div>
       )}

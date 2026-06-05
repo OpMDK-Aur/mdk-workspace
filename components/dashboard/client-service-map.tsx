@@ -509,8 +509,6 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
               />
             )
           })}
-            )
-          })}
         </div>
       </TooltipProvider>
 
