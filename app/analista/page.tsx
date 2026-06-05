@@ -45,6 +45,7 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { toast } from 'sonner'
 import ReactMarkdown from 'react-markdown'
+import { MessageContent } from '@/components/chat/message-content'
 
 const MONTHS = [
   { value: '1', label: 'Enero' },
@@ -530,22 +531,27 @@ export default function AnalistaPage() {
                       )}
                     >
                       {message.role === 'assistant' ? (
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                          <ReactMarkdown>{message.content}</ReactMarkdown>
-                        </div>
+                        <MessageContent content={message.content} />
                       ) : (
                         <>
                           <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                           {message.attachments && message.attachments.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-2">
                               {message.attachments.map((att, i) => (
-                                <div key={i} className="flex items-center gap-1 px-2 py-1 rounded bg-white/20 text-xs">
+                                <div key={i} className="relative">
                                   {att.type.startsWith('image/') ? (
-                                    <ImageIcon className="h-3 w-3" />
+                                    <img 
+                                      src={att.url} 
+                                      alt={att.name}
+                                      className="h-20 w-auto rounded-lg border object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                                      onClick={() => window.open(att.url, '_blank')}
+                                    />
                                   ) : (
-                                    <File className="h-3 w-3" />
+                                    <div className="flex items-center gap-1 px-2 py-1 rounded bg-white/20 text-xs">
+                                      <File className="h-3 w-3" />
+                                      <span className="max-w-[100px] truncate">{att.name}</span>
+                                    </div>
                                   )}
-                                  <span className="max-w-[100px] truncate">{att.name}</span>
                                 </div>
                               ))}
                             </div>
