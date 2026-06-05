@@ -70,6 +70,25 @@ interface ClientOverviewProps {
   misHoras?: number // current user's hours this month for this client
   unidadesDeNegocio?: UnidadDeNegocio[]
   metricasColaborador?: MetricaColaborador[]
+  horasPorColaborador?: HorasColaborador[]
+  npsNotas?: NpsNota[]
+}
+
+interface HorasColaborador {
+  id: string
+  nombre: string
+  apellido: string
+  avatar_url: string | null
+  horas: number
+}
+
+interface NpsNota {
+  id: string
+  score: number
+  comentario: string | null
+  fecha: string
+  encuestado_nombre: string | null
+  encuestado_cargo: string | null
 }
 
 type DedicationStatus = 'normal' | 'baja' | 'exceso' | 'sin_datos'
@@ -135,6 +154,14 @@ function formatCurrency(v: number) {
   if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`
   return `$${v.toFixed(2)}`
 }
+// Full currency — no abbreviation, used for fees
+function formatCurrencyFull(v: number) {
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  }).format(v)
+}
 function formatNumber(v: number) {
   if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`
   return String(v)
@@ -162,7 +189,7 @@ function getStatusLabel(s: string | null) {
 }
 
 function getPuestoDisplay(profile: Profile) {
-  return profile.puesto || 'Sin puesto'
+  return profile.puesto || ''
 }
 
 function initials(name: string | null) {
@@ -278,7 +305,9 @@ function EditableMultiPersonChip({
                       </Avatar>
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate leading-tight">{p.full_name ?? p.email}</p>
-                        <p className="text-[10px] text-muted-foreground">{getPuestoDisplay(p)}</p>
+                        {getPuestoDisplay(p) && (
+                          <p className="text-[10px] text-muted-foreground">{getPuestoDisplay(p)}</p>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -334,12 +363,16 @@ function EditableAccountsEditor({
   platform,
   onChange,
   updating,
+  nameMap = {},
+  loadingNames = false,
 }: {
   accounts: string[]
   label: string
   platform: 'meta' | 'google'
   onChange: (ids: string[]) => void
   updating: boolean
+  nameMap?: Record<string, string>
+  loadingNames?: boolean
 }) {
   const [input, setInput] = useState('')
 
@@ -355,27 +388,41 @@ function EditableAccountsEditor({
     onChange(accounts.filter(a => a !== id))
   }
 
+  // Resolve display name for an account id (try with/without act_ prefix)
+  const resolveName = (acc: string): string | null => {
+    const clean = acc.replace(/^act_/, '').replace(/-/g, '')
+    return nameMap[acc] ?? nameMap[clean] ?? null
+  }
+
   return (
     <div className="flex flex-col gap-2">
       <span className="text-xs text-muted-foreground font-medium">{label}</span>
       <div className="flex flex-col gap-2">
         {accounts.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {accounts.map(acc => (
-              <div
-                key={acc}
-                className="inline-flex items-center gap-1.5 bg-muted text-sm text-foreground rounded-md px-2 py-1"
-              >
-                <code className="text-xs font-mono">{acc}</code>
-                <button
-                  onClick={() => removeAccount(acc)}
-                  disabled={updating}
-                  className="text-muted-foreground hover:text-foreground ml-0.5"
+          <div className="flex flex-col gap-1.5">
+            {accounts.map(acc => {
+              const name = resolveName(acc)
+              return (
+                <div
+                  key={acc}
+                  className="flex items-start gap-1.5 bg-muted text-foreground rounded-md px-2 py-1.5"
                 >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium leading-tight break-words">
+                      {name ?? (loadingNames ? 'Cargando…' : 'Cuenta sin nombre')}
+                    </p>
+                    <code className="text-[10px] font-mono text-muted-foreground break-all">{acc}</code>
+                  </div>
+                  <button
+                    onClick={() => removeAccount(acc)}
+                    disabled={updating}
+                    className="text-muted-foreground hover:text-foreground mt-0.5 shrink-0"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )
+            })}
           </div>
         )}
         <div className="flex gap-2">
@@ -450,7 +497,7 @@ function sortUnidades(unidades: UnidadDeNegocio[]): UnidadDeNegocio[] {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0, unidadesDeNegocio = [], metricasColaborador = [] }: ClientOverviewProps) {
+export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0, unidadesDeNegocio = [], metricasColaborador = [], horasPorColaborador = [], npsNotas = [] }: ClientOverviewProps) {
   const [preset, setPreset]           = useState('last_30d')
   const [rows, setRows]               = useState<ScorecardRow[]>([])
   const [loading, setLoading]         = useState(true)
@@ -486,8 +533,43 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   // Active/Inactive status
   const [isActivo, setIsActivo] = useState(client.activo !== false) // null or true = activo
   const [updatingActivo, setUpdatingActivo] = useState(false)
-  
+
+  // Ad account names (resolved from the platform account listing endpoints)
+  const [metaNames, setMetaNames] = useState<Record<string, string>>({})
+  const [googleNames, setGoogleNames] = useState<Record<string, string>>({})
+  const [loadingNames, setLoadingNames] = useState(false)
+
   const supabase = createClient()
+
+  // Load human-readable account names once
+  useEffect(() => {
+    let cancelled = false
+    const loadNames = async () => {
+      setLoadingNames(true)
+      try {
+        const [metaRes, googleRes] = await Promise.all([
+          fetch('/api/ads/meta/accounts').then(r => r.ok ? r.json() : { accounts: [] }).catch(() => ({ accounts: [] })),
+          fetch('/api/ads/google/accounts').then(r => r.ok ? r.json() : { accounts: [] }).catch(() => ({ accounts: [] })),
+        ])
+        if (cancelled) return
+        const metaMap: Record<string, string> = {}
+        for (const a of metaRes.accounts ?? []) {
+          if (a.id) metaMap[String(a.id)] = a.name
+          if (a.raw_id) metaMap[String(a.raw_id)] = a.name
+        }
+        const googleMap: Record<string, string> = {}
+        for (const a of googleRes.accounts ?? []) {
+          if (a.id) googleMap[String(a.id).replace(/-/g, '')] = a.name
+        }
+        setMetaNames(metaMap)
+        setGoogleNames(googleMap)
+      } finally {
+        if (!cancelled) setLoadingNames(false)
+      }
+    }
+    loadNames()
+    return () => { cancelled = true }
+  }, [])
 
   const handleActivoChange = async (newActivo: boolean) => {
     setUpdatingActivo(true)
@@ -724,6 +806,61 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
   const totalFee = (client.fee_mdk ?? 0) + (client.fee_aurelia ?? 0)
 
+  // Merge tracked hours (everyone who logged time) with assigned metrics (objetivo/minimo)
+  // so the team list shows ALL people who worked on this client, not only assigned ones.
+  type TeamMember = {
+    id: string
+    nombre: string
+    apellido: string
+    avatar_url: string | null
+    horas: number
+    horasObjetivo: number
+    minimo: number
+    porcentaje: number
+  }
+  const teamMap = new Map<string, TeamMember>()
+  // Seed from assigned metrics
+  for (const m of metricasColaborador) {
+    const col = m.colaboradores
+    const id = col?.id || m.colaborador_id
+    if (!id) continue
+    teamMap.set(id, {
+      id,
+      nombre: col?.nombre ?? '',
+      apellido: col?.apellido ?? '',
+      avatar_url: col?.avatar_url ?? null,
+      horas: m.acumulado_mes_asignado || 0,
+      horasObjetivo: m.horas_objetivo || 0,
+      minimo: m.minimo_no_negociable_horas || 0,
+      porcentaje: m.porcentaje_asignacion || 0,
+    })
+  }
+  // Add/override with actual tracked hours (covers people without assigned metrics)
+  for (const h of horasPorColaborador) {
+    const existing = teamMap.get(h.id)
+    if (existing) {
+      existing.horas = h.horas
+      if (!existing.nombre) existing.nombre = h.nombre
+      if (!existing.apellido) existing.apellido = h.apellido
+      if (!existing.avatar_url) existing.avatar_url = h.avatar_url
+    } else {
+      teamMap.set(h.id, {
+        id: h.id,
+        nombre: h.nombre,
+        apellido: h.apellido,
+        avatar_url: h.avatar_url,
+        horas: h.horas,
+        horasObjetivo: 0,
+        minimo: 0,
+        porcentaje: 0,
+      })
+    }
+  }
+  const teamMembers = Array.from(teamMap.values()).sort((a, b) => b.horas - a.horas)
+  const totalHorasAcumuladas = teamMembers.reduce((acc, m) => acc + m.horas, 0)
+  const totalHorasObjetivo = teamMembers.reduce((acc, m) => acc + m.horasObjetivo, 0)
+  const totalMinimo = teamMembers.reduce((acc, m) => acc + m.minimo, 0)
+
   return (
     <div className="flex-1 overflow-y-auto bg-background">
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
@@ -816,6 +953,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 platform="meta"
                 onChange={handleMetaChange}
                 updating={updatingMeta}
+                nameMap={metaNames}
+                loadingNames={loadingNames}
               />
             </CardContent>
           </Card>
@@ -828,6 +967,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 platform="google"
                 onChange={handleGoogleChange}
                 updating={updatingGoogle}
+                nameMap={googleNames}
+                loadingNames={loadingNames}
               />
             </CardContent>
           </Card>
@@ -913,13 +1054,13 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
               ) : (
                 <>
                   <div className="flex items-end gap-2">
-                    <p className="text-2xl font-bold text-foreground">{formatCurrency(feeMdk + feeAurelia + feeConsultoria)}</p>
-                    <p className="text-xs text-muted-foreground mb-1">/ mes</p>
+                    <p className="text-2xl font-bold text-foreground break-all">{formatCurrencyFull(feeMdk + feeAurelia + feeConsultoria)}</p>
+                    <p className="text-xs text-muted-foreground mb-1 shrink-0">/ mes</p>
                   </div>
                   <div className="flex flex-wrap gap-3 mt-2">
-                    {feeMdk > 0 && <span className="text-[11px] text-muted-foreground">MDK: {formatCurrency(feeMdk)}</span>}
-                    {feeAurelia > 0 && <span className="text-[11px] text-muted-foreground">Aurelia: {formatCurrency(feeAurelia)}</span>}
-                    {feeConsultoria > 0 && <span className="text-[11px] text-muted-foreground">Consultoría: {formatCurrency(feeConsultoria)}</span>}
+                    {feeMdk > 0 && <span className="text-[11px] text-muted-foreground">MDK: {formatCurrencyFull(feeMdk)}</span>}
+                    {feeAurelia > 0 && <span className="text-[11px] text-muted-foreground">Aurelia: {formatCurrencyFull(feeAurelia)}</span>}
+                    {feeConsultoria > 0 && <span className="text-[11px] text-muted-foreground">Consultoría: {formatCurrencyFull(feeConsultoria)}</span>}
                   </div>
                 </>
               )}
@@ -928,27 +1069,28 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
           <Card>
             <CardContent className="pt-5 pb-5">
-              <p className="text-xs text-muted-foreground font-medium mb-3">Plataformas activas</p>
-              {platforms.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  {platforms.map(p => (
-                    <div key={p.id} className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground font-medium mb-3">Notas NPS</p>
+              {npsNotas.length > 0 ? (
+                <div className="flex flex-col gap-2 max-h-32 overflow-y-auto">
+                  {npsNotas.map(nota => (
+                    <div key={nota.id} className="flex items-start gap-2">
                       <div className={cn(
-                        'h-6 w-6 rounded flex items-center justify-center shrink-0',
-                        p.id === 'meta' ? 'bg-blue-600/15 text-blue-400' : 'bg-green-600/15 text-green-400'
+                        'h-5 w-5 rounded flex items-center justify-center shrink-0 text-white text-[10px] font-bold',
+                        nota.score >= 4 ? 'bg-status-verde' : nota.score >= 3 ? 'bg-status-amarillo' : 'bg-status-rojo'
                       )}>
-                        {p.icon}
+                        {nota.score}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-medium text-foreground">{p.label}</p>
-                        <p className="text-[10px] text-muted-foreground truncate font-mono">{p.accountId}</p>
+                        <p className="text-[11px] text-foreground leading-tight break-words">{nota.comentario}</p>
+                        {nota.encuestado_nombre && (
+                          <p className="text-[10px] text-muted-foreground truncate">{nota.encuestado_nombre}</p>
+                        )}
                       </div>
-                      <CheckCircle2 className="h-3.5 w-3.5 text-status-verde ml-auto shrink-0" />
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">Sin plataformas</p>
+                <p className="text-sm text-muted-foreground">Sin notas registradas</p>
               )}
             </CardContent>
           </Card>
@@ -967,7 +1109,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-foreground">
-                      {metricasColaborador.reduce((acc, m) => acc + (m.acumulado_mes_asignado || 0), 0).toFixed(1)}h
+                      {totalHorasAcumuladas.toFixed(1)}h
                     </p>
                     <p className="text-xs text-muted-foreground">Horas acumuladas</p>
                   </div>
@@ -975,35 +1117,32 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 <div className="h-8 w-px bg-border hidden sm:block" />
                 <div>
                   <p className="text-lg font-semibold text-foreground">
-                    {metricasColaborador.reduce((acc, m) => acc + (m.horas_objetivo || 0), 0).toFixed(1)}h
+                    {totalHorasObjetivo.toFixed(1)}h
                   </p>
                   <p className="text-xs text-muted-foreground">Objetivo mensual</p>
                 </div>
                 <div className="h-8 w-px bg-border hidden sm:block" />
                 <div>
                   <p className="text-lg font-semibold text-foreground">
-                    {metricasColaborador.reduce((acc, m) => acc + (m.minimo_no_negociable_horas || 0), 0).toFixed(1)}h
+                    {totalMinimo.toFixed(1)}h
                   </p>
                   <p className="text-xs text-muted-foreground">Minimo requerido</p>
                 </div>
                 <div className="h-8 w-px bg-border hidden sm:block" />
                 <div>
-                  <p className="text-lg font-semibold text-foreground">{metricasColaborador.length}</p>
-                  <p className="text-xs text-muted-foreground">Colaboradores asignados</p>
+                  <p className="text-lg font-semibold text-foreground">{teamMembers.length}</p>
+                  <p className="text-xs text-muted-foreground">Colaboradores</p>
                 </div>
               </div>
               
               {/* Lista de colaboradores */}
-              {metricasColaborador.length > 0 ? (
+              {teamMembers.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {metricasColaborador.map((metrica) => {
-                    const colaborador = metrica.colaboradores
-                    const nombre = colaborador 
-                      ? `${colaborador.nombre || ''} ${colaborador.apellido || ''}`.trim() 
-                      : 'Sin nombre'
+                  {teamMembers.map((miembro) => {
+                    const nombre = `${miembro.nombre || ''} ${miembro.apellido || ''}`.trim() || 'Sin nombre'
                     const iniciales = nombre.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-                    const progreso = metrica.horas_objetivo > 0 
-                      ? Math.min((metrica.acumulado_mes_asignado / metrica.horas_objetivo) * 100, 100) 
+                    const progreso = miembro.horasObjetivo > 0 
+                      ? Math.min((miembro.horas / miembro.horasObjetivo) * 100, 100) 
                       : 0
                     const colorProgreso = progreso >= 100 
                       ? 'bg-status-verde' 
@@ -1012,10 +1151,10 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                         : 'bg-status-naranja'
                     
                     return (
-                      <div key={metrica.id} className="p-4 rounded-xl bg-muted/30 border border-border/50 space-y-3">
+                      <div key={miembro.id} className="p-4 rounded-xl bg-muted/30 border border-border/50 space-y-3">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-9 w-9 shrink-0">
-                            {colaborador?.avatar_url && <AvatarImage src={colaborador.avatar_url} alt={nombre} />}
+                            {miembro.avatar_url && <AvatarImage src={miembro.avatar_url} alt={nombre} />}
                             <AvatarFallback className="bg-primary/20 text-primary text-xs">
                               {iniciales}
                             </AvatarFallback>
@@ -1023,43 +1162,48 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-foreground truncate">{nombre}</p>
                             <p className="text-xs text-muted-foreground">
-                              {metrica.porcentaje_asignacion > 0 ? `${metrica.porcentaje_asignacion}% dedicacion` : 'Sin asignacion'}
+                              {miembro.porcentaje > 0 ? `${miembro.porcentaje}% dedicacion` : 'Horas registradas'}
                             </p>
                           </div>
                         </div>
                         
-                        {/* Barra de progreso */}
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">
-                              {metrica.acumulado_mes_asignado.toFixed(1)}h / {metrica.horas_objetivo.toFixed(1)}h
-                            </span>
-                            <span className={cn(
-                              'font-semibold',
-                              progreso >= 100 ? 'text-status-verde' : progreso >= 70 ? 'text-status-amarillo' : 'text-status-naranja'
-                            )}>
-                              {progreso.toFixed(0)}%
-                            </span>
+                        {/* Barra de progreso (solo si hay objetivo asignado) */}
+                        {miembro.horasObjetivo > 0 ? (
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">
+                                {miembro.horas.toFixed(1)}h / {miembro.horasObjetivo.toFixed(1)}h
+                              </span>
+                              <span className={cn(
+                                'font-semibold',
+                                progreso >= 100 ? 'text-status-verde' : progreso >= 70 ? 'text-status-amarillo' : 'text-status-naranja'
+                              )}>
+                                {progreso.toFixed(0)}%
+                              </span>
+                            </div>
+                            <div className="h-2 bg-muted rounded-full overflow-hidden">
+                              <div 
+                                className={cn('h-full rounded-full transition-all', colorProgreso)}
+                                style={{ width: `${progreso}%` }}
+                              />
+                            </div>
                           </div>
-                          <div className="h-2 bg-muted rounded-full overflow-hidden">
-                            <div 
-                              className={cn('h-full rounded-full transition-all', colorProgreso)}
-                              style={{ width: `${progreso}%` }}
-                            />
+                        ) : (
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">Horas trabajadas</span>
+                            <span className="font-semibold text-foreground">{miembro.horas.toFixed(1)}h</span>
                           </div>
-                        </div>
+                        )}
                         
                         {/* Detalle */}
-                        <div className="flex justify-between text-xs pt-1 border-t border-border/50">
-                          <div>
-                            <span className="text-muted-foreground">Minimo: </span>
-                            <span className="font-medium">{metrica.minimo_no_negociable_horas.toFixed(1)}h</span>
+                        {miembro.minimo > 0 && (
+                          <div className="flex justify-between text-xs pt-1 border-t border-border/50">
+                            <div>
+                              <span className="text-muted-foreground">Minimo: </span>
+                              <span className="font-medium">{miembro.minimo.toFixed(1)}h</span>
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-muted-foreground">Valor/h: </span>
-                            <span className="font-medium">{formatCurrency(metrica.valor_hora)}</span>
-                          </div>
-                        </div>
+                        )}
                       </div>
                     )
                   })}
@@ -1067,8 +1211,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
               ) : (
                 <div className="text-center py-8">
                   <Clock className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
-                  <p className="text-sm text-muted-foreground">Sin metricas asignadas para este mes</p>
-                  <p className="text-xs text-muted-foreground mt-1">Asigna colaboradores en la seccion de Metricas por Colaborador</p>
+                  <p className="text-sm text-muted-foreground">Sin horas registradas este mes</p>
+                  <p className="text-xs text-muted-foreground mt-1">Nadie ha marcado tiempo sobre este cliente todavia</p>
                 </div>
               )}
               
