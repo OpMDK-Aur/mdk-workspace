@@ -132,7 +132,7 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
         // Fetch colaboradores for AC names (account_manager_id references colaboradores)
         const { data: colaboradoresData, error: colaboradoresError } = await supabase
           .from('colaboradores')
-          .select('id, nombre, email')
+          .select('id, nombre, apellido, email')
 
         if (colaboradoresError) throw colaboradoresError
 
@@ -170,8 +170,14 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
     if (!id) return null
     
     // First try to find in colaboradores (account_manager_id references colaboradores table)
-    const colaborador = colaboradores.find(c => c.id === id)
-    if (colaborador?.nombre) return colaborador.nombre
+    const colaborador = colaboradores.find(c => c.id === id) as { id: string; nombre: string; apellido?: string; email?: string } | undefined
+    if (colaborador?.nombre) {
+      // Combine nombre + apellido for full name
+      const fullName = colaborador.apellido 
+        ? `${colaborador.nombre} ${colaborador.apellido}`
+        : colaborador.nombre
+      return fullName
+    }
     
     // Fallback to profiles
     const profile = profiles.find(p => p.id === id)
