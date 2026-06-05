@@ -395,96 +395,99 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
           </Button>
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* Current Score Display */}
-          <div className="flex items-center gap-4">
-            <div className={cn(
-              "w-16 h-16 rounded-xl flex items-center justify-center text-white font-bold text-2xl",
-              category?.bgColor || 'bg-gray-500'
-            )}>
-              {currentScore ?? '-'}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          {/* Left column: Current Score + Chart */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Current Score Display */}
+            <div className="flex items-center gap-4">
+              <div className={cn(
+                "w-16 h-16 rounded-xl flex items-center justify-center text-white font-bold text-2xl shrink-0",
+                category?.bgColor || 'bg-gray-500'
+              )}>
+                {currentScore ?? '-'}
+              </div>
+              <div className="flex-1">
+                <p className={cn("text-lg font-semibold", category?.color)}>
+                  {category?.label || 'Sin datos'}
+                </p>
+                {trend !== null && (
+                  <div className="flex items-center gap-1 text-sm">
+                    {trend > 0 ? (
+                      <>
+                        <TrendingUp className="h-4 w-4 text-green-500" />
+                        <span className="text-green-500">+{trend} vs anterior</span>
+                      </>
+                    ) : trend < 0 ? (
+                      <>
+                        <TrendingDown className="h-4 w-4 text-red-500" />
+                        <span className="text-red-500">{trend} vs anterior</span>
+                      </>
+                    ) : (
+                      <>
+                        <Minus className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">Sin cambio</span>
+                      </>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground mt-1">
+                  {filteredRecords.length} encuesta{filteredRecords.length !== 1 ? 's' : ''} registrada{filteredRecords.length !== 1 ? 's' : ''}
+                </p>
+              </div>
             </div>
-            <div className="flex-1">
-              <p className={cn("text-lg font-semibold", category?.color)}>
-                {category?.label || 'Sin datos'}
-              </p>
-              {trend !== null && (
-                <div className="flex items-center gap-1 text-sm">
-                  {trend > 0 ? (
-                    <>
-                      <TrendingUp className="h-4 w-4 text-green-500" />
-                      <span className="text-green-500">+{trend} vs anterior</span>
-                    </>
-                  ) : trend < 0 ? (
-                    <>
-                      <TrendingDown className="h-4 w-4 text-red-500" />
-                      <span className="text-red-500">{trend} vs anterior</span>
-                    </>
-                  ) : (
-                    <>
-                      <Minus className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">Sin cambio</span>
-                    </>
-                  )}
-                </div>
-              )}
-              <p className="text-xs text-muted-foreground mt-1">
-                {filteredRecords.length} encuesta{filteredRecords.length !== 1 ? 's' : ''} registrada{filteredRecords.length !== 1 ? 's' : ''}
-              </p>
-            </div>
+
+            {/* Chart */}
+            {filteredRecords.length >= 2 && (
+              <div className="h-32">
+                <ChartContainer config={chartConfig}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                      <XAxis 
+                        dataKey="fecha" 
+                        tick={{ fontSize: 10 }} 
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis 
+                        domain={[1, 5]} 
+                        ticks={[1, 2, 3, 4, 5]}
+                        tick={{ fontSize: 10 }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={20}
+                      />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <ReferenceLine y={4} stroke="#22c55e" strokeDasharray="3 3" strokeOpacity={0.5} />
+                      <ReferenceLine y={3} stroke="#eab308" strokeDasharray="3 3" strokeOpacity={0.5} />
+                      <Line
+                        type="monotone"
+                        dataKey="score"
+                        stroke="hsl(var(--primary))"
+                        strokeWidth={2}
+                        dot={{ r: 4, fill: 'hsl(var(--primary))' }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              </div>
+            )}
           </div>
 
-          {/* Chart */}
-          {filteredRecords.length >= 2 && (
-            <div className="h-32 mt-4">
-              <ChartContainer config={chartConfig}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                    <XAxis 
-                      dataKey="fecha" 
-                      tick={{ fontSize: 10 }} 
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <YAxis 
-                      domain={[1, 5]} 
-                      ticks={[1, 2, 3, 4, 5]}
-                      tick={{ fontSize: 10 }}
-                      tickLine={false}
-                      axisLine={false}
-                      width={20}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <ReferenceLine y={4} stroke="#22c55e" strokeDasharray="3 3" strokeOpacity={0.5} />
-                    <ReferenceLine y={3} stroke="#eab308" strokeDasharray="3 3" strokeOpacity={0.5} />
-                    <Line
-                      type="monotone"
-                      dataKey="score"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={2}
-                      dot={{ r: 4, fill: 'hsl(var(--primary))' }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-            </div>
-          )}
-
-          {/* Recent Records */}
+          {/* Right column: Recent Records */}
           {filteredRecords.length > 0 && (
-            <div className="space-y-2 mt-4">
+            <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase">Historial reciente</p>
-              <div className="space-y-1 max-h-32 overflow-y-auto">
+              <div className="space-y-1 max-h-44 overflow-y-auto">
                 {filteredRecords.slice(-5).reverse().map(record => (
                   <div key={record.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 text-sm">
                     <div className={cn(
-                      "w-6 h-6 rounded flex items-center justify-center text-white text-xs font-medium",
+                      "w-6 h-6 rounded flex items-center justify-center text-white text-xs font-medium shrink-0",
                       getNPSCategory(record.score).bgColor
                     )}>
                       {record.score}
                     </div>
-                    <span className="flex-1 text-muted-foreground">
+                    <span className="flex-1 text-muted-foreground truncate">
                       {formatDate(record.fecha)}
                       {record.encuestado_nombre && ` - ${record.encuestado_nombre}`}
                     </span>
