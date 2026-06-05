@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { email, password, nombre, apellido, rol_id, departamento_id, modulos_habilitados, client_ids } = body
+    const { email, password, nombre, apellido, rol_id, puesto, departamento_id, modulos_habilitados, client_ids } = body
 
     // Verify the current user is authenticated and has permission
     const supabase = await createServerClient()
@@ -57,6 +57,7 @@ export async function POST(req: Request) {
         nombre,
         apellido,
         rol_id: rol_id || null,
+        puesto: puesto || null,
         departamento_id: departamento_id || null,
         modulos_habilitados: modulos_habilitados || ['dashboard'],
         activo: true,

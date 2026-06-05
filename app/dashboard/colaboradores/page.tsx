@@ -159,9 +159,22 @@ export default function ColaboradoresPage() {
   const [newUserName, setNewUserName] = useState('')
   const [newUserLastName, setNewUserLastName] = useState('')
   const [newUserEmail, setNewUserEmail] = useState('')
+  const [newUserPassword, setNewUserPassword] = useState('')
   const [newUserRole, setNewUserRole] = useState('')
   const [newUserPuesto, setNewUserPuesto] = useState('')
   const [creatingUser, setCreatingUser] = useState(false)
+  
+  // Edit user dialog state
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [editingUser, setEditingUser] = useState<Colaborador | null>(null)
+  const [editUserName, setEditUserName] = useState('')
+  const [editUserLastName, setEditUserLastName] = useState('')
+  const [editUserEmail, setEditUserEmail] = useState('')
+  const [editUserPassword, setEditUserPassword] = useState('')
+  const [editUserRole, setEditUserRole] = useState('')
+  const [editUserPuesto, setEditUserPuesto] = useState('')
+  const [editUserActivo, setEditUserActivo] = useState(true)
+  const [savingUser, setSavingUser] = useState(false)
   
   // Edicion de fees del cliente
   const [editingFeeClientId, setEditingFeeClientId] = useState<string | null>(null)
@@ -369,65 +382,139 @@ export default function ColaboradoresPage() {
   // ─── CREATE USER HANDLER ──────────────────────────────────────────────────────
 
   const handleCreateUser = async () => {
-    if (!newUserName.trim() || !newUserEmail.trim()) {
-      toast.error('Nombre y email son requeridos')
+    if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim()) {
+      toast.error('Nombre, email y contraseña son requeridos')
+      return
+    }
+
+    if (newUserPassword.length < 6) {
+      toast.error('La contraseña debe tener al menos 6 caracteres')
       return
     }
 
     setCreatingUser(true)
 
     try {
-      // Create the colaborador record
-      const { data: newColab, error: insertError } = await supabase
-        .from('colaboradores')
-        .insert({
-          nombre: newUserName.trim(),
-          apellido: newUserLastName.trim() || null,
+      const response = await fetch('/api/admin/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           email: newUserEmail.trim().toLowerCase(),
+          password: newUserPassword,
+          nombre: newUserName.trim(),
+          apellido: newUserLastName.trim() || '',
           rol_id: newUserRole || null,
           puesto: newUserPuesto || null,
           modulos_habilitados: ['dashboard', 'tareas'],
-          activo: true,
-          onboarding_completado: false,
-        })
-        .select()
-        .single()
+        }),
+      })
 
-      if (insertError) {
-        console.error('Error creating user:', insertError)
-        if (insertError.code === '23505') {
-          toast.error('Ya existe un usuario con ese email')
-        } else {
-          toast.error('Error al crear usuario: ' + insertError.message)
-        }
+      const result = await response.json()
+
+      if (!response.ok) {
+        toast.error(result.error || 'Error al crear usuario')
         setCreatingUser(false)
         return
       }
 
-      // Add to local state
-      if (newColab) {
-        const roleObj = roles.find(r => r.id === newUserRole)
-        setColaboradores([...colaboradores, {
-          ...newColab,
-          roles: roleObj || null,
-        } as Colaborador])
-      }
+      // Reload colaboradores list
+      const { data: colabs } = await supabase
+        .from('colaboradores')
+        .select('id, nombre, apellido, email, rol_id, puesto, modulos_habilitados, activo, avatar_url, roles(id, nombre)')
+        .order('nombre')
+
+      if (colabs) setColaboradores(colabs as Colaborador[])
 
       // Reset form and close dialog
       setNewUserName('')
       setNewUserLastName('')
       setNewUserEmail('')
+      setNewUserPassword('')
       setNewUserRole('')
       setNewUserPuesto('')
       setShowCreateDialog(false)
       
-      toast.success(`Usuario ${newUserName} creado correctamente. Debe completar el onboarding para comenzar.`)
+      toast.success(`Usuario ${newUserName} creado correctamente`)
     } catch (error) {
       console.error('Error:', error)
       toast.error('Error al crear usuario')
     }
 
     setCreatingUser(false)
+  }
+
+  // ─── EDIT USER HANDLER ────────────────────────────────────────────────────────
+
+  const openEditDialog = (colaborador: Colaborador) => {
+    setEditingUser(colaborador)
+    setEditUserName(colaborador.nombre || '')
+    setEditUserLastName(colaborador.apellido || '')
+    setEditUserEmail(colaborador.email || '')
+    setEditUserPassword('')
+    setEditUserRole(colaborador.rol_id || '')
+    setEditUserPuesto(colaborador.puesto || '')
+    setEditUserActivo(colaborador.activo !== false)
+    setShowEditDialog(true)
+  }
+
+  const handleUpdateUser = async () => {
+    if (!editingUser) return
+
+    if (!editUserName.trim() || !editUserEmail.trim()) {
+      toast.error('Nombre y email son requeridos')
+      return
+    }
+
+    if (editUserPassword && editUserPassword.length < 6) {
+      toast.error('La contraseña debe tener al menos 6 caracteres')
+      return
+    }
+
+    setSavingUser(true)
+
+    try {
+      const response = await fetch('/api/admin/update-user', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: editingUser.id,
+          email: editUserEmail.trim().toLowerCase(),
+          password: editUserPassword || undefined,
+          nombre: editUserName.trim(),
+          apellido: editUserLastName.trim() || '',
+          rol_id: editUserRole || null,
+          puesto: editUserPuesto || null,
+          activo: editUserActivo,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        toast.error(result.error || 'Error al actualizar usuario')
+        setSavingUser(false)
+        return
+      }
+
+      // Reload colaboradores list
+      const { data: colabs } = await supabase
+        .from('colaboradores')
+        .select('id, nombre, apellido, email, rol_id, puesto, modulos_habilitados, activo, avatar_url, roles(id, nombre)')
+        .order('nombre')
+
+      if (colabs) setColaboradores(colabs as Colaborador[])
+
+      // Close dialog
+      setShowEditDialog(false)
+      setEditingUser(null)
+      
+      toast.success(`Usuario ${editUserName} actualizado correctamente`)
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('Error al actualizar usuario')
+    }
+
+    setSavingUser(false)
   }
 
   // ─── METRICS TAB HANDLERS ─────────────────────────────────────────────────────
@@ -765,6 +852,7 @@ export default function ColaboradoresPage() {
                             </div>
                           </TableHead>
                         ))}
+                        <TableHead className="w-[80px] text-center">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -843,6 +931,16 @@ export default function ColaboradoresPage() {
                                 )}
                               </TableCell>
                             ))}
+                            <TableCell className="text-center">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openEditDialog(colab)}
+                                className="h-8 w-8 p-0"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         )
                       })}
@@ -1188,13 +1286,13 @@ export default function ColaboradoresPage() {
           <DialogHeader>
             <DialogTitle>Crear nuevo usuario</DialogTitle>
             <DialogDescription>
-              Ingresa los datos del nuevo colaborador. Debera completar el onboarding para activar su cuenta.
+              Ingresa los datos del nuevo colaborador. La cuenta quedara activa inmediatamente.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="name" className="text-right">
-                Nombre
+                Nombre *
               </Label>
               <Input
                 id="name"
@@ -1218,7 +1316,7 @@ export default function ColaboradoresPage() {
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="email" className="text-right">
-                Email
+                Email *
               </Label>
               <Input
                 id="email"
@@ -1227,6 +1325,19 @@ export default function ColaboradoresPage() {
                 onChange={(e) => setNewUserEmail(e.target.value)}
                 className="col-span-3"
                 placeholder="email@ejemplo.com"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="password" className="text-right">
+                Contraseña *
+              </Label>
+              <Input
+                id="password"
+                type="password"
+                value={newUserPassword}
+                onChange={(e) => setNewUserPassword(e.target.value)}
+                className="col-span-3"
+                placeholder="Minimo 6 caracteres"
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
@@ -1278,6 +1389,137 @@ export default function ColaboradoresPage() {
                 <>
                   <UserPlus className="h-4 w-4 mr-2" />
                   Crear usuario
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Editar usuario</DialogTitle>
+            <DialogDescription>
+              Modifica los datos del colaborador. Deja la contraseña vacia para no cambiarla.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-name" className="text-right">
+                Nombre *
+              </Label>
+              <Input
+                id="edit-name"
+                value={editUserName}
+                onChange={(e) => setEditUserName(e.target.value)}
+                className="col-span-3"
+                placeholder="Nombre"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-lastname" className="text-right">
+                Apellido
+              </Label>
+              <Input
+                id="edit-lastname"
+                value={editUserLastName}
+                onChange={(e) => setEditUserLastName(e.target.value)}
+                className="col-span-3"
+                placeholder="Apellido"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-email" className="text-right">
+                Email *
+              </Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={editUserEmail}
+                onChange={(e) => setEditUserEmail(e.target.value)}
+                className="col-span-3"
+                placeholder="email@ejemplo.com"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-password" className="text-right">
+                Contraseña
+              </Label>
+              <Input
+                id="edit-password"
+                type="password"
+                value={editUserPassword}
+                onChange={(e) => setEditUserPassword(e.target.value)}
+                className="col-span-3"
+                placeholder="Dejar vacio para no cambiar"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-role" className="text-right">
+                Rol
+              </Label>
+              <Select value={editUserRole} onValueChange={setEditUserRole}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Seleccionar rol" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles.map(role => (
+                    <SelectItem key={role.id} value={role.id}>
+                      {role.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-puesto" className="text-right">
+                Puesto
+              </Label>
+              <Select value={editUserPuesto} onValueChange={setEditUserPuesto}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Seleccionar puesto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PUESTOS.map(puesto => (
+                    <SelectItem key={puesto} value={puesto}>
+                      {puesto}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-activo" className="text-right">
+                Estado
+              </Label>
+              <div className="col-span-3 flex items-center gap-2">
+                <Checkbox
+                  id="edit-activo"
+                  checked={editUserActivo}
+                  onCheckedChange={(checked) => setEditUserActivo(checked as boolean)}
+                />
+                <Label htmlFor="edit-activo" className="font-normal">
+                  {editUserActivo ? 'Usuario activo' : 'Usuario inactivo'}
+                </Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleUpdateUser} disabled={savingUser}>
+              {savingUser ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Guardar cambios
                 </>
               )}
             </Button>
