@@ -44,7 +44,7 @@ import {
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { toast } from 'sonner'
-import ReactMarkdown from 'react-markdown'
+import { MessageContent } from '@/components/chat/message-content'
 
 const MONTHS = [
   { value: '1', label: 'Enero' },
@@ -125,8 +125,12 @@ export default function AnalistaPage() {
       return
     }
     setIsActive(true)
-    setChatMessages([])
     setAttachments([])
+    setChatMessages([{
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: `Hola, soy tu analista para **${selectedClient.nombre_del_negocio}** (${MONTHS[parseInt(selectedMonth) - 1]?.label} ${selectedYear}).\n\nPuedes pedirme lo que necesites: un análisis puntual, comparar métricas, generar un informe completo, crear gráficos, exportar datos a CSV o incluso generar imágenes para tus reportes. También puedes adjuntar capturas o archivos para que los analice.\n\n¿En qué te ayudo?`,
+    }])
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -242,6 +246,7 @@ export default function AnalistaPage() {
       
       const decoder = new TextDecoder()
       let assistantContent = ''
+      let buffer = ''
       const assistantId = crypto.randomUUID()
       
       // Add empty assistant message
@@ -251,33 +256,30 @@ export default function AnalistaPage() {
         const { done, value } = await reader.read()
         if (done) break
         
-        const chunk = decoder.decode(value, { stream: true })
-        // Parse SSE format: data: {"type":"text-delta","delta":"..."}
-        const lines = chunk.split('\n')
+        // Accumulate in a buffer so SSE events split across chunks are not lost
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        // Keep the last (possibly incomplete) line in the buffer
+        buffer = lines.pop() || ''
+        
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const json = JSON.parse(line.slice(6))
-              if (json.type === 'text-delta' && json.delta) {
-                assistantContent += json.delta
-                setChatMessages(prev => 
-                  prev.map(m => m.id === assistantId ? { ...m, content: assistantContent } : m)
-                )
-              }
-            } catch {
-              // Skip parse errors
-            }
-          } else if (line.startsWith('0:')) {
-            // Fallback: old format
-            try {
-              const text = JSON.parse(line.slice(2))
-              assistantContent += text
+          const trimmed = line.trim()
+          if (!trimmed.startsWith('data:')) continue
+          
+          const data = trimmed.slice(5).trim()
+          if (data === '[DONE]') continue
+          
+          try {
+            const json = JSON.parse(data)
+            // AI SDK v6 UI message stream: text comes as text-delta with `delta`
+            if (json.type === 'text-delta' && typeof json.delta === 'string') {
+              assistantContent += json.delta
               setChatMessages(prev => 
                 prev.map(m => m.id === assistantId ? { ...m, content: assistantContent } : m)
               )
-            } catch {
-              // Skip parse errors
             }
+          } catch {
+            // Skip invalid JSON
           }
         }
       }
@@ -530,9 +532,14 @@ export default function AnalistaPage() {
                       )}
                     >
                       {message.role === 'assistant' ? (
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                          <ReactMarkdown>{message.content}</ReactMarkdown>
-                        </div>
+                        message.content ? (
+                          <MessageContent content={message.content} />
+                        ) : (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#7F77DD]" />
+                            Escribiendo...
+                          </div>
+                        )
                       ) : (
                         <>
                           <p className="text-sm whitespace-pre-wrap">{message.content}</p>
