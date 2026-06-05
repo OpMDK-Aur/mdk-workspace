@@ -97,22 +97,22 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
   const loadUsers = async () => {
     setUsersLoading(true)
     try {
-      // Cargar Project Managers
+      // Cargar Project Managers (puesto = 'Project Manager' o 'Director/a' o 'CEO')
       const { data: pmData } = await supabase
         .from('profiles')
-        .select('id, full_name, email, role')
-        .in('role', ['project_manager', 'direccion'])
+        .select('id, full_name, email, puesto')
+        .in('puesto', ['Project Manager', 'Director/a', 'CEO'])
         .order('full_name', { ascending: true })
       
       if (pmData) {
         setProjectManagers(pmData)
       }
       
-      // Cargar Account Managers
+      // Cargar Account Managers (puesto = 'Account Manager' o 'Director/a' o 'CEO')
       const { data: amData } = await supabase
         .from('profiles')
-        .select('id, full_name, email, role')
-        .in('role', ['account_manager', 'direccion'])
+        .select('id, full_name, email, puesto')
+        .in('puesto', ['Account Manager', 'Director/a', 'CEO'])
         .order('full_name', { ascending: true })
       
       if (amData) {

@@ -49,27 +49,23 @@ export default function NPSPage() {
     async function loadData() {
       const supabase = createClient()
       
-      // Cargar Project Managers (role = project_manager o direccion)
-      const { data: pmData, error: pmError } = await supabase
+      // Cargar Project Managers (puesto = 'Project Manager' o 'Director/a' o 'CEO')
+      const { data: pmData } = await supabase
         .from('profiles')
-        .select('id, full_name, email, role')
-        .in('role', ['project_manager', 'direccion'])
+        .select('id, full_name, email, puesto')
+        .in('puesto', ['Project Manager', 'Director/a', 'CEO'])
         .order('full_name', { ascending: true })
-      
-      console.log('[v0] PM query result:', { pmData, pmError })
       
       if (pmData) {
         setProjectManagers(pmData)
       }
       
-      // Cargar Account Managers (role = account_manager o direccion)
-      const { data: amData, error: amError } = await supabase
+      // Cargar Account Managers (puesto = 'Account Manager' o 'Director/a' o 'CEO')
+      const { data: amData } = await supabase
         .from('profiles')
-        .select('id, full_name, email, role')
-        .in('role', ['account_manager', 'direccion'])
+        .select('id, full_name, email, puesto')
+        .in('puesto', ['Account Manager', 'Director/a', 'CEO'])
         .order('full_name', { ascending: true })
-      
-      console.log('[v0] AM query result:', { amData, amError })
       
       if (amData) {
         setAccountManagers(amData)
