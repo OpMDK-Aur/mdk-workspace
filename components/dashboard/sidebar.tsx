@@ -126,9 +126,26 @@ export function Sidebar({
   const supabase = createClient()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isHydrated, setIsHydrated] = useState(false)
   const [wasCollapsed, setWasCollapsed] = useState(false)
   const [notificationCount, setNotificationCount] = useState(0)
   const [notificationsPanelOpen, setNotificationsPanelOpen] = useState(false)
+  
+  // Hydrate collapsed state from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('sidebar-collapsed')
+    if (saved === 'true') {
+      setIsCollapsed(true)
+    }
+    setIsHydrated(true)
+  }, [])
+  
+  // Persist collapsed state to localStorage
+  useEffect(() => {
+    if (isHydrated) {
+      localStorage.setItem('sidebar-collapsed', String(isCollapsed))
+    }
+  }, [isCollapsed, isHydrated])
   
   // Collapsible section states - open by default if pathname matches
   const [tareasOpen, setTareasOpen] = useState(() =>
