@@ -903,7 +903,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                   {currentUser.nombre[0]}
                 </AvatarFallback>
               </Avatar>
-              <div className="flex-1 space-y-2">
+              <div className="flex-1 min-w-0 space-y-2">
                 {/* Formatting toolbar */}
                 <div className="flex items-center gap-0.5 border-b pb-2">
                   <Button
@@ -950,10 +950,10 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                 </div>
                 <Textarea
                   ref={textareaRef}
-                  placeholder="Escribe un comentario... **negrita**, *cursiva*, listas, # para tareas, @ para colaboradores"
+                  placeholder="Escribe un comentario..."
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
-                  className="min-h-[80px] resize-none text-sm"
+                  className="min-h-[80px] w-full resize-none text-sm"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && e.metaKey) {
                       handleAddComment()
