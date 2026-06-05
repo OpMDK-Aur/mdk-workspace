@@ -212,59 +212,10 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
               <Plus className="h-4 w-4" />
             </Button>
           </DialogTrigger>
-
-      {/* Filters */}
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <Select value={pmFilter || ''} onValueChange={(val) => setPmFilter(val || null)}>
-          <SelectTrigger className="w-[180px] h-8 text-xs">
-            <SelectValue placeholder="Project Manager" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">Todos los PM</SelectItem>
-            {allUsers.map(user => (
-              <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={amFilter || ''} onValueChange={(val) => setAmFilter(val || null)}>
-          <SelectTrigger className="w-[180px] h-8 text-xs">
-            <SelectValue placeholder="Account Manager" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">Todos los AM</SelectItem>
-            {allUsers.map(user => (
-              <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {(pmFilter || amFilter) && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => {
-              setPmFilter(null)
-              setAmFilter(null)
-            }}
-          >
-            <X className="h-3 w-3 mr-1" />
-            Limpiar
-          </Button>
-        )}
-      </div>
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-7 px-2">
-            <Plus className="h-4 w-4" />
-          </Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Registrar Encuesta NPS</DialogTitle>
-          </DialogHeader>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Registrar Encuesta NPS</DialogTitle>
+            </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
                 <Label>Score (1-5)</Label>
@@ -340,6 +291,50 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <Select value={pmFilter || ''} onValueChange={(val) => setPmFilter(val || null)}>
+          <SelectTrigger className="w-[180px] h-8 text-xs">
+            <SelectValue placeholder="Project Manager" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Todos los PM</SelectItem>
+            {allUsers.map(user => (
+              <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={amFilter || ''} onValueChange={(val) => setAmFilter(val || null)}>
+          <SelectTrigger className="w-[180px] h-8 text-xs">
+            <SelectValue placeholder="Account Manager" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Todos los AM</SelectItem>
+            {allUsers.map(user => (
+              <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {(pmFilter || amFilter) && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              setPmFilter(null)
+              setAmFilter(null)
+            }}
+          >
+            <X className="h-3 w-3 mr-1" />
+            Limpiar filtros
+          </Button>
+        )}
+      </div>
+
+      {/* Stats and Content */}
 
       {loading ? (
         <div className="flex items-center justify-center py-8">
