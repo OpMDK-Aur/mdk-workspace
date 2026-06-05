@@ -474,13 +474,24 @@ export default function ControlHorasPage() {
       </div>
 
       {/* Charts and Tables with Tabs */}
-      <Tabs defaultValue="by-client" className="w-full">
+      <Tabs defaultValue="hours-control" className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="by-client">Por Cliente</TabsTrigger>
           <TabsTrigger value="by-collaborator">Por Colaborador</TabsTrigger>
           <TabsTrigger value="by-matrix">Colaborador x Cliente</TabsTrigger>
           <TabsTrigger value="by-day">Por Dia</TabsTrigger>
+          <TabsTrigger value="hours-control">Control de Horas</TabsTrigger>
         </TabsList>
+
+        {/* Hours Control Panel - The main view with progress bars */}
+        <TabsContent value="hours-control">
+          <HoursControlPanel 
+            month={selectedMonth} 
+            year={selectedYear}
+            colaboradorId={selectedColaborador !== 'all' ? selectedColaborador : undefined}
+            clienteId={selectedCliente !== 'all' ? selectedCliente : undefined}
+          />
+        </TabsContent>
         
         <TabsContent value="by-client">
           {isLoading ? (
@@ -529,7 +540,7 @@ export default function ControlHorasPage() {
                             </div>
                             <div className="h-2 bg-muted rounded-full mt-1 overflow-hidden">
                               <div 
-                                className="h-full rounded-full transition-all"
+                                className="h-full rounded-full transition-all duration-300"
                                 style={{ 
                                   width: `${colab.percentage}%`,
                                   backgroundColor: colab.colaborador_color 
@@ -544,31 +555,40 @@ export default function ControlHorasPage() {
                 </CardContent>
               </Card>
 
-              {/* Table for Collaborators */}
+              {/* Summary Table for Collaborators */}
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Resumen por Colaborador</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {collaboratorSummaries.length === 0 ? (
-                    <div className="flex items-center justify-center h-[250px] text-muted-foreground">
-                      Sin datos para el periodo seleccionado
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {collaboratorSummaries.map((colab) => (
-                        <div key={colab.colaborador_id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                          <span className="text-sm font-medium">{colab.colaborador_name}</span>
-                          <div className="text-right">
-                            <span className="text-sm font-semibold">{colab.hours.toFixed(1)}h</span>
-                            <span className="text-xs text-muted-foreground ml-2">
-                              ({colab.billable_hours.toFixed(1)}h fact.)
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="text-left text-sm font-medium text-muted-foreground pb-2">Colaborador</th>
+                          <th className="text-right text-sm font-medium text-muted-foreground pb-2">Horas</th>
+                          <th className="text-right text-sm font-medium text-muted-foreground pb-2">%</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {collaboratorSummaries.map((colab) => (
+                          <tr key={colab.colaborador_id} className="border-b border-border/50">
+                            <td className="py-2">
+                              <div className="flex items-center gap-2">
+                                <div 
+                                  className="w-2 h-2 rounded-full shrink-0" 
+                                  style={{ backgroundColor: colab.colaborador_color }}
+                                />
+                                <span className="text-sm truncate">{colab.colaborador_name}</span>
+                              </div>
+                            </td>
+                            <td className="text-right text-sm py-2">{colab.hours.toFixed(1)}h</td>
+                            <td className="text-right text-sm text-muted-foreground py-2">{colab.percentage.toFixed(0)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -581,12 +601,76 @@ export default function ControlHorasPage() {
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <HoursControlPanel
-              month={selectedMonth}
-              year={selectedYear}
-              colaboradorFilter={selectedMatrixColab}
-              onColaboradorFilterChange={setSelectedMatrixColab}
-            />
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Matriz Colaborador x Cliente</CardTitle>
+                  <Select
+                    value={selectedMatrixColab}
+                    onValueChange={setSelectedMatrixColab}
+                  >
+                    <SelectTrigger className="w-[200px]">
+                      <Users className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Filtrar colaborador" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {users.filter(u => collaboratorClientMatrix.collaboratorIds.includes(u.id)).map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left font-medium text-muted-foreground pb-2 pr-4">Colaborador</th>
+                        {collaboratorClientMatrix.clientIds.map(clientId => {
+                          const client = clients.find(c => c.id === clientId)
+                          return (
+                            <th key={clientId} className="text-right font-medium text-muted-foreground pb-2 px-2 min-w-[100px]">
+                              {client?.nombre_del_negocio || 'Sin nombre'}
+                            </th>
+                          )
+                        })}
+                        <th className="text-right font-medium text-muted-foreground pb-2 pl-4 border-l border-border">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users
+                        .filter(u => {
+                          if (selectedMatrixColab === 'all') return collaboratorClientMatrix.collaboratorIds.includes(u.id)
+                          return u.id === selectedMatrixColab
+                        })
+                        .map(user => {
+                          const colabData = collaboratorClientMatrix.matrix[user.id] || {}
+                          const total = Object.values(colabData).reduce((acc, h) => acc + h, 0)
+                          return (
+                            <tr key={user.id} className="border-b border-border/50">
+                              <td className="py-2 pr-4 font-medium">
+                                {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
+                              </td>
+                              {collaboratorClientMatrix.clientIds.map(clientId => (
+                                <td key={clientId} className="text-right py-2 px-2 text-muted-foreground">
+                                  {colabData[clientId] ? `${colabData[clientId].toFixed(1)}h` : '-'}
+                                </td>
+                              ))}
+                              <td className="text-right py-2 pl-4 font-medium border-l border-border">
+                                {total.toFixed(1)}h
+                              </td>
+                            </tr>
+                          )
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
 
@@ -597,14 +681,14 @@ export default function ControlHorasPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center justify-end">
                 <Select
                   value={selectedDayColab}
                   onValueChange={setSelectedDayColab}
                 >
                   <SelectTrigger className="w-[200px]">
                     <Users className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Filtrar por colaborador" />
+                    <SelectValue placeholder="Filtrar colaborador" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos los colaboradores</SelectItem>

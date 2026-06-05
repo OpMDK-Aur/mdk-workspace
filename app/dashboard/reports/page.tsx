@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import useSWR from 'swr'
 import { startOfMonth, endOfMonth, isWithinInterval, startOfDay, endOfDay, format } from 'date-fns'
 import { HoursChart } from '@/components/reports/hours-chart'
+import { HoursControlPanel } from '@/components/reports/hours-control-panel'
 import {
   Select,
   SelectContent,
@@ -20,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
@@ -112,6 +114,7 @@ export default function MisHorasPage() {
 
   const allEntries = data?.entries || []
   const clientMap = data?.clientMap || {}
+  const colaboradorId = data?.colaboradorId
 
   // Filter entries by month/year
   const filteredEntries = useMemo(() => {
@@ -170,7 +173,7 @@ export default function MisHorasPage() {
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Mis horas</h1>
           <p className="text-muted-foreground mt-1">
-            Visualiza tus entradas de tiempo
+            Visualiza tus entradas de tiempo y control de horas
           </p>
         </div>
       </div>
@@ -245,65 +248,84 @@ export default function MisHorasPage() {
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <>
-          {/* Hours Chart */}
-          <div className="mb-6">
+        <Tabs defaultValue="control" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="control">Control de Horas</TabsTrigger>
+            <TabsTrigger value="chart">Grafico Diario</TabsTrigger>
+            <TabsTrigger value="entries">Entradas</TabsTrigger>
+          </TabsList>
+
+          {/* Control de Horas - Shows the user's hours with progress bars */}
+          <TabsContent value="control">
+            {colaboradorId && (
+              <HoursControlPanel 
+                month={selectedMonth} 
+                year={selectedYear}
+                colaboradorId={colaboradorId}
+              />
+            )}
+          </TabsContent>
+
+          {/* Daily Chart */}
+          <TabsContent value="chart">
             <HoursChart data={dailyHours} />
-          </div>
+          </TabsContent>
 
           {/* Entries Table */}
-          <Card>
-            <div className="p-4 border-b border-border">
-              <h2 className="text-lg font-semibold">Entradas del mes</h2>
-            </div>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Descripcion</TableHead>
-                    <TableHead className="text-right">Duracion</TableHead>
-                    <TableHead className="text-center">Facturable</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredEntries.length === 0 ? (
+          <TabsContent value="entries">
+            <Card>
+              <div className="p-4 border-b border-border">
+                <h2 className="text-lg font-semibold">Entradas del mes</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                        No hay entradas para este periodo
-                      </TableCell>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Descripcion</TableHead>
+                      <TableHead className="text-right">Duracion</TableHead>
+                      <TableHead className="text-center">Facturable</TableHead>
                     </TableRow>
-                  ) : (
-                    filteredEntries.map((entry) => (
-                      <TableRow key={entry.id}>
-                        <TableCell className="whitespace-nowrap">
-                          {format(new Date(entry.iniciado_en), 'dd/MM/yyyy')}
-                        </TableCell>
-                        <TableCell>
-                          {entry.cliente_id ? clientMap[entry.cliente_id] || 'Sin cliente' : 'Sin cliente'}
-                        </TableCell>
-                        <TableCell className="max-w-[300px] truncate">
-                          {entry.descripcion || '-'}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {formatDuration(entry.duracion_seg)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {entry.facturable ? (
-                            <span className="text-status-verde">Si</span>
-                          ) : (
-                            <span className="text-muted-foreground">No</span>
-                          )}
+                  </TableHeader>
+                  <TableBody>
+                    {filteredEntries.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                          No hay entradas para este periodo
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
-        </>
+                    ) : (
+                      filteredEntries.map((entry) => (
+                        <TableRow key={entry.id}>
+                          <TableCell className="whitespace-nowrap">
+                            {format(new Date(entry.iniciado_en), 'dd/MM/yyyy')}
+                          </TableCell>
+                          <TableCell>
+                            {entry.cliente_id ? clientMap[entry.cliente_id] || 'Sin cliente' : 'Sin cliente'}
+                          </TableCell>
+                          <TableCell className="max-w-[300px] truncate">
+                            {entry.descripcion || '-'}
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            {formatDuration(entry.duracion_seg)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {entry.facturable ? (
+                              <span className="text-status-verde">Si</span>
+                            ) : (
+                              <span className="text-muted-foreground">No</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   )
