@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ServiceMapReport } from '@/components/reports/service-map-report'
 import {
   Select,
@@ -9,7 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
+import { X } from 'lucide-react'
 import type { ClientPlan, UnidadNegocio } from '@/lib/types'
+import { createClient } from '@/lib/supabase/client'
 
 const MONTHS = [
   { value: 1, label: 'Enero' },
@@ -34,6 +37,24 @@ export default function MapaServicioPage() {
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
   const [unidadFilter, setUnidadFilter] = useState<UnidadNegocio | 'all'>('all')
+  const [pmFilter, setPmFilter] = useState<string | 'all'>('all')
+  const [amFilter, setAmFilter] = useState<string | 'all'>('all')
+  const [users, setUsers] = useState<Array<{ id: string; full_name: string }>>([])
+
+  // Cargar usuarios para PM/AM
+  useEffect(() => {
+    async function loadUsers() {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('colaboradores')
+        .select('id, full_name')
+        .order('full_name', { ascending: true })
+      if (data) {
+        setUsers(data)
+      }
+    }
+    loadUsers()
+  }, [])
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -106,10 +127,57 @@ export default function MapaServicioPage() {
             <SelectItem value="Consultoria">Consultoria</SelectItem>
           </SelectContent>
         </Select>
+
+        {/* Project Manager Filter */}
+        <Select value={pmFilter} onValueChange={(v) => setPmFilter(v)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Project Manager" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los PM</SelectItem>
+            {users.map(user => (
+              <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Account Manager Filter */}
+        <Select value={amFilter} onValueChange={(v) => setAmFilter(v)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Account Manager" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los AM</SelectItem>
+            {users.map(user => (
+              <SelectItem key={user.id} value={user.id}>{user.full_name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {(pmFilter !== 'all' || amFilter !== 'all') && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2 text-xs"
+            onClick={() => {
+              setPmFilter('all')
+              setAmFilter('all')
+            }}
+          >
+            <X className="h-3 w-3 mr-1" />
+            Limpiar filtros
+          </Button>
+        )}
       </div>
 
       {/* Service Map Report Component */}
-      <ServiceMapReport month={selectedMonth} year={selectedYear} />
+      <ServiceMapReport 
+        month={selectedMonth} 
+        year={selectedYear}
+        planFilter={planFilter}
+        pmFilter={pmFilter}
+        amFilter={amFilter}
+      />
     </div>
   )
 }

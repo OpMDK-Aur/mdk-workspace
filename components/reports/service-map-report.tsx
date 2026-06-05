@@ -31,9 +31,12 @@ const PLAN_COLORS: Record<ClientPlan, string> = {
 interface ServiceMapReportProps {
   month: number
   year: number
+  planFilter?: string | 'all'
+  pmFilter?: string | 'all'
+  amFilter?: string | 'all'
 }
 
-export function ServiceMapReport({ month, year }: ServiceMapReportProps) {
+export function ServiceMapReport({ month, year, planFilter = 'all', pmFilter = 'all', amFilter = 'all' }: ServiceMapReportProps) {
   const [kpis, setKpis] = useState<ServiceMapKPIs[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -69,9 +72,7 @@ export function ServiceMapReport({ month, year }: ServiceMapReportProps) {
       const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
       if (isCurrentMonth) {
         try {
-          console.log('[v0] Calling createMissingTasks for', { selectedMonth, selectedYear })
           const taskResult = await createMissingTasks(selectedMonth, selectedYear)
-          console.log('[v0] createMissingTasks result:', taskResult)
         } catch (err) {
           console.error('[v0] createMissingTasks error:', err)
         }
@@ -95,7 +96,7 @@ export function ServiceMapReport({ month, year }: ServiceMapReportProps) {
     }
 
     fetchKPIs()
-  }, [selectedMonth, selectedYear])
+  }, [selectedMonth, selectedYear, planFilter, pmFilter, amFilter])
 
   // Check if viewing current month
   const now = new Date()
