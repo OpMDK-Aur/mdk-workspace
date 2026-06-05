@@ -62,7 +62,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
   const [pmFilter, setPmFilter] = useState<string | null>(projectManagerId || null)
   const [amFilter, setAmFilter] = useState<string | null>(accountManagerId || null)
   const [allUsers, setAllUsers] = useState<Array<{ id: string; full_name: string }>>([])
-  const [form, setForm] = useState({
+  const [usersLoading, setUsersLoading] = useState(true)
     score: 3,
     comentario: '',
     encuestado_nombre: '',
@@ -74,7 +74,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
 
   useEffect(() => {
     fetchNPS()
-    fetchUsers()
+    loadUsers()
   }, [clientId])
 
   useEffect(() => {
@@ -82,42 +82,58 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
     let filtered = records
     
     if (pmFilter) {
-      filtered = filtered.filter(r => r.encuestado_nombre) // PM filter placeholder
+      filtered = filtered.filter(r => r.proyecto_manager_id === pmFilter)
     }
     
     if (amFilter) {
-      filtered = filtered.filter(r => r.encuestado_nombre) // AM filter placeholder
+      filtered = filtered.filter(r => r.account_manager_id === amFilter)
     }
     
     setFilteredRecords(filtered)
   }, [records, pmFilter, amFilter])
 
-  const fetchUsers = async () => {
-    const { data } = await supabase
-      .from('colaboradores')
-      .select('id, full_name')
-      .order('full_name', { ascending: true })
-    
-    if (data) {
-      setAllUsers(data)
+  const loadUsers = async () => {
+    setUsersLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('colaboradores')
+        .select('id, full_name')
+        .order('full_name', { ascending: true })
+      
+      if (error) {
+        console.error('[v0] Error loading users:', error.message)
+      } else if (data) {
+        console.log('[v0] Users loaded:', data)
+        setAllUsers(data)
+      }
+    } catch (err) {
+      console.error('[v0] Exception fetching users:', err)
+    } finally {
+      setUsersLoading(false)
     }
   }
 
   const fetchNPS = async () => {
     setLoading(true)
 
-    // Fetch NPS history ordered by date ascending (for chart)
+    // Fetch NPS history with client info for PM/AM filtering
     const { data: historyData, error } = await supabase
       .from('cliente_nps_historial')
-      .select('*')
+      .select('*, clientes(project_manager_id, account_manager_id)')
       .eq('cliente_id', clientId)
       .order('fecha', { ascending: true })
 
     if (!error && historyData) {
-      setRecords(historyData)
+      // Enrich records with client PM/AM info
+      const enrichedRecords = historyData.map((record: any) => ({
+        ...record,
+        proyecto_manager_id: record.clientes?.project_manager_id,
+        account_manager_id: record.clientes?.account_manager_id,
+      }))
+      setRecords(enrichedRecords)
       // Set current score from the most recent record (last in ascending order)
-      if (historyData.length > 0) {
-        const mostRecent = historyData[historyData.length - 1]
+      if (enrichedRecords.length > 0) {
+        const mostRecent = enrichedRecords[enrichedRecords.length - 1]
         setCurrentScore(mostRecent.score)
       } else {
         setCurrentScore(null)
