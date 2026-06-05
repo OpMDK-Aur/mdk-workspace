@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { openai } from '@ai-sdk/openai'
-import { consumeStream, convertToModelMessages, streamText, type UIMessage } from 'ai'
+import { streamText } from 'ai'
 
 export const maxDuration = 120
 
@@ -336,26 +336,79 @@ INSTRUCCIONES:
 6. Incluye un resumen ejecutivo al inicio
 7. Destaca los KPIs más importantes
 
+CAPACIDADES DE VISUALIZACION - OBLIGATORIAS:
+Debes generar al menos 2-3 gráficos por informe usando estos bloques especiales.
+
+Para GRÁFICOS de barras, líneas, áreas o pie, usa EXACTAMENTE este formato:
+
+\`\`\`chart
+{"type":"bar","title":"Inversión por Plataforma","data":[{"name":"Meta Ads","value":1500},{"name":"Google Ads","value":2300}],"xKey":"name","yKey":"value","color":"#7F77DD"}
+\`\`\`
+
+Tipos disponibles: "bar", "line", "area", "pie"
+
+Para generar ARCHIVOS descargables (CSV de datos, reportes):
+
+\`\`\`file
+{"name":"metricas-mayo-2026.csv","type":"text/csv","content":"Plataforma,Inversion,Leads,CPL\\nMeta Ads,1500,45,33.33\\nGoogle Ads,2300,62,37.10"}
+\`\`\`
+
+REGLAS DE VISUALIZACION:
+- SIEMPRE genera un gráfico de barras comparando inversión entre plataformas si hay datos
+- SIEMPRE genera un gráfico de pie mostrando distribución de leads por plataforma
+- Si hay datos históricos, genera un gráfico de líneas mostrando tendencias
+- Al final del informe, SIEMPRE genera un CSV descargable con los datos del periodo
+- Los gráficos deben ir INLINE con el texto, no al final
+- Usa colores: "#7F77DD" (morado), "#10B981" (verde), "#F59E0B" (amarillo), "#EF4444" (rojo)
+
+ANÁLISIS DE IMÁGENES:
+Si el usuario adjunta imágenes (capturas de dashboards, reportes, anuncios), analízalas detalladamente, extrae los datos que puedas ver y úsalos en tu análisis.
+
 FORMATO DEL INFORME:
 - Usar markdown para estructura
-- Incluir emojis relevantes para visualización
-- Destacar números importantes en negrita
+- Incluir los gráficos DENTRO del contenido, no al final
+- Destacar números importantes en **negrita**
 - Organizar por secciones claras
+- Terminar con un CSV descargable de resumen
 `
 
-    const userMessage: UIMessage[] = [{ 
-      id: crypto.randomUUID(),
-      role: 'user', 
-      content: `Genera un informe de análisis completo para ${client.nombre_del_negocio} del periodo ${periodoTexto}`,
-      parts: [{ type: 'text', text: `Genera un informe de análisis completo para ${client.nombre_del_negocio} del periodo ${periodoTexto}` }]
-    }]
-    const modelMessages = await convertToModelMessages(userMessage)
+    // Check if there are image attachments for vision
+    const { attachments } = await req.json().catch(() => ({ attachments: [] }))
+    const hasImages = attachments?.some((a: { type: string }) => a.type?.startsWith('image/'))
+    
+    // Build messages - if user sent messages, use them; otherwise create initial request
+    const processedMessages = messages?.length > 0 
+      ? messages.map((m: { role: string; content: string }, idx: number) => {
+          // For the last user message, attach images if present
+          if (m.role === 'user' && idx === messages.length - 1 && hasImages) {
+            const imageAttachments = attachments.filter((a: { type: string }) => a.type?.startsWith('image/'))
+            if (imageAttachments.length > 0) {
+              return {
+                role: m.role,
+                content: [
+                  { type: 'text', text: m.content },
+                  ...imageAttachments.map((a: { url: string }) => ({
+                    type: 'image',
+                    image: a.url,
+                  }))
+                ]
+              }
+            }
+          }
+          return { role: m.role, content: m.content }
+        })
+      : [{
+          role: 'user',
+          content: `Genera un informe de análisis completo para ${client.nombre_del_negocio} del periodo ${periodoTexto}. Incluye gráficos de visualización y un CSV descargable con los datos.`
+        }]
 
-    // Use OpenAI directly with GPT-4o-mini
+    // Use GPT-4o for vision when images present, otherwise gpt-4o-mini
+    const modelId = hasImages ? 'gpt-4o' : 'gpt-4o-mini'
+
     const result = streamText({
-      model: openai('gpt-4o-mini'),
+      model: openai(modelId),
       system: systemPrompt,
-      messages: modelMessages,
+      messages: processedMessages,
       abortSignal: req.signal,
     })
 
@@ -368,10 +421,7 @@ FORMATO DEL INFORME:
       estado: 'ok',
     }).then(() => {})
 
-    return result.toUIMessageStreamResponse({
-      originalMessages: userMessage,
-      consumeSseStream: consumeStream,
-    })
+    return result.toDataStreamResponse()
   } catch (error) {
     console.error('Error in analista agent:', error)
     return new Response('Internal error', { status: 500 })
