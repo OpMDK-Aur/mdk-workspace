@@ -89,7 +89,7 @@ Genera un mensaje de WhatsApp para ${tipoMensaje}. Maximo ${(agentConfig.paramet
     const modelMessages = await convertToModelMessages(userMessage)
 
     const result = streamText({
-      model: 'anthropic/claude-sonnet-4-20250514',
+      model: 'anthropic/claude-opus-4.6',
       system: systemPrompt,
       messages: modelMessages,
       abortSignal: req.signal,
