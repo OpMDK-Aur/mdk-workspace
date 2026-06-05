@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import {
@@ -37,7 +38,9 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  Calendar
+  Calendar,
+  ArrowRight,
+  PartyPopper
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -91,6 +94,7 @@ function formatDateDisplay(dateStr: string) {
 
 export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
   const supabase = createClient()
+  const router = useRouter()
   
   const [step, setStep] = useState(1)
   const [clients, setClients] = useState<ClientOption[]>([])
@@ -112,6 +116,9 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [loadingTasks, setLoadingTasks] = useState(false)
 
+  // Success state after marking as sent
+  const [success, setSuccess] = useState<{ taskId: string; taskTitle: string } | null>(null)
+
   // Fetch clients
   useEffect(() => {
     async function fetchClients() {
@@ -130,6 +137,8 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
       setMessageType(null)
       setSelectedAccounts([])
       setDraft('')
+      setSuccess(null)
+      setShowTaskSelector(false)
       // Set default period to last week
       const lastWeek = getLastWeekDates()
       setPeriodStart(lastWeek.start)
@@ -263,6 +272,43 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
     toast.success('Copiado al portapapeles')
   }
 
+  // Register the sent message as a comment on the task so it stays on record
+  const logMessageToTask = async (taskId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      let autorNombre = 'Redactor'
+      if (user?.id) {
+        const { data: colaborador } = await supabase
+          .from('colaboradores')
+          .select('nombre')
+          .eq('id', user.id)
+          .single()
+        if (colaborador?.nombre) autorNombre = colaborador.nombre
+      }
+      const tipoLabel = messageType === 'inicio' ? 'inicio de semana' : 'cierre de semana'
+      await supabase.from('comentarios_tareas').insert({
+        id: crypto.randomUUID(),
+        tarea_id: taskId,
+        contenido: `Mensaje de ${tipoLabel} enviado por WhatsApp:\n\n${draft}`,
+        autor_id: user?.id ?? null,
+        autor_nombre: autorNombre,
+        es_sistema: false,
+      })
+    } catch (error) {
+      console.error('[v0] Error logging message to task:', error)
+    }
+  }
+
+  // Complete a task: mark resolved, log the message, and show success screen
+  const completeTask = async (taskId: string, taskTitle: string) => {
+    await supabase
+      .from('tareas')
+      .update({ estado: 'resuelto', fecha_completada: new Date().toISOString() })
+      .eq('id', taskId)
+    await logMessageToTask(taskId)
+    setSuccess({ taskId, taskTitle })
+  }
+
   const handleMarkAsSent = async () => {
     if (!selectedClient) return
     
@@ -283,13 +329,7 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
 
       if (hitoTasks && hitoTasks.length === 1) {
         // Found exactly one matching Hito task - mark it as completed
-        await supabase
-          .from('tareas')
-          .update({ estado: 'resuelto', fecha_completada: new Date().toISOString() })
-          .eq('id', hitoTasks[0].id)
-        
-        toast.success(`Tarea "${hitoTasks[0].titulo}" marcada como realizada`)
-        onOpenChange(false)
+        await completeTask(hitoTasks[0].id, hitoTasks[0].titulo)
         return
       }
 
@@ -309,18 +349,23 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
       } else {
         // No pending tasks found - create a new one
         const { data: { user } } = await supabase.auth.getUser()
-        
-        await supabase.from('tareas').insert({
-          titulo: `[Hito] Mensaje ${messageType === 'inicio' ? 'inicio' : 'cierre'} semana - ${selectedClient.nombre_del_negocio}`,
+        const nuevoTitulo = `[Hito] Mensaje ${messageType === 'inicio' ? 'inicio' : 'cierre'} semana - ${selectedClient.nombre_del_negocio}`
+        const { data: nuevaTarea } = await supabase.from('tareas').insert({
+          titulo: nuevoTitulo,
           descripcion: draft,
           cliente_ids: [selectedClient.id],
           creado_por: user?.id,
           estado: 'resuelto',
           fecha_completada: new Date().toISOString(),
-        })
+        }).select('id').single()
 
-        toast.success('Mensaje marcado como enviado (nueva tarea creada)')
-        onOpenChange(false)
+        if (nuevaTarea?.id) {
+          await logMessageToTask(nuevaTarea.id)
+          setSuccess({ taskId: nuevaTarea.id, taskTitle: nuevoTitulo })
+        } else {
+          toast.success('Mensaje marcado como enviado (nueva tarea creada)')
+          onOpenChange(false)
+        }
       }
     } catch (error) {
       console.error('Error marking as sent:', error)
@@ -333,19 +378,18 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
   const handleSelectTask = async (taskId: string) => {
     try {
       const task = clientTasks.find(t => t.id === taskId)
-      
-      await supabase
-        .from('tareas')
-        .update({ estado: 'resuelto', fecha_completada: new Date().toISOString() })
-        .eq('id', taskId)
-      
-      toast.success(`Tarea "${task?.titulo}" marcada como realizada`)
+      await completeTask(taskId, task?.titulo || 'Tarea')
       setShowTaskSelector(false)
-      onOpenChange(false)
     } catch (error) {
       console.error('Error updating task:', error)
       toast.error('Error al marcar la tarea')
     }
+  }
+
+  const goToTask = () => {
+    if (!success) return
+    onOpenChange(false)
+    router.push(`/dashboard/tasks?task=${success.taskId}`)
   }
 
   const handleNext = () => {
@@ -363,6 +407,42 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
           <DialogTitle>Redactor de mensajes</DialogTitle>
         </DialogHeader>
 
+        {success ? (
+          <div className="flex flex-col items-center text-center py-8 px-4">
+            {/* Animated success check */}
+            <div className="relative mb-6">
+              <span className="absolute inset-0 rounded-full bg-green-500/20 animate-ping" />
+              <div className="relative flex items-center justify-center w-20 h-20 rounded-full bg-green-500/15 animate-in zoom-in-50 duration-500">
+                <CheckCircle2 className="w-11 h-11 text-green-600 animate-in zoom-in-75 duration-700" />
+              </div>
+            </div>
+            <h3 className="text-lg font-semibold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <PartyPopper className="w-5 h-5 text-[#7F77DD]" />
+              Tarea realizada
+            </h3>
+            <p className="text-sm text-muted-foreground mt-2 max-w-sm animate-in fade-in slide-in-from-bottom-2 duration-700">
+              El mensaje fue registrado en la tarea{' '}
+              <span className="font-medium text-foreground">{success.taskTitle}</span> y quedó marcada como realizada.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2 w-full mt-8 animate-in fade-in slide-in-from-bottom-2 duration-1000">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => onOpenChange(false)}
+              >
+                Cerrar
+              </Button>
+              <Button
+                className="flex-1 gap-2 bg-[#7F77DD] hover:bg-[#6B63C7]"
+                onClick={goToTask}
+              >
+                Ir a la tarea
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        ) : (
+        <>
         {/* Step Indicator */}
         <div className="flex items-center justify-center gap-2 py-4">
           {[1, 2, 3, 4, 5].map((s) => (
@@ -654,6 +734,8 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
               )}
             </Button>
           </div>
+        )}
+        </>
         )}
       </DialogContent>
     </Dialog>
