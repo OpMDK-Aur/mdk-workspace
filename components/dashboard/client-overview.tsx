@@ -816,15 +816,17 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     try {
       const { data, error } = await supabase
         .from('entradas_de_tiempo')
-        .select('duracion_seg, colaborador_id, colaboradores:colaborador_id(id, nombre, apellido, avatar_url)')
+        .select('duracion_seg, colaborador_id, colaboradores:colaborador_id(id, nombre, apellido, avatar_url, activo)')
         .eq('cliente_id', client.id)
         .gte('iniciado_en', `${start}T00:00:00`)
         .lte('iniciado_en', `${end}T23:59:59`)
         .not('finalizado_en', 'is', null)
       if (error) throw error
       const map = new Map<string, HorasColaborador>()
-      for (const e of (data ?? []) as unknown as Array<{ duracion_seg: number | null; colaborador_id: string | null; colaboradores: { id: string; nombre: string; apellido: string; avatar_url: string | null } | { id: string; nombre: string; apellido: string; avatar_url: string | null }[] | null }>) {
+      for (const e of (data ?? []) as unknown as Array<{ duracion_seg: number | null; colaborador_id: string | null; colaboradores: { id: string; nombre: string; apellido: string; avatar_url: string | null; activo: boolean | null } | { id: string; nombre: string; apellido: string; avatar_url: string | null; activo: boolean | null }[] | null }>) {
         const col = Array.isArray(e.colaboradores) ? e.colaboradores[0] ?? null : e.colaboradores
+        // Skip inactive collaborators entirely
+        if (col && col.activo === false) continue
         const id = col?.id || e.colaborador_id
         if (!id) continue
         const horas = (e.duracion_seg ?? 0) / 3600
@@ -939,11 +941,12 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
       })
     }
   }
-  // Only show people who actually logged time in the selected range OR who have an
-  // active assignment (objetivo / minimo). This hides inactive collaborators and
-  // people who didn't track any time in the period.
+  // Only show people who actually logged time in the selected range. Assigned metrics
+  // (objetivo / minimo) are used only to enrich those rows — they never introduce a
+  // collaborator on their own, so inactive people and people who didn't track any time
+  // in the period are excluded.
   const teamMembers = Array.from(teamMap.values())
-    .filter(m => m.horas > 0 || m.horasObjetivo > 0 || m.minimo > 0)
+    .filter(m => m.horas > 0)
     .sort((a, b) => b.horas - a.horas)
   const totalHorasAcumuladas = teamMembers.reduce((acc, m) => acc + m.horas, 0)
   const totalHorasObjetivo = teamMembers.reduce((acc, m) => acc + m.horasObjetivo, 0)
