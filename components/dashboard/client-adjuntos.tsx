@@ -24,6 +24,8 @@ interface Adjunto {
 interface ClientAdjuntosProps {
   clientId: string
   currentUserId?: string
+  /** When rendered inside a tab, drop the outer card wrapper + redundant title */
+  embedded?: boolean
 }
 
 function formatFileSize(bytes: number | null): string {
@@ -53,7 +55,7 @@ function getFileType(filename: string): string {
   return 'file'
 }
 
-export function ClientAdjuntos({ clientId, currentUserId }: ClientAdjuntosProps) {
+export function ClientAdjuntos({ clientId, currentUserId, embedded = false }: ClientAdjuntosProps) {
   const [adjuntos, setAdjuntos] = useState<Adjunto[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -177,11 +179,17 @@ export function ClientAdjuntos({ clientId, currentUserId }: ClientAdjuntosProps)
   }
 
   return (
-    <div className="rounded-xl border bg-card p-5">
+    <div className={embedded ? '' : 'rounded-xl border bg-card p-5'}>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          Adjuntos
-        </h3>
+        {embedded ? (
+          <p className="text-xs text-muted-foreground">
+            {adjuntos.length} {adjuntos.length === 1 ? 'archivo' : 'archivos'}
+          </p>
+        ) : (
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            Adjuntos
+          </h3>
+        )}
         <div>
           <input
             type="file"

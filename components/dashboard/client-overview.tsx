@@ -26,9 +26,8 @@ import { DiscordChat } from './discord-chat'
 import { ClientComments } from './client-comments'
 import { ClientActivityTabs } from './client-activity-tabs'
 import { ClientLandings } from './client-landings'
-import { ClientCRMs } from './client-crms'
-import { ClientAdjuntos } from './client-adjuntos'
-import { ClientCotizaciones } from './client-cotizaciones'
+  import { ClientCRMs } from './client-crms'
+  import { ClientCotizaciones } from './client-cotizaciones'
 import { ClientTareas } from './client-tareas'
 import { ClientNPS } from './client-nps'
 import { ClientInfoCard } from './client-info-card'
@@ -1467,10 +1466,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           <ClientCotizaciones clientId={client.id} currentUserId={currentProfile?.id} />
         </div>
 
-        {/* ── Adjuntos ── */}
-        <ClientAdjuntos clientId={client.id} currentUserId={currentProfile?.id} />
-
-        {/* ── Comentarios del Cliente ── */}
+        {/* ── Comentarios / Adjuntos / Minutas del Cliente ── */}
         <ClientActivityTabs
           clientId={client.id}
           clientPlan={(client.unidades_negocio || []).includes('MDK') || client.unidad_negocio === 'MDK' ? client.plan : null}
