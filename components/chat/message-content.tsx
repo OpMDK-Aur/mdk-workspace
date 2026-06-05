@@ -83,7 +83,7 @@ export function MessageContent({ content }: MessageContentProps) {
         if (part.type === 'pdf') {
           try {
             const config = JSON.parse(part.content)
-            return <PdfBlock key={index} config={config} />
+            return <PdfBlock key={index} config={config} messageContent={content} />
           } catch (e) {
             console.error('Failed to parse pdf config:', e)
             return <pre key={index} className="text-red-500">Error parsing pdf: {part.content}</pre>
