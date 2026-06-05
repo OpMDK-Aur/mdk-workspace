@@ -143,6 +143,7 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
     if (!selectedClient || !messageType) return
     
     setLoading(true)
+    console.log('[v0] Generating draft for:', { clientId: selectedClient.id, messageType, selectedAccounts })
     try {
       const response = await fetch('/api/agentes/redactor', {
         method: 'POST',
@@ -153,6 +154,8 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
           cuentas: selectedAccounts,
         }),
       })
+
+      console.log('[v0] Response status:', response.status, response.ok)
 
       if (!response.ok) throw new Error('Failed to generate')
 
@@ -169,8 +172,11 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
         }
       }
 
+      console.log('[v0] Raw stream result:', result.substring(0, 500))
+
       // Extract text from stream format (0:"text" format)
       const textMatch = result.match(/0:"([^"]*)"/g)
+      console.log('[v0] Text matches:', textMatch?.length)
       if (textMatch) {
         const cleanText = textMatch
           .map(m => m.slice(3, -1))
