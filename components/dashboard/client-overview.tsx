@@ -901,7 +901,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     porcentaje: number
   }
   const teamMap = new Map<string, TeamMember>()
-  // Seed from assigned metrics
+  // Seed from assigned metrics (objetivo / minimo only — hours start at 0 and are
+  // filled exclusively from real tracked time for the selected range below)
   for (const m of metricasColaborador) {
     const col = m.colaboradores
     const id = col?.id || m.colaborador_id
@@ -911,13 +912,13 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
       nombre: col?.nombre ?? '',
       apellido: col?.apellido ?? '',
       avatar_url: col?.avatar_url ?? null,
-      horas: m.acumulado_mes_asignado || 0,
+      horas: 0,
       horasObjetivo: m.horas_objetivo || 0,
       minimo: m.minimo_no_negociable_horas || 0,
       porcentaje: m.porcentaje_asignacion || 0,
     })
   }
-  // Add/override with actual tracked hours (covers people without assigned metrics)
+  // Set actual tracked hours for the selected range (covers people without assigned metrics)
   for (const h of teamHours) {
     const existing = teamMap.get(h.id)
     if (existing) {
@@ -938,7 +939,12 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
       })
     }
   }
-  const teamMembers = Array.from(teamMap.values()).sort((a, b) => b.horas - a.horas)
+  // Only show people who actually logged time in the selected range OR who have an
+  // active assignment (objetivo / minimo). This hides inactive collaborators and
+  // people who didn't track any time in the period.
+  const teamMembers = Array.from(teamMap.values())
+    .filter(m => m.horas > 0 || m.horasObjetivo > 0 || m.minimo > 0)
+    .sort((a, b) => b.horas - a.horas)
   const totalHorasAcumuladas = teamMembers.reduce((acc, m) => acc + m.horas, 0)
   const totalHorasObjetivo = teamMembers.reduce((acc, m) => acc + m.horasObjetivo, 0)
   const totalMinimo = teamMembers.reduce((acc, m) => acc + m.minimo, 0)
