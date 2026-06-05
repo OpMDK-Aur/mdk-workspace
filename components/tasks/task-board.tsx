@@ -3,9 +3,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
-import type { TaskPriority, TaskType } from '@/lib/types'
+import type { TaskPriority, TaskType, TaskStatus } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { useTaskStore, useTaskStoreHydrated, PRIORITY_CONFIG, TYPE_CONFIG, ASSIGNEES } from '@/lib/tasks/task-store'
+import { useTaskStore, useTaskStoreHydrated, PRIORITY_CONFIG, TYPE_CONFIG, ASSIGNEES, STATUS_CONFIG, STATUS_ORDER } from '@/lib/tasks/task-store'
 
 // Lazy load heavy components
 const KanbanView = dynamic(() => import('./kanban-view').then(m => ({ default: m.KanbanView })), {
@@ -37,7 +37,6 @@ import {
   List,
   Calendar,
   ChevronDown,
-  FileText,
   X,
   Search,
 } from 'lucide-react'
@@ -99,7 +98,7 @@ export function TaskBoard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
-  const hasSimpleFilters = filters.priority || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned
+  const hasSimpleFilters = filters.priority || filters.status || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned
   const hasAdvancedFilters = advancedFilters.length > 0
   const hasFilters = hasSimpleFilters || hasAdvancedFilters
 
@@ -234,6 +233,35 @@ export function TaskBoard() {
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Status filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'cursor-pointer px-2.5 py-1 h-7 gap-1',
+                    filters.status && 'bg-purple-500/10 text-purple-400 border-purple-500/30'
+                  )}
+                >
+                  {filters.status ? STATUS_CONFIG[filters.status].label : 'Estado'}
+                  <ChevronDown className="h-3 w-3" />
+                </Badge>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                {STATUS_ORDER.map((s) => (
+                  <DropdownMenuCheckboxItem
+                    key={s}
+                    checked={filters.status === s}
+                    onCheckedChange={(checked) => setFilter('status', checked ? s : null)}
+                  >
+                    <Badge variant="outline" className={cn('text-xs border-0', STATUS_CONFIG[s].bgColor, STATUS_CONFIG[s].color)}>
+                      {STATUS_CONFIG[s].label}
+                    </Badge>
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             {/* Assignee filter (multi-select) */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -340,14 +368,6 @@ export function TaskBoard() {
               </Button>
             )}
           </div>
-
-          {/* Reports button */}
-          <Button variant="outline" size="sm" className="gap-1.5" asChild>
-            <a href="/dashboard/reports">
-              <FileText className="h-4 w-4" />
-              Ver reporte
-            </a>
-          </Button>
         </div>
       </div>
 
