@@ -1,23 +1,34 @@
+import { consumeStream, convertToModelMessages, streamText, UIMessage } from 'ai'
 import { createClient } from '@/lib/supabase/server'
-import { streamText } from 'ai'
 
 export const maxDuration = 60
 
 export async function POST(req: Request) {
   const supabase = await createClient()
-  
+
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return new Response('Unauthorized', { status: 401 })
   }
 
   try {
-    const { messages, clientId, month, year }: { 
-      messages: Array<{ role: string; content: string }>, 
-      clientId: string, 
-      month: number, 
-      year: number 
+    const { messages, clientId, month, year }: {
+      messages: UIMessage[]
+      clientId: string
+      month: number
+      year: number
     } = await req.json()
+
+    // Get agent config
+    const { data: agentConfig } = await supabase
+      .from('agentes_config')
+      .select('*')
+      .eq('slug', 'analista')
+      .single()
+
+    if (!agentConfig) {
+      return new Response('Agent not found', { status: 404 })
+    }
 
     // Get client data
     const { data: client } = await supabase
@@ -46,44 +57,35 @@ export async function POST(req: Request) {
       .eq('mes', month)
       .eq('anio', year)
 
-    // Build context
-    const clienteMemoriaText = memoria?.map(m => `- ${m.contenido}`).join('\n') || 'Sin historial'
-    const metricasText = metricas?.length 
+    const clienteMemoriaText = memoria?.map((m: { contenido: string }) => `- ${m.contenido}`).join('\n') || 'Sin historial'
+    const metricasText = metricas?.length
       ? JSON.stringify(metricas, null, 2)
-      : 'Sin metricas disponibles para este periodo'
+      : 'Sin métricas disponibles para este período'
 
-    const MONTHS_MAP = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+    const systemPrompt = `${agentConfig.system_prompt}
 
-    const systemPrompt = `Eres un analista experto en marketing digital y publicidad en línea. Tu rol es ayudar a ${client.nombre_del_negocio} a entender y optimizar su desempeño en campañas de Google Ads y Meta Ads.
+CONTEXTO DEL CLIENTE:
+- Nombre: ${client.nombre_del_negocio}
+- Plan: ${client.plan || 'No definido'}
+- Período: ${month}/${year}
 
-## Contexto del Cliente
-- Negocio: ${client.nombre_del_negocio}
-- Plan/Cuenta: ${client.plan || 'No especificado'}
-- Periodo de Análisis: ${MONTHS_MAP[month]} ${year}
-
-## Historial y Notas Previas
+HISTORIAL DEL CLIENTE:
 ${clienteMemoriaText}
 
-## Datos Disponibles del Periodo
+MÉTRICAS DEL PERÍODO:
 ${metricasText}
+`
 
-## Tus Responsabilidades
-- Proporcionar insights accionables basados en los datos disponibles
-- Identificar oportunidades de optimización
-- Explicar métricas de marketing de forma clara y accesible
-- Hacer recomendaciones basadas en las tendencias observadas
-- Mantener un tono profesional pero amigable
-
-Sé conversacional, haz preguntas cuando necesites clarificación, y profundiza en los temas que el usuario quiera explorar.`
+    const modelMessages = await convertToModelMessages(messages)
 
     const result = streamText({
-      model: 'openai/gpt-4o-mini',
+      model: 'anthropic/claude-opus-4.6',
       system: systemPrompt,
-      messages: messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      messages: modelMessages,
       abortSignal: req.signal,
     })
 
-    // Log the execution (async, don't wait)
+    // Log async
     supabase.from('agentes_log').insert({
       agente: 'analista',
       ejecutado_por: user.id,
@@ -92,7 +94,10 @@ Sé conversacional, haz preguntas cuando necesites clarificación, y profundiza 
       estado: 'ok',
     }).then(() => {})
 
-    return result.toDataStreamResponse()
+    return result.toUIMessageStreamResponse({
+      originalMessages: messages,
+      consumeSseStream: consumeStream,
+    })
   } catch (error) {
     console.error('Error in analista agent:', error)
     return new Response('Internal error', { status: 500 })
