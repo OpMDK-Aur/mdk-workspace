@@ -96,7 +96,7 @@ const tareasSubItems: NavItem[] = [
 // Primary navigation items (below Tareas)
 const primaryItems: NavItem[] = [
   { id: 'clients', name: 'Clientes', href: '/dashboard/clients', icon: Building2 },
-  { id: 'performance', name: 'Performance', href: '/dashboard/page', icon: LineChart },
+  { id: 'performance', name: 'Performance', href: '/dashboard/performance', icon: LineChart },
   { id: 'agentes', name: 'Agentes', href: '/dashboard/agentes', icon: Cpu },
 ]
 
