@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useMemo } from 'react'
 import useSWR from 'swr'
 import { startOfMonth, endOfMonth, isWithinInterval, startOfDay, endOfDay, format } from 'date-fns'
 import { HoursChart } from '@/components/reports/hours-chart'
@@ -73,23 +72,9 @@ function stringToColor(str: string): string {
 async function fetchControlHorasData() {
   const supabase = createClient()
   
-  // Check if user is Master
+  // Get current user
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('No user found')
-  
-  const { data: colaborador } = await supabase
-    .from('colaboradores')
-    .select('id, rol_id, roles(nombre)')
-    .eq('email', user.email)
-    .single()
-  
-  const roleName = (colaborador?.roles as { nombre: string } | null)?.nombre || ''
-  console.log('[v0] Control de horas - User role:', roleName, 'Email:', user.email)
-  
-  // Allow Master role (check case-insensitive)
-  if (roleName.toLowerCase() !== 'master') {
-    throw new Error('Unauthorized')
-  }
   
   const [clientsRes, entriesRes, profilesRes] = await Promise.all([
     supabase.from('clientes').select('*').order('nombre_del_negocio'),
@@ -105,7 +90,6 @@ async function fetchControlHorasData() {
 }
 
 export default function ControlHorasPage() {
-  const router = useRouter()
   const currentDate = new Date()
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
@@ -118,13 +102,6 @@ export default function ControlHorasPage() {
 
   // Fetch data with SWR
   const { data, isLoading, error } = useSWR('control-horas-data', fetchControlHorasData)
-
-  // Redirect if unauthorized
-  useEffect(() => {
-    if (error?.message === 'Unauthorized') {
-      router.push('/dashboard')
-    }
-  }, [error, router])
 
   const clients = data?.clients || []
   const allEntries = data?.entries || []
