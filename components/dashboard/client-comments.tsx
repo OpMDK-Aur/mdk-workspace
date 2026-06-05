@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign, Pencil, Check, ImagePlus } from 'lucide-react'
+import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign, Pencil, Check, ImagePlus, Bold, Italic, List, ListOrdered } from 'lucide-react'
 import {
   Popover,
   PopoverContent,
@@ -579,6 +579,49 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
 
   const hasActiveFilters = searchQuery || authorFilter !== 'all' || dateFilter !== 'all'
   
+  // Apply markdown-style formatting to a textarea, operating on the current selection.
+  // `setValue` updates the corresponding state; `ref` points to the textarea element.
+  const applyFormat = (
+    ref: React.RefObject<HTMLTextAreaElement | null>,
+    value: string,
+    setValue: (v: string) => void,
+    type: 'bold' | 'italic' | 'ul' | 'ol'
+  ) => {
+    const el = ref.current
+    const start = el ? el.selectionStart : value.length
+    const end = el ? el.selectionEnd : value.length
+    const selected = value.slice(start, end)
+
+    let newValue = value
+    let newCursor = end
+
+    if (type === 'bold' || type === 'italic') {
+      const marker = type === 'bold' ? '**' : '*'
+      const text = selected || (type === 'bold' ? 'texto' : 'cursiva')
+      const insert = `${marker}${text}${marker}`
+      newValue = value.slice(0, start) + insert + value.slice(end)
+      newCursor = start + insert.length
+    } else {
+      // List: prefix each selected line (or the current line) with a marker
+      const lineStart = value.lastIndexOf('\n', start - 1) + 1
+      const block = value.slice(lineStart, end) || ''
+      const blockLines = (block || 'Elemento').split('\n')
+      const formatted = blockLines
+        .map((ln, i) => (type === 'ul' ? `- ${ln}` : `${i + 1}. ${ln}`))
+        .join('\n')
+      newValue = value.slice(0, lineStart) + formatted + value.slice(end)
+      newCursor = lineStart + formatted.length
+    }
+
+    setValue(newValue)
+    setTimeout(() => {
+      if (el) {
+        el.focus()
+        el.setSelectionRange(newCursor, newCursor)
+      }
+    }, 0)
+  }
+
   // Insert task mention
   const insertTaskMention = (task: TareaCliente) => {
     const mention = `#${task.shortId}`
@@ -618,80 +661,146 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       .slice(0, 10)
   }, [colaboradores, colabSearchQuery])
   
-  // Render comment content with task and collaborator links
+  // Render comment content with formatting (bold/italic), lists, mentions and links
   const renderCommentContent = (content: string) => {
-    // Combined regex for #SHORTID (6 char hex), @Name patterns, and URLs
-    const mentionRegex = /(#([A-F0-9]{6}))|(@[\w\sáéíóúñÁÉÍÓÚÑ]+?)(?=\s|$|[.,;:!?])|((?:https?:\/\/|www\.)[^\s<>"{}|\\^`\[\]]*[^\s<>"{}|\\^`\[\].,;:!?()"'])/gi
-    const parts: React.ReactNode[] = []
-    let lastIndex = 0
-    let match
-    
-    while ((match = mentionRegex.exec(content)) !== null) {
-      // Add text before the match
-      if (match.index > lastIndex) {
-        parts.push(content.slice(lastIndex, match.index))
+    // Renders a single line of text: handles **bold**, *italic*, #task, @mention, URLs
+    const renderInline = (text: string, keyPrefix: string): React.ReactNode[] => {
+      // First split out bold/italic segments, then process mentions/links within plain text
+      const out: React.ReactNode[] = []
+      // Match **bold** or *italic*
+      const fmtRegex = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)/g
+      let cursor = 0
+      let fm: RegExpExecArray | null
+      let segIdx = 0
+
+      const pushPlain = (plain: string, kp: string) => {
+        const mentionRegex = /(#([A-F0-9]{6}))|(@[\w\sáéíóúñÁÉÍÓÚÑ]+?)(?=\s|$|[.,;:!?])|((?:https?:\/\/|www\.)[^\s<>"{}|\\^`\[\]]*[^\s<>"{}|\\^`\[\].,;:!?()"'])/gi
+        let lastIndex = 0
+        let match: RegExpExecArray | null
+        let mIdx = 0
+        while ((match = mentionRegex.exec(plain)) !== null) {
+          if (match.index > lastIndex) {
+            out.push(plain.slice(lastIndex, match.index))
+          }
+          if (match[1]) {
+            const shortId = match[2].toUpperCase()
+            const linkedTask = clientTasks.find(t => t.shortId === shortId)
+            out.push(
+              <Link
+                key={`${kp}-task-${mIdx}`}
+                href={`/dashboard/tasks?task=${linkedTask?.id || ''}`}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors max-w-[250px]"
+                onClick={(e) => e.stopPropagation()}
+                title={linkedTask?.titulo}
+              >
+                <CheckSquare className="h-3 w-3 shrink-0" />
+                <span className="truncate">{linkedTask?.titulo || `#${shortId}`}</span>
+              </Link>
+            )
+          } else if (match[3]) {
+            const mentionName = match[3].replace(/^@/, '').trim()
+            const colab = currentUser?.nombre === mentionName ? currentUser : undefined
+            out.push(
+              <span
+                key={`${kp}-mention-${mIdx}`}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-medium"
+              >
+                <AtSign className="h-3 w-3 shrink-0" />
+                {colab?.nombre || mentionName}
+              </span>
+            )
+          } else if (match[4]) {
+            const url = match[4]
+            const href = url.startsWith('www.') ? `https://${url}` : url
+            out.push(
+              <a
+                key={`${kp}-url-${mIdx}`}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline text-primary underline hover:opacity-80 transition-opacity break-all"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {url}
+              </a>
+            )
+          }
+          lastIndex = match.index + match[0].length
+          mIdx++
+        }
+        if (lastIndex < plain.length) {
+          out.push(plain.slice(lastIndex))
+        }
       }
-      
-      if (match[1]) {
-        // Task mention #SHORTID
-        const shortId = match[2].toUpperCase()
-        const linkedTask = clientTasks.find(t => t.shortId === shortId)
-        
-        parts.push(
-          <Link
-            key={`task-${match.index}`}
-            href={`/dashboard/tasks?task=${linkedTask?.id || ''}`}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors max-w-[250px]"
-            onClick={(e) => e.stopPropagation()}
-            title={linkedTask?.titulo}
-          >
-            <CheckSquare className="h-3 w-3 shrink-0" />
-            <span className="truncate">{linkedTask?.titulo || `#${shortId}`}</span>
-          </Link>
-        )
-      } else if (match[3]) {
-        // User mention @Name — strip the leading "@" so we don't double/triple it
-        // (the AtSign icon below already renders the visual "@").
-        const mentionName = match[3].replace(/^@/, '').trim()
-        const colab = currentUser?.nombre === mentionName ? currentUser : undefined
-        
-        parts.push(
-          <span
-            key={`mention-${match.index}`}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-medium"
-          >
-            <AtSign className="h-3 w-3 shrink-0" />
-            {colab?.nombre || mentionName}
+
+      while ((fm = fmtRegex.exec(text)) !== null) {
+        if (fm.index > cursor) {
+          pushPlain(text.slice(cursor, fm.index), `${keyPrefix}-p${segIdx}`)
+        }
+        if (fm[1]) {
+          out.push(<strong key={`${keyPrefix}-b${segIdx}`}>{fm[2]}</strong>)
+        } else if (fm[3]) {
+          out.push(<em key={`${keyPrefix}-i${segIdx}`}>{fm[4]}</em>)
+        }
+        cursor = fm.index + fm[0].length
+        segIdx++
+      }
+      if (cursor < text.length) {
+        pushPlain(text.slice(cursor), `${keyPrefix}-p${segIdx}`)
+      }
+      return out
+    }
+
+    // Group lines into paragraphs and ordered/unordered lists
+    const lines = content.split('\n')
+    const blocks: React.ReactNode[] = []
+    let listBuffer: { ordered: boolean; items: string[] } | null = null
+    let blockIdx = 0
+
+    const flushList = () => {
+      if (!listBuffer) return
+      const { ordered, items } = listBuffer
+      const ListTag = ordered ? 'ol' : 'ul'
+      blocks.push(
+        <ListTag
+          key={`list-${blockIdx++}`}
+          className={cn('my-1 pl-5 space-y-0.5', ordered ? 'list-decimal' : 'list-disc')}
+        >
+          {items.map((item, i) => (
+            <li key={i}>{renderInline(item, `li-${blockIdx}-${i}`)}</li>
+          ))}
+        </ListTag>
+      )
+      listBuffer = null
+    }
+
+    lines.forEach((line, idx) => {
+      const ulMatch = line.match(/^\s*[-*]\s+(.*)$/)
+      const olMatch = line.match(/^\s*\d+\.\s+(.*)$/)
+      if (ulMatch) {
+        if (listBuffer && listBuffer.ordered) flushList()
+        if (!listBuffer) listBuffer = { ordered: false, items: [] }
+        listBuffer.items.push(ulMatch[1])
+      } else if (olMatch) {
+        if (listBuffer && !listBuffer.ordered) flushList()
+        if (!listBuffer) listBuffer = { ordered: true, items: [] }
+        listBuffer.items.push(olMatch[1])
+      } else {
+        flushList()
+        if (line.trim() === '') {
+          // preserve blank line spacing only between content
+          return
+        }
+        blocks.push(
+          <span key={`line-${blockIdx++}`} className="block">
+            {renderInline(line, `line-${idx}`)}
           </span>
         )
-      } else if (match[4]) {
-        // URL link
-        const url = match[4]
-        const href = url.startsWith('www.') ? `https://${url}` : url
-        
-        parts.push(
-          <a
-            key={`url-${match.index}`}
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline text-primary underline hover:opacity-80 transition-opacity break-all"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {url}
-          </a>
-        )
       }
-      
-      lastIndex = match.index + match[0].length
-    }
-    
-    // Add remaining text
-    if (lastIndex < content.length) {
-      parts.push(content.slice(lastIndex))
-    }
-    
-    return parts.length > 0 ? parts : content
+    })
+    flushList()
+
+    return blocks.length > 0 ? blocks : content
   }
 
   return (
@@ -795,9 +904,53 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 space-y-2">
+                {/* Formatting toolbar */}
+                <div className="flex items-center gap-0.5 border-b pb-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    onClick={() => applyFormat(textareaRef, newComment, setNewComment, 'bold')}
+                    title="Negrita"
+                  >
+                    <Bold className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    onClick={() => applyFormat(textareaRef, newComment, setNewComment, 'italic')}
+                    title="Cursiva"
+                  >
+                    <Italic className="h-3.5 w-3.5" />
+                  </Button>
+                  <div className="w-px h-4 bg-border mx-1" />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    onClick={() => applyFormat(textareaRef, newComment, setNewComment, 'ul')}
+                    title="Lista con viñetas"
+                  >
+                    <List className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    onClick={() => applyFormat(textareaRef, newComment, setNewComment, 'ol')}
+                    title="Lista numerada"
+                  >
+                    <ListOrdered className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
                 <Textarea
                   ref={textareaRef}
-                  placeholder="Escribe un comentario... Usa # para mencionar tareas, @ para mencionar colaboradores"
+                  placeholder="Escribe un comentario... **negrita**, *cursiva*, listas, # para tareas, @ para colaboradores"
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   className="min-h-[80px] resize-none text-sm"
@@ -1054,6 +1207,50 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                       </div>
                       {editingCommentId === comment.id ? (
                         <div className="mt-2 space-y-2">
+                          {/* Formatting toolbar (edit) */}
+                          <div className="flex items-center gap-0.5 border-b pb-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              onClick={() => applyFormat(editTextareaRef, editingContent, setEditingContent, 'bold')}
+                              title="Negrita"
+                            >
+                              <Bold className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              onClick={() => applyFormat(editTextareaRef, editingContent, setEditingContent, 'italic')}
+                              title="Cursiva"
+                            >
+                              <Italic className="h-3.5 w-3.5" />
+                            </Button>
+                            <div className="w-px h-4 bg-border mx-1" />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              onClick={() => applyFormat(editTextareaRef, editingContent, setEditingContent, 'ul')}
+                              title="Lista con viñetas"
+                            >
+                              <List className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              onClick={() => applyFormat(editTextareaRef, editingContent, setEditingContent, 'ol')}
+                              title="Lista numerada"
+                            >
+                              <ListOrdered className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                           <Textarea
                             ref={editTextareaRef}
                             value={editingContent}
