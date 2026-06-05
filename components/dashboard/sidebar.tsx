@@ -97,7 +97,7 @@ const tareasSubItems: NavItem[] = [
 const primaryItems: NavItem[] = [
   { id: 'clients', name: 'Clientes', href: '/dashboard/clients', icon: Building2 },
   { id: 'performance', name: 'Performance', href: '/dashboard/page', icon: LineChart },
-  { id: 'agentes', name: 'Agentes', href: '/dashboard/agentes', icon: Cpu, badge: 'proximamente' },
+  { id: 'agentes', name: 'Agentes', href: '/dashboard/agentes', icon: Cpu },
 ]
 
 // Administration section

@@ -538,3 +538,33 @@ export interface Task {
   createdAt: Date
   updatedAt: Date
 }
+
+// ── Agentes IA ────────────────────────────────────────────────────────────────
+
+export interface AgentConfig {
+  id: string
+  slug: string
+  nombre: string
+  descripcion: string | null
+  icono: string | null
+  trigger_type: 'manual' | 'cron_diario' | 'cron_semanal'
+  system_prompt: string | null
+  parametros: Record<string, unknown>
+  comportamiento: Record<string, unknown>
+  activo: boolean
+  actualizado_por: string | null
+  updated_at: string
+}
+
+export interface AgentLog {
+  id: string
+  agente: string
+  ejecutado_en: string
+  ejecutado_por: string | null
+  cliente_id: string | null
+  clientes_auditados: number
+  alertas_generadas: number
+  resultado: Record<string, unknown> | null
+  estado: 'ok' | 'error' | 'parcial'
+  created_at: string
+}
