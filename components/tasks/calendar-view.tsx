@@ -362,12 +362,11 @@ export function CalendarView() {
         </div>
         
         {/* Week days header */}
-        <div className="grid grid-cols-7 border-b bg-muted/50">
+        <div className="grid grid-cols-7 border-b bg-muted/50" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
           {weekDays.map((day) => (
             <div 
               key={day} 
               className="py-2 text-center text-xs font-medium text-muted-foreground border-r last:border-r-0"
-              style={{ width: 'calc(100% / 7)' }}
             >
               {day}
             </div>
