@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { redirect } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { NPSReport } from '@/components/reports/nps-report'
 import {
@@ -57,6 +57,7 @@ async function checkMasterAccess() {
 }
 
 export default function NPSPage() {
+  const router = useRouter()
   const currentDate = new Date()
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
@@ -69,9 +70,9 @@ export default function NPSPage() {
   // Redirect if unauthorized
   useEffect(() => {
     if (error?.message === 'Unauthorized') {
-      redirect('/dashboard')
+      router.push('/dashboard')
     }
-  }, [error])
+  }, [error, router])
 
   if (isLoading) {
     return (

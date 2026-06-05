@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { redirect } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { startOfMonth, endOfMonth, isWithinInterval, startOfDay, endOfDay, format } from 'date-fns'
 import { HoursChart } from '@/components/reports/hours-chart'
@@ -105,6 +105,7 @@ async function fetchControlHorasData() {
 }
 
 export default function ControlHorasPage() {
+  const router = useRouter()
   const currentDate = new Date()
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
@@ -121,9 +122,9 @@ export default function ControlHorasPage() {
   // Redirect if unauthorized
   useEffect(() => {
     if (error?.message === 'Unauthorized') {
-      redirect('/dashboard')
+      router.push('/dashboard')
     }
-  }, [error])
+  }, [error, router])
 
   const clients = data?.clients || []
   const allEntries = data?.entries || []
