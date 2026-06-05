@@ -78,7 +78,7 @@ ${metricasText}
 `
 
     const result = streamText({
-      model: 'anthropic/claude-opus-4.6',
+      model: 'openai/gpt-4o-mini',
       system: systemPrompt,
       messages: messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
       abortSignal: req.signal,

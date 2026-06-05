@@ -68,7 +68,7 @@ Responde UNICAMENTE con un JSON valido con el siguiente formato exacto, sin text
 `
 
     const result = await generateText({
-      model: 'anthropic/claude-opus-4.6',
+      model: 'openai/gpt-4o-mini',
       system: systemPrompt,
       messages: [{ role: 'user', content: `Analiza el uso del CRM para ${client.nombre_del_negocio}` }],
     })
