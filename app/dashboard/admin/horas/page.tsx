@@ -84,7 +84,10 @@ async function fetchControlHorasData() {
     .single()
   
   const roleName = (colaborador?.roles as { nombre: string } | null)?.nombre || ''
-  if (roleName !== 'Master') {
+  console.log('[v0] Control de horas - User role:', roleName, 'Email:', user.email)
+  
+  // Allow Master role (check case-insensitive)
+  if (roleName.toLowerCase() !== 'master') {
     throw new Error('Unauthorized')
   }
   
