@@ -988,8 +988,8 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                     ))}
                   </div>
                 )}
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap justify-between items-center gap-2">
+                  <div className="flex items-center flex-wrap gap-1 min-w-0">
                     <Popover open={showTaskPopover} onOpenChange={setShowTaskPopover}>
                       <PopoverTrigger asChild>
                         <Button 
@@ -1101,7 +1101,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                       )}
                       <span className="hidden sm:inline">Imagen</span>
                     </Button>
-                    <span className="text-[10px] text-muted-foreground hidden sm:inline">
+                    <span className="text-[10px] text-muted-foreground hidden xl:inline">
                       Cmd + Enter para enviar
                     </span>
                   </div>
@@ -1109,7 +1109,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                     size="sm"
                     onClick={handleAddComment}
                     disabled={(!newComment.trim() && pendingImages.length === 0) || sending}
-                    className="gap-1.5"
+                    className="gap-1.5 shrink-0 ml-auto"
                   >
                     {sending ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
