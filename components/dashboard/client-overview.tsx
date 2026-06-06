@@ -955,7 +955,12 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   return (
     <div className="flex-1 min-h-0 bg-background flex overflow-hidden">
       {/* Main scrollable content — re-centers/shifts left when the activity panel opens */}
-      <div className="flex-1 overflow-y-auto">
+      <div
+        className={cn(
+          'flex-1 overflow-y-auto transition-[padding] duration-300 ease-in-out',
+          showActivity ? 'sm:pr-[420px] lg:pr-[460px]' : ''
+        )}
+      >
         <div className="max-w-5xl mx-auto px-6 py-8 space-y-8 transition-all duration-300 ease-in-out">
 
         {/* Back + header */}
@@ -1522,15 +1527,15 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
       </div>
         </div>
 
-      {/* ── Sliding activity panel (right) ── */}
+      {/* ── Sliding activity panel (right) — full viewport height ── */}
       <aside
         className={cn(
-          'shrink-0 h-full border-l border-border bg-card overflow-hidden transition-[width] duration-300 ease-in-out',
-          showActivity ? 'w-full sm:w-[420px] lg:w-[460px]' : 'w-0'
+          'fixed inset-y-0 right-0 z-50 w-full sm:w-[420px] lg:w-[460px] border-l border-border bg-card shadow-xl flex flex-col transition-transform duration-300 ease-in-out',
+          showActivity ? 'translate-x-0' : 'translate-x-full'
         )}
         aria-hidden={!showActivity}
       >
-        <div className="w-full sm:w-[420px] lg:w-[460px] h-full flex flex-col">
+        <div className="w-full h-full flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
             <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <MessageSquare className="h-4 w-4 text-primary" />
