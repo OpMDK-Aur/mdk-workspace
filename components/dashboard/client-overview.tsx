@@ -1144,7 +1144,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
               ) : (
                 <>
                   <div className="flex flex-col">
-                    <p className="text-xl font-bold text-foreground leading-tight whitespace-nowrap">{formatCurrencyFull(feeMdk + feeAurelia + feeConsultoria)}</p>
+                    <p className="text-base font-bold text-foreground leading-tight whitespace-nowrap">{formatCurrencyFull(feeMdk + feeAurelia + feeConsultoria)}</p>
                     <p className="text-xs text-muted-foreground">/ mes</p>
                   </div>
                   <div className="flex flex-col gap-0.5 mt-2">
