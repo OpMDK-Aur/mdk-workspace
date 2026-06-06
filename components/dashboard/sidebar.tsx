@@ -70,7 +70,8 @@ interface NavItem {
   name: string
   href: string
   icon: React.ComponentType<{ className?: string }>
-  badge?: 'tasks' | 'proximamente'
+  badge?: 'tasks' | 'proximamente' | 'nuevo'
+  badgeUntil?: string // ISO date — badge shows only before this date
   moduleId?: string
   masterOnly?: boolean
 }
@@ -97,7 +98,7 @@ const tareasSubItems: NavItem[] = [
 const primaryItems: NavItem[] = [
   { id: 'clients', name: 'Clientes', href: '/dashboard/clients', icon: Building2 },
   { id: 'performance', name: 'Performance', href: '/dashboard/performance', icon: LineChart },
-  { id: 'agentes', name: 'Agentes', href: '/dashboard/agentes', icon: Cpu },
+  { id: 'agentes', name: 'Agentes', href: '/dashboard/agentes', icon: Cpu, badge: 'nuevo', badgeUntil: '2026-06-20' },
 ]
 
 // Administration section
@@ -277,6 +278,7 @@ export function Sidebar({
     
     const isActive = isItemActive(item.href)
     const isComingSoon = item.badge === 'proximamente'
+    const showNuevo = item.badge === 'nuevo' && (!item.badgeUntil || new Date() < new Date(item.badgeUntil))
     
     const handleNavClick = () => {
       // Collapse sidebar when navigating (only if not already collapsed)
@@ -308,6 +310,9 @@ export function Sidebar({
                   <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
                     {taskCount > 9 ? '9+' : taskCount}
                   </span>
+                )}
+                {showNuevo && (
+                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />
                 )}
               </Link>
             )}
@@ -352,6 +357,11 @@ export function Sidebar({
         {item.badge === 'tasks' && taskCount > 0 && (
           <Badge className="ml-auto h-5 px-1.5 text-[10px] bg-primary text-primary-foreground">
             {taskCount > 99 ? '99+' : taskCount}
+          </Badge>
+        )}
+        {showNuevo && (
+          <Badge className="ml-auto h-5 px-1.5 text-[10px] font-semibold uppercase tracking-wider bg-primary text-primary-foreground">
+            Nuevo
           </Badge>
         )}
       </Link>
