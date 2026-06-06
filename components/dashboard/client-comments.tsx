@@ -1153,7 +1153,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
           )}
 
           {!loading && filteredComments.length > 0 && (
-            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+            <div className="space-y-3">
               {filteredComments.map((comment) => {
                 // Use avatar from joined colaborador relation, fallback to search by name
                 const avatarUrl = comment.colaborador?.avatar_url || 

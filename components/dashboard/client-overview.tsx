@@ -958,7 +958,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
       <div
         className={cn(
           'flex-1 overflow-y-auto transition-[padding] duration-300 ease-in-out',
-          showActivity ? 'sm:pr-[420px] lg:pr-[460px]' : ''
+          showActivity ? 'sm:pr-[520px] lg:pr-[640px]' : ''
         )}
       >
         <div className="max-w-5xl mx-auto px-6 py-8 space-y-8 transition-all duration-300 ease-in-out">
@@ -1530,7 +1530,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
       {/* ── Sliding activity panel (right) — full viewport height ── */}
       <aside
         className={cn(
-          'fixed inset-y-0 right-0 z-50 w-full sm:w-[420px] lg:w-[460px] border-l border-border bg-card shadow-xl flex flex-col transition-transform duration-300 ease-in-out',
+          'fixed inset-y-0 right-0 z-50 w-full sm:w-[520px] lg:w-[640px] border-l border-border bg-card shadow-xl flex flex-col transition-transform duration-300 ease-in-out',
           showActivity ? 'translate-x-0' : 'translate-x-full'
         )}
         aria-hidden={!showActivity}
