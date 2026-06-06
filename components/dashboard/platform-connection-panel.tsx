@@ -42,22 +42,22 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, disc
 
     if (connected === 'google' || connected === 'google_ads') {
       setNotice({ type: 'success', message: 'Cuenta de Google Ads conectada correctamente.' })
-      router.replace('/dashboard/platform')
+      router.replace('/dashboard/apps')
       return
     }
     if (connected === 'google_calendar') {
       setNotice({ type: 'success', message: 'Cuenta de Google Calendar conectada correctamente.' })
-      router.replace('/dashboard/platform')
+      router.replace('/dashboard/apps')
       return
     }
     if (discord === 'connected') {
       setNotice({ type: 'success', message: 'Cuenta de Discord conectada correctamente.' })
-      router.replace('/dashboard/platform')
+      router.replace('/dashboard/apps')
       return
     }
     if (discord === 'error') {
       setNotice({ type: 'error', message: 'Error al conectar con Discord.' })
-      router.replace('/dashboard/platform')
+      router.replace('/dashboard/apps')
       return
     }
     if (error) {
@@ -69,7 +69,7 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, disc
         no_refresh_token_revoke_required: 'No se obtuvo refresh token. Revoca el acceso en myaccount.google.com/permissions y volve a autorizar.',
       }
       setNotice({ type: 'error', message: messages[error] ?? `Error: ${error}` })
-      router.replace('/dashboard/platform')
+      router.replace('/dashboard/apps')
       return
     }
   }, [searchParams, router])

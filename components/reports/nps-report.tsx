@@ -89,9 +89,20 @@ interface NPSReportProps {
   year: number
   planFilter?: ClientPlan | 'all'
   unidadFilter?: UnidadNegocio | 'all'
+  pmFilter?: string | 'all'
+  amFilter?: string | 'all'
+  clienteFilter?: string | 'all'
 }
 
-export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all' }: NPSReportProps) {
+export function NPSReport({ 
+  month, 
+  year, 
+  planFilter = 'all', 
+  unidadFilter = 'all',
+  pmFilter = 'all',
+  amFilter = 'all',
+  clienteFilter = 'all'
+}: NPSReportProps) {
   const [clients, setClients] = useState<Client[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
@@ -242,13 +253,40 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
     }
     
     if (unidadFilter !== 'all') {
-      // Aurelia incluye también Tecnología
-      const unidadesToInclude: UnidadNegocio[] = unidadFilter === 'Aurelia' 
-        ? ['Aurelia', 'Tecnología'] 
-        : [unidadFilter]
-      filteredClients = filteredClients.filter(c => 
-        c.unidades_negocio?.some(u => unidadesToInclude.includes(u))
-      )
+      if (unidadFilter === 'Aurelia') {
+        // Para Aurelia: solo clientes que tengan ÚNICAMENTE Aurelia/Tecnología (no mezclado con otras unidades)
+        const aureliaUnidades: UnidadNegocio[] = ['Aurelia', 'Tecnología']
+        filteredClients = filteredClients.filter(c => 
+          c.unidades_negocio?.length > 0 &&
+          c.unidades_negocio.every(u => aureliaUnidades.includes(u))
+        )
+      } else if (unidadFilter === 'Consultoria') {
+        // Para Consultoría: solo clientes que tengan ÚNICAMENTE Consultoría
+        filteredClients = filteredClients.filter(c => 
+          c.unidades_negocio?.length === 1 &&
+          c.unidades_negocio[0] === 'Consultoría'
+        )
+      } else {
+        // Para MDK: que tengan MDK (puede estar mezclado)
+        filteredClients = filteredClients.filter(c => 
+          c.unidades_negocio?.some(u => u === unidadFilter)
+        )
+      }
+    }
+
+    // Filter by PM
+    if (pmFilter !== 'all') {
+      filteredClients = filteredClients.filter(c => c.project_manager_id === pmFilter)
+    }
+
+    // Filter by AM
+    if (amFilter !== 'all') {
+      filteredClients = filteredClients.filter(c => c.account_manager_id === amFilter)
+    }
+
+    // Filter by Cliente
+    if (clienteFilter !== 'all') {
+      filteredClients = filteredClients.filter(c => c.id === clienteFilter)
     }
 
     return filteredClients.map(client => {
@@ -329,7 +367,7 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
         ultimaEncuesta,
       }
     })
-  }, [clients, npsHistorial, selectedMonth, selectedYear, planFilter, unidadFilter, profiles])
+  }, [clients, npsHistorial, selectedMonth, selectedYear, planFilter, unidadFilter, pmFilter, amFilter, clienteFilter, profiles])
 
   // Group by Account Manager
   const acData: ACData[] = useMemo(() => {
@@ -386,11 +424,12 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
 
   // Stats por unidad de negocio (sin filtro de unidad aplicado)
   // Nota: Tecnología y Aurelia son lo mismo, así que unificamos
+  // Para Aurelia y Consultoría: solo clientes que tengan ÚNICAMENTE esa unidad
   const statsByUnidad = useMemo(() => {
-    const unidadesDisplay: { key: string; label: string; includes: UnidadNegocio[] }[] = [
+    const unidadesDisplay: { key: string; label: string; includes: UnidadNegocio[]; exclusive?: boolean }[] = [
       { key: 'MDK', label: 'MDK', includes: ['MDK'] },
-      { key: 'Aurelia', label: 'Aurelia', includes: ['Aurelia', 'Tecnología'] },
-      { key: 'Consultoría', label: 'Consultoría', includes: ['Consultoría'] },
+      { key: 'Aurelia', label: 'Aurelia', includes: ['Aurelia', 'Tecnología'], exclusive: true },
+      { key: 'Consultoría', label: 'Consultoría', includes: ['Consultoría'], exclusive: true },
     ]
     
     // Recalcular sin el filtro de unidad para mostrar todas las unidades
@@ -398,10 +437,16 @@ export function NPSReport({ month, year, planFilter = 'all', unidadFilter = 'all
       ? clients 
       : clients.filter(c => c.plan === planFilter)
 
-    return unidadesDisplay.map(({ key, label, includes }) => {
-      const unidadClients = allClientsFiltered.filter(c => 
-        c.unidades_negocio?.some(u => includes.includes(u))
-      )
+    return unidadesDisplay.map(({ key, label, includes, exclusive }) => {
+      const unidadClients = allClientsFiltered.filter(c => {
+        if (exclusive) {
+          // Para Aurelia: solo clientes que tengan ÚNICAMENTE estas unidades
+          return c.unidades_negocio?.length > 0 &&
+            c.unidades_negocio.every(u => includes.includes(u))
+        }
+        // Para otras: que tengan al menos una de las unidades
+        return c.unidades_negocio?.some(u => includes.includes(u))
+      })
       
       const clientsWithNPS = unidadClients.map(client => {
         const clientHistory = npsHistorial.filter(h => h.cliente_id === client.id)

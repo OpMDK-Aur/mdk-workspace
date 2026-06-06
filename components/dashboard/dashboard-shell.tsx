@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
 import { useTheme } from 'next-themes'
 import type { User } from '@supabase/supabase-js'
-import type { Profile, Client } from '@/lib/types'
+import type { Profile } from '@/lib/types'
 import { Sidebar } from './sidebar'
 import { ActiveTimerBar } from '@/components/time-tracking/active-timer-bar'
 import { NotificationAlertProvider } from './notification-alert'
@@ -11,19 +11,11 @@ import { NotificationAlertProvider } from './notification-alert'
 interface DashboardShellProps {
   user: User
   profile: Profile | null
-  clients: Client[]
   children: React.ReactNode
 }
 
-export function DashboardShell({ user, profile, clients, children }: DashboardShellProps) {
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
+export function DashboardShell({ user, profile, children }: DashboardShellProps) {
   const { setTheme } = useTheme()
-
-  // Find the selected client object
-  const selectedClient = useMemo(() => {
-    if (!selectedClientId) return null
-    return clients.find(c => c.id === selectedClientId) ?? null
-  }, [selectedClientId, clients])
 
   // Sync saved theme and accent color from DB on mount
   useEffect(() => {
@@ -44,9 +36,6 @@ export function DashboardShell({ user, profile, clients, children }: DashboardSh
       <Sidebar
         user={user}
         profile={profile}
-        clients={clients}
-        selectedClientId={selectedClientId}
-        onSelectClient={setSelectedClientId}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         <ActiveTimerBar />

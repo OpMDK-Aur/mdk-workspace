@@ -61,7 +61,7 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
   return (
     <div 
       className={cn(
-        'min-h-[120px] border-r border-b p-1.5 transition-colors',
+        'min-h-[120px] border-r border-b p-1.5 transition-colors w-full',
         !isCurrentMonth && 'bg-muted/30',
         today && 'bg-primary/5 ring-1 ring-inset ring-primary/20',
         pastDay && isCurrentMonth && 'bg-muted/20'
@@ -110,6 +110,7 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
           const statusConfig = STATUS_CONFIG[task.status] || STATUS_CONFIG.pendiente
           const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && task.status !== 'resuelto'
           const isSystemTask = task.isSystemTask
+          const isResuelto = task.status === 'resuelto'
           
           return (
             <button
@@ -119,7 +120,8 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                 'w-full text-left rounded px-1.5 py-1 text-xs transition-colors',
                 'bg-white dark:bg-card border border-gray-200 dark:border-border',
                 'hover:border-primary/50 hover:shadow-sm',
-                isOverdue && !isSystemTask && 'ring-1 ring-red-400/60'
+                isOverdue && !isSystemTask && 'ring-1 ring-red-400/60',
+                isResuelto && 'border-green-500/60 bg-green-500/5'
               )}
             >
               <div className="flex items-start gap-1">
@@ -206,6 +208,7 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                     const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
                     const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && task.status !== 'resuelto'
                     const isSystemTask = task.isSystemTask
+                    const isResuelto = task.status === 'resuelto'
 
                     return (
                       <button
@@ -215,7 +218,8 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                           'w-full text-left rounded-md px-2.5 py-2 transition-all duration-200',
                           'bg-card/40 border border-border/40 hover:border-primary/50 hover:bg-card/60',
                           'hover:shadow-sm hover:translate-x-0.5',
-                          isOverdue && !isSystemTask && 'border-red-400/50 bg-red-400/10'
+                          isOverdue && !isSystemTask && 'border-red-400/50 bg-red-400/10',
+                          isResuelto && 'border-green-500/60 bg-green-500/5'
                         )}
                       >
                         <div className="flex items-start gap-1.5 mb-1.5">
@@ -362,7 +366,7 @@ export function CalendarView() {
         </div>
         
         {/* Week days header */}
-        <div className="grid grid-cols-7 border-b bg-muted/50">
+        <div className="grid grid-cols-7 border-b bg-muted/50" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
           {weekDays.map((day) => (
             <div 
               key={day} 
@@ -375,7 +379,7 @@ export function CalendarView() {
         
         {/* Calendar grid */}
         <div className="flex-1 overflow-auto">
-          <div className="grid grid-cols-7">
+          <div className="grid grid-cols-7" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
             {calendarDays.map((date) => {
               const dateKey = format(date, 'yyyy-MM-dd')
               const dayTasks = tasksByDate.get(dateKey) || []

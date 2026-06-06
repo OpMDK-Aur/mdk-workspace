@@ -78,13 +78,35 @@ export default async function ClientPage({ params }: Props) {
   // Table: entradas_de_tiempo, fields: cliente_id, duracion_seg, iniciado_en, finalizado_en
   const { data: allEntries } = await supabase
     .from('entradas_de_tiempo')
-    .select('duracion_seg')
+    .select('duracion_seg, colaborador_id, colaboradores:colaborador_id(id, nombre, apellido, avatar_url)')
     .eq('cliente_id', id)
     .gte('iniciado_en', startOfMonth)
     .lte('iniciado_en', endOfMonth)
     .not('finalizado_en', 'is', null)
 
   const horasEquipo = (allEntries ?? []).reduce((acc, e) => acc + ((e.duracion_seg ?? 0) / 3600), 0)
+
+  // Aggregate tracked hours per collaborator (everyone who logged time on this client)
+  const horasPorColaboradorMap = new Map<string, { id: string; nombre: string; apellido: string; avatar_url: string | null; horas: number }>()
+  for (const e of allEntries ?? []) {
+    const col = e.colaboradores as { id: string; nombre: string; apellido: string; avatar_url: string | null } | null
+    const colId = col?.id || e.colaborador_id
+    if (!colId) continue
+    const prev = horasPorColaboradorMap.get(colId)
+    const horas = (e.duracion_seg ?? 0) / 3600
+    if (prev) {
+      prev.horas += horas
+    } else {
+      horasPorColaboradorMap.set(colId, {
+        id: colId,
+        nombre: col?.nombre ?? '',
+        apellido: col?.apellido ?? '',
+        avatar_url: col?.avatar_url ?? null,
+        horas,
+      })
+    }
+  }
+  const horasPorColaborador = Array.from(horasPorColaboradorMap.values()).sort((a, b) => b.horas - a.horas)
 
   // Get metricas_colaborador for this client (current month/year)
   const currentMonth = now.getMonth() + 1
@@ -127,6 +149,15 @@ export default async function ClientPage({ params }: Props) {
 
   const misHoras = (myEntries ?? []).reduce((acc, e) => acc + ((e.duracion_seg ?? 0) / 3600), 0)
 
+  // Recent NPS notes (comments) for this client
+  const { data: npsHistorial } = await supabase
+    .from('cliente_nps_historial')
+    .select('id, score, comentario, fecha, encuestado_nombre, encuestado_cargo')
+    .eq('cliente_id', id)
+    .not('comentario', 'is', null)
+    .order('fecha', { ascending: false })
+    .limit(5)
+
   // Get horas objetivo from current user's colaborador record (weekly)
   const horasObjetivo = currentProfile?.capacidad_horas_semanales 
     ? parseFloat(currentProfile.capacidad_horas_semanales) 
@@ -144,6 +175,8 @@ export default async function ClientPage({ params }: Props) {
       misHoras={misHoras}
       unidadesDeNegocio={unidadesDeNegocio ?? []}
       metricasColaborador={metricasColaborador ?? []}
+      horasPorColaborador={horasPorColaborador}
+      npsNotas={npsHistorial ?? []}
     />
   )
 }

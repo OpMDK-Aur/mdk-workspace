@@ -7,14 +7,21 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Plus, Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Plus, Loader2, TrendingUp, TrendingDown, Minus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart'
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, ReferenceLine } from 'recharts'
 
 interface NPSRecord {
   id: string
@@ -28,6 +35,8 @@ interface NPSRecord {
 interface ClientNPSProps {
   clientId: string
   currentUserId?: string
+  projectManagerId?: string | null
+  accountManagerId?: string | null
 }
 
 function getNPSCategory(score: number): { label: string; color: string; bgColor: string } {
@@ -43,12 +52,18 @@ function formatDate(dateStr: string): string {
   return date.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' })
 }
 
-export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
+export function ClientNPS({ clientId, currentUserId, projectManagerId, accountManagerId }: ClientNPSProps) {
   const [records, setRecords] = useState<NPSRecord[]>([])
+  const [filteredRecords, setFilteredRecords] = useState<NPSRecord[]>([])
   const [currentScore, setCurrentScore] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [pmFilter, setPmFilter] = useState<string | null>(projectManagerId || null)
+  const [amFilter, setAmFilter] = useState<string | null>(accountManagerId || null)
+  const [projectManagers, setProjectManagers] = useState<Array<{ id: string; full_name: string | null; email: string }>>([])
+  const [accountManagers, setAccountManagers] = useState<Array<{ id: string; full_name: string | null; email: string }>>([])
+  const [usersLoading, setUsersLoading] = useState(true)
   const [form, setForm] = useState({
     score: 3,
     comentario: '',
@@ -61,23 +76,90 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
 
   useEffect(() => {
     fetchNPS()
+    loadUsers()
   }, [clientId])
+
+  useEffect(() => {
+    // Apply filters to records
+    let filtered = records
+    
+    if (pmFilter) {
+      filtered = filtered.filter(r => r.proyecto_manager_id === pmFilter)
+    }
+    
+    if (amFilter) {
+      filtered = filtered.filter(r => r.account_manager_id === amFilter)
+    }
+    
+    setFilteredRecords(filtered)
+  }, [records, pmFilter, amFilter])
+
+  const loadUsers = async () => {
+    setUsersLoading(true)
+    try {
+      // Obtener IDs únicos de PM y AM de todos los clientes
+      const { data: clientesData } = await supabase
+        .from('clientes')
+        .select('project_manager_id, account_manager_id')
+      
+      if (clientesData) {
+        const pmIds = [...new Set(clientesData.map(c => c.project_manager_id).filter(Boolean))]
+        const amIds = [...new Set(clientesData.map(c => c.account_manager_id).filter(Boolean))]
+        
+        // Cargar datos de Project Managers
+        if (pmIds.length > 0) {
+          const { data: pmData } = await supabase
+            .from('profiles')
+            .select('id, full_name, email')
+            .in('id', pmIds)
+            .order('full_name', { ascending: true })
+          
+          if (pmData) {
+            setProjectManagers(pmData)
+          }
+        }
+        
+        // Cargar datos de Account Managers
+        if (amIds.length > 0) {
+          const { data: amData } = await supabase
+            .from('profiles')
+            .select('id, full_name, email')
+            .in('id', amIds)
+            .order('full_name', { ascending: true })
+          
+          if (amData) {
+            setAccountManagers(amData)
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error loading users:', err)
+    } finally {
+      setUsersLoading(false)
+    }
+  }
 
   const fetchNPS = async () => {
     setLoading(true)
 
-    // Fetch NPS history ordered by date ascending (for chart)
+    // Fetch NPS history with client info for PM/AM filtering
     const { data: historyData, error } = await supabase
       .from('cliente_nps_historial')
-      .select('*')
+      .select('*, clientes(project_manager_id, account_manager_id)')
       .eq('cliente_id', clientId)
       .order('fecha', { ascending: true })
 
     if (!error && historyData) {
-      setRecords(historyData)
+      // Enrich records with client PM/AM info
+      const enrichedRecords = historyData.map((record: any) => ({
+        ...record,
+        proyecto_manager_id: record.clientes?.project_manager_id,
+        account_manager_id: record.clientes?.account_manager_id,
+      }))
+      setRecords(enrichedRecords)
       // Set current score from the most recent record (last in ascending order)
-      if (historyData.length > 0) {
-        const mostRecent = historyData[historyData.length - 1]
+      if (enrichedRecords.length > 0) {
+        const mostRecent = enrichedRecords[enrichedRecords.length - 1]
         setCurrentScore(mostRecent.score)
       } else {
         setCurrentScore(null)
@@ -252,11 +334,59 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
         </Dialog>
       </div>
 
+      {/* Filters */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <Select value={pmFilter || 'all'} onValueChange={(val) => setPmFilter(val === 'all' ? null : val)}>
+          <SelectTrigger className="w-[180px] h-8 text-xs">
+            <SelectValue placeholder="Project Manager" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los PM</SelectItem>
+            {projectManagers.map(pm => (
+              <SelectItem key={pm.id} value={pm.id}>
+                {pm.full_name || pm.email}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={amFilter || 'all'} onValueChange={(val) => setAmFilter(val === 'all' ? null : val)}>
+          <SelectTrigger className="w-[180px] h-8 text-xs">
+            <SelectValue placeholder="Account Manager" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los AM</SelectItem>
+            {accountManagers.map(am => (
+              <SelectItem key={am.id} value={am.id}>
+                {am.full_name || am.email}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {(pmFilter || amFilter) && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              setPmFilter(null)
+              setAmFilter(null)
+            }}
+          >
+            <X className="h-3 w-3 mr-1" />
+            Limpiar filtros
+          </Button>
+        )}
+      </div>
+
+      {/* Stats and Content */}
+
       {loading ? (
         <div className="flex items-center justify-center py-8">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
-      ) : currentScore === null && records.length === 0 ? (
+      ) : currentScore === null && filteredRecords.length === 0 ? (
         <div className="text-center py-8">
           <p className="text-sm text-muted-foreground mb-2">Sin datos de NPS</p>
           <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
@@ -265,96 +395,95 @@ export function ClientNPS({ clientId, currentUserId }: ClientNPSProps) {
           </Button>
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* Current Score Display */}
-          <div className="flex items-center gap-4">
-            <div className={cn(
-              "w-16 h-16 rounded-xl flex items-center justify-center text-white font-bold text-2xl",
-              category?.bgColor || 'bg-gray-500'
-            )}>
-              {currentScore ?? '-'}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          {/* Left column: Current Score + Chart */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Current Score Display */}
+            <div className="flex items-center gap-4">
+              <div className={cn(
+                "w-16 h-16 rounded-xl flex items-center justify-center text-white font-bold text-2xl shrink-0",
+                category?.bgColor || 'bg-gray-500'
+              )}>
+                {currentScore ?? '-'}
+              </div>
+              <div className="flex-1">
+                <p className={cn("text-lg font-semibold", category?.color)}>
+                  {category?.label || 'Sin datos'}
+                </p>
+                {trend !== null && (
+                  <div className="flex items-center gap-1 text-sm">
+                    {trend > 0 ? (
+                      <>
+                        <TrendingUp className="h-4 w-4 text-green-500" />
+                        <span className="text-green-500">+{trend} vs anterior</span>
+                      </>
+                    ) : trend < 0 ? (
+                      <>
+                        <TrendingDown className="h-4 w-4 text-red-500" />
+                        <span className="text-red-500">{trend} vs anterior</span>
+                      </>
+                    ) : (
+                      <>
+                        <Minus className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">Sin cambio</span>
+                      </>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground mt-1">
+                  {filteredRecords.length} encuesta{filteredRecords.length !== 1 ? 's' : ''} registrada{filteredRecords.length !== 1 ? 's' : ''}
+                </p>
+              </div>
             </div>
-            <div className="flex-1">
-              <p className={cn("text-lg font-semibold", category?.color)}>
-                {category?.label || 'Sin datos'}
-              </p>
-              {trend !== null && (
-                <div className="flex items-center gap-1 text-sm">
-                  {trend > 0 ? (
-                    <>
-                      <TrendingUp className="h-4 w-4 text-green-500" />
-                      <span className="text-green-500">+{trend} vs anterior</span>
-                    </>
-                  ) : trend < 0 ? (
-                    <>
-                      <TrendingDown className="h-4 w-4 text-red-500" />
-                      <span className="text-red-500">{trend} vs anterior</span>
-                    </>
-                  ) : (
-                    <>
-                      <Minus className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">Sin cambio</span>
-                    </>
-                  )}
-                </div>
-              )}
-              <p className="text-xs text-muted-foreground mt-1">
-                {records.length} encuesta{records.length !== 1 ? 's' : ''} registrada{records.length !== 1 ? 's' : ''}
-              </p>
-            </div>
+
+            {/* Chart */}
+            {filteredRecords.length >= 2 && (
+              <ChartContainer config={chartConfig} className="aspect-auto h-32 w-full">
+                <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  <XAxis 
+                    dataKey="fecha" 
+                    tick={{ fontSize: 10 }} 
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis 
+                    domain={[1, 5]} 
+                    ticks={[1, 2, 3, 4, 5]}
+                    tick={{ fontSize: 10 }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={20}
+                  />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ReferenceLine y={4} stroke="#22c55e" strokeDasharray="3 3" strokeOpacity={0.5} />
+                  <ReferenceLine y={3} stroke="#eab308" strokeDasharray="3 3" strokeOpacity={0.5} />
+                  <Line
+                    type="monotone"
+                    dataKey="score"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={2}
+                    dot={{ r: 4, fill: 'hsl(var(--primary))' }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ChartContainer>
+            )}
           </div>
 
-          {/* Chart */}
-          {records.length >= 2 && (
-            <div className="h-32 mt-4">
-              <ChartContainer config={chartConfig}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                    <XAxis 
-                      dataKey="fecha" 
-                      tick={{ fontSize: 10 }} 
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <YAxis 
-                      domain={[1, 5]} 
-                      ticks={[1, 2, 3, 4, 5]}
-                      tick={{ fontSize: 10 }}
-                      tickLine={false}
-                      axisLine={false}
-                      width={20}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <ReferenceLine y={4} stroke="#22c55e" strokeDasharray="3 3" strokeOpacity={0.5} />
-                    <ReferenceLine y={3} stroke="#eab308" strokeDasharray="3 3" strokeOpacity={0.5} />
-                    <Line
-                      type="monotone"
-                      dataKey="score"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={2}
-                      dot={{ r: 4, fill: 'hsl(var(--primary))' }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-            </div>
-          )}
-
-          {/* Recent Records */}
-          {records.length > 0 && (
-            <div className="space-y-2 mt-4">
+          {/* Right column: Recent Records */}
+          {filteredRecords.length > 0 && (
+            <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase">Historial reciente</p>
-              <div className="space-y-1 max-h-32 overflow-y-auto">
-                {records.slice(-5).reverse().map(record => (
+              <div className="space-y-1 max-h-44 overflow-y-auto">
+                {filteredRecords.slice(-5).reverse().map(record => (
                   <div key={record.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 text-sm">
                     <div className={cn(
-                      "w-6 h-6 rounded flex items-center justify-center text-white text-xs font-medium",
+                      "w-6 h-6 rounded flex items-center justify-center text-white text-xs font-medium shrink-0",
                       getNPSCategory(record.score).bgColor
                     )}>
                       {record.score}
                     </div>
-                    <span className="flex-1 text-muted-foreground">
+                    <span className="flex-1 text-muted-foreground truncate">
                       {formatDate(record.fecha)}
                       {record.encuestado_nombre && ` - ${record.encuestado_nombre}`}
                     </span>

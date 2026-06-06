@@ -8,8 +8,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   DollarSign, Target, TrendingDown, MousePointerClick, Eye,
-  Users, Megaphone, MessageSquare, Calendar, Clock,
-  ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown, Pencil, Check, X,
+  Users, MessageSquare, Calendar, Clock,
+  ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown, Pencil, Check, X, Plus,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -26,9 +26,8 @@ import { DiscordChat } from './discord-chat'
 import { ClientComments } from './client-comments'
 import { ClientActivityTabs } from './client-activity-tabs'
 import { ClientLandings } from './client-landings'
-import { ClientCRMs } from './client-crms'
-import { ClientAdjuntos } from './client-adjuntos'
-import { ClientCotizaciones } from './client-cotizaciones'
+  import { ClientCRMs } from './client-crms'
+  import { ClientCotizaciones } from './client-cotizaciones'
 import { ClientTareas } from './client-tareas'
 import { ClientNPS } from './client-nps'
 import { ClientInfoCard } from './client-info-card'
@@ -70,6 +69,25 @@ interface ClientOverviewProps {
   misHoras?: number // current user's hours this month for this client
   unidadesDeNegocio?: UnidadDeNegocio[]
   metricasColaborador?: MetricaColaborador[]
+  horasPorColaborador?: HorasColaborador[]
+  npsNotas?: NpsNota[]
+}
+
+interface HorasColaborador {
+  id: string
+  nombre: string
+  apellido: string
+  avatar_url: string | null
+  horas: number
+}
+
+interface NpsNota {
+  id: string
+  score: number
+  comentario: string | null
+  fecha: string
+  encuestado_nombre: string | null
+  encuestado_cargo: string | null
 }
 
 type DedicationStatus = 'normal' | 'baja' | 'exceso' | 'sin_datos'
@@ -135,6 +153,14 @@ function formatCurrency(v: number) {
   if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`
   return `$${v.toFixed(2)}`
 }
+// Full currency — no abbreviation, used for fees
+function formatCurrencyFull(v: number) {
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  }).format(v)
+}
 function formatNumber(v: number) {
   if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`
   return String(v)
@@ -161,14 +187,8 @@ function getStatusLabel(s: string | null) {
   }
 }
 
-function getRoleName(role: string) {
-  switch (role) {
-    case 'direccion':       return 'Direccion'
-    case 'project_manager': return 'Project Manager'
-    case 'account_manager': return 'Account Manager'
-    case 'consultor':       return 'Consultor'
-    default:                return role
-  }
+function getPuestoDisplay(profile: Profile) {
+  return profile.puesto || ''
 }
 
 function initials(name: string | null) {
@@ -241,12 +261,14 @@ function EditableMultiPersonChip({
   profiles,
   onChange,
   updating,
+  compact = false,
 }: {
   profileIds: string[]
   label: string
   profiles: Profile[]
   onChange: (ids: string[]) => void
   updating: boolean
+  compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const selectedProfiles = profiles.filter(p => profileIds.includes(p.id))
@@ -263,14 +285,29 @@ function EditableMultiPersonChip({
       <span className="text-xs text-muted-foreground font-medium">{label}</span>
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild disabled={updating}>
-          <button className="flex items-start gap-2 hover:bg-muted/50 rounded-lg p-1 -m-1 transition-colors cursor-pointer text-left w-full">
+          <button className="flex items-center gap-2 hover:bg-muted/50 rounded-lg p-1 -m-1 transition-colors cursor-pointer text-left w-full">
             <div className="flex-1 min-w-0">
               {selectedProfiles.length === 0 ? (
                 <div className="flex items-center gap-2">
                   <div className="h-8 w-8 rounded-full border-2 border-dashed border-border flex items-center justify-center shrink-0 text-muted-foreground">
                     <Users className="h-3.5 w-3.5" />
                   </div>
-                  <span className="text-sm text-muted-foreground">Sin asignar</span>
+                  {!compact && <span className="text-sm text-muted-foreground">Sin asignar</span>}
+                </div>
+              ) : compact ? (
+                <div className="flex items-center -space-x-2">
+                  {selectedProfiles.map(p => (
+                    <Avatar
+                      key={p.id}
+                      className="h-8 w-8 shrink-0 ring-2 ring-card"
+                      title={p.full_name ?? p.email ?? ''}
+                    >
+                      {p.avatar_url && <AvatarImage src={p.avatar_url} alt={p.full_name ?? ''} />}
+                      <AvatarFallback className="bg-primary/20 text-primary text-[10px]">
+                        {initials(p.full_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                  ))}
                 </div>
               ) : (
                 <div className="flex flex-col gap-1.5">
@@ -284,7 +321,9 @@ function EditableMultiPersonChip({
                       </Avatar>
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate leading-tight">{p.full_name ?? p.email}</p>
-                        <p className="text-[10px] text-muted-foreground">{getRoleName(p.role)}</p>
+                        {getPuestoDisplay(p) && (
+                          <p className="text-[10px] text-muted-foreground">{getPuestoDisplay(p)}</p>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -292,9 +331,9 @@ function EditableMultiPersonChip({
               )}
             </div>
             {updating ? (
-              <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0 mt-1" />
+              <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0" />
             ) : (
-              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" />
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             )}
           </button>
         </DropdownMenuTrigger>
@@ -340,14 +379,21 @@ function EditableAccountsEditor({
   platform,
   onChange,
   updating,
+  nameMap = {},
+  loadingNames = false,
+  compact = false,
 }: {
   accounts: string[]
   label: string
   platform: 'meta' | 'google'
   onChange: (ids: string[]) => void
   updating: boolean
+  nameMap?: Record<string, string>
+  loadingNames?: boolean
+  compact?: boolean
 }) {
   const [input, setInput] = useState('')
+  const [adding, setAdding] = useState(false)
 
   const addAccount = (id: string) => {
     const trimmed = id.trim()
@@ -361,56 +407,90 @@ function EditableAccountsEditor({
     onChange(accounts.filter(a => a !== id))
   }
 
+  // Resolve display name for an account id (try with/without act_ prefix)
+  const resolveName = (acc: string): string | null => {
+    const clean = acc.replace(/^act_/, '').replace(/-/g, '')
+    return nameMap[acc] ?? nameMap[clean] ?? null
+  }
+
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-xs text-muted-foreground font-medium">{label}</span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground font-medium">{label}</span>
+        {compact && !adding && (
+          <button
+            onClick={() => setAdding(true)}
+            disabled={updating}
+            className="h-6 w-6 rounded-md border border-dashed border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors shrink-0"
+            aria-label={`Agregar cuenta de ${label}`}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
       <div className="flex flex-col gap-2">
         {accounts.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {accounts.map(acc => (
-              <div
-                key={acc}
-                className="inline-flex items-center gap-1.5 bg-muted text-sm text-foreground rounded-md px-2 py-1"
-              >
-                <code className="text-xs font-mono">{acc}</code>
-                <button
-                  onClick={() => removeAccount(acc)}
-                  disabled={updating}
-                  className="text-muted-foreground hover:text-foreground ml-0.5"
+          <div className="flex flex-col gap-1.5">
+            {accounts.map(acc => {
+              const name = resolveName(acc)
+              return (
+                <div
+                  key={acc}
+                  className="flex items-start gap-1.5 bg-muted text-foreground rounded-md px-2 py-1.5"
                 >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium leading-tight truncate" title={name ?? acc}>
+                      {name ?? (loadingNames ? 'Cargando…' : 'Cuenta sin nombre')}
+                    </p>
+                    {!compact && (
+                      <code className="text-[10px] font-mono text-muted-foreground break-all">{acc}</code>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => removeAccount(acc)}
+                    disabled={updating}
+                    className="text-muted-foreground hover:text-foreground mt-0.5 shrink-0"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )
+            })}
           </div>
         )}
-        <div className="flex gap-2">
-          <Input
-            type="text"
-            placeholder={platform === 'meta' ? 'act_...' : 'Customer ID'}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                addAccount(input)
-              }
-            }}
-            disabled={updating}
-            className="h-8 text-xs flex-1"
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => addAccount(input)}
-            disabled={!input.trim() || updating}
-            className="h-8"
-          >
-            Agregar
-          </Button>
-        </div>
-        {accounts.length === 0 && (
+        {(!compact || adding) && (
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              placeholder={platform === 'meta' ? 'act_...' : 'Customer ID'}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addAccount(input)
+                }
+              }}
+              disabled={updating}
+              autoFocus={adding}
+              className="h-8 text-xs flex-1"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => addAccount(input)}
+              disabled={!input.trim() || updating}
+              className="h-8"
+            >
+              Agregar
+            </Button>
+          </div>
+        )}
+        {accounts.length === 0 && !compact && (
           <p className="text-xs text-muted-foreground">Sin cuentas agregadas</p>
+        )}
+        {accounts.length === 0 && compact && !adding && (
+          <p className="text-xs text-muted-foreground">Sin cuentas</p>
         )}
       </div>
     </div>
@@ -456,8 +536,13 @@ function sortUnidades(unidades: UnidadDeNegocio[]): UnidadDeNegocio[] {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0, unidadesDeNegocio = [], metricasColaborador = [] }: ClientOverviewProps) {
+export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0, unidadesDeNegocio = [], metricasColaborador = [], horasPorColaborador = [], npsNotas = [] }: ClientOverviewProps) {
   const [preset, setPreset]           = useState('last_30d')
+  const [platformFilter, setPlatformFilter] = useState<'all' | 'meta' | 'google'>('all')
+  const [campaignFilter, setCampaignFilter] = useState<string>('all')
+  // Team hours recomputed for the selected date range (seeded with the server-provided monthly data)
+  const [teamHours, setTeamHours] = useState<HorasColaborador[]>(horasPorColaborador)
+  const [loadingHours, setLoadingHours] = useState(false)
   const [rows, setRows]               = useState<ScorecardRow[]>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
@@ -492,8 +577,44 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   // Active/Inactive status
   const [isActivo, setIsActivo] = useState(client.activo !== false) // null or true = activo
   const [updatingActivo, setUpdatingActivo] = useState(false)
-  
+  const [showActivity, setShowActivity] = useState(false)
+
+  // Ad account names (resolved from the platform account listing endpoints)
+  const [metaNames, setMetaNames] = useState<Record<string, string>>({})
+  const [googleNames, setGoogleNames] = useState<Record<string, string>>({})
+  const [loadingNames, setLoadingNames] = useState(false)
+
   const supabase = createClient()
+
+  // Load human-readable account names once
+  useEffect(() => {
+    let cancelled = false
+    const loadNames = async () => {
+      setLoadingNames(true)
+      try {
+        const [metaRes, googleRes] = await Promise.all([
+          fetch('/api/ads/meta/accounts').then(r => r.ok ? r.json() : { accounts: [] }).catch(() => ({ accounts: [] })),
+          fetch('/api/ads/google/accounts').then(r => r.ok ? r.json() : { accounts: [] }).catch(() => ({ accounts: [] })),
+        ])
+        if (cancelled) return
+        const metaMap: Record<string, string> = {}
+        for (const a of metaRes.accounts ?? []) {
+          if (a.id) metaMap[String(a.id)] = a.name
+          if (a.raw_id) metaMap[String(a.raw_id)] = a.name
+        }
+        const googleMap: Record<string, string> = {}
+        for (const a of googleRes.accounts ?? []) {
+          if (a.id) googleMap[String(a.id).replace(/-/g, '')] = a.name
+        }
+        setMetaNames(metaMap)
+        setGoogleNames(googleMap)
+      } finally {
+        if (!cancelled) setLoadingNames(false)
+      }
+    }
+    loadNames()
+    return () => { cancelled = true }
+  }, [])
 
   const handleActivoChange = async (newActivo: boolean) => {
     setUpdatingActivo(true)
@@ -635,26 +756,45 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     const collected: ScorecardRow[] = []
 
     try {
-      // Meta — endpoint expects `account_id`, returns campaigns[].id/.name
+      // Meta — endpoint expects `account_id`, returns { campaigns[], totals }
       const metaAccountIds = metaIds.length > 0 ? metaIds : (client.meta_ads_account_id ? [client.meta_ads_account_id] : [])
       if (metaAccountIds.length > 0) {
         for (const account_id of metaAccountIds) {
           const params = new URLSearchParams({
-            q: 'campaigns',
-            fields: 'id,name',
-            account_id: account_id,
+            account_id,
+            date_range: p,
+            start_date: start,
+            end_date: end,
           })
           const res = await fetch(`/api/ads/meta?${params}`)
-          const json = (await res.json()) as { data: Array<{ id: string; name: string }> }
-          for (const campaign of json.data) {
-            rows.push({
-              campaignId: campaign.id,
-              campaignName: campaign.name,
-              platform: 'meta',
-              spend: 0,
-              budget: 0,
-              leadType: '',
-            })
+          const data = await res.json()
+          if (!res.ok) {
+            throw new Error(data.error || 'Error al cargar Meta Ads')
+          }
+          if (data.campaigns) {
+            for (const c of data.campaigns) {
+              const spend = Number(c.spend ?? 0)
+              const leads = Number(c.leads ?? 0)
+              const impressions = Number(c.impressions ?? 0)
+              const clicks = Number(c.clicks ?? 0)
+              collected.push({
+                clientId:     client.id,
+                clientName:   client.business_name,
+                campaignId:   c.id,
+                campaignName: c.name,
+                platform:     'meta',
+                budget:       null,
+                daysToEnd:    null,
+                leads,
+                leadType:     c.lead_type ?? '',
+                cpl:          Number(c.cpl ?? (leads > 0 ? spend / leads : 0)),
+                ctr:          Number(c.ctr ?? (impressions > 0 ? (clicks / impressions) * 100 : 0)),
+                impressions,
+                clicks,
+                spend,
+                crmContacts:  0,
+              })
+            }
           }
         }
       }
@@ -705,34 +845,163 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     } finally {
       setLoading(false)
     }
-  }, [client])
+  }, [client, metaIds, googleIds])
 
   useEffect(() => { fetchData(preset) }, [preset, fetchData])
 
+  // Recompute team hours (entradas_de_tiempo) for the selected date range
+  const fetchTeamHours = useCallback(async (p: string) => {
+    setLoadingHours(true)
+    const { start, end } = resolveDateRange(p)
+    try {
+      const { data, error } = await supabase
+        .from('entradas_de_tiempo')
+        .select('duracion_seg, colaborador_id, colaboradores:colaborador_id(id, nombre, apellido, avatar_url, activo)')
+        .eq('cliente_id', client.id)
+        .gte('iniciado_en', `${start}T00:00:00`)
+        .lte('iniciado_en', `${end}T23:59:59`)
+        .not('finalizado_en', 'is', null)
+      if (error) throw error
+      const map = new Map<string, HorasColaborador>()
+      for (const e of (data ?? []) as unknown as Array<{ duracion_seg: number | null; colaborador_id: string | null; colaboradores: { id: string; nombre: string; apellido: string; avatar_url: string | null; activo: boolean | null } | { id: string; nombre: string; apellido: string; avatar_url: string | null; activo: boolean | null }[] | null }>) {
+        const col = Array.isArray(e.colaboradores) ? e.colaboradores[0] ?? null : e.colaboradores
+        // Skip inactive collaborators entirely
+        if (col && col.activo === false) continue
+        const id = col?.id || e.colaborador_id
+        if (!id) continue
+        const horas = (e.duracion_seg ?? 0) / 3600
+        const prev = map.get(id)
+        if (prev) {
+          prev.horas += horas
+        } else {
+          map.set(id, {
+            id,
+            nombre: col?.nombre ?? '',
+            apellido: col?.apellido ?? '',
+            avatar_url: col?.avatar_url ?? null,
+            horas,
+          })
+        }
+      }
+      setTeamHours(Array.from(map.values()).sort((a, b) => b.horas - a.horas))
+    } catch {
+      setTeamHours([])
+    } finally {
+      setLoadingHours(false)
+    }
+  }, [client.id, supabase])
+
+  useEffect(() => { fetchTeamHours(preset) }, [preset, fetchTeamHours])
+
+  // Reset campaign filter if it no longer exists in the data
+  useEffect(() => {
+    if (campaignFilter !== 'all' && !rows.some(r => r.campaignId === campaignFilter)) {
+      setCampaignFilter('all')
+    }
+  }, [rows, campaignFilter])
+
+  // Apply platform + campaign filters before aggregating
+  const filteredRows = rows.filter(r => {
+    if (platformFilter !== 'all' && r.platform !== platformFilter) return false
+    if (campaignFilter !== 'all' && r.campaignId !== campaignFilter) return false
+    return true
+  })
+
+  // Unique campaign options for the campaign filter (respecting the platform filter)
+  const campaignOptions = Array.from(
+    new Map(
+      rows
+        .filter(r => platformFilter === 'all' || r.platform === platformFilter)
+        .filter(r => r.campaignId)
+        .map(r => [r.campaignId as string, r.campaignName])
+    ).entries()
+  )
+
   // Aggregate totals
-  const totalSpend    = rows.reduce((s, r) => s + r.spend, 0)
-  const totalLeads    = rows.reduce((s, r) => s + r.leads, 0)
+  const totalSpend    = filteredRows.reduce((s, r) => s + r.spend, 0)
+  const totalLeads    = filteredRows.reduce((s, r) => s + r.leads, 0)
   const avgCpl        = totalLeads > 0 ? totalSpend / totalLeads : 0
-  const totalClicks   = rows.reduce((s, r) => s + r.clicks, 0)
-  const totalImpr     = rows.reduce((s, r) => s + r.impressions, 0)
+  const totalClicks   = filteredRows.reduce((s, r) => s + r.clicks, 0)
+  const totalImpr     = filteredRows.reduce((s, r) => s + r.impressions, 0)
   const avgCtr        = totalImpr > 0 ? (totalClicks / totalImpr) * 100 : 0
 
   // Top 5 campaigns by leads
-  const top5 = [...rows].sort((a, b) => b.leads - a.leads).slice(0, 5)
-
-  // Campaign types
-  const typeMap: Record<string, number> = {}
-  for (const r of rows) {
-    const t = r.leadType || 'Otro'
-    typeMap[t] = (typeMap[t] ?? 0) + 1
-  }
-  const campaignTypes = Object.entries(typeMap).sort((a, b) => b[1] - a[1])
+  const top5 = [...filteredRows].sort((a, b) => b.leads - a.leads).slice(0, 5)
 
   const totalFee = (client.fee_mdk ?? 0) + (client.fee_aurelia ?? 0)
 
+  // Merge tracked hours (everyone who logged time) with assigned metrics (objetivo/minimo)
+  // so the team list shows ALL people who worked on this client, not only assigned ones.
+  type TeamMember = {
+    id: string
+    nombre: string
+    apellido: string
+    avatar_url: string | null
+    horas: number
+    horasObjetivo: number
+    minimo: number
+    porcentaje: number
+  }
+  const teamMap = new Map<string, TeamMember>()
+  // Seed from assigned metrics (objetivo / minimo only — hours start at 0 and are
+  // filled exclusively from real tracked time for the selected range below)
+  for (const m of metricasColaborador) {
+    const col = m.colaboradores
+    const id = col?.id || m.colaborador_id
+    if (!id) continue
+    teamMap.set(id, {
+      id,
+      nombre: col?.nombre ?? '',
+      apellido: col?.apellido ?? '',
+      avatar_url: col?.avatar_url ?? null,
+      horas: 0,
+      horasObjetivo: m.horas_objetivo || 0,
+      minimo: m.minimo_no_negociable_horas || 0,
+      porcentaje: m.porcentaje_asignacion || 0,
+    })
+  }
+  // Set actual tracked hours for the selected range (covers people without assigned metrics)
+  for (const h of teamHours) {
+    const existing = teamMap.get(h.id)
+    if (existing) {
+      existing.horas = h.horas
+      if (!existing.nombre) existing.nombre = h.nombre
+      if (!existing.apellido) existing.apellido = h.apellido
+      if (!existing.avatar_url) existing.avatar_url = h.avatar_url
+    } else {
+      teamMap.set(h.id, {
+        id: h.id,
+        nombre: h.nombre,
+        apellido: h.apellido,
+        avatar_url: h.avatar_url,
+        horas: h.horas,
+        horasObjetivo: 0,
+        minimo: 0,
+        porcentaje: 0,
+      })
+    }
+  }
+  // Only show people who actually logged time in the selected range. Assigned metrics
+  // (objetivo / minimo) are used only to enrich those rows — they never introduce a
+  // collaborator on their own, so inactive people and people who didn't track any time
+  // in the period are excluded.
+  const teamMembers = Array.from(teamMap.values())
+    .filter(m => m.horas > 0)
+    .sort((a, b) => b.horas - a.horas)
+  const totalHorasAcumuladas = teamMembers.reduce((acc, m) => acc + m.horas, 0)
+  const totalHorasObjetivo = teamMembers.reduce((acc, m) => acc + m.horasObjetivo, 0)
+  const totalMinimo = teamMembers.reduce((acc, m) => acc + m.minimo, 0)
+
   return (
-    <div className="flex-1 overflow-y-auto bg-background">
-      <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+    <div className="flex-1 min-h-0 bg-background flex overflow-hidden">
+      {/* Main scrollable content — re-centers/shifts left when the activity panel opens */}
+      <div
+        className={cn(
+          'flex-1 overflow-y-auto transition-[padding] duration-300 ease-in-out',
+          showActivity ? 'sm:pr-[520px] lg:pr-[640px]' : ''
+        )}
+      >
+        <div className="max-w-5xl mx-auto px-6 py-8 space-y-8 transition-all duration-300 ease-in-out">
 
         {/* Back + header */}
         <div className="flex items-start gap-4">
@@ -770,27 +1039,22 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   </div>
   </div>
   </div>
-
-          {/* Date filter */}
-          <div className="flex items-center gap-2 shrink-0">
-            <Select value={preset} onValueChange={setPreset}>
-              <SelectTrigger className="h-9 w-44 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {DATE_PRESETS.map(p => (
-                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => fetchData(preset)} disabled={loading}>
-              <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
-            </Button>
-          </div>
+          <Button
+            variant={showActivity ? 'default' : 'outline'}
+            size="sm"
+            className="gap-1.5 shrink-0"
+            onClick={() => setShowActivity(v => !v)}
+          >
+            <MessageSquare className="h-4 w-4" />
+            {showActivity ? 'Ocultar actividad' : 'Ver actividad'}
+          </Button>
         </div>
 
         {/* ── Info row: PM / AM / Fee / Dedicacion / Plataformas ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className={cn(
+          'grid grid-cols-1 sm:grid-cols-2 gap-4',
+          showActivity ? 'lg:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-5'
+        )}>
           <Card>
             <CardContent className="pt-5 pb-5">
               <EditableMultiPersonChip
@@ -799,6 +1063,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 profiles={profiles}
                 onChange={handlePMChange}
                 updating={updatingPM}
+                compact={showActivity}
               />
             </CardContent>
           </Card>
@@ -810,6 +1075,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 profiles={profiles}
                 onChange={handleAMChange}
                 updating={updatingAM}
+                compact={showActivity}
               />
             </CardContent>
           </Card>
@@ -822,6 +1088,9 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 platform="meta"
                 onChange={handleMetaChange}
                 updating={updatingMeta}
+                nameMap={metaNames}
+                loadingNames={loadingNames}
+                compact={showActivity}
               />
             </CardContent>
           </Card>
@@ -834,6 +1103,9 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 platform="google"
                 onChange={handleGoogleChange}
                 updating={updatingGoogle}
+                nameMap={googleNames}
+                loadingNames={loadingNames}
+                compact={showActivity}
               />
             </CardContent>
           </Card>
@@ -918,51 +1190,55 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 </div>
               ) : (
                 <>
-                  <div className="flex items-end gap-2">
-                    <p className="text-2xl font-bold text-foreground">{formatCurrency(feeMdk + feeAurelia + feeConsultoria)}</p>
-                    <p className="text-xs text-muted-foreground mb-1">/ mes</p>
+                  <div className="flex flex-col">
+                    <p className="text-base font-bold text-foreground leading-tight whitespace-nowrap">{formatCurrencyFull(feeMdk + feeAurelia + feeConsultoria)}</p>
+                    <p className="text-xs text-muted-foreground">/ mes</p>
                   </div>
-                  <div className="flex flex-wrap gap-3 mt-2">
-                    {feeMdk > 0 && <span className="text-[11px] text-muted-foreground">MDK: {formatCurrency(feeMdk)}</span>}
-                    {feeAurelia > 0 && <span className="text-[11px] text-muted-foreground">Aurelia: {formatCurrency(feeAurelia)}</span>}
-                    {feeConsultoria > 0 && <span className="text-[11px] text-muted-foreground">Consultoría: {formatCurrency(feeConsultoria)}</span>}
+                  <div className="flex flex-col gap-0.5 mt-2">
+                    {feeMdk > 0 && <span className="text-[11px] text-muted-foreground">MDK: {formatCurrencyFull(feeMdk)}</span>}
+                    {feeAurelia > 0 && <span className="text-[11px] text-muted-foreground">Aurelia: {formatCurrencyFull(feeAurelia)}</span>}
+                    {feeConsultoria > 0 && <span className="text-[11px] text-muted-foreground">Consultoría: {formatCurrencyFull(feeConsultoria)}</span>}
                   </div>
                 </>
               )}
             </CardContent>
           </Card>
-
-          <Card>
-            <CardContent className="pt-5 pb-5">
-              <p className="text-xs text-muted-foreground font-medium mb-3">Plataformas activas</p>
-              {platforms.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  {platforms.map(p => (
-                    <div key={p.id} className="flex items-center gap-2">
-                      <div className={cn(
-                        'h-6 w-6 rounded flex items-center justify-center shrink-0',
-                        p.id === 'meta' ? 'bg-blue-600/15 text-blue-400' : 'bg-green-600/15 text-green-400'
-                      )}>
-                        {p.icon}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium text-foreground">{p.label}</p>
-                        <p className="text-[10px] text-muted-foreground truncate font-mono">{p.accountId}</p>
-                      </div>
-                      <CheckCircle2 className="h-3.5 w-3.5 text-status-verde ml-auto shrink-0" />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">Sin plataformas</p>
-              )}
-            </CardContent>
-          </Card>
         </div>
+
+        {/* ── NPS Score (arriba de Horas del Equipo) ── */}
+        <ClientNPS 
+          clientId={client.id} 
+          currentUserId={currentProfile?.id}
+          projectManagerId={client.project_manager_id}
+          accountManagerId={client.account_manager_id}
+        />
 
         {/* ── Horas del Equipo ── */}
         <div>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Horas del equipo</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Horas del equipo</h2>
+            <div className="flex items-center gap-2 shrink-0">
+              <Select value={preset} onValueChange={setPreset}>
+                <SelectTrigger className="h-8 w-40 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DATE_PRESETS.map(p => (
+                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => { fetchTeamHours(preset); fetchData(preset) }}
+                disabled={loadingHours || loading}
+              >
+                <RefreshCw className={cn('h-4 w-4', (loadingHours || loading) && 'animate-spin')} />
+              </Button>
+            </div>
+          </div>
           <Card>
             <CardContent className="pt-5 pb-5">
               {/* Resumen general */}
@@ -973,7 +1249,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-foreground">
-                      {metricasColaborador.reduce((acc, m) => acc + (m.acumulado_mes_asignado || 0), 0).toFixed(1)}h
+                      {totalHorasAcumuladas.toFixed(1)}h
                     </p>
                     <p className="text-xs text-muted-foreground">Horas acumuladas</p>
                   </div>
@@ -981,35 +1257,32 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 <div className="h-8 w-px bg-border hidden sm:block" />
                 <div>
                   <p className="text-lg font-semibold text-foreground">
-                    {metricasColaborador.reduce((acc, m) => acc + (m.horas_objetivo || 0), 0).toFixed(1)}h
+                    {totalHorasObjetivo.toFixed(1)}h
                   </p>
                   <p className="text-xs text-muted-foreground">Objetivo mensual</p>
                 </div>
                 <div className="h-8 w-px bg-border hidden sm:block" />
                 <div>
                   <p className="text-lg font-semibold text-foreground">
-                    {metricasColaborador.reduce((acc, m) => acc + (m.minimo_no_negociable_horas || 0), 0).toFixed(1)}h
+                    {totalMinimo.toFixed(1)}h
                   </p>
                   <p className="text-xs text-muted-foreground">Minimo requerido</p>
                 </div>
                 <div className="h-8 w-px bg-border hidden sm:block" />
                 <div>
-                  <p className="text-lg font-semibold text-foreground">{metricasColaborador.length}</p>
-                  <p className="text-xs text-muted-foreground">Colaboradores asignados</p>
+                  <p className="text-lg font-semibold text-foreground">{teamMembers.length}</p>
+                  <p className="text-xs text-muted-foreground">Colaboradores</p>
                 </div>
               </div>
               
               {/* Lista de colaboradores */}
-              {metricasColaborador.length > 0 ? (
+              {teamMembers.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {metricasColaborador.map((metrica) => {
-                    const colaborador = metrica.colaboradores
-                    const nombre = colaborador 
-                      ? `${colaborador.nombre || ''} ${colaborador.apellido || ''}`.trim() 
-                      : 'Sin nombre'
+                  {teamMembers.map((miembro) => {
+                    const nombre = `${miembro.nombre || ''} ${miembro.apellido || ''}`.trim() || 'Sin nombre'
                     const iniciales = nombre.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-                    const progreso = metrica.horas_objetivo > 0 
-                      ? Math.min((metrica.acumulado_mes_asignado / metrica.horas_objetivo) * 100, 100) 
+                    const progreso = miembro.horasObjetivo > 0 
+                      ? Math.min((miembro.horas / miembro.horasObjetivo) * 100, 100) 
                       : 0
                     const colorProgreso = progreso >= 100 
                       ? 'bg-status-verde' 
@@ -1018,10 +1291,10 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                         : 'bg-status-naranja'
                     
                     return (
-                      <div key={metrica.id} className="p-4 rounded-xl bg-muted/30 border border-border/50 space-y-3">
+                      <div key={miembro.id} className="p-4 rounded-xl bg-muted/30 border border-border/50 space-y-3">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-9 w-9 shrink-0">
-                            {colaborador?.avatar_url && <AvatarImage src={colaborador.avatar_url} alt={nombre} />}
+                            {miembro.avatar_url && <AvatarImage src={miembro.avatar_url} alt={nombre} />}
                             <AvatarFallback className="bg-primary/20 text-primary text-xs">
                               {iniciales}
                             </AvatarFallback>
@@ -1029,43 +1302,48 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-foreground truncate">{nombre}</p>
                             <p className="text-xs text-muted-foreground">
-                              {metrica.porcentaje_asignacion > 0 ? `${metrica.porcentaje_asignacion}% dedicacion` : 'Sin asignacion'}
+                              {miembro.porcentaje > 0 ? `${miembro.porcentaje}% dedicacion` : 'Horas registradas'}
                             </p>
                           </div>
                         </div>
                         
-                        {/* Barra de progreso */}
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">
-                              {metrica.acumulado_mes_asignado.toFixed(1)}h / {metrica.horas_objetivo.toFixed(1)}h
-                            </span>
-                            <span className={cn(
-                              'font-semibold',
-                              progreso >= 100 ? 'text-status-verde' : progreso >= 70 ? 'text-status-amarillo' : 'text-status-naranja'
-                            )}>
-                              {progreso.toFixed(0)}%
-                            </span>
+                        {/* Barra de progreso (solo si hay objetivo asignado) */}
+                        {miembro.horasObjetivo > 0 ? (
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">
+                                {miembro.horas.toFixed(1)}h / {miembro.horasObjetivo.toFixed(1)}h
+                              </span>
+                              <span className={cn(
+                                'font-semibold',
+                                progreso >= 100 ? 'text-status-verde' : progreso >= 70 ? 'text-status-amarillo' : 'text-status-naranja'
+                              )}>
+                                {progreso.toFixed(0)}%
+                              </span>
+                            </div>
+                            <div className="h-2 bg-muted rounded-full overflow-hidden">
+                              <div 
+                                className={cn('h-full rounded-full transition-all', colorProgreso)}
+                                style={{ width: `${progreso}%` }}
+                              />
+                            </div>
                           </div>
-                          <div className="h-2 bg-muted rounded-full overflow-hidden">
-                            <div 
-                              className={cn('h-full rounded-full transition-all', colorProgreso)}
-                              style={{ width: `${progreso}%` }}
-                            />
+                        ) : (
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">Horas trabajadas</span>
+                            <span className="font-semibold text-foreground">{miembro.horas.toFixed(1)}h</span>
                           </div>
-                        </div>
+                        )}
                         
                         {/* Detalle */}
-                        <div className="flex justify-between text-xs pt-1 border-t border-border/50">
-                          <div>
-                            <span className="text-muted-foreground">Minimo: </span>
-                            <span className="font-medium">{metrica.minimo_no_negociable_horas.toFixed(1)}h</span>
+                        {miembro.minimo > 0 && (
+                          <div className="flex justify-between text-xs pt-1 border-t border-border/50">
+                            <div>
+                              <span className="text-muted-foreground">Minimo: </span>
+                              <span className="font-medium">{miembro.minimo.toFixed(1)}h</span>
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-muted-foreground">Valor/h: </span>
-                            <span className="font-medium">{formatCurrency(metrica.valor_hora)}</span>
-                          </div>
-                        </div>
+                        )}
                       </div>
                     )
                   })}
@@ -1073,8 +1351,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
               ) : (
                 <div className="text-center py-8">
                   <Clock className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
-                  <p className="text-sm text-muted-foreground">Sin metricas asignadas para este mes</p>
-                  <p className="text-xs text-muted-foreground mt-1">Asigna colaboradores en la seccion de Metricas por Colaborador</p>
+                  <p className="text-sm text-muted-foreground">Sin horas registradas este mes</p>
+                  <p className="text-xs text-muted-foreground mt-1">Nadie ha marcado tiempo sobre este cliente todavia</p>
                 </div>
               )}
               
@@ -1118,7 +1396,32 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
         {/* ── KPIs del periodo ── */}
         <div>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">KPIs del periodo</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">KPIs del periodo</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={platformFilter} onValueChange={(v) => setPlatformFilter(v as 'all' | 'meta' | 'google')}>
+                <SelectTrigger className="h-8 w-[130px] text-xs">
+                  <SelectValue placeholder="Plataforma" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las plataformas</SelectItem>
+                  <SelectItem value="meta">Meta Ads</SelectItem>
+                  <SelectItem value="google">Google Ads</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={campaignFilter} onValueChange={setCampaignFilter}>
+                <SelectTrigger className="h-8 w-[170px] text-xs">
+                  <SelectValue placeholder="Campaña" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las campañas</SelectItem>
+                  {campaignOptions.map(([id, name]) => (
+                    <SelectItem key={id} value={id} className="text-xs">{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           {error && (
             <p className="text-sm text-destructive mb-3">{error}</p>
           )}
@@ -1147,11 +1450,11 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           <div>
             <ClientBudgetAlertCard
               loading={loading}
-              alert={rows.length > 0
+              alert={filteredRows.length > 0
                 ? computeClientBudgetAlerts(
                     client.id,
                     client.business_name,
-                    rows.map(r => ({
+                    filteredRows.map(r => ({
                       campaignId:   r.campaignId,
                       campaignName: r.campaignName,
                       platform:     r.platform,
@@ -1165,32 +1468,6 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             />
           </div>
         )}
-
-        {/* ── Tipo de campaña ── */}
-        <div>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Tipo de campanas</h2>
-          <Card>
-            <CardContent className="pt-5 pb-5">
-              {loading ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Cargando...
-                </div>
-              ) : campaignTypes.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Sin datos para el periodo</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {campaignTypes.map(([type, count]) => (
-                    <Badge key={type} variant="secondary" className="gap-1.5 py-1 px-3">
-                      <Megaphone className="h-3 w-3" />
-                      {type}
-                      <span className="text-muted-foreground ml-1">{count}</span>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
 
         {/* ── Top 5 campanas ── */}
         <div>
@@ -1237,15 +1514,14 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           )}
         </div>
 
-        {/* ── Landings, CRMs y NPS ── */}
-        <div className="grid md:grid-cols-3 gap-4">
-          <div className="rounded-xl border bg-card p-5">
+        {/* ── Landings y CRMs ── */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="rounded-xl border bg-card p-4">
             <ClientLandings clientId={client.id} />
           </div>
-          <div className="rounded-xl border bg-card p-5">
+          <div className="rounded-xl border bg-card p-4">
             <ClientCRMs clientId={client.id} />
           </div>
-          <ClientNPS clientId={client.id} currentUserId={currentProfile?.id} />
         </div>
 
         {/* ── Tareas, Cotizaciones, Adjuntos ── */}
@@ -1253,32 +1529,6 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           <ClientTareas clientId={client.id} />
           <ClientCotizaciones clientId={client.id} currentUserId={currentProfile?.id} />
         </div>
-
-        {/* ── Adjuntos ── */}
-        <ClientAdjuntos clientId={client.id} currentUserId={currentProfile?.id} />
-
-        {/* ── Comentarios del Cliente ── */}
-        <ClientActivityTabs
-          clientId={client.id}
-          clientPlan={(client.unidades_negocio || []).includes('MDK') || client.unidad_negocio === 'MDK' ? client.plan : null}
-          unidadNegocio={client.unidades_negocio?.[0] || client.unidad_negocio}
-          currentUser={currentProfile ? {
-            id: currentProfile.id,
-            nombre: currentProfile.nombre,
-            apellido: currentProfile.apellido,
-            avatar_url: currentProfile.avatar_url,
-          } : null}
-        >
-          <ClientComments 
-            clientId={client.id} 
-            currentUser={currentProfile ? {
-              id: currentProfile.id,
-              nombre: currentProfile.nombre,
-              apellido: currentProfile.apellido,
-              avatar_url: currentProfile.avatar_url,
-            } : null}
-          />
-        </ClientActivityTabs>
 
         {/* ── Memoria del Cliente ── */}
         <ClientMemoria clienteId={client.id} />
@@ -1322,6 +1572,57 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         </div>
 
       </div>
+        </div>
+
+      {/* ── Sliding activity panel (right) — full viewport height ── */}
+      <aside
+        className={cn(
+          'fixed inset-y-0 right-0 z-50 w-full sm:w-[520px] lg:w-[640px] border-l border-border bg-card shadow-xl flex flex-col transition-transform duration-300 ease-in-out',
+          showActivity ? 'translate-x-0' : 'translate-x-full'
+        )}
+        aria-hidden={!showActivity}
+      >
+        <div className="w-full h-full flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+            <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-primary" />
+              Actividad
+            </h2>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={() => setShowActivity(false)}
+              aria-label="Cerrar actividad"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <ClientActivityTabs
+              clientId={client.id}
+              clientPlan={(client.unidades_negocio || []).includes('MDK') || client.unidad_negocio === 'MDK' ? client.plan : null}
+              unidadNegocio={client.unidades_negocio?.[0] || client.unidad_negocio}
+              currentUser={currentProfile ? {
+                id: currentProfile.id,
+                nombre: currentProfile.nombre,
+                apellido: currentProfile.apellido,
+                avatar_url: currentProfile.avatar_url,
+              } : null}
+            >
+              <ClientComments 
+                clientId={client.id} 
+                currentUser={currentProfile ? {
+                  id: currentProfile.id,
+                  nombre: currentProfile.nombre,
+                  apellido: currentProfile.apellido,
+                  avatar_url: currentProfile.avatar_url,
+                } : null}
+              />
+            </ClientActivityTabs>
+          </div>
+        </div>
+      </aside>
     </div>
   )
 }

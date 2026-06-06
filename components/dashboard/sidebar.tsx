@@ -1,16 +1,18 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
-import type { Profile, Client } from '@/lib/types'
+import type { Profile } from '@/lib/types'
 import { createClient, getAuthUser } from '@/lib/supabase/client'
+import { isMaster, canSeeSection } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,29 +27,34 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import {
   LayoutDashboard,
   Users,
-  Zap,
   Settings,
-  FileText,
-  BookOpen,
   LogOut,
   ChevronDown,
-  Rocket,
-  UserCog,
-  Plug,
-  Wallet,
-  Contact,
-  Clock,
-  CheckSquare,
-  UsersRound,
   Bell,
-  Search,
   Home,
   PanelLeftClose,
   PanelLeft,
   ChevronRight,
-  X,
+  Clock,
+  BarChart3,
+  Building2,
+  LineChart,
+  Cpu,
+  ClockCheck,
+  Map,
+  Smile,
+  FileText,
+  Megaphone,
+  AppWindow,
+  Database,
+  Webhook,
 } from 'lucide-react'
 import { UserSettingsDialog } from './user-settings-dialog'
 import { NotificationsPanel } from './notifications-panel'
@@ -55,127 +62,116 @@ import { NotificationsPanel } from './notifications-panel'
 interface SidebarProps {
   user: User
   profile: Profile | null
-  clients: Client[]
-  selectedClientId: string | null
-  onSelectClient: (id: string | null) => void
 }
 
-// Module IDs mapping to sidebar items
-const MODULE_IDS = {
-  dashboard: 'dashboard',
-  crm: 'crm',
-  tareas: 'tareas',
-  consultoria: 'consultoria',
-  administracion: 'administracion',
-  agentes_ia: 'agentes_ia',
-  gestion_usuarios: 'gestion_usuarios',
-  plataformas: 'plataformas',
-  control_saldos: 'control_saldos',
-  colaboradores: 'colaboradores',
-  timer_entries: 'timer_entries',
-  reports: 'reports',
-  team: 'team',
-} as const
-
-const areas = [
-  { id: 'dashboard', moduleId: 'dashboard', name: 'Dashboard', icon: LayoutDashboard, href: '/dashboard', active: true },
-  { id: 'crm', moduleId: 'crm', name: 'CRM', icon: Contact, href: '/dashboard/crm', active: true },
-  { id: 'tasks', moduleId: 'tareas', name: 'Tareas', icon: CheckSquare, href: '/dashboard/tasks', active: true },
-  { id: 'consultoria', moduleId: 'consultoria', name: 'Consultoría', icon: Users, href: '#', active: false },
-  { id: 'agentes-ia', moduleId: 'agentes_ia', name: 'Agentes IA', icon: Zap, href: '#', active: false },
-]
-
-const adminItems = [
-  { id: 'users', moduleId: 'gestion_usuarios', name: 'Gestionar usuarios', icon: UserCog, href: '/dashboard/users' },
-  { id: 'platform', moduleId: 'plataformas', name: 'Plataformas', icon: Plug, href: '/dashboard/platform' },
-  { id: 'saldos', moduleId: 'control_saldos', name: 'Control de saldos', icon: Wallet, href: '/dashboard/saldos' },
-  { id: 'colaboradores', moduleId: 'colaboradores', name: 'Colaboradores', icon: UsersRound, href: '/dashboard/colaboradores' },
-]
-
-const timeTrackingItems = [
-  { id: 'time-entries', moduleId: 'timer_entries', name: 'Timer entries', icon: Clock, href: '/dashboard/time' },
-  { id: 'reports', moduleId: 'reports', name: 'Reports', icon: FileText, href: '/dashboard/reports' },
-  { id: 'team', moduleId: 'team', name: 'Team', icon: Users, href: '/dashboard/team' },
-]
-
-const recursos = [
-  { id: 'reportes', name: 'Reportes', icon: FileText },
-  { id: 'sops', name: 'SOPs', icon: BookOpen },
-]
-
-function getSemaforoColor(unidades_negocio: string[] | undefined, semaforo_unidades: Record<string, string> | undefined) {
-  if (!unidades_negocio || !semaforo_unidades || unidades_negocio.length === 0) {
-    return 'bg-muted-foreground'
-  }
-  
-  // Get semaforo for first unidad
-  const semaforo = semaforo_unidades[unidades_negocio[0]]
-  switch (semaforo) {
-    case 'verde': return 'bg-status-verde'
-    case 'amarillo': return 'bg-status-amarillo'
-    case 'naranja': return 'bg-status-naranja'
-    case 'rojo': return 'bg-status-rojo'
-    default: return 'bg-muted-foreground'
-  }
+// Navigation structure
+interface NavItem {
+  id: string
+  name: string
+  href: string
+  icon: React.ComponentType<{ className?: string }>
+  badge?: 'tasks' | 'proximamente' | 'nuevo'
+  badgeUntil?: string // ISO date — badge shows only before this date
+  moduleId?: string
+  masterOnly?: boolean
 }
 
-function getRoleName(role: string, roleName?: string) {
-  // If we have the actual role name from the database, use it
-  if (roleName) return roleName
-  
-  // Fallback for legacy role codes
-  switch (role) {
-    case 'master': return 'Master'
-    case 'direccion': return 'Dir. Operaciones'
-    case 'project_manager': return 'Project Manager'
-    case 'account_manager': return 'Account Manager'
-    case 'consultor': return 'Consultor'
-    case 'administrador': return 'Administrador'
-    default: return role
-  }
+interface NavSection {
+  id: string
+  title?: string
+  items: NavItem[]
+  moduleId?: string // Section-level module requirement
 }
+
+// Main navigation items (no section header)
+const mainItems: NavItem[] = [
+  { id: 'tasks', name: 'Tareas', href: '/dashboard/tasks', icon: LayoutDashboard, badge: 'tasks' },
+]
+
+// Sub-items for Tareas (nested under mainItems)
+const tareasSubItems: NavItem[] = [
+  { id: 'time', name: 'Entradas de tiempo', href: '/dashboard/time', icon: Clock },
+  { id: 'reports', name: 'Mis horas', href: '/dashboard/reports', icon: BarChart3 },
+]
+
+// Primary navigation items (below Tareas)
+const primaryItems: NavItem[] = [
+  { id: 'clients', name: 'Clientes', href: '/dashboard/clients', icon: Building2 },
+  { id: 'performance', name: 'Performance', href: '/dashboard/performance', icon: LineChart },
+  { id: 'agentes', name: 'Agentes', href: '/dashboard/agentes', icon: Cpu, badge: 'nuevo', badgeUntil: '2026-06-20' },
+]
+
+// Administration section
+const adminItems: NavItem[] = [
+  { id: 'time-settings', name: 'Control de horas', href: '/dashboard/admin/horas', icon: ClockCheck },
+  { id: 'service-map', name: 'Mapa de servicio', href: '/dashboard/admin/mapa-servicio', icon: Map },
+  { id: 'nps', name: 'NPS', href: '/dashboard/admin/nps', icon: Smile },
+  { id: 'facturacion', name: 'Facturacion', href: '/dashboard/saldos', icon: FileText },
+  { id: 'colaboradores', name: 'Colaboradores', href: '/dashboard/colaboradores', icon: Users },
+]
+
+// Integraciones section (formerly Platforms)
+const platformItems: NavItem[] = [
+  { id: 'ad-accounts', name: 'Cuentas publicitarias', href: '/dashboard/platform', icon: Megaphone },
+  { id: 'apps', name: 'Apps', href: '/dashboard/apps', icon: AppWindow },
+  { id: 'crm', name: 'CRM', href: '/dashboard/crm', icon: Database, badge: 'proximamente' },
+  { id: 'webhooks', name: 'Webhooks', href: '/dashboard/webhooks', icon: Webhook },
+]
 
 export function Sidebar({
   user,
   profile,
-  clients,
-  selectedClientId,
-  onSelectClient,
 }: SidebarProps) {
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isHydrated, setIsHydrated] = useState(false)
   const [wasCollapsed, setWasCollapsed] = useState(false)
   const [notificationCount, setNotificationCount] = useState(0)
   const [notificationsPanelOpen, setNotificationsPanelOpen] = useState(false)
-  const [clientSearch, setClientSearch] = useState('')
-  const [searchFocused, setSearchFocused] = useState(false)
-  const searchInputRef = useRef<HTMLInputElement>(null)
-
-  // Keyboard shortcut for search (Cmd+K / Ctrl+K)
+  
+  // Hydrate collapsed state from localStorage
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        searchInputRef.current?.focus()
-        setSearchFocused(true)
-      }
+    const saved = localStorage.getItem('sidebar-collapsed')
+    if (saved === 'true') {
+      setIsCollapsed(true)
     }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
+    setIsHydrated(true)
   }, [])
-
-  // Filter clients based on search by nombre_del_negocio
-  const filteredClients = clients.filter(client => 
-    client.nombre_del_negocio?.toLowerCase().includes(clientSearch.toLowerCase())
+  
+  // Persist collapsed state to localStorage
+  useEffect(() => {
+    if (isHydrated) {
+      localStorage.setItem('sidebar-collapsed', String(isCollapsed))
+    }
+  }, [isCollapsed, isHydrated])
+  
+  // Collapsible section states - open by default if pathname matches
+  const [tareasOpen, setTareasOpen] = useState(() =>
+    pathname.startsWith('/dashboard/tasks') || 
+    pathname.startsWith('/dashboard/time') || 
+    pathname.startsWith('/dashboard/reports')
   )
+  const [adminOpen, setAdminOpen] = useState(() => 
+    adminItems.some(item => pathname.startsWith(item.href.split('?')[0]))
+  )
+  const [platformsOpen, setPlatformsOpen] = useState(() =>
+    platformItems.some(item => pathname.startsWith(item.href.split('?')[0]))
+  )
+  
+  // Task count for badge
+  const [taskCount, setTaskCount] = useState(0)
 
-  // Fetch unread notification count for current user
+  // Get user role - normalize to expected format
+  const userRole = profile?.role_name || profile?.role || 'Usuario'
+  const userModulos = profile?.modulos_habilitados || []
+  const userIsMaster = isMaster(userRole)
+
+  // Fetch unread notification count
   useEffect(() => {
     async function fetchNotificationCount() {
-      // Get current user's colaborador_id
       const { data: { user: authUser } } = await getAuthUser()
       if (!authUser?.email) return
       
@@ -199,7 +195,6 @@ export function Sidebar({
     }
     fetchNotificationCount()
 
-    // Subscribe to changes
     const channel = supabase
       .channel('notificaciones_count')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notificaciones' }, () => {
@@ -211,6 +206,35 @@ export function Sidebar({
       supabase.removeChannel(channel)
     }
   }, [supabase])
+
+  // Fetch pending task count
+  useEffect(() => {
+    async function fetchTaskCount() {
+      if (!profile?.id) return
+      
+      const { count, error } = await supabase
+        .from('tareas')
+        .select('*', { count: 'exact', head: true })
+        .contains('responsable_ids', [profile.id])
+        .eq('estado', 'pendiente')
+      
+      if (!error && count !== null) {
+        setTaskCount(count)
+      }
+    }
+    fetchTaskCount()
+
+    const channel = supabase
+      .channel('tareas_count')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas' }, () => {
+        fetchTaskCount()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [supabase, profile?.id])
   
   const openNotifications = () => {
     setWasCollapsed(isCollapsed)
@@ -223,22 +247,6 @@ export function Sidebar({
       setIsCollapsed(true)
     }
   }
-
-  const userRole = profile?.role ?? 'project_manager'
-  const canManageUsers = userRole === 'direccion' || userRole === 'project_manager' || userRole === 'administrador' || userRole === 'master'
-  
-  // Get enabled modules for the user
-  // Master role sees everything regardless of modulos_habilitados
-  const isMaster = userRole === 'master'
-  const enabledModules = isMaster 
-    ? Object.values(MODULE_IDS) 
-    : (profile?.modulos_habilitados?.length ? profile.modulos_habilitados : ['dashboard'])
-  
-  // Filter functions for each section
-  const isModuleEnabled = (moduleId: string) => enabledModules.includes(moduleId)
-  const filteredAreas = areas.filter(area => isModuleEnabled(area.moduleId))
-  const filteredAdminItems = adminItems.filter(item => isModuleEnabled(item.moduleId))
-  const filteredTimeTrackingItems = timeTrackingItems.filter(item => isModuleEnabled(item.moduleId))
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -256,7 +264,111 @@ export function Sidebar({
     user.email?.[0].toUpperCase() ||
     'U'
 
-  // Collapsed sidebar component
+  // Check if item is active
+  const isItemActive = (href: string) => {
+    const basePath = href.split('?')[0]
+    if (basePath === '/dashboard') return pathname === '/dashboard'
+    return pathname === basePath || pathname.startsWith(basePath + '/')
+  }
+
+  // Render a navigation item
+  const renderNavItem = (item: NavItem, collapsed = false) => {
+    // Check masterOnly
+    if (item.masterOnly && !userIsMaster) return null
+    
+    const isActive = isItemActive(item.href)
+    const isComingSoon = item.badge === 'proximamente'
+    const showNuevo = item.badge === 'nuevo' && (!item.badgeUntil || new Date() < new Date(item.badgeUntil))
+    
+    const handleNavClick = () => {
+      // Collapse sidebar when navigating (only if not already collapsed)
+      if (!isCollapsed) {
+        setIsCollapsed(true)
+      }
+    }
+    
+    if (collapsed) {
+      return (
+        <Tooltip key={item.id}>
+          <TooltipTrigger asChild>
+            {isComingSoon ? (
+              <div className="flex items-center justify-center h-9 w-full rounded-lg text-muted-foreground/50 cursor-default">
+                <item.icon className="h-4 w-4 opacity-50" />
+              </div>
+            ) : (
+              <Link
+                href={item.href}
+                className={cn(
+                  'flex items-center justify-center h-9 w-full rounded-lg transition-colors relative',
+                  isActive
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                )}
+              >
+                <item.icon className="h-4 w-4" />
+                {item.badge === 'tasks' && taskCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
+                    {taskCount > 9 ? '9+' : taskCount}
+                  </span>
+                )}
+                {showNuevo && (
+                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />
+                )}
+              </Link>
+            )}
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {item.name}
+            {isComingSoon && ' (Proximamente)'}
+          </TooltipContent>
+        </Tooltip>
+      )
+    }
+
+    if (isComingSoon) {
+      return (
+        <div
+          key={item.id}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground/50 cursor-default"
+        >
+          <item.icon className="h-4 w-4 opacity-50" />
+          <span>{item.name}</span>
+          <span className="ml-auto text-[10px] font-semibold uppercase tracking-wider bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
+            Pronto
+          </span>
+        </div>
+      )
+    }
+
+    return (
+      <Link
+        key={item.id}
+        href={item.href}
+        onClick={handleNavClick}
+        className={cn(
+          'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+          isActive
+            ? 'bg-primary/10 text-primary'
+            : 'text-foreground hover:bg-muted'
+        )}
+      >
+        <item.icon className="h-4 w-4" />
+        <span>{item.name}</span>
+        {item.badge === 'tasks' && taskCount > 0 && (
+          <Badge className="ml-auto h-5 px-1.5 text-[10px] bg-primary text-primary-foreground">
+            {taskCount > 99 ? '99+' : taskCount}
+          </Badge>
+        )}
+        {showNuevo && (
+          <Badge className="ml-auto h-5 px-1.5 text-[10px] font-semibold uppercase tracking-wider bg-primary text-primary-foreground">
+            Nuevo
+          </Badge>
+        )}
+      </Link>
+    )
+  }
+
+  // Collapsed sidebar
   if (isCollapsed && !notificationsPanelOpen) {
     return (
       <TooltipProvider delayDuration={0}>
@@ -309,78 +421,32 @@ export function Sidebar({
               </TooltipTrigger>
               <TooltipContent side="right">Notificaciones</TooltipContent>
             </Tooltip>
-            
           </div>
 
           <ScrollArea className="flex-1 min-h-0">
             <div className="p-2 space-y-4">
-              {/* Areas */}
+              {/* Main items (Tareas + sub-items) */}
               <div className="space-y-1">
-                {filteredAreas.filter(a => a.active).map((area) => (
-                  <Tooltip key={area.id}>
-                    <TooltipTrigger asChild>
-                      <Link
-                        href={area.href}
-                        className={cn(
-                          'flex items-center justify-center h-9 w-full rounded-lg transition-colors',
-                          pathname === area.href || (area.href !== '/dashboard' && pathname.startsWith(area.href))
-                            ? 'bg-primary/10 text-primary'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        )}
-                      >
-                        <area.icon className="h-4 w-4" />
-                      </Link>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">{area.name}</TooltipContent>
-                  </Tooltip>
-                ))}
+                {mainItems.map(item => renderNavItem(item, true))}
+                {tareasSubItems.map(item => renderNavItem(item, true))}
               </div>
 
-              {/* Admin */}
-              {filteredAdminItems.length > 0 && (
+              {/* Primary items (Clientes, Performance, Agentes) */}
+              <div className="space-y-1 pt-2 border-t border-border">
+                {primaryItems.map(item => renderNavItem(item, true))}
+              </div>
+
+              {/* Admin section - ONLY for Master users */}
+              {userIsMaster && (
                 <div className="space-y-1 pt-2 border-t border-border">
-                  {filteredAdminItems.map((item) => (
-                    <Tooltip key={item.id}>
-                      <TooltipTrigger asChild>
-                        <Link
-                          href={item.href}
-                          className={cn(
-                            'flex items-center justify-center h-9 w-full rounded-lg transition-colors',
-                            pathname === item.href
-                              ? 'bg-primary/10 text-primary'
-                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                          )}
-                        >
-                          <item.icon className="h-4 w-4" />
-                        </Link>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">{item.name}</TooltipContent>
-                    </Tooltip>
-                  ))}
+                  {adminItems.map(item => renderNavItem(item, true))}
                 </div>
               )}
 
-              {/* Time Tracking */}
-              {filteredTimeTrackingItems.length > 0 && (
+              {/* Integraciones section */}
+              {(userIsMaster || canSeeSection(userRole, userModulos, 'plataformas')) && (
                 <div className="space-y-1 pt-2 border-t border-border">
-                  {filteredTimeTrackingItems.map((item) => (
-                    <Tooltip key={item.id}>
-                      <TooltipTrigger asChild>
-                        <Link
-                          href={item.href}
-                          className={cn(
-                            'flex items-center justify-center h-9 w-full rounded-lg transition-colors',
-                            pathname === item.href || pathname.startsWith(item.href + '/')
-                              ? 'bg-primary/10 text-primary'
-                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                          )}
-                        >
-                          <item.icon className="h-4 w-4" />
-                        </Link>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">{item.name}</TooltipContent>
-                    </Tooltip>
-                  ))}
+                  {platformItems.map(item => renderNavItem(item, true))}
                 </div>
               )}
             </div>
@@ -426,7 +492,7 @@ export function Sidebar({
               <DropdownMenuContent align="end" side="right" className="w-56">
                 <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
                   <Settings className="mr-2 h-4 w-4" />
-                  Configuracion
+                  Mi perfil
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} className="text-destructive">
@@ -452,7 +518,6 @@ export function Sidebar({
   return (
     <TooltipProvider delayDuration={0}>
       <aside className="w-64 border-r border-border bg-card flex flex-col h-screen overflow-hidden">
-        {/* Show notifications panel or main sidebar */}
         {notificationsPanelOpen ? (
           <NotificationsPanel onClose={closeNotifications} />
         ) : (
@@ -520,246 +585,193 @@ export function Sidebar({
             </div>
 
             <ScrollArea className="flex-1 min-h-0">
-          <div className="p-4 space-y-6">
-            {/* Areas */}
-            {filteredAreas.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                  Areas
-                </h3>
+              <div className="p-4 space-y-4">
+                {/* Main navigation - Tareas with collapsible sub-items */}
                 <div className="space-y-1">
-                  {filteredAreas.map((area) => {
-                    const isComingSoon = !area.active
-                    return (
-                      <div key={area.id} className="relative">
-                        {isComingSoon ? (
-                          <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground/50 cursor-default">
-                            <area.icon className="h-4 w-4 opacity-50" />
-                            <span>{area.name}</span>
-                            <span className="ml-auto text-[10px] font-semibold uppercase tracking-wider bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
-                              Pronto
-                            </span>
-                          </button>
-                        ) : (
-                          <Link
-                            href={area.href}
-                            className={cn(
-                              'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                              pathname === area.href || (area.href !== '/dashboard' && pathname.startsWith(area.href))
-                                ? 'bg-primary/10 text-primary'
-                                : 'text-foreground hover:bg-muted'
-                            )}
-                          >
-                            <area.icon className="h-4 w-4" />
-                            {area.name}
-                          </Link>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Administration — filtered by enabled modules */}
-            {filteredAdminItems.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                  Administracion
-                </h3>
-                <div className="space-y-1">
-                  {filteredAdminItems.map((item) => (
-                    <Link
-                      key={item.id}
-                      href={item.href}
-                      className={cn(
-                        'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                        pathname === item.href
-                          ? 'bg-primary/10 text-primary'
-                          : 'text-foreground hover:bg-muted'
-                      )}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {item.name}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Time Tracking — filtered by enabled modules */}
-            {filteredTimeTrackingItems.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                  Time Tracking
-                </h3>
-                <div className="space-y-1">
-                  {filteredTimeTrackingItems.map((item) => {
-                    const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-                    return (
+                  {/* Tareas as collapsible parent */}
+                  <Collapsible open={tareasOpen} onOpenChange={setTareasOpen}>
+                    <div className="flex items-center">
                       <Link
-                        key={item.id}
-                        href={item.href}
+                        href="/dashboard/tasks"
                         className={cn(
-                          'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                          isActive
+                          'flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                          isItemActive('/dashboard/tasks')
                             ? 'bg-primary/10 text-primary'
                             : 'text-foreground hover:bg-muted'
                         )}
                       >
-                        <item.icon className="h-4 w-4" />
-                        {item.name}
+                        <LayoutDashboard className="h-4 w-4" />
+                        <span>Tareas</span>
+                        {taskCount > 0 && (
+                          <Badge className="ml-auto h-5 px-1.5 text-[10px] bg-primary text-primary-foreground">
+                            {taskCount > 99 ? '99+' : taskCount}
+                          </Badge>
+                        )}
                       </Link>
-                    )
-                  })}
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0"
+                        >
+                          <ChevronRight className={cn('h-4 w-4 transition-transform', tareasOpen && 'rotate-90')} />
+                        </Button>
+                      </CollapsibleTrigger>
+                    </div>
+                    <CollapsibleContent className="space-y-1 mt-1">
+                      {tareasSubItems.map(item => (
+                        <Link
+                          key={item.id}
+                          href={item.href}
+                          className={cn(
+                            'w-full flex items-center gap-3 pl-7 pr-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                            isItemActive(item.href)
+                              ? 'bg-primary/10 text-primary'
+                              : 'text-foreground hover:bg-muted'
+                          )}
+                        >
+                          <item.icon className="h-4 w-4" />
+                          <span>{item.name}</span>
+                        </Link>
+                      ))}
+                    </CollapsibleContent>
+                  </Collapsible>
                 </div>
-              </div>
-            )}
 
-            {/* Clients */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Clientes
-                </h3>
+                {/* Primary items (Clientes, Performance, Agentes) */}
+                <div className="space-y-1">
+                  {primaryItems.map(item => renderNavItem(item))}
+                </div>
+
+                {/* Administration section - ONLY for Master users */}
+                {userIsMaster && (
+                  <div className="space-y-1">
+                    <Collapsible open={adminOpen} onOpenChange={setAdminOpen}>
+                      <div className="flex items-center">
+                        <div
+                          className={cn(
+                            'flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-default',
+                            adminOpen ? 'text-foreground' : 'text-foreground hover:bg-muted'
+                          )}
+                        >
+                          <Settings className="h-4 w-4" />
+                          <span>Administracion</span>
+                        </div>
+                        <CollapsibleTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0"
+                          >
+                            <ChevronRight className={cn('h-4 w-4 transition-transform', adminOpen && 'rotate-90')} />
+                          </Button>
+                        </CollapsibleTrigger>
+                      </div>
+                      <CollapsibleContent className="space-y-1 mt-1">
+                        {adminItems.map(item => (
+                          <Link
+                            key={item.id}
+                            href={item.href}
+                            className={cn(
+                              'w-full flex items-center gap-3 pl-7 pr-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                              isItemActive(item.href)
+                                ? 'bg-primary/10 text-primary'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                            )}
+                          >
+                            <item.icon className="h-4 w-4" />
+                            <span>{item.name}</span>
+                          </Link>
+                        ))}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </div>
+                )}
+
+                {/* Integraciones section */}
+                {(userIsMaster || canSeeSection(userRole, userModulos, 'plataformas')) && (
+                  <div className="space-y-1">
+                    <Collapsible open={platformsOpen} onOpenChange={setPlatformsOpen}>
+                      <div className="flex items-center">
+                        <div
+                          className={cn(
+                            'flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-default',
+                            platformsOpen ? 'text-foreground' : 'text-foreground hover:bg-muted'
+                          )}
+                        >
+                          <Database className="h-4 w-4" />
+                          <span>Integraciones</span>
+                        </div>
+                        <CollapsibleTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0"
+                          >
+                            <ChevronRight className={cn('h-4 w-4 transition-transform', platformsOpen && 'rotate-90')} />
+                          </Button>
+                        </CollapsibleTrigger>
+                      </div>
+                      <CollapsibleContent className="space-y-1 mt-1">
+                        {platformItems.map(item => (
+                          <Link
+                            key={item.id}
+                            href={item.href}
+                            className={cn(
+                              'w-full flex items-center gap-3 pl-7 pr-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                              isItemActive(item.href)
+                                ? 'bg-primary/10 text-primary'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                            )}
+                          >
+                            <item.icon className="h-4 w-4" />
+                            <span>{item.name}</span>
+                          </Link>
+                        ))}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </div>
+                )}
               </div>
-              
-              {/* Search input */}
-              <div className="relative mb-2">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  value={clientSearch}
-                  onChange={(e) => setClientSearch(e.target.value)}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
-                  placeholder="Buscar cliente..."
-                  className={cn(
-                    'w-full h-8 pl-8 pr-8 rounded-md border bg-background text-sm placeholder:text-muted-foreground',
-                    'focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary',
-                    'transition-all'
-                  )}
-                />
-                {clientSearch && (
-                  <button
-                    onClick={() => setClientSearch('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 rounded-sm hover:bg-muted flex items-center justify-center"
-                  >
-                    <X className="h-3 w-3 text-muted-foreground" />
-                  </button>
-                )}
-                {!clientSearch && !searchFocused && (
-                  <kbd className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                    <span className="text-xs">⌘</span>K
-                  </kbd>
-                )}
-              </div>
-              
-              <div className="space-y-1">
-                {!clientSearch && (
-                  <Link
-                    href="/dashboard/clients"
-                    className={cn(
-                      'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                      pathname === '/dashboard/clients'
-                        ? 'bg-muted font-medium text-foreground'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    )}
-                  >
-                    <Rocket className="h-3.5 w-3.5" />
-                    <span>Todos los clientes</span>
-                  </Link>
-                )}
-                {filteredClients.length === 0 && clientSearch && (
-                  <p className="px-3 py-2 text-sm text-muted-foreground">
-                    No se encontraron clientes
-                  </p>
-                )}
-                {(clientSearch ? filteredClients : filteredClients.slice(0, 10)).map((client) => {
-                  const clientHref = `/dashboard/clients/${client.id}`
-                  const isClientPage = pathname === clientHref
-                  return (
-                    <Link
-                      key={client.id}
-                      href={clientHref}
-                      onClick={() => setClientSearch('')}
-                      className={cn(
-                        'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                        isClientPage
-                          ? 'bg-muted font-medium text-foreground'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            </ScrollArea>
+
+            {/* User section — fixed at bottom */}
+            <div className="p-4 border-t border-border shrink-0">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="w-full justify-start gap-3 px-2">
+                    <Avatar className="h-8 w-8 shrink-0">
+                      {profile?.avatar_url && (
+                        <AvatarImage src={profile.avatar_url} alt={profile.full_name || ''} />
                       )}
-                    >
-                  <div className={cn(
-                    'h-2.5 w-2.5 rounded-full flex-shrink-0 ring-1 ring-inset ring-black/10',
-                    getSemaforoColor(client.unidades_negocio, client.semaforo_unidades)
-                  )} />
-                      <span className="truncate">{client.nombre_del_negocio}</span>
-                    </Link>
-                  )
-                })}
-                
-              </div>
+                      <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                        {initials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 text-left min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {profile?.full_name || user.email?.split('@')[0]}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {profile?.puesto || 'Sin puesto'}
+                      </p>
+                    </div>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" side="top" className="w-56">
+                  <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Mi perfil
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="text-destructive">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Cerrar sesion
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-
-            {/* Resources */}
-            <div>
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                Recursos
-              </h3>
-              <div className="space-y-1">
-                {recursos.map((recurso) => (
-                  <button
-                    key={recurso.id}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                  >
-                    <recurso.icon className="h-4 w-4" />
-                    {recurso.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </ScrollArea>
-
-        {/* User section — fixed at bottom */}
-        <div className="p-4 border-t border-border shrink-0">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="w-full justify-start gap-3 px-2">
-                <Avatar className="h-8 w-8 shrink-0">
-                  {profile?.avatar_url && (
-                    <AvatarImage src={profile.avatar_url} alt={profile.full_name || ''} />
-                  )}
-                  <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 text-left min-w-0">
-                  <p className="text-sm font-medium truncate">
-                    {profile?.full_name || user.email?.split('@')[0]}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {getRoleName(profile?.role || '', profile?.role_name)}
-                  </p>
-                </div>
-                <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" side="top" className="w-56">
-              <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
-                <Settings className="mr-2 h-4 w-4" />
-                Configuracion
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout} className="text-destructive">
-                <LogOut className="mr-2 h-4 w-4" />
-                Cerrar sesion
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
           </>
         )}
       </aside>

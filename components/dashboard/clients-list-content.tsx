@@ -63,6 +63,8 @@ import {
   Trash2,
   Calendar,
   ChevronDown,
+  LayoutGrid,
+  List,
 } from 'lucide-react'
 
 interface ClientsListContentProps {
@@ -153,9 +155,18 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('clientVisibleColumns')
-      return saved ? JSON.parse(saved) : ['cliente', 'unidad_negocio', 'contacto', 'plan', 'fee_mdk', 'fee_aurelia', 'estado', 'plataformas', 'pm', 'am']
+      return saved ? JSON.parse(saved) : ['cliente', 'unidad_negocio', 'plan', 'fee_mdk', 'pm']
     }
-    return ['cliente', 'unidad_negocio', 'contacto', 'plan', 'fee_mdk', 'fee_aurelia', 'estado', 'plataformas', 'pm', 'am']
+    return ['cliente', 'unidad_negocio', 'plan', 'fee_mdk', 'pm']
+  })
+  
+  // View mode: 'table' or 'cards'
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('clientViewMode')
+      return (saved as 'table' | 'cards') || 'cards'
+    }
+    return 'cards'
   })
 
   const allColumns = [
@@ -184,6 +195,12 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       : [...visibleColumns, columnId]
     setVisibleColumns(updated)
     localStorage.setItem('clientVisibleColumns', JSON.stringify(updated))
+  }
+
+  const toggleViewMode = () => {
+    const newMode = viewMode === 'table' ? 'cards' : 'table'
+    setViewMode(newMode)
+    localStorage.setItem('clientViewMode', newMode)
   }
   
   // Saved filters
@@ -1149,11 +1166,206 @@ const applyFilter = (filter: SavedFilter) => {
                   </div>
                 </PopoverContent>
               </Popover>
+              
+              {/* View Mode Toggle */}
+              <div className="flex border rounded-md">
+                <Button
+                  variant={viewMode === 'cards' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-9 px-2 rounded-r-none"
+                  onClick={() => { setViewMode('cards'); localStorage.setItem('clientViewMode', 'cards') }}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-9 px-2 rounded-l-none border-l"
+                  onClick={() => { setViewMode('table'); localStorage.setItem('clientViewMode', 'table') }}
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Clients Table */}
+        {/* Clients - Cards View */}
+        {viewMode === 'cards' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredClients.length === 0 ? (
+              <div className="col-span-full text-center py-12 text-muted-foreground">
+                No se encontraron clientes
+              </div>
+            ) : (
+              filteredClients.map((client) => {
+                const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
+                const pm = profiles.find(p => p.id === client.project_manager_id)
+                const am = profiles.find(p => p.id === client.account_manager_id)
+                const isInactivo = client.activo === false
+                const isEnRiesgo = client.etapa === 'solicito_baja' || client.etapa === 'inhabilitado_mora'
+                const hasGoogle = !!client.google_ads_customer_id
+                const hasMeta = !!client.meta_ads_account_id
+                
+                return (
+                  <Link key={client.id} href={`/dashboard/clients/${client.id}`}>
+                    <Card className={cn(
+                      "h-full hover:border-primary/50 transition-colors cursor-pointer group",
+                      isInactivo && "opacity-60 bg-muted/30",
+                      isEnRiesgo && "border-red-500/50 bg-red-500/5"
+                    )}>
+                      <CardContent className="p-4 space-y-3">
+                        {/* Header with name and badges */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <h3 className={cn(
+                              "font-semibold group-hover:text-primary transition-colors",
+                              isEnRiesgo && "text-red-500"
+                            )}>
+                              {client.nombre_del_negocio}
+                            </h3>
+                            {visibleColumns.includes('contacto') && (client.nombre || client.apellido) && (
+                              <p className="text-sm text-muted-foreground">
+                                {client.nombre} {client.apellido || ''}
+                              </p>
+                            )}
+                          </div>
+                          <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                        </div>
+                        
+                        {/* Unidades de negocio */}
+                        {visibleColumns.includes('unidad_negocio') && (
+                          <div className="flex flex-wrap gap-1">
+                            {clientUnidades.length > 0 ? (
+                              clientUnidades.map(unidad => {
+                                const semaforo = client.semaforo_unidades?.[unidad]
+                                const semaforoBadge = getSemaforoBadge(semaforo)
+                                return (
+                                  <Badge 
+                                    key={unidad} 
+                                    variant="outline" 
+                                    className={cn('text-xs gap-1', semaforoBadge.className)}
+                                  >
+                                    <span 
+                                      className="h-1.5 w-1.5 rounded-full" 
+                                      style={{ backgroundColor: semaforoBadge.color }}
+                                    />
+                                    {unidad}
+                                  </Badge>
+                                )
+                              })
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-muted-foreground">Sin unidad</Badge>
+                            )}
+                            {isInactivo && (
+                              <Badge variant="secondary" className="text-xs">Inactivo</Badge>
+                            )}
+                            {isEnRiesgo && (
+                              <Badge variant="destructive" className="text-xs">
+                                {client.etapa === 'solicito_baja' ? 'Baja' : 'Mora'}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* Info grid - respects visible columns */}
+                        <div className="flex flex-col gap-1 text-sm">
+                          {visibleColumns.includes('plan') && clientUnidades.includes('MDK') && client.plan && (
+                            <div>
+                              <span className="text-muted-foreground">Plan:</span>{' '}
+                              <span className="font-medium">{client.plan}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('fee_mdk') && client.fee_mdk && (
+                            <div>
+                              <span className="text-muted-foreground">Fee MDK:</span>{' '}
+                              <span className="font-medium">{formatCurrency(client.fee_mdk)}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('fee_aurelia') && client.fee_aurelia && (
+                            <div>
+                              <span className="text-muted-foreground">Fee Aurelia:</span>{' '}
+                              <span className="font-medium">{formatCurrency(client.fee_aurelia)}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('fee_consultoria') && client.fee_consultoria && (
+                            <div>
+                              <span className="text-muted-foreground">Fee Consultoria:</span>{' '}
+                              <span className="font-medium">{formatCurrency(client.fee_consultoria)}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('pm') && pm && (
+                            <div>
+                              <span className="text-muted-foreground">PM:</span>{' '}
+                              <span>{pm.full_name}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('am') && am && (
+                            <div>
+                              <span className="text-muted-foreground">AM:</span>{' '}
+                              <span>{am.full_name}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('plataformas') && (hasGoogle || hasMeta) && (
+                            <div className="flex gap-1">
+                              {hasGoogle && <Badge variant="secondary" className="text-xs">Google</Badge>}
+                              {hasMeta && <Badge variant="secondary" className="text-xs">Meta</Badge>}
+                            </div>
+                          )}
+                          {visibleColumns.includes('nps') && client.nps_score != null && (
+                            <div>
+                              <span className="text-muted-foreground">NPS:</span>{' '}
+                              <span className="font-medium">{client.nps_score}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('etapa') && client.etapa && (
+                            <div>
+                              <span className="text-muted-foreground">Etapa:</span>{' '}
+                              <span>{client.etapa.replace(/_/g, ' ')}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('fecha_activacion') && client.fecha_activacion && (
+                            <div>
+                              <span className="text-muted-foreground">Activacion:</span>{' '}
+                              <span>{new Date(client.fecha_activacion).toLocaleDateString('es-AR')}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('fecha_venta') && client.fecha_venta && (
+                            <div>
+                              <span className="text-muted-foreground">Venta:</span>{' '}
+                              <span>{new Date(client.fecha_venta).toLocaleDateString('es-AR')}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('fecha_inicio_trabajo') && client.fecha_inicio_trabajo && (
+                            <div>
+                              <span className="text-muted-foreground">Inicio:</span>{' '}
+                              <span>{new Date(client.fecha_inicio_trabajo).toLocaleDateString('es-AR')}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('crm') && client.crm_tipo && (
+                            <div>
+                              <span className="text-muted-foreground">CRM:</span>{' '}
+                              <span>{client.crm_tipo}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('discord') && client.discord_channel_name && (
+                            <div>
+                              <span className="text-muted-foreground">Discord:</span>{' '}
+                              <span>{client.discord_channel_name}</span>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                )
+              })
+            )}
+          </div>
+        )}
+
+        {/* Clients Table View */}
+        {viewMode === 'table' && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
@@ -1161,6 +1373,7 @@ const applyFilter = (filter: SavedFilter) => {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1181,7 +1394,6 @@ const applyFilter = (filter: SavedFilter) => {
                   {visibleColumns.includes('fecha_inicio_trabajo') && <TableHead>F. Inicio</TableHead>}
                   {visibleColumns.includes('crm') && <TableHead>CRM</TableHead>}
                   {visibleColumns.includes('discord') && <TableHead>Discord</TableHead>}
-                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1205,15 +1417,16 @@ const applyFilter = (filter: SavedFilter) => {
                       <TableRow 
                         key={client.id} 
                         className={cn(
-                          "group",
+                          "group cursor-pointer hover:bg-muted/50",
                           isInactivo && "opacity-60 bg-muted/30",
                           isEnRiesgo && "bg-red-500/10 hover:bg-red-500/20"
                         )}
+                        onClick={() => window.location.href = `/dashboard/clients/${client.id}`}
                       >
                         {visibleColumns.includes('cliente') && (
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <span className={cn("font-medium", isEnRiesgo && "text-red-500")}>{client.nombre_del_negocio}</span>
+                              <span className={cn("font-medium hover:text-primary", isEnRiesgo && "text-red-500")}>{client.nombre_del_negocio}</span>
                               {isInactivo && (
                                 <Badge variant="secondary" className="text-xs">Inactivo</Badge>
                               )}
@@ -1356,13 +1569,6 @@ const applyFilter = (filter: SavedFilter) => {
                             </span>
                           </TableCell>
                         )}
-                        <TableCell>
-                          <Link href={`/dashboard/clients/${client.id}`}>
-                            <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
-                          </Link>
-                        </TableCell>
                       </TableRow>
                     )
                   })
@@ -1384,8 +1590,8 @@ const applyFilter = (filter: SavedFilter) => {
                       <TableCell className="text-right font-bold">
                         {formatCurrency(filteredClients.reduce((sum, c) => sum + (c.fee_consultoria || 0), 0))}
                       </TableCell>
-                              )}
-                              {visibleColumns.includes('plataformas') && <TableCell></TableCell>}
+                    )}
+                    {visibleColumns.includes('plataformas') && <TableCell></TableCell>}
                     {visibleColumns.includes('pm') && <TableCell></TableCell>}
                     {visibleColumns.includes('am') && <TableCell></TableCell>}
                     {visibleColumns.includes('nps') && <TableCell></TableCell>}
@@ -1395,13 +1601,14 @@ const applyFilter = (filter: SavedFilter) => {
                     {visibleColumns.includes('fecha_inicio_trabajo') && <TableCell></TableCell>}
                     {visibleColumns.includes('crm') && <TableCell></TableCell>}
                     {visibleColumns.includes('discord') && <TableCell></TableCell>}
-                    <TableCell></TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
+        )}
       </div>
     </div>
   )

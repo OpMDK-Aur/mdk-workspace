@@ -1,4 +1,10 @@
-export type UserRole = 'master' | 'direccion' | 'project_manager' | 'account_manager' | 'consultor' | 'administrador'
+export type UserRole = 'Master' | 'Usuario' | 'Lector'
+
+export type Puesto =
+  | 'Administrador/a' | 'Director/a' | 'CEO'
+  | 'Project Manager' | 'Account Manager'
+  | 'Desarrollador' | 'Diseñador/a' | 'Analista' | 'Coordinador'
+  | 'Especialista' | 'Administrador'
 
 export type SemaforoStatus = 'verde' | 'amarillo' | 'naranja' | 'rojo'
 
@@ -37,6 +43,7 @@ export interface Profile {
   theme: 'light' | 'dark' | 'system' | null
   accent_hue: number | null
   onboarding_completed: boolean | null
+  puesto?: string | null
   created_at: string
   updated_at: string
 }
@@ -530,4 +537,34 @@ export interface Task {
   createdByAvatar?: string | null
   createdAt: Date
   updatedAt: Date
+}
+
+// ── Agentes IA ────────────────────────────────────────────────────────────────
+
+export interface AgentConfig {
+  id: string
+  slug: string
+  nombre: string
+  descripcion: string | null
+  icono: string | null
+  trigger_type: 'manual' | 'cron_diario' | 'cron_semanal'
+  system_prompt: string | null
+  parametros: Record<string, unknown>
+  comportamiento: Record<string, unknown>
+  activo: boolean
+  actualizado_por: string | null
+  updated_at: string
+}
+
+export interface AgentLog {
+  id: string
+  agente: string
+  ejecutado_en: string
+  ejecutado_por: string | null
+  cliente_id: string | null
+  clientes_auditados: number
+  alertas_generadas: number
+  resultado: Record<string, unknown> | null
+  estado: 'ok' | 'error' | 'parcial'
+  created_at: string
 }

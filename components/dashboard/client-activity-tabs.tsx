@@ -1,9 +1,10 @@
 'use client'
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { MessageSquare, Map, FileText } from 'lucide-react'
+import { MessageSquare, Map, FileText, Paperclip } from 'lucide-react'
 import { ClientServiceMap } from './client-service-map'
 import { ClientMinutas } from './client-minutas'
+import { ClientAdjuntos } from './client-adjuntos'
 import type { ClientPlan, UnidadNegocio } from '@/lib/types'
 
 interface CurrentUser {
@@ -37,6 +38,10 @@ export function ClientActivityTabs({
           <MessageSquare className="h-3.5 w-3.5" />
           Comentarios
         </TabsTrigger>
+        <TabsTrigger value="adjuntos" className="gap-1.5 text-xs">
+          <Paperclip className="h-3.5 w-3.5" />
+          Adjuntos
+        </TabsTrigger>
         <TabsTrigger value="minutas" className="gap-1.5 text-xs">
           <FileText className="h-3.5 w-3.5" />
           Minutas
@@ -51,6 +56,10 @@ export function ClientActivityTabs({
 
       <TabsContent value="comments" className="mt-4">
         {children}
+      </TabsContent>
+
+      <TabsContent value="adjuntos" className="mt-4">
+        <ClientAdjuntos clientId={clientId} currentUserId={currentUser?.id} embedded />
       </TabsContent>
 
       <TabsContent value="minutas" className="mt-4">

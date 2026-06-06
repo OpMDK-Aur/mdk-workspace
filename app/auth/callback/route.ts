@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
       // If next param is provided, use it; otherwise decide based on onboarding status
       let redirectTo = next
       if (!redirectTo) {
-        redirectTo = colaborador?.onboarding_completado ? '/dashboard' : '/onboarding'
+        redirectTo = colaborador?.onboarding_completado ? '/dashboard/tasks' : '/onboarding'
       }
       
       return NextResponse.redirect(new URL(redirectTo, origin))

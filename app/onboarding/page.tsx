@@ -14,9 +14,9 @@ export default async function OnboardingPage() {
     .eq('id', user.id)
     .single()
 
-  // If onboarding already completed, go to dashboard
+  // If onboarding already completed, go to tasks
   if (colaborador?.onboarding_completado) {
-    redirect('/dashboard')
+    redirect('/dashboard/tasks')
   }
 
   const userName = colaborador ? `${colaborador.nombre} ${colaborador.apellido || ''}`.trim() : user.email?.split('@')[0] || ''

@@ -708,7 +708,7 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
   }
 }
 
-// ���─ Store ──────────────────────────────────────────────────────────────────�����──
+// ���─ Store ──────────────────────────────────────────────────────────────────�������──
 
 // Advanced filter types
 export interface FilterRule {
@@ -739,6 +739,7 @@ interface TaskStore {
   // Legacy simple filters (for quick access)
   filters: {
   priority: TaskPriority | null
+  statusIds: TaskStatus[]
   assigneeIds: string[]
   showUnassigned: boolean
   type: TaskType | null
@@ -802,6 +803,7 @@ export const useTaskStore = create<TaskStore>()(
   view: 'calendar',
   filters: {
   priority: null,
+  statusIds: [],
   assigneeIds: [],
   showUnassigned: false,
   type: null,
@@ -966,7 +968,7 @@ export const useTaskStore = create<TaskStore>()(
     filters: { ...state.filters, [key]: value },
   })),
   clearFilters: () => set({
-    filters: { priority: null, assigneeIds: [], showUnassigned: false, type: null, dueThisWeek: false, searchQuery: '', clientIds: [] },
+  filters: { priority: null, statusIds: [], assigneeIds: [], showUnassigned: false, type: null, dueThisWeek: false, searchQuery: '', clientIds: [] },
   advancedFilters: [],
   }),
   
@@ -1995,19 +1997,20 @@ export function useFilteredTasks() {
   // Apply simple filters first
   let filteredTasks = tasks.filter((task) => {
   if (filters.priority && task.priority !== filters.priority) return false
+  if ((filters.statusIds?.length ?? 0) > 0 && !filters.statusIds.includes(task.status)) return false
   // Show unassigned filter - only show tasks without assignee
   if (filters.showUnassigned) {
     const hasNoAssignee = !task.assigneeId || task.assigneeId === ''
-    const hasNoAdditionalAssignees = !task.assigneeIds || task.assigneeIds.length === 0
+    const hasNoAdditionalAssignees = !task.assignees || task.assignees.length === 0
     if (!hasNoAssignee || !hasNoAdditionalAssignees) return false
   }
   // Multi-assignee filter - check if task's assignee is in the selected list
   if (filters.assigneeIds.length > 0) {
   // Check primary assignee
   const hasMatchingAssignee = task.assigneeId && filters.assigneeIds.includes(task.assigneeId)
-  // Check additional assignees if they exist
-  const hasMatchingAdditionalAssignee = task.assigneeIds?.some(id => filters.assigneeIds.includes(id)) ?? false
-  if (!hasMatchingAssignee && !hasMatchingAdditionalAssignee) return false
+  // Check assignees array (multi-assignee support)
+  const hasMatchingInAssigneesArray = task.assignees?.some(a => filters.assigneeIds.includes(a.id)) ?? false
+  if (!hasMatchingAssignee && !hasMatchingInAssigneesArray) return false
   }
   if (filters.type && task.type !== filters.type) return false
   if (filters.dueThisWeek && task.dueDate) {
@@ -2051,6 +2054,7 @@ export function useTasksByStatus() {
     pausada: [],
     pendiente_aprobacion: [],
     resuelto: [],
+    no_realizado: [],
   }
   tasks.forEach((task) => {
     if (grouped[task.status]) {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -53,6 +53,118 @@ const ESTADO_CONFIG: Record<EstadoInstancia, { icon: typeof CheckCircle2; color:
   no_realizado: { icon: XCircle, color: 'text-red-500', label: 'No realizado' },
 }
 
+// Memoized hito row component to prevent unnecessary re-renders
+const HitoRow = memo(({ 
+  hitoId, 
+  hitoInstances, 
+  primaryInstance,
+  currentUserId,
+  onOpenCompletion
+}: {
+  hitoId: string
+  hitoInstances: MapaServicioInstancia[]
+  primaryInstance: MapaServicioInstancia
+  currentUserId?: string | null
+  onOpenCompletion: (instance: MapaServicioInstancia) => void
+}) => {
+  const hito = hitoInstances[0]?.hito as HitoCatalogo | undefined
+  if (!hito) return null
+
+  const completedCount = hitoInstances.filter((i) => i.estado === 'listo').length
+  const totalCount = hitoInstances.length
+  const allCompleted = completedCount === totalCount
+  const estadoConfig = ESTADO_CONFIG[primaryInstance.estado]
+  const IconComponent = estadoConfig.icon
+
+  return (
+    <div
+      key={hitoId}
+      className={cn(
+        'flex items-start gap-3 p-3 rounded-lg border transition-colors',
+        allCompleted ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-card hover:bg-muted/50'
+      )}
+    >
+      <div className="mt-0.5">
+        <Tooltip>
+          <TooltipTrigger>
+            <IconComponent className={cn('h-5 w-5', estadoConfig.color)} />
+          </TooltipTrigger>
+          <TooltipContent>{estadoConfig.label}</TooltipContent>
+        </Tooltip>
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h4 className="text-sm font-medium leading-tight">{hito.nombre}</h4>
+            {hito.descripcion && (
+              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{hito.descripcion}</p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge variant="outline" className="text-[10px] h-5">{hito.frecuencia}</Badge>
+            {totalCount > 1 && <span className="text-xs text-muted-foreground">{completedCount}/{totalCount}</span>}
+            {primaryInstance.link_drive && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <a href={primaryInstance.link_drive} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground">
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </TooltipTrigger>
+                <TooltipContent>Ver en Drive</TooltipContent>
+              </Tooltip>
+            )}
+            {!primaryInstance.tarea_id && primaryInstance.estado !== 'listo' && currentUserId && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-emerald-500" onClick={() => onOpenCompletion(primaryInstance)}>
+                    <ClipboardCheck className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Marcar como completado</TooltipContent>
+              </Tooltip>
+            )}
+            {primaryInstance.tarea_id && primaryInstance.estado !== 'listo' && (
+              <Tooltip>
+                <TooltipTrigger>
+                  <Badge variant="outline" className="text-[10px] h-5 bg-blue-500/10 text-blue-500 border-blue-500/30">Tarea</Badge>
+                </TooltipTrigger>
+                <TooltipContent>Este hito se completa resolviendo la tarea vinculada</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        </div>
+
+        {totalCount > 1 && (
+          <div className="flex items-center gap-1 mt-2">
+            {hitoInstances.map((instance, idx) => {
+              const instEstado = ESTADO_CONFIG[instance.estado]
+              return (
+                <Tooltip key={instance.id}>
+                  <TooltipTrigger>
+                    <div className={cn('w-6 h-6 rounded flex items-center justify-center text-[10px] font-medium border', instance.estado === 'listo' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600' : 'bg-muted border-border text-muted-foreground')}>
+                      S{instance.semana_del_mes || idx + 1}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Semana {instance.semana_del_mes || idx + 1}: {instEstado.label}</p>
+                    {instance.fecha_completado && <p className="text-xs text-muted-foreground">Completado: {new Date(instance.fecha_completado).toLocaleDateString('es-AR')}</p>}
+                  </TooltipContent>
+                </Tooltip>
+              )
+            })}
+          </div>
+        )}
+
+        {totalCount === 1 && primaryInstance.fecha_completado && (
+          <p className="text-xs text-muted-foreground mt-1">Completado: {new Date(primaryInstance.fecha_completado).toLocaleDateString('es-AR')}</p>
+        )}
+      </div>
+    </div>
+  )
+})
+
 export function ClientServiceMap({ clientId, clientPlan, currentUserId }: ClientServiceMapProps) {
   const [instances, setInstances] = useState<MapaServicioInstancia[]>([])
   const [loading, setLoading] = useState(true)
@@ -76,77 +188,83 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
     return [currentYear - 1, currentYear, currentYear + 1]
   }, [])
 
-  // Fetch instances for selected month
+  // Fetch instances for selected month (optimized to avoid unnecessary checks)
   useEffect(() => {
     const supabase = createClient()
+    let isMounted = true
 
-    async function fetchAndGenerate() {
+    async function fetchData() {
       setLoading(true)
       setError(null)
 
       try {
-        const { data: catalogCheck, error: catalogError } = await supabase
-          .from('hitos_catalogo')
-          .select('id')
-          .limit(1)
-        
-        if (catalogError) {
-          setError(`Error accediendo al catálogo: ${catalogError.message}`)
-          setLoading(false)
-          return
-        }
-        
-        if (!catalogCheck || catalogCheck.length === 0) {
-          setError('El catálogo de hitos está vacío. Por favor, agregue los hitos en la configuración.')
-          setLoading(false)
-          return
-        }
-
         const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
+        
+        // Only generate for current month
         if (isCurrentMonth) {
           setGenerating(true)
           const genResult = await generateMonthInstances(clientId, selectedMonth, selectedYear, clientPlan)
           if (!genResult.success) {
-            setError(`Error generando: ${genResult.error}`)
+            console.error('[service-map] Generation error:', genResult.error)
           }
           setGenerating(false)
         }
 
+        // Fetch the service map
         const result = await getClientServiceMap(clientId, selectedMonth, selectedYear, clientPlan)
         if (result.error) {
           setError(result.error)
-        } else {
+        } else if (isMounted) {
           setInstances(result.data || [])
         }
       } catch (e) {
-        setError(`Error: ${e instanceof Error ? e.message : String(e)}`)
+        if (isMounted) {
+          setError(`Error: ${e instanceof Error ? e.message : String(e)}`)
+        }
       }
 
-      setLoading(false)
+      if (isMounted) {
+        setLoading(false)
+      }
     }
 
-    fetchAndGenerate()
+    fetchData()
 
-    // Subscribe to realtime changes on mapa_servicio_instancias for this client
-    const channel = supabase
-      .channel(`service_map_${clientId}_${selectedMonth}_${selectedYear}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'mapa_servicio_instancias',
-          filter: `cliente_id=eq.${clientId}`,
-        },
-        () => {
-          // Refetch when any instance is updated
-          fetchAndGenerate()
-        }
-      )
-      .subscribe()
+    // Subscribe to realtime changes only for current month
+    let channel: ReturnType<typeof supabase.channel> | null = null
+    const now = new Date()
+    const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
+    
+    if (isCurrentMonth) {
+      channel = supabase
+        .channel(`service_map_${clientId}_${selectedMonth}_${selectedYear}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'mapa_servicio_instancias',
+            filter: `cliente_id=eq.${clientId}`,
+          },
+          () => {
+            // Lightweight refetch - no generation needed
+            if (isMounted) {
+              getClientServiceMap(clientId, selectedMonth, selectedYear, clientPlan).then(result => {
+                if (result.data && isMounted) {
+                  setInstances(result.data)
+                }
+              }).catch(e => console.error('[service-map] Refetch error:', e))
+            }
+          }
+        )
+        .subscribe()
+    }
 
     return () => {
-      supabase.removeChannel(channel)
+      isMounted = false
+      if (channel) {
+        supabase.removeChannel(channel)
+      }
     }
   }, [clientId, clientPlan, selectedMonth, selectedYear])
 
@@ -379,164 +497,16 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
       <TooltipProvider>
         <div className="space-y-2">
           {groupedByHito.map(([hitoId, hitoInstances]) => {
-            const hito = hitoInstances[0]?.hito as HitoCatalogo | undefined
-            if (!hito) return null
-
-            // Count completed instances for this hito
-            const completedCount = hitoInstances.filter((i) => i.estado === 'listo').length
-            const totalCount = hitoInstances.length
-            const allCompleted = completedCount === totalCount
-
-            // Get the first non-completed instance for status display
             const primaryInstance = hitoInstances.find((i) => i.estado !== 'listo') || hitoInstances[0]
-            const estadoConfig = ESTADO_CONFIG[primaryInstance.estado]
-            const IconComponent = estadoConfig.icon
-
             return (
-              <div
+              <HitoRow
                 key={hitoId}
-                className={cn(
-                  'flex items-start gap-3 p-3 rounded-lg border transition-colors',
-                  allCompleted ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-card hover:bg-muted/50'
-                )}
-              >
-                {/* Status icon */}
-                <div className="mt-0.5">
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <IconComponent className={cn('h-5 w-5', estadoConfig.color)} />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{estadoConfig.label}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h4 className="text-sm font-medium leading-tight">{hito.nombre}</h4>
-                      {hito.descripcion && (
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                          {hito.descripcion}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      {/* Frequency badge */}
-                      <Badge variant="outline" className="text-[10px] h-5">
-                        {hito.frecuencia}
-                      </Badge>
-
-                      {/* Progress for multi-instance hitos */}
-                      {totalCount > 1 && (
-                        <span className="text-xs text-muted-foreground">
-                          {completedCount}/{totalCount}
-                        </span>
-                      )}
-
-                      {/* Link to drive if exists */}
-                      {primaryInstance.link_drive && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <a
-                              href={primaryInstance.link_drive}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-muted-foreground hover:text-foreground"
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </a>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Ver en Drive</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-
-                      {/* Complete button - only for hitos without linked task and not completed */}
-                      {!primaryInstance.tarea_id && primaryInstance.estado !== 'listo' && currentUserId && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-emerald-500"
-                              onClick={() => openCompletionModal(primaryInstance)}
-                            >
-                              <ClipboardCheck className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Marcar como completado</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-
-                      {/* Indicator if has linked task */}
-                      {primaryInstance.tarea_id && primaryInstance.estado !== 'listo' && (
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Badge variant="outline" className="text-[10px] h-5 bg-blue-500/10 text-blue-500 border-blue-500/30">
-                              Tarea
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Este hito se completa resolviendo la tarea vinculada</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Multi-instance indicators (weekly hitos) */}
-                  {totalCount > 1 && (
-                    <div className="flex items-center gap-1 mt-2">
-                      {hitoInstances.map((instance, idx) => {
-                        const instEstado = ESTADO_CONFIG[instance.estado]
-                        return (
-                          <Tooltip key={instance.id}>
-                            <TooltipTrigger>
-                              <div
-                                className={cn(
-                                  'w-6 h-6 rounded flex items-center justify-center text-[10px] font-medium border',
-                                  instance.estado === 'listo'
-                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600'
-                                    : 'bg-muted border-border text-muted-foreground'
-                                )}
-                              >
-                                S{instance.semana_del_mes || idx + 1}
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>
-                                Semana {instance.semana_del_mes || idx + 1}: {instEstado.label}
-                              </p>
-                              {instance.fecha_completado && (
-                                <p className="text-xs text-muted-foreground">
-                                  Completado: {new Date(instance.fecha_completado).toLocaleDateString('es-AR')}
-                                </p>
-                              )}
-                            </TooltipContent>
-                          </Tooltip>
-                        )
-                      })}
-                    </div>
-                  )}
-
-                  {/* Completion info for single-instance hitos */}
-                  {totalCount === 1 && primaryInstance.fecha_completado && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Completado: {new Date(primaryInstance.fecha_completado).toLocaleDateString('es-AR')}
-                      {primaryInstance.checklist_completo === false && (
-                        <span className="text-amber-500 ml-2">- Checklist incompleto</span>
-                      )}
-                    </p>
-                  )}
-                </div>
-              </div>
+                hitoId={hitoId}
+                hitoInstances={hitoInstances}
+                primaryInstance={primaryInstance}
+                currentUserId={currentUserId}
+                onOpenCompletion={openCompletionModal}
+              />
             )
           })}
         </div>

@@ -137,6 +137,8 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
     setIsEditingTitle(false)
   }
 
+  const isResuelto = task.status === 'resuelto'
+
   return (
     <div
       onClick={onClick}
@@ -144,7 +146,8 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         'group relative rounded-lg border bg-card p-3 cursor-pointer transition-all duration-200',
         'hover:border-primary/40 hover:shadow-md hover:shadow-primary/5',
         'active:scale-[0.98]',
-        'w-full min-w-0 overflow-hidden'
+        'w-full min-w-0 overflow-hidden',
+        isResuelto && 'border-green-500/60 bg-green-500/5'
       )}
     >
       {/* Client badge + avatar row */}

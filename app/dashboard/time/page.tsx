@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react'
 import { EntriesList } from '@/components/time-entries/entries-list'
 import { createClient } from '@/lib/supabase/client'
 
-// Solo direccion tiene acceso de administrador a marcaciones de tiempo
-const ADMIN_ROLES = ['direccion']
+// Roles con acceso de administrador (ver todas las marcaciones y filtrar por colaborador)
+const ADMIN_ROLES = ['master', 'administrador', 'direccion']
 
 export default function TimePage() {
   const [isAdmin, setIsAdmin] = useState(false)
@@ -19,15 +19,16 @@ export default function TimePage() {
       
       if (user) {
         setUserId(user.id)
-        // Check role from colaboradores table with roles join
+        // Check role from colaboradores table with roles join (match by email, as the
+        // rest of the app does — the colaboradores id is not always the auth user id)
         const { data: colaborador } = await supabase
           .from('colaboradores')
           .select('rol_id, roles(nombre)')
-          .eq('id', user.id)
+          .eq('email', user.email)
           .single()
         
         const roleName = (colaborador?.roles as { nombre: string } | null)?.nombre || ''
-        setIsAdmin(ADMIN_ROLES.includes(roleName))
+        setIsAdmin(ADMIN_ROLES.includes(roleName.toLowerCase()))
       }
       setLoading(false)
     }

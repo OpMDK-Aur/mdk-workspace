@@ -19,8 +19,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator, Pencil, Check, X } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Badge } from '@/components/ui/badge'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator, Pencil, Check, X, Shield, Users, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -42,13 +55,22 @@ const parseTimeToHours = (timeStr: string): number => {
   return h + m / 60 + s / 3600
 }
 
+interface Role {
+  id: string
+  nombre: string
+}
+
 interface Colaborador {
   id: string
   nombre: string
   apellido: string | null
   email: string | null
   rol_id: string | null
-  roles?: { id: string; nombre: string } | null
+  puesto: string | null
+  modulos_habilitados: string[] | null
+  activo: boolean
+  avatar_url: string | null
+  roles?: Role | null
 }
 
 interface Cliente {
@@ -76,22 +98,36 @@ interface MetricaColaborador {
   anio: number
 }
 
-// Format hours as HH:MM
-function formatHoursDisplay(hours: number): string {
-  const h = Math.floor(hours)
-  const m = Math.round((hours - h) * 60)
-  return `${h}:${String(m).padStart(2, '0')}`
-}
+// Available modules that can be enabled
+const AVAILABLE_MODULES = [
+  { id: 'dashboard', name: 'Dashboard', description: 'Acceso al panel principal' },
+  { id: 'tareas', name: 'Tareas', description: 'Gestion de tareas y tiempo' },
+  { id: 'clientes', name: 'Clientes', description: 'Ver informacion de clientes' },
+  { id: 'reportes', name: 'Reportes', description: 'Ver reportes de horas' },
+  { id: 'plataformas', name: 'Plataformas', description: 'Acceso a cuentas publicitarias, apps, CRM' },
+]
+
+// Available puestos
+const PUESTOS = [
+  'Project Manager',
+  'Account Manager', 
+  'Director/a',
+  'CEO',
+  'Desarrollador',
+  'Diseñador/a',
+  'Analista',
+  'Coordinador',
+  'Especialista',
+]
 
 // Get color class based on percentage vs objetivo
-// Verde: >= 50% del objetivo (cumple mínimo), Amarillo: > 0%, Rojo: 0%
 function getPercentageColor(value: number): string {
   if (value >= 50) return 'bg-green-500/20 text-green-400'
   if (value > 0) return 'bg-yellow-500/20 text-yellow-400'
   return 'bg-red-500/20 text-red-400'
 }
 
-// Get color for hours: verde cuando supera el mínimo, amarillo cuando hay algo, rojo en 0
+// Get color for hours
 function getHoursColor(actual: number, minimo: number): string {
   if (minimo === 0) return ''
   if (actual >= minimo) return 'bg-green-500/20 text-green-400'
@@ -100,8 +136,10 @@ function getHoursColor(actual: number, minimo: number): string {
 }
 
 export default function ColaboradoresPage() {
+  const [activeTab, setActiveTab] = useState('permisos')
   const [metricas, setMetricas] = useState<MetricaColaborador[]>([])
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -112,7 +150,33 @@ export default function ColaboradoresPage() {
   const [filterColaborador, setFilterColaborador] = useState<string>('all')
   const [valorHoraGlobal, setValorHoraGlobal] = useState<number>(150000)
   
-  // Edición de fees del cliente
+  // Permissions tab state
+  const [editedColaboradores, setEditedColaboradores] = useState<Set<string>>(new Set())
+  const [savingPermissions, setSavingPermissions] = useState(false)
+  
+  // Create user dialog state
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [newUserName, setNewUserName] = useState('')
+  const [newUserLastName, setNewUserLastName] = useState('')
+  const [newUserEmail, setNewUserEmail] = useState('')
+  const [newUserPassword, setNewUserPassword] = useState('')
+  const [newUserRole, setNewUserRole] = useState('')
+  const [newUserPuesto, setNewUserPuesto] = useState('')
+  const [creatingUser, setCreatingUser] = useState(false)
+  
+  // Edit user dialog state
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [editingUser, setEditingUser] = useState<Colaborador | null>(null)
+  const [editUserName, setEditUserName] = useState('')
+  const [editUserLastName, setEditUserLastName] = useState('')
+  const [editUserEmail, setEditUserEmail] = useState('')
+  const [editUserPassword, setEditUserPassword] = useState('')
+  const [editUserRole, setEditUserRole] = useState('')
+  const [editUserPuesto, setEditUserPuesto] = useState('')
+  const [editUserActivo, setEditUserActivo] = useState(true)
+  const [savingUser, setSavingUser] = useState(false)
+  
+  // Edicion de fees del cliente
   const [editingFeeClientId, setEditingFeeClientId] = useState<string | null>(null)
   const [editFeeMdk, setEditFeeMdk] = useState<number>(0)
   const [editFeeAurelia, setEditFeeAurelia] = useState<number>(0)
@@ -121,7 +185,7 @@ export default function ColaboradoresPage() {
 
   const supabase = createClient()
 
-  // Check access
+  // Check access - only Master role can see this page
   useEffect(() => {
     async function checkAccess() {
       const { data: { user } } = await supabase.auth.getUser()
@@ -132,12 +196,12 @@ export default function ColaboradoresPage() {
 
       const { data: colab } = await supabase
         .from('colaboradores')
-        .select('email')
-        .eq('id', user.id)
+        .select('rol_id, roles(nombre)')
+        .eq('email', user.email)
         .single()
 
-      const allowedEmails = ['operaciones@madketing.io', 'direccion@madketing.io']
-      setHasAccess(colab?.email ? allowedEmails.includes(colab.email) : false)
+      const roleName = (colab?.roles as Role | null)?.nombre || ''
+      setHasAccess(roleName.toLowerCase() === 'master')
     }
     checkAccess()
   }, [supabase])
@@ -149,14 +213,21 @@ export default function ColaboradoresPage() {
     async function loadData() {
       setIsLoading(true)
 
+      // Load roles
+      const { data: rolesData } = await supabase
+        .from('roles')
+        .select('id, nombre')
+        .order('nombre')
+      
+      if (rolesData) setRoles(rolesData)
+
       // Load colaboradores with their roles
       const { data: colabs } = await supabase
         .from('colaboradores')
-        .select('id, nombre, apellido, email, rol_id, roles(id, nombre)')
-        .eq('activo', true)
+        .select('id, nombre, apellido, email, rol_id, puesto, modulos_habilitados, activo, avatar_url, roles(id, nombre)')
         .order('nombre')
 
-      if (colabs) setColaboradores(colabs)
+      if (colabs) setColaboradores(colabs as Colaborador[])
 
       // Load clientes with fees
       const { data: clientesData } = await supabase
@@ -200,88 +271,18 @@ export default function ColaboradoresPage() {
         .eq('anio', selectedYear)
         .order('created_at')
 
-      // If no metricas for current month, copy from previous month
-      if (!mets || mets.length === 0) {
-        const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1
-        const prevYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear
-        
-        const { data: prevMets } = await supabase
-          .from('metricas_colaborador')
-          .select(`
-            colaborador_id,
-            cliente_id,
-            minimo_no_negociable_horas,
-            horas_objetivo,
-            horas_teoricas_cliente,
-            valor_hora
-          `)
-          .eq('mes', prevMonth)
-          .eq('anio', prevYear)
-        
-        if (prevMets && prevMets.length > 0) {
-          // Create new metricas for current month based on previous month
-          const newMetricas = prevMets.map(pm => ({
-            colaborador_id: pm.colaborador_id,
-            cliente_id: pm.cliente_id,
-            minimo_no_negociable_horas: pm.minimo_no_negociable_horas,
-            horas_objetivo: pm.horas_objetivo,
-            horas_teoricas_cliente: pm.horas_teoricas_cliente,
-            valor_hora: pm.valor_hora,
-            acumulado_mes_asignado: 0,
-            mes: selectedMonth,
-            anio: selectedYear,
-          }))
-          
-          await supabase.from('metricas_colaborador').insert(newMetricas)
-          
-          // Re-fetch the newly created metricas with full relations
-          const { data: newMets } = await supabase
-            .from('metricas_colaborador')
-            .select(`
-              *,
-              colaborador:colaborador_id(id, nombre, apellido, email, rol_id, roles(id, nombre)),
-              cliente:cliente_id(id, nombre_del_negocio, fee_mdk, fee_aurelia, fee_consultoria)
-            `)
-            .eq('mes', selectedMonth)
-            .eq('anio', selectedYear)
-            .order('created_at')
-          
-          mets = newMets
-        }
-      }
-
       if (mets && mets.length > 0) {
-        // Track which metricas need to be updated in DB (calculated values when stored are 0)
-        const metricasToUpdate: { id: string; horas_objetivo: number; minimo_no_negociable_horas: number; horas_teoricas_cliente: number }[] = []
-        
         const processedMetricas = mets.map(m => {
           const colaborador = m.colaborador as Colaborador
           const cliente = m.cliente as Cliente
           const valorHora = Number(m.valor_hora) || 150000
           const feeMdk = cliente?.fee_mdk || 0
-          
-          // Recalculate horas teoricas with correct role
           const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHora, colaborador)
-          
-          // Get actual hours from entradas_tiempo
           const acumuladoReal = hoursMap.get(`${m.colaborador_id}-${m.cliente_id}`) || 0
-          
-          // Use stored values from DB if they exist, otherwise calculate
           const storedObjetivo = Number(m.horas_objetivo) || 0
           const storedMinimo = Number(m.minimo_no_negociable_horas) || 0
-          const storedTeoricas = Number(m.horas_teoricas_cliente) || 0
           const finalObjetivo = storedObjetivo > 0 ? storedObjetivo : horasTeoricas
           const finalMinimo = storedMinimo > 0 ? storedMinimo : horasTeoricas / 2
-          
-          // If we calculated new values (stored was 0), mark for DB update
-          if ((storedObjetivo === 0 || storedMinimo === 0 || storedTeoricas === 0) && horasTeoricas > 0) {
-            metricasToUpdate.push({
-              id: m.id,
-              horas_objetivo: finalObjetivo,
-              minimo_no_negociable_horas: finalMinimo,
-              horas_teoricas_cliente: horasTeoricas,
-            })
-          }
           
           return {
             ...m,
@@ -296,20 +297,6 @@ export default function ColaboradoresPage() {
         })
         
         setMetricas(processedMetricas)
-        
-        // Auto-save calculated values to DB so they persist and are available to other components
-        if (metricasToUpdate.length > 0) {
-          for (const update of metricasToUpdate) {
-            await supabase
-              .from('metricas_colaborador')
-              .update({
-                horas_objetivo: update.horas_objetivo,
-                minimo_no_negociable_horas: update.minimo_no_negociable_horas,
-                horas_teoricas_cliente: update.horas_teoricas_cliente,
-              })
-              .eq('id', update.id)
-          }
-        }
       }
 
       setIsLoading(false)
@@ -317,24 +304,220 @@ export default function ColaboradoresPage() {
     loadData()
   }, [hasAccess, selectedMonth, selectedYear, supabase])
 
-  // Calculate horas teoricas based on formula: ((fee * %) / valor_hora)
-  // PM (Project Manager) uses 7.5%, AC (Account Manager) uses 20%
-  // Consultor: no automatic calculation (returns 0)
+  // Calculate horas teoricas
   const calcularHorasTeoricas = (fee: number, valorHora: number, colaborador?: Colaborador | null): number => {
     if (valorHora === 0) return 0
-    
-    // Determine percentage based on role
     const rolNombre = colaborador?.roles?.nombre?.toLowerCase() || ''
-    
-    // Consultores don't have automatic calculation
     const isConsultor = rolNombre.includes('consultor') || rolNombre === 'consultant'
     if (isConsultor) return 0
-    
     const isAccountManager = rolNombre.includes('account') || rolNombre === 'account_manager' || rolNombre === 'account manager'
-    const porcentaje = isAccountManager ? 0.20 : 0.075 // 20% for AC, 7.5% for PM and others
-    
+    const porcentaje = isAccountManager ? 0.20 : 0.075
     return (fee * porcentaje) / valorHora
   }
+
+  // ─── PERMISSIONS TAB HANDLERS ─────────────────────────────────────────────────
+
+  const handleRoleChange = (colaboradorId: string, rolId: string) => {
+    setColaboradores(colaboradores.map(c => 
+      c.id === colaboradorId ? { ...c, rol_id: rolId } : c
+    ))
+    setEditedColaboradores(new Set([...editedColaboradores, colaboradorId]))
+  }
+
+  const handlePuestoChange = (colaboradorId: string, puesto: string) => {
+    setColaboradores(colaboradores.map(c => 
+      c.id === colaboradorId ? { ...c, puesto } : c
+    ))
+    setEditedColaboradores(new Set([...editedColaboradores, colaboradorId]))
+  }
+
+  const handleModuleToggle = (colaboradorId: string, moduleId: string, enabled: boolean) => {
+    setColaboradores(colaboradores.map(c => {
+      if (c.id === colaboradorId) {
+        const currentModules = c.modulos_habilitados || []
+        const newModules = enabled
+          ? [...currentModules, moduleId]
+          : currentModules.filter(m => m !== moduleId)
+        return { ...c, modulos_habilitados: newModules }
+      }
+      return c
+    }))
+    setEditedColaboradores(new Set([...editedColaboradores, colaboradorId]))
+  }
+
+  const handleSavePermissions = async () => {
+    setSavingPermissions(true)
+    
+    try {
+      for (const id of editedColaboradores) {
+        const colab = colaboradores.find(c => c.id === id)
+        if (!colab) continue
+
+        const { error } = await supabase
+          .from('colaboradores')
+          .update({
+            rol_id: colab.rol_id,
+            puesto: colab.puesto,
+            modulos_habilitados: colab.modulos_habilitados,
+          })
+          .eq('id', id)
+
+        if (error) {
+          console.error('Error saving permissions:', error)
+          toast.error(`Error al guardar permisos para ${colab.nombre}`)
+          continue
+        }
+      }
+      
+      setEditedColaboradores(new Set())
+      toast.success('Permisos guardados correctamente')
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('Error al guardar permisos')
+    }
+    
+    setSavingPermissions(false)
+  }
+
+  // ─── CREATE USER HANDLER ──────────────────────────────────────────────────────
+
+  const handleCreateUser = async () => {
+    if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim()) {
+      toast.error('Nombre, email y contraseña son requeridos')
+      return
+    }
+
+    if (newUserPassword.length < 6) {
+      toast.error('La contraseña debe tener al menos 6 caracteres')
+      return
+    }
+
+    setCreatingUser(true)
+
+    try {
+      const response = await fetch('/api/admin/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: newUserEmail.trim().toLowerCase(),
+          password: newUserPassword,
+          nombre: newUserName.trim(),
+          apellido: newUserLastName.trim() || '',
+          rol_id: newUserRole || null,
+          puesto: newUserPuesto || null,
+          modulos_habilitados: ['dashboard', 'tareas'],
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        toast.error(result.error || 'Error al crear usuario')
+        setCreatingUser(false)
+        return
+      }
+
+      // Reload colaboradores list
+      const { data: colabs } = await supabase
+        .from('colaboradores')
+        .select('id, nombre, apellido, email, rol_id, puesto, modulos_habilitados, activo, avatar_url, roles(id, nombre)')
+        .order('nombre')
+
+      if (colabs) setColaboradores(colabs as Colaborador[])
+
+      // Reset form and close dialog
+      setNewUserName('')
+      setNewUserLastName('')
+      setNewUserEmail('')
+      setNewUserPassword('')
+      setNewUserRole('')
+      setNewUserPuesto('')
+      setShowCreateDialog(false)
+      
+      toast.success(`Usuario ${newUserName} creado correctamente`)
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('Error al crear usuario')
+    }
+
+    setCreatingUser(false)
+  }
+
+  // ─── EDIT USER HANDLER ────────────────────────────────────────────────────────
+
+  const openEditDialog = (colaborador: Colaborador) => {
+    setEditingUser(colaborador)
+    setEditUserName(colaborador.nombre || '')
+    setEditUserLastName(colaborador.apellido || '')
+    setEditUserEmail(colaborador.email || '')
+    setEditUserPassword('')
+    setEditUserRole(colaborador.rol_id || '')
+    setEditUserPuesto(colaborador.puesto || '')
+    setEditUserActivo(colaborador.activo !== false)
+    setShowEditDialog(true)
+  }
+
+  const handleUpdateUser = async () => {
+    if (!editingUser) return
+
+    if (!editUserName.trim() || !editUserEmail.trim()) {
+      toast.error('Nombre y email son requeridos')
+      return
+    }
+
+    if (editUserPassword && editUserPassword.length < 6) {
+      toast.error('La contraseña debe tener al menos 6 caracteres')
+      return
+    }
+
+    setSavingUser(true)
+
+    try {
+      const response = await fetch('/api/admin/update-user', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: editingUser.id,
+          email: editUserEmail.trim().toLowerCase(),
+          password: editUserPassword || undefined,
+          nombre: editUserName.trim(),
+          apellido: editUserLastName.trim() || '',
+          rol_id: editUserRole || null,
+          puesto: editUserPuesto || null,
+          activo: editUserActivo,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        toast.error(result.error || 'Error al actualizar usuario')
+        setSavingUser(false)
+        return
+      }
+
+      // Reload colaboradores list
+      const { data: colabs } = await supabase
+        .from('colaboradores')
+        .select('id, nombre, apellido, email, rol_id, puesto, modulos_habilitados, activo, avatar_url, roles(id, nombre)')
+        .order('nombre')
+
+      if (colabs) setColaboradores(colabs as Colaborador[])
+
+      // Close dialog
+      setShowEditDialog(false)
+      setEditingUser(null)
+      
+      toast.success(`Usuario ${editUserName} actualizado correctamente`)
+    } catch (error) {
+      console.error('Error:', error)
+      toast.error('Error al actualizar usuario')
+    }
+
+    setSavingUser(false)
+  }
+
+  // ─── METRICS TAB HANDLERS ─────────────────────────────────────────────────────
 
   const handleAddRow = () => {
     if (colaboradores.length === 0 || clientes.length === 0) {
@@ -372,19 +555,14 @@ export default function ColaboradoresPage() {
     setMetricas(metricas.map(m => {
       if (m.id === id) {
         const updated = { ...m, [field]: value }
-        
-        // Recalculate derived fields
         if (field === 'horas_objetivo') {
           updated.minimo_no_negociable_horas = value / 2
         }
-        
-        // Always recalculate percentage
         if (updated.horas_objetivo > 0) {
           updated.porcentaje_asignacion = (updated.acumulado_mes_asignado * 100) / updated.horas_objetivo
         } else {
           updated.porcentaje_asignacion = 0
         }
-        
         return updated
       }
       return m
@@ -456,7 +634,6 @@ export default function ColaboradoresPage() {
     toast.success('Valores recalculados')
   }
 
-  // Abrir edición de fees del cliente
   const handleStartEditFee = (cliente: Cliente) => {
     setEditingFeeClientId(cliente.id)
     setEditFeeMdk(cliente.fee_mdk || 0)
@@ -464,7 +641,6 @@ export default function ColaboradoresPage() {
     setEditFeeConsultoria(cliente.fee_consultoria || 0)
   }
 
-  // Guardar fees del cliente
   const handleSaveFee = async () => {
     if (!editingFeeClientId) return
     
@@ -480,15 +656,12 @@ export default function ColaboradoresPage() {
     
     if (error) {
       toast.error('Error al guardar fees')
-      console.error('Error saving fees:', error)
     } else {
-      // Actualizar clientes locales
       setClientes(clientes.map(c => 
         c.id === editingFeeClientId 
           ? { ...c, fee_mdk: editFeeMdk, fee_aurelia: editFeeAurelia, fee_consultoria: editFeeConsultoria }
           : c
       ))
-      // Actualizar métricas que usan este cliente
       setMetricas(metricas.map(m => {
         if (m.cliente_id === editingFeeClientId) {
           const totalFee = editFeeMdk + editFeeAurelia + editFeeConsultoria
@@ -567,7 +740,6 @@ export default function ColaboradoresPage() {
           .upsert(payload, { onConflict: 'colaborador_id,cliente_id,mes,anio' })
 
         if (error) {
-          console.error('Error saving:', error)
           toast.error(`Error al guardar: ${error.message}`)
           setIsSaving(false)
           return
@@ -589,25 +761,8 @@ export default function ColaboradoresPage() {
     ? metricas 
     : metricas.filter(m => m.colaborador_id === filterColaborador)
 
-  // Group metricas by colaborador for totals
-  const totalesPorColaborador = colaboradores.map(colab => {
-    const metricasColab = metricas.filter(m => m.colaborador_id === colab.id)
-    const totalFee = metricasColab.reduce((sum, m) => sum + (m.fee_administrado || 0), 0)
-    const totalHorasTeoricas = metricasColab.reduce((sum, m) => sum + (m.horas_teoricas_cliente || 0), 0)
-    const totalAcumulado = metricasColab.reduce((sum, m) => sum + (m.acumulado_mes_asignado || 0), 0)
-    const totalObjetivo = metricasColab.reduce((sum, m) => sum + (m.horas_objetivo || 0), 0)
-    const porcentaje = totalObjetivo > 0 ? (totalAcumulado * 100) / totalObjetivo : 0
-
-    return {
-      colaborador: colab,
-      totalFee,
-      totalHorasTeoricas,
-      totalAcumulado,
-      totalObjetivo,
-      porcentaje,
-      cantidadClientes: metricasColab.length,
-    }
-  }).filter(t => t.cantidadClientes > 0)
+  // Filter only active colaboradores for permissions
+  const activeColaboradores = colaboradores.filter(c => c.activo)
 
   if (hasAccess === null) {
     return (
@@ -622,7 +777,7 @@ export default function ColaboradoresPage() {
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <AlertCircle className="h-12 w-12 text-destructive" />
         <h1 className="text-xl font-semibold">Acceso restringido</h1>
-        <p className="text-muted-foreground">No tienes permisos para ver esta página.</p>
+        <p className="text-muted-foreground">Solo usuarios con rol Master pueden acceder a esta pagina.</p>
       </div>
     )
   }
@@ -636,314 +791,741 @@ export default function ColaboradoresPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Métricas de Colaboradores</h1>
-          <p className="text-muted-foreground">Gestiona las métricas mensuales por colaborador y cliente</p>
+          <h1 className="text-2xl font-bold">Colaboradores</h1>
+          <p className="text-muted-foreground">Gestiona permisos, roles y metricas de los colaboradores</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Valor hora:</span>
-            <Input
-              type="number"
-              value={valorHoraGlobal}
-              onChange={(e) => setValorHoraGlobal(Number(e.target.value))}
-              className="w-[120px] text-right"
-            />
-          </div>
-          <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(Number(v))}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {months.map((month, i) => (
-                <SelectItem key={i} value={String(i + 1)}>{month}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(Number(v))}>
-            <SelectTrigger className="w-[100px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[2024, 2025, 2026].map(year => (
-                <SelectItem key={year} value={String(year)}>{year}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <Button onClick={() => setShowCreateDialog(true)}>
+          <UserPlus className="h-4 w-4 mr-2" />
+          Crear usuario
+        </Button>
       </div>
 
-      {/* Detalle por cliente */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Detalle por Cliente</CardTitle>
-              <CardDescription>
-                {months[selectedMonth - 1]} {selectedYear} - Fórmulas: H.Teóricas = ((Fee×%)/ValorHora)/24 (PM: 7.5%, AC: 20%, Consultor: manual) | Mínimo = Objetivo/2 | % = (Acumulado×100)/Objetivo
-              </CardDescription>
-            </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList>
+          <TabsTrigger value="permisos" className="gap-2">
+            <Shield className="h-4 w-4" />
+            Roles y Permisos
+          </TabsTrigger>
+          <TabsTrigger value="metricas" className="gap-2">
+            <Users className="h-4 w-4" />
+            Metricas
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ─── PERMISSIONS TAB ─────────────────────────────────────────────────────── */}
+        <TabsContent value="permisos" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Configuracion de Roles y Modulos</CardTitle>
+                  <CardDescription>
+                    Asigna roles y habilita modulos para cada colaborador. Los usuarios Master tienen acceso a todo.
+                  </CardDescription>
+                </div>
+                <Button 
+                  onClick={handleSavePermissions}
+                  disabled={editedColaboradores.size === 0 || savingPermissions}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {savingPermissions ? 'Guardando...' : 'Guardar cambios'}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[200px]">Colaborador</TableHead>
+                        <TableHead className="w-[140px]">Rol</TableHead>
+                        <TableHead className="w-[160px]">Puesto</TableHead>
+                        {AVAILABLE_MODULES.map(mod => (
+                          <TableHead key={mod.id} className="text-center w-[100px]">
+                            <div className="flex flex-col items-center">
+                              <span className="text-xs">{mod.name}</span>
+                            </div>
+                          </TableHead>
+                        ))}
+                        <TableHead className="w-[80px] text-center">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {activeColaboradores.map(colab => {
+                        const isMaster = roles.find(r => r.id === colab.rol_id)?.nombre?.toLowerCase() === 'master'
+                        const isEdited = editedColaboradores.has(colab.id)
+                        
+                        return (
+                          <TableRow key={colab.id} className={isEdited ? 'bg-primary/5' : ''}>
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-8 w-8">
+                                  {colab.avatar_url && (
+                                    <AvatarImage src={colab.avatar_url} alt={colab.nombre} />
+                                  )}
+                                  <AvatarFallback className="text-xs">
+                                    {colab.nombre?.[0]}{colab.apellido?.[0]}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <p className="font-medium text-sm">{colab.nombre} {colab.apellido}</p>
+                                  <p className="text-xs text-muted-foreground">{colab.email}</p>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Select 
+                                value={colab.rol_id || ''} 
+                                onValueChange={(v) => handleRoleChange(colab.id, v)}
+                              >
+                                <SelectTrigger className="h-8 text-xs">
+                                  <SelectValue placeholder="Seleccionar rol" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {roles.map(role => (
+                                    <SelectItem key={role.id} value={role.id}>
+                                      <div className="flex items-center gap-2">
+                                        {role.nombre}
+                                        {role.nombre.toLowerCase() === 'master' && (
+                                          <Badge variant="secondary" className="text-[10px] px-1">Admin</Badge>
+                                        )}
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>
+                              <Select 
+                                value={colab.puesto || ''} 
+                                onValueChange={(v) => handlePuestoChange(colab.id, v)}
+                              >
+                                <SelectTrigger className="h-8 text-xs">
+                                  <SelectValue placeholder="Seleccionar puesto" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {PUESTOS.map(puesto => (
+                                    <SelectItem key={puesto} value={puesto}>
+                                      {puesto}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            {AVAILABLE_MODULES.map(mod => (
+                              <TableCell key={mod.id} className="text-center">
+                                {isMaster ? (
+                                  <Badge variant="secondary" className="text-[10px]">Auto</Badge>
+                                ) : (
+                                  <Checkbox
+                                    checked={colab.modulos_habilitados?.includes(mod.id) || false}
+                                    onCheckedChange={(checked) => 
+                                      handleModuleToggle(colab.id, mod.id, checked as boolean)
+                                    }
+                                  />
+                                )}
+                              </TableCell>
+                            ))}
+                            <TableCell className="text-center">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openEditDialog(colab)}
+                                className="h-8 w-8 p-0"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Legend */}
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex flex-wrap gap-6 text-sm">
+                <div>
+                  <span className="font-medium">Master:</span>
+                  <span className="text-muted-foreground ml-1">Acceso total a todas las secciones incluyendo Administracion</span>
+                </div>
+                <div>
+                  <span className="font-medium">Usuario:</span>
+                  <span className="text-muted-foreground ml-1">Puede editar en los modulos habilitados</span>
+                </div>
+                <div>
+                  <span className="font-medium">Lector:</span>
+                  <span className="text-muted-foreground ml-1">Solo lectura en los modulos habilitados</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ─── METRICS TAB ─────────────────────────────────────────────────────────── */}
+        <TabsContent value="metricas" className="space-y-4">
+          <div className="flex items-center justify-end gap-3">
             <div className="flex items-center gap-2">
-              <Select value={filterColaborador} onValueChange={setFilterColaborador}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Filtrar colaborador" />
+              <span className="text-sm text-muted-foreground">Valor hora:</span>
+              <Input
+                type="number"
+                value={valorHoraGlobal}
+                onChange={(e) => setValorHoraGlobal(Number(e.target.value))}
+                className="w-[120px] text-right"
+              />
+            </div>
+            <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(Number(v))}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {months.map((month, i) => (
+                  <SelectItem key={i} value={String(i + 1)}>{month}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(Number(v))}>
+              <SelectTrigger className="w-[100px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[2024, 2025, 2026].map(year => (
+                  <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Detalle por Cliente</CardTitle>
+                  <CardDescription>
+                    {months[selectedMonth - 1]} {selectedYear} - Formulas: H.Teoricas = ((Fee x %)/ValorHora) (PM: 7.5%, AC: 20%)
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select value={filterColaborador} onValueChange={setFilterColaborador}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Filtrar colaborador" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los colaboradores</SelectItem>
+                      {colaboradores.map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.nombre} {c.apellido || ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" size="sm" onClick={handleRecalcularTodo}>
+                    <Calculator className="h-4 w-4 mr-1" />
+                    Recalcular
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleAddRow}>
+                    <Plus className="h-4 w-4 mr-1" />
+                    Agregar
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    onClick={handleSave} 
+                    disabled={editedRows.size === 0 || isSaving}
+                  >
+                    <Save className="h-4 w-4 mr-1" />
+                    {isSaving ? 'Guardando...' : 'Guardar'}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[160px]">Colaborador</TableHead>
+                        <TableHead className="w-[160px]">Cliente</TableHead>
+                        <TableHead className="text-right w-[140px]">Fees (MDK/Aur/Cons)</TableHead>
+                        <TableHead className="text-right w-[100px]">Valor Hora</TableHead>
+                        <TableHead className="text-right w-[90px]">H Teoricas</TableHead>
+                        <TableHead className="text-right w-[90px]">Minimo</TableHead>
+                        <TableHead className="text-right w-[90px]">Objetivo</TableHead>
+                        <TableHead className="text-right w-[90px]">Acumulado</TableHead>
+                        <TableHead className="text-right w-[80px]">%</TableHead>
+                        <TableHead className="w-[50px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredMetricas.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                            No hay datos para este periodo. Haz clic en &quot;Agregar&quot; para comenzar.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredMetricas.map((m) => (
+                          <TableRow key={m.id} className={editedRows.has(m.id) ? 'bg-primary/5' : ''}>
+                            <TableCell>
+                              <Select 
+                                value={m.colaborador_id} 
+                                onValueChange={(v) => handleChangeColaborador(m.id, v)}
+                              >
+                                <SelectTrigger className="w-full h-8 text-xs">
+                                  <SelectValue>
+                                    {m.colaborador ? `${m.colaborador.nombre} ${m.colaborador.apellido || ''}`.trim() : 'Seleccionar'}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {colaboradores.map(c => (
+                                    <SelectItem key={c.id} value={c.id}>
+                                      {c.nombre} {c.apellido || ''}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>
+                              <Select 
+                                value={m.cliente_id} 
+                                onValueChange={(v) => handleChangeCliente(m.id, v)}
+                              >
+                                <SelectTrigger className="w-full h-8 text-xs">
+                                  <SelectValue>
+                                    {m.cliente?.nombre_del_negocio || 'Seleccionar'}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {clientes.map(c => (
+                                    <SelectItem key={c.id} value={c.id}>
+                                      {c.nombre_del_negocio}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {editingFeeClientId === m.cliente_id ? (
+                                <div className="flex flex-col gap-1 items-end">
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[10px] text-muted-foreground w-8">MDK:</span>
+                                    <Input
+                                      type="number"
+                                      value={editFeeMdk}
+                                      onChange={(e) => setEditFeeMdk(Number(e.target.value))}
+                                      className="w-[80px] h-6 text-xs text-right"
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[10px] text-muted-foreground w-8">Aur:</span>
+                                    <Input
+                                      type="number"
+                                      value={editFeeAurelia}
+                                      onChange={(e) => setEditFeeAurelia(Number(e.target.value))}
+                                      className="w-[80px] h-6 text-xs text-right"
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[10px] text-muted-foreground w-8">Cons:</span>
+                                    <Input
+                                      type="number"
+                                      value={editFeeConsultoria}
+                                      onChange={(e) => setEditFeeConsultoria(Number(e.target.value))}
+                                      className="w-[80px] h-6 text-xs text-right"
+                                    />
+                                  </div>
+                                  <div className="flex gap-1 mt-1">
+                                    <Button 
+                                      size="icon" 
+                                      variant="ghost" 
+                                      className="h-5 w-5"
+                                      onClick={handleSaveFee}
+                                      disabled={savingFee}
+                                    >
+                                      <Check className="h-3 w-3 text-green-500" />
+                                    </Button>
+                                    <Button 
+                                      size="icon" 
+                                      variant="ghost" 
+                                      className="h-5 w-5"
+                                      onClick={handleCancelEditFee}
+                                      disabled={savingFee}
+                                    >
+                                      <X className="h-3 w-3 text-red-500" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-end gap-1">
+                                  <div className="flex flex-col items-end text-[10px]">
+                                    {(m.cliente?.fee_mdk ?? 0) > 0 && (
+                                      <span>MDK: ${((m.cliente?.fee_mdk || 0) / 1000).toFixed(1)}K</span>
+                                    )}
+                                    {(m.cliente?.fee_aurelia ?? 0) > 0 && (
+                                      <span>Aur: ${((m.cliente?.fee_aurelia || 0) / 1000).toFixed(1)}K</span>
+                                    )}
+                                    {(m.cliente?.fee_consultoria ?? 0) > 0 && (
+                                      <span>Cons: ${((m.cliente?.fee_consultoria || 0) / 1000).toFixed(1)}K</span>
+                                    )}
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-5 w-5"
+                                    onClick={() => m.cliente && handleStartEditFee(m.cliente)}
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                value={m.valor_hora}
+                                onChange={(e) => handleUpdateField(m.id, 'valor_hora', Number(e.target.value))}
+                                className="w-[90px] h-8 text-xs text-right"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="text"
+                                value={formatHoursToTime(m.horas_teoricas_cliente)}
+                                onChange={(e) => handleUpdateField(m.id, 'horas_teoricas_cliente', parseTimeToHours(e.target.value))}
+                                placeholder="HH:MM:SS"
+                                className="w-[90px] h-8 text-xs text-right font-mono"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="text"
+                                value={formatHoursToTime(m.minimo_no_negociable_horas)}
+                                onChange={(e) => handleUpdateField(m.id, 'minimo_no_negociable_horas', parseTimeToHours(e.target.value))}
+                                placeholder="HH:MM:SS"
+                                className={cn(
+                                  "w-[90px] h-8 text-xs text-right font-mono",
+                                  getHoursColor(m.minimo_no_negociable_horas, m.horas_objetivo / 2)
+                                )}
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="text"
+                                value={formatHoursToTime(m.horas_objetivo)}
+                                onChange={(e) => handleUpdateField(m.id, 'horas_objetivo', parseTimeToHours(e.target.value))}
+                                placeholder="HH:MM:SS"
+                                className="w-[90px] h-8 text-xs text-right font-mono"
+                              />
+                            </TableCell>
+                            <TableCell className={cn("text-right", getHoursColor(m.acumulado_mes_asignado, m.minimo_no_negociable_horas))}>
+                              <Input
+                                type="text"
+                                value={formatHoursToTime(m.acumulado_mes_asignado)}
+                                onChange={(e) => handleUpdateField(m.id, 'acumulado_mes_asignado', parseTimeToHours(e.target.value))}
+                                placeholder="HH:MM:SS"
+                                className={cn(
+                                  "w-[90px] h-8 text-xs text-right font-mono",
+                                  getHoursColor(m.acumulado_mes_asignado, m.minimo_no_negociable_horas)
+                                )}
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {(() => {
+                                const pct = m.horas_objetivo > 0
+                                  ? (m.acumulado_mes_asignado * 100) / m.horas_objetivo
+                                  : 0
+                                return (
+                                  <span className={cn(
+                                    "px-2 py-1 rounded text-xs",
+                                    getPercentageColor(pct)
+                                  )}>
+                                    {pct.toFixed(1)}%
+                                  </span>
+                                )
+                              })()}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-destructive hover:text-destructive"
+                                onClick={() => handleDeleteRow(m.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Create User Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Crear nuevo usuario</DialogTitle>
+            <DialogDescription>
+              Ingresa los datos del nuevo colaborador. La cuenta quedara activa inmediatamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="name" className="text-right">
+                Nombre *
+              </Label>
+              <Input
+                id="name"
+                value={newUserName}
+                onChange={(e) => setNewUserName(e.target.value)}
+                className="col-span-3"
+                placeholder="Nombre"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="lastname" className="text-right">
+                Apellido
+              </Label>
+              <Input
+                id="lastname"
+                value={newUserLastName}
+                onChange={(e) => setNewUserLastName(e.target.value)}
+                className="col-span-3"
+                placeholder="Apellido"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="email" className="text-right">
+                Email *
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                value={newUserEmail}
+                onChange={(e) => setNewUserEmail(e.target.value)}
+                className="col-span-3"
+                placeholder="email@ejemplo.com"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="password" className="text-right">
+                Contraseña *
+              </Label>
+              <Input
+                id="password"
+                type="password"
+                value={newUserPassword}
+                onChange={(e) => setNewUserPassword(e.target.value)}
+                className="col-span-3"
+                placeholder="Minimo 6 caracteres"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="role" className="text-right">
+                Rol
+              </Label>
+              <Select value={newUserRole} onValueChange={setNewUserRole}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Seleccionar rol" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos los colaboradores</SelectItem>
-                  {colaboradores.map(c => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nombre} {c.apellido || ''}
+                  {roles.map(role => (
+                    <SelectItem key={role.id} value={role.id}>
+                      {role.nombre}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="sm" onClick={handleRecalcularTodo}>
-                <Calculator className="h-4 w-4 mr-1" />
-                Recalcular
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleAddRow}>
-                <Plus className="h-4 w-4 mr-1" />
-                Agregar
-              </Button>
-              <Button 
-                size="sm" 
-                onClick={handleSave} 
-                disabled={editedRows.size === 0 || isSaving}
-              >
-                <Save className="h-4 w-4 mr-1" />
-                {isSaving ? 'Guardando...' : 'Guardar'}
-              </Button>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="puesto" className="text-right">
+                Puesto
+              </Label>
+              <Select value={newUserPuesto} onValueChange={setNewUserPuesto}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Seleccionar puesto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PUESTOS.map(puesto => (
+                    <SelectItem key={puesto} value={puesto}>
+                      {puesto}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCreateUser} disabled={creatingUser}>
+              {creatingUser ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Creando...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Crear usuario
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Editar usuario</DialogTitle>
+            <DialogDescription>
+              Modifica los datos del colaborador. Deja la contraseña vacia para no cambiarla.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-name" className="text-right">
+                Nombre *
+              </Label>
+              <Input
+                id="edit-name"
+                value={editUserName}
+                onChange={(e) => setEditUserName(e.target.value)}
+                className="col-span-3"
+                placeholder="Nombre"
+              />
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[160px]">Colaborador</TableHead>
-                    <TableHead className="w-[160px]">Cliente</TableHead>
-                    <TableHead className="text-right w-[140px]">Fees (MDK/Aur/Cons)</TableHead>
-                    <TableHead className="text-right w-[100px]">Valor Hora</TableHead>
-                    <TableHead className="text-right w-[90px]">H Teóricas</TableHead>
-                    <TableHead className="text-right w-[90px]">Mínimo</TableHead>
-                    <TableHead className="text-right w-[90px]">Objetivo</TableHead>
-                    <TableHead className="text-right w-[90px]">Acumulado</TableHead>
-                    <TableHead className="text-right w-[80px]">%</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredMetricas.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                        No hay datos para este período. Haz clic en &quot;Agregar&quot; para comenzar.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredMetricas.map((m) => (
-                      <TableRow key={m.id} className={editedRows.has(m.id) ? 'bg-primary/5' : ''}>
-                        <TableCell>
-                          <Select 
-                            value={m.colaborador_id} 
-                            onValueChange={(v) => handleChangeColaborador(m.id, v)}
-                          >
-                            <SelectTrigger className="w-full h-8 text-xs">
-                              <SelectValue>
-                                {m.colaborador ? `${m.colaborador.nombre} ${m.colaborador.apellido || ''}`.trim() : 'Seleccionar'}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                              {colaboradores.map(c => (
-                                <SelectItem key={c.id} value={c.id}>
-                                  {c.nombre} {c.apellido || ''}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <Select 
-                            value={m.cliente_id} 
-                            onValueChange={(v) => handleChangeCliente(m.id, v)}
-                          >
-                            <SelectTrigger className="w-full h-8 text-xs">
-                              <SelectValue>
-                                {m.cliente?.nombre_del_negocio || 'Seleccionar'}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                              {clientes.map(c => (
-                                <SelectItem key={c.id} value={c.id}>
-                                  {c.nombre_del_negocio}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {editingFeeClientId === m.cliente_id ? (
-                            <div className="flex flex-col gap-1 items-end">
-                              <div className="flex items-center gap-1">
-                                <span className="text-[10px] text-muted-foreground w-8">MDK:</span>
-                                <Input
-                                  type="number"
-                                  value={editFeeMdk}
-                                  onChange={(e) => setEditFeeMdk(Number(e.target.value))}
-                                  className="w-[80px] h-6 text-xs text-right"
-                                />
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <span className="text-[10px] text-muted-foreground w-8">Aur:</span>
-                                <Input
-                                  type="number"
-                                  value={editFeeAurelia}
-                                  onChange={(e) => setEditFeeAurelia(Number(e.target.value))}
-                                  className="w-[80px] h-6 text-xs text-right"
-                                />
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <span className="text-[10px] text-muted-foreground w-8">Cons:</span>
-                                <Input
-                                  type="number"
-                                  value={editFeeConsultoria}
-                                  onChange={(e) => setEditFeeConsultoria(Number(e.target.value))}
-                                  className="w-[80px] h-6 text-xs text-right"
-                                />
-                              </div>
-                              <div className="flex gap-1 mt-1">
-                                <Button 
-                                  size="icon" 
-                                  variant="ghost" 
-                                  className="h-5 w-5"
-                                  onClick={handleSaveFee}
-                                  disabled={savingFee}
-                                >
-                                  <Check className="h-3 w-3 text-green-500" />
-                                </Button>
-                                <Button 
-                                  size="icon" 
-                                  variant="ghost" 
-                                  className="h-5 w-5"
-                                  onClick={handleCancelEditFee}
-                                  disabled={savingFee}
-                                >
-                                  <X className="h-3 w-3 text-red-500" />
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-end gap-1">
-                              <div className="flex flex-col items-end text-[10px]">
-                                {(m.cliente?.fee_mdk ?? 0) > 0 && (
-                                  <span>MDK: ${((m.cliente?.fee_mdk || 0) / 1000).toFixed(1)}K</span>
-                                )}
-                                {(m.cliente?.fee_aurelia ?? 0) > 0 && (
-                                  <span>Aur: ${((m.cliente?.fee_aurelia || 0) / 1000).toFixed(1)}K</span>
-                                )}
-                                {(m.cliente?.fee_consultoria ?? 0) > 0 && (
-                                  <span>Cons: ${((m.cliente?.fee_consultoria || 0) / 1000).toFixed(1)}K</span>
-                                )}
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-5 w-5"
-                                onClick={() => m.cliente && handleStartEditFee(m.cliente)}
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Input
-                            type="number"
-                            value={m.valor_hora}
-                            onChange={(e) => handleUpdateField(m.id, 'valor_hora', Number(e.target.value))}
-                            className="w-[90px] h-8 text-xs text-right"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Input
-                            type="text"
-                            value={formatHoursToTime(m.horas_teoricas_cliente)}
-                            onChange={(e) => handleUpdateField(m.id, 'horas_teoricas_cliente', parseTimeToHours(e.target.value))}
-                            placeholder="HH:MM:SS"
-                            className="w-[90px] h-8 text-xs text-right font-mono"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Input
-                            type="text"
-                            value={formatHoursToTime(m.minimo_no_negociable_horas)}
-                            onChange={(e) => handleUpdateField(m.id, 'minimo_no_negociable_horas', parseTimeToHours(e.target.value))}
-                            placeholder="HH:MM:SS"
-                            className={cn(
-                              "w-[90px] h-8 text-xs text-right font-mono",
-                              getHoursColor(m.minimo_no_negociable_horas, m.horas_objetivo / 2)
-                            )}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Input
-                            type="text"
-                            value={formatHoursToTime(m.horas_objetivo)}
-                            onChange={(e) => handleUpdateField(m.id, 'horas_objetivo', parseTimeToHours(e.target.value))}
-                            placeholder="HH:MM:SS"
-                            className="w-[90px] h-8 text-xs text-right font-mono"
-                          />
-                        </TableCell>
-                        <TableCell className={cn("text-right", getHoursColor(m.acumulado_mes_asignado, m.minimo_no_negociable_horas))}>
-                          <Input
-                            type="text"
-                            value={formatHoursToTime(m.acumulado_mes_asignado)}
-                            onChange={(e) => handleUpdateField(m.id, 'acumulado_mes_asignado', parseTimeToHours(e.target.value))}
-                            placeholder="HH:MM:SS"
-                            className={cn(
-                              "w-[90px] h-8 text-xs text-right font-mono",
-                              getHoursColor(m.acumulado_mes_asignado, m.minimo_no_negociable_horas)
-                            )}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {(() => {
-                            const pct = m.horas_objetivo > 0
-                              ? (m.acumulado_mes_asignado * 100) / m.horas_objetivo
-                              : 0
-                            return (
-                              <span className={cn(
-                                "px-2 py-1 rounded text-xs",
-                                getPercentageColor(pct)
-                              )}>
-                                {pct.toFixed(1)}%
-                              </span>
-                            )
-                          })()}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-destructive hover:text-destructive"
-                            onClick={() => handleDeleteRow(m.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-lastname" className="text-right">
+                Apellido
+              </Label>
+              <Input
+                id="edit-lastname"
+                value={editUserLastName}
+                onChange={(e) => setEditUserLastName(e.target.value)}
+                className="col-span-3"
+                placeholder="Apellido"
+              />
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-email" className="text-right">
+                Email *
+              </Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={editUserEmail}
+                onChange={(e) => setEditUserEmail(e.target.value)}
+                className="col-span-3"
+                placeholder="email@ejemplo.com"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-password" className="text-right">
+                Contraseña
+              </Label>
+              <Input
+                id="edit-password"
+                type="password"
+                value={editUserPassword}
+                onChange={(e) => setEditUserPassword(e.target.value)}
+                className="col-span-3"
+                placeholder="Dejar vacio para no cambiar"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-role" className="text-right">
+                Rol
+              </Label>
+              <Select value={editUserRole} onValueChange={setEditUserRole}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Seleccionar rol" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles.map(role => (
+                    <SelectItem key={role.id} value={role.id}>
+                      {role.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-puesto" className="text-right">
+                Puesto
+              </Label>
+              <Select value={editUserPuesto} onValueChange={setEditUserPuesto}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Seleccionar puesto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PUESTOS.map(puesto => (
+                    <SelectItem key={puesto} value={puesto}>
+                      {puesto}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-activo" className="text-right">
+                Estado
+              </Label>
+              <div className="col-span-3 flex items-center gap-2">
+                <Checkbox
+                  id="edit-activo"
+                  checked={editUserActivo}
+                  onCheckedChange={(checked) => setEditUserActivo(checked as boolean)}
+                />
+                <Label htmlFor="edit-activo" className="font-normal">
+                  {editUserActivo ? 'Usuario activo' : 'Usuario inactivo'}
+                </Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleUpdateUser} disabled={savingUser}>
+              {savingUser ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Guardar cambios
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
