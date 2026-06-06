@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   DollarSign, Target, TrendingDown, MousePointerClick, Eye,
   Users, MessageSquare, Calendar, Clock,
-  ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown, Pencil, Check, X,
+  ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown, Pencil, Check, X, Plus,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -261,12 +261,14 @@ function EditableMultiPersonChip({
   profiles,
   onChange,
   updating,
+  compact = false,
 }: {
   profileIds: string[]
   label: string
   profiles: Profile[]
   onChange: (ids: string[]) => void
   updating: boolean
+  compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const selectedProfiles = profiles.filter(p => profileIds.includes(p.id))
@@ -283,14 +285,29 @@ function EditableMultiPersonChip({
       <span className="text-xs text-muted-foreground font-medium">{label}</span>
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild disabled={updating}>
-          <button className="flex items-start gap-2 hover:bg-muted/50 rounded-lg p-1 -m-1 transition-colors cursor-pointer text-left w-full">
+          <button className="flex items-center gap-2 hover:bg-muted/50 rounded-lg p-1 -m-1 transition-colors cursor-pointer text-left w-full">
             <div className="flex-1 min-w-0">
               {selectedProfiles.length === 0 ? (
                 <div className="flex items-center gap-2">
                   <div className="h-8 w-8 rounded-full border-2 border-dashed border-border flex items-center justify-center shrink-0 text-muted-foreground">
                     <Users className="h-3.5 w-3.5" />
                   </div>
-                  <span className="text-sm text-muted-foreground">Sin asignar</span>
+                  {!compact && <span className="text-sm text-muted-foreground">Sin asignar</span>}
+                </div>
+              ) : compact ? (
+                <div className="flex items-center -space-x-2">
+                  {selectedProfiles.map(p => (
+                    <Avatar
+                      key={p.id}
+                      className="h-8 w-8 shrink-0 ring-2 ring-card"
+                      title={p.full_name ?? p.email ?? ''}
+                    >
+                      {p.avatar_url && <AvatarImage src={p.avatar_url} alt={p.full_name ?? ''} />}
+                      <AvatarFallback className="bg-primary/20 text-primary text-[10px]">
+                        {initials(p.full_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                  ))}
                 </div>
               ) : (
                 <div className="flex flex-col gap-1.5">
@@ -314,9 +331,9 @@ function EditableMultiPersonChip({
               )}
             </div>
             {updating ? (
-              <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0 mt-1" />
+              <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0" />
             ) : (
-              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" />
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             )}
           </button>
         </DropdownMenuTrigger>
@@ -364,6 +381,7 @@ function EditableAccountsEditor({
   updating,
   nameMap = {},
   loadingNames = false,
+  compact = false,
 }: {
   accounts: string[]
   label: string
@@ -372,8 +390,10 @@ function EditableAccountsEditor({
   updating: boolean
   nameMap?: Record<string, string>
   loadingNames?: boolean
+  compact?: boolean
 }) {
   const [input, setInput] = useState('')
+  const [adding, setAdding] = useState(false)
 
   const addAccount = (id: string) => {
     const trimmed = id.trim()
@@ -395,7 +415,19 @@ function EditableAccountsEditor({
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-xs text-muted-foreground font-medium">{label}</span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground font-medium">{label}</span>
+        {compact && !adding && (
+          <button
+            onClick={() => setAdding(true)}
+            disabled={updating}
+            className="h-6 w-6 rounded-md border border-dashed border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors shrink-0"
+            aria-label={`Agregar cuenta de ${label}`}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
       <div className="flex flex-col gap-2">
         {accounts.length > 0 && (
           <div className="flex flex-col gap-1.5">
@@ -407,10 +439,12 @@ function EditableAccountsEditor({
                   className="flex items-start gap-1.5 bg-muted text-foreground rounded-md px-2 py-1.5"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium leading-tight break-words">
+                    <p className="text-xs font-medium leading-tight truncate" title={name ?? acc}>
                       {name ?? (loadingNames ? 'Cargando…' : 'Cuenta sin nombre')}
                     </p>
-                    <code className="text-[10px] font-mono text-muted-foreground break-all">{acc}</code>
+                    {!compact && (
+                      <code className="text-[10px] font-mono text-muted-foreground break-all">{acc}</code>
+                    )}
                   </div>
                   <button
                     onClick={() => removeAccount(acc)}
@@ -424,33 +458,39 @@ function EditableAccountsEditor({
             })}
           </div>
         )}
-        <div className="flex gap-2">
-          <Input
-            type="text"
-            placeholder={platform === 'meta' ? 'act_...' : 'Customer ID'}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                addAccount(input)
-              }
-            }}
-            disabled={updating}
-            className="h-8 text-xs flex-1"
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => addAccount(input)}
-            disabled={!input.trim() || updating}
-            className="h-8"
-          >
-            Agregar
-          </Button>
-        </div>
-        {accounts.length === 0 && (
+        {(!compact || adding) && (
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              placeholder={platform === 'meta' ? 'act_...' : 'Customer ID'}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addAccount(input)
+                }
+              }}
+              disabled={updating}
+              autoFocus={adding}
+              className="h-8 text-xs flex-1"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => addAccount(input)}
+              disabled={!input.trim() || updating}
+              className="h-8"
+            >
+              Agregar
+            </Button>
+          </div>
+        )}
+        {accounts.length === 0 && !compact && (
           <p className="text-xs text-muted-foreground">Sin cuentas agregadas</p>
+        )}
+        {accounts.length === 0 && compact && !adding && (
+          <p className="text-xs text-muted-foreground">Sin cuentas</p>
         )}
       </div>
     </div>
@@ -1011,7 +1051,10 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         </div>
 
         {/* ── Info row: PM / AM / Fee / Dedicacion / Plataformas ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className={cn(
+          'grid grid-cols-1 sm:grid-cols-2 gap-4',
+          showActivity ? 'lg:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-5'
+        )}>
           <Card>
             <CardContent className="pt-5 pb-5">
               <EditableMultiPersonChip
@@ -1020,6 +1063,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 profiles={profiles}
                 onChange={handlePMChange}
                 updating={updatingPM}
+                compact={showActivity}
               />
             </CardContent>
           </Card>
@@ -1031,6 +1075,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 profiles={profiles}
                 onChange={handleAMChange}
                 updating={updatingAM}
+                compact={showActivity}
               />
             </CardContent>
           </Card>
@@ -1045,6 +1090,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 updating={updatingMeta}
                 nameMap={metaNames}
                 loadingNames={loadingNames}
+                compact={showActivity}
               />
             </CardContent>
           </Card>
@@ -1059,6 +1105,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 updating={updatingGoogle}
                 nameMap={googleNames}
                 loadingNames={loadingNames}
+                compact={showActivity}
               />
             </CardContent>
           </Card>
