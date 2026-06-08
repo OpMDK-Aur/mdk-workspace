@@ -429,10 +429,10 @@ export default function ControlHorasPage() {
         {/* Unidad Filter */}
         <Select value={unidadFilter} onValueChange={(v) => setUnidadFilter(v as UnidadNegocio | 'all')}>
           <SelectTrigger className="w-[170px]">
-            <SelectValue placeholder="Unidad" />
+            <SelectValue placeholder="Departamento" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todas las unidades</SelectItem>
+            <SelectItem value="all">Todos los departamentos</SelectItem>
             <SelectItem value="MDK">MDK</SelectItem>
             <SelectItem value="Aurelia">Aurelia</SelectItem>
             <SelectItem value="Consultoría">Consultoría</SelectItem>
