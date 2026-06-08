@@ -251,10 +251,34 @@ export default function ControlHorasPage() {
     }
   }, [filteredEntries])
 
-  // Calculate totals
-  const totalHours = filteredEntries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
-  const billableHours = filteredEntries.filter((e) => e.facturable).reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
-  const billablePercentage = totalHours > 0 ? (billableHours / totalHours) * 100 : 0
+  // Per-unidad de negocio summary (uses the client's PRIMARY unidad = first in array)
+  const UNIDADES = ['MDK', 'Aurelia', 'Consultoría'] as const
+  const [unidadTab, setUnidadTab] = useState<'all' | (typeof UNIDADES)[number]>('all')
+
+  const unidadSummary = useMemo(() => {
+    const clientPrimaryUnidad: Record<string, string | undefined> = {}
+    clients.forEach((c) => {
+      clientPrimaryUnidad[c.id] = (c.unidades_negocio as string[] | undefined)?.[0]
+    })
+
+    const compute = (predicate: (clienteId: string | null) => boolean) => {
+      const entries = filteredEntries.filter((e) => predicate(e.cliente_id))
+      const total = entries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
+      const billable = entries
+        .filter((e) => e.facturable)
+        .reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
+      return { total, billable, pct: total > 0 ? (billable / total) * 100 : 0 }
+    }
+
+    return {
+      all: compute(() => true),
+      MDK: compute((id) => !!id && clientPrimaryUnidad[id] === 'MDK'),
+      Aurelia: compute((id) => !!id && clientPrimaryUnidad[id] === 'Aurelia'),
+      'Consultoría': compute((id) => !!id && clientPrimaryUnidad[id] === 'Consultoría'),
+    }
+  }, [filteredEntries, clients])
+
+  const currentSummary = unidadSummary[unidadTab]
 
   // Calculate daily hours for the chart (with optional collaborator filter)
   const dailyHours = useMemo(() => {
@@ -444,13 +468,23 @@ export default function ControlHorasPage() {
         </Select>
       </div>
 
+      {/* Summary by Unidad de Negocio */}
+      <Tabs value={unidadTab} onValueChange={(v) => setUnidadTab(v as typeof unidadTab)} className="mb-4">
+        <TabsList>
+          <TabsTrigger value="all">Todas</TabsTrigger>
+          <TabsTrigger value="MDK">MDK</TabsTrigger>
+          <TabsTrigger value="Aurelia">Aurelia</TabsTrigger>
+          <TabsTrigger value="Consultoría">Consultoría</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Total de horas</div>
             <div className="text-3xl font-bold text-foreground mt-1">
-              {totalHours.toFixed(1)}h
+              {currentSummary.total.toFixed(1)}h
             </div>
           </CardContent>
         </Card>
@@ -458,7 +492,7 @@ export default function ControlHorasPage() {
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Horas facturables</div>
             <div className="text-3xl font-bold text-foreground mt-1">
-              {billableHours.toFixed(1)}h
+              {currentSummary.billable.toFixed(1)}h
             </div>
           </CardContent>
         </Card>
@@ -466,7 +500,7 @@ export default function ControlHorasPage() {
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">% Facturable</div>
             <div className="text-3xl font-bold text-foreground mt-1">
-              {billablePercentage.toFixed(0)}%
+              {currentSummary.pct.toFixed(0)}%
             </div>
           </CardContent>
         </Card>
