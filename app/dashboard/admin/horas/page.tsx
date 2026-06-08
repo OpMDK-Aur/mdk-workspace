@@ -138,10 +138,10 @@ export default function ControlHorasPage() {
         return false
       }
 
-      // Filter by selected unidad de negocio (matches the entry's client unidades)
+      // Filter by selected unidad de negocio (matches the client's PRIMARY unidad = first in array)
       if (unidadFilter !== 'all') {
         const unidades = entry.cliente_id ? clientUnidadesMap[entry.cliente_id] || [] : []
-        if (!unidades.includes(unidadFilter)) {
+        if (unidades[0] !== unidadFilter) {
           return false
         }
       }

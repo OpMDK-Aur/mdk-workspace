@@ -441,11 +441,11 @@ async function fetchMetricas(mes: number, anio: number, unidad: string = 'all') 
     supabase.from('clientes').select('id, nombre_del_negocio, unidades_negocio'),
   ])
 
-  // Build set of cliente ids that belong to the selected unidad (for filtering)
+  // Build set of cliente ids whose PRIMARY unidad (first in array) matches the selected unidad
   const allowedClienteIds = new Set<string>()
   if (unidad !== 'all') {
     ;(clientesRes.data || []).forEach((c: { id: string; unidades_negocio?: string[] | null }) => {
-      if ((c.unidades_negocio || []).includes(unidad)) {
+      if ((c.unidades_negocio || [])[0] === unidad) {
         allowedClienteIds.add(c.id)
       }
     })
