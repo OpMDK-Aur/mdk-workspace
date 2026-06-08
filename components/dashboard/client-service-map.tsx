@@ -85,12 +85,32 @@ const HitoRow = memo(({
       )}
     >
       <div className="mt-0.5">
-        <Tooltip>
-          <TooltipTrigger>
-            <IconComponent className={cn('h-5 w-5', estadoConfig.color)} />
-          </TooltipTrigger>
-          <TooltipContent>{estadoConfig.label}</TooltipContent>
-        </Tooltip>
+        {primaryInstance.estado !== 'listo' && currentUserId ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => onOpenCompletion(primaryInstance)}
+                className={cn(
+                  'h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors',
+                  'border-muted-foreground/40 text-transparent hover:border-emerald-500 hover:text-emerald-500',
+                  estadoConfig.color
+                )}
+                aria-label="Marcar como completado"
+              >
+                <CheckCircle2 className="h-5 w-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Marcar como completado</TooltipContent>
+          </Tooltip>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger>
+              <IconComponent className={cn('h-5 w-5', estadoConfig.color)} />
+            </TooltipTrigger>
+            <TooltipContent>{estadoConfig.label}</TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       <div className="flex-1 min-w-0">
@@ -115,22 +135,12 @@ const HitoRow = memo(({
                 <TooltipContent>Ver en Drive</TooltipContent>
               </Tooltip>
             )}
-            {!primaryInstance.tarea_id && primaryInstance.estado !== 'listo' && currentUserId && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-emerald-500" onClick={() => onOpenCompletion(primaryInstance)}>
-                    <ClipboardCheck className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Marcar como completado</TooltipContent>
-              </Tooltip>
-            )}
             {primaryInstance.tarea_id && primaryInstance.estado !== 'listo' && (
               <Tooltip>
                 <TooltipTrigger>
                   <Badge variant="outline" className="text-[10px] h-5 bg-blue-500/10 text-blue-500 border-blue-500/30">Tarea</Badge>
                 </TooltipTrigger>
-                <TooltipContent>Este hito se completa resolviendo la tarea vinculada</TooltipContent>
+                <TooltipContent>Completar también resuelve la tarea vinculada</TooltipContent>
               </Tooltip>
             )}
           </div>
@@ -232,7 +242,6 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
 
     // Subscribe to realtime changes only for current month
     let channel: ReturnType<typeof supabase.channel> | null = null
-    const now = new Date()
     const isCurrentMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
     
     if (isCurrentMonth) {
@@ -294,6 +303,28 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
     if (instances.length === 0) return 0
     const completed = instances.filter((i) => i.estado === 'listo').length
     return Math.round((completed / instances.length) * 100)
+  }, [instances])
+
+  // Summary metrics: average progress, completed checklists, not-done count
+  const summary = useMemo(() => {
+    const total = instances.length
+    const completados = instances.filter((i) => i.estado === 'listo').length
+    const noRealizados = instances.filter((i) => i.estado === 'no_realizado').length
+    const enCurso = instances.filter((i) => i.estado === 'en_curso').length
+    const pendientes = instances.filter((i) => i.estado === 'pendiente').length
+    const checklistsCompletos = instances.filter(
+      (i) => i.estado === 'listo' && i.checklist_completo === true
+    ).length
+    const checklistPercent = completados > 0 ? Math.round((checklistsCompletos / completados) * 100) : 0
+    return {
+      total,
+      completados,
+      noRealizados,
+      enCurso,
+      pendientes,
+      checklistsCompletos,
+      checklistPercent,
+    }
   }, [instances])
 
   // Navigation handlers
@@ -380,7 +411,6 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
         checklistSnapshot,
         allChecked,
         hito.requiere_link_drive ? linkDrive : undefined,
-        clientId
       )
 
       if (!result.success) {
@@ -482,6 +512,63 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
           <span className="text-sm font-medium">{progress}%</span>
         </div>
       </div>
+
+      {/* Summary cards */}
+      {instances.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <ClipboardCheck className="h-3.5 w-3.5" />
+              Progreso promedio
+            </div>
+            <p className="mt-1 text-2xl font-semibold leading-none">{progress}%</p>
+            <Progress value={progress} className="h-1.5 mt-2" />
+            <p className="text-[11px] text-muted-foreground mt-1.5">
+              {summary.completados}/{summary.total} hitos completados
+            </p>
+          </div>
+
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              Checklist completo
+            </div>
+            <p className="mt-1 text-2xl font-semibold leading-none text-emerald-600">
+              {summary.checklistsCompletos}
+            </p>
+            <Progress value={summary.checklistPercent} className="h-1.5 mt-2" />
+            <p className="text-[11px] text-muted-foreground mt-1.5">
+              {summary.checklistPercent}% de los completados
+            </p>
+          </div>
+
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <XCircle className="h-3.5 w-3.5 text-red-500" />
+              No realizados
+            </div>
+            <p className="mt-1 text-2xl font-semibold leading-none text-red-600">
+              {summary.noRealizados}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-[18px]">
+              {summary.total > 0 ? Math.round((summary.noRealizados / summary.total) * 100) : 0}% del total
+            </p>
+          </div>
+
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Clock className="h-3.5 w-3.5 text-amber-500" />
+              En proceso
+            </div>
+            <p className="mt-1 text-2xl font-semibold leading-none">
+              {summary.enCurso + summary.pendientes}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-[18px]">
+              {summary.pendientes} pendientes · {summary.enCurso} en curso
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Empty state */}
       {groupedByHito.length === 0 && (
