@@ -111,7 +111,13 @@ export default function ControlHorasPage() {
   const filteredEntries = useMemo(() => {
     const monthStart = startOfMonth(new Date(selectedYear, selectedMonth - 1))
     const monthEnd = endOfMonth(new Date(selectedYear, selectedMonth - 1))
-    
+
+    // Build a lookup of client id -> unidades_negocio for the unit filter
+    const clientUnidadesMap: Record<string, UnidadNegocio[]> = {}
+    clients.forEach((client) => {
+      clientUnidadesMap[client.id] = (client.unidades_negocio as UnidadNegocio[]) || []
+    })
+
     return allEntries.filter((entry) => {
       const entryDate = new Date(entry.iniciado_en)
       
@@ -131,10 +137,18 @@ export default function ControlHorasPage() {
       if (selectedCliente !== 'all' && entry.cliente_id !== selectedCliente) {
         return false
       }
+
+      // Filter by selected unidad de negocio (matches the entry's client unidades)
+      if (unidadFilter !== 'all') {
+        const unidades = entry.cliente_id ? clientUnidadesMap[entry.cliente_id] || [] : []
+        if (!unidades.includes(unidadFilter)) {
+          return false
+        }
+      }
       
       return true
     })
-  }, [allEntries, selectedMonth, selectedYear, selectedColaborador, selectedCliente])
+  }, [allEntries, clients, selectedMonth, selectedYear, selectedColaborador, selectedCliente, unidadFilter])
 
   // Calculate client summaries from filtered entries
   const clientSummaries: ClientSummary[] = useMemo(() => {
@@ -421,7 +435,7 @@ export default function ControlHorasPage() {
             <SelectItem value="all">Todas las unidades</SelectItem>
             <SelectItem value="MDK">MDK</SelectItem>
             <SelectItem value="Aurelia">Aurelia</SelectItem>
-            <SelectItem value="Consultoria">Consultoria</SelectItem>
+            <SelectItem value="Consultoría">Consultoría</SelectItem>
           </SelectContent>
         </Select>
       </div>
