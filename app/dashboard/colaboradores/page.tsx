@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,7 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator, Pencil, Check, X, Shield, Users, UserPlus } from 'lucide-react'
+import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator, Pencil, Check, X, Shield, Users, UserPlus, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -149,6 +149,9 @@ export default function ColaboradoresPage() {
   const [editedRows, setEditedRows] = useState<Set<string>>(new Set())
   const [filterColaborador, setFilterColaborador] = useState<string>('all')
   const [valorHoraGlobal, setValorHoraGlobal] = useState<number>(150000)
+  const [isImporting, setIsImporting] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   
   // Permissions tab state
   const [editedColaboradores, setEditedColaboradores] = useState<Set<string>>(new Set())
@@ -302,7 +305,7 @@ export default function ColaboradoresPage() {
       setIsLoading(false)
     }
     loadData()
-  }, [hasAccess, selectedMonth, selectedYear, supabase])
+  }, [hasAccess, selectedMonth, selectedYear, supabase, reloadKey])
 
   // Calculate horas teoricas
   const calcularHorasTeoricas = (fee: number, valorHora: number, colaborador?: Colaborador | null): number => {
@@ -518,6 +521,197 @@ export default function ColaboradoresPage() {
   }
 
   // ─── METRICS TAB HANDLERS ─────────────────────────────────────────────────────
+
+  // Parse a single CSV line respecting quoted fields (e.g. "$15,882.24")
+  const parseCsvLine = (line: string): string[] => {
+    const result: string[] = []
+    let current = ''
+    let inQuotes = false
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i]
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"'
+          i++
+        } else {
+          inQuotes = !inQuotes
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current)
+        current = ''
+      } else {
+        current += char
+      }
+    }
+    result.push(current)
+    return result.map(s => s.trim())
+  }
+
+  // Parse "$15,882.24" -> 15882.24
+  const parseCurrency = (raw: string): number => {
+    if (!raw) return 0
+    const cleaned = raw.replace(/[$\s]/g, '').replace(/,/g, '')
+    const n = Number(cleaned)
+    return isNaN(n) ? 0 : n
+  }
+
+  // Normalize names for matching (case + accent insensitive)
+  const normalize = (s: string): string =>
+    (s || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleImportCSV = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      event.target.value = '' // allow re-importing same file later
+    }
+    if (!file) return
+
+    setIsImporting(true)
+    try {
+      const text = await file.text()
+      const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0)
+      if (lines.length < 2) {
+        toast.error('El archivo CSV esta vacio o no tiene datos')
+        setIsImporting(false)
+        return
+      }
+
+      // Map header positions (tolerant to column order)
+      const header = parseCsvLine(lines[0]).map(h => normalize(h))
+      const idx = (name: string) => header.findIndex(h => h === normalize(name))
+      const iColab = idx('Colaborador')
+      const iCliente = idx('cliente')
+      const iValor = idx('valor_hora')
+      const iTeoricas = idx('horas_teoricas')
+      const iMinimas = idx('horas_minimas')
+      const iMaximas = idx('horas_maximas')
+
+      if (iColab < 0 || iCliente < 0) {
+        toast.error('El CSV debe tener columnas "Colaborador" y "cliente"')
+        setIsImporting(false)
+        return
+      }
+
+      // Build lookup maps by full name and by business name
+      const colabByName = new Map<string, Colaborador>()
+      colaboradores.forEach(c => {
+        const full = normalize(`${c.nombre} ${c.apellido || ''}`)
+        colabByName.set(full, c)
+        colabByName.set(normalize(c.nombre), c) // fallback to first name only
+      })
+      const clienteByName = new Map<string, Cliente>()
+      clientes.forEach(c => clienteByName.set(normalize(c.nombre_del_negocio), c))
+
+      const rows: Array<{
+        colaborador: Colaborador
+        cliente: Cliente
+        valorHora: number
+        teoricas: number
+        minimas: number
+        maximas: number
+      }> = []
+      const unmatchedColab = new Set<string>()
+      const unmatchedCliente = new Set<string>()
+      let skippedIncomplete = 0
+
+      for (let i = 1; i < lines.length; i++) {
+        const cols = parseCsvLine(lines[i])
+        const colabName = cols[iColab] || ''
+        const clienteName = cols[iCliente] || ''
+        const teoricasStr = iTeoricas >= 0 ? cols[iTeoricas] || '' : ''
+        const maximasStr = iMaximas >= 0 ? cols[iMaximas] || '' : ''
+
+        // Skip rows without colaborador or without hours data
+        if (!colabName.trim()) {
+          skippedIncomplete++
+          continue
+        }
+        if (!teoricasStr.trim() || !maximasStr.trim()) {
+          skippedIncomplete++
+          continue
+        }
+
+        const colaborador = colabByName.get(normalize(colabName))
+        const cliente = clienteByName.get(normalize(clienteName))
+
+        if (!colaborador) {
+          unmatchedColab.add(colabName)
+          continue
+        }
+        if (!cliente) {
+          unmatchedCliente.add(clienteName)
+          continue
+        }
+
+        rows.push({
+          colaborador,
+          cliente,
+          valorHora: iValor >= 0 ? parseCurrency(cols[iValor] || '') : 0,
+          teoricas: parseTimeToHours(teoricasStr),
+          minimas: iMinimas >= 0 ? parseTimeToHours(cols[iMinimas] || '') : 0,
+          maximas: parseTimeToHours(maximasStr),
+        })
+      }
+
+      if (rows.length === 0) {
+        toast.error('No se encontraron filas validas para importar. Revisa que los nombres coincidan con los colaboradores y clientes.')
+        setIsImporting(false)
+        return
+      }
+
+      // Build upsert payloads for the selected period
+      const payloads = rows.map(r => ({
+        colaborador_id: r.colaborador.id,
+        cliente_id: r.cliente.id,
+        fee_administrado: r.cliente.fee_mdk || 0,
+        valor_hora: r.valorHora,
+        horas_teoricas_cliente: r.teoricas,
+        minimo_no_negociable_horas: r.minimas,
+        horas_objetivo: r.maximas,
+        mes: selectedMonth,
+        anio: selectedYear,
+      }))
+
+      const { error } = await supabase
+        .from('metricas_colaborador')
+        .upsert(payloads, { onConflict: 'colaborador_id,cliente_id,mes,anio' })
+
+      if (error) {
+        toast.error(`Error al importar: ${error.message}`)
+        setIsImporting(false)
+        return
+      }
+
+      // Feedback summary
+      let msg = `${rows.length} filas importadas para ${months[selectedMonth - 1]} ${selectedYear}`
+      const warnings: string[] = []
+      if (skippedIncomplete > 0) warnings.push(`${skippedIncomplete} filas incompletas omitidas`)
+      if (unmatchedColab.size > 0) warnings.push(`colaboradores sin coincidencia: ${[...unmatchedColab].join(', ')}`)
+      if (unmatchedCliente.size > 0) warnings.push(`clientes sin coincidencia: ${[...unmatchedCliente].join(', ')}`)
+
+      toast.success(msg)
+      if (warnings.length > 0) {
+        toast.warning(warnings.join(' | '), { duration: 8000 })
+      }
+
+      setEditedRows(new Set())
+      setReloadKey(k => k + 1)
+    } catch (err) {
+      console.error('[v0] Error importando CSV:', err)
+      toast.error('No se pudo leer el archivo CSV')
+    }
+
+    setIsImporting(false)
+  }
 
   const handleAddRow = () => {
     if (colaboradores.length === 0 || clientes.length === 0) {
@@ -1032,6 +1226,17 @@ export default function ColaboradoresPage() {
                   <Button variant="outline" size="sm" onClick={handleRecalcularTodo}>
                     <Calculator className="h-4 w-4 mr-1" />
                     Recalcular
+                  </Button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={handleImportCSV}
+                  />
+                  <Button variant="outline" size="sm" onClick={handleImportClick} disabled={isImporting}>
+                    <Upload className="h-4 w-4 mr-1" />
+                    {isImporting ? 'Importando...' : 'Importar CSV'}
                   </Button>
                   <Button variant="outline" size="sm" onClick={handleAddRow}>
                     <Plus className="h-4 w-4 mr-1" />
