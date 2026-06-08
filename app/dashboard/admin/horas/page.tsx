@@ -280,6 +280,55 @@ export default function ControlHorasPage() {
 
   const currentSummary = unidadSummary[unidadTab]
 
+  // Clients grouped by the active unidad tab, with the breakdown of involved collaborators.
+  // filteredEntries already respects month / colaborador / cliente / departamento filters.
+  const clientesPorUnidad = useMemo(() => {
+    const clientPrimaryUnidad: Record<string, string | undefined> = {}
+    clients.forEach((c) => {
+      clientPrimaryUnidad[c.id] = (c.unidades_negocio as string[] | undefined)?.[0]
+    })
+
+    const userName = (id: string) => {
+      const u = users.find((x) => x.id === id)
+      return u ? `${u.nombre}${u.apellido ? ` ${u.apellido}` : ''}` : 'Desconocido'
+    }
+    const clientName = (id: string) => {
+      const c = clients.find((x) => x.id === id)
+      return c?.nombre_del_negocio || c?.business_name || 'Sin nombre'
+    }
+
+    // cliente_id -> { total, colaboradores: { colab_id -> hours } }
+    const map: Record<string, { hours: number; colaboradores: Record<string, number> }> = {}
+
+    filteredEntries.forEach((entry) => {
+      const cid = entry.cliente_id
+      if (!cid || !entry.colaborador_id) return
+      // Filter by active unidad tab (using the client's PRIMARY unidad)
+      if (unidadTab !== 'all' && clientPrimaryUnidad[cid] !== unidadTab) return
+
+      if (!map[cid]) map[cid] = { hours: 0, colaboradores: {} }
+      const hours = (entry.duracion_seg || 0) / 3600
+      map[cid].hours += hours
+      map[cid].colaboradores[entry.colaborador_id] =
+        (map[cid].colaboradores[entry.colaborador_id] || 0) + hours
+    })
+
+    return Object.entries(map)
+      .map(([cid, data]) => ({
+        client_id: cid,
+        client_name: clientName(cid),
+        hours: data.hours,
+        colaboradores: Object.entries(data.colaboradores)
+          .map(([colabId, hrs]) => ({
+            colaborador_id: colabId,
+            colaborador_name: userName(colabId),
+            hours: hrs,
+          }))
+          .sort((a, b) => b.hours - a.hours),
+      }))
+      .sort((a, b) => b.hours - a.hours)
+  }, [clients, users, filteredEntries, unidadTab])
+
   // Calculate daily hours for the chart (with optional collaborator filter)
   const dailyHours = useMemo(() => {
     const monthStart = startOfMonth(new Date(selectedYear, selectedMonth - 1))
@@ -513,7 +562,8 @@ export default function ControlHorasPage() {
           <TabsTrigger value="by-collaborator">Por Colaborador</TabsTrigger>
           <TabsTrigger value="by-matrix">Colaborador x Cliente</TabsTrigger>
           <TabsTrigger value="by-day">Por Dia</TabsTrigger>
-          <TabsTrigger value="hours-control">Control de Horas</TabsTrigger>
+          <TabsTrigger value="hours-control">Colaboradores</TabsTrigger>
+          <TabsTrigger value="clients-by-unit">Clientes</TabsTrigger>
         </TabsList>
 
         {/* Hours Control Panel - The main view with progress bars */}
@@ -525,6 +575,62 @@ export default function ControlHorasPage() {
             clienteId={selectedCliente !== 'all' ? selectedCliente : undefined}
             departamento={departamentoFilter}
           />
+        </TabsContent>
+
+        {/* Clients grouped by the active unidad de negocio tab */}
+        <TabsContent value="clients-by-unit">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : clientesPorUnidad.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Building2 className="h-10 w-10 text-muted-foreground mb-3" />
+              <p className="text-sm text-muted-foreground">
+                No hay clientes con marcaciones para los filtros seleccionados
+                {unidadTab !== 'all' ? ` en ${unidadTab}` : ''}.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {clientesPorUnidad.map((client) => (
+                <Card key={client.client_id}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-muted-foreground" />
+                        {client.client_name}
+                      </CardTitle>
+                      <span className="text-sm font-semibold text-foreground whitespace-nowrap">
+                        {client.hours.toFixed(1)}h
+                      </span>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xs font-medium text-muted-foreground mb-2">
+                      Colaboradores implicados ({client.colaboradores.length})
+                    </div>
+                    <ul className="divide-y divide-border">
+                      {client.colaboradores.map((colab) => (
+                        <li
+                          key={colab.colaborador_id}
+                          className="flex items-center justify-between py-2"
+                        >
+                          <span className="flex items-center gap-2 text-sm text-foreground">
+                            <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                            {colab.colaborador_name}
+                          </span>
+                          <span className="text-sm text-muted-foreground whitespace-nowrap">
+                            {colab.hours.toFixed(1)}h
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </TabsContent>
         
         <TabsContent value="by-client">
