@@ -1377,7 +1377,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                       ) : (
                         <>
                           {comment.contenido && (
-                            <p className="text-sm mt-1 whitespace-pre-wrap">{renderCommentContent(comment.contenido)}</p>
+                            <div className="text-sm mt-1 whitespace-pre-wrap">{renderCommentContent(comment.contenido)}</div>
                           )}
                           {/* Render images */}
                           {comment.imagenes && comment.imagenes.length > 0 && (

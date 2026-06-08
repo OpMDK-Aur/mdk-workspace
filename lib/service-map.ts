@@ -406,9 +406,24 @@ export async function completeInstance(
 
     if (updateError) throw updateError
 
-    // 3. Create automatic comment
+    // 3. Mark the linked task as resolved (if the instance has one)
+    if (instancia.tarea_id) {
+      const { error: taskError } = await supabase
+        .from('tareas')
+        .update({
+          estado: 'resuelto',
+          fecha_completada: new Date().toISOString(),
+        })
+        .eq('id', instancia.tarea_id)
+
+      if (taskError) {
+        console.error('[service-map] Error resolving linked task:', taskError.message)
+        // Non-critical, don't fail the whole operation
+      }
+    }
+
+    // 4. Create automatic comment
     const hitoNombre = (instancia.hito as HitoCatalogo)?.nombre || 'Hito'
-    const tipo = checklistCompleto ? 'hito_completado' : 'hito_incompleto'
     const mensaje = checklistCompleto
       ? `Hito completado: ${hitoNombre} - Checklist completo`
       : `Hito cerrado con checklist incompleto: ${hitoNombre}`
@@ -416,7 +431,6 @@ export async function completeInstance(
     const { error: commentError } = await supabase.from('comentarios_clientes').insert({
       cliente_id: instancia.cliente_id,
       contenido: mensaje,
-      tipo,
       colaborador_id: completadoPorValue,
       autor: 'Sistema',
     })
