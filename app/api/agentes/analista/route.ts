@@ -465,6 +465,49 @@ ${metricsByAccount.map(m => {
       ? `${effectivePeriodo.start} al ${effectivePeriodo.end}`
       : 'últimos 30 días'
 
+    // Detect which report template applies based on the client's plan
+    const planNormalizado = (client.plan || '').toLowerCase()
+    const esEstrategico = planNormalizado.includes('estrat')
+    const esEsencial = planNormalizado.includes('esencial')
+    const planInforme = esEstrategico ? 'Estratégico' : esEsencial ? 'Esencial' : 'No determinado'
+
+    // Knowledge of MDK's official report structures (PPTX templates) so the
+    // agent builds reports matching the right template for the client's plan.
+    const guiaInformes = `
+ESTRUCTURA OFICIAL DE LOS INFORMES DE CIERRE DE MES (MDK):
+Cuando el usuario pida un INFORME o un PDF de cierre de mes, NO inventes la estructura: usá la plantilla oficial que corresponda al plan del cliente. El plan detectado para este cliente es: "${planInforme}" (plan crudo: "${client.plan || 'sin definir'}").
+
+Reglas generales para AMBOS informes:
+- Completá cada sección con DATOS REALES del contexto (métricas, tareas, historial). Nunca uses frases genéricas.
+- Los tests SIEMPRE deben incluir un resultado cuantitativo (ej. "+20% CTR").
+- Tono profesional, directo y orientado al negocio del cliente.
+- La sección de CRM/gestión comercial debe tener tono constructivo, basado en datos, nunca acusatoria.
+- SI ALGÚN DATO NO ESTÁ DISPONIBLE en el contexto (ej. ventas cerradas, funnel por zona, feedback comercial, capturas de anuncios, datos del CRM, contexto de mercado), NO lo dejes vacío ni lo inventes: PEDÍSELO EXPLÍCITAMENTE al usuario antes de cerrar el informe, listando con claridad qué información necesitás que te provea. Si el usuario pide el informe igual, marcá esos campos como "Dato no provisto" en la slide correspondiente.
+
+▶ PLAN ESENCIAL — "INFORME DE RESULTADOS" (6 slides):
+- Portada: cliente, período (mes/año) y responsable.
+- 01 Resumen del Período: objetivo de la pauta; conclusión general (2-3 líneas); cumplimiento → leads generados vs objetivo, CPL promedio vs objetivo, % de cumplimiento (logrado / parcial / no logrado).
+- 02 Resultados de Campañas: KPIs de encabezado (inversión total, leads, CPL promedio, variación vs período anterior) + tabla por campaña (inversión, leads, CPL, % vs anterior) con fila TOTAL.
+- 03 Acciones Realizadas: cambios en campañas, optimizaciones aplicadas, tests ejecutados con resultados.
+- 04 Análisis del Funnel (síntesis): leads por pauta ingresados al CRM vs lo reportado por la plataforma, diferencia/coherencia, cuello de botella si aplica, oportunidades detectadas. (El análisis profundo de pipeline es exclusivo del Plan Estratégico.)
+- 05 Qué Funcionó / Qué No: piezas/audiencias/formatos con mejor resultado + dato clave y aprendizaje; lo descartado con motivo y datos.
+- 06 Plan del Mes Siguiente: qué se ajusta, qué se testea, requerimientos al cliente.
+
+▶ PLAN ESTRATÉGICO — "INFORME ESTRATÉGICO DE RESULTADOS" (11 slides):
+- Portada: cliente, período, ejecutivo responsable.
+- 01 Resumen Ejecutivo: 4 KPIs (leads, CPL, ventas, inversión), estado de cumplimiento (% del objetivo), objetivo del período, contexto del mes (mercado, estacionalidad, cambios internos del cliente) y conclusión general.
+- 02 ¿En qué estuvimos trabajando?: 4 pilares → Estrategia, Operaciones, Testing, Optimización.
+- 03 Testing y Optimización Creativa: anuncios testeados con métricas comparativas (CTR, CPL, volumen), formato ganador, top anuncios por campaña y por calidad de venta. Requiere imágenes/capturas de los anuncios (pedilas si no están).
+- 04 Performance de Campañas: tabla por plataforma (Meta Ads y Google Ads) con inversión, leads, CPL, CPC, CTR y fila TOTAL.
+- 05 Acciones Realizadas: cambios, optimizaciones y tests con resultados cuantitativos.
+- 06 Impacto en el Negocio (Funnel completo): tabla del funnel por zona/región con Leads, MQL, Contacto, SQL, Presupuesto y Venta, con % por etapa y % general, más cuellos de botella.
+- 07 Gestión Comercial en CRM: tiempo de respuesta, registro/completado de campos, tiempo por etapa, calidad de respuesta y recontacto.
+- 08 Impacto Económico Estimado: costo por venta estimado, relación inversión vs facturación, ahorro por optimización.
+- 09 Benchmark y Contexto Competitivo: benchmark interno MDK, comparación histórica de KPIs, contexto competitivo con al menos un insight accionable.
+- 10 Riesgos y Alertas: saturación de audiencias, dependencia de canales, riesgos operativos/comerciales, alertas tempranas.
+- 11 Plan de Acción (5 dimensiones, en narrativa): definición de objetivos y pauta, acciones inmediatas, ajustes estratégicos, nuevas implementaciones y recomendaciones al cliente.
+`
+
     const systemPrompt = `${agentConfig.system_prompt}
 
 Eres un analista de performance digital experto y conversacional. Trabajas como un asistente de chat libre: respondes exactamente lo que el usuario te pide, ya sea una pregunta puntual, un análisis parcial, una comparación o un informe completo. NO generes siempre un informe completo a menos que el usuario lo pida explícitamente.
@@ -472,7 +515,10 @@ Eres un analista de performance digital experto y conversacional. Trabajas como 
 CONTEXTO DEL CLIENTE (úsalo como referencia cuando sea relevante):
 - Cliente: ${client.nombre_del_negocio}
 - Plan: ${client.plan || 'No especificado'}
+- Plantilla de informe que aplica: ${planInforme}
 - Periodo seleccionado: ${periodoTexto}
+
+${guiaInformes}
 
 HISTORIAL Y CONTEXTO DEL CLIENTE:
 ${clienteMemoriaText}
@@ -493,7 +539,7 @@ COMO RESPONDER:
 - Usa las métricas y el contexto de arriba para fundamentar tus respuestas.
 - Identifica tendencias, problemas y oportunidades cuando aporte valor.
 - Da recomendaciones concretas y accionables.
-- Si el usuario pide un informe, entonces sí estructura un informe completo con resumen ejecutivo y KPIs.
+- Si el usuario pide un informe, entonces sí estructura un informe completo siguiendo la ESTRUCTURA OFICIAL DE LOS INFORMES que corresponda al plan del cliente (Esencial = 6 slides, Estratégico = 11 slides). Respetá el orden y los títulos de las slides. Si te falta algún dato para completar una slide, pedíselo explícitamente al usuario en vez de inventarlo o dejarlo vacío.
 
 CAPACIDADES DE VISUALIZACION:
 Cuando una visualización ayude a explicar los datos (o cuando el usuario la pida), genera gráficos y archivos usando estos bloques especiales. No es obligatorio en cada mensaje, úsalos cuando aporten valor.
