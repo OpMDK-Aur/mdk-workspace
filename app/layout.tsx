@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { GoogleTagManager } from '@next/third-parties/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
 // Force full rebuild v5
@@ -25,6 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable} bg-background`}>
+      <GoogleTagManager gtmId="GTM-W2LWLQ2P" />
       <body className="font-sans antialiased">
         <ThemeProvider
           attribute="class"
