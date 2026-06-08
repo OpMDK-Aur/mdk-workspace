@@ -62,6 +62,7 @@ import {
   deleteConversacion,
   type AnalistaConversacion,
 } from '@/lib/analista/conversaciones'
+import { generateReportPdf } from '@/lib/analista/report-pdf'
 
 const MONTHS = [
   { value: '1', label: 'Enero' },
@@ -427,6 +428,20 @@ export default function AnalistaPage() {
       })
 
       toast.success('Informe guardado como tarea')
+
+      // Exportar el PDF con la plantilla de marca MDK (Esencial / Estratégico)
+      const periodLabel = `${MONTHS[parseInt(selectedMonth) - 1]?.label} ${selectedYear}`
+      try {
+        await generateReportPdf({
+          clientName: selectedClient.nombre_del_negocio,
+          plan: selectedClient.plan,
+          periodLabel,
+          markdown: messageText,
+        })
+      } catch (pdfError) {
+        console.error('[v0] Error exporting report PDF:', pdfError)
+        toast.error('La tarea se guardó, pero no se pudo generar el PDF')
+      }
     } catch (error) {
       console.error('Error saving report:', error)
       toast.error('Error al guardar el informe')
@@ -825,7 +840,8 @@ export default function AnalistaPage() {
                 {chatMessages.length > 0 && (
                   <div className="mt-3 flex justify-center">
                     <Button variant="outline" size="sm" onClick={handleSaveAsReport}>
-                      Guardar como informe
+                      <FileText className="h-4 w-4" />
+                      Guardar y exportar informe
                     </Button>
                   </div>
                 )}
