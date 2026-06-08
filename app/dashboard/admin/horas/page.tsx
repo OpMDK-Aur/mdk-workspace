@@ -20,7 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Download, Users, Loader2, Building2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/lib/types'
-import type { ClientPlan, UnidadNegocio } from '@/lib/types'
+import type { ClientPlan } from '@/lib/types'
 import type { ClientSummary } from '@/lib/time-tracking/types'
 import { toast } from 'sonner'
 
@@ -76,16 +76,18 @@ async function fetchControlHorasData() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('No user found')
   
-  const [clientsRes, entriesRes, profilesRes] = await Promise.all([
+  const [clientsRes, entriesRes, profilesRes, departamentosRes] = await Promise.all([
     supabase.from('clientes').select('*').order('nombre_del_negocio'),
     supabase.from('entradas_de_tiempo').select('*').order('iniciado_en', { ascending: false }),
-    supabase.from('colaboradores').select('id, nombre, apellido').order('nombre'),
+    supabase.from('colaboradores').select('id, nombre, apellido, departamento_id, departamentos(id, nombre)').order('nombre'),
+    supabase.from('departamentos').select('id, nombre').order('nombre'),
   ])
 
   return {
     clients: (clientsRes.data || []) as Client[],
     entries: (entriesRes.data || []) as TimeEntry[],
     users: (profilesRes.data || []) as User[],
+    departamentos: (departamentosRes.data || []) as { id: string; nombre: string }[],
   }
 }
 
@@ -98,7 +100,7 @@ export default function ControlHorasPage() {
   const [selectedMatrixColab, setSelectedMatrixColab] = useState<string>('all')
   const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
-  const [unidadFilter, setUnidadFilter] = useState<UnidadNegocio | 'all'>('all')
+  const [departamentoFilter, setDepartamentoFilter] = useState<string>('all')
 
   // Fetch data with SWR
   const { data, isLoading, error } = useSWR('control-horas-data', fetchControlHorasData)
@@ -106,16 +108,17 @@ export default function ControlHorasPage() {
   const clients = data?.clients || []
   const allEntries = data?.entries || []
   const users = data?.users || []
+  const departamentos = data?.departamentos || []
 
   // Filter entries by month/year and selected collaborador/cliente
   const filteredEntries = useMemo(() => {
     const monthStart = startOfMonth(new Date(selectedYear, selectedMonth - 1))
     const monthEnd = endOfMonth(new Date(selectedYear, selectedMonth - 1))
 
-    // Build a lookup of client id -> unidades_negocio for the unit filter
-    const clientUnidadesMap: Record<string, UnidadNegocio[]> = {}
-    clients.forEach((client) => {
-      clientUnidadesMap[client.id] = (client.unidades_negocio as UnidadNegocio[]) || []
+    // Build a lookup of colaborador id -> departamento_id for the department filter
+    const colaboradorDeptMap: Record<string, string | null> = {}
+    users.forEach((u: any) => {
+      colaboradorDeptMap[u.id] = u.departamento_id ?? null
     })
 
     return allEntries.filter((entry) => {
@@ -138,17 +141,16 @@ export default function ControlHorasPage() {
         return false
       }
 
-      // Filter by selected unidad de negocio (matches the client's PRIMARY unidad = first in array)
-      if (unidadFilter !== 'all') {
-        const unidades = entry.cliente_id ? clientUnidadesMap[entry.cliente_id] || [] : []
-        if (unidades[0] !== unidadFilter) {
+      // Filter by selected departamento (matches the colaborador's departamento)
+      if (departamentoFilter !== 'all') {
+        if (colaboradorDeptMap[entry.colaborador_id] !== departamentoFilter) {
           return false
         }
       }
       
       return true
     })
-  }, [allEntries, clients, selectedMonth, selectedYear, selectedColaborador, selectedCliente, unidadFilter])
+  }, [allEntries, users, selectedMonth, selectedYear, selectedColaborador, selectedCliente, departamentoFilter])
 
   // Calculate client summaries from filtered entries
   const clientSummaries: ClientSummary[] = useMemo(() => {
@@ -426,16 +428,18 @@ export default function ControlHorasPage() {
           </SelectContent>
         </Select>
 
-        {/* Unidad Filter */}
-        <Select value={unidadFilter} onValueChange={(v) => setUnidadFilter(v as UnidadNegocio | 'all')}>
+        {/* Departamento Filter */}
+        <Select value={departamentoFilter} onValueChange={(v) => setDepartamentoFilter(v)}>
           <SelectTrigger className="w-[170px]">
             <SelectValue placeholder="Departamento" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los departamentos</SelectItem>
-            <SelectItem value="MDK">MDK</SelectItem>
-            <SelectItem value="Aurelia">Aurelia</SelectItem>
-            <SelectItem value="Consultoría">Consultoría</SelectItem>
+            {departamentos.map((dep) => (
+              <SelectItem key={dep.id} value={dep.id}>
+                {dep.nombre}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -485,7 +489,7 @@ export default function ControlHorasPage() {
             year={selectedYear}
             colaboradorId={selectedColaborador !== 'all' ? selectedColaborador : undefined}
             clienteId={selectedCliente !== 'all' ? selectedCliente : undefined}
-            unidad={unidadFilter}
+            departamento={departamentoFilter}
           />
         </TabsContent>
         

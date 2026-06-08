@@ -416,7 +416,7 @@ function CompactProgressBar({
   )
 }
 
-async function fetchMetricas(mes: number, anio: number, unidad: string = 'all') {
+async function fetchMetricas(mes: number, anio: number, departamento: string = 'all') {
   const supabase = createClient()
   
   // Calculate the date range for the selected month
@@ -437,16 +437,16 @@ async function fetchMetricas(mes: number, anio: number, unidad: string = 'all') 
       `)
       .eq('mes', mes)
       .eq('anio', anio),
-    supabase.from('colaboradores').select('id, nombre, apellido, email'),
-    supabase.from('clientes').select('id, nombre_del_negocio, unidades_negocio'),
+    supabase.from('colaboradores').select('id, nombre, apellido, email, departamento_id'),
+    supabase.from('clientes').select('id, nombre_del_negocio'),
   ])
 
-  // Build set of cliente ids whose PRIMARY unidad (first in array) matches the selected unidad
-  const allowedClienteIds = new Set<string>()
-  if (unidad !== 'all') {
-    ;(clientesRes.data || []).forEach((c: { id: string; unidades_negocio?: string[] | null }) => {
-      if ((c.unidades_negocio || [])[0] === unidad) {
-        allowedClienteIds.add(c.id)
+  // Build set of colaborador ids whose departamento matches the selected one
+  const allowedColaboradorIds = new Set<string>()
+  if (departamento !== 'all') {
+    ;(colaboradoresRes.data || []).forEach((c: { id: string; departamento_id?: string | null }) => {
+      if (c.departamento_id === departamento) {
+        allowedColaboradorIds.add(c.id)
       }
     })
   }
@@ -570,11 +570,10 @@ async function fetchMetricas(mes: number, anio: number, unidad: string = 'all') 
     }
   })
   
-  // Apply unidad de negocio filter: keep only clients belonging to the selected unidad.
-  // Entries without a real client ('sin-cliente') are excluded when a unidad is selected.
-  if (unidad !== 'all') {
+  // Apply departamento filter: keep only metricas of colaboradores in the selected departamento.
+  if (departamento !== 'all') {
     return metricasWithHours.filter(
-      m => m.cliente_id !== 'sin-cliente' && allowedClienteIds.has(m.cliente_id)
+      m => allowedColaboradorIds.has(m.colaborador_id)
     ) as MetricaColaborador[]
   }
 
@@ -586,7 +585,7 @@ interface HoursControlPanelProps {
   year: number
   colaboradorId?: string
   clienteId?: string
-  unidad?: string
+  departamento?: string
 }
 
 export function HoursControlPanel({ 
@@ -594,15 +593,15 @@ export function HoursControlPanel({
   year: selectedYear,
   colaboradorId,
   clienteId,
-  unidad = 'all',
+  departamento = 'all',
 }: HoursControlPanelProps) {
   // Use props for filtering instead of local state
   const filterColaborador = colaboradorId || 'all'
   const filterCliente = clienteId || 'all'
 
   const { data: metricas, isLoading, error } = useSWR(
-    `metricas-${selectedMonth}-${selectedYear}-${unidad}`,
-    () => fetchMetricas(selectedMonth, selectedYear, unidad)
+    `metricas-${selectedMonth}-${selectedYear}-${departamento}`,
+    () => fetchMetricas(selectedMonth, selectedYear, departamento)
   )
 
   // Get unique colaboradores and clientes for filters
