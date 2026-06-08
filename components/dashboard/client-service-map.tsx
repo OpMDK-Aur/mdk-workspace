@@ -85,12 +85,32 @@ const HitoRow = memo(({
       )}
     >
       <div className="mt-0.5">
-        <Tooltip>
-          <TooltipTrigger>
-            <IconComponent className={cn('h-5 w-5', estadoConfig.color)} />
-          </TooltipTrigger>
-          <TooltipContent>{estadoConfig.label}</TooltipContent>
-        </Tooltip>
+        {primaryInstance.estado !== 'listo' && currentUserId ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => onOpenCompletion(primaryInstance)}
+                className={cn(
+                  'h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors',
+                  'border-muted-foreground/40 text-transparent hover:border-emerald-500 hover:text-emerald-500',
+                  estadoConfig.color
+                )}
+                aria-label="Marcar como completado"
+              >
+                <CheckCircle2 className="h-5 w-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Marcar como completado</TooltipContent>
+          </Tooltip>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger>
+              <IconComponent className={cn('h-5 w-5', estadoConfig.color)} />
+            </TooltipTrigger>
+            <TooltipContent>{estadoConfig.label}</TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       <div className="flex-1 min-w-0">
@@ -121,16 +141,6 @@ const HitoRow = memo(({
                   <Badge variant="outline" className="text-[10px] h-5 bg-blue-500/10 text-blue-500 border-blue-500/30">Tarea</Badge>
                 </TooltipTrigger>
                 <TooltipContent>Completar también resuelve la tarea vinculada</TooltipContent>
-              </Tooltip>
-            )}
-            {primaryInstance.estado !== 'listo' && currentUserId && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-emerald-500" onClick={() => onOpenCompletion(primaryInstance)}>
-                    <ClipboardCheck className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Marcar como completado</TooltipContent>
               </Tooltip>
             )}
           </div>
