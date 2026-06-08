@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import type { ClientPlan, UnidadNegocio } from '@/lib/types'
+import type { ClientPlan } from '@/lib/types'
 
 const MONTHS = [
   { value: 1, label: 'Enero' },
@@ -36,18 +36,26 @@ export default function NPSPage() {
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
-  const [unidadFilter, setUnidadFilter] = useState<UnidadNegocio | 'all'>('all')
+  const [departamentoFilter, setDepartamentoFilter] = useState<string>('all')
   const [pmFilter, setPmFilter] = useState<string | 'all'>('all')
   const [amFilter, setAmFilter] = useState<string | 'all'>('all')
   const [clienteFilter, setClienteFilter] = useState<string | 'all'>('all')
   const [projectManagers, setProjectManagers] = useState<Array<{ id: string; full_name: string | null; email: string; role: string }>>([])
   const [accountManagers, setAccountManagers] = useState<Array<{ id: string; full_name: string | null; email: string; role: string }>>([])
   const [clientes, setClientes] = useState<Array<{ id: string; nombre_del_negocio: string }>>([])
+  const [departamentos, setDepartamentos] = useState<Array<{ id: string; nombre: string }>>([])
 
   // Cargar usuarios y clientes
   useEffect(() => {
     async function loadData() {
       const supabase = createClient()
+      
+      // Cargar departamentos para el filtro
+      const { data: departamentosData } = await supabase
+        .from('departamentos')
+        .select('id, nombre')
+        .order('nombre', { ascending: true })
+      if (departamentosData) setDepartamentos(departamentosData)
       
       // Cargar clientes con sus PM y AM asignados
       const { data: clientesData } = await supabase
@@ -151,16 +159,18 @@ export default function NPSPage() {
           </SelectContent>
         </Select>
 
-        {/* Unidad Filter */}
-        <Select value={unidadFilter} onValueChange={(v) => setUnidadFilter(v as UnidadNegocio | 'all')}>
+        {/* Departamento Filter */}
+        <Select value={departamentoFilter} onValueChange={(v) => setDepartamentoFilter(v)}>
           <SelectTrigger className="w-[170px]">
-            <SelectValue placeholder="Unidad" />
+            <SelectValue placeholder="Departamento" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todas las unidades</SelectItem>
-            <SelectItem value="MDK">MDK</SelectItem>
-            <SelectItem value="Aurelia">Aurelia</SelectItem>
-            <SelectItem value="Consultoria">Consultoria</SelectItem>
+            <SelectItem value="all">Todos los departamentos</SelectItem>
+            {departamentos.map((dep) => (
+              <SelectItem key={dep.id} value={dep.id}>
+                {dep.nombre}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
@@ -229,7 +239,7 @@ export default function NPSPage() {
         month={selectedMonth} 
         year={selectedYear} 
         planFilter={planFilter}
-        unidadFilter={unidadFilter}
+        departamentoFilter={departamentoFilter}
         pmFilter={pmFilter}
         amFilter={amFilter}
         clienteFilter={clienteFilter}

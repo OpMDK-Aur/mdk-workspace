@@ -88,7 +88,7 @@ interface NPSReportProps {
   month: number
   year: number
   planFilter?: ClientPlan | 'all'
-  unidadFilter?: UnidadNegocio | 'all'
+  departamentoFilter?: string | 'all'
   pmFilter?: string | 'all'
   amFilter?: string | 'all'
   clienteFilter?: string | 'all'
@@ -98,7 +98,7 @@ export function NPSReport({
   month, 
   year, 
   planFilter = 'all', 
-  unidadFilter = 'all',
+  departamentoFilter = 'all',
   pmFilter = 'all',
   amFilter = 'all',
   clienteFilter = 'all'
@@ -110,6 +110,7 @@ export function NPSReport({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('todos')
+  const [unidadTab, setUnidadTab] = useState<'all' | 'MDK' | 'Aurelia' | 'Consultoría'>('all')
 
   // Use props for month/year
   const selectedMonth = month
@@ -143,7 +144,7 @@ export function NPSReport({
         // Fetch colaboradores for AC names (account_manager_id references colaboradores)
         const { data: colaboradoresData, error: colaboradoresError } = await supabase
           .from('colaboradores')
-          .select('id, nombre, apellido, email')
+          .select('id, nombre, apellido, email, departamento_id')
 
         if (colaboradoresError) throw colaboradoresError
 
@@ -251,28 +252,6 @@ export function NPSReport({
     if (planFilter !== 'all') {
       filteredClients = filteredClients.filter(c => c.plan === planFilter)
     }
-    
-    if (unidadFilter !== 'all') {
-      if (unidadFilter === 'Aurelia') {
-        // Para Aurelia: solo clientes que tengan ÚNICAMENTE Aurelia/Tecnología (no mezclado con otras unidades)
-        const aureliaUnidades: UnidadNegocio[] = ['Aurelia', 'Tecnología']
-        filteredClients = filteredClients.filter(c => 
-          c.unidades_negocio?.length > 0 &&
-          c.unidades_negocio.every(u => aureliaUnidades.includes(u))
-        )
-      } else if (unidadFilter === 'Consultoria') {
-        // Para Consultoría: solo clientes que tengan ÚNICAMENTE Consultoría
-        filteredClients = filteredClients.filter(c => 
-          c.unidades_negocio?.length === 1 &&
-          c.unidades_negocio[0] === 'Consultoría'
-        )
-      } else {
-        // Para MDK: que tengan MDK (puede estar mezclado)
-        filteredClients = filteredClients.filter(c => 
-          c.unidades_negocio?.some(u => u === unidadFilter)
-        )
-      }
-    }
 
     // Filter by PM
     if (pmFilter !== 'all') {
@@ -282,6 +261,14 @@ export function NPSReport({
     // Filter by AM
     if (amFilter !== 'all') {
       filteredClients = filteredClients.filter(c => c.account_manager_id === amFilter)
+    }
+
+    // Filter by Departamento (based on the client's Account Manager departamento)
+    if (departamentoFilter !== 'all') {
+      filteredClients = filteredClients.filter(c => {
+        const am = colaboradores.find(col => col.id === c.account_manager_id) as { departamento_id?: string | null } | undefined
+        return am?.departamento_id === departamentoFilter
+      })
     }
 
     // Filter by Cliente
@@ -367,7 +354,7 @@ export function NPSReport({
         ultimaEncuesta,
       }
     })
-  }, [clients, npsHistorial, selectedMonth, selectedYear, planFilter, unidadFilter, pmFilter, amFilter, clienteFilter, profiles])
+  }, [clients, npsHistorial, selectedMonth, selectedYear, planFilter, departamentoFilter, pmFilter, amFilter, clienteFilter, profiles, colaboradores])
 
   // Group by Account Manager
   const acData: ACData[] = useMemo(() => {
@@ -412,67 +399,51 @@ export function NPSReport({
     }
   }, [clientNPSData, activeTab])
 
-  // Summary stats
-  const totalClients = clientNPSData.length
-  const respondedClients = clientNPSData.filter(c => c.responded)
-  const avgWithRule = totalClients > 0 
-    ? (clientNPSData.reduce((sum, c) => sum + (c.currentScore ?? 0), 0) / totalClients).toFixed(2)
-    : '-'
-  const avgOnlyResponded = respondedClients.length > 0
-    ? (respondedClients.reduce((sum, c) => sum + (c.currentScore ?? 0), 0) / respondedClients.length).toFixed(2)
-    : '-'
+  // Summary stats per unidad de negocio, shown as tabs.
+  // clientNPSData already respects plan / pm / am / cliente / departamento filters.
+  const matchesUnidad = (unidades: UnidadNegocio[] | null, key: string): boolean => {
+    if (key === 'all') return true
+    const list = unidades || []
+    if (key === 'Aurelia') {
+      // Aurelia: clientes que tengan ÚNICAMENTE Aurelia/Tecnología
+      return list.length > 0 && list.every(u => u === 'Aurelia' || u === 'Tecnología')
+    }
+    if (key === 'Consultoría') {
+      // Consultoría: clientes que tengan ÚNICAMENTE Consultoría
+      return list.length === 1 && list[0] === 'Consultoría'
+    }
+    // MDK: que tengan MDK (puede estar mezclado)
+    return list.some(u => u === 'MDK')
+  }
 
-  // Stats por unidad de negocio (sin filtro de unidad aplicado)
-  // Nota: Tecnología y Aurelia son lo mismo, así que unificamos
-  // Para Aurelia y Consultoría: solo clientes que tengan ÚNICAMENTE esa unidad
-  const statsByUnidad = useMemo(() => {
-    const unidadesDisplay: { key: string; label: string; includes: UnidadNegocio[]; exclusive?: boolean }[] = [
-      { key: 'MDK', label: 'MDK', includes: ['MDK'] },
-      { key: 'Aurelia', label: 'Aurelia', includes: ['Aurelia', 'Tecnología'], exclusive: true },
-      { key: 'Consultoría', label: 'Consultoría', includes: ['Consultoría'], exclusive: true },
-    ]
-    
-    // Recalcular sin el filtro de unidad para mostrar todas las unidades
-    const allClientsFiltered = planFilter === 'all' 
-      ? clients 
-      : clients.filter(c => c.plan === planFilter)
-
-    return unidadesDisplay.map(({ key, label, includes, exclusive }) => {
-      const unidadClients = allClientsFiltered.filter(c => {
-        if (exclusive) {
-          // Para Aurelia: solo clientes que tengan ÚNICAMENTE estas unidades
-          return c.unidades_negocio?.length > 0 &&
-            c.unidades_negocio.every(u => includes.includes(u))
-        }
-        // Para otras: que tengan al menos una de las unidades
-        return c.unidades_negocio?.some(u => includes.includes(u))
-      })
-      
-      const clientsWithNPS = unidadClients.map(client => {
-        const clientHistory = npsHistorial.filter(h => h.cliente_id === client.id)
-        const currentMonthRecords = clientHistory.filter(h => {
-          const date = new Date(h.fecha)
-          return date.getUTCMonth() + 1 === selectedMonth && date.getUTCFullYear() === selectedYear
-        })
-        const currentScore = currentMonthRecords.length > 0
-          ? Math.round(currentMonthRecords.reduce((sum, r) => sum + r.score, 0) / currentMonthRecords.length)
-          : null
-        return { clientId: client.id, currentScore, responded: currentScore !== null }
-      })
-
-      const responded = clientsWithNPS.filter(c => c.responded)
-      const totalScore = clientsWithNPS.reduce((sum, c) => sum + (c.currentScore ?? 0), 0)
-      const respondedScore = responded.reduce((sum, c) => sum + (c.currentScore ?? 0), 0)
-
+  const unidadSummary = useMemo(() => {
+    const compute = (key: string) => {
+      const subset = clientNPSData.filter(c => matchesUnidad(c.unidadesNegocio, key))
+      const responded = subset.filter(c => c.responded)
+      const total = subset.length
+      const withRule = total > 0
+        ? (subset.reduce((sum, c) => sum + (c.currentScore ?? 0), 0) / total).toFixed(2)
+        : '-'
+      const onlyResponded = responded.length > 0
+        ? (responded.reduce((sum, c) => sum + (c.currentScore ?? 0), 0) / responded.length).toFixed(2)
+        : '-'
       return {
-        unidad: label,
-        totalClients: clientsWithNPS.length,
+        total,
         respondedCount: responded.length,
-        avgWithRule: clientsWithNPS.length > 0 ? (totalScore / clientsWithNPS.length).toFixed(2) : '-',
-        avgOnlyResponded: responded.length > 0 ? (respondedScore / responded.length).toFixed(2) : '-',
+        notResponded: total - responded.length,
+        avgWithRule: withRule,
+        avgOnlyResponded: onlyResponded,
       }
-    })
-  }, [clients, npsHistorial, selectedMonth, selectedYear, planFilter])
+    }
+    return {
+      all: compute('all'),
+      MDK: compute('MDK'),
+      Aurelia: compute('Aurelia'),
+      'Consultoría': compute('Consultoría'),
+    }
+  }, [clientNPSData])
+
+  const currentUnidad = unidadSummary[unidadTab]
 
   // Export CSV
   const exportToCSV = () => {
@@ -543,73 +514,41 @@ export function NPSReport({
         </div>
       )}
 
-      {/* Summary KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-card border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground mb-1">Total Clientes</div>
-          <div className="text-2xl font-semibold">{totalClients}</div>
-          <div className="text-xs text-muted-foreground mt-1">{respondedClients.length} respondieron</div>
-        </div>
-        <div className="bg-card border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground mb-1">Con regla (0 si no resp.)</div>
-          <div className={cn("text-2xl font-semibold", Number(avgWithRule) >= 4 ? 'text-emerald-600' : Number(avgWithRule) >= 3 ? 'text-amber-600' : 'text-red-600')}>
-            {avgWithRule}
-          </div>
-        </div>
-        <div className="bg-card border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground mb-1">Solo respondientes</div>
-          <div className={cn("text-2xl font-semibold", Number(avgOnlyResponded) >= 4 ? 'text-emerald-600' : Number(avgOnlyResponded) >= 3 ? 'text-amber-600' : 'text-red-600')}>
-            {avgOnlyResponded}
-          </div>
-        </div>
-        <div className="bg-card border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground mb-1">No respondieron</div>
-          <div className={cn("text-2xl font-semibold", (totalClients - respondedClients.length) > 0 ? 'text-orange-600' : 'text-muted-foreground')}>
-            {totalClients - respondedClients.length}
-          </div>
-        </div>
-      </div>
+      {/* Unidad de Negocio tabs + summary KPIs */}
+      <Tabs value={unidadTab} onValueChange={(v) => setUnidadTab(v as typeof unidadTab)}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="all">Todas</TabsTrigger>
+          <TabsTrigger value="MDK">MDK</TabsTrigger>
+          <TabsTrigger value="Aurelia">Aurelia</TabsTrigger>
+          <TabsTrigger value="Consultoría">Consultoría</TabsTrigger>
+        </TabsList>
 
-      {/* NPS por Unidad de Negocio */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">NPS por Unidad de Negocio</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {statsByUnidad.map(stat => (
-            <div key={stat.unidad} className="bg-card border rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-sm font-semibold">{stat.unidad}</div>
-                <Badge variant="outline" className="text-xs">
-                  {stat.respondedCount}/{stat.totalClients}
-                </Badge>
-              </div>
-              <div className="flex items-baseline gap-3">
-                <div>
-                  <div className={cn(
-                    "text-xl font-bold",
-                    Number(stat.avgOnlyResponded) >= 4 ? 'text-emerald-600' : 
-                    Number(stat.avgOnlyResponded) >= 3 ? 'text-amber-600' : 
-                    stat.avgOnlyResponded === '-' ? 'text-muted-foreground' : 'text-red-600'
-                  )}>
-                    {stat.avgOnlyResponded}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground">Respondientes</div>
-                </div>
-                <div className="text-muted-foreground">
-                  <div className={cn(
-                    "text-lg font-semibold",
-                    Number(stat.avgWithRule) >= 4 ? 'text-emerald-600/60' : 
-                    Number(stat.avgWithRule) >= 3 ? 'text-amber-600/60' : 
-                    stat.avgWithRule === '-' ? 'text-muted-foreground' : 'text-red-600/60'
-                  )}>
-                    {stat.avgWithRule}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground">Con regla</div>
-                </div>
-              </div>
+          <div className="bg-card border rounded-lg p-4">
+            <div className="text-xs text-muted-foreground mb-1">Clientes</div>
+            <div className="text-2xl font-semibold">{currentUnidad.total}</div>
+            <div className="text-xs text-muted-foreground mt-1">{currentUnidad.respondedCount} respondieron</div>
+          </div>
+          <div className="bg-card border rounded-lg p-4">
+            <div className="text-xs text-muted-foreground mb-1">Con regla (0 si no resp.)</div>
+            <div className={cn("text-2xl font-semibold", Number(currentUnidad.avgWithRule) >= 4 ? 'text-emerald-600' : Number(currentUnidad.avgWithRule) >= 3 ? 'text-amber-600' : currentUnidad.avgWithRule === '-' ? 'text-muted-foreground' : 'text-red-600')}>
+              {currentUnidad.avgWithRule}
             </div>
-          ))}
+          </div>
+          <div className="bg-card border rounded-lg p-4">
+            <div className="text-xs text-muted-foreground mb-1">Solo respondientes</div>
+            <div className={cn("text-2xl font-semibold", Number(currentUnidad.avgOnlyResponded) >= 4 ? 'text-emerald-600' : Number(currentUnidad.avgOnlyResponded) >= 3 ? 'text-amber-600' : currentUnidad.avgOnlyResponded === '-' ? 'text-muted-foreground' : 'text-red-600')}>
+              {currentUnidad.avgOnlyResponded}
+            </div>
+          </div>
+          <div className="bg-card border rounded-lg p-4">
+            <div className="text-xs text-muted-foreground mb-1">No respondieron</div>
+            <div className={cn("text-2xl font-semibold", currentUnidad.notResponded > 0 ? 'text-orange-600' : 'text-muted-foreground')}>
+              {currentUnidad.notResponded}
+            </div>
+          </div>
         </div>
-      </div>
+      </Tabs>
 
       {/* AC Blocks */}
       <div className="space-y-4">

@@ -20,7 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Download, Users, Loader2, Building2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/lib/types'
-import type { ClientPlan, UnidadNegocio } from '@/lib/types'
+import type { ClientPlan } from '@/lib/types'
 import type { ClientSummary } from '@/lib/time-tracking/types'
 import { toast } from 'sonner'
 
@@ -76,16 +76,18 @@ async function fetchControlHorasData() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('No user found')
   
-  const [clientsRes, entriesRes, profilesRes] = await Promise.all([
+  const [clientsRes, entriesRes, profilesRes, departamentosRes] = await Promise.all([
     supabase.from('clientes').select('*').order('nombre_del_negocio'),
     supabase.from('entradas_de_tiempo').select('*').order('iniciado_en', { ascending: false }),
-    supabase.from('colaboradores').select('id, nombre, apellido').order('nombre'),
+    supabase.from('colaboradores').select('id, nombre, apellido, departamento_id, departamentos(id, nombre)').order('nombre'),
+    supabase.from('departamentos').select('id, nombre').order('nombre'),
   ])
 
   return {
     clients: (clientsRes.data || []) as Client[],
     entries: (entriesRes.data || []) as TimeEntry[],
     users: (profilesRes.data || []) as User[],
+    departamentos: (departamentosRes.data || []) as { id: string; nombre: string }[],
   }
 }
 
@@ -98,7 +100,7 @@ export default function ControlHorasPage() {
   const [selectedMatrixColab, setSelectedMatrixColab] = useState<string>('all')
   const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
-  const [unidadFilter, setUnidadFilter] = useState<UnidadNegocio | 'all'>('all')
+  const [departamentoFilter, setDepartamentoFilter] = useState<string>('all')
 
   // Fetch data with SWR
   const { data, isLoading, error } = useSWR('control-horas-data', fetchControlHorasData)
@@ -106,12 +108,19 @@ export default function ControlHorasPage() {
   const clients = data?.clients || []
   const allEntries = data?.entries || []
   const users = data?.users || []
+  const departamentos = data?.departamentos || []
 
   // Filter entries by month/year and selected collaborador/cliente
   const filteredEntries = useMemo(() => {
     const monthStart = startOfMonth(new Date(selectedYear, selectedMonth - 1))
     const monthEnd = endOfMonth(new Date(selectedYear, selectedMonth - 1))
-    
+
+    // Build a lookup of colaborador id -> departamento_id for the department filter
+    const colaboradorDeptMap: Record<string, string | null> = {}
+    users.forEach((u: any) => {
+      colaboradorDeptMap[u.id] = u.departamento_id ?? null
+    })
+
     return allEntries.filter((entry) => {
       const entryDate = new Date(entry.iniciado_en)
       
@@ -131,10 +140,17 @@ export default function ControlHorasPage() {
       if (selectedCliente !== 'all' && entry.cliente_id !== selectedCliente) {
         return false
       }
+
+      // Filter by selected departamento (matches the colaborador's departamento)
+      if (departamentoFilter !== 'all') {
+        if (colaboradorDeptMap[entry.colaborador_id] !== departamentoFilter) {
+          return false
+        }
+      }
       
       return true
     })
-  }, [allEntries, selectedMonth, selectedYear, selectedColaborador, selectedCliente])
+  }, [allEntries, users, selectedMonth, selectedYear, selectedColaborador, selectedCliente, departamentoFilter])
 
   // Calculate client summaries from filtered entries
   const clientSummaries: ClientSummary[] = useMemo(() => {
@@ -235,10 +251,83 @@ export default function ControlHorasPage() {
     }
   }, [filteredEntries])
 
-  // Calculate totals
-  const totalHours = filteredEntries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
-  const billableHours = filteredEntries.filter((e) => e.facturable).reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
-  const billablePercentage = totalHours > 0 ? (billableHours / totalHours) * 100 : 0
+  // Per-unidad de negocio summary (uses the client's PRIMARY unidad = first in array)
+  const UNIDADES = ['MDK', 'Aurelia', 'Consultoría'] as const
+  const [unidadTab, setUnidadTab] = useState<'all' | (typeof UNIDADES)[number]>('all')
+
+  const unidadSummary = useMemo(() => {
+    const clientPrimaryUnidad: Record<string, string | undefined> = {}
+    clients.forEach((c) => {
+      clientPrimaryUnidad[c.id] = (c.unidades_negocio as string[] | undefined)?.[0]
+    })
+
+    const compute = (predicate: (clienteId: string | null) => boolean) => {
+      const entries = filteredEntries.filter((e) => predicate(e.cliente_id))
+      const total = entries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
+      const billable = entries
+        .filter((e) => e.facturable)
+        .reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
+      return { total, billable, pct: total > 0 ? (billable / total) * 100 : 0 }
+    }
+
+    return {
+      all: compute(() => true),
+      MDK: compute((id) => !!id && clientPrimaryUnidad[id] === 'MDK'),
+      Aurelia: compute((id) => !!id && clientPrimaryUnidad[id] === 'Aurelia'),
+      'Consultoría': compute((id) => !!id && clientPrimaryUnidad[id] === 'Consultoría'),
+    }
+  }, [filteredEntries, clients])
+
+  const currentSummary = unidadSummary[unidadTab]
+
+  // Clients grouped by the active unidad tab, with the breakdown of involved collaborators.
+  // filteredEntries already respects month / colaborador / cliente / departamento filters.
+  const clientesPorUnidad = useMemo(() => {
+    const clientPrimaryUnidad: Record<string, string | undefined> = {}
+    clients.forEach((c) => {
+      clientPrimaryUnidad[c.id] = (c.unidades_negocio as string[] | undefined)?.[0]
+    })
+
+    const userName = (id: string) => {
+      const u = users.find((x) => x.id === id)
+      return u ? `${u.nombre}${u.apellido ? ` ${u.apellido}` : ''}` : 'Desconocido'
+    }
+    const clientName = (id: string) => {
+      const c = clients.find((x) => x.id === id)
+      return c?.nombre_del_negocio || c?.business_name || 'Sin nombre'
+    }
+
+    // cliente_id -> { total, colaboradores: { colab_id -> hours } }
+    const map: Record<string, { hours: number; colaboradores: Record<string, number> }> = {}
+
+    filteredEntries.forEach((entry) => {
+      const cid = entry.cliente_id
+      if (!cid || !entry.colaborador_id) return
+      // Filter by active unidad tab (using the client's PRIMARY unidad)
+      if (unidadTab !== 'all' && clientPrimaryUnidad[cid] !== unidadTab) return
+
+      if (!map[cid]) map[cid] = { hours: 0, colaboradores: {} }
+      const hours = (entry.duracion_seg || 0) / 3600
+      map[cid].hours += hours
+      map[cid].colaboradores[entry.colaborador_id] =
+        (map[cid].colaboradores[entry.colaborador_id] || 0) + hours
+    })
+
+    return Object.entries(map)
+      .map(([cid, data]) => ({
+        client_id: cid,
+        client_name: clientName(cid),
+        hours: data.hours,
+        colaboradores: Object.entries(data.colaboradores)
+          .map(([colabId, hrs]) => ({
+            colaborador_id: colabId,
+            colaborador_name: userName(colabId),
+            hours: hrs,
+          }))
+          .sort((a, b) => b.hours - a.hours),
+      }))
+      .sort((a, b) => b.hours - a.hours)
+  }, [clients, users, filteredEntries, unidadTab])
 
   // Calculate daily hours for the chart (with optional collaborator filter)
   const dailyHours = useMemo(() => {
@@ -412,19 +501,31 @@ export default function ControlHorasPage() {
           </SelectContent>
         </Select>
 
-        {/* Unidad Filter */}
-        <Select value={unidadFilter} onValueChange={(v) => setUnidadFilter(v as UnidadNegocio | 'all')}>
+        {/* Departamento Filter */}
+        <Select value={departamentoFilter} onValueChange={(v) => setDepartamentoFilter(v)}>
           <SelectTrigger className="w-[170px]">
-            <SelectValue placeholder="Unidad" />
+            <SelectValue placeholder="Departamento" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todas las unidades</SelectItem>
-            <SelectItem value="MDK">MDK</SelectItem>
-            <SelectItem value="Aurelia">Aurelia</SelectItem>
-            <SelectItem value="Consultoria">Consultoria</SelectItem>
+            <SelectItem value="all">Todos los departamentos</SelectItem>
+            {departamentos.map((dep) => (
+              <SelectItem key={dep.id} value={dep.id}>
+                {dep.nombre}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
+
+      {/* Summary by Unidad de Negocio */}
+      <Tabs value={unidadTab} onValueChange={(v) => setUnidadTab(v as typeof unidadTab)} className="mb-4">
+        <TabsList>
+          <TabsTrigger value="all">Todas</TabsTrigger>
+          <TabsTrigger value="MDK">MDK</TabsTrigger>
+          <TabsTrigger value="Aurelia">Aurelia</TabsTrigger>
+          <TabsTrigger value="Consultoría">Consultoría</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -432,7 +533,7 @@ export default function ControlHorasPage() {
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Total de horas</div>
             <div className="text-3xl font-bold text-foreground mt-1">
-              {totalHours.toFixed(1)}h
+              {currentSummary.total.toFixed(1)}h
             </div>
           </CardContent>
         </Card>
@@ -440,7 +541,7 @@ export default function ControlHorasPage() {
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Horas facturables</div>
             <div className="text-3xl font-bold text-foreground mt-1">
-              {billableHours.toFixed(1)}h
+              {currentSummary.billable.toFixed(1)}h
             </div>
           </CardContent>
         </Card>
@@ -448,7 +549,7 @@ export default function ControlHorasPage() {
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">% Facturable</div>
             <div className="text-3xl font-bold text-foreground mt-1">
-              {billablePercentage.toFixed(0)}%
+              {currentSummary.pct.toFixed(0)}%
             </div>
           </CardContent>
         </Card>
@@ -457,11 +558,8 @@ export default function ControlHorasPage() {
       {/* Charts and Tables with Tabs */}
       <Tabs defaultValue="hours-control" className="w-full">
         <TabsList className="mb-4">
-          <TabsTrigger value="by-client">Por Cliente</TabsTrigger>
-          <TabsTrigger value="by-collaborator">Por Colaborador</TabsTrigger>
-          <TabsTrigger value="by-matrix">Colaborador x Cliente</TabsTrigger>
-          <TabsTrigger value="by-day">Por Dia</TabsTrigger>
-          <TabsTrigger value="hours-control">Control de Horas</TabsTrigger>
+          <TabsTrigger value="hours-control">Colaboradores</TabsTrigger>
+          <TabsTrigger value="clients-by-unit">Clientes</TabsTrigger>
         </TabsList>
 
         {/* Hours Control Panel - The main view with progress bars */}
@@ -471,220 +569,66 @@ export default function ControlHorasPage() {
             year={selectedYear}
             colaboradorId={selectedColaborador !== 'all' ? selectedColaborador : undefined}
             clienteId={selectedCliente !== 'all' ? selectedCliente : undefined}
+            departamento={departamentoFilter}
           />
         </TabsContent>
-        
-        <TabsContent value="by-client">
+
+        {/* Clients grouped by the active unidad de negocio tab */}
+        <TabsContent value="clients-by-unit">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <ClientDonutChart clientSummaries={clientSummaries} />
-              <ClientSummaryTable clientSummaries={clientSummaries} />
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="by-collaborator">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Donut Chart for Collaborators */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Horas por Colaborador</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {collaboratorSummaries.length === 0 ? (
-                    <div className="flex items-center justify-center h-[250px] text-muted-foreground">
-                      Sin datos para el periodo seleccionado
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {collaboratorSummaries.map((colab) => (
-                        <div key={colab.colaborador_id} className="flex items-center gap-3">
-                          <div 
-                            className="w-3 h-3 rounded-full shrink-0" 
-                            style={{ backgroundColor: colab.colaborador_color }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium truncate">{colab.colaborador_name}</span>
-                              <span className="text-sm text-muted-foreground ml-2">
-                                {colab.hours.toFixed(1)}h ({colab.percentage.toFixed(0)}%)
-                              </span>
-                            </div>
-                            <div className="h-2 bg-muted rounded-full mt-1 overflow-hidden">
-                              <div 
-                                className="h-full rounded-full transition-all duration-300"
-                                style={{ 
-                                  width: `${colab.percentage}%`,
-                                  backgroundColor: colab.colaborador_color 
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Summary Table for Collaborators */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Resumen por Colaborador</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-border">
-                          <th className="text-left text-sm font-medium text-muted-foreground pb-2">Colaborador</th>
-                          <th className="text-right text-sm font-medium text-muted-foreground pb-2">Horas</th>
-                          <th className="text-right text-sm font-medium text-muted-foreground pb-2">%</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {collaboratorSummaries.map((colab) => (
-                          <tr key={colab.colaborador_id} className="border-b border-border/50">
-                            <td className="py-2">
-                              <div className="flex items-center gap-2">
-                                <div 
-                                  className="w-2 h-2 rounded-full shrink-0" 
-                                  style={{ backgroundColor: colab.colaborador_color }}
-                                />
-                                <span className="text-sm truncate">{colab.colaborador_name}</span>
-                              </div>
-                            </td>
-                            <td className="text-right text-sm py-2">{colab.hours.toFixed(1)}h</td>
-                            <td className="text-right text-sm text-muted-foreground py-2">{colab.percentage.toFixed(0)}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="by-matrix">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">Matriz Colaborador x Cliente</CardTitle>
-                  <Select
-                    value={selectedMatrixColab}
-                    onValueChange={setSelectedMatrixColab}
-                  >
-                    <SelectTrigger className="w-[200px]">
-                      <Users className="h-4 w-4 mr-2" />
-                      <SelectValue placeholder="Filtrar colaborador" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      {users.filter(u => collaboratorClientMatrix.collaboratorIds.includes(u.id)).map((user) => (
-                        <SelectItem key={user.id} value={user.id}>
-                          {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left font-medium text-muted-foreground pb-2 pr-4">Colaborador</th>
-                        {collaboratorClientMatrix.clientIds.map(clientId => {
-                          const client = clients.find(c => c.id === clientId)
-                          return (
-                            <th key={clientId} className="text-right font-medium text-muted-foreground pb-2 px-2 min-w-[100px]">
-                              {client?.nombre_del_negocio || 'Sin nombre'}
-                            </th>
-                          )
-                        })}
-                        <th className="text-right font-medium text-muted-foreground pb-2 pl-4 border-l border-border">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users
-                        .filter(u => {
-                          if (selectedMatrixColab === 'all') return collaboratorClientMatrix.collaboratorIds.includes(u.id)
-                          return u.id === selectedMatrixColab
-                        })
-                        .map(user => {
-                          const colabData = collaboratorClientMatrix.matrix[user.id] || {}
-                          const total = Object.values(colabData).reduce((acc, h) => acc + h, 0)
-                          return (
-                            <tr key={user.id} className="border-b border-border/50">
-                              <td className="py-2 pr-4 font-medium">
-                                {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
-                              </td>
-                              {collaboratorClientMatrix.clientIds.map(clientId => (
-                                <td key={clientId} className="text-right py-2 px-2 text-muted-foreground">
-                                  {colabData[clientId] ? `${colabData[clientId].toFixed(1)}h` : '-'}
-                                </td>
-                              ))}
-                              <td className="text-right py-2 pl-4 font-medium border-l border-border">
-                                {total.toFixed(1)}h
-                              </td>
-                            </tr>
-                          )
-                        })}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="by-day">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          ) : clientesPorUnidad.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Building2 className="h-10 w-10 text-muted-foreground mb-3" />
+              <p className="text-sm text-muted-foreground">
+                No hay clientes con marcaciones para los filtros seleccionados
+                {unidadTab !== 'all' ? ` en ${unidadTab}` : ''}.
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center justify-end">
-                <Select
-                  value={selectedDayColab}
-                  onValueChange={setSelectedDayColab}
-                >
-                  <SelectTrigger className="w-[200px]">
-                    <Users className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Filtrar colaborador" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los colaboradores</SelectItem>
-                    {users.map((user) => (
-                      <SelectItem key={user.id} value={user.id}>
-                        {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <HoursChart data={dailyHours} />
+              {clientesPorUnidad.map((client) => (
+                <Card key={client.client_id}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-muted-foreground" />
+                        {client.client_name}
+                      </CardTitle>
+                      <span className="text-sm font-semibold text-foreground whitespace-nowrap">
+                        {client.hours.toFixed(1)}h
+                      </span>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xs font-medium text-muted-foreground mb-2">
+                      Colaboradores implicados ({client.colaboradores.length})
+                    </div>
+                    <ul className="divide-y divide-border">
+                      {client.colaboradores.map((colab) => (
+                        <li
+                          key={colab.colaborador_id}
+                          className="flex items-center justify-between py-2"
+                        >
+                          <span className="flex items-center gap-2 text-sm text-foreground">
+                            <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                            {colab.colaborador_name}
+                          </span>
+                          <span className="text-sm text-muted-foreground whitespace-nowrap">
+                            {colab.hours.toFixed(1)}h
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
         </TabsContent>
+        
       </Tabs>
     </div>
   )

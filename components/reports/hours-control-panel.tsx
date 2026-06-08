@@ -416,7 +416,7 @@ function CompactProgressBar({
   )
 }
 
-async function fetchMetricas(mes: number, anio: number) {
+async function fetchMetricas(mes: number, anio: number, departamento: string = 'all') {
   const supabase = createClient()
   
   // Calculate the date range for the selected month
@@ -437,9 +437,19 @@ async function fetchMetricas(mes: number, anio: number) {
       `)
       .eq('mes', mes)
       .eq('anio', anio),
-    supabase.from('colaboradores').select('id, nombre, apellido, email'),
+    supabase.from('colaboradores').select('id, nombre, apellido, email, departamento_id'),
     supabase.from('clientes').select('id, nombre_del_negocio'),
   ])
+
+  // Build set of colaborador ids whose departamento matches the selected one
+  const allowedColaboradorIds = new Set<string>()
+  if (departamento !== 'all') {
+    ;(colaboradoresRes.data || []).forEach((c: { id: string; departamento_id?: string | null }) => {
+      if (c.departamento_id === departamento) {
+        allowedColaboradorIds.add(c.id)
+      }
+    })
+  }
   
   // Fetch entries in multiple pages to bypass Supabase 1000 row limit
   const allEntries: { colaborador_id: string; cliente_id: string; duracion_seg: number }[] = []
@@ -560,6 +570,13 @@ async function fetchMetricas(mes: number, anio: number) {
     }
   })
   
+  // Apply departamento filter: keep only metricas of colaboradores in the selected departamento.
+  if (departamento !== 'all') {
+    return metricasWithHours.filter(
+      m => allowedColaboradorIds.has(m.colaborador_id)
+    ) as MetricaColaborador[]
+  }
+
   return metricasWithHours as MetricaColaborador[]
 }
 
@@ -568,6 +585,7 @@ interface HoursControlPanelProps {
   year: number
   colaboradorId?: string
   clienteId?: string
+  departamento?: string
 }
 
 export function HoursControlPanel({ 
@@ -575,14 +593,15 @@ export function HoursControlPanel({
   year: selectedYear,
   colaboradorId,
   clienteId,
+  departamento = 'all',
 }: HoursControlPanelProps) {
   // Use props for filtering instead of local state
   const filterColaborador = colaboradorId || 'all'
   const filterCliente = clienteId || 'all'
 
   const { data: metricas, isLoading, error } = useSWR(
-    `metricas-${selectedMonth}-${selectedYear}`,
-    () => fetchMetricas(selectedMonth, selectedYear)
+    `metricas-${selectedMonth}-${selectedYear}-${departamento}`,
+    () => fetchMetricas(selectedMonth, selectedYear, departamento)
   )
 
   // Get unique colaboradores and clientes for filters
