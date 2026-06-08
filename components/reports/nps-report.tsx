@@ -260,7 +260,7 @@ export function NPSReport({
           c.unidades_negocio?.length > 0 &&
           c.unidades_negocio.every(u => aureliaUnidades.includes(u))
         )
-      } else if (unidadFilter === 'Consultoria') {
+      } else if (unidadFilter === 'Consultoría') {
         // Para Consultoría: solo clientes que tengan ÚNICAMENTE Consultoría
         filteredClients = filteredClients.filter(c => 
           c.unidades_negocio?.length === 1 &&

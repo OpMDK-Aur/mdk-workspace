@@ -160,7 +160,7 @@ export default function NPSPage() {
             <SelectItem value="all">Todas las unidades</SelectItem>
             <SelectItem value="MDK">MDK</SelectItem>
             <SelectItem value="Aurelia">Aurelia</SelectItem>
-            <SelectItem value="Consultoria">Consultoria</SelectItem>
+            <SelectItem value="Consultoría">Consultoría</SelectItem>
           </SelectContent>
         </Select>
 
