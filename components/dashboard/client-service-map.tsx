@@ -115,7 +115,15 @@ const HitoRow = memo(({
                 <TooltipContent>Ver en Drive</TooltipContent>
               </Tooltip>
             )}
-            {!primaryInstance.tarea_id && primaryInstance.estado !== 'listo' && currentUserId && (
+            {primaryInstance.tarea_id && primaryInstance.estado !== 'listo' && (
+              <Tooltip>
+                <TooltipTrigger>
+                  <Badge variant="outline" className="text-[10px] h-5 bg-blue-500/10 text-blue-500 border-blue-500/30">Tarea</Badge>
+                </TooltipTrigger>
+                <TooltipContent>Completar también resuelve la tarea vinculada</TooltipContent>
+              </Tooltip>
+            )}
+            {primaryInstance.estado !== 'listo' && currentUserId && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-emerald-500" onClick={() => onOpenCompletion(primaryInstance)}>
@@ -123,14 +131,6 @@ const HitoRow = memo(({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Marcar como completado</TooltipContent>
-              </Tooltip>
-            )}
-            {primaryInstance.tarea_id && primaryInstance.estado !== 'listo' && (
-              <Tooltip>
-                <TooltipTrigger>
-                  <Badge variant="outline" className="text-[10px] h-5 bg-blue-500/10 text-blue-500 border-blue-500/30">Tarea</Badge>
-                </TooltipTrigger>
-                <TooltipContent>Este hito se completa resolviendo la tarea vinculada</TooltipContent>
               </Tooltip>
             )}
           </div>
