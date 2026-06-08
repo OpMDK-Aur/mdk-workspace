@@ -485,6 +485,7 @@ export default function ControlHorasPage() {
             year={selectedYear}
             colaboradorId={selectedColaborador !== 'all' ? selectedColaborador : undefined}
             clienteId={selectedCliente !== 'all' ? selectedCliente : undefined}
+            unidad={unidadFilter}
           />
         </TabsContent>
         

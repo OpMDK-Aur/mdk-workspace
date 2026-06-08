@@ -416,7 +416,7 @@ function CompactProgressBar({
   )
 }
 
-async function fetchMetricas(mes: number, anio: number) {
+async function fetchMetricas(mes: number, anio: number, unidad: string = 'all') {
   const supabase = createClient()
   
   // Calculate the date range for the selected month
@@ -438,8 +438,18 @@ async function fetchMetricas(mes: number, anio: number) {
       .eq('mes', mes)
       .eq('anio', anio),
     supabase.from('colaboradores').select('id, nombre, apellido, email'),
-    supabase.from('clientes').select('id, nombre_del_negocio'),
+    supabase.from('clientes').select('id, nombre_del_negocio, unidades_negocio'),
   ])
+
+  // Build set of cliente ids that belong to the selected unidad (for filtering)
+  const allowedClienteIds = new Set<string>()
+  if (unidad !== 'all') {
+    ;(clientesRes.data || []).forEach((c: { id: string; unidades_negocio?: string[] | null }) => {
+      if ((c.unidades_negocio || []).includes(unidad)) {
+        allowedClienteIds.add(c.id)
+      }
+    })
+  }
   
   // Fetch entries in multiple pages to bypass Supabase 1000 row limit
   const allEntries: { colaborador_id: string; cliente_id: string; duracion_seg: number }[] = []
@@ -560,6 +570,14 @@ async function fetchMetricas(mes: number, anio: number) {
     }
   })
   
+  // Apply unidad de negocio filter: keep only clients belonging to the selected unidad.
+  // Entries without a real client ('sin-cliente') are excluded when a unidad is selected.
+  if (unidad !== 'all') {
+    return metricasWithHours.filter(
+      m => m.cliente_id !== 'sin-cliente' && allowedClienteIds.has(m.cliente_id)
+    ) as MetricaColaborador[]
+  }
+
   return metricasWithHours as MetricaColaborador[]
 }
 
@@ -568,6 +586,7 @@ interface HoursControlPanelProps {
   year: number
   colaboradorId?: string
   clienteId?: string
+  unidad?: string
 }
 
 export function HoursControlPanel({ 
@@ -575,14 +594,15 @@ export function HoursControlPanel({
   year: selectedYear,
   colaboradorId,
   clienteId,
+  unidad = 'all',
 }: HoursControlPanelProps) {
   // Use props for filtering instead of local state
   const filterColaborador = colaboradorId || 'all'
   const filterCliente = clienteId || 'all'
 
   const { data: metricas, isLoading, error } = useSWR(
-    `metricas-${selectedMonth}-${selectedYear}`,
-    () => fetchMetricas(selectedMonth, selectedYear)
+    `metricas-${selectedMonth}-${selectedYear}-${unidad}`,
+    () => fetchMetricas(selectedMonth, selectedYear, unidad)
   )
 
   // Get unique colaboradores and clientes for filters
