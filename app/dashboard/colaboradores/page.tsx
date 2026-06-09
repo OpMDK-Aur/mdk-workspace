@@ -751,7 +751,7 @@ export default function ColaboradoresPage() {
       anio: selectedYear,
     }
 
-    setMetricas([...metricas, newMetrica])
+    setMetricas([newMetrica, ...metricas])
     setEditedRows(new Set([...editedRows, newMetrica.id]))
   }
 
