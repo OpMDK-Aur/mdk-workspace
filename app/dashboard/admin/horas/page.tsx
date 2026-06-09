@@ -93,6 +93,8 @@ async function fetchControlHorasData() {
   }
 }
 
+const UNIDADES = ['MDK', 'Aurelia', 'Consultoría'] as const
+
 export default function ControlHorasPage() {
   const currentDate = new Date()
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1)
@@ -103,6 +105,7 @@ export default function ControlHorasPage() {
   const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
   const [departamentoFilter, setDepartamentoFilter] = useState<string>('all')
+  const [unidadTab, setUnidadTab] = useState<'all' | (typeof UNIDADES)[number]>('all')
 
   // Fetch data with SWR
   const { data, isLoading, error } = useSWR('control-horas-data', fetchControlHorasData)
@@ -127,6 +130,12 @@ export default function ControlHorasPage() {
 
     // Set of active colaborador ids (users is already filtered to active only)
     const activeColaboradorIds = new Set(users.map((u) => u.id))
+
+    // Build a lookup of cliente id -> its unidades de negocio for the unidad filter
+    const clienteUnidadesMap: Record<string, string[]> = {}
+    clients.forEach((c) => {
+      clienteUnidadesMap[c.id] = (c.unidades_negocio as string[] | undefined) || []
+    })
 
     return allEntries.filter((entry) => {
       const entryDate = new Date(entry.iniciado_en)
@@ -159,10 +168,17 @@ export default function ControlHorasPage() {
           return false
         }
       }
+
+      // Filter by selected unidad de negocio (matches any of the client's unidades)
+      if (unidadTab !== 'all') {
+        if (!entry.cliente_id || !clienteUnidadesMap[entry.cliente_id]?.includes(unidadTab)) {
+          return false
+        }
+      }
       
       return true
     })
-  }, [allEntries, users, selectedMonth, selectedYear, selectedColaborador, selectedCliente, departamentoFilter])
+  }, [allEntries, users, clients, selectedMonth, selectedYear, selectedColaborador, selectedCliente, departamentoFilter, unidadTab])
 
   // Calculate client summaries from filtered entries
   const clientSummaries: ClientSummary[] = useMemo(() => {
@@ -264,9 +280,6 @@ export default function ControlHorasPage() {
   }, [filteredEntries])
 
   // Per-unidad de negocio summary (uses the client's PRIMARY unidad = first in array)
-  const UNIDADES = ['MDK', 'Aurelia', 'Consultoría'] as const
-  const [unidadTab, setUnidadTab] = useState<'all' | (typeof UNIDADES)[number]>('all')
-
   const unidadSummary = useMemo(() => {
     const clientPrimaryUnidad: Record<string, string | undefined> = {}
     clients.forEach((c) => {
