@@ -278,23 +278,33 @@ export default function ColaboradoresPage() {
         const processedMetricas = mets.map(m => {
           const colaborador = m.colaborador as Colaborador
           const cliente = m.cliente as Cliente
-          const valorHora = Number(m.valor_hora) || 150000
+          // Prefer the values stored in Supabase. Only fall back to the
+          // calculated values when the stored column is empty (0/null).
+          const storedValorHora = Number(m.valor_hora) || 0
+          const valorHora = storedValorHora > 0 ? storedValorHora : 150000
           const feeMdk = cliente?.fee_mdk || 0
-          const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHora, colaborador)
+          const calculatedHorasTeoricas = calcularHorasTeoricas(feeMdk, valorHora, colaborador)
           const acumuladoReal = hoursMap.get(`${m.colaborador_id}-${m.cliente_id}`) || 0
+
+          const storedHorasTeoricas = Number(m.horas_teoricas_cliente) || 0
           const storedObjetivo = Number(m.horas_objetivo) || 0
           const storedMinimo = Number(m.minimo_no_negociable_horas) || 0
-          const finalObjetivo = storedObjetivo > 0 ? storedObjetivo : horasTeoricas
-          const finalMinimo = storedMinimo > 0 ? storedMinimo : horasTeoricas / 2
-          
+          const storedAcumulado = Number(m.acumulado_mes_asignado) || 0
+
+          const finalHorasTeoricas = storedHorasTeoricas > 0 ? storedHorasTeoricas : calculatedHorasTeoricas
+          const finalObjetivo = storedObjetivo > 0 ? storedObjetivo : finalHorasTeoricas
+          const finalMinimo = storedMinimo > 0 ? storedMinimo : finalHorasTeoricas / 2
+          // acumulado_mes_asignado: prefer the live tracked hours; fall back to the stored value.
+          const finalAcumulado = acumuladoReal > 0 ? acumuladoReal : storedAcumulado
+
           return {
             ...m,
             colaborador,
             cliente,
-            horas_teoricas_cliente: horasTeoricas,
+            horas_teoricas_cliente: finalHorasTeoricas,
             minimo_no_negociable_horas: finalMinimo,
             horas_objetivo: finalObjetivo,
-            acumulado_mes_asignado: acumuladoReal,
+            acumulado_mes_asignado: finalAcumulado,
             valor_hora: valorHora,
           }
         })
@@ -446,7 +456,7 @@ export default function ColaboradoresPage() {
     setCreatingUser(false)
   }
 
-  // ─── EDIT USER HANDLER ────────────────────────────────────────────────────────
+  // ─── EDIT USER HANDLER ────────────────��───────────────────────────────────────
 
   const openEditDialog = (colaborador: Colaborador) => {
     setEditingUser(colaborador)
