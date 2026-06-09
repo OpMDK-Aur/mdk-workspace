@@ -78,18 +78,30 @@ async function fetchControlHorasData() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('No user found')
   
-  const [clientsRes, entriesRes, profilesRes, departamentosRes] = await Promise.all([
+  const [clientsRes, entriesRes, profilesRes, departamentosRes, clientesUnidadesRes] = await Promise.all([
     supabase.from('clientes').select('*').order('nombre_del_negocio'),
     supabase.from('entradas_de_tiempo').select('*').order('iniciado_en', { ascending: false }),
     supabase.from('colaboradores').select('id, nombre, apellido, departamento_id, activo, departamentos(id, nombre)').order('nombre'),
     supabase.from('departamentos').select('id, nombre').order('nombre'),
+    supabase.from('clientes_unidades_de_negocio').select('cliente_id, unidad_de_negocio(nombre)'),
   ])
+
+  // Build cliente_id -> [unidad nombre] map from the relational table
+  const clienteUnidadesMap: Record<string, string[]> = {}
+  ;(clientesUnidadesRes.data || []).forEach((row: any) => {
+    const cid = row.cliente_id as string
+    const nombre = (row.unidad_de_negocio as { nombre?: string } | null)?.nombre
+    if (!cid || !nombre) return
+    if (!clienteUnidadesMap[cid]) clienteUnidadesMap[cid] = []
+    clienteUnidadesMap[cid].push(nombre)
+  })
 
   return {
     clients: (clientsRes.data || []) as Client[],
     entries: (entriesRes.data || []) as TimeEntry[],
     users: (profilesRes.data || []) as User[],
     departamentos: (departamentosRes.data || []) as { id: string; nombre: string }[],
+    clienteUnidadesMap,
   }
 }
 
@@ -116,6 +128,7 @@ export default function ControlHorasPage() {
   // Treat null/undefined activo as active (default); only exclude explicit false.
   const users = (data?.users || []).filter((u) => u.activo !== false)
   const departamentos = data?.departamentos || []
+  const clienteUnidadesMap = data?.clienteUnidadesMap || {}
 
   // Filter entries by month/year and selected collaborador/cliente
   const filteredEntries = useMemo(() => {
@@ -130,12 +143,6 @@ export default function ControlHorasPage() {
 
     // Set of active colaborador ids (users is already filtered to active only)
     const activeColaboradorIds = new Set(users.map((u) => u.id))
-
-    // Build a lookup of cliente id -> its unidades de negocio for the unidad filter
-    const clienteUnidadesMap: Record<string, string[]> = {}
-    clients.forEach((c) => {
-      clienteUnidadesMap[c.id] = (c.unidades_negocio as string[] | undefined) || []
-    })
 
     return allEntries.filter((entry) => {
       const entryDate = new Date(entry.iniciado_en)
@@ -178,7 +185,7 @@ export default function ControlHorasPage() {
       
       return true
     })
-  }, [allEntries, users, clients, selectedMonth, selectedYear, selectedColaborador, selectedCliente, departamentoFilter, unidadTab])
+  }, [allEntries, users, clients, clienteUnidadesMap, selectedMonth, selectedYear, selectedColaborador, selectedCliente, departamentoFilter, unidadTab])
 
   // Calculate client summaries from filtered entries
   const clientSummaries: ClientSummary[] = useMemo(() => {
@@ -279,40 +286,19 @@ export default function ControlHorasPage() {
     }
   }, [filteredEntries])
 
-  // Per-unidad de negocio summary (uses the client's PRIMARY unidad = first in array)
-  const unidadSummary = useMemo(() => {
-    const clientPrimaryUnidad: Record<string, string | undefined> = {}
-    clients.forEach((c) => {
-      clientPrimaryUnidad[c.id] = (c.unidades_negocio as string[] | undefined)?.[0]
-    })
+  // Summary cards reflect the currently filtered entries (which already respect
+  // the selected unidad de negocio via the global filter).
+  const currentSummary = useMemo(() => {
+    const total = filteredEntries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
+    const billable = filteredEntries
+      .filter((e) => e.facturable)
+      .reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
+    return { total, billable, pct: total > 0 ? (billable / total) * 100 : 0 }
+  }, [filteredEntries])
 
-    const compute = (predicate: (clienteId: string | null) => boolean) => {
-      const entries = filteredEntries.filter((e) => predicate(e.cliente_id))
-      const total = entries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
-      const billable = entries
-        .filter((e) => e.facturable)
-        .reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
-      return { total, billable, pct: total > 0 ? (billable / total) * 100 : 0 }
-    }
-
-    return {
-      all: compute(() => true),
-      MDK: compute((id) => !!id && clientPrimaryUnidad[id] === 'MDK'),
-      Aurelia: compute((id) => !!id && clientPrimaryUnidad[id] === 'Aurelia'),
-      'Consultoría': compute((id) => !!id && clientPrimaryUnidad[id] === 'Consultoría'),
-    }
-  }, [filteredEntries, clients])
-
-  const currentSummary = unidadSummary[unidadTab]
-
-  // Clients grouped by the active unidad tab, with the breakdown of involved collaborators.
-  // filteredEntries already respects month / colaborador / cliente / departamento filters.
+  // Clients grouped for the "Por Cliente" view, with the breakdown of involved collaborators.
+  // filteredEntries already respects month / colaborador / cliente / departamento / unidad filters.
   const clientesPorUnidad = useMemo(() => {
-    const clientPrimaryUnidad: Record<string, string | undefined> = {}
-    clients.forEach((c) => {
-      clientPrimaryUnidad[c.id] = (c.unidades_negocio as string[] | undefined)?.[0]
-    })
-
     const userName = (id: string) => {
       const u = users.find((x) => x.id === id)
       return u ? `${u.nombre}${u.apellido ? ` ${u.apellido}` : ''}` : 'Desconocido'
@@ -328,8 +314,6 @@ export default function ControlHorasPage() {
     filteredEntries.forEach((entry) => {
       const cid = entry.cliente_id
       if (!cid || !entry.colaborador_id) return
-      // Filter by active unidad tab (using the client's PRIMARY unidad)
-      if (unidadTab !== 'all' && clientPrimaryUnidad[cid] !== unidadTab) return
 
       if (!map[cid]) map[cid] = { hours: 0, colaboradores: {} }
       const hours = (entry.duracion_seg || 0) / 3600
@@ -352,7 +336,7 @@ export default function ControlHorasPage() {
           .sort((a, b) => b.hours - a.hours),
       }))
       .sort((a, b) => b.hours - a.hours)
-  }, [clients, users, filteredEntries, unidadTab])
+  }, [clients, users, filteredEntries])
 
   // Calculate daily hours for the chart (with optional collaborator filter)
   const dailyHours = useMemo(() => {
