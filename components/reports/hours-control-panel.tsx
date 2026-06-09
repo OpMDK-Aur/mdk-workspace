@@ -437,7 +437,7 @@ async function fetchMetricas(mes: number, anio: number, departamento: string = '
       `)
       .eq('mes', mes)
       .eq('anio', anio),
-    supabase.from('colaboradores').select('id, nombre, apellido, email, departamento_id'),
+    supabase.from('colaboradores').select('id, nombre, apellido, email, departamento_id, activo'),
     supabase.from('clientes').select('id, nombre_del_negocio'),
   ])
 
@@ -450,6 +450,15 @@ async function fetchMetricas(mes: number, anio: number, departamento: string = '
       }
     })
   }
+
+  // Build set of inactive colaborador ids so they can be excluded from the panel
+  const inactiveColaboradorIds = new Set<string>()
+  ;(colaboradoresRes.data || []).forEach((c: { id: string; activo?: boolean | null }) => {
+    // Treat null/undefined as active (default). Only exclude explicit false.
+    if (c.activo === false) {
+      inactiveColaboradorIds.add(c.id)
+    }
+  })
   
   // Fetch entries in multiple pages to bypass Supabase 1000 row limit
   const allEntries: { colaborador_id: string; cliente_id: string; duracion_seg: number }[] = []
@@ -571,13 +580,16 @@ async function fetchMetricas(mes: number, anio: number, departamento: string = '
   })
   
   // Apply departamento filter: keep only metricas of colaboradores in the selected departamento.
+  // Always exclude inactive colaboradores from the panel.
   if (departamento !== 'all') {
     return metricasWithHours.filter(
-      m => allowedColaboradorIds.has(m.colaborador_id)
+      m => allowedColaboradorIds.has(m.colaborador_id) && !inactiveColaboradorIds.has(m.colaborador_id)
     ) as MetricaColaborador[]
   }
 
-  return metricasWithHours as MetricaColaborador[]
+  return metricasWithHours.filter(
+    m => !inactiveColaboradorIds.has(m.colaborador_id)
+  ) as MetricaColaborador[]
 }
 
 interface HoursControlPanelProps {

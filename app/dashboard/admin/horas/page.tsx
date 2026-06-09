@@ -56,6 +56,8 @@ interface User {
   id: string
   nombre: string
   apellido?: string | null
+  departamento_id?: string | null
+  activo?: boolean | null
 }
 
 // Generate consistent color from string
@@ -79,7 +81,7 @@ async function fetchControlHorasData() {
   const [clientsRes, entriesRes, profilesRes, departamentosRes] = await Promise.all([
     supabase.from('clientes').select('*').order('nombre_del_negocio'),
     supabase.from('entradas_de_tiempo').select('*').order('iniciado_en', { ascending: false }),
-    supabase.from('colaboradores').select('id, nombre, apellido, departamento_id, departamentos(id, nombre)').order('nombre'),
+    supabase.from('colaboradores').select('id, nombre, apellido, departamento_id, activo, departamentos(id, nombre)').order('nombre'),
     supabase.from('departamentos').select('id, nombre').order('nombre'),
   ])
 
@@ -107,7 +109,9 @@ export default function ControlHorasPage() {
 
   const clients = data?.clients || []
   const allEntries = data?.entries || []
-  const users = data?.users || []
+  // Exclude inactive colaboradores everywhere (filters, summaries, matrix).
+  // Treat null/undefined activo as active (default); only exclude explicit false.
+  const users = (data?.users || []).filter((u) => u.activo !== false)
   const departamentos = data?.departamentos || []
 
   // Filter entries by month/year and selected collaborador/cliente
@@ -121,6 +125,9 @@ export default function ControlHorasPage() {
       colaboradorDeptMap[u.id] = u.departamento_id ?? null
     })
 
+    // Set of active colaborador ids (users is already filtered to active only)
+    const activeColaboradorIds = new Set(users.map((u) => u.id))
+
     return allEntries.filter((entry) => {
       const entryDate = new Date(entry.iniciado_en)
       
@@ -130,6 +137,11 @@ export default function ControlHorasPage() {
         end: monthEnd,
       })
       if (!isInRange) return false
+
+      // Exclude entries from inactive colaboradores
+      if (entry.colaborador_id && !activeColaboradorIds.has(entry.colaborador_id)) {
+        return false
+      }
       
       // Filter by selected colaborador (global filter)
       if (selectedColaborador !== 'all' && entry.colaborador_id !== selectedColaborador) {
@@ -143,7 +155,7 @@ export default function ControlHorasPage() {
 
       // Filter by selected departamento (matches the colaborador's departamento)
       if (departamentoFilter !== 'all') {
-        if (colaboradorDeptMap[entry.colaborador_id] !== departamentoFilter) {
+        if (!entry.colaborador_id || colaboradorDeptMap[entry.colaborador_id] !== departamentoFilter) {
           return false
         }
       }
@@ -515,17 +527,23 @@ export default function ControlHorasPage() {
             ))}
           </SelectContent>
         </Select>
-      </div>
 
-      {/* Summary by Unidad de Negocio */}
-      <Tabs value={unidadTab} onValueChange={(v) => setUnidadTab(v as typeof unidadTab)} className="mb-4">
-        <TabsList>
-          <TabsTrigger value="all">Todas</TabsTrigger>
-          <TabsTrigger value="MDK">MDK</TabsTrigger>
-          <TabsTrigger value="Aurelia">Aurelia</TabsTrigger>
-          <TabsTrigger value="Consultoría">Consultoría</TabsTrigger>
-        </TabsList>
-      </Tabs>
+        {/* Unidad de Negocio Filter */}
+        <Select value={unidadTab} onValueChange={(v) => setUnidadTab(v as typeof unidadTab)}>
+          <SelectTrigger className="w-[180px]">
+            <Building2 className="h-4 w-4 mr-2" />
+            <SelectValue placeholder="Unidad de negocio" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas las unidades</SelectItem>
+            {UNIDADES.map((unidad) => (
+              <SelectItem key={unidad} value={unidad}>
+                {unidad}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
