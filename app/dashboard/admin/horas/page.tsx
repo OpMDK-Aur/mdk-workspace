@@ -60,6 +60,8 @@ interface User {
   activo?: boolean | null
 }
 
+const UNIDADES = ['MDK', 'Aurelia', 'Consultoría'] as const
+
 // Generate consistent color from string
 function stringToColor(str: string): string {
   const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
@@ -104,8 +106,6 @@ async function fetchControlHorasData() {
     clienteUnidadesMap,
   }
 }
-
-const UNIDADES = ['MDK', 'Aurelia', 'Consultoría'] as const
 
 export default function ControlHorasPage() {
   const currentDate = new Date()
@@ -185,7 +185,7 @@ export default function ControlHorasPage() {
       
       return true
     })
-  }, [allEntries, users, clients, clienteUnidadesMap, selectedMonth, selectedYear, selectedColaborador, selectedCliente, departamentoFilter, unidadTab])
+  }, [allEntries, users, clienteUnidadesMap, selectedMonth, selectedYear, selectedColaborador, selectedCliente, departamentoFilter, unidadTab])
 
   // Calculate client summaries from filtered entries
   const clientSummaries: ClientSummary[] = useMemo(() => {
