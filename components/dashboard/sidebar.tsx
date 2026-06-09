@@ -51,6 +51,7 @@ import {
   Map,
   Smile,
   FileText,
+  Receipt,
   Megaphone,
   AppWindow,
   Database,
@@ -106,7 +107,8 @@ const adminItems: NavItem[] = [
   { id: 'time-settings', name: 'Control de horas', href: '/dashboard/admin/horas', icon: ClockCheck },
   { id: 'service-map', name: 'Mapa de servicio', href: '/dashboard/admin/mapa-servicio', icon: Map },
   { id: 'nps', name: 'NPS', href: '/dashboard/admin/nps', icon: Smile },
-  { id: 'facturacion', name: 'Facturacion', href: '/dashboard/saldos', icon: FileText },
+  { id: 'saldos', name: 'Saldos', href: '/dashboard/saldos', icon: FileText },
+  { id: 'facturacion', name: 'Facturación', href: '/dashboard/facturacion', icon: Receipt },
   { id: 'colaboradores', name: 'Colaboradores', href: '/dashboard/colaboradores', icon: Users },
 ]
 
