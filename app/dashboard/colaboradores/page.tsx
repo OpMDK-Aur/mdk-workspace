@@ -939,9 +939,14 @@ export default function ColaboradoresPage() {
           anio: selectedYear,
         }
 
+        // Upsert by primary key (id). Every row — new ones from handleAddRow and
+        // existing ones from the fetch — always carries an id, so resolving the
+        // conflict on the PK reliably updates existing rows and inserts new ones.
+        // (Using onConflict on the composite key would require a matching UNIQUE
+        // constraint in the DB and silently fails to save when it's missing.)
         const { error } = await supabase
           .from('metricas_colaborador')
-          .upsert(payload, { onConflict: 'colaborador_id,cliente_id,mes,anio' })
+          .upsert(payload, { onConflict: 'id' })
 
         if (error) {
           toast.error(`Error al guardar: ${error.message}`)
