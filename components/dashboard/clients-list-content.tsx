@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, memo } from 'react'
 import Link from 'next/link'
 import type { Client, Profile, ClientPlan, UnidadNegocio, SemaforoStatus } from '@/lib/types'
+import { MORA_OPTIONS } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -215,6 +216,17 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       setSortBy(columnId)
       setSortOrder('asc')
     }
+  }
+
+  // Editar el estado de mora de un cliente (lista y tarjetas)
+  const [savingMoraId, setSavingMoraId] = useState<string | null>(null)
+  const updateMora = async (clientId: string, value: string) => {
+    const newMora = value === 'sin_mora' ? null : value
+    setSavingMoraId(clientId)
+    // Optimistic update
+    setLocalClients(prev => prev.map(c => (c.id === clientId ? { ...c, mora: newMora } : c)))
+    await supabase.from('clientes').update({ mora: newMora }).eq('id', clientId)
+    setSavingMoraId(null)
   }
 
   const allColumns = [
@@ -1492,6 +1504,34 @@ const applyFilter = (filter: SavedFilter) => {
                               <span>{client.etapa.replace(/_/g, ' ')}</span>
                             </div>
                           )}
+                          {visibleColumns.includes('mora') && (
+                            <div
+                              className="flex items-center gap-2"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                            >
+                              <span className="text-muted-foreground shrink-0">Mora:</span>
+                              <Select
+                                value={client.mora || 'sin_mora'}
+                                onValueChange={(v) => updateMora(client.id, v)}
+                              >
+                                <SelectTrigger
+                                  className={cn(
+                                    'h-7 flex-1 text-xs',
+                                    client.mora && 'border-destructive/50 text-destructive'
+                                  )}
+                                >
+                                  <SelectValue placeholder="Sin mora" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {MORA_OPTIONS.map(opt => (
+                                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                                      {opt.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
                           {visibleColumns.includes('fecha_activacion') && client.fecha_activacion && (
                             <div>
                               <span className="text-muted-foreground">Activacion:</span>{' '}
@@ -1707,11 +1747,26 @@ const applyFilter = (filter: SavedFilter) => {
                         )}
                         {visibleColumns.includes('mora') && (
                           <TableCell>
-                            {client.mora ? (
-                              <Badge variant="destructive" className="text-xs">{client.mora}</Badge>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">-</span>
-                            )}
+                            <Select
+                              value={client.mora || 'sin_mora'}
+                              onValueChange={(v) => updateMora(client.id, v)}
+                            >
+                              <SelectTrigger
+                                className={cn(
+                                  'h-7 w-full text-xs',
+                                  client.mora && 'border-destructive/50 text-destructive'
+                                )}
+                              >
+                                <SelectValue placeholder="Sin mora" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {MORA_OPTIONS.map(opt => (
+                                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                                    {opt.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </TableCell>
                         )}
                         {visibleColumns.includes('semaforos') && (

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import type { Client, ClientEtapa, ServicioContratado, ClientPlan, UnidadNegocio, SemaforoStatus } from '@/lib/types'
+import { MORA_OPTIONS } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -172,6 +173,10 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
   // Etapa state
   const [etapa, setEtapa] = useState<ClientEtapa | null>(client.etapa || null)
   const [savingEtapa, setSavingEtapa] = useState(false)
+
+  // Mora state
+  const [mora, setMora] = useState<string | null>(client.mora || null)
+  const [savingMora, setSavingMora] = useState(false)
   
   // Semaforo por unidad state
   const [semaforoUnidades, setSemaforoUnidades] = useState<Record<string, SemaforoStatus>>(
@@ -335,6 +340,19 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
       .update({ etapa: newEtapa })
       .eq('id', client.id)
     setSavingEtapa(false)
+  }
+
+  // Save mora
+  const saveMora = async (value: string) => {
+    setSavingMora(true)
+    // 'sin_mora' representa la ausencia de mora -> guardamos null
+    const newMora = value === 'sin_mora' ? null : value
+    setMora(newMora)
+    await supabase
+      .from('clientes')
+      .update({ mora: newMora })
+      .eq('id', client.id)
+    setSavingMora(false)
   }
   
   // Save semaforo unidad
@@ -902,6 +920,34 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
                   <div className="flex flex-col">
                     <span>{opt.label}</span>
                   </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </CardContent>
+      </Card>
+
+      {/* Mora */}
+      <Card className={cn(mora && "border-red-500/50 bg-red-500/10")}>
+        <CardHeader className="pb-3">
+          <CardTitle className={cn(
+            "text-sm font-medium flex items-center gap-2",
+            mora && "text-red-500"
+          )}>
+            <Circle className={cn("h-4 w-4", mora ? "text-red-500" : "text-primary")} />
+            Mora
+            {savingMora && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Select value={mora || 'sin_mora'} onValueChange={saveMora}>
+            <SelectTrigger className={cn("h-9", mora && "border-red-500/50 text-red-500")}>
+              <SelectValue placeholder="Seleccionar estado de mora" />
+            </SelectTrigger>
+            <SelectContent>
+              {MORA_OPTIONS.map(opt => (
+                <SelectItem key={opt.value} value={opt.value} className={cn(opt.value !== 'sin_mora' && "text-red-500")}>
+                  {opt.label}
                 </SelectItem>
               ))}
             </SelectContent>
