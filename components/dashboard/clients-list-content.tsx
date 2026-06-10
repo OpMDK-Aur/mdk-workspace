@@ -595,8 +595,14 @@ const applyFilter = (filter: SavedFilter) => {
     return 0
   })
 
-  const projectManagers = profiles.filter(p => p.role === 'project_manager' || p.role === 'direccion')
-  const accountManagers = profiles.filter(p => p.role === 'account_manager' || p.role === 'direccion')
+  const projectManagers = profiles.filter(p => {
+    const puesto = (p.puesto || '').toLowerCase()
+    return puesto.includes('project manager') || puesto === 'pm' || p.role === 'project_manager' || p.role === 'direccion'
+  })
+  const accountManagers = profiles.filter(p => {
+    const puesto = (p.puesto || '').toLowerCase()
+    return puesto.includes('account manager') || puesto === 'am' || p.role === 'account_manager' || p.role === 'direccion'
+  })
 
   // Calculate totals
   const totalFeeMdk = filteredClients.reduce((sum, c) => sum + (c.fee_mdk || 0), 0)

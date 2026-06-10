@@ -17,7 +17,7 @@ export default async function ClientsPage() {
   // Load all colaboradores for manager dropdowns
   const { data: colaboradores } = await supabase
     .from('colaboradores')
-    .select('id, nombre, apellido, rol_id, avatar_url, email, roles(nombre)')
+    .select('id, nombre, apellido, rol_id, puesto, avatar_url, email, roles(nombre)')
     .order('nombre')
 
   // Map colaboradores to profiles with full_name and role
@@ -28,6 +28,7 @@ export default async function ClientsPage() {
     role: (c.roles as { nombre: string } | null)?.nombre?.toLowerCase().replace(/ /g, '_') || '',
     avatar_url: c.avatar_url,
     rol_id: c.rol_id,
+    puesto: c.puesto,
   }))
 
   // Get current user colaborador
