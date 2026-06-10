@@ -148,6 +148,7 @@ export default function ColaboradoresPage() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [editedRows, setEditedRows] = useState<Set<string>>(new Set())
   const [filterColaborador, setFilterColaborador] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<'activos' | 'inactivos'>('activos')
   const [valorHoraGlobal, setValorHoraGlobal] = useState<number>(150000)
   const [isImporting, setIsImporting] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
@@ -187,6 +188,11 @@ export default function ColaboradoresPage() {
   const [savingFee, setSavingFee] = useState(false)
 
   const supabase = createClient()
+
+  // Reset specific colaborador filter when switching status to avoid empty selections
+  useEffect(() => {
+    setFilterColaborador('all')
+  }, [statusFilter])
 
   // Check access - only Master role can see this page
   useEffect(() => {
@@ -446,7 +452,7 @@ export default function ColaboradoresPage() {
     setCreatingUser(false)
   }
 
-  // ─── EDIT USER HANDLER ────────────────────────────────────────────────────────
+  // ─── EDIT USER HANDLER ────────────────��───────────────────────────────────────
 
   const openEditDialog = (colaborador: Colaborador) => {
     setEditingUser(colaborador)
@@ -950,13 +956,27 @@ export default function ColaboradoresPage() {
     setIsSaving(false)
   }
 
-  // Filter metricas by colaborador
-  const filteredMetricas = filterColaborador === 'all' 
-    ? metricas 
-    : metricas.filter(m => m.colaborador_id === filterColaborador)
+  // Set of colaborador ids matching the current status filter (activos/inactivos)
+  const statusColaboradorIds = new Set(
+    colaboradores
+      .filter(c => (statusFilter === 'activos' ? c.activo : !c.activo))
+      .map(c => c.id)
+  )
 
-  // Filter only active colaboradores for permissions
-  const activeColaboradores = colaboradores.filter(c => c.activo)
+  // Filter metricas by status (activos/inactivos) and by selected colaborador
+  const filteredMetricas = metricas
+    .filter(m => statusColaboradorIds.has(m.colaborador_id))
+    .filter(m => filterColaborador === 'all' || m.colaborador_id === filterColaborador)
+
+  // Filter colaboradores for permissions tab by status
+  const activeColaboradores = colaboradores.filter(c =>
+    statusFilter === 'activos' ? c.activo : !c.activo
+  )
+
+  // Colaboradores available in the metricas dropdown, scoped to the status filter
+  const statusColaboradores = colaboradores.filter(c =>
+    statusFilter === 'activos' ? c.activo : !c.activo
+  )
 
   if (hasAccess === null) {
     return (
@@ -988,10 +1008,21 @@ export default function ColaboradoresPage() {
           <h1 className="text-2xl font-bold">Colaboradores</h1>
           <p className="text-muted-foreground">Gestiona permisos, roles y metricas de los colaboradores</p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)}>
-          <UserPlus className="h-4 w-4 mr-2" />
-          Crear usuario
-        </Button>
+        <div className="flex items-center gap-3">
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as 'activos' | 'inactivos')}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="activos">Activos</SelectItem>
+              <SelectItem value="inactivos">Inactivos</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button onClick={() => setShowCreateDialog(true)}>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Crear usuario
+          </Button>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -1216,7 +1247,7 @@ export default function ColaboradoresPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todos los colaboradores</SelectItem>
-                      {colaboradores.map(c => (
+                      {statusColaboradores.map(c => (
                         <SelectItem key={c.id} value={c.id}>
                           {c.nombre} {c.apellido || ''}
                         </SelectItem>
