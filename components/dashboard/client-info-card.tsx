@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import type { Client, ClientEtapa, ServicioContratado, ClientPlan, UnidadNegocio, SemaforoStatus } from '@/lib/types'
-import { MORA_OPTIONS } from '@/lib/types'
+import { MORA_OPTIONS, getMoraColor } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -177,6 +177,7 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
   // Mora state
   const [mora, setMora] = useState<string | null>(client.mora || null)
   const [savingMora, setSavingMora] = useState(false)
+  const moraColor = getMoraColor(mora || 'Al día')
   
   // Semaforo por unidad state
   const [semaforoUnidades, setSemaforoUnidades] = useState<Record<string, SemaforoStatus>>(
@@ -928,26 +929,29 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
       </Card>
 
       {/* Mora */}
-      <Card className={cn(mora && "border-red-500/50 bg-red-500/10")}>
+      <Card className={cn(moraColor.color)}>
         <CardHeader className="pb-3">
           <CardTitle className={cn(
             "text-sm font-medium flex items-center gap-2",
-            mora && "text-red-500"
+            moraColor.color.split(' ')[0]
           )}>
-            <Circle className={cn("h-4 w-4", mora ? "text-red-500" : "text-primary")} />
+            <span className={cn('h-3 w-3 rounded-full', moraColor.dot)} />
             Mora
             {savingMora && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <Select value={mora || 'Al día'} onValueChange={saveMora}>
-            <SelectTrigger className={cn("h-9", mora && "border-red-500/50 text-red-500")}>
+            <SelectTrigger className={cn("h-9 font-medium", moraColor.color)}>
               <SelectValue placeholder="Seleccionar estado de mora" />
             </SelectTrigger>
             <SelectContent>
               {MORA_OPTIONS.map(opt => (
-                <SelectItem key={opt.value} value={opt.value} className={cn(opt.value !== 'Al día' && "text-red-500")}>
-                  {opt.label}
+                <SelectItem key={opt.value} value={opt.value}>
+                  <span className="flex items-center gap-2">
+                    <span className={cn('h-2 w-2 rounded-full', opt.dot)} />
+                    {opt.label}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>

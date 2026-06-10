@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, memo } from 'react'
 import Link from 'next/link'
 import type { Client, Profile, ClientPlan, UnidadNegocio, SemaforoStatus } from '@/lib/types'
-import { MORA_OPTIONS } from '@/lib/types'
+import { MORA_OPTIONS, getMoraColor } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -1516,20 +1516,23 @@ const applyFilter = (filter: SavedFilter) => {
                               >
                                 <SelectTrigger
                                   className={cn(
-                                    'h-7 flex-1 text-xs',
-                                    client.mora && 'border-destructive/50 text-destructive'
+                                    'h-7 flex-1 text-xs font-medium',
+                                    getMoraColor(client.mora || 'Al día').color
                                   )}
                                 >
-                                <SelectValue placeholder="Al día" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {MORA_OPTIONS.map(opt => (
-                                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                                    {opt.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                                  <SelectValue placeholder="Al día" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {MORA_OPTIONS.map(opt => (
+                                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                                      <span className="flex items-center gap-2">
+                                        <span className={cn('h-2 w-2 rounded-full', opt.dot)} />
+                                        {opt.label}
+                                      </span>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                           </div>
                           )}
                           {visibleColumns.includes('fecha_activacion') && client.fecha_activacion && (
@@ -1753,22 +1756,25 @@ const applyFilter = (filter: SavedFilter) => {
                             >
                               <SelectTrigger
                                 className={cn(
-                                  'h-7 w-full text-xs',
-                                  client.mora && 'border-destructive/50 text-destructive'
+                                  'h-7 w-full text-xs font-medium',
+                                  getMoraColor(client.mora || 'Al día').color
                                 )}
                               >
-                              <SelectValue placeholder="Al día" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {MORA_OPTIONS.map(opt => (
-                                <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                                  {opt.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      )}
+                                <SelectValue placeholder="Al día" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {MORA_OPTIONS.map(opt => (
+                                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                                    <span className="flex items-center gap-2">
+                                      <span className={cn('h-2 w-2 rounded-full', opt.dot)} />
+                                      {opt.label}
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        )}
                         {visibleColumns.includes('semaforos') && (
                           <TableCell>
                             <div className="flex flex-wrap gap-1">

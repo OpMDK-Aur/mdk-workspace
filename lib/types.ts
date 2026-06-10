@@ -52,13 +52,22 @@ export type ClientEtapa = 'activacion' | '1_3_meses' | '4_6_meses' | '7_mas' | '
 
 // Opciones predefinidas para el estado de mora de un cliente.
 // Los valores deben coincidir exactamente con los valores en la BD (tabla clientes, columna mora)
+// `color` son clases de Tailwind para el texto/borde del badge.
 export const MORA_OPTIONS = [
-  { value: 'Al día', label: 'Al día' },
-  { value: '1 mes de mora', label: '1 mes de mora' },
-  { value: '2 meses de mora', label: '2 meses de mora' },
+  { value: 'Al día', label: 'Al día', color: 'text-emerald-600 border-emerald-500/50 bg-emerald-500/10', dot: 'bg-emerald-500' },
+  { value: '7 días de mora', label: '7 días de mora', color: 'text-violet-600 border-violet-500/50 bg-violet-500/10', dot: 'bg-violet-500' },
+  { value: '15 días de mora', label: '15 días de mora', color: 'text-purple-600 border-purple-500/50 bg-purple-500/10', dot: 'bg-purple-500' },
+  { value: '1 mes de mora', label: '1 mes de mora', color: 'text-amber-600 border-amber-500/50 bg-amber-500/10', dot: 'bg-amber-500' },
+  { value: '2 meses de mora', label: '2 meses de mora', color: 'text-red-600 border-red-500/50 bg-red-500/10', dot: 'bg-red-500' },
 ] as const
 
 export type MoraStatus = (typeof MORA_OPTIONS)[number]['value']
+
+// Helper para obtener las clases de color de un valor de mora
+export function getMoraColor(value?: string | null) {
+  const opt = MORA_OPTIONS.find(o => o.value === value)
+  return opt ?? MORA_OPTIONS[0]
+}
 
 export interface ServicioContratado {
   id: string
@@ -287,7 +296,7 @@ export interface ChatMessage {
   timestamp: Date
 }
 
-// ── Budget Alerts ─────────────────────────────────────────────────────────────
+// ── Budget Alerts ──────────────────────────���──────────────────────────────────
 
 export type BudgetAlertStatus = 'normal' | 'attention' | 'critical' | 'subdelivery'
 
