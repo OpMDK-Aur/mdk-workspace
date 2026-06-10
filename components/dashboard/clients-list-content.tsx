@@ -117,6 +117,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [fechaActivacionDesde, setFechaActivacionDesde] = useState<string>('')
   const [fechaActivacionHasta, setFechaActivacionHasta] = useState<string>('')
   const [etapaFilters, setEtapaFilters] = useState<string[]>([])
+  const [moraFilters, setMoraFilters] = useState<string[]>([])
   const [activoFilter, setActivoFilter] = useState<string>('activos') // Default: solo activos
   
   // Advanced filter state
@@ -273,6 +274,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     platforms: string[]
     unidades: string[]
     etapas: string[]
+    moras: string[]
     activo: string
     fechaActivacionDesde: string
     fechaActivacionHasta: string
@@ -292,7 +294,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [saveFilterName, setSaveFilterName] = useState('')
   const [saveFilterOpen, setSaveFilterOpen] = useState(false)
 
-  const hasActiveFilters = planFilters.length > 0 || pmFilters.length > 0 || amFilters.length > 0 || platformFilters.length > 0 || unidadFilters.length > 0 || etapaFilters.length > 0 || activoFilter !== 'activos' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
+  const hasActiveFilters = planFilters.length > 0 || pmFilters.length > 0 || amFilters.length > 0 || platformFilters.length > 0 || unidadFilters.length > 0 || etapaFilters.length > 0 || moraFilters.length > 0 || activoFilter !== 'activos' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
 
   const clearAllFilters = () => {
     setSearchTerm('')
@@ -302,6 +304,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setPlatformFilters([])
     setUnidadFilters([])
     setEtapaFilters([])
+    setMoraFilters([])
     setActivoFilter('activos')
     setFeeMinFilter('')
     setFeeMaxFilter('')
@@ -319,6 +322,7 @@ const saveCurrentFilter = () => {
   platforms: platformFilters,
   unidades: unidadFilters,
   etapas: etapaFilters,
+  moras: moraFilters,
   activo: activoFilter,
   fechaActivacionDesde,
   fechaActivacionHasta,
@@ -342,6 +346,7 @@ const applyFilter = (filter: SavedFilter) => {
   setPlatformFilters(filter.platforms || [])
   setUnidadFilters(filter.unidades || [])
   setEtapaFilters(filter.etapas || [])
+  setMoraFilters(filter.moras || [])
   setActivoFilter(filter.activo || 'activos')
   setFechaActivacionDesde(filter.fechaActivacionDesde || '')
   setFechaActivacionHasta(filter.fechaActivacionHasta || '')
@@ -513,12 +518,13 @@ const applyFilter = (filter: SavedFilter) => {
   (platformFilters.includes('none') && !client.google_ads_customer_id && !client.meta_ads_account_id)
   const matchesUnidad = unidadFilters.length === 0 || clientUnidades.some(u => unidadFilters.includes(u))
   const matchesEtapa = etapaFilters.length === 0 || etapaFilters.includes(client.etapa || '')
+  const matchesMora = moraFilters.length === 0 || moraFilters.includes(client.mora || 'Al día')
   const matchesFechaDesde = !fechaActivacionDesde || (client.fecha_activacion && client.fecha_activacion >= fechaActivacionDesde)
     const matchesFechaHasta = !fechaActivacionHasta || (client.fecha_activacion && client.fecha_activacion <= fechaActivacionHasta)
     const totalFee = (client.fee_mdk || 0) + (client.fee_aurelia || 0)
     const matchesFeeMin = !feeMinFilter || totalFee >= parseFloat(feeMinFilter)
     const matchesFeeMax = !feeMaxFilter || totalFee <= parseFloat(feeMaxFilter)
-    return matchesActivo && matchesSearch && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
+    return matchesActivo && matchesSearch && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesMora && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
   }).sort((a, b) => {
     let valueA: string | number = ''
     let valueB: string | number = ''
@@ -1166,6 +1172,30 @@ const applyFilter = (filter: SavedFilter) => {
                   <DropdownMenuSeparator />
                   <DropdownMenuCheckboxItem checked={etapaFilters.includes('solicito_baja')} onCheckedChange={(checked) => setEtapaFilters(prev => checked ? [...prev, 'solicito_baja'] : prev.filter(e => e !== 'solicito_baja'))} className="text-red-500">Solicito la Baja</DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem checked={etapaFilters.includes('inhabilitado_mora')} onCheckedChange={(checked) => setEtapaFilters(prev => checked ? [...prev, 'inhabilitado_mora'] : prev.filter(e => e !== 'inhabilitado_mora'))} className="text-red-500">Inhabilitado por mora</DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Mora - Multi-select */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[160px] justify-between">
+                    <span>{moraFilters.length === 0 ? 'Toda la mora' : `${moraFilters.length} estado${moraFilters.length > 1 ? 's' : ''}`}</span>
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  {MORA_OPTIONS.map(opt => (
+                    <DropdownMenuCheckboxItem
+                      key={opt.value}
+                      checked={moraFilters.includes(opt.value)}
+                      onCheckedChange={(checked) => setMoraFilters(prev => checked ? [...prev, opt.value] : prev.filter(m => m !== opt.value))}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className={cn('h-2 w-2 rounded-full', opt.dot)} />
+                        {opt.label}
+                      </span>
+                    </DropdownMenuCheckboxItem>
+                  ))}
                 </DropdownMenuContent>
               </DropdownMenu>
               
