@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { Client, Profile, ScorecardRow, DateRange } from '@/lib/types'
+import { MORA_OPTIONS, getMoraColor } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -9,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   DollarSign, Target, TrendingDown, MousePointerClick, Eye,
   Users, MessageSquare, Calendar, Clock,
-  ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown, Pencil, Check, X, Plus,
+  ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown, Pencil, Check, X, Plus, Loader2,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -608,6 +609,11 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [feeAurelia, setFeeAurelia] = useState(client.fee_aurelia ?? 0)
   const [feeConsultoria, setFeeConsultoria] = useState(client.fee_consultoria ?? 0)
   const [savingFee, setSavingFee] = useState(false)
+
+  // Mora editing
+  const [mora, setMora] = useState<string | null>(client.mora ?? null)
+  const [savingMora, setSavingMora] = useState(false)
+  const moraColor = getMoraColor(mora || 'Al día')
   
   // Active/Inactive status
   const [isActivo, setIsActivo] = useState(client.activo !== false) // null or true = activo
@@ -774,6 +780,24 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     setFeeAurelia(client.fee_aurelia ?? 0)
     setFeeConsultoria(client.fee_consultoria ?? 0)
     setEditingFee(false)
+  }
+
+  const handleSaveMora = async (value: string) => {
+    // 'Al día' es el estado sin mora -> guardamos null
+    const newMora = value === 'Al día' ? null : value
+    setSavingMora(true)
+    setMora(newMora)
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .update({ mora: newMora })
+        .eq('id', client.id)
+      if (error) console.error('Error saving mora:', error)
+    } catch (e) {
+      console.error('Error saving mora:', e)
+    } finally {
+      setSavingMora(false)
+    }
   }
 
   const platforms = getActivePlatforms(client)
@@ -1233,6 +1257,27 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                     {feeMdk > 0 && <span className="text-[11px] text-muted-foreground">MDK: {formatCurrencyFull(feeMdk)}</span>}
                     {feeAurelia > 0 && <span className="text-[11px] text-muted-foreground">Aurelia: {formatCurrencyFull(feeAurelia)}</span>}
                     {feeConsultoria > 0 && <span className="text-[11px] text-muted-foreground">Consultoría: {formatCurrencyFull(feeConsultoria)}</span>}
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-muted-foreground font-medium">Mora</span>
+                      {savingMora && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                    </div>
+                    <Select value={mora || 'Al día'} onValueChange={handleSaveMora}>
+                      <SelectTrigger className={cn('h-7 mt-1.5 text-xs font-medium', moraColor.color)}>
+                        <SelectValue placeholder="Al día" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MORA_OPTIONS.map(opt => (
+                          <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                            <span className="flex items-center gap-2">
+                              <span className={cn('h-2 w-2 rounded-full', opt.dot)} />
+                              {opt.label}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </>
               )}
