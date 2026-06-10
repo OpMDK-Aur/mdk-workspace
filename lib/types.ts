@@ -53,11 +53,11 @@ export type ClientEtapa = 'activacion' | '1_3_meses' | '4_6_meses' | '7_mas' | '
 // Opciones predefinidas para el estado de mora de un cliente.
 // Un valor vacío/null indica que el cliente no está en mora.
 export const MORA_OPTIONS = [
-  { value: 'sin_mora', label: 'Sin mora' },
-  { value: '1 mes de mora', label: '1 mes de mora' },
-  { value: '2 meses de mora', label: '2 meses de mora' },
-  { value: '3 meses de mora', label: '3 meses de mora' },
-  { value: '3+ meses de mora', label: '3+ meses de mora' },
+  { value: 'Al Día', label: 'Al Día' },
+  { value: '7 días de Mora', label: '7 días de Mora' },
+  { value: '15 Días de Mora', label: '15 Días de Mora' },
+  { value: '1 Mes de Mora', label: '1 Mes de Mora' },
+  { value: '2 Meses de Mora', label: '2 Meses de Mora' },
 ] as const
 
 export type MoraStatus = (typeof MORA_OPTIONS)[number]['value']

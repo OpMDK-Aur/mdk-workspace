@@ -221,7 +221,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // Editar el estado de mora de un cliente (lista y tarjetas)
   const [savingMoraId, setSavingMoraId] = useState<string | null>(null)
   const updateMora = async (clientId: string, value: string) => {
-    const newMora = value === 'sin_mora' ? null : value
+    const newMora = value === 'Al Día' ? null : value
     setSavingMoraId(clientId)
     // Optimistic update
     setLocalClients(prev => prev.map(c => (c.id === clientId ? { ...c, mora: newMora } : c)))
@@ -1511,7 +1511,7 @@ const applyFilter = (filter: SavedFilter) => {
                             >
                               <span className="text-muted-foreground shrink-0">Mora:</span>
                               <Select
-                                value={client.mora || 'sin_mora'}
+                                value={client.mora || 'Al Día'}
                                 onValueChange={(v) => updateMora(client.id, v)}
                               >
                                 <SelectTrigger
@@ -1520,17 +1520,17 @@ const applyFilter = (filter: SavedFilter) => {
                                     client.mora && 'border-destructive/50 text-destructive'
                                   )}
                                 >
-                                  <SelectValue placeholder="Sin mora" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {MORA_OPTIONS.map(opt => (
-                                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                                      {opt.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                                <SelectValue placeholder="Al Día" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {MORA_OPTIONS.map(opt => (
+                                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                                    {opt.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                           )}
                           {visibleColumns.includes('fecha_activacion') && client.fecha_activacion && (
                             <div>
@@ -1748,7 +1748,7 @@ const applyFilter = (filter: SavedFilter) => {
                         {visibleColumns.includes('mora') && (
                           <TableCell>
                             <Select
-                              value={client.mora || 'sin_mora'}
+                              value={client.mora || 'Al Día'}
                               onValueChange={(v) => updateMora(client.id, v)}
                             >
                               <SelectTrigger
@@ -1757,18 +1757,18 @@ const applyFilter = (filter: SavedFilter) => {
                                   client.mora && 'border-destructive/50 text-destructive'
                                 )}
                               >
-                                <SelectValue placeholder="Sin mora" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {MORA_OPTIONS.map(opt => (
-                                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                                    {opt.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                        )}
+                              <SelectValue placeholder="Al Día" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {MORA_OPTIONS.map(opt => (
+                                <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                      )}
                         {visibleColumns.includes('semaforos') && (
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
