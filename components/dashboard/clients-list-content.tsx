@@ -509,8 +509,14 @@ const applyFilter = (filter: SavedFilter) => {
   // Filter by plan - empty array = all
   const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
   const matchesPlan = planFilters.length === 0 || (clientUnidades.includes('MDK') && planFilters.includes(client.plan || ''))
-  const matchesPm = pmFilters.length === 0 || pmFilters.includes(client.project_manager_id || '')
-  const matchesAm = amFilters.length === 0 || amFilters.includes(client.account_manager_id || '')
+    const clientPmIds = (client.project_manager_ids && client.project_manager_ids.length > 0)
+      ? client.project_manager_ids
+      : (client.project_manager_id ? [client.project_manager_id] : [])
+    const clientAmIds = (client.account_manager_ids && client.account_manager_ids.length > 0)
+      ? client.account_manager_ids
+      : (client.account_manager_id ? [client.account_manager_id] : [])
+    const matchesPm = pmFilters.length === 0 || pmFilters.some(id => clientPmIds.includes(id))
+    const matchesAm = amFilters.length === 0 || amFilters.some(id => clientAmIds.includes(id))
   const matchesPlatform = platformFilters.length === 0 ||
   (platformFilters.includes('google') && client.google_ads_customer_id) ||
   (platformFilters.includes('meta') && client.meta_ads_account_id) ||
@@ -566,14 +572,18 @@ const applyFilter = (filter: SavedFilter) => {
         valueA = (a.google_ads_customer_id ? 2 : 0) + (a.meta_ads_account_id ? 1 : 0)
         valueB = (b.google_ads_customer_id ? 2 : 0) + (b.meta_ads_account_id ? 1 : 0)
         break
-      case 'pm':
-        valueA = (profiles.find(p => p.id === a.project_manager_id)?.full_name || '').toLowerCase()
-        valueB = (profiles.find(p => p.id === b.project_manager_id)?.full_name || '').toLowerCase()
+      case 'pm': {
+        const firstPmId = (x: typeof a) => (x.project_manager_ids?.[0]) || x.project_manager_id || ''
+        valueA = (profiles.find(p => p.id === firstPmId(a))?.full_name || '').toLowerCase()
+        valueB = (profiles.find(p => p.id === firstPmId(b))?.full_name || '').toLowerCase()
         break
-      case 'am':
-        valueA = (profiles.find(p => p.id === a.account_manager_id)?.full_name || '').toLowerCase()
-        valueB = (profiles.find(p => p.id === b.account_manager_id)?.full_name || '').toLowerCase()
+      }
+      case 'am': {
+        const firstAmId = (x: typeof a) => (x.account_manager_ids?.[0]) || x.account_manager_id || ''
+        valueA = (profiles.find(p => p.id === firstAmId(a))?.full_name || '').toLowerCase()
+        valueB = (profiles.find(p => p.id === firstAmId(b))?.full_name || '').toLowerCase()
         break
+      }
       case 'nps':
         valueA = a.nps_score ?? -1
         valueB = b.nps_score ?? -1
@@ -634,6 +644,21 @@ const applyFilter = (filter: SavedFilter) => {
     const puesto = (p.puesto || '').toLowerCase()
     return puesto.includes('account manager') || puesto === 'am' || p.role === 'account_manager' || p.role === 'direccion'
   })
+
+  // Resolver TODOS los PM/AM de un cliente desde los arrays (con fallback al campo singular)
+  const profilesById = new Map(profiles.map(p => [p.id, p]))
+  const getClientPms = (client: Client): Profile[] => {
+    const ids = (client.project_manager_ids && client.project_manager_ids.length > 0)
+      ? client.project_manager_ids
+      : (client.project_manager_id ? [client.project_manager_id] : [])
+    return ids.map(id => profilesById.get(id)).filter((p): p is Profile => !!p)
+  }
+  const getClientAms = (client: Client): Profile[] => {
+    const ids = (client.account_manager_ids && client.account_manager_ids.length > 0)
+      ? client.account_manager_ids
+      : (client.account_manager_id ? [client.account_manager_id] : [])
+    return ids.map(id => profilesById.get(id)).filter((p): p is Profile => !!p)
+  }
 
   // Calculate totals
   const totalFeeMdk = filteredClients.reduce((sum, c) => sum + (c.fee_mdk || 0), 0)
@@ -1405,8 +1430,8 @@ const applyFilter = (filter: SavedFilter) => {
             ) : (
               filteredClients.map((client) => {
                 const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
-                const pm = profiles.find(p => p.id === client.project_manager_id)
-                const am = profiles.find(p => p.id === client.account_manager_id)
+                const clientPms = getClientPms(client)
+                const clientAms = getClientAms(client)
                 const isInactivo = client.activo === false
                 const isEnRiesgo = client.etapa === 'solicito_baja' || client.etapa === 'inhabilitado_mora'
                 const hasGoogle = !!client.google_ads_customer_id
@@ -1493,16 +1518,16 @@ const applyFilter = (filter: SavedFilter) => {
                             </div>
                           )}
 
-                          {visibleColumns.includes('pm') && pm && (
+                          {visibleColumns.includes('pm') && clientPms.length > 0 && (
                             <div>
                               <span className="text-muted-foreground">PM:</span>{' '}
-                              <span>{pm.full_name}</span>
+                              <span>{clientPms.map(p => p.full_name || p.email).join(', ')}</span>
                             </div>
                           )}
-                          {visibleColumns.includes('am') && am && (
+                          {visibleColumns.includes('am') && clientAms.length > 0 && (
                             <div>
                               <span className="text-muted-foreground">AM:</span>{' '}
-                              <span>{am.full_name}</span>
+                              <span>{clientAms.map(p => p.full_name || p.email).join(', ')}</span>
                             </div>
                           )}
                           {visibleColumns.includes('plataformas') && (hasGoogle || hasMeta) && (
@@ -1658,8 +1683,8 @@ const applyFilter = (filter: SavedFilter) => {
                     const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
                     const hasGoogle = !!client.google_ads_customer_id
                     const hasMeta = !!client.meta_ads_account_id
-                    const pm = profiles.find(p => p.id === client.project_manager_id)
-                    const am = profiles.find(p => p.id === client.account_manager_id)
+                    const pmList = getClientPms(client)
+                    const amList = getClientAms(client)
                     const isInactivo = client.activo === false
                     const isEnRiesgo = client.etapa === 'solicito_baja' || client.etapa === 'inhabilitado_mora'
 
@@ -1764,12 +1789,12 @@ const applyFilter = (filter: SavedFilter) => {
                         )}
                         {visibleColumns.includes('pm') && (
                           <TableCell>
-                            <span className="text-sm">{pm?.full_name || '-'}</span>
+                            <span className="text-sm">{pmList.length > 0 ? pmList.map(p => p.full_name || p.email).join(', ') : '-'}</span>
                           </TableCell>
                         )}
                         {visibleColumns.includes('am') && (
                           <TableCell>
-                            <span className="text-sm">{am?.full_name || '-'}</span>
+                            <span className="text-sm">{amList.length > 0 ? amList.map(p => p.full_name || p.email).join(', ') : '-'}</span>
                           </TableCell>
                         )}
                         {visibleColumns.includes('nps') && (
