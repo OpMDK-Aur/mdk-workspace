@@ -100,6 +100,21 @@ function formatCurrency(value: number | null): string {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(value)
 }
 
+function getSemaforoBadge(semaforo: SemaforoStatus | undefined) {
+  switch (semaforo) {
+    case 'verde':
+      return { label: 'Optimo', className: 'bg-status-verde/10 text-status-verde border-status-verde/25', dotClass: 'bg-status-verde' }
+    case 'amarillo':
+      return { label: 'Atencion', className: 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/25', dotClass: 'bg-status-amarillo' }
+    case 'naranja':
+      return { label: 'En riesgo', className: 'bg-status-naranja/10 text-status-naranja border-status-naranja/25', dotClass: 'bg-status-naranja' }
+    case 'rojo':
+      return { label: 'Critico', className: 'bg-status-rojo/10 text-status-rojo border-status-rojo/25', dotClass: 'bg-status-rojo' }
+    default:
+      return { label: 'Sin datos', className: 'text-muted-foreground', dotClass: 'bg-muted-foreground/40' }
+  }
+}
+
 export function ClientsListContent({ clients, profiles, currentProfile, assignmentMap, hoursMap }: ClientsListContentProps) {
   const supabase = createClient()
   // Permitir crear a direccion, master, project_manager y account_manager
@@ -1468,15 +1483,19 @@ const applyFilter = (filter: SavedFilter) => {
                         {visibleColumns.includes('unidad_negocio') && (
                           <div className="flex flex-wrap gap-1">
                             {clientUnidades.length > 0 ? (
-                              clientUnidades.map(unidad => (
-                                <Badge 
-                                  key={unidad} 
-                                  variant="outline" 
-                                  className="text-xs"
-                                >
-                                  {unidad}
-                                </Badge>
-                              ))
+                              clientUnidades.map(unidad => {
+                                const sem = getSemaforoBadge(client.semaforo_unidades?.[unidad])
+                                return (
+                                  <Badge 
+                                    key={unidad} 
+                                    variant="outline" 
+                                    className={cn('text-xs gap-1.5', sem.className)}
+                                  >
+                                    <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', sem.dotClass)} />
+                                    {unidad}
+                                  </Badge>
+                                )
+                              })
                             ) : (
                               <Badge variant="outline" className="text-xs text-muted-foreground">Sin unidad</Badge>
                             )}
@@ -1492,60 +1511,63 @@ const applyFilter = (filter: SavedFilter) => {
                         )}
                         
                         {/* Info grid - respects visible columns */}
-                        <div className="flex flex-col gap-1 text-sm">
+                        <div className="flex flex-col gap-1.5 text-sm">
                           {visibleColumns.includes('plan') && clientUnidades.includes('MDK') && client.plan && (
-                            <div>
-                              <span className="text-muted-foreground">Plan:</span>{' '}
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Plan</span>
                               <span className="font-medium">{client.plan}</span>
                             </div>
                           )}
                           {visibleColumns.includes('fee_mdk') && client.fee_mdk && (
-                            <div>
-                              <span className="text-muted-foreground">Fee MDK:</span>{' '}
-                              <span className="font-medium">{formatCurrency(client.fee_mdk)}</span>
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Fee MDK</span>
+                              <span className="font-medium tabular-nums">{formatCurrency(client.fee_mdk)}</span>
                             </div>
                           )}
                           {visibleColumns.includes('fee_aurelia') && client.fee_aurelia && (
-                            <div>
-                              <span className="text-muted-foreground">Fee Aurelia:</span>{' '}
-                              <span className="font-medium">{formatCurrency(client.fee_aurelia)}</span>
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Fee Aurelia</span>
+                              <span className="font-medium tabular-nums">{formatCurrency(client.fee_aurelia)}</span>
                             </div>
                           )}
                           {visibleColumns.includes('fee_consultoria') && client.fee_consultoria && (
-                            <div>
-                              <span className="text-muted-foreground">Fee Consultoria:</span>{' '}
-                              <span className="font-medium">{formatCurrency(client.fee_consultoria)}</span>
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Fee Consultoria</span>
+                              <span className="font-medium tabular-nums">{formatCurrency(client.fee_consultoria)}</span>
                             </div>
                           )}
 
                           {visibleColumns.includes('pm') && clientPms.length > 0 && (
-                            <div>
-                              <span className="text-muted-foreground">PM:</span>{' '}
-                              <span>{clientPms.map(p => p.full_name || p.email).join(', ')}</span>
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">PM</span>
+                              <span className="min-w-0">{clientPms.map(p => p.full_name || p.email).join(', ')}</span>
                             </div>
                           )}
                           {visibleColumns.includes('am') && clientAms.length > 0 && (
-                            <div>
-                              <span className="text-muted-foreground">AM:</span>{' '}
-                              <span>{clientAms.map(p => p.full_name || p.email).join(', ')}</span>
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">AM</span>
+                              <span className="min-w-0">{clientAms.map(p => p.full_name || p.email).join(', ')}</span>
                             </div>
                           )}
                           {visibleColumns.includes('plataformas') && (hasGoogle || hasMeta) && (
-                            <div className="flex gap-1">
-                              {hasGoogle && <Badge variant="secondary" className="text-xs">Google</Badge>}
-                              {hasMeta && <Badge variant="secondary" className="text-xs">Meta</Badge>}
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Plataformas</span>
+                              <span className="flex gap-1">
+                                {hasGoogle && <Badge variant="secondary" className="text-xs">Google</Badge>}
+                                {hasMeta && <Badge variant="secondary" className="text-xs">Meta</Badge>}
+                              </span>
                             </div>
                           )}
                           {visibleColumns.includes('nps') && client.nps_score != null && (
-                            <div>
-                              <span className="text-muted-foreground">NPS:</span>{' '}
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">NPS</span>
                               <span className="font-medium">{client.nps_score}</span>
                             </div>
                           )}
                           {visibleColumns.includes('etapa') && client.etapa && (
-                            <div>
-                              <span className="text-muted-foreground">Etapa:</span>{' '}
-                              <span>{client.etapa.replace(/_/g, ' ')}</span>
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Etapa</span>
+                              <span className="capitalize">{client.etapa.replace(/_/g, ' ')}</span>
                             </div>
                           )}
                           {visibleColumns.includes('mora') && (
@@ -1553,7 +1575,7 @@ const applyFilter = (filter: SavedFilter) => {
                               className="flex items-center gap-2"
                               onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
                             >
-                              <span className="text-muted-foreground shrink-0">Mora:</span>
+                              <span className="text-muted-foreground w-24 shrink-0">Mora</span>
                               <Select
                                 value={client.mora || 'Al día'}
                                 onValueChange={(v) => updateMora(client.id, v)}
@@ -1580,33 +1602,33 @@ const applyFilter = (filter: SavedFilter) => {
                           </div>
                           )}
                           {visibleColumns.includes('fecha_activacion') && client.fecha_activacion && (
-                            <div>
-                              <span className="text-muted-foreground">Activacion:</span>{' '}
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Activacion</span>
                               <span>{new Date(client.fecha_activacion).toLocaleDateString('es-AR')}</span>
                             </div>
                           )}
                           {visibleColumns.includes('fecha_venta') && client.fecha_venta && (
-                            <div>
-                              <span className="text-muted-foreground">Venta:</span>{' '}
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Venta</span>
                               <span>{new Date(client.fecha_venta).toLocaleDateString('es-AR')}</span>
                             </div>
                           )}
                           {visibleColumns.includes('fecha_inicio_trabajo') && client.fecha_inicio_trabajo && (
-                            <div>
-                              <span className="text-muted-foreground">Inicio:</span>{' '}
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Inicio</span>
                               <span>{new Date(client.fecha_inicio_trabajo).toLocaleDateString('es-AR')}</span>
                             </div>
                           )}
                           {visibleColumns.includes('crm') && client.crm_tipo && (
-                            <div>
-                              <span className="text-muted-foreground">CRM:</span>{' '}
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">CRM</span>
                               <span>{client.crm_tipo}</span>
                             </div>
                           )}
                           {visibleColumns.includes('discord') && client.discord_channel_name && (
-                            <div>
-                              <span className="text-muted-foreground">Discord:</span>{' '}
-                              <span>{client.discord_channel_name}</span>
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Discord</span>
+                              <span className="min-w-0 truncate">{client.discord_channel_name}</span>
                             </div>
                           )}
                         </div>
@@ -1717,15 +1739,19 @@ const applyFilter = (filter: SavedFilter) => {
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
                               {clientUnidades.length > 0 ? (
-                                clientUnidades.map(unidad => (
-                                  <Badge 
-                                    key={unidad} 
-                                    variant="outline" 
-                                    className="text-xs"
-                                  >
-                                    {unidad}
-                                  </Badge>
-                                ))
+                                clientUnidades.map(unidad => {
+                                  const sem = getSemaforoBadge(client.semaforo_unidades?.[unidad])
+                                  return (
+                                    <Badge 
+                                      key={unidad} 
+                                      variant="outline" 
+                                      className={cn('text-xs gap-1.5', sem.className)}
+                                    >
+                                      <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', sem.dotClass)} />
+                                      {unidad}
+                                    </Badge>
+                                  )
+                                })
                               ) : (
                                 <span className="text-xs text-muted-foreground">-</span>
                               )}
