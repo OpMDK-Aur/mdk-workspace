@@ -176,6 +176,29 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     return {}
   })
 
+  // Anchos por defecto (px) para mantener la tabla equilibrada con tableLayout fixed
+  const defaultColumnWidths: Record<string, number> = {
+    cliente: 200,
+    unidad_negocio: 120,
+    contacto: 160,
+    plan: 110,
+    fee_mdk: 130,
+    fee_aurelia: 130,
+    fee_consultoria: 130,
+    fee_total: 140,
+    plataformas: 130,
+    pm: 170,
+    am: 170,
+    nps: 80,
+    mora: 130,
+    etapa: 130,
+    fecha_activacion: 120,
+    fecha_venta: 120,
+    fecha_inicio_trabajo: 120,
+    crm: 120,
+    discord: 140,
+  }
+
   // Handle column resize via drag on the header handle
   const startResize = useCallback((columnId: string, startX: number, startWidth: number) => {
     const onMouseMove = (e: MouseEvent) => {
@@ -684,7 +707,7 @@ const applyFilter = (filter: SavedFilter) => {
   // Sortable + resizable column header
   const SortableHead = ({ columnId, label, align = 'left' }: { columnId: string; label: string; align?: 'left' | 'right' }) => {
     const isActive = sortBy === columnId
-    const width = columnWidths[columnId]
+    const width = columnWidths[columnId] ?? defaultColumnWidths[columnId]
     return (
       <TableHead
         style={width ? { width, minWidth: width, maxWidth: width } : undefined}
@@ -1816,9 +1839,9 @@ const applyFilter = (filter: SavedFilter) => {
                         {visibleColumns.includes('pm') && (
                           <TableCell className="align-top">
                             {pmList.length > 0 ? (
-                              <div className="flex flex-col gap-0.5 min-w-[120px] max-w-[180px]">
+                              <div className="flex flex-col gap-0.5">
                                 {pmList.map(p => (
-                                  <span key={p.id} className="text-sm leading-tight">{p.full_name || p.email}</span>
+                                  <span key={p.id} className="text-sm leading-tight break-words">{p.full_name || p.email}</span>
                                 ))}
                               </div>
                             ) : (
@@ -1829,9 +1852,9 @@ const applyFilter = (filter: SavedFilter) => {
                         {visibleColumns.includes('am') && (
                           <TableCell className="align-top">
                             {amList.length > 0 ? (
-                              <div className="flex flex-col gap-0.5 min-w-[120px] max-w-[180px]">
+                              <div className="flex flex-col gap-0.5">
                                 {amList.map(p => (
-                                  <span key={p.id} className="text-sm leading-tight">{p.full_name || p.email}</span>
+                                  <span key={p.id} className="text-sm leading-tight break-words">{p.full_name || p.email}</span>
                                 ))}
                               </div>
                             ) : (
