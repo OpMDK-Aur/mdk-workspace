@@ -659,6 +659,7 @@ const applyFilter = (filter: SavedFilter) => {
   // Calculate totals
   const totalFeeMdk = filteredClients.reduce((sum, c) => sum + (c.fee_mdk || 0), 0)
   const totalFeeAurelia = filteredClients.reduce((sum, c) => sum + (c.fee_aurelia || 0), 0)
+  const totalFeeConsultoria = filteredClients.reduce((sum, c) => sum + (c.fee_consultoria || 0), 0)
   const totalFee = totalFeeMdk + totalFeeAurelia
 
   // Sortable + resizable column header
@@ -1044,7 +1045,7 @@ const applyFilter = (filter: SavedFilter) => {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">Fee MDK Total</div>
@@ -1057,6 +1058,13 @@ const applyFilter = (filter: SavedFilter) => {
               <div className="text-sm text-muted-foreground">Fee Aurelia Total</div>
               <div className="text-2xl font-bold text-foreground">{formatCurrency(totalFeeAurelia)}</div>
               <div className="text-xs text-muted-foreground mt-1">{filteredClients.filter(c => c.fee_aurelia).length} con Aurelia</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-sm text-muted-foreground">Fee Consultoría Total</div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(totalFeeConsultoria)}</div>
+              <div className="text-xs text-muted-foreground mt-1">{filteredClients.filter(c => c.fee_consultoria).length} con Consultoría</div>
             </CardContent>
           </Card>
           <Card>
