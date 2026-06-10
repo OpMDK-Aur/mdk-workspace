@@ -2,6 +2,11 @@ import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 import { ClientsListContent } from '@/components/dashboard/clients-list-content'
 import type { Client, Profile } from '@/lib/types'
 
+// Siempre obtener datos frescos de Supabase (sin caché) para reflejar
+// cambios hechos directamente en la base de datos.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function ClientsPage() {
   const supabase = await createSupabaseClient()
 
