@@ -155,7 +155,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [advancedOpen, setAdvancedOpen] = useState(false)
   
   // Columnas que siempre deben mostrarse en la vista de lista de Clientes
-  const requiredColumns = ['cliente', 'plan', 'fee_mdk', 'fee_aurelia', 'fee_consultoria', 'fee_total', 'pm', 'am', 'nps', 'mora', 'semaforos']
+  const requiredColumns = ['cliente', 'plan', 'fee_mdk', 'fee_aurelia', 'fee_consultoria', 'fee_total', 'fee_carga', 'pm', 'am', 'nps', 'mora', 'semaforos']
 
   // Visible columns - ahora incluye todas las columnas disponibles
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
@@ -1913,6 +1913,7 @@ const applyFilter = (filter: SavedFilter) => {
                         {formatCurrency(filteredClients.reduce((sum, c) => sum + (c.fee_mdk || 0) + (c.fee_aurelia || 0) + (c.fee_consultoria || 0), 0))}
                       </TableCell>
                     )}
+                    {visibleColumns.includes('fee_carga') && <TableCell></TableCell>}
                     {visibleColumns.includes('plataformas') && <TableCell></TableCell>}
                     {visibleColumns.includes('pm') && <TableCell></TableCell>}
                     {visibleColumns.includes('am') && <TableCell></TableCell>}
