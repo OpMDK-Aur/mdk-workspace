@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import type { Client, ClientEtapa, ServicioContratado, ClientPlan, UnidadNegocio, SemaforoStatus } from '@/lib/types'
-import { MORA_OPTIONS, getMoraColor } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -174,11 +173,6 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
   const [etapa, setEtapa] = useState<ClientEtapa | null>(client.etapa || null)
   const [savingEtapa, setSavingEtapa] = useState(false)
 
-  // Mora state
-  const [mora, setMora] = useState<string | null>(client.mora || null)
-  const [savingMora, setSavingMora] = useState(false)
-  const moraColor = getMoraColor(mora || 'Al día')
-  
   // Semaforo por unidad state
   const [semaforoUnidades, setSemaforoUnidades] = useState<Record<string, SemaforoStatus>>(
     client.semaforo_unidades || {}
@@ -341,19 +335,6 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
       .update({ etapa: newEtapa })
       .eq('id', client.id)
     setSavingEtapa(false)
-  }
-
-  // Save mora
-  const saveMora = async (value: string) => {
-    setSavingMora(true)
-    // 'Al día' es el estado sin mora - lo guardamos como null en la BD
-    const newMora = value === 'Al día' ? null : value
-    setMora(newMora)
-    await supabase
-      .from('clientes')
-      .update({ mora: newMora })
-      .eq('id', client.id)
-    setSavingMora(false)
   }
   
   // Save semaforo unidad
@@ -921,37 +902,6 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
                   <div className="flex flex-col">
                     <span>{opt.label}</span>
                   </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
-
-      {/* Mora */}
-      <Card className={cn(moraColor.color)}>
-        <CardHeader className="pb-3">
-          <CardTitle className={cn(
-            "text-sm font-medium flex items-center gap-2",
-            moraColor.color.split(' ')[0]
-          )}>
-            <span className={cn('h-3 w-3 rounded-full', moraColor.dot)} />
-            Mora
-            {savingMora && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Select value={mora || 'Al día'} onValueChange={saveMora}>
-            <SelectTrigger className={cn("h-9 font-medium", moraColor.color)}>
-              <SelectValue placeholder="Seleccionar estado de mora" />
-            </SelectTrigger>
-            <SelectContent>
-              {MORA_OPTIONS.map(opt => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  <span className="flex items-center gap-2">
-                    <span className={cn('h-2 w-2 rounded-full', opt.dot)} />
-                    {opt.label}
-                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
