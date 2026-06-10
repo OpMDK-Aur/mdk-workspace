@@ -1442,10 +1442,10 @@ const applyFilter = (filter: SavedFilter) => {
                 const hasMeta = !!client.meta_ads_account_id
                 
                 return (
-                  <div key={client.id} className="relative">
+                  <div key={client.id} className="relative group">
                     <Link href={`/dashboard/clients/${client.id}`}>
                       <Card className={cn(
-                        "h-full hover:border-primary/50 transition-colors cursor-pointer group",
+                        "h-full hover:border-primary/50 transition-colors cursor-pointer",
                         isInactivo && "opacity-60 bg-muted/30",
                         isEnRiesgo && "border-red-500/50 bg-red-500/5"
                       )}>
@@ -1638,6 +1638,7 @@ const applyFilter = (filter: SavedFilter) => {
                       className="absolute top-2 right-2 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={(e) => {
                         e.preventDefault()
+                        e.stopPropagation()
                         setDeletingClientId(client.id)
                       }}
                     >
