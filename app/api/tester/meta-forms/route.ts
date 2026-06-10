@@ -36,9 +36,13 @@ export async function GET(req: Request) {
     const accountId = cliente.meta_ads_account_id
 
     // 1. Traer ads activos con formularios de lead gen
-    const adsRes = await fetch(
-      `https://graph.facebook.com/v19.0/act_${accountId}/ads?fields=name,creative{lead_gen_form_id},adset{name},campaign{name}&effective_status=["ACTIVE"]&limit=100&access_token=${accessToken}`
-    )
+    const url = new URL(`https://graph.facebook.com/v19.0/act_${accountId}/ads`)
+    url.searchParams.set('fields', 'name,creative{lead_gen_form_id},adset{name},campaign{name}')
+    url.searchParams.set('effective_status', JSON.stringify(['ACTIVE']))
+    url.searchParams.set('limit', '100')
+    url.searchParams.set('access_token', accessToken)
+
+    const adsRes = await fetch(url.toString())
     const adsData = await adsRes.json()
 
     if (adsData.error) {
