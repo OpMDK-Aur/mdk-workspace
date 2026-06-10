@@ -95,21 +95,6 @@ function formatTrackedHours(hours: number): string {
 }
 
 
-function getSemaforoBadge(semaforo: SemaforoStatus | undefined) {
-  switch (semaforo) {
-    case 'verde':
-      return { label: 'Optimo', color: '#22c55e', className: 'bg-status-verde/10 text-status-verde border-status-verde/20' }
-    case 'amarillo':
-      return { label: 'Atencion', color: '#eab308', className: 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/20' }
-    case 'naranja':
-      return { label: 'En riesgo', color: '#f97316', className: 'bg-status-naranja/10 text-status-naranja border-status-naranja/20' }
-    case 'rojo':
-      return { label: 'Critico', color: '#ef4444', className: 'bg-status-rojo/10 text-status-rojo border-status-rojo/20' }
-    default:
-      return { label: '-', color: '#9ca3af', className: 'bg-muted text-muted-foreground' }
-  }
-}
-
 function formatCurrency(value: number | null): string {
   if (!value) return '-'
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(value)
@@ -142,7 +127,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [advancedOpen, setAdvancedOpen] = useState(false)
   
   // Columnas que siempre deben mostrarse en la vista de lista de Clientes
-  const requiredColumns = ['cliente', 'plan', 'fee_mdk', 'fee_aurelia', 'fee_consultoria', 'fee_total', 'pm', 'am', 'nps', 'mora']
+  const requiredColumns = ['cliente', 'unidad_negocio', 'plan', 'fee_mdk', 'fee_aurelia', 'fee_consultoria', 'fee_total', 'pm', 'am', 'nps', 'mora']
 
   // Visible columns - ahora incluye todas las columnas disponibles
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
@@ -1428,23 +1413,15 @@ const applyFilter = (filter: SavedFilter) => {
                         {visibleColumns.includes('unidad_negocio') && (
                           <div className="flex flex-wrap gap-1">
                             {clientUnidades.length > 0 ? (
-                              clientUnidades.map(unidad => {
-                                const semaforo = client.semaforo_unidades?.[unidad]
-                                const semaforoBadge = getSemaforoBadge(semaforo)
-                                return (
-                                  <Badge 
-                                    key={unidad} 
-                                    variant="outline" 
-                                    className={cn('text-xs gap-1', semaforoBadge.className)}
-                                  >
-                                    <span 
-                                      className="h-1.5 w-1.5 rounded-full" 
-                                      style={{ backgroundColor: semaforoBadge.color }}
-                                    />
-                                    {unidad}
-                                  </Badge>
-                                )
-                              })
+                              clientUnidades.map(unidad => (
+                                <Badge 
+                                  key={unidad} 
+                                  variant="outline" 
+                                  className="text-xs"
+                                >
+                                  {unidad}
+                                </Badge>
+                              ))
                             ) : (
                               <Badge variant="outline" className="text-xs text-muted-foreground">Sin unidad</Badge>
                             )}
@@ -1685,23 +1662,15 @@ const applyFilter = (filter: SavedFilter) => {
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
                               {clientUnidades.length > 0 ? (
-                                clientUnidades.map(unidad => {
-                                  const semaforo = client.semaforo_unidades?.[unidad]
-                                  const semaforoBadge = getSemaforoBadge(semaforo)
-                                  return (
-                                    <Badge 
-                                      key={unidad} 
-                                      variant="outline" 
-                                      className={cn('text-xs gap-1', semaforoBadge.className)}
-                                    >
-                                      <span 
-                                        className="h-2 w-2 rounded-full" 
-                                        style={{ backgroundColor: semaforoBadge.color }}
-                                      />
-                                      {unidad}
-                                    </Badge>
-                                  )
-                                })
+                                clientUnidades.map(unidad => (
+                                  <Badge 
+                                    key={unidad} 
+                                    variant="outline" 
+                                    className="text-xs"
+                                  >
+                                    {unidad}
+                                  </Badge>
+                                ))
                               ) : (
                                 <span className="text-xs text-muted-foreground">-</span>
                               )}
