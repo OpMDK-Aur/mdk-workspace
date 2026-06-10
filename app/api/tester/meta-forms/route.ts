@@ -28,24 +28,56 @@ export async function GET(req: Request) {
       return NextResponse.json({ forms: [] })
     }
 
-    // For now, return mock data structure
-    // TODO: Integrate with Meta Graph API when credentials available
-    const mockForms = [
-      {
-        form_id: '123456789',
-        nombre: 'Formulario de Contacto',
-        campana: 'Campaña Principal',
-        adset: 'Ad Set 1'
-      },
-      {
-        form_id: '987654321',
-        nombre: 'Formulario de Demo',
-        campana: 'Campaña Demo',
-        adset: 'Ad Set 2'
-      }
-    ]
+    const accessToken = process.env.META_ADS_ACCESS_TOKEN
+    if (!accessToken) {
+      return NextResponse.json({ error: 'META_ADS_ACCESS_TOKEN no configurado' }, { status: 500 })
+    }
 
-    return NextResponse.json({ forms: mockForms })
+    const accountId = cliente.meta_ads_account_id
+
+    // 1. Traer ads activos con formularios de lead gen
+    const adsRes = await fetch(
+      `https://graph.facebook.com/v19.0/act_${accountId}/ads?fields=name,creative{lead_gen_form_id},adset{name},campaign{name}&effective_status=["ACTIVE"]&limit=100&access_token=${accessToken}`
+    )
+    const adsData = await adsRes.json()
+
+    if (adsData.error) {
+      return NextResponse.json({ error: adsData.error.message }, { status: 400 })
+    }
+
+    // 2. Extraer form_ids únicos
+    const formMap = new Map<string, { campana: string; adset: string }>()
+    for (const ad of adsData.data || []) {
+      const formId = ad.creative?.lead_gen_form_id
+      if (formId && !formMap.has(formId)) {
+        formMap.set(formId, {
+          campana: ad.campaign?.name || 'Sin campaña',
+          adset: ad.adset?.name || 'Sin ad set',
+        })
+      }
+    }
+
+    if (formMap.size === 0) {
+      return NextResponse.json({ forms: [] })
+    }
+
+    // 3. Obtener nombre de cada formulario
+    const forms = await Promise.all(
+      Array.from(formMap.entries()).map(async ([formId, meta]) => {
+        const formRes = await fetch(
+          `https://graph.facebook.com/v19.0/${formId}?fields=name&access_token=${accessToken}`
+        )
+        const formData = await formRes.json()
+        return {
+          form_id: formId,
+          nombre: formData.name || formId,
+          campana: meta.campana,
+          adset: meta.adset,
+        }
+      })
+    )
+
+    return NextResponse.json({ forms })
   } catch (error) {
     console.error('Error fetching meta forms:', error)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
