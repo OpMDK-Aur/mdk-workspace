@@ -113,7 +113,27 @@ export function AgentCard({ agente, lastLog, onRun, profile }: AgentCardProps) {
 
         {/* Actions */}
         <div className="flex items-center gap-2">
-          {isAutomatic ? (
+          {agente.slug === 'tester' ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 gap-1.5"
+                onClick={() => setLogPanelOpen(true)}
+              >
+                <Eye className="h-4 w-4" />
+                Ver historial
+              </Button>
+              <Button
+                size="sm"
+                className="flex-1 gap-1.5 bg-[#7F77DD] hover:bg-[#6B63C7]"
+                onClick={() => onRun(agente.slug)}
+              >
+                <Play className="h-4 w-4" />
+                Abrir Tester
+              </Button>
+            </>
+          ) : isAutomatic ? (
             <Button 
               variant="outline" 
               size="sm"
