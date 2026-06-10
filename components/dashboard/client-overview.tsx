@@ -59,8 +59,6 @@ interface MetricaColaborador {
   } | null
 }
 
-const MESES_CARGA_LOCAL_REMOVED = true
-
 interface ClientOverviewProps {
   client: Client
   profiles: Profile[]
