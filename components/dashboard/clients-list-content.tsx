@@ -1814,13 +1814,29 @@ const applyFilter = (filter: SavedFilter) => {
                           </TableCell>
                         )}
                         {visibleColumns.includes('pm') && (
-                          <TableCell>
-                            <span className="text-sm">{pmList.length > 0 ? pmList.map(p => p.full_name || p.email).join(', ') : '-'}</span>
+                          <TableCell className="align-top">
+                            {pmList.length > 0 ? (
+                              <div className="flex flex-col gap-0.5 min-w-[120px] max-w-[180px]">
+                                {pmList.map(p => (
+                                  <span key={p.id} className="text-sm leading-tight">{p.full_name || p.email}</span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">-</span>
+                            )}
                           </TableCell>
                         )}
                         {visibleColumns.includes('am') && (
-                          <TableCell>
-                            <span className="text-sm">{amList.length > 0 ? amList.map(p => p.full_name || p.email).join(', ') : '-'}</span>
+                          <TableCell className="align-top">
+                            {amList.length > 0 ? (
+                              <div className="flex flex-col gap-0.5 min-w-[120px] max-w-[180px]">
+                                {amList.map(p => (
+                                  <span key={p.id} className="text-sm leading-tight">{p.full_name || p.email}</span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">-</span>
+                            )}
                           </TableCell>
                         )}
                         {visibleColumns.includes('nps') && (
