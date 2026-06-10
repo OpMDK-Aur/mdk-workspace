@@ -20,6 +20,15 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -220,6 +229,9 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
 
   // Editar el estado de mora de un cliente (lista y tarjetas)
   const [savingMoraId, setSavingMoraId] = useState<string | null>(null)
+  const [deletingClientId, setDeletingClientId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  
   const updateMora = async (clientId: string, value: string) => {
     const newMora = value === 'Al día' ? null : value
     setSavingMoraId(clientId)
@@ -227,6 +239,26 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setLocalClients(prev => prev.map(c => (c.id === clientId ? { ...c, mora: newMora } : c)))
     await supabase.from('clientes').update({ mora: newMora }).eq('id', clientId)
     setSavingMoraId(null)
+  }
+
+  // Eliminar cliente
+  const deleteClient = async (clientId: string) => {
+    setIsDeleting(true)
+    try {
+      // Optimistic update
+      setLocalClients(prev => prev.filter(c => c.id !== clientId))
+      await supabase.from('clientes').delete().eq('id', clientId)
+      setDeletingClientId(null)
+    } catch (error) {
+      console.error('[v0] Error deleting client:', error)
+      // Revert optimistic update on error
+      setLocalClients(prev => {
+        const client = clients.find(c => c.id === clientId)
+        return client ? [...prev, client] : prev
+      })
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   // Editar mes/año de carga del fee (lista y tarjetas)
@@ -1410,30 +1442,31 @@ const applyFilter = (filter: SavedFilter) => {
                 const hasMeta = !!client.meta_ads_account_id
                 
                 return (
-                  <Link key={client.id} href={`/dashboard/clients/${client.id}`}>
-                    <Card className={cn(
-                      "h-full hover:border-primary/50 transition-colors cursor-pointer group",
-                      isInactivo && "opacity-60 bg-muted/30",
-                      isEnRiesgo && "border-red-500/50 bg-red-500/5"
-                    )}>
-                      <CardContent className="p-4 space-y-3">
-                        {/* Header with name and badges */}
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <h3 className={cn(
-                              "font-semibold group-hover:text-primary transition-colors",
-                              isEnRiesgo && "text-red-500"
-                            )}>
-                              {client.nombre_del_negocio}
-                            </h3>
-                            {visibleColumns.includes('contacto') && (client.nombre || client.apellido) && (
-                              <p className="text-sm text-muted-foreground">
-                                {client.nombre} {client.apellido || ''}
-                              </p>
-                            )}
+                  <div key={client.id} className="relative group">
+                    <Link href={`/dashboard/clients/${client.id}`}>
+                      <Card className={cn(
+                        "h-full hover:border-primary/50 transition-colors cursor-pointer",
+                        isInactivo && "opacity-60 bg-muted/30",
+                        isEnRiesgo && "border-red-500/50 bg-red-500/5"
+                      )}>
+                        <CardContent className="p-4 space-y-3">
+                          {/* Header with name and badges */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <h3 className={cn(
+                                "font-semibold group-hover:text-primary transition-colors",
+                                isEnRiesgo && "text-red-500"
+                              )}>
+                                {client.nombre_del_negocio}
+                              </h3>
+                              {visibleColumns.includes('contacto') && (client.nombre || client.apellido) && (
+                                <p className="text-sm text-muted-foreground">
+                                  {client.nombre} {client.apellido || ''}
+                                </p>
+                              )}
+                            </div>
+                            <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                           </div>
-                          <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                        </div>
                         
                         {/* Unidades de negocio */}
                         {visibleColumns.includes('unidad_negocio') && (
@@ -1596,7 +1629,22 @@ const applyFilter = (filter: SavedFilter) => {
                         </div>
                       </CardContent>
                     </Card>
-                  </Link>
+                    </Link>
+                    
+                    {/* Delete Button */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-2 right-2 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setDeletingClientId(client.id)
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 )
               })
             )}
@@ -1637,12 +1685,13 @@ const applyFilter = (filter: SavedFilter) => {
                   {visibleColumns.includes('fecha_inicio_trabajo') && <SortableHead columnId="fecha_inicio_trabajo" label="F. Inicio" />}
                   {visibleColumns.includes('crm') && <SortableHead columnId="crm" label="CRM" />}
                   {visibleColumns.includes('discord') && <SortableHead columnId="discord" label="Discord" />}
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredClients.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={visibleColumns.length + 1} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={visibleColumns.length + 2} className="text-center py-8 text-muted-foreground">
                       No se encontraron clientes
                     </TableCell>
                   </TableRow>
@@ -1894,6 +1943,19 @@ const applyFilter = (filter: SavedFilter) => {
                             </span>
                           </TableCell>
                         )}
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setDeletingClientId(client.id)
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     )
                   })
@@ -1934,6 +1996,7 @@ const applyFilter = (filter: SavedFilter) => {
                     {visibleColumns.includes('fecha_inicio_trabajo') && <TableCell></TableCell>}
                     {visibleColumns.includes('crm') && <TableCell></TableCell>}
                     {visibleColumns.includes('discord') && <TableCell></TableCell>}
+                    <TableCell></TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -1943,6 +2006,28 @@ const applyFilter = (filter: SavedFilter) => {
         </Card>
         )}
       </div>
+      
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deletingClientId !== null} onOpenChange={(open) => !open && setDeletingClientId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar cliente</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Está seguro de que desea eliminar este cliente? Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex gap-3 justify-end">
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => deletingClientId && deleteClient(deletingClientId)}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
