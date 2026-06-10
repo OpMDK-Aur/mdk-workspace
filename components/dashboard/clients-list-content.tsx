@@ -63,6 +63,8 @@ import {
   Trash2,
   Calendar,
   ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
   LayoutGrid,
   List,
 } from 'lucide-react'
@@ -168,6 +170,45 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     }
     return 'cards'
   })
+
+  // Column widths (resizable columns) - persisted per column id
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('clientColumnWidths')
+      return saved ? JSON.parse(saved) : {}
+    }
+    return {}
+  })
+
+  // Handle column resize via drag on the header handle
+  const startResize = useCallback((columnId: string, startX: number, startWidth: number) => {
+    const onMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.max(80, startWidth + (e.clientX - startX))
+      setColumnWidths(prev => ({ ...prev, [columnId]: newWidth }))
+    }
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.body.style.userSelect = ''
+      setColumnWidths(prev => {
+        localStorage.setItem('clientColumnWidths', JSON.stringify(prev))
+        return prev
+      })
+    }
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }, [])
+
+  // Click a column header to sort by it (toggles asc/desc)
+  const handleHeaderSort = (columnId: string) => {
+    if (sortBy === columnId) {
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(columnId)
+      setSortOrder('asc')
+    }
+  }
 
   const allColumns = [
     { id: 'cliente', label: 'Cliente' },
@@ -462,10 +503,22 @@ const applyFilter = (filter: SavedFilter) => {
     let valueA: string | number = ''
     let valueB: string | number = ''
     
+    const unidadesA = a.unidades_negocio || (a.unidad_negocio ? [a.unidad_negocio] : [])
+    const unidadesB = b.unidades_negocio || (b.unidad_negocio ? [b.unidad_negocio] : [])
+
     switch (sortBy) {
+      case 'cliente':
       case 'nombre_del_negocio':
         valueA = a.nombre_del_negocio.toLowerCase()
         valueB = b.nombre_del_negocio.toLowerCase()
+        break
+      case 'contacto':
+        valueA = `${a.nombre || ''} ${a.apellido || ''}`.trim().toLowerCase()
+        valueB = `${b.nombre || ''} ${b.apellido || ''}`.trim().toLowerCase()
+        break
+      case 'plan':
+        valueA = (unidadesA.includes('MDK') ? a.plan || '' : '').toLowerCase()
+        valueB = (unidadesB.includes('MDK') ? b.plan || '' : '').toLowerCase()
         break
       case 'fee_mdk':
         valueA = a.fee_mdk || 0
@@ -475,13 +528,33 @@ const applyFilter = (filter: SavedFilter) => {
         valueA = a.fee_aurelia || 0
         valueB = b.fee_aurelia || 0
         break
+      case 'fee_consultoria':
+        valueA = a.fee_consultoria || 0
+        valueB = b.fee_consultoria || 0
+        break
       case 'fee_total':
         valueA = (a.fee_mdk || 0) + (a.fee_aurelia || 0)
         valueB = (b.fee_mdk || 0) + (b.fee_aurelia || 0)
         break
+      case 'plataformas':
+        valueA = (a.google_ads_customer_id ? 2 : 0) + (a.meta_ads_account_id ? 1 : 0)
+        valueB = (b.google_ads_customer_id ? 2 : 0) + (b.meta_ads_account_id ? 1 : 0)
+        break
+      case 'pm':
+        valueA = (profiles.find(p => p.id === a.project_manager_id)?.full_name || '').toLowerCase()
+        valueB = (profiles.find(p => p.id === b.project_manager_id)?.full_name || '').toLowerCase()
+        break
+      case 'am':
+        valueA = (profiles.find(p => p.id === a.account_manager_id)?.full_name || '').toLowerCase()
+        valueB = (profiles.find(p => p.id === b.account_manager_id)?.full_name || '').toLowerCase()
+        break
       case 'nps':
         valueA = a.nps_score ?? -1
         valueB = b.nps_score ?? -1
+        break
+      case 'etapa':
+        valueA = (a.etapa || '').toLowerCase()
+        valueB = (b.etapa || '').toLowerCase()
         break
       case 'status':
         const statusOrder = { verde: 0, amarillo: 1, naranja: 2, rojo: 3 }
@@ -489,12 +562,28 @@ const applyFilter = (filter: SavedFilter) => {
         valueB = statusOrder[b.status as keyof typeof statusOrder] ?? 4
         break
       case 'unidad_negocio':
-        valueA = a.unidad_negocio || ''
-        valueB = b.unidad_negocio || ''
+        valueA = (unidadesA[0] || '').toLowerCase()
+        valueB = (unidadesB[0] || '').toLowerCase()
         break
       case 'fecha_activacion':
         valueA = a.fecha_activacion || ''
         valueB = b.fecha_activacion || ''
+        break
+      case 'fecha_venta':
+        valueA = a.fecha_venta || ''
+        valueB = b.fecha_venta || ''
+        break
+      case 'fecha_inicio_trabajo':
+        valueA = a.fecha_inicio_trabajo || ''
+        valueB = b.fecha_inicio_trabajo || ''
+        break
+      case 'crm':
+        valueA = (a.crm_tipo || '').toLowerCase()
+        valueB = (b.crm_tipo || '').toLowerCase()
+        break
+      case 'discord':
+        valueA = (a.discord_channel_name || '').toLowerCase()
+        valueB = (b.discord_channel_name || '').toLowerCase()
         break
       default:
         valueA = a.nombre_del_negocio.toLowerCase()
@@ -513,6 +602,49 @@ const applyFilter = (filter: SavedFilter) => {
   const totalFeeMdk = filteredClients.reduce((sum, c) => sum + (c.fee_mdk || 0), 0)
   const totalFeeAurelia = filteredClients.reduce((sum, c) => sum + (c.fee_aurelia || 0), 0)
   const totalFee = totalFeeMdk + totalFeeAurelia
+
+  // Sortable + resizable column header
+  const SortableHead = ({ columnId, label, align = 'left' }: { columnId: string; label: string; align?: 'left' | 'right' }) => {
+    const isActive = sortBy === columnId
+    const width = columnWidths[columnId]
+    return (
+      <TableHead
+        style={width ? { width, minWidth: width, maxWidth: width } : undefined}
+        className="relative select-none p-0"
+      >
+        <div className={cn('flex items-center gap-1', align === 'right' && 'justify-end')}>
+          <button
+            type="button"
+            onClick={() => handleHeaderSort(columnId)}
+            className="flex items-center gap-1 px-4 py-3 hover:text-foreground transition-colors w-full"
+            style={align === 'right' ? { justifyContent: 'flex-end' } : undefined}
+          >
+            <span className="truncate">{label}</span>
+            {isActive ? (
+              sortOrder === 'asc' ? (
+                <ChevronUp className="h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+              )
+            ) : (
+              <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-40" />
+            )}
+          </button>
+        </div>
+        <span
+          role="separator"
+          aria-orientation="vertical"
+          onMouseDown={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            const th = (e.currentTarget.parentElement as HTMLElement)
+            startResize(columnId, e.clientX, width || th.offsetWidth)
+          }}
+          className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
+        />
+      </TableHead>
+    )
+  }
 
   return (
     <div className="flex-1 overflow-auto">
@@ -1374,26 +1506,26 @@ const applyFilter = (filter: SavedFilter) => {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-            <Table>
+            <Table style={{ tableLayout: 'fixed', width: '100%' }}>
               <TableHeader>
                 <TableRow>
-                  {visibleColumns.includes('cliente') && <TableHead>Cliente</TableHead>}
-                  {visibleColumns.includes('unidad_negocio') && <TableHead>Unidad</TableHead>}
-                  {visibleColumns.includes('contacto') && <TableHead>Contacto</TableHead>}
-                  {visibleColumns.includes('plan') && <TableHead>Plan</TableHead>}
-                  {visibleColumns.includes('fee_mdk') && <TableHead className="text-right">Fee MDK</TableHead>}
-                  {visibleColumns.includes('fee_aurelia') && <TableHead className="text-right">Fee Aurelia</TableHead>}
-                              {visibleColumns.includes('fee_consultoria') && <TableHead className="text-right">Fee Cons.</TableHead>}
-                              {visibleColumns.includes('plataformas') && <TableHead>Plataformas</TableHead>}
-                  {visibleColumns.includes('pm') && <TableHead>PM</TableHead>}
-                  {visibleColumns.includes('am') && <TableHead>AM</TableHead>}
-                  {visibleColumns.includes('nps') && <TableHead>NPS</TableHead>}
-                  {visibleColumns.includes('etapa') && <TableHead>Etapa</TableHead>}
-                  {visibleColumns.includes('fecha_activacion') && <TableHead>F. Activacion</TableHead>}
-                  {visibleColumns.includes('fecha_venta') && <TableHead>F. Venta</TableHead>}
-                  {visibleColumns.includes('fecha_inicio_trabajo') && <TableHead>F. Inicio</TableHead>}
-                  {visibleColumns.includes('crm') && <TableHead>CRM</TableHead>}
-                  {visibleColumns.includes('discord') && <TableHead>Discord</TableHead>}
+                  {visibleColumns.includes('cliente') && <SortableHead columnId="cliente" label="Cliente" />}
+                  {visibleColumns.includes('unidad_negocio') && <SortableHead columnId="unidad_negocio" label="Unidad" />}
+                  {visibleColumns.includes('contacto') && <SortableHead columnId="contacto" label="Contacto" />}
+                  {visibleColumns.includes('plan') && <SortableHead columnId="plan" label="Plan" />}
+                  {visibleColumns.includes('fee_mdk') && <SortableHead columnId="fee_mdk" label="Fee MDK" align="right" />}
+                  {visibleColumns.includes('fee_aurelia') && <SortableHead columnId="fee_aurelia" label="Fee Aurelia" align="right" />}
+                  {visibleColumns.includes('fee_consultoria') && <SortableHead columnId="fee_consultoria" label="Fee Cons." align="right" />}
+                  {visibleColumns.includes('plataformas') && <SortableHead columnId="plataformas" label="Plataformas" />}
+                  {visibleColumns.includes('pm') && <SortableHead columnId="pm" label="PM" />}
+                  {visibleColumns.includes('am') && <SortableHead columnId="am" label="AM" />}
+                  {visibleColumns.includes('nps') && <SortableHead columnId="nps" label="NPS" />}
+                  {visibleColumns.includes('etapa') && <SortableHead columnId="etapa" label="Etapa" />}
+                  {visibleColumns.includes('fecha_activacion') && <SortableHead columnId="fecha_activacion" label="F. Activacion" />}
+                  {visibleColumns.includes('fecha_venta') && <SortableHead columnId="fecha_venta" label="F. Venta" />}
+                  {visibleColumns.includes('fecha_inicio_trabajo') && <SortableHead columnId="fecha_inicio_trabajo" label="F. Inicio" />}
+                  {visibleColumns.includes('crm') && <SortableHead columnId="crm" label="CRM" />}
+                  {visibleColumns.includes('discord') && <SortableHead columnId="discord" label="Discord" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
