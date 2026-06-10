@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, memo } from 'react'
 import Link from 'next/link'
 import type { Client, Profile, ClientPlan, UnidadNegocio, SemaforoStatus } from '@/lib/types'
-import { MORA_OPTIONS, getMoraColor, MESES_CARGA, formatFeeCarga } from '@/lib/types'
+import { MORA_OPTIONS, getMoraColor } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -87,35 +87,13 @@ interface ClientsListContentProps {
   hoursMap: Record<string, number>
 }
 
-type SemaforoStatus = 'en_rango' | 'baja' | 'sobre' | 'sin_datos'
-
-function computeSemaforo(tracked: number, min: number, max: number): SemaforoStatus {
-  if (min === 0 && max === 0) return 'sin_datos'
-  if (tracked === 0) return 'sin_datos'
-  if (tracked > max) return 'sobre'
-  if (tracked >= min) return 'en_rango'
-  return 'baja'
-}
-
-function getSemaforoConfig(status: SemaforoStatus) {
-  switch (status) {
-    case 'en_rango':
-      return { label: 'En rango', color: '#22c55e', borderColor: '#22c55e' }
-    case 'baja':
-      return { label: 'Baja dedicacion', color: '#eab308', borderColor: '#eab308' }
-    case 'sobre':
-      return { label: 'Sobre dedicacion', color: '#ef4444', borderColor: '#ef4444' }
-    case 'sin_datos':
-    default:
-      return { label: 'Sin datos', color: '#9ca3af', borderColor: undefined }
-  }
-}
 
 function formatTrackedHours(hours: number): string {
   const h = Math.floor(hours)
   const m = Math.round((hours % 1) * 60)
   return `${h}:${String(m).padStart(2, '0')}`
 }
+
 
 function getSemaforoBadge(semaforo: SemaforoStatus | undefined) {
   switch (semaforo) {
@@ -164,7 +142,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [advancedOpen, setAdvancedOpen] = useState(false)
   
   // Columnas que siempre deben mostrarse en la vista de lista de Clientes
-  const requiredColumns = ['cliente', 'plan', 'fee_mdk', 'fee_aurelia', 'fee_consultoria', 'fee_total', 'fee_carga', 'pm', 'am', 'nps', 'mora', 'semaforos']
+  const requiredColumns = ['cliente', 'plan', 'fee_mdk', 'fee_aurelia', 'fee_consultoria', 'fee_total', 'pm', 'am', 'nps', 'mora']
 
   // Visible columns - ahora incluye todas las columnas disponibles
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
@@ -261,18 +239,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     }
   }
 
-  // Editar mes/año de carga del fee (lista y tarjetas)
-  const [savingFeeCargaId, setSavingFeeCargaId] = useState<string | null>(null)
-  const updateFeeCarga = async (
-    clientId: string,
-    field: 'fee_mes_carga' | 'fee_anio_carga',
-    value: number | null
-  ) => {
-    setSavingFeeCargaId(clientId)
-    setLocalClients(prev => prev.map(c => (c.id === clientId ? { ...c, [field]: value } : c)))
-    await supabase.from('clientes').update({ [field]: value }).eq('id', clientId)
-    setSavingFeeCargaId(null)
-  }
+
 
   const allColumns = [
     { id: 'cliente', label: 'Cliente' },
@@ -283,13 +250,11 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   { id: 'fee_aurelia', label: 'Fee Aurelia' },
     { id: 'fee_consultoria', label: 'Fee Consultoría' },
     { id: 'fee_total', label: 'Fee Total' },
-    { id: 'fee_carga', label: 'Actualización Fee' },
   { id: 'plataformas', label: 'Plataformas' },
     { id: 'pm', label: 'Project Manager' },
     { id: 'am', label: 'Account Manager' },
     { id: 'nps', label: 'NPS' },
     { id: 'mora', label: 'Mora' },
-    { id: 'semaforos', label: 'Semáforos' },
     { id: 'etapa', label: 'Etapa' },
     { id: 'fecha_activacion', label: 'Fecha Activación' },
     { id: 'fecha_venta', label: 'Fecha Venta' },
@@ -423,7 +388,7 @@ const applyFilter = (filter: SavedFilter) => {
   nombre: '',
   apellido: '',
   telefono: '',
-  status: 'verde' as ClientStatus,
+  status: 'verde' as SemaforoStatus,
   plan: null as ClientPlan | null,
   fee_mdk: '',
     fee_aurelia: '',
@@ -626,16 +591,7 @@ const applyFilter = (filter: SavedFilter) => {
         valueA = a.mora || ''
         valueB = b.mora || ''
         break
-      case 'semaforos': {
-        const semScore = (c: typeof a) => {
-          const order = { rojo: 3, naranja: 2, amarillo: 1, verde: 0 }
-          const vals = Object.values(c.semaforo_unidades || {})
-          return vals.length ? Math.max(...vals.map(v => order[v as keyof typeof order] ?? -1)) : -1
-        }
-        valueA = semScore(a)
-        valueB = semScore(b)
-        break
-      }
+
       case 'etapa':
         valueA = (a.etapa || '').toLowerCase()
         valueB = (b.etapa || '').toLowerCase()
@@ -788,7 +744,7 @@ const applyFilter = (filter: SavedFilter) => {
                         <Label htmlFor="status">Estado inicial</Label>
                         <Select
                           value={newClient.status}
-                          onValueChange={(v) => setNewClient(prev => ({ ...prev, status: v as ClientStatus }))}
+                          onValueChange={(v) => setNewClient(prev => ({ ...prev, status: v as SemaforoStatus }))}
                         >
                           <SelectTrigger className="mt-1">
                             <SelectValue />
@@ -1529,12 +1485,7 @@ const applyFilter = (filter: SavedFilter) => {
                               <span className="font-medium">{formatCurrency(client.fee_consultoria)}</span>
                             </div>
                           )}
-                          {formatFeeCarga(client.fee_mes_carga, client.fee_anio_carga) && (
-                            <div>
-                              <span className="text-muted-foreground">Actualización Fee:</span>{' '}
-                              <span className="font-medium">{formatFeeCarga(client.fee_mes_carga, client.fee_anio_carga)}</span>
-                            </div>
-                          )}
+
                           {visibleColumns.includes('pm') && pm && (
                             <div>
                               <span className="text-muted-foreground">PM:</span>{' '}
@@ -1672,13 +1623,13 @@ const applyFilter = (filter: SavedFilter) => {
                   {visibleColumns.includes('fee_aurelia') && <SortableHead columnId="fee_aurelia" label="Fee Aurelia" align="right" />}
                   {visibleColumns.includes('fee_consultoria') && <SortableHead columnId="fee_consultoria" label="Fee Cons." align="right" />}
                   {visibleColumns.includes('fee_total') && <SortableHead columnId="fee_total" label="Fee Total" align="right" />}
-                  {visibleColumns.includes('fee_carga') && <TableHead>Actualización Fee</TableHead>}
+
                   {visibleColumns.includes('plataformas') && <SortableHead columnId="plataformas" label="Plataformas" />}
                   {visibleColumns.includes('pm') && <SortableHead columnId="pm" label="PM" />}
                   {visibleColumns.includes('am') && <SortableHead columnId="am" label="AM" />}
                   {visibleColumns.includes('nps') && <SortableHead columnId="nps" label="NPS" />}
                   {visibleColumns.includes('mora') && <SortableHead columnId="mora" label="Mora" />}
-                  {visibleColumns.includes('semaforos') && <SortableHead columnId="semaforos" label="Semáforos" />}
+  
                   {visibleColumns.includes('etapa') && <SortableHead columnId="etapa" label="Etapa" />}
                   {visibleColumns.includes('fecha_activacion') && <SortableHead columnId="fecha_activacion" label="F. Activacion" />}
                   {visibleColumns.includes('fecha_venta') && <SortableHead columnId="fecha_venta" label="F. Venta" />}
@@ -1796,34 +1747,7 @@ const applyFilter = (filter: SavedFilter) => {
                             {formatCurrency((client.fee_mdk || 0) + (client.fee_aurelia || 0) + (client.fee_consultoria || 0))}
                           </TableCell>
                         )}
-                        {visibleColumns.includes('fee_carga') && (
-                          <TableCell onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center gap-1.5">
-                              <Select
-                                value={client.fee_mes_carga ? String(client.fee_mes_carga) : undefined}
-                                onValueChange={(v) => updateFeeCarga(client.id, 'fee_mes_carga', Number(v))}
-                              >
-                                <SelectTrigger className="h-7 w-[92px] text-xs">
-                                  <SelectValue placeholder="Mes" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {MESES_CARGA.map(m => (
-                                    <SelectItem key={m.value} value={String(m.value)} className="text-xs">
-                                      {m.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <Input
-                                type="number"
-                                value={client.fee_anio_carga ?? ''}
-                                onChange={(e) => updateFeeCarga(client.id, 'fee_anio_carga', e.target.value === '' ? null : Number(e.target.value))}
-                                className="h-7 w-[68px] text-xs"
-                                placeholder="Año"
-                              />
-                            </div>
-                          </TableCell>
-                        )}
+
                         {visibleColumns.includes('plataformas') && (
                           <TableCell>
                             <div className="flex gap-1">
@@ -1881,28 +1805,7 @@ const applyFilter = (filter: SavedFilter) => {
                             </Select>
                           </TableCell>
                         )}
-                        {visibleColumns.includes('semaforos') && (
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {clientUnidades.length > 0 ? (
-                                clientUnidades.map(unidad => {
-                                  const semaforo = client.semaforo_unidades?.[unidad]
-                                  const semaforoBadge = getSemaforoBadge(semaforo)
-                                  return (
-                                    <span
-                                      key={unidad}
-                                      className="h-3 w-3 rounded-full border"
-                                      style={{ backgroundColor: semaforoBadge.color }}
-                                      title={`${unidad}: ${semaforo || 'sin datos'}`}
-                                    />
-                                  )
-                                })
-                              ) : (
-                                <span className="text-xs text-muted-foreground">-</span>
-                              )}
-                            </div>
-                          </TableCell>
-                        )}
+
                         {visibleColumns.includes('etapa') && (
                           <TableCell>
                             <span className="text-sm text-muted-foreground">
@@ -1983,13 +1886,13 @@ const applyFilter = (filter: SavedFilter) => {
                         {formatCurrency(filteredClients.reduce((sum, c) => sum + (c.fee_mdk || 0) + (c.fee_aurelia || 0) + (c.fee_consultoria || 0), 0))}
                       </TableCell>
                     )}
-                    {visibleColumns.includes('fee_carga') && <TableCell></TableCell>}
+
                     {visibleColumns.includes('plataformas') && <TableCell></TableCell>}
                     {visibleColumns.includes('pm') && <TableCell></TableCell>}
                     {visibleColumns.includes('am') && <TableCell></TableCell>}
                     {visibleColumns.includes('nps') && <TableCell></TableCell>}
                     {visibleColumns.includes('mora') && <TableCell></TableCell>}
-                    {visibleColumns.includes('semaforos') && <TableCell></TableCell>}
+
                     {visibleColumns.includes('etapa') && <TableCell></TableCell>}
                     {visibleColumns.includes('fecha_activacion') && <TableCell></TableCell>}
                     {visibleColumns.includes('fecha_venta') && <TableCell></TableCell>}
