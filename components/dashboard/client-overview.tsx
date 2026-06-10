@@ -59,6 +59,21 @@ interface MetricaColaborador {
   } | null
 }
 
+const MESES_CARGA = [
+  { value: 1, label: 'Enero' },
+  { value: 2, label: 'Febrero' },
+  { value: 3, label: 'Marzo' },
+  { value: 4, label: 'Abril' },
+  { value: 5, label: 'Mayo' },
+  { value: 6, label: 'Junio' },
+  { value: 7, label: 'Julio' },
+  { value: 8, label: 'Agosto' },
+  { value: 9, label: 'Septiembre' },
+  { value: 10, label: 'Octubre' },
+  { value: 11, label: 'Noviembre' },
+  { value: 12, label: 'Diciembre' },
+] as const
+
 interface ClientOverviewProps {
   client: Client
   profiles: Profile[]
@@ -608,6 +623,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [feeMdk, setFeeMdk] = useState(client.fee_mdk ?? 0)
   const [feeAurelia, setFeeAurelia] = useState(client.fee_aurelia ?? 0)
   const [feeConsultoria, setFeeConsultoria] = useState(client.fee_consultoria ?? 0)
+  const [feeMesCarga, setFeeMesCarga] = useState<number | null>(client.fee_mes_carga ?? null)
+  const [feeAnioCarga, setFeeAnioCarga] = useState<number | null>(client.fee_anio_carga ?? null)
   const [savingFee, setSavingFee] = useState(false)
 
   // Mora editing
@@ -759,7 +776,9 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         .update({ 
           fee_mdk: feeMdk,
           fee_aurelia: feeAurelia,
-          fee_consultoria: feeConsultoria
+          fee_consultoria: feeConsultoria,
+          fee_mes_carga: feeMesCarga,
+          fee_anio_carga: feeAnioCarga
         })
         .eq('id', client.id)
       
@@ -779,6 +798,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     setFeeMdk(client.fee_mdk ?? 0)
     setFeeAurelia(client.fee_aurelia ?? 0)
     setFeeConsultoria(client.fee_consultoria ?? 0)
+    setFeeMesCarga(client.fee_mes_carga ?? null)
+    setFeeAnioCarga(client.fee_anio_carga ?? null)
     setEditingFee(false)
   }
 
@@ -1226,6 +1247,36 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                       />
                     </div>
                   </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <label className="text-xs text-muted-foreground">Mes de carga</label>
+                      <Select
+                        value={feeMesCarga ? String(feeMesCarga) : undefined}
+                        onValueChange={(v) => setFeeMesCarga(Number(v))}
+                      >
+                        <SelectTrigger className="h-9 text-xs">
+                          <SelectValue placeholder="Mes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MESES_CARGA.map(m => (
+                            <SelectItem key={m.value} value={String(m.value)} className="text-xs">
+                              {m.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs text-muted-foreground">Año de carga</label>
+                      <Input
+                        type="number"
+                        value={feeAnioCarga ?? ''}
+                        onChange={(e) => setFeeAnioCarga(e.target.value === '' ? null : Number(e.target.value))}
+                        className="h-9"
+                        placeholder="Ej: 2026"
+                      />
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2 pt-1">
                     <Button 
                       size="sm" 
@@ -1258,6 +1309,11 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                     {feeAurelia > 0 && <span className="text-[11px] text-muted-foreground">Aurelia: {formatCurrencyFull(feeAurelia)}</span>}
                     {feeConsultoria > 0 && <span className="text-[11px] text-muted-foreground">Consultoría: {formatCurrencyFull(feeConsultoria)}</span>}
                   </div>
+                  {(feeMesCarga || feeAnioCarga) && (
+                    <p className="text-[11px] text-muted-foreground mt-2">
+                      Actualizado: {feeMesCarga ? MESES_CARGA.find(m => m.value === feeMesCarga)?.label : ''}{feeMesCarga && feeAnioCarga ? ' ' : ''}{feeAnioCarga ?? ''}
+                    </p>
+                  )}
                   <div className="mt-3 pt-3 border-t border-border">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[11px] text-muted-foreground font-medium">Mora</span>

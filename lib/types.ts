@@ -104,6 +104,8 @@ export interface Client {
   fee_mdk: number | null
   fee_aurelia: number | null
   fee_consultoria?: number | null
+  fee_mes_carga?: number | null
+  fee_anio_carga?: number | null
   mora?: string | null
   nps_score?: number | null
   google_ads_customer_id: string | null
