@@ -154,7 +154,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [advancedOpen, setAdvancedOpen] = useState(false)
   
   // Columnas que siempre deben mostrarse en la vista de lista de Clientes
-  const requiredColumns = ['cliente', 'plan', 'fee_mdk', 'fee_aurelia', 'fee_consultoria', 'pm', 'am', 'nps', 'mora', 'semaforos']
+  const requiredColumns = ['cliente', 'plan', 'fee_mdk', 'fee_aurelia', 'fee_consultoria', 'fee_total', 'pm', 'am', 'nps', 'mora', 'semaforos']
 
   // Visible columns - ahora incluye todas las columnas disponibles
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
@@ -224,7 +224,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   { id: 'plan', label: 'Plan' },
   { id: 'fee_mdk', label: 'Fee MDK' },
   { id: 'fee_aurelia', label: 'Fee Aurelia' },
-  { id: 'fee_consultoria', label: 'Fee Consultoría' },
+    { id: 'fee_consultoria', label: 'Fee Consultoría' },
+    { id: 'fee_total', label: 'Fee Total' },
   { id: 'plataformas', label: 'Plataformas' },
     { id: 'pm', label: 'Project Manager' },
     { id: 'am', label: 'Account Manager' },
@@ -544,8 +545,8 @@ const applyFilter = (filter: SavedFilter) => {
         valueB = b.fee_consultoria || 0
         break
       case 'fee_total':
-        valueA = (a.fee_mdk || 0) + (a.fee_aurelia || 0)
-        valueB = (b.fee_mdk || 0) + (b.fee_aurelia || 0)
+        valueA = (a.fee_mdk || 0) + (a.fee_aurelia || 0) + (a.fee_consultoria || 0)
+        valueB = (b.fee_mdk || 0) + (b.fee_aurelia || 0) + (b.fee_consultoria || 0)
         break
       case 'plataformas':
         valueA = (a.google_ads_customer_id ? 2 : 0) + (a.meta_ads_account_id ? 1 : 0)
@@ -564,8 +565,8 @@ const applyFilter = (filter: SavedFilter) => {
         valueB = b.nps_score ?? -1
         break
       case 'mora':
-        valueA = a.etapa === 'inhabilitado_mora' ? 1 : 0
-        valueB = b.etapa === 'inhabilitado_mora' ? 1 : 0
+        valueA = a.mora || ''
+        valueB = b.mora || ''
         break
       case 'semaforos': {
         const semScore = (c: typeof a) => {
@@ -1551,6 +1552,7 @@ const applyFilter = (filter: SavedFilter) => {
                   {visibleColumns.includes('fee_mdk') && <SortableHead columnId="fee_mdk" label="Fee MDK" align="right" />}
                   {visibleColumns.includes('fee_aurelia') && <SortableHead columnId="fee_aurelia" label="Fee Aurelia" align="right" />}
                   {visibleColumns.includes('fee_consultoria') && <SortableHead columnId="fee_consultoria" label="Fee Cons." align="right" />}
+                  {visibleColumns.includes('fee_total') && <SortableHead columnId="fee_total" label="Fee Total" align="right" />}
                   {visibleColumns.includes('plataformas') && <SortableHead columnId="plataformas" label="Plataformas" />}
                   {visibleColumns.includes('pm') && <SortableHead columnId="pm" label="PM" />}
                   {visibleColumns.includes('am') && <SortableHead columnId="am" label="AM" />}
@@ -1668,6 +1670,11 @@ const applyFilter = (filter: SavedFilter) => {
                             {formatCurrency(client.fee_consultoria || null)}
                           </TableCell>
                         )}
+                        {visibleColumns.includes('fee_total') && (
+                          <TableCell className="text-right font-semibold">
+                            {formatCurrency((client.fee_mdk || 0) + (client.fee_aurelia || 0) + (client.fee_consultoria || 0))}
+                          </TableCell>
+                        )}
                         {visibleColumns.includes('plataformas') && (
                           <TableCell>
                             <div className="flex gap-1">
@@ -1700,8 +1707,8 @@ const applyFilter = (filter: SavedFilter) => {
                         )}
                         {visibleColumns.includes('mora') && (
                           <TableCell>
-                            {client.etapa === 'inhabilitado_mora' ? (
-                              <Badge variant="destructive" className="text-xs">En mora</Badge>
+                            {client.mora ? (
+                              <Badge variant="destructive" className="text-xs">{client.mora}</Badge>
                             ) : (
                               <span className="text-xs text-muted-foreground">-</span>
                             )}
@@ -1789,6 +1796,11 @@ const applyFilter = (filter: SavedFilter) => {
                     {visibleColumns.includes('fee_consultoria') && (
                       <TableCell className="text-right font-bold">
                         {formatCurrency(filteredClients.reduce((sum, c) => sum + (c.fee_consultoria || 0), 0))}
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes('fee_total') && (
+                      <TableCell className="text-right font-bold">
+                        {formatCurrency(filteredClients.reduce((sum, c) => sum + (c.fee_mdk || 0) + (c.fee_aurelia || 0) + (c.fee_consultoria || 0), 0))}
                       </TableCell>
                     )}
                     {visibleColumns.includes('plataformas') && <TableCell></TableCell>}
