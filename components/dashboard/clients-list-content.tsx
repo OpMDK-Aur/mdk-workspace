@@ -150,8 +150,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // Advanced filter state
   const [feeMinFilter, setFeeMinFilter] = useState<string>('')
   const [feeMaxFilter, setFeeMaxFilter] = useState<string>('')
-  const [sortBy, setSortBy] = useState<string>('nombre_del_negocio')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [sortBy, setSortBy] = useState<string>('fee_total')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [advancedOpen, setAdvancedOpen] = useState(false)
   
   // Columnas que siempre deben mostrarse en la vista de lista de Clientes
