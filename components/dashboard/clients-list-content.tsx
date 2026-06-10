@@ -153,13 +153,20 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [advancedOpen, setAdvancedOpen] = useState(false)
   
+  // Columnas que siempre deben mostrarse en la vista de lista de Clientes
+  const requiredColumns = ['cliente', 'plan', 'fee_mdk', 'fee_aurelia', 'fee_consultoria', 'pm', 'am', 'nps', 'mora', 'semaforos']
+
   // Visible columns - ahora incluye todas las columnas disponibles
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('clientVisibleColumns')
-      return saved ? JSON.parse(saved) : ['cliente', 'unidad_negocio', 'plan', 'fee_mdk', 'pm']
+      const base: string[] = saved ? JSON.parse(saved) : []
+      // Asegurar que las columnas requeridas siempre estén presentes
+      const merged = [...base]
+      requiredColumns.forEach(c => { if (!merged.includes(c)) merged.push(c) })
+      return merged.length ? merged : requiredColumns
     }
-    return ['cliente', 'unidad_negocio', 'plan', 'fee_mdk', 'pm']
+    return requiredColumns
   })
   
   // View mode: 'table' or 'cards'
@@ -222,6 +229,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     { id: 'pm', label: 'Project Manager' },
     { id: 'am', label: 'Account Manager' },
     { id: 'nps', label: 'NPS' },
+    { id: 'mora', label: 'Mora' },
+    { id: 'semaforos', label: 'Semáforos' },
     { id: 'etapa', label: 'Etapa' },
     { id: 'fecha_activacion', label: 'Fecha Activación' },
     { id: 'fecha_venta', label: 'Fecha Venta' },
@@ -231,6 +240,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   ]
 
   const toggleColumn = (columnId: string) => {
+    // No permitir ocultar las columnas requeridas
+    if (requiredColumns.includes(columnId)) return
     const updated = visibleColumns.includes(columnId)
       ? visibleColumns.filter(c => c !== columnId)
       : [...visibleColumns, columnId]
@@ -552,6 +563,20 @@ const applyFilter = (filter: SavedFilter) => {
         valueA = a.nps_score ?? -1
         valueB = b.nps_score ?? -1
         break
+      case 'mora':
+        valueA = a.etapa === 'inhabilitado_mora' ? 1 : 0
+        valueB = b.etapa === 'inhabilitado_mora' ? 1 : 0
+        break
+      case 'semaforos': {
+        const semScore = (c: typeof a) => {
+          const order = { rojo: 3, naranja: 2, amarillo: 1, verde: 0 }
+          const vals = Object.values(c.semaforo_unidades || {})
+          return vals.length ? Math.max(...vals.map(v => order[v as keyof typeof order] ?? -1)) : -1
+        }
+        valueA = semScore(a)
+        valueB = semScore(b)
+        break
+      }
       case 'etapa':
         valueA = (a.etapa || '').toLowerCase()
         valueB = (b.etapa || '').toLowerCase()
@@ -1290,15 +1315,19 @@ const applyFilter = (filter: SavedFilter) => {
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Columnas visibles</Label>
                       <div className="grid grid-cols-2 gap-2">
-                        {allColumns.map(col => (
-                          <label key={col.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                            <Checkbox
-                              checked={visibleColumns.includes(col.id)}
-                              onCheckedChange={() => toggleColumn(col.id)}
-                            />
-                            {col.label}
-                          </label>
-                        ))}
+                        {allColumns.map(col => {
+                          const isRequired = requiredColumns.includes(col.id)
+                          return (
+                            <label key={col.id} className={cn("flex items-center gap-2 text-sm", isRequired ? "cursor-not-allowed opacity-60" : "cursor-pointer")}>
+                              <Checkbox
+                                checked={visibleColumns.includes(col.id)}
+                                disabled={isRequired}
+                                onCheckedChange={() => toggleColumn(col.id)}
+                              />
+                              {col.label}
+                            </label>
+                          )
+                        })}
                       </div>
                     </div>
                   </div>
@@ -1526,6 +1555,8 @@ const applyFilter = (filter: SavedFilter) => {
                   {visibleColumns.includes('pm') && <SortableHead columnId="pm" label="PM" />}
                   {visibleColumns.includes('am') && <SortableHead columnId="am" label="AM" />}
                   {visibleColumns.includes('nps') && <SortableHead columnId="nps" label="NPS" />}
+                  {visibleColumns.includes('mora') && <SortableHead columnId="mora" label="Mora" />}
+                  {visibleColumns.includes('semaforos') && <SortableHead columnId="semaforos" label="Semáforos" />}
                   {visibleColumns.includes('etapa') && <SortableHead columnId="etapa" label="Etapa" />}
                   {visibleColumns.includes('fecha_activacion') && <SortableHead columnId="fecha_activacion" label="F. Activacion" />}
                   {visibleColumns.includes('fecha_venta') && <SortableHead columnId="fecha_venta" label="F. Venta" />}
@@ -1667,6 +1698,37 @@ const applyFilter = (filter: SavedFilter) => {
                             <span className="text-sm">{client.nps_score ?? '-'}</span>
                           </TableCell>
                         )}
+                        {visibleColumns.includes('mora') && (
+                          <TableCell>
+                            {client.etapa === 'inhabilitado_mora' ? (
+                              <Badge variant="destructive" className="text-xs">En mora</Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('semaforos') && (
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {clientUnidades.length > 0 ? (
+                                clientUnidades.map(unidad => {
+                                  const semaforo = client.semaforo_unidades?.[unidad]
+                                  const semaforoBadge = getSemaforoBadge(semaforo)
+                                  return (
+                                    <span
+                                      key={unidad}
+                                      className="h-3 w-3 rounded-full border"
+                                      style={{ backgroundColor: semaforoBadge.color }}
+                                      title={`${unidad}: ${semaforo || 'sin datos'}`}
+                                    />
+                                  )
+                                })
+                              ) : (
+                                <span className="text-xs text-muted-foreground">-</span>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
                         {visibleColumns.includes('etapa') && (
                           <TableCell>
                             <span className="text-sm text-muted-foreground">
@@ -1733,6 +1795,8 @@ const applyFilter = (filter: SavedFilter) => {
                     {visibleColumns.includes('pm') && <TableCell></TableCell>}
                     {visibleColumns.includes('am') && <TableCell></TableCell>}
                     {visibleColumns.includes('nps') && <TableCell></TableCell>}
+                    {visibleColumns.includes('mora') && <TableCell></TableCell>}
+                    {visibleColumns.includes('semaforos') && <TableCell></TableCell>}
                     {visibleColumns.includes('etapa') && <TableCell></TableCell>}
                     {visibleColumns.includes('fecha_activacion') && <TableCell></TableCell>}
                     {visibleColumns.includes('fecha_venta') && <TableCell></TableCell>}
