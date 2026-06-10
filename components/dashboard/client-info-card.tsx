@@ -172,7 +172,7 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
   // Etapa state
   const [etapa, setEtapa] = useState<ClientEtapa | null>(client.etapa || null)
   const [savingEtapa, setSavingEtapa] = useState(false)
-  
+
   // Semaforo por unidad state
   const [semaforoUnidades, setSemaforoUnidades] = useState<Record<string, SemaforoStatus>>(
     client.semaforo_unidades || {}

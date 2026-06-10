@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, memo } from 'react'
 import Link from 'next/link'
 import type { Client, Profile, ClientPlan, UnidadNegocio, SemaforoStatus } from '@/lib/types'
+import { MORA_OPTIONS, getMoraColor, MESES_CARGA, formatFeeCarga } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -63,6 +64,8 @@ import {
   Trash2,
   Calendar,
   ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
   LayoutGrid,
   List,
 } from 'lucide-react'
@@ -147,17 +150,24 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // Advanced filter state
   const [feeMinFilter, setFeeMinFilter] = useState<string>('')
   const [feeMaxFilter, setFeeMaxFilter] = useState<string>('')
-  const [sortBy, setSortBy] = useState<string>('nombre_del_negocio')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [sortBy, setSortBy] = useState<string>('fee_total')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [advancedOpen, setAdvancedOpen] = useState(false)
   
+  // Columnas que siempre deben mostrarse en la vista de lista de Clientes
+  const requiredColumns = ['cliente', 'plan', 'fee_mdk', 'fee_aurelia', 'fee_consultoria', 'fee_total', 'fee_carga', 'pm', 'am', 'nps', 'mora', 'semaforos']
+
   // Visible columns - ahora incluye todas las columnas disponibles
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('clientVisibleColumns')
-      return saved ? JSON.parse(saved) : ['cliente', 'unidad_negocio', 'plan', 'fee_mdk', 'pm']
+      const base: string[] = saved ? JSON.parse(saved) : []
+      // Asegurar que las columnas requeridas siempre estén presentes
+      const merged = [...base]
+      requiredColumns.forEach(c => { if (!merged.includes(c)) merged.push(c) })
+      return merged.length ? merged : requiredColumns
     }
-    return ['cliente', 'unidad_negocio', 'plan', 'fee_mdk', 'pm']
+    return requiredColumns
   })
   
   // View mode: 'table' or 'cards'
@@ -169,6 +179,69 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     return 'cards'
   })
 
+  // Column widths (resizable columns) - persisted per column id
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('clientColumnWidths')
+      return saved ? JSON.parse(saved) : {}
+    }
+    return {}
+  })
+
+  // Handle column resize via drag on the header handle
+  const startResize = useCallback((columnId: string, startX: number, startWidth: number) => {
+    const onMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.max(80, startWidth + (e.clientX - startX))
+      setColumnWidths(prev => ({ ...prev, [columnId]: newWidth }))
+    }
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.body.style.userSelect = ''
+      setColumnWidths(prev => {
+        localStorage.setItem('clientColumnWidths', JSON.stringify(prev))
+        return prev
+      })
+    }
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }, [])
+
+  // Click a column header to sort by it (toggles asc/desc)
+  const handleHeaderSort = (columnId: string) => {
+    if (sortBy === columnId) {
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(columnId)
+      setSortOrder('asc')
+    }
+  }
+
+  // Editar el estado de mora de un cliente (lista y tarjetas)
+  const [savingMoraId, setSavingMoraId] = useState<string | null>(null)
+  const updateMora = async (clientId: string, value: string) => {
+    const newMora = value === 'Al día' ? null : value
+    setSavingMoraId(clientId)
+    // Optimistic update
+    setLocalClients(prev => prev.map(c => (c.id === clientId ? { ...c, mora: newMora } : c)))
+    await supabase.from('clientes').update({ mora: newMora }).eq('id', clientId)
+    setSavingMoraId(null)
+  }
+
+  // Editar mes/año de carga del fee (lista y tarjetas)
+  const [savingFeeCargaId, setSavingFeeCargaId] = useState<string | null>(null)
+  const updateFeeCarga = async (
+    clientId: string,
+    field: 'fee_mes_carga' | 'fee_anio_carga',
+    value: number | null
+  ) => {
+    setSavingFeeCargaId(clientId)
+    setLocalClients(prev => prev.map(c => (c.id === clientId ? { ...c, [field]: value } : c)))
+    await supabase.from('clientes').update({ [field]: value }).eq('id', clientId)
+    setSavingFeeCargaId(null)
+  }
+
   const allColumns = [
     { id: 'cliente', label: 'Cliente' },
     { id: 'unidad_negocio', label: 'Unidad de Negocio' },
@@ -176,11 +249,15 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   { id: 'plan', label: 'Plan' },
   { id: 'fee_mdk', label: 'Fee MDK' },
   { id: 'fee_aurelia', label: 'Fee Aurelia' },
-  { id: 'fee_consultoria', label: 'Fee Consultoría' },
+    { id: 'fee_consultoria', label: 'Fee Consultoría' },
+    { id: 'fee_total', label: 'Fee Total' },
+    { id: 'fee_carga', label: 'Actualización Fee' },
   { id: 'plataformas', label: 'Plataformas' },
     { id: 'pm', label: 'Project Manager' },
     { id: 'am', label: 'Account Manager' },
     { id: 'nps', label: 'NPS' },
+    { id: 'mora', label: 'Mora' },
+    { id: 'semaforos', label: 'Semáforos' },
     { id: 'etapa', label: 'Etapa' },
     { id: 'fecha_activacion', label: 'Fecha Activación' },
     { id: 'fecha_venta', label: 'Fecha Venta' },
@@ -190,6 +267,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   ]
 
   const toggleColumn = (columnId: string) => {
+    // No permitir ocultar las columnas requeridas
+    if (requiredColumns.includes(columnId)) return
     const updated = visibleColumns.includes(columnId)
       ? visibleColumns.filter(c => c !== columnId)
       : [...visibleColumns, columnId]
@@ -462,10 +541,22 @@ const applyFilter = (filter: SavedFilter) => {
     let valueA: string | number = ''
     let valueB: string | number = ''
     
+    const unidadesA = a.unidades_negocio || (a.unidad_negocio ? [a.unidad_negocio] : [])
+    const unidadesB = b.unidades_negocio || (b.unidad_negocio ? [b.unidad_negocio] : [])
+
     switch (sortBy) {
+      case 'cliente':
       case 'nombre_del_negocio':
         valueA = a.nombre_del_negocio.toLowerCase()
         valueB = b.nombre_del_negocio.toLowerCase()
+        break
+      case 'contacto':
+        valueA = `${a.nombre || ''} ${a.apellido || ''}`.trim().toLowerCase()
+        valueB = `${b.nombre || ''} ${b.apellido || ''}`.trim().toLowerCase()
+        break
+      case 'plan':
+        valueA = (unidadesA.includes('MDK') ? a.plan || '' : '').toLowerCase()
+        valueB = (unidadesB.includes('MDK') ? b.plan || '' : '').toLowerCase()
         break
       case 'fee_mdk':
         valueA = a.fee_mdk || 0
@@ -475,13 +566,47 @@ const applyFilter = (filter: SavedFilter) => {
         valueA = a.fee_aurelia || 0
         valueB = b.fee_aurelia || 0
         break
+      case 'fee_consultoria':
+        valueA = a.fee_consultoria || 0
+        valueB = b.fee_consultoria || 0
+        break
       case 'fee_total':
-        valueA = (a.fee_mdk || 0) + (a.fee_aurelia || 0)
-        valueB = (b.fee_mdk || 0) + (b.fee_aurelia || 0)
+        valueA = (a.fee_mdk || 0) + (a.fee_aurelia || 0) + (a.fee_consultoria || 0)
+        valueB = (b.fee_mdk || 0) + (b.fee_aurelia || 0) + (b.fee_consultoria || 0)
+        break
+      case 'plataformas':
+        valueA = (a.google_ads_customer_id ? 2 : 0) + (a.meta_ads_account_id ? 1 : 0)
+        valueB = (b.google_ads_customer_id ? 2 : 0) + (b.meta_ads_account_id ? 1 : 0)
+        break
+      case 'pm':
+        valueA = (profiles.find(p => p.id === a.project_manager_id)?.full_name || '').toLowerCase()
+        valueB = (profiles.find(p => p.id === b.project_manager_id)?.full_name || '').toLowerCase()
+        break
+      case 'am':
+        valueA = (profiles.find(p => p.id === a.account_manager_id)?.full_name || '').toLowerCase()
+        valueB = (profiles.find(p => p.id === b.account_manager_id)?.full_name || '').toLowerCase()
         break
       case 'nps':
         valueA = a.nps_score ?? -1
         valueB = b.nps_score ?? -1
+        break
+      case 'mora':
+        valueA = a.mora || ''
+        valueB = b.mora || ''
+        break
+      case 'semaforos': {
+        const semScore = (c: typeof a) => {
+          const order = { rojo: 3, naranja: 2, amarillo: 1, verde: 0 }
+          const vals = Object.values(c.semaforo_unidades || {})
+          return vals.length ? Math.max(...vals.map(v => order[v as keyof typeof order] ?? -1)) : -1
+        }
+        valueA = semScore(a)
+        valueB = semScore(b)
+        break
+      }
+      case 'etapa':
+        valueA = (a.etapa || '').toLowerCase()
+        valueB = (b.etapa || '').toLowerCase()
         break
       case 'status':
         const statusOrder = { verde: 0, amarillo: 1, naranja: 2, rojo: 3 }
@@ -489,12 +614,28 @@ const applyFilter = (filter: SavedFilter) => {
         valueB = statusOrder[b.status as keyof typeof statusOrder] ?? 4
         break
       case 'unidad_negocio':
-        valueA = a.unidad_negocio || ''
-        valueB = b.unidad_negocio || ''
+        valueA = (unidadesA[0] || '').toLowerCase()
+        valueB = (unidadesB[0] || '').toLowerCase()
         break
       case 'fecha_activacion':
         valueA = a.fecha_activacion || ''
         valueB = b.fecha_activacion || ''
+        break
+      case 'fecha_venta':
+        valueA = a.fecha_venta || ''
+        valueB = b.fecha_venta || ''
+        break
+      case 'fecha_inicio_trabajo':
+        valueA = a.fecha_inicio_trabajo || ''
+        valueB = b.fecha_inicio_trabajo || ''
+        break
+      case 'crm':
+        valueA = (a.crm_tipo || '').toLowerCase()
+        valueB = (b.crm_tipo || '').toLowerCase()
+        break
+      case 'discord':
+        valueA = (a.discord_channel_name || '').toLowerCase()
+        valueB = (b.discord_channel_name || '').toLowerCase()
         break
       default:
         valueA = a.nombre_del_negocio.toLowerCase()
@@ -506,13 +647,63 @@ const applyFilter = (filter: SavedFilter) => {
     return 0
   })
 
-  const projectManagers = profiles.filter(p => p.role === 'project_manager' || p.role === 'direccion')
-  const accountManagers = profiles.filter(p => p.role === 'account_manager' || p.role === 'direccion')
+  const projectManagers = profiles.filter(p => {
+    const puesto = (p.puesto || '').toLowerCase()
+    return puesto.includes('project manager') || puesto === 'pm' || p.role === 'project_manager' || p.role === 'direccion'
+  })
+  const accountManagers = profiles.filter(p => {
+    const puesto = (p.puesto || '').toLowerCase()
+    return puesto.includes('account manager') || puesto === 'am' || p.role === 'account_manager' || p.role === 'direccion'
+  })
 
   // Calculate totals
   const totalFeeMdk = filteredClients.reduce((sum, c) => sum + (c.fee_mdk || 0), 0)
   const totalFeeAurelia = filteredClients.reduce((sum, c) => sum + (c.fee_aurelia || 0), 0)
+  const totalFeeConsultoria = filteredClients.reduce((sum, c) => sum + (c.fee_consultoria || 0), 0)
   const totalFee = totalFeeMdk + totalFeeAurelia
+
+  // Sortable + resizable column header
+  const SortableHead = ({ columnId, label, align = 'left' }: { columnId: string; label: string; align?: 'left' | 'right' }) => {
+    const isActive = sortBy === columnId
+    const width = columnWidths[columnId]
+    return (
+      <TableHead
+        style={width ? { width, minWidth: width, maxWidth: width } : undefined}
+        className="relative select-none p-0"
+      >
+        <div className={cn('flex items-center gap-1', align === 'right' && 'justify-end')}>
+          <button
+            type="button"
+            onClick={() => handleHeaderSort(columnId)}
+            className="flex items-center gap-1 px-4 py-3 hover:text-foreground transition-colors w-full"
+            style={align === 'right' ? { justifyContent: 'flex-end' } : undefined}
+          >
+            <span className="truncate">{label}</span>
+            {isActive ? (
+              sortOrder === 'asc' ? (
+                <ChevronUp className="h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+              )
+            ) : (
+              <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-40" />
+            )}
+          </button>
+        </div>
+        <span
+          role="separator"
+          aria-orientation="vertical"
+          onMouseDown={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            const th = (e.currentTarget.parentElement as HTMLElement)
+            startResize(columnId, e.clientX, width || th.offsetWidth)
+          }}
+          className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
+        />
+      </TableHead>
+    )
+  }
 
   return (
     <div className="flex-1 overflow-auto">
@@ -854,7 +1045,7 @@ const applyFilter = (filter: SavedFilter) => {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">Fee MDK Total</div>
@@ -867,6 +1058,13 @@ const applyFilter = (filter: SavedFilter) => {
               <div className="text-sm text-muted-foreground">Fee Aurelia Total</div>
               <div className="text-2xl font-bold text-foreground">{formatCurrency(totalFeeAurelia)}</div>
               <div className="text-xs text-muted-foreground mt-1">{filteredClients.filter(c => c.fee_aurelia).length} con Aurelia</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-sm text-muted-foreground">Fee Consultoría Total</div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(totalFeeConsultoria)}</div>
+              <div className="text-xs text-muted-foreground mt-1">{filteredClients.filter(c => c.fee_consultoria).length} con Consultoría</div>
             </CardContent>
           </Card>
           <Card>
@@ -1152,15 +1350,19 @@ const applyFilter = (filter: SavedFilter) => {
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Columnas visibles</Label>
                       <div className="grid grid-cols-2 gap-2">
-                        {allColumns.map(col => (
-                          <label key={col.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                            <Checkbox
-                              checked={visibleColumns.includes(col.id)}
-                              onCheckedChange={() => toggleColumn(col.id)}
-                            />
-                            {col.label}
-                          </label>
-                        ))}
+                        {allColumns.map(col => {
+                          const isRequired = requiredColumns.includes(col.id)
+                          return (
+                            <label key={col.id} className={cn("flex items-center gap-2 text-sm", isRequired ? "cursor-not-allowed opacity-60" : "cursor-pointer")}>
+                              <Checkbox
+                                checked={visibleColumns.includes(col.id)}
+                                disabled={isRequired}
+                                onCheckedChange={() => toggleColumn(col.id)}
+                              />
+                              {col.label}
+                            </label>
+                          )
+                        })}
                       </div>
                     </div>
                   </div>
@@ -1294,6 +1496,12 @@ const applyFilter = (filter: SavedFilter) => {
                               <span className="font-medium">{formatCurrency(client.fee_consultoria)}</span>
                             </div>
                           )}
+                          {formatFeeCarga(client.fee_mes_carga, client.fee_anio_carga) && (
+                            <div>
+                              <span className="text-muted-foreground">Actualización Fee:</span>{' '}
+                              <span className="font-medium">{formatFeeCarga(client.fee_mes_carga, client.fee_anio_carga)}</span>
+                            </div>
+                          )}
                           {visibleColumns.includes('pm') && pm && (
                             <div>
                               <span className="text-muted-foreground">PM:</span>{' '}
@@ -1323,6 +1531,37 @@ const applyFilter = (filter: SavedFilter) => {
                               <span className="text-muted-foreground">Etapa:</span>{' '}
                               <span>{client.etapa.replace(/_/g, ' ')}</span>
                             </div>
+                          )}
+                          {visibleColumns.includes('mora') && (
+                            <div
+                              className="flex items-center gap-2"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                            >
+                              <span className="text-muted-foreground shrink-0">Mora:</span>
+                              <Select
+                                value={client.mora || 'Al día'}
+                                onValueChange={(v) => updateMora(client.id, v)}
+                              >
+                                <SelectTrigger
+                                  className={cn(
+                                    'h-7 flex-1 text-xs font-medium',
+                                    getMoraColor(client.mora || 'Al día').color
+                                  )}
+                                >
+                                  <SelectValue placeholder="Al día" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {MORA_OPTIONS.map(opt => (
+                                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                                      <span className="flex items-center gap-2">
+                                        <span className={cn('h-2 w-2 rounded-full', opt.dot)} />
+                                        {opt.label}
+                                      </span>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                          </div>
                           )}
                           {visibleColumns.includes('fecha_activacion') && client.fecha_activacion && (
                             <div>
@@ -1374,26 +1613,30 @@ const applyFilter = (filter: SavedFilter) => {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-            <Table>
+            <Table style={{ tableLayout: 'fixed', width: '100%' }}>
               <TableHeader>
                 <TableRow>
-                  {visibleColumns.includes('cliente') && <TableHead>Cliente</TableHead>}
-                  {visibleColumns.includes('unidad_negocio') && <TableHead>Unidad</TableHead>}
-                  {visibleColumns.includes('contacto') && <TableHead>Contacto</TableHead>}
-                  {visibleColumns.includes('plan') && <TableHead>Plan</TableHead>}
-                  {visibleColumns.includes('fee_mdk') && <TableHead className="text-right">Fee MDK</TableHead>}
-                  {visibleColumns.includes('fee_aurelia') && <TableHead className="text-right">Fee Aurelia</TableHead>}
-                              {visibleColumns.includes('fee_consultoria') && <TableHead className="text-right">Fee Cons.</TableHead>}
-                              {visibleColumns.includes('plataformas') && <TableHead>Plataformas</TableHead>}
-                  {visibleColumns.includes('pm') && <TableHead>PM</TableHead>}
-                  {visibleColumns.includes('am') && <TableHead>AM</TableHead>}
-                  {visibleColumns.includes('nps') && <TableHead>NPS</TableHead>}
-                  {visibleColumns.includes('etapa') && <TableHead>Etapa</TableHead>}
-                  {visibleColumns.includes('fecha_activacion') && <TableHead>F. Activacion</TableHead>}
-                  {visibleColumns.includes('fecha_venta') && <TableHead>F. Venta</TableHead>}
-                  {visibleColumns.includes('fecha_inicio_trabajo') && <TableHead>F. Inicio</TableHead>}
-                  {visibleColumns.includes('crm') && <TableHead>CRM</TableHead>}
-                  {visibleColumns.includes('discord') && <TableHead>Discord</TableHead>}
+                  {visibleColumns.includes('cliente') && <SortableHead columnId="cliente" label="Cliente" />}
+                  {visibleColumns.includes('unidad_negocio') && <SortableHead columnId="unidad_negocio" label="Unidad" />}
+                  {visibleColumns.includes('contacto') && <SortableHead columnId="contacto" label="Contacto" />}
+                  {visibleColumns.includes('plan') && <SortableHead columnId="plan" label="Plan" />}
+                  {visibleColumns.includes('fee_mdk') && <SortableHead columnId="fee_mdk" label="Fee MDK" align="right" />}
+                  {visibleColumns.includes('fee_aurelia') && <SortableHead columnId="fee_aurelia" label="Fee Aurelia" align="right" />}
+                  {visibleColumns.includes('fee_consultoria') && <SortableHead columnId="fee_consultoria" label="Fee Cons." align="right" />}
+                  {visibleColumns.includes('fee_total') && <SortableHead columnId="fee_total" label="Fee Total" align="right" />}
+                  {visibleColumns.includes('fee_carga') && <TableHead>Actualización Fee</TableHead>}
+                  {visibleColumns.includes('plataformas') && <SortableHead columnId="plataformas" label="Plataformas" />}
+                  {visibleColumns.includes('pm') && <SortableHead columnId="pm" label="PM" />}
+                  {visibleColumns.includes('am') && <SortableHead columnId="am" label="AM" />}
+                  {visibleColumns.includes('nps') && <SortableHead columnId="nps" label="NPS" />}
+                  {visibleColumns.includes('mora') && <SortableHead columnId="mora" label="Mora" />}
+                  {visibleColumns.includes('semaforos') && <SortableHead columnId="semaforos" label="Semáforos" />}
+                  {visibleColumns.includes('etapa') && <SortableHead columnId="etapa" label="Etapa" />}
+                  {visibleColumns.includes('fecha_activacion') && <SortableHead columnId="fecha_activacion" label="F. Activacion" />}
+                  {visibleColumns.includes('fecha_venta') && <SortableHead columnId="fecha_venta" label="F. Venta" />}
+                  {visibleColumns.includes('fecha_inicio_trabajo') && <SortableHead columnId="fecha_inicio_trabajo" label="F. Inicio" />}
+                  {visibleColumns.includes('crm') && <SortableHead columnId="crm" label="CRM" />}
+                  {visibleColumns.includes('discord') && <SortableHead columnId="discord" label="Discord" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1499,6 +1742,39 @@ const applyFilter = (filter: SavedFilter) => {
                             {formatCurrency(client.fee_consultoria || null)}
                           </TableCell>
                         )}
+                        {visibleColumns.includes('fee_total') && (
+                          <TableCell className="text-right font-semibold">
+                            {formatCurrency((client.fee_mdk || 0) + (client.fee_aurelia || 0) + (client.fee_consultoria || 0))}
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('fee_carga') && (
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center gap-1.5">
+                              <Select
+                                value={client.fee_mes_carga ? String(client.fee_mes_carga) : undefined}
+                                onValueChange={(v) => updateFeeCarga(client.id, 'fee_mes_carga', Number(v))}
+                              >
+                                <SelectTrigger className="h-7 w-[92px] text-xs">
+                                  <SelectValue placeholder="Mes" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {MESES_CARGA.map(m => (
+                                    <SelectItem key={m.value} value={String(m.value)} className="text-xs">
+                                      {m.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Input
+                                type="number"
+                                value={client.fee_anio_carga ?? ''}
+                                onChange={(e) => updateFeeCarga(client.id, 'fee_anio_carga', e.target.value === '' ? null : Number(e.target.value))}
+                                className="h-7 w-[68px] text-xs"
+                                placeholder="Año"
+                              />
+                            </div>
+                          </TableCell>
+                        )}
                         {visibleColumns.includes('plataformas') && (
                           <TableCell>
                             <div className="flex gap-1">
@@ -1527,6 +1803,55 @@ const applyFilter = (filter: SavedFilter) => {
                         {visibleColumns.includes('nps') && (
                           <TableCell>
                             <span className="text-sm">{client.nps_score ?? '-'}</span>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('mora') && (
+                          <TableCell>
+                            <Select
+                              value={client.mora || 'Al día'}
+                              onValueChange={(v) => updateMora(client.id, v)}
+                            >
+                              <SelectTrigger
+                                className={cn(
+                                  'h-7 w-full text-xs font-medium',
+                                  getMoraColor(client.mora || 'Al día').color
+                                )}
+                              >
+                                <SelectValue placeholder="Al día" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {MORA_OPTIONS.map(opt => (
+                                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                                    <span className="flex items-center gap-2">
+                                      <span className={cn('h-2 w-2 rounded-full', opt.dot)} />
+                                      {opt.label}
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('semaforos') && (
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {clientUnidades.length > 0 ? (
+                                clientUnidades.map(unidad => {
+                                  const semaforo = client.semaforo_unidades?.[unidad]
+                                  const semaforoBadge = getSemaforoBadge(semaforo)
+                                  return (
+                                    <span
+                                      key={unidad}
+                                      className="h-3 w-3 rounded-full border"
+                                      style={{ backgroundColor: semaforoBadge.color }}
+                                      title={`${unidad}: ${semaforo || 'sin datos'}`}
+                                    />
+                                  )
+                                })
+                              ) : (
+                                <span className="text-xs text-muted-foreground">-</span>
+                              )}
+                            </div>
                           </TableCell>
                         )}
                         {visibleColumns.includes('etapa') && (
@@ -1591,10 +1916,18 @@ const applyFilter = (filter: SavedFilter) => {
                         {formatCurrency(filteredClients.reduce((sum, c) => sum + (c.fee_consultoria || 0), 0))}
                       </TableCell>
                     )}
+                    {visibleColumns.includes('fee_total') && (
+                      <TableCell className="text-right font-bold">
+                        {formatCurrency(filteredClients.reduce((sum, c) => sum + (c.fee_mdk || 0) + (c.fee_aurelia || 0) + (c.fee_consultoria || 0), 0))}
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes('fee_carga') && <TableCell></TableCell>}
                     {visibleColumns.includes('plataformas') && <TableCell></TableCell>}
                     {visibleColumns.includes('pm') && <TableCell></TableCell>}
                     {visibleColumns.includes('am') && <TableCell></TableCell>}
                     {visibleColumns.includes('nps') && <TableCell></TableCell>}
+                    {visibleColumns.includes('mora') && <TableCell></TableCell>}
+                    {visibleColumns.includes('semaforos') && <TableCell></TableCell>}
                     {visibleColumns.includes('etapa') && <TableCell></TableCell>}
                     {visibleColumns.includes('fecha_activacion') && <TableCell></TableCell>}
                     {visibleColumns.includes('fecha_venta') && <TableCell></TableCell>}

@@ -50,6 +50,48 @@ export interface Profile {
 
 export type ClientEtapa = 'activacion' | '1_3_meses' | '4_6_meses' | '7_mas' | 'solicito_baja' | 'inhabilitado_mora'
 
+// Opciones predefinidas para el estado de mora de un cliente.
+// Los valores deben coincidir exactamente con los valores en la BD (tabla clientes, columna mora)
+// `color` son clases de Tailwind para el texto/borde del badge.
+export const MORA_OPTIONS = [
+  { value: 'Al día', label: 'Al día', color: 'text-emerald-600 border-emerald-500/50 bg-emerald-500/10', dot: 'bg-emerald-500' },
+  { value: '7 días de mora', label: '7 días de mora', color: 'text-violet-600 border-violet-500/50 bg-violet-500/10', dot: 'bg-violet-500' },
+  { value: '15 días de mora', label: '15 días de mora', color: 'text-purple-600 border-purple-500/50 bg-purple-500/10', dot: 'bg-purple-500' },
+  { value: '1 mes de mora', label: '1 mes de mora', color: 'text-amber-600 border-amber-500/50 bg-amber-500/10', dot: 'bg-amber-500' },
+  { value: '2 meses de mora', label: '2 meses de mora', color: 'text-red-600 border-red-500/50 bg-red-500/10', dot: 'bg-red-500' },
+] as const
+
+export type MoraStatus = (typeof MORA_OPTIONS)[number]['value']
+
+// Helper para obtener las clases de color de un valor de mora
+export function getMoraColor(value?: string | null) {
+  const opt = MORA_OPTIONS.find(o => o.value === value)
+  return opt ?? MORA_OPTIONS[0]
+}
+
+// Meses para el "mes de carga" del fee (integer 1-12)
+export const MESES_CARGA = [
+  { value: 1, label: 'Enero' },
+  { value: 2, label: 'Febrero' },
+  { value: 3, label: 'Marzo' },
+  { value: 4, label: 'Abril' },
+  { value: 5, label: 'Mayo' },
+  { value: 6, label: 'Junio' },
+  { value: 7, label: 'Julio' },
+  { value: 8, label: 'Agosto' },
+  { value: 9, label: 'Septiembre' },
+  { value: 10, label: 'Octubre' },
+  { value: 11, label: 'Noviembre' },
+  { value: 12, label: 'Diciembre' },
+] as const
+
+// Etiqueta corta "Mmm AAAA" para mostrar el último mes de actualización del fee
+export function formatFeeCarga(mes?: number | null, anio?: number | null): string | null {
+  if (!mes && !anio) return null
+  const m = mes ? MESES_CARGA.find(x => x.value === mes)?.label : ''
+  return [m, anio].filter(Boolean).join(' ')
+}
+
 export interface ServicioContratado {
   id: string
   nombre: string
@@ -85,6 +127,9 @@ export interface Client {
   fee_mdk: number | null
   fee_aurelia: number | null
   fee_consultoria?: number | null
+  fee_mes_carga?: number | null
+  fee_anio_carga?: number | null
+  mora?: string | null
   nps_score?: number | null
   google_ads_customer_id: string | null
   meta_ads_account_id: string | null
@@ -276,7 +321,7 @@ export interface ChatMessage {
   timestamp: Date
 }
 
-// ── Budget Alerts ─────────────────────────────────────────────────────────────
+// ── Budget Alerts ──────────────────────────���──────────────────────────────────
 
 export type BudgetAlertStatus = 'normal' | 'attention' | 'critical' | 'subdelivery'
 

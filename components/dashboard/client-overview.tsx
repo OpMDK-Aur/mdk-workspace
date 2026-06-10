@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { Client, Profile, ScorecardRow, DateRange } from '@/lib/types'
+import { MORA_OPTIONS, getMoraColor, MESES_CARGA } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -9,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   DollarSign, Target, TrendingDown, MousePointerClick, Eye,
   Users, MessageSquare, Calendar, Clock,
-  ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown, Pencil, Check, X, Plus,
+  ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown, Pencil, Check, X, Plus, Loader2,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -607,7 +608,14 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [feeMdk, setFeeMdk] = useState(client.fee_mdk ?? 0)
   const [feeAurelia, setFeeAurelia] = useState(client.fee_aurelia ?? 0)
   const [feeConsultoria, setFeeConsultoria] = useState(client.fee_consultoria ?? 0)
+  const [feeMesCarga, setFeeMesCarga] = useState<number | null>(client.fee_mes_carga ?? null)
+  const [feeAnioCarga, setFeeAnioCarga] = useState<number | null>(client.fee_anio_carga ?? null)
   const [savingFee, setSavingFee] = useState(false)
+
+  // Mora editing
+  const [mora, setMora] = useState<string | null>(client.mora ?? null)
+  const [savingMora, setSavingMora] = useState(false)
+  const moraColor = getMoraColor(mora || 'Al día')
   
   // Active/Inactive status
   const [isActivo, setIsActivo] = useState(client.activo !== false) // null or true = activo
@@ -753,7 +761,9 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         .update({ 
           fee_mdk: feeMdk,
           fee_aurelia: feeAurelia,
-          fee_consultoria: feeConsultoria
+          fee_consultoria: feeConsultoria,
+          fee_mes_carga: feeMesCarga,
+          fee_anio_carga: feeAnioCarga
         })
         .eq('id', client.id)
       
@@ -773,7 +783,27 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     setFeeMdk(client.fee_mdk ?? 0)
     setFeeAurelia(client.fee_aurelia ?? 0)
     setFeeConsultoria(client.fee_consultoria ?? 0)
+    setFeeMesCarga(client.fee_mes_carga ?? null)
+    setFeeAnioCarga(client.fee_anio_carga ?? null)
     setEditingFee(false)
+  }
+
+  const handleSaveMora = async (value: string) => {
+    // 'Al día' es el estado sin mora -> guardamos null
+    const newMora = value === 'Al día' ? null : value
+    setSavingMora(true)
+    setMora(newMora)
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .update({ mora: newMora })
+        .eq('id', client.id)
+      if (error) console.error('Error saving mora:', error)
+    } catch (e) {
+      console.error('Error saving mora:', e)
+    } finally {
+      setSavingMora(false)
+    }
   }
 
   const platforms = getActivePlatforms(client)
@@ -1202,6 +1232,36 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                       />
                     </div>
                   </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <label className="text-xs text-muted-foreground">Mes de carga</label>
+                      <Select
+                        value={feeMesCarga ? String(feeMesCarga) : undefined}
+                        onValueChange={(v) => setFeeMesCarga(Number(v))}
+                      >
+                        <SelectTrigger className="h-9 text-xs">
+                          <SelectValue placeholder="Mes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MESES_CARGA.map(m => (
+                            <SelectItem key={m.value} value={String(m.value)} className="text-xs">
+                              {m.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs text-muted-foreground">Año de carga</label>
+                      <Input
+                        type="number"
+                        value={feeAnioCarga ?? ''}
+                        onChange={(e) => setFeeAnioCarga(e.target.value === '' ? null : Number(e.target.value))}
+                        className="h-9"
+                        placeholder="Ej: 2026"
+                      />
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2 pt-1">
                     <Button 
                       size="sm" 
@@ -1233,6 +1293,32 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                     {feeMdk > 0 && <span className="text-[11px] text-muted-foreground">MDK: {formatCurrencyFull(feeMdk)}</span>}
                     {feeAurelia > 0 && <span className="text-[11px] text-muted-foreground">Aurelia: {formatCurrencyFull(feeAurelia)}</span>}
                     {feeConsultoria > 0 && <span className="text-[11px] text-muted-foreground">Consultoría: {formatCurrencyFull(feeConsultoria)}</span>}
+                  </div>
+                  {(feeMesCarga || feeAnioCarga) && (
+                    <p className="text-[11px] text-muted-foreground mt-2">
+                      Actualizado: {feeMesCarga ? MESES_CARGA.find(m => m.value === feeMesCarga)?.label : ''}{feeMesCarga && feeAnioCarga ? ' ' : ''}{feeAnioCarga ?? ''}
+                    </p>
+                  )}
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-muted-foreground font-medium">Mora</span>
+                      {savingMora && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                    </div>
+                    <Select value={mora || 'Al día'} onValueChange={handleSaveMora}>
+                      <SelectTrigger className={cn('h-7 mt-1.5 w-full min-w-0 text-xs font-medium', moraColor.color)}>
+                        <SelectValue placeholder="Al día" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MORA_OPTIONS.map(opt => (
+                          <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                            <span className="flex items-center gap-2">
+                              <span className={cn('h-2 w-2 rounded-full', opt.dot)} />
+                              {opt.label}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </>
               )}
