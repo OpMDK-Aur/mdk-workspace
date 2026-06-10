@@ -1264,7 +1264,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                       {savingMora && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
                     </div>
                     <Select value={mora || 'Al día'} onValueChange={handleSaveMora}>
-                      <SelectTrigger className={cn('h-7 mt-1.5 text-xs font-medium', moraColor.color)}>
+                      <SelectTrigger className={cn('h-7 mt-1.5 w-full min-w-0 text-xs font-medium', moraColor.color)}>
                         <SelectValue placeholder="Al día" />
                       </SelectTrigger>
                       <SelectContent>
