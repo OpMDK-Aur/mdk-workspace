@@ -613,3 +613,37 @@ export interface AgentLog {
   estado: 'ok' | 'error' | 'parcial'
   created_at: string
 }
+
+// ── Tester Agent ──────────────────────────────────────────────────────────
+
+export interface TesterResultado {
+  id: string
+  cliente_id: string | null
+  crm_tipo: string | null
+  tipo: 'meta_form' | 'landing'
+  nombre: string
+  form_id: string | null
+  landing_url: string | null
+  estado: 'ok' | 'fallo' | 'pendiente' | 'verificacion_manual'
+  detalle: string | null
+  modo: 'automatico' | 'manual'
+  ejecutado_por: string | null
+  tarea_generada_id: string | null
+  ejecutado_en: string
+  created_at: string
+}
+
+export interface MetaForm {
+  form_id: string
+  nombre: string
+  campana: string
+  adset: string
+}
+
+export interface TesterItem {
+  tipo: 'meta_form' | 'landing'
+  id: string
+  nombre: string
+  form_id?: string
+  url?: string
+}

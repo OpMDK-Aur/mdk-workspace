@@ -6,6 +6,7 @@ import type { AgentConfig, AgentLog, Profile } from '@/lib/types'
 import { AgentCard } from '@/components/agentes/agent-card'
 import { RedactorModal } from '@/components/agentes/redactor-modal'
 import { RevOpsModal } from '@/components/agentes/revops-modal'
+import { TesterModal } from '@/components/agentes/tester-modal'
 import { Cpu } from 'lucide-react'
 
 export default function AgentesPage() {
@@ -18,6 +19,7 @@ export default function AgentesPage() {
   // Modal states
   const [redactorOpen, setRedactorOpen] = useState(false)
   const [revopsOpen, setRevopsOpen] = useState(false)
+  const [testerOpen, setTesterOpen] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
@@ -71,6 +73,8 @@ export default function AgentesPage() {
       setRedactorOpen(true)
     } else if (slug === 'revops') {
       setRevopsOpen(true)
+    } else if (slug === 'tester') {
+      setTesterOpen(true)
     } else if (slug === 'analista') {
       window.location.href = '/analista'
     }
@@ -136,6 +140,7 @@ export default function AgentesPage() {
       {/* Modals */}
       <RedactorModal open={redactorOpen} onOpenChange={setRedactorOpen} />
       <RevOpsModal open={revopsOpen} onOpenChange={setRevopsOpen} />
+      <TesterModal open={testerOpen} onOpenChange={setTesterOpen} />
     </div>
   )
 }
