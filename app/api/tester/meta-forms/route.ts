@@ -42,11 +42,18 @@ export async function GET(req: Request) {
     url.searchParams.set('limit', '100')
     url.searchParams.set('access_token', accessToken)
 
+    console.log('[Tester] Fetching Meta URL:', url.toString().replace(accessToken, 'TOKEN_HIDDEN'))
+
     const adsRes = await fetch(url.toString())
     const adsData = await adsRes.json()
 
     if (adsData.error) {
-      return NextResponse.json({ error: adsData.error.message }, { status: 400 })
+      console.error('[Tester] Meta API error:', JSON.stringify(adsData.error))
+      return NextResponse.json({ 
+        error: adsData.error.message,
+        code: adsData.error.code,
+        type: adsData.error.type 
+      }, { status: 400 })
     }
 
     // 2. Extraer form_ids únicos
