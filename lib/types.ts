@@ -51,13 +51,11 @@ export interface Profile {
 export type ClientEtapa = 'activacion' | '1_3_meses' | '4_6_meses' | '7_mas' | 'solicito_baja' | 'inhabilitado_mora'
 
 // Opciones predefinidas para el estado de mora de un cliente.
-// Un valor vacío/null indica que el cliente no está en mora.
+// Los valores deben coincidir exactamente con los valores en la BD (tabla clientes, columna mora)
 export const MORA_OPTIONS = [
-  { value: 'Al Día', label: 'Al Día' },
-  { value: '7 días de Mora', label: '7 días de Mora' },
-  { value: '15 Días de Mora', label: '15 Días de Mora' },
-  { value: '1 Mes de Mora', label: '1 Mes de Mora' },
-  { value: '2 Meses de Mora', label: '2 Meses de Mora' },
+  { value: 'Al día', label: 'Al día' },
+  { value: '1 mes de mora', label: '1 mes de mora' },
+  { value: '2 meses de mora', label: '2 meses de mora' },
 ] as const
 
 export type MoraStatus = (typeof MORA_OPTIONS)[number]['value']

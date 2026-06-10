@@ -345,8 +345,8 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
   // Save mora
   const saveMora = async (value: string) => {
     setSavingMora(true)
-    // 'Al Día' representa la ausencia de mora -> guardamos null
-    const newMora = value === 'Al Día' ? null : value
+    // 'Al día' es el estado sin mora - lo guardamos como null en la BD
+    const newMora = value === 'Al día' ? null : value
     setMora(newMora)
     await supabase
       .from('clientes')
@@ -940,13 +940,13 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Select value={mora || 'Al Día'} onValueChange={saveMora}>
+          <Select value={mora || 'Al día'} onValueChange={saveMora}>
             <SelectTrigger className={cn("h-9", mora && "border-red-500/50 text-red-500")}>
               <SelectValue placeholder="Seleccionar estado de mora" />
             </SelectTrigger>
             <SelectContent>
               {MORA_OPTIONS.map(opt => (
-                <SelectItem key={opt.value} value={opt.value} className={cn(opt.value !== 'Al Día' && "text-red-500")}>
+                <SelectItem key={opt.value} value={opt.value} className={cn(opt.value !== 'Al día' && "text-red-500")}>
                   {opt.label}
                 </SelectItem>
               ))}
