@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { Client, Profile, ScorecardRow, DateRange } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -224,6 +224,38 @@ function resolveDateRange(preset: string): { start: string; end: string } {
   const start = new Date(today)
   start.setDate(today.getDate() - days)
   return { start: pad(start), end: pad(today) }
+}
+
+// ── Month selector helpers (for "Horas del equipo") ─────────────────────────
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+// Current month value, e.g. "2026-06"
+function currentMonthValue(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`
+}
+
+// Build the last `count` months (current first), value "YYYY-MM"
+function getMonthOptions(count = 12): { value: string; label: string }[] {
+  const now = new Date()
+  const opts: { value: string; label: string }[] = []
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const value = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`
+    let label = d.toLocaleDateString('es', { month: 'long', year: 'numeric' })
+    label = label.charAt(0).toUpperCase() + label.slice(1)
+    opts.push({ value, label })
+  }
+  return opts
+}
+
+// Resolve a "YYYY-MM" value into the first/last calendar day of that month
+function resolveMonthRange(monthValue: string): { start: string; end: string } {
+  const [y, m] = monthValue.split('-').map(Number)
+  const startDate = new Date(y, m - 1, 1)
+  const endDate = new Date(y, m, 0) // day 0 of next month = last day of this month
+  const fmt = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+  return { start: fmt(startDate), end: fmt(endDate) }
 }
 
 // ── mini KPI card used in Top 5 ──────────────────────────────────────────────
@@ -538,6 +570,9 @@ function sortUnidades(unidades: UnidadDeNegocio[]): UnidadDeNegocio[] {
 // ── Main component ─────────────────────────────────────────────────────────────
 export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0, unidadesDeNegocio = [], metricasColaborador = [], horasPorColaborador = [], npsNotas = [] }: ClientOverviewProps) {
   const [preset, setPreset]           = useState('last_30d')
+  // Month filter for "Horas del equipo" (defaults to the current month)
+  const [teamMonth, setTeamMonth] = useState<string>(() => currentMonthValue())
+  const monthOptions = useMemo(() => getMonthOptions(12), [])
   const [platformFilter, setPlatformFilter] = useState<'all' | 'meta' | 'google'>('all')
   const [campaignFilter, setCampaignFilter] = useState<string>('all')
   // Team hours recomputed for the selected date range (seeded with the server-provided monthly data)
@@ -849,10 +884,10 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
   useEffect(() => { fetchData(preset) }, [preset, fetchData])
 
-  // Recompute team hours (entradas_de_tiempo) for the selected date range
-  const fetchTeamHours = useCallback(async (p: string) => {
+  // Recompute team hours (entradas_de_tiempo) for the selected month
+  const fetchTeamHours = useCallback(async (monthValue: string) => {
     setLoadingHours(true)
-    const { start, end } = resolveDateRange(p)
+    const { start, end } = resolveMonthRange(monthValue)
     try {
       const { data, error } = await supabase
         .from('entradas_de_tiempo')
@@ -891,7 +926,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     }
   }, [client.id, supabase])
 
-  useEffect(() => { fetchTeamHours(preset) }, [preset, fetchTeamHours])
+  useEffect(() => { fetchTeamHours(teamMonth) }, [teamMonth, fetchTeamHours])
 
   // Reset campaign filter if it no longer exists in the data
   useEffect(() => {
@@ -1218,13 +1253,13 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Horas del equipo</h2>
             <div className="flex items-center gap-2 shrink-0">
-              <Select value={preset} onValueChange={setPreset}>
-                <SelectTrigger className="h-8 w-40 text-xs">
+              <Select value={teamMonth} onValueChange={setTeamMonth}>
+                <SelectTrigger className="h-8 w-44 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {DATE_PRESETS.map(p => (
-                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  {monthOptions.map(m => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1232,10 +1267,10 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 variant="outline"
                 size="icon"
                 className="h-8 w-8 shrink-0"
-                onClick={() => { fetchTeamHours(preset); fetchData(preset) }}
-                disabled={loadingHours || loading}
+                onClick={() => fetchTeamHours(teamMonth)}
+                disabled={loadingHours}
               >
-                <RefreshCw className={cn('h-4 w-4', (loadingHours || loading) && 'animate-spin')} />
+                <RefreshCw className={cn('h-4 w-4', loadingHours && 'animate-spin')} />
               </Button>
             </div>
           </div>
@@ -1312,7 +1347,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                           <div className="space-y-1.5">
                             <div className="flex justify-between text-xs">
                               <span className="text-muted-foreground">
-                                {miembro.horas.toFixed(1)}h / {miembro.horasObjetivo.toFixed(1)}h
+                                {formatHours(miembro.horas)} / {formatHours(miembro.horasObjetivo)}
                               </span>
                               <span className={cn(
                                 'font-semibold',
@@ -1330,20 +1365,33 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                           </div>
                         ) : (
                           <div className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">Horas trabajadas</span>
-                            <span className="font-semibold text-foreground">{miembro.horas.toFixed(1)}h</span>
+                            <span className="text-muted-foreground">Horas destinadas</span>
+                            <span className="font-semibold text-foreground">{formatHours(miembro.horas)}</span>
                           </div>
                         )}
                         
-                        {/* Detalle */}
-                        {miembro.minimo > 0 && (
-                          <div className="flex justify-between text-xs pt-1 border-t border-border/50">
-                            <div>
-                              <span className="text-muted-foreground">Minimo: </span>
-                              <span className="font-medium">{miembro.minimo.toFixed(1)}h</span>
-                            </div>
+                        {/* Detalle: destinado / minimo / maximo (objetivo) */}
+                        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border/50 text-center">
+                          <div>
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Destinado</p>
+                            <p className="text-xs font-semibold text-foreground">{formatHours(miembro.horas)}</p>
                           </div>
-                        )}
+                          <div>
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Minimo</p>
+                            <p className={cn(
+                              'text-xs font-semibold',
+                              miembro.minimo > 0 && miembro.horas < miembro.minimo ? 'text-status-naranja' : 'text-foreground'
+                            )}>
+                              {miembro.minimo > 0 ? formatHours(miembro.minimo) : '—'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Maximo</p>
+                            <p className="text-xs font-semibold text-foreground">
+                              {miembro.horasObjetivo > 0 ? formatHours(miembro.horasObjetivo) : '—'}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     )
                   })}
@@ -1351,8 +1399,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
               ) : (
                 <div className="text-center py-8">
                   <Clock className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
-                  <p className="text-sm text-muted-foreground">Sin horas registradas este mes</p>
-                  <p className="text-xs text-muted-foreground mt-1">Nadie ha marcado tiempo sobre este cliente todavia</p>
+                  <p className="text-sm text-muted-foreground">Sin horas registradas en el periodo</p>
+                  <p className="text-xs text-muted-foreground mt-1">Nadie ha marcado tiempo sobre este cliente en el mes seleccionado</p>
                 </div>
               )}
               
@@ -1399,6 +1447,16 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">KPIs del periodo</h2>
             <div className="flex flex-wrap items-center gap-2">
+              <Select value={preset} onValueChange={setPreset}>
+                <SelectTrigger className="h-8 w-40 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DATE_PRESETS.map(p => (
+                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select value={platformFilter} onValueChange={(v) => setPlatformFilter(v as 'all' | 'meta' | 'google')}>
                 <SelectTrigger className="h-8 w-[130px] text-xs">
                   <SelectValue placeholder="Plataforma" />
