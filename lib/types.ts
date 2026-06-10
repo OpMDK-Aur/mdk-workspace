@@ -69,6 +69,29 @@ export function getMoraColor(value?: string | null) {
   return opt ?? MORA_OPTIONS[0]
 }
 
+// Meses para el "mes de carga" del fee (integer 1-12)
+export const MESES_CARGA = [
+  { value: 1, label: 'Enero' },
+  { value: 2, label: 'Febrero' },
+  { value: 3, label: 'Marzo' },
+  { value: 4, label: 'Abril' },
+  { value: 5, label: 'Mayo' },
+  { value: 6, label: 'Junio' },
+  { value: 7, label: 'Julio' },
+  { value: 8, label: 'Agosto' },
+  { value: 9, label: 'Septiembre' },
+  { value: 10, label: 'Octubre' },
+  { value: 11, label: 'Noviembre' },
+  { value: 12, label: 'Diciembre' },
+] as const
+
+// Etiqueta corta "Mmm AAAA" para mostrar el último mes de actualización del fee
+export function formatFeeCarga(mes?: number | null, anio?: number | null): string | null {
+  if (!mes && !anio) return null
+  const m = mes ? MESES_CARGA.find(x => x.value === mes)?.label : ''
+  return [m, anio].filter(Boolean).join(' ')
+}
+
 export interface ServicioContratado {
   id: string
   nombre: string

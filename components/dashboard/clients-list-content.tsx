@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, memo } from 'react'
 import Link from 'next/link'
 import type { Client, Profile, ClientPlan, UnidadNegocio, SemaforoStatus } from '@/lib/types'
-import { MORA_OPTIONS, getMoraColor } from '@/lib/types'
+import { MORA_OPTIONS, getMoraColor, MESES_CARGA, formatFeeCarga } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -229,6 +229,19 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setSavingMoraId(null)
   }
 
+  // Editar mes/año de carga del fee (lista y tarjetas)
+  const [savingFeeCargaId, setSavingFeeCargaId] = useState<string | null>(null)
+  const updateFeeCarga = async (
+    clientId: string,
+    field: 'fee_mes_carga' | 'fee_anio_carga',
+    value: number | null
+  ) => {
+    setSavingFeeCargaId(clientId)
+    setLocalClients(prev => prev.map(c => (c.id === clientId ? { ...c, [field]: value } : c)))
+    await supabase.from('clientes').update({ [field]: value }).eq('id', clientId)
+    setSavingFeeCargaId(null)
+  }
+
   const allColumns = [
     { id: 'cliente', label: 'Cliente' },
     { id: 'unidad_negocio', label: 'Unidad de Negocio' },
@@ -238,6 +251,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   { id: 'fee_aurelia', label: 'Fee Aurelia' },
     { id: 'fee_consultoria', label: 'Fee Consultoría' },
     { id: 'fee_total', label: 'Fee Total' },
+    { id: 'fee_carga', label: 'Actualización Fee' },
   { id: 'plataformas', label: 'Plataformas' },
     { id: 'pm', label: 'Project Manager' },
     { id: 'am', label: 'Account Manager' },
@@ -1474,6 +1488,12 @@ const applyFilter = (filter: SavedFilter) => {
                               <span className="font-medium">{formatCurrency(client.fee_consultoria)}</span>
                             </div>
                           )}
+                          {formatFeeCarga(client.fee_mes_carga, client.fee_anio_carga) && (
+                            <div>
+                              <span className="text-muted-foreground">Actualización Fee:</span>{' '}
+                              <span className="font-medium">{formatFeeCarga(client.fee_mes_carga, client.fee_anio_carga)}</span>
+                            </div>
+                          )}
                           {visibleColumns.includes('pm') && pm && (
                             <div>
                               <span className="text-muted-foreground">PM:</span>{' '}
@@ -1596,6 +1616,7 @@ const applyFilter = (filter: SavedFilter) => {
                   {visibleColumns.includes('fee_aurelia') && <SortableHead columnId="fee_aurelia" label="Fee Aurelia" align="right" />}
                   {visibleColumns.includes('fee_consultoria') && <SortableHead columnId="fee_consultoria" label="Fee Cons." align="right" />}
                   {visibleColumns.includes('fee_total') && <SortableHead columnId="fee_total" label="Fee Total" align="right" />}
+                  {visibleColumns.includes('fee_carga') && <TableHead>Actualización Fee</TableHead>}
                   {visibleColumns.includes('plataformas') && <SortableHead columnId="plataformas" label="Plataformas" />}
                   {visibleColumns.includes('pm') && <SortableHead columnId="pm" label="PM" />}
                   {visibleColumns.includes('am') && <SortableHead columnId="am" label="AM" />}
@@ -1716,6 +1737,34 @@ const applyFilter = (filter: SavedFilter) => {
                         {visibleColumns.includes('fee_total') && (
                           <TableCell className="text-right font-semibold">
                             {formatCurrency((client.fee_mdk || 0) + (client.fee_aurelia || 0) + (client.fee_consultoria || 0))}
+                          </TableCell>
+                        )}
+                        {visibleColumns.includes('fee_carga') && (
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center gap-1.5">
+                              <Select
+                                value={client.fee_mes_carga ? String(client.fee_mes_carga) : undefined}
+                                onValueChange={(v) => updateFeeCarga(client.id, 'fee_mes_carga', Number(v))}
+                              >
+                                <SelectTrigger className="h-7 w-[92px] text-xs">
+                                  <SelectValue placeholder="Mes" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {MESES_CARGA.map(m => (
+                                    <SelectItem key={m.value} value={String(m.value)} className="text-xs">
+                                      {m.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Input
+                                type="number"
+                                value={client.fee_anio_carga ?? ''}
+                                onChange={(e) => updateFeeCarga(client.id, 'fee_anio_carga', e.target.value === '' ? null : Number(e.target.value))}
+                                className="h-7 w-[68px] text-xs"
+                                placeholder="Año"
+                              />
+                            </div>
                           </TableCell>
                         )}
                         {visibleColumns.includes('plataformas') && (

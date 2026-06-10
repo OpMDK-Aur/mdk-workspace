@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { Client, Profile, ScorecardRow, DateRange } from '@/lib/types'
-import { MORA_OPTIONS, getMoraColor } from '@/lib/types'
+import { MORA_OPTIONS, getMoraColor, MESES_CARGA } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -59,20 +59,7 @@ interface MetricaColaborador {
   } | null
 }
 
-const MESES_CARGA = [
-  { value: 1, label: 'Enero' },
-  { value: 2, label: 'Febrero' },
-  { value: 3, label: 'Marzo' },
-  { value: 4, label: 'Abril' },
-  { value: 5, label: 'Mayo' },
-  { value: 6, label: 'Junio' },
-  { value: 7, label: 'Julio' },
-  { value: 8, label: 'Agosto' },
-  { value: 9, label: 'Septiembre' },
-  { value: 10, label: 'Octubre' },
-  { value: 11, label: 'Noviembre' },
-  { value: 12, label: 'Diciembre' },
-] as const
+const MESES_CARGA_LOCAL_REMOVED = true
 
 interface ClientOverviewProps {
   client: Client
