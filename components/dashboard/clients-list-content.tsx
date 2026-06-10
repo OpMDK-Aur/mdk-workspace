@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, memo } from 'react'
 import Link from 'next/link'
 import type { Client, Profile, ClientPlan, UnidadNegocio, SemaforoStatus } from '@/lib/types'
-import { MORA_OPTIONS, getMoraColor, MESES_CARGA, formatFeeCarga } from '@/lib/types'
+import { MORA_OPTIONS, getMoraColor } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -87,29 +87,6 @@ interface ClientsListContentProps {
   hoursMap: Record<string, number>
 }
 
-type SemaforoStatus = 'en_rango' | 'baja' | 'sobre' | 'sin_datos'
-
-function computeSemaforo(tracked: number, min: number, max: number): SemaforoStatus {
-  if (min === 0 && max === 0) return 'sin_datos'
-  if (tracked === 0) return 'sin_datos'
-  if (tracked > max) return 'sobre'
-  if (tracked >= min) return 'en_rango'
-  return 'baja'
-}
-
-function getSemaforoConfig(status: SemaforoStatus) {
-  switch (status) {
-    case 'en_rango':
-      return { label: 'En rango', color: '#22c55e', borderColor: '#22c55e' }
-    case 'baja':
-      return { label: 'Baja dedicacion', color: '#eab308', borderColor: '#eab308' }
-    case 'sobre':
-      return { label: 'Sobre dedicacion', color: '#ef4444', borderColor: '#ef4444' }
-    case 'sin_datos':
-    default:
-      return { label: 'Sin datos', color: '#9ca3af', borderColor: undefined }
-  }
-}
 
 function formatTrackedHours(hours: number): string {
   const h = Math.floor(hours)
@@ -117,24 +94,25 @@ function formatTrackedHours(hours: number): string {
   return `${h}:${String(m).padStart(2, '0')}`
 }
 
-function getSemaforoBadge(semaforo: SemaforoStatus | undefined) {
-  switch (semaforo) {
-    case 'verde':
-      return { label: 'Optimo', color: '#22c55e', className: 'bg-status-verde/10 text-status-verde border-status-verde/20' }
-    case 'amarillo':
-      return { label: 'Atencion', color: '#eab308', className: 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/20' }
-    case 'naranja':
-      return { label: 'En riesgo', color: '#f97316', className: 'bg-status-naranja/10 text-status-naranja border-status-naranja/20' }
-    case 'rojo':
-      return { label: 'Critico', color: '#ef4444', className: 'bg-status-rojo/10 text-status-rojo border-status-rojo/20' }
-    default:
-      return { label: '-', color: '#9ca3af', className: 'bg-muted text-muted-foreground' }
-  }
-}
 
 function formatCurrency(value: number | null): string {
   if (!value) return '-'
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(value)
+}
+
+function getSemaforoBadge(semaforo: SemaforoStatus | undefined) {
+  switch (semaforo) {
+    case 'verde':
+      return { label: 'Optimo', className: 'bg-status-verde/10 text-status-verde border-status-verde/25', dotClass: 'bg-status-verde' }
+    case 'amarillo':
+      return { label: 'Atencion', className: 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/25', dotClass: 'bg-status-amarillo' }
+    case 'naranja':
+      return { label: 'En riesgo', className: 'bg-status-naranja/10 text-status-naranja border-status-naranja/25', dotClass: 'bg-status-naranja' }
+    case 'rojo':
+      return { label: 'Critico', className: 'bg-status-rojo/10 text-status-rojo border-status-rojo/25', dotClass: 'bg-status-rojo' }
+    default:
+      return { label: 'Sin datos', className: 'text-muted-foreground', dotClass: 'bg-muted-foreground/40' }
+  }
 }
 
 export function ClientsListContent({ clients, profiles, currentProfile, assignmentMap, hoursMap }: ClientsListContentProps) {
@@ -154,6 +132,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [fechaActivacionDesde, setFechaActivacionDesde] = useState<string>('')
   const [fechaActivacionHasta, setFechaActivacionHasta] = useState<string>('')
   const [etapaFilters, setEtapaFilters] = useState<string[]>([])
+  const [moraFilters, setMoraFilters] = useState<string[]>([])
   const [activoFilter, setActivoFilter] = useState<string>('activos') // Default: solo activos
   
   // Advanced filter state
@@ -164,7 +143,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [advancedOpen, setAdvancedOpen] = useState(false)
   
   // Columnas que siempre deben mostrarse en la vista de lista de Clientes
-  const requiredColumns = ['cliente', 'plan', 'fee_mdk', 'fee_aurelia', 'fee_consultoria', 'fee_total', 'fee_carga', 'pm', 'am', 'nps', 'mora', 'semaforos']
+  const requiredColumns = ['cliente', 'unidad_negocio', 'plan', 'fee_mdk', 'fee_aurelia', 'fee_consultoria', 'fee_total', 'pm', 'am', 'nps', 'mora']
 
   // Visible columns - ahora incluye todas las columnas disponibles
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
@@ -196,6 +175,29 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     }
     return {}
   })
+
+  // Anchos por defecto (px) para mantener la tabla equilibrada con tableLayout fixed
+  const defaultColumnWidths: Record<string, number> = {
+    cliente: 200,
+    unidad_negocio: 120,
+    contacto: 160,
+    plan: 110,
+    fee_mdk: 130,
+    fee_aurelia: 130,
+    fee_consultoria: 130,
+    fee_total: 140,
+    plataformas: 130,
+    pm: 170,
+    am: 170,
+    nps: 80,
+    mora: 130,
+    etapa: 130,
+    fecha_activacion: 120,
+    fecha_venta: 120,
+    fecha_inicio_trabajo: 120,
+    crm: 120,
+    discord: 140,
+  }
 
   // Handle column resize via drag on the header handle
   const startResize = useCallback((columnId: string, startX: number, startWidth: number) => {
@@ -261,18 +263,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     }
   }
 
-  // Editar mes/año de carga del fee (lista y tarjetas)
-  const [savingFeeCargaId, setSavingFeeCargaId] = useState<string | null>(null)
-  const updateFeeCarga = async (
-    clientId: string,
-    field: 'fee_mes_carga' | 'fee_anio_carga',
-    value: number | null
-  ) => {
-    setSavingFeeCargaId(clientId)
-    setLocalClients(prev => prev.map(c => (c.id === clientId ? { ...c, [field]: value } : c)))
-    await supabase.from('clientes').update({ [field]: value }).eq('id', clientId)
-    setSavingFeeCargaId(null)
-  }
+
 
   const allColumns = [
     { id: 'cliente', label: 'Cliente' },
@@ -283,13 +274,11 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   { id: 'fee_aurelia', label: 'Fee Aurelia' },
     { id: 'fee_consultoria', label: 'Fee Consultoría' },
     { id: 'fee_total', label: 'Fee Total' },
-    { id: 'fee_carga', label: 'Actualización Fee' },
   { id: 'plataformas', label: 'Plataformas' },
     { id: 'pm', label: 'Project Manager' },
     { id: 'am', label: 'Account Manager' },
     { id: 'nps', label: 'NPS' },
     { id: 'mora', label: 'Mora' },
-    { id: 'semaforos', label: 'Semáforos' },
     { id: 'etapa', label: 'Etapa' },
     { id: 'fecha_activacion', label: 'Fecha Activación' },
     { id: 'fecha_venta', label: 'Fecha Venta' },
@@ -323,6 +312,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     platforms: string[]
     unidades: string[]
     etapas: string[]
+    moras: string[]
     activo: string
     fechaActivacionDesde: string
     fechaActivacionHasta: string
@@ -342,7 +332,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [saveFilterName, setSaveFilterName] = useState('')
   const [saveFilterOpen, setSaveFilterOpen] = useState(false)
 
-  const hasActiveFilters = planFilters.length > 0 || pmFilters.length > 0 || amFilters.length > 0 || platformFilters.length > 0 || unidadFilters.length > 0 || etapaFilters.length > 0 || activoFilter !== 'activos' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
+  const hasActiveFilters = planFilters.length > 0 || pmFilters.length > 0 || amFilters.length > 0 || platformFilters.length > 0 || unidadFilters.length > 0 || etapaFilters.length > 0 || moraFilters.length > 0 || activoFilter !== 'activos' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
 
   const clearAllFilters = () => {
     setSearchTerm('')
@@ -352,6 +342,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setPlatformFilters([])
     setUnidadFilters([])
     setEtapaFilters([])
+    setMoraFilters([])
     setActivoFilter('activos')
     setFeeMinFilter('')
     setFeeMaxFilter('')
@@ -369,6 +360,7 @@ const saveCurrentFilter = () => {
   platforms: platformFilters,
   unidades: unidadFilters,
   etapas: etapaFilters,
+  moras: moraFilters,
   activo: activoFilter,
   fechaActivacionDesde,
   fechaActivacionHasta,
@@ -392,6 +384,7 @@ const applyFilter = (filter: SavedFilter) => {
   setPlatformFilters(filter.platforms || [])
   setUnidadFilters(filter.unidades || [])
   setEtapaFilters(filter.etapas || [])
+  setMoraFilters(filter.moras || [])
   setActivoFilter(filter.activo || 'activos')
   setFechaActivacionDesde(filter.fechaActivacionDesde || '')
   setFechaActivacionHasta(filter.fechaActivacionHasta || '')
@@ -423,7 +416,7 @@ const applyFilter = (filter: SavedFilter) => {
   nombre: '',
   apellido: '',
   telefono: '',
-  status: 'verde' as ClientStatus,
+  status: 'verde' as SemaforoStatus,
   plan: null as ClientPlan | null,
   fee_mdk: '',
     fee_aurelia: '',
@@ -554,8 +547,14 @@ const applyFilter = (filter: SavedFilter) => {
   // Filter by plan - empty array = all
   const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
   const matchesPlan = planFilters.length === 0 || (clientUnidades.includes('MDK') && planFilters.includes(client.plan || ''))
-  const matchesPm = pmFilters.length === 0 || pmFilters.includes(client.project_manager_id || '')
-  const matchesAm = amFilters.length === 0 || amFilters.includes(client.account_manager_id || '')
+    const clientPmIds = (client.project_manager_ids && client.project_manager_ids.length > 0)
+      ? client.project_manager_ids
+      : (client.project_manager_id ? [client.project_manager_id] : [])
+    const clientAmIds = (client.account_manager_ids && client.account_manager_ids.length > 0)
+      ? client.account_manager_ids
+      : (client.account_manager_id ? [client.account_manager_id] : [])
+    const matchesPm = pmFilters.length === 0 || pmFilters.some(id => clientPmIds.includes(id))
+    const matchesAm = amFilters.length === 0 || amFilters.some(id => clientAmIds.includes(id))
   const matchesPlatform = platformFilters.length === 0 ||
   (platformFilters.includes('google') && client.google_ads_customer_id) ||
   (platformFilters.includes('meta') && client.meta_ads_account_id) ||
@@ -563,12 +562,13 @@ const applyFilter = (filter: SavedFilter) => {
   (platformFilters.includes('none') && !client.google_ads_customer_id && !client.meta_ads_account_id)
   const matchesUnidad = unidadFilters.length === 0 || clientUnidades.some(u => unidadFilters.includes(u))
   const matchesEtapa = etapaFilters.length === 0 || etapaFilters.includes(client.etapa || '')
+  const matchesMora = moraFilters.length === 0 || moraFilters.includes(client.mora || 'Al día')
   const matchesFechaDesde = !fechaActivacionDesde || (client.fecha_activacion && client.fecha_activacion >= fechaActivacionDesde)
     const matchesFechaHasta = !fechaActivacionHasta || (client.fecha_activacion && client.fecha_activacion <= fechaActivacionHasta)
     const totalFee = (client.fee_mdk || 0) + (client.fee_aurelia || 0)
     const matchesFeeMin = !feeMinFilter || totalFee >= parseFloat(feeMinFilter)
     const matchesFeeMax = !feeMaxFilter || totalFee <= parseFloat(feeMaxFilter)
-    return matchesActivo && matchesSearch && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
+    return matchesActivo && matchesSearch && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesMora && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
   }).sort((a, b) => {
     let valueA: string | number = ''
     let valueB: string | number = ''
@@ -610,14 +610,18 @@ const applyFilter = (filter: SavedFilter) => {
         valueA = (a.google_ads_customer_id ? 2 : 0) + (a.meta_ads_account_id ? 1 : 0)
         valueB = (b.google_ads_customer_id ? 2 : 0) + (b.meta_ads_account_id ? 1 : 0)
         break
-      case 'pm':
-        valueA = (profiles.find(p => p.id === a.project_manager_id)?.full_name || '').toLowerCase()
-        valueB = (profiles.find(p => p.id === b.project_manager_id)?.full_name || '').toLowerCase()
+      case 'pm': {
+        const firstPmId = (x: typeof a) => (x.project_manager_ids?.[0]) || x.project_manager_id || ''
+        valueA = (profiles.find(p => p.id === firstPmId(a))?.full_name || '').toLowerCase()
+        valueB = (profiles.find(p => p.id === firstPmId(b))?.full_name || '').toLowerCase()
         break
-      case 'am':
-        valueA = (profiles.find(p => p.id === a.account_manager_id)?.full_name || '').toLowerCase()
-        valueB = (profiles.find(p => p.id === b.account_manager_id)?.full_name || '').toLowerCase()
+      }
+      case 'am': {
+        const firstAmId = (x: typeof a) => (x.account_manager_ids?.[0]) || x.account_manager_id || ''
+        valueA = (profiles.find(p => p.id === firstAmId(a))?.full_name || '').toLowerCase()
+        valueB = (profiles.find(p => p.id === firstAmId(b))?.full_name || '').toLowerCase()
         break
+      }
       case 'nps':
         valueA = a.nps_score ?? -1
         valueB = b.nps_score ?? -1
@@ -626,16 +630,7 @@ const applyFilter = (filter: SavedFilter) => {
         valueA = a.mora || ''
         valueB = b.mora || ''
         break
-      case 'semaforos': {
-        const semScore = (c: typeof a) => {
-          const order = { rojo: 3, naranja: 2, amarillo: 1, verde: 0 }
-          const vals = Object.values(c.semaforo_unidades || {})
-          return vals.length ? Math.max(...vals.map(v => order[v as keyof typeof order] ?? -1)) : -1
-        }
-        valueA = semScore(a)
-        valueB = semScore(b)
-        break
-      }
+
       case 'etapa':
         valueA = (a.etapa || '').toLowerCase()
         valueB = (b.etapa || '').toLowerCase()
@@ -688,6 +683,21 @@ const applyFilter = (filter: SavedFilter) => {
     return puesto.includes('account manager') || puesto === 'am' || p.role === 'account_manager' || p.role === 'direccion'
   })
 
+  // Resolver TODOS los PM/AM de un cliente desde los arrays (con fallback al campo singular)
+  const profilesById = new Map(profiles.map(p => [p.id, p]))
+  const getClientPms = (client: Client): Profile[] => {
+    const ids = (client.project_manager_ids && client.project_manager_ids.length > 0)
+      ? client.project_manager_ids
+      : (client.project_manager_id ? [client.project_manager_id] : [])
+    return ids.map(id => profilesById.get(id)).filter((p): p is Profile => !!p)
+  }
+  const getClientAms = (client: Client): Profile[] => {
+    const ids = (client.account_manager_ids && client.account_manager_ids.length > 0)
+      ? client.account_manager_ids
+      : (client.account_manager_id ? [client.account_manager_id] : [])
+    return ids.map(id => profilesById.get(id)).filter((p): p is Profile => !!p)
+  }
+
   // Calculate totals
   const totalFeeMdk = filteredClients.reduce((sum, c) => sum + (c.fee_mdk || 0), 0)
   const totalFeeAurelia = filteredClients.reduce((sum, c) => sum + (c.fee_aurelia || 0), 0)
@@ -697,7 +707,7 @@ const applyFilter = (filter: SavedFilter) => {
   // Sortable + resizable column header
   const SortableHead = ({ columnId, label, align = 'left' }: { columnId: string; label: string; align?: 'left' | 'right' }) => {
     const isActive = sortBy === columnId
-    const width = columnWidths[columnId]
+    const width = columnWidths[columnId] ?? defaultColumnWidths[columnId]
     return (
       <TableHead
         style={width ? { width, minWidth: width, maxWidth: width } : undefined}
@@ -788,7 +798,7 @@ const applyFilter = (filter: SavedFilter) => {
                         <Label htmlFor="status">Estado inicial</Label>
                         <Select
                           value={newClient.status}
-                          onValueChange={(v) => setNewClient(prev => ({ ...prev, status: v as ClientStatus }))}
+                          onValueChange={(v) => setNewClient(prev => ({ ...prev, status: v as SemaforoStatus }))}
                         >
                           <SelectTrigger className="mt-1">
                             <SelectValue />
@@ -1228,6 +1238,30 @@ const applyFilter = (filter: SavedFilter) => {
                 </DropdownMenuContent>
               </DropdownMenu>
               
+              {/* Mora - Multi-select */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[160px] justify-between">
+                    <span>{moraFilters.length === 0 ? 'Toda la mora' : `${moraFilters.length} estado${moraFilters.length > 1 ? 's' : ''}`}</span>
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  {MORA_OPTIONS.map(opt => (
+                    <DropdownMenuCheckboxItem
+                      key={opt.value}
+                      checked={moraFilters.includes(opt.value)}
+                      onCheckedChange={(checked) => setMoraFilters(prev => checked ? [...prev, opt.value] : prev.filter(m => m !== opt.value))}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className={cn('h-2 w-2 rounded-full', opt.dot)} />
+                        {opt.label}
+                      </span>
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
               {/* Clear filters */}
               {hasActiveFilters && (
                 <Button variant="ghost" size="sm" onClick={clearAllFilters} className="h-9 px-2 gap-1">
@@ -1434,8 +1468,8 @@ const applyFilter = (filter: SavedFilter) => {
             ) : (
               filteredClients.map((client) => {
                 const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
-                const pm = profiles.find(p => p.id === client.project_manager_id)
-                const am = profiles.find(p => p.id === client.account_manager_id)
+                const clientPms = getClientPms(client)
+                const clientAms = getClientAms(client)
                 const isInactivo = client.activo === false
                 const isEnRiesgo = client.etapa === 'solicito_baja' || client.etapa === 'inhabilitado_mora'
                 const hasGoogle = !!client.google_ads_customer_id
@@ -1473,18 +1507,14 @@ const applyFilter = (filter: SavedFilter) => {
                           <div className="flex flex-wrap gap-1">
                             {clientUnidades.length > 0 ? (
                               clientUnidades.map(unidad => {
-                                const semaforo = client.semaforo_unidades?.[unidad]
-                                const semaforoBadge = getSemaforoBadge(semaforo)
+                                const sem = getSemaforoBadge(client.semaforo_unidades?.[unidad])
                                 return (
                                   <Badge 
                                     key={unidad} 
                                     variant="outline" 
-                                    className={cn('text-xs gap-1', semaforoBadge.className)}
+                                    className={cn('text-xs gap-1.5', sem.className)}
                                   >
-                                    <span 
-                                      className="h-1.5 w-1.5 rounded-full" 
-                                      style={{ backgroundColor: semaforoBadge.color }}
-                                    />
+                                    <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', sem.dotClass)} />
                                     {unidad}
                                   </Badge>
                                 )
@@ -1504,65 +1534,63 @@ const applyFilter = (filter: SavedFilter) => {
                         )}
                         
                         {/* Info grid - respects visible columns */}
-                        <div className="flex flex-col gap-1 text-sm">
+                        <div className="flex flex-col gap-1.5 text-sm">
                           {visibleColumns.includes('plan') && clientUnidades.includes('MDK') && client.plan && (
-                            <div>
-                              <span className="text-muted-foreground">Plan:</span>{' '}
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Plan</span>
                               <span className="font-medium">{client.plan}</span>
                             </div>
                           )}
                           {visibleColumns.includes('fee_mdk') && client.fee_mdk && (
-                            <div>
-                              <span className="text-muted-foreground">Fee MDK:</span>{' '}
-                              <span className="font-medium">{formatCurrency(client.fee_mdk)}</span>
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Fee MDK</span>
+                              <span className="font-medium tabular-nums">{formatCurrency(client.fee_mdk)}</span>
                             </div>
                           )}
                           {visibleColumns.includes('fee_aurelia') && client.fee_aurelia && (
-                            <div>
-                              <span className="text-muted-foreground">Fee Aurelia:</span>{' '}
-                              <span className="font-medium">{formatCurrency(client.fee_aurelia)}</span>
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Fee Aurelia</span>
+                              <span className="font-medium tabular-nums">{formatCurrency(client.fee_aurelia)}</span>
                             </div>
                           )}
                           {visibleColumns.includes('fee_consultoria') && client.fee_consultoria && (
-                            <div>
-                              <span className="text-muted-foreground">Fee Consultoria:</span>{' '}
-                              <span className="font-medium">{formatCurrency(client.fee_consultoria)}</span>
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Fee Consultoria</span>
+                              <span className="font-medium tabular-nums">{formatCurrency(client.fee_consultoria)}</span>
                             </div>
                           )}
-                          {formatFeeCarga(client.fee_mes_carga, client.fee_anio_carga) && (
-                            <div>
-                              <span className="text-muted-foreground">Actualización Fee:</span>{' '}
-                              <span className="font-medium">{formatFeeCarga(client.fee_mes_carga, client.fee_anio_carga)}</span>
+
+                          {visibleColumns.includes('pm') && clientPms.length > 0 && (
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">PM</span>
+                              <span className="min-w-0">{clientPms.map(p => p.full_name || p.email).join(', ')}</span>
                             </div>
                           )}
-                          {visibleColumns.includes('pm') && pm && (
-                            <div>
-                              <span className="text-muted-foreground">PM:</span>{' '}
-                              <span>{pm.full_name}</span>
-                            </div>
-                          )}
-                          {visibleColumns.includes('am') && am && (
-                            <div>
-                              <span className="text-muted-foreground">AM:</span>{' '}
-                              <span>{am.full_name}</span>
+                          {visibleColumns.includes('am') && clientAms.length > 0 && (
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">AM</span>
+                              <span className="min-w-0">{clientAms.map(p => p.full_name || p.email).join(', ')}</span>
                             </div>
                           )}
                           {visibleColumns.includes('plataformas') && (hasGoogle || hasMeta) && (
-                            <div className="flex gap-1">
-                              {hasGoogle && <Badge variant="secondary" className="text-xs">Google</Badge>}
-                              {hasMeta && <Badge variant="secondary" className="text-xs">Meta</Badge>}
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Plataformas</span>
+                              <span className="flex gap-1">
+                                {hasGoogle && <Badge variant="secondary" className="text-xs">Google</Badge>}
+                                {hasMeta && <Badge variant="secondary" className="text-xs">Meta</Badge>}
+                              </span>
                             </div>
                           )}
                           {visibleColumns.includes('nps') && client.nps_score != null && (
-                            <div>
-                              <span className="text-muted-foreground">NPS:</span>{' '}
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">NPS</span>
                               <span className="font-medium">{client.nps_score}</span>
                             </div>
                           )}
                           {visibleColumns.includes('etapa') && client.etapa && (
-                            <div>
-                              <span className="text-muted-foreground">Etapa:</span>{' '}
-                              <span>{client.etapa.replace(/_/g, ' ')}</span>
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Etapa</span>
+                              <span className="capitalize">{client.etapa.replace(/_/g, ' ')}</span>
                             </div>
                           )}
                           {visibleColumns.includes('mora') && (
@@ -1570,7 +1598,7 @@ const applyFilter = (filter: SavedFilter) => {
                               className="flex items-center gap-2"
                               onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
                             >
-                              <span className="text-muted-foreground shrink-0">Mora:</span>
+                              <span className="text-muted-foreground w-24 shrink-0">Mora</span>
                               <Select
                                 value={client.mora || 'Al día'}
                                 onValueChange={(v) => updateMora(client.id, v)}
@@ -1597,33 +1625,33 @@ const applyFilter = (filter: SavedFilter) => {
                           </div>
                           )}
                           {visibleColumns.includes('fecha_activacion') && client.fecha_activacion && (
-                            <div>
-                              <span className="text-muted-foreground">Activacion:</span>{' '}
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Activacion</span>
                               <span>{new Date(client.fecha_activacion).toLocaleDateString('es-AR')}</span>
                             </div>
                           )}
                           {visibleColumns.includes('fecha_venta') && client.fecha_venta && (
-                            <div>
-                              <span className="text-muted-foreground">Venta:</span>{' '}
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Venta</span>
                               <span>{new Date(client.fecha_venta).toLocaleDateString('es-AR')}</span>
                             </div>
                           )}
                           {visibleColumns.includes('fecha_inicio_trabajo') && client.fecha_inicio_trabajo && (
-                            <div>
-                              <span className="text-muted-foreground">Inicio:</span>{' '}
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Inicio</span>
                               <span>{new Date(client.fecha_inicio_trabajo).toLocaleDateString('es-AR')}</span>
                             </div>
                           )}
                           {visibleColumns.includes('crm') && client.crm_tipo && (
-                            <div>
-                              <span className="text-muted-foreground">CRM:</span>{' '}
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">CRM</span>
                               <span>{client.crm_tipo}</span>
                             </div>
                           )}
                           {visibleColumns.includes('discord') && client.discord_channel_name && (
-                            <div>
-                              <span className="text-muted-foreground">Discord:</span>{' '}
-                              <span>{client.discord_channel_name}</span>
+                            <div className="flex gap-2">
+                              <span className="text-muted-foreground w-24 shrink-0">Discord</span>
+                              <span className="min-w-0 truncate">{client.discord_channel_name}</span>
                             </div>
                           )}
                         </div>
@@ -1672,13 +1700,13 @@ const applyFilter = (filter: SavedFilter) => {
                   {visibleColumns.includes('fee_aurelia') && <SortableHead columnId="fee_aurelia" label="Fee Aurelia" align="right" />}
                   {visibleColumns.includes('fee_consultoria') && <SortableHead columnId="fee_consultoria" label="Fee Cons." align="right" />}
                   {visibleColumns.includes('fee_total') && <SortableHead columnId="fee_total" label="Fee Total" align="right" />}
-                  {visibleColumns.includes('fee_carga') && <TableHead>Actualización Fee</TableHead>}
+
                   {visibleColumns.includes('plataformas') && <SortableHead columnId="plataformas" label="Plataformas" />}
                   {visibleColumns.includes('pm') && <SortableHead columnId="pm" label="PM" />}
                   {visibleColumns.includes('am') && <SortableHead columnId="am" label="AM" />}
                   {visibleColumns.includes('nps') && <SortableHead columnId="nps" label="NPS" />}
                   {visibleColumns.includes('mora') && <SortableHead columnId="mora" label="Mora" />}
-                  {visibleColumns.includes('semaforos') && <SortableHead columnId="semaforos" label="Semáforos" />}
+  
                   {visibleColumns.includes('etapa') && <SortableHead columnId="etapa" label="Etapa" />}
                   {visibleColumns.includes('fecha_activacion') && <SortableHead columnId="fecha_activacion" label="F. Activacion" />}
                   {visibleColumns.includes('fecha_venta') && <SortableHead columnId="fecha_venta" label="F. Venta" />}
@@ -1700,8 +1728,8 @@ const applyFilter = (filter: SavedFilter) => {
                     const clientUnidades = client.unidades_negocio || (client.unidad_negocio ? [client.unidad_negocio] : [])
                     const hasGoogle = !!client.google_ads_customer_id
                     const hasMeta = !!client.meta_ads_account_id
-                    const pm = profiles.find(p => p.id === client.project_manager_id)
-                    const am = profiles.find(p => p.id === client.account_manager_id)
+                    const pmList = getClientPms(client)
+                    const amList = getClientAms(client)
                     const isInactivo = client.activo === false
                     const isEnRiesgo = client.etapa === 'solicito_baja' || client.etapa === 'inhabilitado_mora'
 
@@ -1735,18 +1763,14 @@ const applyFilter = (filter: SavedFilter) => {
                             <div className="flex flex-wrap gap-1">
                               {clientUnidades.length > 0 ? (
                                 clientUnidades.map(unidad => {
-                                  const semaforo = client.semaforo_unidades?.[unidad]
-                                  const semaforoBadge = getSemaforoBadge(semaforo)
+                                  const sem = getSemaforoBadge(client.semaforo_unidades?.[unidad])
                                   return (
                                     <Badge 
                                       key={unidad} 
                                       variant="outline" 
-                                      className={cn('text-xs gap-1', semaforoBadge.className)}
+                                      className={cn('text-xs gap-1.5', sem.className)}
                                     >
-                                      <span 
-                                        className="h-2 w-2 rounded-full" 
-                                        style={{ backgroundColor: semaforoBadge.color }}
-                                      />
+                                      <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', sem.dotClass)} />
                                       {unidad}
                                     </Badge>
                                   )
@@ -1796,34 +1820,7 @@ const applyFilter = (filter: SavedFilter) => {
                             {formatCurrency((client.fee_mdk || 0) + (client.fee_aurelia || 0) + (client.fee_consultoria || 0))}
                           </TableCell>
                         )}
-                        {visibleColumns.includes('fee_carga') && (
-                          <TableCell onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center gap-1.5">
-                              <Select
-                                value={client.fee_mes_carga ? String(client.fee_mes_carga) : undefined}
-                                onValueChange={(v) => updateFeeCarga(client.id, 'fee_mes_carga', Number(v))}
-                              >
-                                <SelectTrigger className="h-7 w-[92px] text-xs">
-                                  <SelectValue placeholder="Mes" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {MESES_CARGA.map(m => (
-                                    <SelectItem key={m.value} value={String(m.value)} className="text-xs">
-                                      {m.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <Input
-                                type="number"
-                                value={client.fee_anio_carga ?? ''}
-                                onChange={(e) => updateFeeCarga(client.id, 'fee_anio_carga', e.target.value === '' ? null : Number(e.target.value))}
-                                className="h-7 w-[68px] text-xs"
-                                placeholder="Año"
-                              />
-                            </div>
-                          </TableCell>
-                        )}
+
                         {visibleColumns.includes('plataformas') && (
                           <TableCell>
                             <div className="flex gap-1">
@@ -1840,13 +1837,29 @@ const applyFilter = (filter: SavedFilter) => {
                           </TableCell>
                         )}
                         {visibleColumns.includes('pm') && (
-                          <TableCell>
-                            <span className="text-sm">{pm?.full_name || '-'}</span>
+                          <TableCell className="align-top">
+                            {pmList.length > 0 ? (
+                              <div className="flex flex-col gap-0.5">
+                                {pmList.map(p => (
+                                  <span key={p.id} className="text-sm leading-tight break-words">{p.full_name || p.email}</span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">-</span>
+                            )}
                           </TableCell>
                         )}
                         {visibleColumns.includes('am') && (
-                          <TableCell>
-                            <span className="text-sm">{am?.full_name || '-'}</span>
+                          <TableCell className="align-top">
+                            {amList.length > 0 ? (
+                              <div className="flex flex-col gap-0.5">
+                                {amList.map(p => (
+                                  <span key={p.id} className="text-sm leading-tight break-words">{p.full_name || p.email}</span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">-</span>
+                            )}
                           </TableCell>
                         )}
                         {visibleColumns.includes('nps') && (
@@ -1881,28 +1894,7 @@ const applyFilter = (filter: SavedFilter) => {
                             </Select>
                           </TableCell>
                         )}
-                        {visibleColumns.includes('semaforos') && (
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {clientUnidades.length > 0 ? (
-                                clientUnidades.map(unidad => {
-                                  const semaforo = client.semaforo_unidades?.[unidad]
-                                  const semaforoBadge = getSemaforoBadge(semaforo)
-                                  return (
-                                    <span
-                                      key={unidad}
-                                      className="h-3 w-3 rounded-full border"
-                                      style={{ backgroundColor: semaforoBadge.color }}
-                                      title={`${unidad}: ${semaforo || 'sin datos'}`}
-                                    />
-                                  )
-                                })
-                              ) : (
-                                <span className="text-xs text-muted-foreground">-</span>
-                              )}
-                            </div>
-                          </TableCell>
-                        )}
+
                         {visibleColumns.includes('etapa') && (
                           <TableCell>
                             <span className="text-sm text-muted-foreground">
@@ -1983,13 +1975,13 @@ const applyFilter = (filter: SavedFilter) => {
                         {formatCurrency(filteredClients.reduce((sum, c) => sum + (c.fee_mdk || 0) + (c.fee_aurelia || 0) + (c.fee_consultoria || 0), 0))}
                       </TableCell>
                     )}
-                    {visibleColumns.includes('fee_carga') && <TableCell></TableCell>}
+
                     {visibleColumns.includes('plataformas') && <TableCell></TableCell>}
                     {visibleColumns.includes('pm') && <TableCell></TableCell>}
                     {visibleColumns.includes('am') && <TableCell></TableCell>}
                     {visibleColumns.includes('nps') && <TableCell></TableCell>}
                     {visibleColumns.includes('mora') && <TableCell></TableCell>}
-                    {visibleColumns.includes('semaforos') && <TableCell></TableCell>}
+
                     {visibleColumns.includes('etapa') && <TableCell></TableCell>}
                     {visibleColumns.includes('fecha_activacion') && <TableCell></TableCell>}
                     {visibleColumns.includes('fecha_venta') && <TableCell></TableCell>}
