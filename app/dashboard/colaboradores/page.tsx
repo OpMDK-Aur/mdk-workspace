@@ -33,7 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator, Pencil, Check, X, Shield, Users, UserPlus, Upload } from 'lucide-react'
+import { Save, Plus, Trash2, RefreshCw, AlertCircle, Calculator, Pencil, Check, X, Shield, Users, UserPlus, Upload, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -98,6 +98,18 @@ interface MetricaColaborador {
   anio: number
 }
 
+// Sortable column keys
+type MetricasSortKey =
+  | 'colaborador'
+  | 'cliente'
+  | 'fees'
+  | 'valor_hora'
+  | 'horas_teoricas_cliente'
+  | 'minimo_no_negociable_horas'
+  | 'horas_objetivo'
+  | 'acumulado_mes_asignado'
+type RolesSortKey = 'colaborador' | 'rol' | 'puesto'
+
 // Available modules that can be enabled
 const AVAILABLE_MODULES = [
   { id: 'dashboard', name: 'Dashboard', description: 'Acceso al panel principal' },
@@ -148,6 +160,11 @@ export default function ColaboradoresPage() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [editedRows, setEditedRows] = useState<Set<string>>(new Set())
   const [filterColaborador, setFilterColaborador] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<'activos' | 'inactivos'>('activos')
+  // Sorting state for metricas table
+  const [metricasSort, setMetricasSort] = useState<{ key: MetricasSortKey; dir: 'asc' | 'desc' } | null>(null)
+  // Sorting state for roles/permissions table
+  const [rolesSort, setRolesSort] = useState<{ key: RolesSortKey; dir: 'asc' | 'desc' } | null>(null)
   const [valorHoraGlobal, setValorHoraGlobal] = useState<number>(150000)
   const [isImporting, setIsImporting] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
@@ -187,6 +204,11 @@ export default function ColaboradoresPage() {
   const [savingFee, setSavingFee] = useState(false)
 
   const supabase = createClient()
+
+  // Reset specific colaborador filter when switching status to avoid empty selections
+  useEffect(() => {
+    setFilterColaborador('all')
+  }, [statusFilter])
 
   // Check access - only Master role can see this page
   useEffect(() => {
@@ -446,7 +468,7 @@ export default function ColaboradoresPage() {
     setCreatingUser(false)
   }
 
-  // ─── EDIT USER HANDLER ────────────────────────────────────────────────────────
+  // ─── EDIT USER HANDLER ────────────────��───────────────────────────────────────
 
   const openEditDialog = (colaborador: Colaborador) => {
     setEditingUser(colaborador)
@@ -950,13 +972,103 @@ export default function ColaboradoresPage() {
     setIsSaving(false)
   }
 
-  // Filter metricas by colaborador
-  const filteredMetricas = filterColaborador === 'all' 
-    ? metricas 
-    : metricas.filter(m => m.colaborador_id === filterColaborador)
+  // Set of colaborador ids matching the current status filter (activos/inactivos)
+  const statusColaboradorIds = new Set(
+    colaboradores
+      .filter(c => (statusFilter === 'activos' ? c.activo : !c.activo))
+      .map(c => c.id)
+  )
 
-  // Filter only active colaboradores for permissions
-  const activeColaboradores = colaboradores.filter(c => c.activo)
+  // Filter metricas by status (activos/inactivos) and by selected colaborador
+  const filteredMetricas = metricas
+    .filter(m => statusColaboradorIds.has(m.colaborador_id))
+    .filter(m => filterColaborador === 'all' || m.colaborador_id === filterColaborador)
+
+  // Filter colaboradores for permissions tab by status
+  const activeColaboradores = colaboradores.filter(c =>
+    statusFilter === 'activos' ? c.activo : !c.activo
+  )
+
+  // Colaboradores available in the metricas dropdown, scoped to the status filter
+  const statusColaboradores = colaboradores.filter(c =>
+    statusFilter === 'activos' ? c.activo : !c.activo
+  )
+
+  // Toggle sorting handlers (asc -> desc -> none)
+  const toggleMetricasSort = (key: MetricasSortKey) => {
+    setMetricasSort(prev => {
+      if (!prev || prev.key !== key) return { key, dir: 'asc' }
+      if (prev.dir === 'asc') return { key, dir: 'desc' }
+      return null
+    })
+  }
+  const toggleRolesSort = (key: RolesSortKey) => {
+    setRolesSort(prev => {
+      if (!prev || prev.key !== key) return { key, dir: 'asc' }
+      if (prev.dir === 'asc') return { key, dir: 'desc' }
+      return null
+    })
+  }
+
+  // Helper to compare values (strings localeCompare, numbers numeric)
+  const compareValues = (a: string | number, b: string | number) => {
+    if (typeof a === 'number' && typeof b === 'number') return a - b
+    return String(a).localeCompare(String(b), 'es', { numeric: true, sensitivity: 'base' })
+  }
+
+  const getMetricaSortValue = (m: MetricaColaborador, key: MetricasSortKey): string | number => {
+    switch (key) {
+      case 'colaborador':
+        return m.colaborador ? `${m.colaborador.nombre} ${m.colaborador.apellido || ''}`.trim().toLowerCase() : ''
+      case 'cliente':
+        return (m.cliente?.nombre_del_negocio || '').toLowerCase()
+      case 'fees':
+        return (m.cliente?.fee_mdk || 0) + (m.cliente?.fee_aurelia || 0) + (m.cliente?.fee_consultoria || 0)
+      case 'valor_hora':
+        return m.valor_hora || 0
+      case 'horas_teoricas_cliente':
+        return m.horas_teoricas_cliente || 0
+      case 'minimo_no_negociable_horas':
+        return m.minimo_no_negociable_horas || 0
+      case 'horas_objetivo':
+        return m.horas_objetivo || 0
+      case 'acumulado_mes_asignado':
+        return m.acumulado_mes_asignado || 0
+    }
+  }
+
+  // Apply sorting to metricas (after filtering)
+  const sortedMetricas = metricasSort
+    ? [...filteredMetricas].sort((a, b) => {
+        const cmp = compareValues(
+          getMetricaSortValue(a, metricasSort.key),
+          getMetricaSortValue(b, metricasSort.key)
+        )
+        return metricasSort.dir === 'asc' ? cmp : -cmp
+      })
+    : filteredMetricas
+
+  const getRolesSortValue = (c: Colaborador, key: RolesSortKey): string => {
+    switch (key) {
+      case 'colaborador':
+        return `${c.nombre} ${c.apellido || ''}`.trim().toLowerCase()
+      case 'rol':
+        return (roles.find(r => r.id === c.rol_id)?.nombre || '').toLowerCase()
+      case 'puesto':
+        return (c.puesto || '').toLowerCase()
+    }
+  }
+
+  // Apply sorting to colaboradores in permissions tab (after status filter)
+  const sortedColaboradores = rolesSort
+    ? [...activeColaboradores].sort((a, b) => {
+        const cmp = compareValues(
+          getRolesSortValue(a, rolesSort.key),
+          getRolesSortValue(b, rolesSort.key)
+        )
+        return rolesSort.dir === 'asc' ? cmp : -cmp
+      })
+    : activeColaboradores
 
   if (hasAccess === null) {
     return (
@@ -981,6 +1093,12 @@ export default function ColaboradoresPage() {
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ]
 
+  // Sort indicator icon for a given column
+  const SortIcon = ({ active, dir }: { active: boolean; dir: 'asc' | 'desc' }) => {
+    if (!active) return <ChevronsUpDown className="h-3 w-3 opacity-40" />
+    return dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -988,10 +1106,21 @@ export default function ColaboradoresPage() {
           <h1 className="text-2xl font-bold">Colaboradores</h1>
           <p className="text-muted-foreground">Gestiona permisos, roles y metricas de los colaboradores</p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)}>
-          <UserPlus className="h-4 w-4 mr-2" />
-          Crear usuario
-        </Button>
+        <div className="flex items-center gap-3">
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as 'activos' | 'inactivos')}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="activos">Activos</SelectItem>
+              <SelectItem value="inactivos">Inactivos</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button onClick={() => setShowCreateDialog(true)}>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Crear usuario
+          </Button>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -1036,9 +1165,36 @@ export default function ColaboradoresPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[200px]">Colaborador</TableHead>
-                        <TableHead className="w-[140px]">Rol</TableHead>
-                        <TableHead className="w-[160px]">Puesto</TableHead>
+                        <TableHead className="w-[200px]">
+                          <button
+                            type="button"
+                            onClick={() => toggleRolesSort('colaborador')}
+                            className="flex items-center gap-1 hover:text-foreground transition-colors"
+                          >
+                            Colaborador
+                            <SortIcon active={rolesSort?.key === 'colaborador'} dir={rolesSort?.dir || 'asc'} />
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-[140px]">
+                          <button
+                            type="button"
+                            onClick={() => toggleRolesSort('rol')}
+                            className="flex items-center gap-1 hover:text-foreground transition-colors"
+                          >
+                            Rol
+                            <SortIcon active={rolesSort?.key === 'rol'} dir={rolesSort?.dir || 'asc'} />
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-[160px]">
+                          <button
+                            type="button"
+                            onClick={() => toggleRolesSort('puesto')}
+                            className="flex items-center gap-1 hover:text-foreground transition-colors"
+                          >
+                            Puesto
+                            <SortIcon active={rolesSort?.key === 'puesto'} dir={rolesSort?.dir || 'asc'} />
+                          </button>
+                        </TableHead>
                         {AVAILABLE_MODULES.map(mod => (
                           <TableHead key={mod.id} className="text-center w-[100px]">
                             <div className="flex flex-col items-center">
@@ -1050,7 +1206,7 @@ export default function ColaboradoresPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {activeColaboradores.map(colab => {
+                      {sortedColaboradores.map(colab => {
                         const isMaster = roles.find(r => r.id === colab.rol_id)?.nombre?.toLowerCase() === 'master'
                         const isEdited = editedColaboradores.has(colab.id)
                         
@@ -1216,7 +1372,7 @@ export default function ColaboradoresPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todos los colaboradores</SelectItem>
-                      {colaboradores.map(c => (
+                      {statusColaboradores.map(c => (
                         <SelectItem key={c.id} value={c.id}>
                           {c.nombre} {c.apellido || ''}
                         </SelectItem>
@@ -1263,14 +1419,86 @@ export default function ColaboradoresPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[160px]">Colaborador</TableHead>
-                        <TableHead className="w-[160px]">Cliente</TableHead>
-                        <TableHead className="text-right w-[140px]">Fees (MDK/Aur/Cons)</TableHead>
-                        <TableHead className="text-right w-[100px]">Valor Hora</TableHead>
-                        <TableHead className="text-right w-[90px]">H Teoricas</TableHead>
-                        <TableHead className="text-right w-[90px]">Minimo</TableHead>
-                        <TableHead className="text-right w-[90px]">Objetivo</TableHead>
-                        <TableHead className="text-right w-[90px]">Acumulado</TableHead>
+                        <TableHead className="w-[160px]">
+                          <button
+                            type="button"
+                            onClick={() => toggleMetricasSort('colaborador')}
+                            className="flex items-center gap-1 hover:text-foreground transition-colors"
+                          >
+                            Colaborador
+                            <SortIcon active={metricasSort?.key === 'colaborador'} dir={metricasSort?.dir || 'asc'} />
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-[160px]">
+                          <button
+                            type="button"
+                            onClick={() => toggleMetricasSort('cliente')}
+                            className="flex items-center gap-1 hover:text-foreground transition-colors"
+                          >
+                            Cliente
+                            <SortIcon active={metricasSort?.key === 'cliente'} dir={metricasSort?.dir || 'asc'} />
+                          </button>
+                        </TableHead>
+                        <TableHead className="text-right w-[140px]">
+                          <button
+                            type="button"
+                            onClick={() => toggleMetricasSort('fees')}
+                            className="flex items-center gap-1 ml-auto hover:text-foreground transition-colors"
+                          >
+                            Fees (MDK/Aur/Cons)
+                            <SortIcon active={metricasSort?.key === 'fees'} dir={metricasSort?.dir || 'asc'} />
+                          </button>
+                        </TableHead>
+                        <TableHead className="text-right w-[100px]">
+                          <button
+                            type="button"
+                            onClick={() => toggleMetricasSort('valor_hora')}
+                            className="flex items-center gap-1 ml-auto hover:text-foreground transition-colors"
+                          >
+                            Valor Hora
+                            <SortIcon active={metricasSort?.key === 'valor_hora'} dir={metricasSort?.dir || 'asc'} />
+                          </button>
+                        </TableHead>
+                        <TableHead className="text-right w-[90px]">
+                          <button
+                            type="button"
+                            onClick={() => toggleMetricasSort('horas_teoricas_cliente')}
+                            className="flex items-center gap-1 ml-auto hover:text-foreground transition-colors"
+                          >
+                            H Teoricas
+                            <SortIcon active={metricasSort?.key === 'horas_teoricas_cliente'} dir={metricasSort?.dir || 'asc'} />
+                          </button>
+                        </TableHead>
+                        <TableHead className="text-right w-[90px]">
+                          <button
+                            type="button"
+                            onClick={() => toggleMetricasSort('minimo_no_negociable_horas')}
+                            className="flex items-center gap-1 ml-auto hover:text-foreground transition-colors"
+                          >
+                            Minimo
+                            <SortIcon active={metricasSort?.key === 'minimo_no_negociable_horas'} dir={metricasSort?.dir || 'asc'} />
+                          </button>
+                        </TableHead>
+                        <TableHead className="text-right w-[90px]">
+                          <button
+                            type="button"
+                            onClick={() => toggleMetricasSort('horas_objetivo')}
+                            className="flex items-center gap-1 ml-auto hover:text-foreground transition-colors"
+                          >
+                            Objetivo
+                            <SortIcon active={metricasSort?.key === 'horas_objetivo'} dir={metricasSort?.dir || 'asc'} />
+                          </button>
+                        </TableHead>
+                        <TableHead className="text-right w-[90px]">
+                          <button
+                            type="button"
+                            onClick={() => toggleMetricasSort('acumulado_mes_asignado')}
+                            className="flex items-center gap-1 ml-auto hover:text-foreground transition-colors"
+                          >
+                            Acumulado
+                            <SortIcon active={metricasSort?.key === 'acumulado_mes_asignado'} dir={metricasSort?.dir || 'asc'} />
+                          </button>
+                        </TableHead>
                         <TableHead className="text-right w-[80px]">%</TableHead>
                         <TableHead className="w-[50px]"></TableHead>
                       </TableRow>
@@ -1283,7 +1511,7 @@ export default function ColaboradoresPage() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        filteredMetricas.map((m) => (
+                        sortedMetricas.map((m) => (
                           <TableRow key={m.id} className={editedRows.has(m.id) ? 'bg-primary/5' : ''}>
                             <TableCell>
                               <Select 
