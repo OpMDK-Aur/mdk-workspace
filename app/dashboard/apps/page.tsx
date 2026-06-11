@@ -20,6 +20,12 @@ export default async function AppsPage() {
     .eq('plataforma', 'google_calendar')
     .maybeSingle()
 
+  const { data: googleSheetsToken } = await supabase
+    .from('plataformas_tokens')
+    .select('email_conectado, token_expiry, updated_at')
+    .eq('plataforma', 'google_sheets')
+    .maybeSingle()
+
   const { data: discordInfo } = await supabase
     .from('colaboradores')
     .select('discord_id, discord_username')
@@ -38,6 +44,7 @@ export default async function AppsPage() {
       <PlatformConnectionPanel
         googleToken={googleToken ?? null}
         googleCalendarToken={googleCalendarToken ?? null}
+        googleSheetsToken={googleSheetsToken ?? null}
         discordInfo={discordInfo ?? null}
         appUrl={process.env.NEXT_PUBLIC_APP_URL || ''}
       />

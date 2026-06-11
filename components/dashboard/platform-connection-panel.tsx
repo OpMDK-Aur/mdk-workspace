@@ -22,16 +22,18 @@ interface DiscordInfo {
 interface PlatformConnectionPanelProps {
   googleToken: TokenInfo | null
   googleCalendarToken: TokenInfo | null
+  googleSheetsToken: TokenInfo | null
   discordInfo: DiscordInfo | null
   appUrl: string
 }
 
-export function PlatformConnectionPanel({ googleToken, googleCalendarToken, discordInfo, appUrl }: PlatformConnectionPanelProps) {
+export function PlatformConnectionPanel({ googleToken, googleCalendarToken, googleSheetsToken, discordInfo, appUrl }: PlatformConnectionPanelProps) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [loadingAds, setLoadingAds] = useState(false)
   const [loadingCalendar, setLoadingCalendar] = useState(false)
+  const [loadingSheets, setLoadingSheets] = useState(false)
   const [loadingDiscord, setLoadingDiscord] = useState(false)
 
   // Handle URL params for success/error messages
@@ -47,6 +49,11 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, disc
     }
     if (connected === 'google_calendar') {
       setNotice({ type: 'success', message: 'Cuenta de Google Calendar conectada correctamente.' })
+      router.replace('/dashboard/apps')
+      return
+    }
+    if (connected === 'google_sheets') {
+      setNotice({ type: 'success', message: 'Cuenta de Google Sheets conectada correctamente.' })
       router.replace('/dashboard/apps')
       return
     }
@@ -84,6 +91,11 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, disc
     window.location.href = '/api/auth/google-calendar'
   }
 
+  const handleConnectSheets = () => {
+    setLoadingSheets(true)
+    window.location.href = '/api/auth/google-sheets'
+  }
+
   const handleConnectDiscord = async () => {
     setLoadingDiscord(true)
     const supabase = createClient()
@@ -105,10 +117,12 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, disc
 
   const isAdsConnected = Boolean(googleToken)
   const isCalendarConnected = Boolean(googleCalendarToken)
+  const isSheetsConnected = Boolean(googleSheetsToken)
   const isDiscordConnected = Boolean(discordInfo?.discord_id)
   
   const adsEmail = googleToken?.email_conectado
   const calendarEmail = googleCalendarToken?.email_conectado
+  const sheetsEmail = googleSheetsToken?.email_conectado
   
   const adsUpdatedAt = googleToken?.updated_at
     ? new Date(googleToken.updated_at).toLocaleDateString('es-AR', {
@@ -117,6 +131,11 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, disc
     : null
   const calendarUpdatedAt = googleCalendarToken?.updated_at
     ? new Date(googleCalendarToken.updated_at).toLocaleDateString('es-AR', {
+        day: '2-digit', month: 'short', year: 'numeric',
+      })
+    : null
+  const sheetsUpdatedAt = googleSheetsToken?.updated_at
+    ? new Date(googleSheetsToken.updated_at).toLocaleDateString('es-AR', {
         day: '2-digit', month: 'short', year: 'numeric',
       })
     : null
@@ -266,6 +285,72 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, disc
           <CardContent>
             <p className="text-sm text-muted-foreground">
               Conecta tu cuenta de Google Calendar para crear reuniones automaticamente desde las tareas.
+              Podes usar una cuenta diferente a la de Google Ads.
+            </p>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Google Sheets Card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg border bg-white shrink-0">
+                <svg viewBox="0 0 24 24" className="w-5 h-5">
+                  <path fill="#0F9D58" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-4-4h4v4h-4zm-4-4h4v4h-4zm0-4h4v4h-4zM5 9h4v4H5z"/>
+                </svg>
+              </div>
+              <div>
+                <CardTitle className="text-base">Google Sheets</CardTitle>
+                {sheetsEmail && (
+                  <p className="text-xs text-muted-foreground mt-0.5">{sheetsEmail}</p>
+                )}
+              </div>
+              {isSheetsConnected ? (
+                <Badge className="bg-green-500/15 text-green-600 border-green-500/20 text-xs">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Conectado
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-muted-foreground text-xs">
+                  Sin conectar
+                </Badge>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {sheetsUpdatedAt && (
+                <span className="text-xs text-muted-foreground hidden sm:block">
+                  Actualizado {sheetsUpdatedAt}
+                </span>
+              )}
+              <Button
+                size="sm"
+                variant={isSheetsConnected ? 'outline' : 'default'}
+                className="gap-2 h-8"
+                onClick={handleConnectSheets}
+                disabled={loadingSheets}
+              >
+                {loadingSheets ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : isSheetsConnected ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Reconectar
+                  </>
+                ) : (
+                  'Conectar'
+                )}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        {!isSheetsConnected && (
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Conecta tu cuenta de Google Sheets para sincronizar datos y trabajar con hojas de cálculo.
               Podes usar una cuenta diferente a la de Google Ads.
             </p>
           </CardContent>
