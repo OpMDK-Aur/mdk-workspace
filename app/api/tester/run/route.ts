@@ -34,6 +34,82 @@ export async function POST(req: Request) {
 
     const resultados: TesterResultado[] = []
 
+    const verificarEnSheets = async (nombreCliente: string): Promise<{ estado: 'ok' | 'fallo' | 'verificacion_manual', detalle: string }> => {
+      try {
+        const { data: tokenData } = await supabase
+          .from('plataformas_tokens')
+          .select('access_token, refresh_token, token_expiry')
+          .eq('plataforma', 'google_sheets')
+          .eq('activo', true)
+          .single()
+
+        if (!tokenData?.access_token) {
+          return { estado: 'verificacion_manual', detalle: 'Token de Google Sheets no configurado' }
+        }
+
+        let accessToken = tokenData.access_token
+        const expiryTime = new Date(tokenData.token_expiry).getTime()
+        if (expiryTime < Date.now() + 5 * 60 * 1000) {
+          const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              client_id: process.env.GOOGLE_CLIENT_ID!,
+              client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+              refresh_token: tokenData.refresh_token,
+              grant_type: 'refresh_token',
+            }),
+          })
+          const refreshData = await refreshRes.json()
+          if (refreshData.access_token) {
+            accessToken = refreshData.access_token
+            await supabase.from('plataformas_tokens').update({
+              access_token: refreshData.access_token,
+              token_expiry: new Date(Date.now() + (refreshData.expires_in ?? 3600) * 1000).toISOString(),
+            }).eq('plataforma', 'google_sheets')
+          }
+        }
+
+        const spreadsheetId = '1b_E8wz5I-dW4u-vuHWwf7TQ70s4s8trt0PpvBEDEi7M'
+        const sheetName = 'Log-ejecuciones'
+        const range = `${sheetName}!A:G`
+
+        const sheetsRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        )
+        const sheetsData = await sheetsRes.json()
+        const rows: string[][] = sheetsData.values || []
+
+        const hace3min = Date.now() - 3 * 60 * 1000
+        const encontrado = rows.some(row => {
+          const fechaStr = row[1]
+          const clienteNombre = row[4]
+          
+          if (!fechaStr || !clienteNombre) return false
+          
+          const [datePart, timePart] = fechaStr.split(' ')
+          if (!datePart || !timePart) return false
+          const [day, month, year] = datePart.split('/')
+          const fechaMs = new Date(`${year}-${month}-${day}T${timePart}:00`).getTime()
+          
+          const clienteMatch = clienteNombre.toLowerCase().includes(nombreCliente.toLowerCase()) ||
+                               nombreCliente.toLowerCase().includes(clienteNombre.toLowerCase())
+          
+          return fechaMs > hace3min && clienteMatch
+        })
+
+        return {
+          estado: encontrado ? 'ok' : 'fallo',
+          detalle: encontrado
+            ? 'Ejecución del webhook registrada en el Sheet de logs'
+            : 'Webhook respondió OK pero no se registró en el Sheet de logs en 3 minutos'
+        }
+      } catch (err) {
+        return { estado: 'verificacion_manual', detalle: `Error verificando Sheet: ${err}` }
+      }
+    }
+
     const verificarEnOdoo = async (): Promise<{ estado: 'ok' | 'fallo' | 'verificacion_manual', detalle: string }> => {
       const { data: crmConexion } = await supabase
         .from('crm_conexiones')
@@ -156,7 +232,7 @@ export async function POST(req: Request) {
     const verificarEnCRM = async (): Promise<{ estado: 'ok' | 'fallo' | 'verificacion_manual', detalle: string }> => {
       const { data: clienteData } = await supabase
         .from('clientes')
-        .select('ghl_location_id, ghl_token, crm_tipo')
+        .select('ghl_location_id, ghl_token, crm_tipo, nombre_del_negocio')
         .eq('id', cliente_id)
         .single()
 
@@ -165,10 +241,12 @@ export async function POST(req: Request) {
       }
 
       if (clienteData?.crm_tipo === 'odoo' || clienteData?.crm_tipo === 'externo') {
-        return verificarEnOdoo()
+        const odooResult = await verificarEnOdoo()
+        if (odooResult.estado !== 'verificacion_manual') return odooResult
+        return verificarEnSheets(clienteData.nombre_del_negocio || '')
       }
 
-      return { estado: 'verificacion_manual', detalle: 'CRM no configurado - verificar manualmente' }
+      return verificarEnSheets(clienteData?.nombre_del_negocio || '')
     }
 
     for (const item of items) {
