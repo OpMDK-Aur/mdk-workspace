@@ -14,6 +14,9 @@ interface Landing {
   nombre: string
   url: string
   tipo: string
+  integracion?: 'webhook' | 'whatsapp_button' | 'whatsapp_form' | null
+  webhook_url?: string | null
+  whatsapp_numero?: string | null
 }
 
 interface ClientLandingsProps {
@@ -29,13 +32,26 @@ const TIPOS_LANDING = [
   { value: 'otro', label: 'Otro' },
 ]
 
+const TIPOS_INTEGRACION = [
+  { value: 'webhook', label: 'Formulario → Webhook' },
+  { value: 'whatsapp_form', label: 'Formulario → WhatsApp' },
+  { value: 'whatsapp_button', label: 'Botón WhatsApp' },
+]
+
 export function ClientLandings({ clientId }: ClientLandingsProps) {
   const [landings, setLandings] = useState<Landing[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
-  const [form, setForm] = useState({ nombre: '', url: '', tipo: 'landing' })
+  const [form, setForm] = useState({ 
+    nombre: '', 
+    url: '', 
+    tipo: 'landing',
+    integracion: null as 'webhook' | 'whatsapp_button' | 'whatsapp_form' | null,
+    webhook_url: '',
+    whatsapp_numero: '',
+  })
 
   const supabase = createClient()
 
@@ -78,6 +94,11 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
       nombre: form.nombre.trim(),
       url: form.url.trim(),
       tipo: form.tipo,
+      integracion: form.integracion || null,
+      webhook_url: form.integracion === 'webhook' ? form.webhook_url.trim() || null : null,
+      whatsapp_numero: (form.integracion === 'whatsapp_button' || form.integracion === 'whatsapp_form') 
+        ? form.whatsapp_numero.trim() || null 
+        : null,
     }
 
     let newLandings: Landing[]
@@ -91,7 +112,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
     if (success) {
       setDialogOpen(false)
       setEditingIndex(null)
-      setForm({ nombre: '', url: '', tipo: 'landing' })
+      setForm({ nombre: '', url: '', tipo: 'landing', integracion: null, webhook_url: '', whatsapp_numero: '' })
     }
   }
 
@@ -103,13 +124,20 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
   const openEdit = (index: number) => {
     const landing = landings[index]
     setEditingIndex(index)
-    setForm({ nombre: landing.nombre, url: landing.url, tipo: landing.tipo })
+    setForm({ 
+      nombre: landing.nombre, 
+      url: landing.url, 
+      tipo: landing.tipo,
+      integracion: landing.integracion || null,
+      webhook_url: landing.webhook_url || '',
+      whatsapp_numero: landing.whatsapp_numero || '',
+    })
     setDialogOpen(true)
   }
 
   const openNew = () => {
     setEditingIndex(null)
-    setForm({ nombre: '', url: '', tipo: 'landing' })
+    setForm({ nombre: '', url: '', tipo: 'landing', integracion: null, webhook_url: '', whatsapp_numero: '' })
     setDialogOpen(true)
   }
 
@@ -163,6 +191,46 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <Label>Integración del formulario</Label>
+                <Select 
+                  value={form.integracion} 
+                  onValueChange={(v) => setForm(prev => ({ ...prev, integracion: v, webhook_url: '', whatsapp_numero: '' }))}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Seleccionar tipo de integración" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIPOS_INTEGRACION.map(t => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {form.integracion === 'webhook' && (
+                <div>
+                  <Label>URL del Webhook</Label>
+                  <Input
+                    value={form.webhook_url}
+                    onChange={(e) => setForm(prev => ({ ...prev, webhook_url: e.target.value }))}
+                    placeholder="https://webhook.site/..."
+                    className="mt-1"
+                  />
+                </div>
+              )}
+
+              {(form.integracion === 'whatsapp_button' || form.integracion === 'whatsapp_form') && (
+                <div>
+                  <Label>Número de WhatsApp</Label>
+                  <Input
+                    value={form.whatsapp_numero}
+                    onChange={(e) => setForm(prev => ({ ...prev, whatsapp_numero: e.target.value }))}
+                    placeholder="5491112345678"
+                    className="mt-1"
+                  />
+                </div>
+              )}
               <Button onClick={handleSave} disabled={saving || !form.nombre.trim() || !form.url.trim()} className="w-full">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 {editingIndex !== null ? 'Guardar cambios' : 'Agregar'}
@@ -194,6 +262,11 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                     {TIPOS_LANDING.find(t => t.value === landing.tipo)?.label || landing.tipo}
                   </Badge>
+                  {landing.integracion && (
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                      {TIPOS_INTEGRACION.find(t => t.value === landing.integracion)?.label || landing.integracion}
+                    </Badge>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground truncate">{landing.url}</p>
               </div>

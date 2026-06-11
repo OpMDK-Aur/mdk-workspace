@@ -646,4 +646,7 @@ export interface TesterItem {
   nombre: string
   form_id?: string
   url?: string
+  integracion?: 'webhook' | 'whatsapp_button' | 'whatsapp_form' | null
+  webhook_url?: string | null
+  whatsapp_numero?: string | null
 }
