@@ -217,8 +217,12 @@ export function TesterModal({ open, onOpenChange }: TesterModalProps) {
   const handleExecuteTest = async () => {
     if (!selectedClient?.id || selectedItems.length === 0) return
 
+    console.log('[Tester] Ejecutando test para:', selectedClient.nombre_del_negocio)
+    console.log('[Tester] Items:', JSON.stringify(selectedItems))
+
     setTesting(true)
     try {
+      console.log('[Tester] Llamando a /api/tester/run...')
       const response = await fetch('/api/tester/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -228,9 +232,17 @@ export function TesterModal({ open, onOpenChange }: TesterModalProps) {
         })
       })
 
-      if (!response.ok) throw new Error('Test execution failed')
+      console.log('[Tester] Response status:', response.status)
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        console.error('[Tester] Error response:', errorData)
+        throw new Error(`Test execution failed: ${response.status}`)
+      }
 
       const data = await response.json()
+      console.log('[Tester] Response data:', data)
+      
       setTestResults(data.resultados || [])
       
       // Update selected items status based on results
@@ -249,7 +261,7 @@ export function TesterModal({ open, onOpenChange }: TesterModalProps) {
 
       toast.success('Test completado')
     } catch (error) {
-      console.error('Error executing test:', error)
+      console.error('[Tester] Error ejecutando test:', error)
       toast.error('Error al ejecutar el test')
     } finally {
       setTesting(false)
