@@ -13,9 +13,6 @@ export async function POST(req: Request) {
   try {
     const { cliente_id, items } = await req.json() as { cliente_id: string; items: TesterItem[] }
 
-    console.log('[Tester Run] cliente_id:', cliente_id)
-    console.log('[Tester Run] items:', JSON.stringify(items))
-
     if (!cliente_id || !items || items.length === 0) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
@@ -51,7 +48,6 @@ export async function POST(req: Request) {
       }
 
       try {
-        // 1. Autenticar y obtener session_id
         const authRes = await fetch(`${crmConexion.url}/web/session/authenticate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -73,7 +69,12 @@ export async function POST(req: Request) {
           return { estado: 'verificacion_manual', detalle: 'Error de autenticación en Odoo' }
         }
 
-        // 2. Buscar lead por email o nombre
+        // Filtrar por fecha — solo leads creados en los últimos 3 minutos
+        const hace3min = new Date(Date.now() - 3 * 60 * 1000)
+          .toISOString()
+          .replace('T', ' ')
+          .split('.')[0]
+
         const searchRes = await fetch(`${crmConexion.url}/web/dataset/call_kw`, {
           method: 'POST',
           headers: {
@@ -87,10 +88,14 @@ export async function POST(req: Request) {
             params: {
               model: 'crm.lead',
               method: 'search_read',
-              args: [[['|',
-                ['email_from', '=', 'test-tester@madketing.io'],
-                ['contact_name', '=', 'Test MDK Tester']
-              ]]],
+              args: [[
+                '&',
+                ['|',
+                  ['email_from', '=', 'test-tester@madketing.io'],
+                  ['contact_name', '=', 'Test MDK Tester']
+                ],
+                ['create_date', '>=', hace3min]
+              ]],
               kwargs: {
                 fields: ['id', 'name', 'email_from', 'contact_name', 'create_date'],
                 limit: 5,
