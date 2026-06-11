@@ -37,7 +37,6 @@ export async function POST(req: Request) {
 
     const resultados: TesterResultado[] = []
 
-    // Helper para verificar en Odoo
     const verificarEnOdoo = async (): Promise<{ estado: 'ok' | 'fallo' | 'verificacion_manual', detalle: string }> => {
       const { data: crmConexion } = await supabase
         .from('crm_conexiones')
@@ -52,7 +51,6 @@ export async function POST(req: Request) {
       }
 
       try {
-        // 1. Autenticar
         const authRes = await fetch(`${crmConexion.url}/xmlrpc/2/common`, {
           method: 'POST',
           headers: { 'Content-Type': 'text/xml' },
@@ -75,7 +73,6 @@ export async function POST(req: Request) {
           return { estado: 'verificacion_manual', detalle: 'Error de autenticación en Odoo' }
         }
 
-        // 2. Buscar lead reciente
         const searchRes = await fetch(`${crmConexion.url}/xmlrpc/2/object`, {
           method: 'POST',
           headers: { 'Content-Type': 'text/xml' },
@@ -91,9 +88,17 @@ export async function POST(req: Request) {
     <param><value><array><data>
       <value><array><data>
         <value><array><data>
-          <value><string>email_from</string></value>
-          <value><string>=</string></value>
-          <value><string>test-tester@madketing.io</string></value>
+          <value><string>|</string></value>
+          <value><array><data>
+            <value><string>email_from</string></value>
+            <value><string>=</string></value>
+            <value><string>test-tester@madketing.io</string></value>
+          </data></array></value>
+          <value><array><data>
+            <value><string>contact_name</string></value>
+            <value><string>=</string></value>
+            <value><string>Test MDK Tester</string></value>
+          </data></array></value>
         </data></array></value>
       </data></array></value>
     </data></array></value></param>
@@ -110,20 +115,19 @@ export async function POST(req: Request) {
 </methodCall>`
         })
         const searchText = await searchRes.text()
-        const tieneResultados = searchText.includes('test-tester@madketing.io')
+        const tieneResultados = searchText.includes('test-tester@madketing.io') || searchText.includes('Test MDK Tester')
 
         return {
           estado: tieneResultados ? 'ok' : 'fallo',
           detalle: tieneResultados
             ? 'Lead de prueba recibido correctamente en Odoo'
-            : 'Webhook respondió OK pero el lead no llegó a Odoo en 20 segundos'
+            : 'Webhook respondió OK pero el lead no llegó a Odoo en 30 segundos'
         }
       } catch (err) {
         return { estado: 'verificacion_manual', detalle: `Error verificando Odoo: ${err}` }
       }
     }
 
-    // Helper para verificar en GHL
     const verificarEnGHL = async (ghl_location_id: string, ghl_token: string): Promise<{ estado: 'ok' | 'fallo', detalle: string }> => {
       const ghlRes = await fetch(
         `https://services.leadconnectorhq.com/contacts/?locationId=${ghl_location_id}&limit=10`,
@@ -146,11 +150,10 @@ export async function POST(req: Request) {
         estado: llegó ? 'ok' : 'fallo',
         detalle: llegó
           ? 'Lead de prueba recibido correctamente en GHL'
-          : 'Webhook respondió OK pero el lead no llegó a GHL en 20 segundos'
+          : 'Webhook respondió OK pero el lead no llegó a GHL en 30 segundos'
       }
     }
 
-    // Helper para verificar en CRM según tipo
     const verificarEnCRM = async (): Promise<{ estado: 'ok' | 'fallo' | 'verificacion_manual', detalle: string }> => {
       const { data: clienteData } = await supabase
         .from('clientes')
@@ -307,7 +310,7 @@ export async function POST(req: Request) {
               estado = 'fallo'
               detalle = `Webhook respondió con status ${webhookRes.status}`
             } else {
-              await new Promise(resolve => setTimeout(resolve, 20000))
+              await new Promise(resolve => setTimeout(resolve, 30000))
               const verificacion = await verificarEnCRM()
               estado = verificacion.estado
               detalle = verificacion.detalle
