@@ -51,71 +51,56 @@ export async function POST(req: Request) {
       }
 
       try {
-        const authRes = await fetch(`${crmConexion.url}/xmlrpc/2/common`, {
+        // 1. Autenticar y obtener session_id
+        const authRes = await fetch(`${crmConexion.url}/web/session/authenticate`, {
           method: 'POST',
-          headers: { 'Content-Type': 'text/xml' },
-          body: `<?xml version="1.0"?>
-<methodCall>
-  <methodName>authenticate</methodName>
-  <params>
-    <param><value><string>${crmConexion.tabla_destino}</string></value></param>
-    <param><value><string>${crmConexion.usuario}</string></value></param>
-    <param><value><string>${crmConexion.api_key}</string></value></param>
-    <param><value><struct/></value></param>
-  </params>
-</methodCall>`
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'call',
+            id: 1,
+            params: {
+              db: crmConexion.tabla_destino,
+              login: crmConexion.usuario,
+              password: crmConexion.api_key,
+            }
+          })
         })
-        const authText = await authRes.text()
-        const uidMatch = authText.match(/<int>(\d+)<\/int>/)
-        const uid = uidMatch ? parseInt(uidMatch[1]) : null
+        const authData = await authRes.json()
+        const sessionId = authData.result?.session_id
 
-        if (!uid) {
+        if (!sessionId) {
           return { estado: 'verificacion_manual', detalle: 'Error de autenticación en Odoo' }
         }
 
-        const searchRes = await fetch(`${crmConexion.url}/xmlrpc/2/object`, {
+        // 2. Buscar lead por email o nombre
+        const searchRes = await fetch(`${crmConexion.url}/web/dataset/call_kw`, {
           method: 'POST',
-          headers: { 'Content-Type': 'text/xml' },
-          body: `<?xml version="1.0"?>
-<methodCall>
-  <methodName>execute_kw</methodName>
-  <params>
-    <param><value><string>${crmConexion.tabla_destino}</string></value></param>
-    <param><value><int>${uid}</int></value></param>
-    <param><value><string>${crmConexion.api_key}</string></value></param>
-    <param><value><string>crm.lead</string></value></param>
-    <param><value><string>search_read</string></value></param>
-    <param><value><array><data>
-      <value><array><data>
-        <value><array><data>
-          <value><string>|</string></value>
-          <value><array><data>
-            <value><string>email_from</string></value>
-            <value><string>=</string></value>
-            <value><string>test-tester@madketing.io</string></value>
-          </data></array></value>
-          <value><array><data>
-            <value><string>contact_name</string></value>
-            <value><string>=</string></value>
-            <value><string>Test MDK Tester</string></value>
-          </data></array></value>
-        </data></array></value>
-      </data></array></value>
-    </data></array></value></param>
-    <param><value><struct>
-      <member><name>fields</name><value><array><data>
-        <value><string>id</string></value>
-        <value><string>name</string></value>
-        <value><string>email_from</string></value>
-        <value><string>create_date</string></value>
-      </data></array></value></member>
-      <member><name>limit</name><value><int>5</int></value></member>
-    </struct></value></param>
-  </params>
-</methodCall>`
+          headers: {
+            'Content-Type': 'application/json',
+            'Cookie': `session_id=${sessionId}`,
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'call',
+            id: 2,
+            params: {
+              model: 'crm.lead',
+              method: 'search_read',
+              args: [[['|',
+                ['email_from', '=', 'test-tester@madketing.io'],
+                ['contact_name', '=', 'Test MDK Tester']
+              ]]],
+              kwargs: {
+                fields: ['id', 'name', 'email_from', 'contact_name', 'create_date'],
+                limit: 5,
+              }
+            }
+          })
         })
-        const searchText = await searchRes.text()
-        const tieneResultados = searchText.includes('test-tester@madketing.io') || searchText.includes('Test MDK Tester')
+        const searchData = await searchRes.json()
+        const leads = searchData.result || []
+        const tieneResultados = leads.length > 0
 
         return {
           estado: tieneResultados ? 'ok' : 'fallo',
