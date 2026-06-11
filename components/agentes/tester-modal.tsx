@@ -581,7 +581,7 @@ export function TesterModal({ open, onOpenChange }: TesterModalProps) {
               <div className="flex items-center gap-2">
                 <Checkbox
                   checked={cronEnabled}
-                  onCheckedChange={setCronEnabled}
+                  onCheckedChange={(checked) => setCronEnabled(checked === true)}
                 />
                 <label className="text-sm font-medium">Activar pruebas automáticas</label>
               </div>
