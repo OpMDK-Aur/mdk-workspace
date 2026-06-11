@@ -81,7 +81,13 @@ export async function POST(req: Request) {
         const sheetsData = await sheetsRes.json()
         const rows: string[][] = sheetsData.values || []
 
+        console.log('[Sheets] rows count:', rows.length)
+        console.log('[Sheets] últimas 3 filas:', JSON.stringify(rows.slice(-3)))
+        console.log('[Sheets] buscando cliente:', nombreCliente)
+
         const hace3min = Date.now() - 3 * 60 * 1000
+        console.log('[Sheets] hace3min timestamp:', hace3min, new Date(hace3min).toISOString())
+
         const encontrado = rows.some(row => {
           const fechaStr = row[1]
           const clienteNombre = row[4]
