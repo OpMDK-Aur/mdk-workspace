@@ -240,13 +240,24 @@ export async function POST(req: Request) {
         return verificarEnGHL(clienteData.ghl_location_id, clienteData.ghl_token)
       }
 
-      if (clienteData?.crm_tipo === 'odoo' || clienteData?.crm_tipo === 'externo') {
-        const odooResult = await verificarEnOdoo()
-        if (odooResult.estado !== 'verificacion_manual') return odooResult
-        return verificarEnSheets(clienteData.nombre_del_negocio || '')
+      // Verificar si tiene conexión sheet en crm_conexiones
+      const { data: sheetConexion } = await supabase
+        .from('crm_conexiones')
+        .select('sheet_id')
+        .eq('cliente_id', cliente_id)
+        .eq('tipo', 'sheet')
+        .eq('activo', true)
+        .single()
+
+      if (sheetConexion?.sheet_id) {
+        return verificarEnSheets(clienteData?.nombre_del_negocio || '')
       }
 
-      return verificarEnSheets(clienteData?.nombre_del_negocio || '')
+      if (clienteData?.crm_tipo === 'odoo' || clienteData?.crm_tipo === 'externo') {
+        return verificarEnOdoo()
+      }
+
+      return { estado: 'verificacion_manual', detalle: 'CRM no configurado - verificar manualmente' }
     }
 
     for (const item of items) {
