@@ -48,7 +48,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
     nombre: '', 
     url: '', 
     tipo: 'landing',
-    integracion: '' as string,
+    integracion: null as 'webhook' | 'whatsapp_button' | 'whatsapp_form' | null,
     webhook_url: '',
     whatsapp_numero: '',
   })
@@ -112,7 +112,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
     if (success) {
       setDialogOpen(false)
       setEditingIndex(null)
-      setForm({ nombre: '', url: '', tipo: 'landing', integracion: '', webhook_url: '', whatsapp_numero: '' })
+      setForm({ nombre: '', url: '', tipo: 'landing', integracion: null, webhook_url: '', whatsapp_numero: '' })
     }
   }
 
@@ -128,7 +128,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
       nombre: landing.nombre, 
       url: landing.url, 
       tipo: landing.tipo,
-      integracion: landing.integracion || '',
+      integracion: landing.integracion || null,
       webhook_url: landing.webhook_url || '',
       whatsapp_numero: landing.whatsapp_numero || '',
     })
@@ -137,7 +137,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
 
   const openNew = () => {
     setEditingIndex(null)
-    setForm({ nombre: '', url: '', tipo: 'landing', integracion: '', webhook_url: '', whatsapp_numero: '' })
+    setForm({ nombre: '', url: '', tipo: 'landing', integracion: null, webhook_url: '', whatsapp_numero: '' })
     setDialogOpen(true)
   }
 
