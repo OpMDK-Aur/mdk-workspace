@@ -58,6 +58,9 @@ interface TesterLandingItem {
   nombre: string
   url: string
   checked: boolean
+  integracion?: string | null
+  webhook_url?: string | null
+  whatsapp_numero?: string | null
 }
 
 type ItemStatus = 'pendiente' | 'testeando' | 'ok' | 'fallo'
@@ -140,7 +143,10 @@ export function TesterModal({ open, onOpenChange }: TesterModalProps) {
       const landingItems: TesterLandingItem[] = (selectedClient.landings || []).map((l: any) => ({
         nombre: l.nombre,
         url: l.url,
-        checked: false
+        checked: false,
+        integracion: l.integracion || null,
+        webhook_url: l.webhook_url || null,
+        whatsapp_numero: l.whatsapp_numero || null,
       }))
       setLandings(landingItems)
     } catch (error) {
@@ -194,7 +200,10 @@ export function TesterModal({ open, onOpenChange }: TesterModalProps) {
       tipo: 'landing' as const,
       id: l.url,
       nombre: l.nombre,
-      url: l.url
+      url: l.url,
+      integracion: l.integracion || null,
+      webhook_url: l.webhook_url || null,
+      whatsapp_numero: l.whatsapp_numero || null,
     }))
 
     setSelectedItems([
@@ -581,7 +590,7 @@ export function TesterModal({ open, onOpenChange }: TesterModalProps) {
               <div className="flex items-center gap-2">
                 <Checkbox
                   checked={cronEnabled}
-                  onCheckedChange={(checked) => setCronEnabled(checked === true)}
+                  onCheckedChange={setCronEnabled}
                 />
                 <label className="text-sm font-medium">Activar pruebas automáticas</label>
               </div>

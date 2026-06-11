@@ -33,9 +33,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'META_ADS_ACCESS_TOKEN no configurado' }, { status: 500 })
     }
 
-    // Base URL para encolar verificaciones asíncronas (fire-and-forget)
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin
-
     const resultados: TesterResultado[] = []
 
     // Process each item
@@ -55,7 +52,7 @@ export async function POST(req: Request) {
             crm_tipo: cliente.crm_tipo,
             tipo: 'meta_form',
             nombre: item.nombre,
-            form_id: item.form_id ?? null,
+            form_id: item.form_id,
             landing_url: null,
             estado: 'fallo',
             detalle: 'Página Meta no encontrada - agrégala al Business Manager de MDK',
@@ -86,7 +83,7 @@ export async function POST(req: Request) {
             crm_tipo: cliente.crm_tipo,
             tipo: 'meta_form',
             nombre: item.nombre,
-            form_id: item.form_id ?? null,
+            form_id: item.form_id,
             landing_url: null,
             estado: 'fallo',
             detalle: `Error Meta: ${testLeadData.error.message}`,
@@ -101,36 +98,74 @@ export async function POST(req: Request) {
           continue
         }
 
-        // 3. Guardar como pendiente y encolar verificación asíncrona (fire-and-forget)
-        const { data: resultado } = await supabase
-          .from('tester_resultados')
-          .insert({
-            cliente_id,
-            crm_tipo: cliente.crm_tipo,
-            tipo: 'meta_form',
-            nombre: item.nombre,
-            form_id: item.form_id,
-            landing_url: null,
-            estado: 'pendiente',
-            detalle: 'Lead de prueba enviado a Meta - verificando en CRM...',
-            modo: 'manual',
-            ejecutado_por: user.id,
-          } as any)
-          .select()
+        // 3. Wait 30 seconds for webhook to process
+        await new Promise(resolve => setTimeout(resolve, 30000))
+
+        // 4. Verify in GHL if configured
+        let estado: 'ok' | 'fallo' | 'verificacion_manual' = 'verificacion_manual'
+        let detalle = 'CRM no configurado - verificar manualmente'
+
+        const { data: clienteData } = await supabase
+          .from('clientes')
+          .select('ghl_location_id, ghl_token, crm_tipo')
+          .eq('id', cliente_id)
           .single()
 
-        if (resultado) {
-          resultados.push(resultado as TesterResultado)
-          fetch(`${baseUrl}/api/tester/verify`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              resultado_id: resultado.id,
-              cliente_id,
-              delay_ms: 30000,
-            }),
-          }).catch(() => {})
+        if (clienteData?.crm_tipo === 'ghl' && clienteData?.ghl_location_id && clienteData?.ghl_token) {
+          try {
+            const dosMinutosAtras = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+
+            const ghlRes = await fetch(
+              `https://services.leadconnectorhq.com/contacts/?locationId=${clienteData.ghl_location_id}&limit=10`,
+              {
+                headers: {
+                  Authorization: `Bearer ${clienteData.ghl_token}`,
+                  Version: '2021-07-28',
+                }
+              }
+            )
+            const ghlData = await ghlRes.json()
+            const contactos = ghlData.contacts || []
+
+            // Search for recent contact
+            const leadLlegó = contactos.some((c: any) => {
+              const fechaAgregado = new Date(c.dateAdded).getTime()
+              const hace2min = Date.now() - 2 * 60 * 1000
+              return fechaAgregado > hace2min
+            })
+
+            if (leadLlegó) {
+              estado = 'ok'
+              detalle = 'Lead recibido correctamente en GHL'
+            } else {
+              estado = 'fallo'
+              detalle = 'Lead enviado a Meta pero no llegó a GHL en 30 segundos'
+            }
+          } catch (ghlError) {
+            estado = 'fallo'
+            detalle = 'Error verificando GHL'
+          }
         }
+
+        // 5. Save result
+        const resultado: TesterResultado = {
+          id: crypto.randomUUID(),
+          cliente_id,
+          crm_tipo: cliente.crm_tipo,
+          tipo: 'meta_form',
+          nombre: item.nombre,
+          form_id: item.form_id,
+          landing_url: null,
+          estado,
+          detalle,
+          modo: 'manual',
+          ejecutado_por: user.id,
+          tarea_generada_id: null,
+          ejecutado_en: new Date().toISOString(),
+          created_at: new Date().toISOString()
+        }
+        resultados.push(resultado)
+        await supabase.from('tester_resultados').insert(resultado)
       } else if (item.tipo === 'landing') {
         const integracion = item.integracion || null
         const clienteId = cliente_id
@@ -223,40 +258,70 @@ export async function POST(req: Request) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(testPayload),
-              signal: AbortSignal.timeout(8000),
             })
 
-            // Guardar como pendiente (o fallo) sin esperar verificación
-            const { data: resultado } = await supabase
-              .from('tester_resultados')
-              .insert({
+            if (!webhookRes.ok) {
+              await supabase.from('tester_resultados').insert({
                 cliente_id: clienteId,
                 tipo: 'landing',
                 nombre: item.nombre,
                 landing_url: item.url,
-                estado: webhookRes.ok ? 'pendiente' : 'fallo',
-                detalle: webhookRes.ok
-                  ? 'Webhook enviado - verificando en CRM...'
-                  : `Webhook respondió con status ${webhookRes.status}`,
+                estado: 'fallo',
+                detalle: `Webhook respondió con status ${webhookRes.status}`,
                 modo: 'manual',
                 ejecutado_por: userId,
               } as any)
-              .select()
+              continue
+            }
+
+            // Esperar 20 segundos y verificar en CRM
+            await new Promise(resolve => setTimeout(resolve, 20000))
+
+            const { data: clienteData } = await supabase
+              .from('clientes')
+              .select('ghl_location_id, ghl_token, crm_tipo')
+              .eq('id', clienteId)
               .single()
 
-            // Encolar verificación asíncrona en 30s (fire-and-forget)
-            if (webhookRes.ok && resultado) {
-              fetch(`${baseUrl}/api/tester/verify`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  resultado_id: resultado.id,
-                  cliente_id: clienteId,
-                  email_prueba: 'test-tester@madketing.io',
-                  delay_ms: 30000,
-                }),
-              }).catch(() => {})
+            let estado: 'ok' | 'fallo' | 'verificacion_manual' = 'verificacion_manual'
+            let detalle = 'Webhook respondió OK - verificar manualmente en CRM'
+
+            if (clienteData?.crm_tipo === 'ghl' && clienteData?.ghl_location_id && clienteData?.ghl_token) {
+              const ghlRes = await fetch(
+                `https://services.leadconnectorhq.com/contacts/?locationId=${clienteData.ghl_location_id}&limit=10`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${clienteData.ghl_token}`,
+                    Version: '2021-07-28',
+                  }
+                }
+              )
+              const ghlData = await ghlRes.json()
+              const contactos = ghlData.contacts || []
+              const hace2min = Date.now() - 2 * 60 * 1000
+
+              const llegó = contactos.some((c: any) => {
+                const fecha = new Date(c.dateAdded).getTime()
+                return fecha > hace2min && 
+                  (c.email === 'test-tester@madketing.io' || c.firstName === 'Test MDK Tester')
+              })
+
+              estado = llegó ? 'ok' : 'fallo'
+              detalle = llegó 
+                ? 'Lead de prueba recibido correctamente en GHL'
+                : 'Webhook respondió OK pero el lead no llegó a GHL en 20 segundos'
             }
+
+            await supabase.from('tester_resultados').insert({
+              cliente_id: clienteId,
+              tipo: 'landing',
+              nombre: item.nombre,
+              landing_url: item.url,
+              estado,
+              detalle,
+              modo: 'manual',
+              ejecutado_por: userId,
+            } as any)
 
           } catch (err) {
             await supabase.from('tester_resultados').insert({
