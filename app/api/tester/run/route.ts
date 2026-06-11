@@ -43,6 +43,8 @@ export async function POST(req: Request) {
         .eq('activo', true)
         .single()
 
+      console.log('[Odoo] crmConexion:', JSON.stringify(crmConexion))
+
       if (!crmConexion?.url || !crmConexion?.api_key || !crmConexion?.usuario || !crmConexion?.tabla_destino) {
         return { estado: 'verificacion_manual', detalle: 'Credenciales Odoo no configuradas - verificar manualmente' }
       }
@@ -63,6 +65,7 @@ export async function POST(req: Request) {
           })
         })
         const authData = await authRes.json()
+        console.log('[Odoo] auth result uid:', authData.result?.uid, 'session:', authData.result?.session_id)
         const sessionId = authData.result?.session_id
 
         if (!sessionId) {
@@ -74,6 +77,8 @@ export async function POST(req: Request) {
           .toISOString()
           .replace('T', ' ')
           .split('.')[0]
+
+        console.log('[Odoo] buscando leads desde:', hace3min)
 
         const searchRes = await fetch(`${crmConexion.url}/web/dataset/call_kw`, {
           method: 'POST',
@@ -104,6 +109,9 @@ export async function POST(req: Request) {
           })
         })
         const searchData = await searchRes.json()
+        console.log('[Odoo] search result:', JSON.stringify(searchData.result))
+        console.log('[Odoo] search error:', JSON.stringify(searchData.error))
+
         const leads = searchData.result || []
         const tieneResultados = leads.length > 0
 
@@ -114,6 +122,7 @@ export async function POST(req: Request) {
             : 'Webhook respondió OK pero el lead no llegó a Odoo en 30 segundos'
         }
       } catch (err) {
+        console.error('[Odoo] error:', err)
         return { estado: 'verificacion_manual', detalle: `Error verificando Odoo: ${err}` }
       }
     }
