@@ -4,13 +4,11 @@ import { NextResponse } from 'next/server'
 export const maxDuration = 60
 
 export async function POST(req: Request) {
+  const authHeader = req.headers.get('authorization')
+  if (!authHeader) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const { resultado_id, cliente_id, nombre_cliente, delay_ms } = await req.json()
   const supabase = createAdminClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
 
   try {
     const { cliente_id, items } = await req.json() as { cliente_id: string; items: TesterItem[] }
