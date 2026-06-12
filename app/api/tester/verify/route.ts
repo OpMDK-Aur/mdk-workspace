@@ -1,10 +1,11 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
-import type { TesterItem, TesterResultado } from '@/lib/types'
-import { waitUntil } from '@vercel/functions'
+
+export const maxDuration = 60
 
 export async function POST(req: Request) {
-  const supabase = await createClient()
+  const { resultado_id, cliente_id, nombre_cliente, delay_ms } = await req.json()
+  const supabase = createAdminClient()
   
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
