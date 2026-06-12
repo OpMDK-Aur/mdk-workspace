@@ -10,8 +10,8 @@ export async function POST(req: Request) {
   // Esperar el delay
   await new Promise(resolve => setTimeout(resolve, delay_ms || 35000))
 
-  // Verificar en Google Sheets
   try {
+    // Obtener token de Google Sheets
     const { data: tokenData } = await supabase
       .from('plataformas_tokens')
       .select('access_token, refresh_token, token_expiry')
@@ -27,6 +27,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true })
     }
 
+    // Refrescar token si está por vencer
     let accessToken = tokenData.access_token
     const expiryTime = new Date(tokenData.token_expiry).getTime()
     if (expiryTime < Date.now() + 5 * 60 * 1000) {
@@ -50,6 +51,7 @@ export async function POST(req: Request) {
       }
     }
 
+    // Leer el Sheet Log-ejecuciones
     const spreadsheetId = '1b_E8wz5I-dW4u-vuHWwf7TQ70s4s8trt0PpvBEDEi7M'
     const range = 'Log-ejecuciones!A:G'
     const sheetsRes = await fetch(
@@ -75,14 +77,36 @@ export async function POST(req: Request) {
       return fechaUTC > hace5min && clienteMatch
     })
 
-    await supabase.from('tester_resultados').update({
-      estado: encontrado ? 'ok' : 'fallo',
-      detalle: encontrado
-        ? 'Ejecución del webhook registrada en el Sheet de logs'
-        : 'Webhook respondió OK pero no se registró en el Sheet de logs en 5 minutos',
-    }).eq('id', resultado_id)
+    if (encontrado) {
+      await supabase.from('tester_resultados').update({
+        estado: 'ok',
+        detalle: 'Ejecución del webhook registrada en el Sheet de logs',
+      }).eq('id', resultado_id)
+
+      // Marcar tarea de hito como realizado si existe
+      const { data: tareaHito } = await supabase
+        .from('tareas')
+        .select('id')
+        .contains('cliente_ids', [cliente_id])
+        .ilike('titulo', '%Testing de Integración%')
+        .in('estado', ['pendiente', 'resolviendo'])
+        .single()
+
+      if (tareaHito) {
+        await supabase
+          .from('tareas')
+          .update({ estado: 'realizado' })
+          .eq('id', tareaHito.id)
+      }
+    } else {
+      await supabase.from('tester_resultados').update({
+        estado: 'fallo',
+        detalle: 'Webhook respondió OK pero no se registró en el Sheet de logs en 5 minutos',
+      }).eq('id', resultado_id)
+    }
 
   } catch (err) {
+    console.error('[Tester Verify] error:', err)
     await supabase.from('tester_resultados').update({
       estado: 'verificacion_manual',
       detalle: `Error verificando Sheet: ${err}`,
