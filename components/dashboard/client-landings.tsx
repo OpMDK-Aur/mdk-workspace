@@ -17,6 +17,7 @@ interface Landing {
   integracion?: 'webhook' | 'whatsapp_button' | 'whatsapp_form' | 'ghl' | null
   webhook_url?: string | null
   whatsapp_numero?: string | null
+  webhook_format?: 'json' | 'form_urlencoded' | null
 }
 
 interface ClientLandingsProps {
@@ -49,8 +50,9 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
     nombre: '', 
     url: '', 
     tipo: 'landing',
-    integracion: null as 'webhook' | 'whatsapp_button' | 'whatsapp_form' | null,
+    integracion: null as 'webhook' | 'whatsapp_button' | 'whatsapp_form' | 'ghl' | null,
     webhook_url: '',
+    webhook_format: '' as string,
     whatsapp_numero: '',
   })
 
@@ -97,6 +99,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
       tipo: form.tipo,
       integracion: form.integracion || null,
       webhook_url: form.integracion === 'webhook' ? form.webhook_url.trim() || null : null,
+      webhook_format: form.integracion === 'webhook' ? form.webhook_format || null : null,
       whatsapp_numero: (form.integracion === 'whatsapp_button' || form.integracion === 'whatsapp_form') 
         ? form.whatsapp_numero.trim() || null 
         : null,
@@ -113,7 +116,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
     if (success) {
       setDialogOpen(false)
       setEditingIndex(null)
-      setForm({ nombre: '', url: '', tipo: 'landing', integracion: null, webhook_url: '', whatsapp_numero: '' })
+      setForm({ nombre: '', url: '', tipo: 'landing', integracion: null, webhook_url: '', webhook_format: '', whatsapp_numero: '' })
     }
   }
 
@@ -131,6 +134,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
       tipo: landing.tipo,
       integracion: landing.integracion || null,
       webhook_url: landing.webhook_url || '',
+      webhook_format: landing.webhook_format || '',
       whatsapp_numero: landing.whatsapp_numero || '',
     })
     setDialogOpen(true)
@@ -138,7 +142,7 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
 
   const openNew = () => {
     setEditingIndex(null)
-    setForm({ nombre: '', url: '', tipo: 'landing', integracion: null, webhook_url: '', whatsapp_numero: '' })
+    setForm({ nombre: '', url: '', tipo: 'landing', integracion: null, webhook_url: '', webhook_format: '', whatsapp_numero: '' })
     setDialogOpen(true)
   }
 
@@ -218,6 +222,24 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
                     placeholder="https://webhook.site/..."
                     className="mt-1"
                   />
+                </div>
+              )}
+
+              {form.integracion === 'webhook' && (
+                <div>
+                  <Label>Formato del webhook</Label>
+                  <Select 
+                    value={form.webhook_format} 
+                    onValueChange={(v) => setForm(prev => ({ ...prev, webhook_format: v }))}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Seleccionar formato" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="json">JSON (application/json)</SelectItem>
+                      <SelectItem value="form_urlencoded">Form URL Encoded (WordPress/Elementor)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
 

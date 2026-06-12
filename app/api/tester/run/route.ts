@@ -355,15 +355,48 @@ export async function POST(req: Request) {
 
         } else if (integracion === 'webhook' && item.webhook_url) {
           try {
+            const webhookFormat = item.webhook_format || 'json'
+            
+            let webhookBody: string
+            let webhookContentType: string
+
+            if (webhookFormat === 'form_urlencoded') {
+              webhookContentType = 'application/x-www-form-urlencoded'
+              const params = new URLSearchParams({
+                'fields[name][value]': 'Test MDK Tester',
+                'fields[name][title]': 'Nombre',
+                'fields[name][required]': '1',
+                'fields[telefono][value]': '+5491100000000',
+                'fields[telefono][title]': 'Teléfono',
+                'fields[telefono][required]': '1',
+                'fields[email][value]': 'test-tester@madketing.io',
+                'fields[email][title]': 'Email',
+                'fields[email][required]': '0',
+                'fields[provincia][value]': 'Test',
+                'fields[provincia][title]': 'Provincia',
+                'fields[provincia][required]': '0',
+                '_tester': 'true',
+              })
+              webhookBody = params.toString()
+            } else {
+              webhookContentType = 'application/json'
+              webhookBody = JSON.stringify({
+                nombre: 'Test MDK Tester',
+                tel: '+5491100000000',
+                email: 'test-tester@madketing.io',
+                provincia: 'Test',
+                consulta: 'Test automático del sistema MDK - ignorar',
+                _tester: true,
+                timestamp: new Date().toISOString(),
+              })
+            }
+
             const webhookRes = await fetch(item.webhook_url, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                nombre: 'Test MDK Tester', email: 'test-tester@madketing.io',
-                telefono: '+5491100000000', mensaje: 'Test automático del sistema MDK - ignorar',
-                _tester: true, timestamp: new Date().toISOString(),
-              }),
+              headers: { 'Content-Type': webhookContentType },
+              body: webhookBody,
             })
+
             if (!webhookRes.ok) {
               estado = 'fallo'
               detalle = `Webhook respondió con status ${webhookRes.status}`
