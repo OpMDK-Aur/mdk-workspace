@@ -355,6 +355,10 @@ export async function POST(req: Request) {
 
         } else if (integracion === 'webhook' && item.webhook_url) {
           try {
+            const testTimestamp = Date.now()
+            const testEmail = `test-tester+${testTimestamp}@madketing.io`
+            const testPhone = `+5491${String(testTimestamp).slice(-8)}`
+            
             const webhookFormat = item.webhook_format || 'json'
             
             let webhookBody: string
@@ -366,10 +370,10 @@ export async function POST(req: Request) {
                 'fields[name][value]': 'Test MDK Tester',
                 'fields[name][title]': 'Nombre',
                 'fields[name][required]': '1',
-                'fields[telefono][value]': '+5491100000000',
+                'fields[telefono][value]': testPhone,
                 'fields[telefono][title]': 'Teléfono',
                 'fields[telefono][required]': '1',
-                'fields[email][value]': 'test-tester@madketing.io',
+                'fields[email][value]': testEmail,
                 'fields[email][title]': 'Email',
                 'fields[email][required]': '0',
                 'fields[provincia][value]': 'Test',
@@ -382,8 +386,8 @@ export async function POST(req: Request) {
               webhookContentType = 'application/json'
               webhookBody = JSON.stringify({
                 nombre: 'Test MDK Tester',
-                tel: '+5491100000000',
-                email: 'test-tester@madketing.io',
+                tel: testPhone,
+                email: testEmail,
                 provincia: 'Test',
                 consulta: 'Test automático del sistema MDK - ignorar',
                 _tester: true,
