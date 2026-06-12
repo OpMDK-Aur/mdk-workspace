@@ -254,10 +254,48 @@ export function TesterModal({ open, onOpenChange }: TesterModalProps) {
           )
           return {
             ...item,
-            status: result?.estado === 'ok' ? 'ok' : 'fallo'
+            status: result?.estado === 'ok' ? 'ok' : result?.estado === 'pendiente' ? 'pendiente' : 'fallo'
           }
         })
       )
+
+      // Si hay resultados pendientes, iniciar polling
+      const pendientes = data.resultados.filter((r: TesterResultado) => r.estado === 'pendiente')
+      if (pendientes.length > 0) {
+        let pollCount = 0
+        const pollInterval = setInterval(async () => {
+          pollCount++
+          try {
+            const { data: updated } = await supabase
+              .from('tester_resultados')
+              .select('*')
+              .in('id', pendientes.map((r: TesterResultado) => r.id))
+            
+            if (updated) {
+              const allResolved = updated.every(r => r.estado !== 'pendiente')
+              setTestResults(prev => prev.map(r => {
+                const u = updated.find(u => u.id === r.id)
+                return u || r
+              }))
+              setSelectedItems(prev =>
+                prev.map(item => {
+                  const updatedResult = updated.find((r: TesterResultado) =>
+                    (item.tipo === 'meta_form' && r.form_id === item.id) ||
+                    (item.tipo === 'landing' && r.landing_url === item.id)
+                  )
+                  return updatedResult ? { ...item, status: updatedResult.estado === 'ok' ? 'ok' : 'fallo' } : item
+                })
+              )
+              if (allResolved) clearInterval(pollInterval)
+            }
+          } catch (err) {
+            console.error('[Tester] Polling error:', err)
+          }
+          
+          // Dejar de hacer polling después de 2 minutos
+          if (pollCount * 5000 > 120000) clearInterval(pollInterval)
+        }, 5000)
+      }
 
       toast.success('Test completado')
     } catch (error) {

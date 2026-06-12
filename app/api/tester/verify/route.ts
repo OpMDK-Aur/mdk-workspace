@@ -1,91 +1,93 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-// Background job: espera un delay y verifica si el lead de prueba llegó al CRM.
-// maxDuration en 60s permite el delay de 30s + verificación (requiere plan Pro).
 export const maxDuration = 60
 
 export async function POST(req: Request) {
+  const { resultado_id, cliente_id, nombre_cliente, delay_ms } = await req.json()
+  const supabase = await createClient()
+
+  // Esperar el delay
+  await new Promise(resolve => setTimeout(resolve, delay_ms || 35000))
+
+  // Verificar en Google Sheets
   try {
-    const { resultado_id, cliente_id, email_prueba, delay_ms } = await req.json() as {
-      resultado_id: string
-      cliente_id: string
-      email_prueba?: string
-      delay_ms?: number
-    }
-
-    if (!resultado_id || !cliente_id) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
-    }
-
-    // Esperar el delay antes de verificar
-    await new Promise(resolve => setTimeout(resolve, delay_ms || 30000))
-
-    const supabase = await createClient()
-
-    const { data: cliente } = await supabase
-      .from('clientes')
-      .select('ghl_location_id, ghl_token, crm_tipo')
-      .eq('id', cliente_id)
+    const { data: tokenData } = await supabase
+      .from('plataformas_tokens')
+      .select('access_token, refresh_token, token_expiry')
+      .eq('plataforma', 'google_sheets')
+      .eq('activo', true)
       .single()
 
-    // CRM no configurado como GHL → marcar para verificación manual
-    if (cliente?.crm_tipo !== 'ghl' || !cliente?.ghl_location_id || !cliente?.ghl_token) {
-      await supabase
-        .from('tester_resultados')
-        .update({
-          estado: 'verificacion_manual',
-          detalle: 'Enviado correctamente - verificar manualmente en el CRM',
-        })
-        .eq('id', resultado_id)
-      return NextResponse.json({ ok: true, estado: 'verificacion_manual' })
+    if (!tokenData?.access_token) {
+      await supabase.from('tester_resultados').update({
+        estado: 'verificacion_manual',
+        detalle: 'Token de Google Sheets no configurado - verificar manualmente',
+      }).eq('id', resultado_id)
+      return NextResponse.json({ ok: true })
     }
 
-    // Verificar en GHL
-    let estado: 'ok' | 'fallo' = 'fallo'
-    let detalle = 'Enviado pero el lead no llegó al CRM'
-
-    try {
-      const ghlRes = await fetch(
-        `https://services.leadconnectorhq.com/contacts/?locationId=${cliente.ghl_location_id}&limit=10`,
-        {
-          headers: {
-            Authorization: `Bearer ${cliente.ghl_token}`,
-            Version: '2021-07-28',
-          },
-        }
-      )
-      const ghlData = await ghlRes.json()
-      const contactos = ghlData.contacts || []
-      const hace2min = Date.now() - 2 * 60 * 1000
-
-      const llego = contactos.some((c: any) => {
-        const fecha = new Date(c.dateAdded).getTime()
-        if (fecha <= hace2min) return false
-        // Si se pasó un email de prueba, lo usamos para matchear; si no, basta con que sea reciente
-        if (email_prueba) {
-          return c.email === email_prueba || c.firstName === 'Test MDK Tester'
-        }
-        return true
+    let accessToken = tokenData.access_token
+    const expiryTime = new Date(tokenData.token_expiry).getTime()
+    if (expiryTime < Date.now() + 5 * 60 * 1000) {
+      const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: process.env.GOOGLE_CLIENT_ID!,
+          client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+          refresh_token: tokenData.refresh_token,
+          grant_type: 'refresh_token',
+        }),
       })
-
-      estado = llego ? 'ok' : 'fallo'
-      detalle = llego
-        ? 'Lead de prueba recibido correctamente en el CRM'
-        : 'Enviado pero el lead no llegó al CRM en el tiempo esperado'
-    } catch (ghlError) {
-      estado = 'fallo'
-      detalle = 'Error al verificar en el CRM'
+      const refreshData = await refreshRes.json()
+      if (refreshData.access_token) {
+        accessToken = refreshData.access_token
+        await supabase.from('plataformas_tokens').update({
+          access_token: refreshData.access_token,
+          token_expiry: new Date(Date.now() + (refreshData.expires_in ?? 3600) * 1000).toISOString(),
+        }).eq('plataforma', 'google_sheets')
+      }
     }
 
-    await supabase
-      .from('tester_resultados')
-      .update({ estado, detalle })
-      .eq('id', resultado_id)
+    const spreadsheetId = '1b_E8wz5I-dW4u-vuHWwf7TQ70s4s8trt0PpvBEDEi7M'
+    const range = 'Log-ejecuciones!A:G'
+    const sheetsRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    const sheetsData = await sheetsRes.json()
+    const rows: string[][] = sheetsData.values || []
 
-    return NextResponse.json({ ok: true, estado })
-  } catch (error) {
-    console.error('Error in tester verify:', error)
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+    const hace5min = Date.now() - 5 * 60 * 1000
+
+    const encontrado = rows.some(row => {
+      const fechaStr = row[1]
+      const clienteNombre = row[4]
+      if (!fechaStr || !clienteNombre) return false
+      const [datePart, timePart] = fechaStr.trim().split(' ')
+      if (!datePart || !timePart) return false
+      const [day, month, year] = datePart.split('/')
+      if (!day || !month || !year) return false
+      const fechaUTC = new Date(`${year}-${month}-${day}T${timePart}:00-03:00`).getTime()
+      const clienteMatch = clienteNombre.toLowerCase().includes(nombre_cliente.toLowerCase()) ||
+                           nombre_cliente.toLowerCase().includes(clienteNombre.toLowerCase())
+      return fechaUTC > hace5min && clienteMatch
+    })
+
+    await supabase.from('tester_resultados').update({
+      estado: encontrado ? 'ok' : 'fallo',
+      detalle: encontrado
+        ? 'Ejecución del webhook registrada en el Sheet de logs'
+        : 'Webhook respondió OK pero no se registró en el Sheet de logs en 5 minutos',
+    }).eq('id', resultado_id)
+
+  } catch (err) {
+    await supabase.from('tester_resultados').update({
+      estado: 'verificacion_manual',
+      detalle: `Error verificando Sheet: ${err}`,
+    }).eq('id', resultado_id)
   }
+
+  return NextResponse.json({ ok: true })
 }
