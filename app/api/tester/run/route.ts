@@ -356,6 +356,7 @@ export async function POST(req: Request) {
       } else if (item.tipo === 'landing') {
         const integracion = item.integracion || null
         const userId = user.id
+        console.log('[Tester Run] landing integracion valor:', integracion, 'item.integracion:', item.integracion)
         let estado: 'ok' | 'fallo' | 'verificacion_manual' = 'fallo'
         let detalle = ''
 
