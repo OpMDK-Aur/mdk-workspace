@@ -649,4 +649,5 @@ export interface TesterItem {
   integracion?: string | null
   webhook_url?: string | null
   whatsapp_numero?: string | null
+  webhook_format?: string | null
 }

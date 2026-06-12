@@ -61,6 +61,7 @@ interface TesterLandingItem {
   integracion?: string | null
   webhook_url?: string | null
   whatsapp_numero?: string | null
+  webhook_format?: string | null
 }
 
 type ItemStatus = 'pendiente' | 'testeando' | 'ok' | 'fallo'
@@ -147,6 +148,7 @@ export function TesterModal({ open, onOpenChange }: TesterModalProps) {
         integracion: l.integracion || null,
         webhook_url: l.webhook_url || null,
         whatsapp_numero: l.whatsapp_numero || null,
+        webhook_format: l.webhook_format || null,
       }))
       setLandings(landingItems)
     } catch (error) {
@@ -204,6 +206,7 @@ export function TesterModal({ open, onOpenChange }: TesterModalProps) {
       integracion: l.integracion || null,
       webhook_url: l.webhook_url || null,
       whatsapp_numero: l.whatsapp_numero || null,
+      webhook_format: l.webhook_format || null,
     }))
 
     setSelectedItems([
