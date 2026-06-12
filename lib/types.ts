@@ -644,9 +644,9 @@ export interface TesterItem {
   tipo: 'meta_form' | 'landing'
   id: string
   nombre: string
-  form_id?: string
-  url?: string
-  integracion?: 'webhook' | 'whatsapp_button' | 'whatsapp_form' | null
+  form_id?: string | null
+  url?: string | null
+  integracion?: string | null
   webhook_url?: string | null
   whatsapp_numero?: string | null
 }

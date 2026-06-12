@@ -14,6 +14,10 @@ export async function POST(req: Request) {
   try {
     const { cliente_id, items } = await req.json() as { cliente_id: string; items: TesterItem[] }
 
+    console.log('[Tester Run] cliente_id:', cliente_id)
+    console.log('[Tester Run] items:', JSON.stringify(items))
+    console.log('[Tester Run] primer item completo:', JSON.stringify(items[0]))
+
     if (!cliente_id || !items || items.length === 0) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
