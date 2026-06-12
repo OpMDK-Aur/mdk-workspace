@@ -357,6 +357,8 @@ export async function POST(req: Request) {
         const integracion = item.integracion || null
         const userId = user.id
         console.log('[Tester Run] landing integracion valor:', integracion, 'item.integracion:', item.integracion)
+        console.log('[Tester Run] integracion charCodes:', integracion ? [...integracion].map(c => c.charCodeAt(0)) : 'null')
+        console.log('[Tester Run] comparacion:', integracion === 'ghl', JSON.stringify(integracion))
         let estado: 'ok' | 'fallo' | 'verificacion_manual' = 'fallo'
         let detalle = ''
 
