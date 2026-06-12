@@ -454,7 +454,10 @@ export async function POST(req: Request) {
           waitUntil(
             fetch(`${appUrl}/api/tester/verify`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.CRON_SECRET || 'internal'}`,
+              },
               body: JSON.stringify({
                 resultado_id: resultado.id, cliente_id,
                 nombre_cliente: cliente.nombre_del_negocio, delay_ms: 35000,
