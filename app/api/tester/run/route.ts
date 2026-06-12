@@ -75,7 +75,7 @@ export async function POST(req: Request) {
         const range = `${sheetName}!A:G`
 
         const sheetsRes = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`,
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?majorDimension=ROWS`,
           { headers: { Authorization: `Bearer ${accessToken}` } }
         )
         const sheetsData = await sheetsRes.json()
@@ -85,8 +85,8 @@ export async function POST(req: Request) {
         console.log('[Sheets] últimas 3 filas:', JSON.stringify(rows.slice(-3)))
         console.log('[Sheets] buscando cliente:', nombreCliente)
 
-        const hace3min = Date.now() - 3 * 60 * 1000
-        console.log('[Sheets] hace3min timestamp:', hace3min, new Date(hace3min).toISOString())
+        const hace5min = Date.now() - 5 * 60 * 1000
+        console.log('[Sheets] buscando hace5min:', new Date(hace5min).toISOString())
 
         const encontrado = rows.some(row => {
           const fechaStr = row[1]
@@ -97,12 +97,12 @@ export async function POST(req: Request) {
           const [datePart, timePart] = fechaStr.split(' ')
           if (!datePart || !timePart) return false
           const [day, month, year] = datePart.split('/')
-          const fechaMs = new Date(`${year}-${month}-${day}T${timePart}:00`).getTime()
+          const fechaUTC = new Date(`${year}-${month}-${day}T${timePart}:00`).getTime()
           
           const clienteMatch = clienteNombre.toLowerCase().includes(nombreCliente.toLowerCase()) ||
                                nombreCliente.toLowerCase().includes(clienteNombre.toLowerCase())
           
-          return fechaMs > hace3min && clienteMatch
+          return fechaUTC > hace5min && clienteMatch
         })
 
         return {
