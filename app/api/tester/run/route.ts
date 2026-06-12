@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { waitUntil } from '@vercel/functions'
 import type { TesterItem, TesterResultado } from '@/lib/types'
 
 export async function POST(req: Request) {
@@ -448,16 +449,18 @@ export async function POST(req: Request) {
         // Fire and forget — verificar en background si es webhook pendiente
         if (integracion === 'webhook' && estado === 'pendiente') {
           const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.madketing.io'
-          fetch(`${appUrl}/api/tester/verify`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              resultado_id: resultado.id,
-              cliente_id,
-              nombre_cliente: cliente.nombre_del_negocio,
-              delay_ms: 35000,
-            }),
-          }).catch(() => {})
+          waitUntil(
+            fetch(`${appUrl}/api/tester/verify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                resultado_id: resultado.id,
+                cliente_id,
+                nombre_cliente: cliente.nombre_del_negocio,
+                delay_ms: 35000,
+              }),
+            }).catch(() => {})
+          )
         }
       }
     }
