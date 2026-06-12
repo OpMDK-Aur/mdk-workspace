@@ -14,7 +14,7 @@ interface Landing {
   nombre: string
   url: string
   tipo: string
-  integracion?: 'webhook' | 'whatsapp_button' | 'whatsapp_form' | null
+  integracion?: 'webhook' | 'whatsapp_button' | 'whatsapp_form' | 'ghl' | null
   webhook_url?: string | null
   whatsapp_numero?: string | null
 }
@@ -36,6 +36,7 @@ const TIPOS_INTEGRACION = [
   { value: 'webhook', label: 'Formulario → Webhook' },
   { value: 'whatsapp_form', label: 'Formulario → WhatsApp' },
   { value: 'whatsapp_button', label: 'Botón WhatsApp' },
+  { value: 'ghl', label: 'Formulario GHL (directo)' },
 ]
 
 export function ClientLandings({ clientId }: ClientLandingsProps) {
