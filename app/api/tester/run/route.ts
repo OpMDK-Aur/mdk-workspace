@@ -404,10 +404,9 @@ export async function POST(req: Request) {
               estado = 'fallo'
               detalle = `Webhook respondió con status ${webhookRes.status}`
             } else {
-              await new Promise(resolve => setTimeout(resolve, 30000))
-              const verificacion = await verificarEnCRM()
-              estado = verificacion.estado
-              detalle = verificacion.detalle
+              // Guardar como pendiente y verificar en background
+              estado = 'pendiente'
+              detalle = 'Webhook enviado - verificando en 35 segundos...'
             }
           } catch (err) {
             estado = 'fallo'
@@ -445,6 +444,20 @@ export async function POST(req: Request) {
         }
         resultados.push(resultado)
         await supabase.from('tester_resultados').insert(resultado)
+
+        // Fire and forget — verificar en background si es webhook pendiente
+        if (integracion === 'webhook' && estado === 'pendiente') {
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.madketing.io'
+          fetch(`${appUrl}/api/tester/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              resultado_id: resultado.id,
+              cliente_id,
+              nombre_cliente: cliente.nombre_del_negocio,
+              delay_ms: 35000,
+            }),
+          }).catch(() => {})
       }
     }
 
