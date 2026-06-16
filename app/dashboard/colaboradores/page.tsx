@@ -613,7 +613,7 @@ export default function ColaboradoresPage() {
       const iColab = idx('Colaborador')
       const iCliente = idx('cliente')
       const iValor = idx('valor_hora')
-      const iTeoricas = idx('horas_teoricas')
+      const iTeoricas = idx('horas_teoricas_cliente')
       const iMinimas = idx('horas_minimas')
       const iMaximas = idx('horas_maximas')
 
