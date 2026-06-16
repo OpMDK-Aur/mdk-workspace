@@ -304,6 +304,12 @@ export default function ControlHorasPage() {
       clientPrimaryUnidad[c.id] = (c.unidades_negocio as string[] | undefined)?.[0]
     })
 
+    // Build map of colaborador status
+    const colaboradorStatus: Record<string, boolean> = {}
+    users.forEach((u) => {
+      colaboradorStatus[u.id] = u.activo ?? true
+    })
+
     const userName = (id: string) => {
       const u = users.find((x) => x.id === id)
       return u ? `${u.nombre}${u.apellido ? ` ${u.apellido}` : ''}` : 'Desconocido'
@@ -321,6 +327,13 @@ export default function ControlHorasPage() {
       if (!cid || !entry.colaborador_id) return
       // Filter by active unidad tab (using the client's PRIMARY unidad)
       if (unidadTab !== 'all' && clientPrimaryUnidad[cid] !== unidadTab) return
+
+      // Double-check status filter here (should already be in filteredEntries, but be explicit)
+      const isActivo = colaboradorStatus[entry.colaborador_id] ?? true
+      if (statusColaborador !== 'todos') {
+        if (statusColaborador === 'activos' && !isActivo) return
+        if (statusColaborador === 'inactivos' && isActivo) return
+      }
 
       if (!map[cid]) map[cid] = { hours: 0, colaboradores: {} }
       const hours = (entry.duracion_seg || 0) / 3600
@@ -343,7 +356,7 @@ export default function ControlHorasPage() {
           .sort((a, b) => b.hours - a.hours),
       }))
       .sort((a, b) => b.hours - a.hours)
-  }, [clients, users, filteredEntries, unidadTab])
+  }, [clients, users, filteredEntries, unidadTab, statusColaborador])
 
   // Calculate daily hours for the chart (with optional collaborator filter)
   const dailyHours = useMemo(() => {
