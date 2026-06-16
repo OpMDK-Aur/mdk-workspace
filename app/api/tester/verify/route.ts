@@ -4,19 +4,23 @@ import { NextResponse } from 'next/server'
 export const maxDuration = 60
 
 export async function POST(req: Request) {
-  // Leer el body UNA sola vez
   const body = await req.json()
   const { resultado_id, cliente_id, nombre_cliente, delay_ms } = body
 
+  console.log('[Verify] iniciando - resultado_id:', resultado_id, 'cliente:', nombre_cliente)
+
   const authHeader = req.headers.get('authorization')
-  if (!authHeader) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!authHeader) {
+    console.log('[Verify] sin auth header, rechazando')
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   const supabase = createAdminClient()
 
-  // Esperar el delay
   await new Promise(resolve => setTimeout(resolve, delay_ms || 35000))
 
-  // Verificar en Google Sheets
+  console.log('[Verify] delay completado, verificando Sheet')
+
   try {
     const { data: tokenData } = await supabase
       .from('plataformas_tokens')
@@ -26,6 +30,7 @@ export async function POST(req: Request) {
       .single()
 
     if (!tokenData?.access_token) {
+      console.log('[Verify] sin token de Google Sheets')
       await supabase.from('tester_resultados').update({
         estado: 'verificacion_manual',
         detalle: 'Token de Google Sheets no configurado - verificar manualmente',
@@ -65,7 +70,12 @@ export async function POST(req: Request) {
     const sheetsData = await sheetsRes.json()
     const rows: string[][] = sheetsData.values || []
 
-    const hace5min = Date.now() - 5 * 60 * 1000
+    console.log('[Verify] total filas en Sheet:', rows.length)
+    console.log('[Verify] últimas 5 filas:', JSON.stringify(rows.slice(-5)))
+    console.log('[Verify] buscando cliente:', nombre_cliente)
+
+    const hace10min = Date.now() - 10 * 60 * 1000
+    console.log('[Verify] ventana de tiempo desde:', new Date(hace10min).toISOString())
 
     const encontrado = rows.some(row => {
       const fechaStr = row[1]
@@ -78,17 +88,49 @@ export async function POST(req: Request) {
       const fechaUTC = new Date(`${year}-${month}-${day}T${timePart}:00-03:00`).getTime()
       const clienteMatch = clienteNombre.toLowerCase().includes(nombre_cliente.toLowerCase()) ||
                            nombre_cliente.toLowerCase().includes(clienteNombre.toLowerCase())
-      return fechaUTC > hace5min && clienteMatch
+
+      if (clienteMatch) {
+        console.log('[Verify] fila con cliente match:', fechaStr, clienteNombre, 
+          'fechaUTC:', new Date(fechaUTC).toISOString(), 
+          'esReciente:', fechaUTC > hace10min)
+      }
+
+      return fechaUTC > hace10min && clienteMatch
     })
 
-    await supabase.from('tester_resultados').update({
-      estado: encontrado ? 'ok' : 'fallo',
-      detalle: encontrado
-        ? 'Ejecución del webhook registrada en el Sheet de logs'
-        : 'Webhook respondió OK pero no se registró en el Sheet de logs en 5 minutos',
-    }).eq('id', resultado_id)
+    console.log('[Verify] encontrado:', encontrado)
+
+    if (encontrado) {
+      await supabase.from('tester_resultados').update({
+        estado: 'ok',
+        detalle: 'Ejecución del webhook registrada en el Sheet de logs',
+      }).eq('id', resultado_id)
+
+      // Marcar tarea de hito como realizado si existe
+      const { data: tareaHito } = await supabase
+        .from('tareas')
+        .select('id')
+        .contains('cliente_ids', [cliente_id])
+        .ilike('titulo', '%Testing de Integración%')
+        .in('estado', ['pendiente', 'resolviendo'])
+        .single()
+
+      if (tareaHito) {
+        console.log('[Verify] marcando tarea como realizado:', tareaHito.id)
+        await supabase
+          .from('tareas')
+          .update({ estado: 'realizado' })
+          .eq('id', tareaHito.id)
+      }
+    } else {
+      await supabase.from('tester_resultados').update({
+        estado: 'fallo',
+        detalle: 'Webhook respondió OK pero no se registró en el Sheet de logs en 10 minutos',
+      }).eq('id', resultado_id)
+    }
 
   } catch (err) {
+    console.error('[Verify] error:', err)
     await supabase.from('tester_resultados').update({
       estado: 'verificacion_manual',
       detalle: `Error verificando Sheet: ${err}`,
