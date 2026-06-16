@@ -1155,7 +1155,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
 
       {/* Comments list - scrollable */}
               {!compact && (task.comments || []).length > 0 && (
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0 max-h-[400px]">
           {sortedComments.map((c) => (
             <div key={c.id} className="group flex items-start gap-3 w-full">
               <Avatar className="h-8 w-8 shrink-0 mt-0.5">
