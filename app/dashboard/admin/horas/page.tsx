@@ -56,6 +56,7 @@ interface User {
   id: string
   nombre: string
   apellido?: string | null
+  activo?: boolean | null
 }
 
 // Generate consistent color from string
@@ -79,7 +80,7 @@ async function fetchControlHorasData() {
   const [clientsRes, entriesRes, profilesRes, departamentosRes] = await Promise.all([
     supabase.from('clientes').select('*').order('nombre_del_negocio'),
     supabase.from('entradas_de_tiempo').select('*').order('iniciado_en', { ascending: false }),
-    supabase.from('colaboradores').select('id, nombre, apellido, departamento_id, departamentos(id, nombre)').order('nombre'),
+    supabase.from('colaboradores').select('id, nombre, apellido, departamento_id, activo, departamentos(id, nombre)').order('nombre'),
     supabase.from('departamentos').select('id, nombre').order('nombre'),
   ])
 
@@ -101,6 +102,7 @@ export default function ControlHorasPage() {
   const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
   const [departamentoFilter, setDepartamentoFilter] = useState<string>('all')
+  const [statusColaborador, setStatusColaborador] = useState<'activos' | 'inactivos' | 'todos'>('activos')
 
   // Fetch data with SWR
   const { data, isLoading, error } = useSWR('control-horas-data', fetchControlHorasData)
@@ -117,8 +119,11 @@ export default function ControlHorasPage() {
 
     // Build a lookup of colaborador id -> departamento_id for the department filter
     const colaboradorDeptMap: Record<string, string | null> = {}
+    // Build a lookup of colaborador id -> activo status for the status filter
+    const colaboradorStatusMap: Record<string, boolean> = {}
     users.forEach((u: any) => {
       colaboradorDeptMap[u.id] = u.departamento_id ?? null
+      colaboradorStatusMap[u.id] = u.activo ?? true
     })
 
     return allEntries.filter((entry) => {
@@ -147,10 +152,21 @@ export default function ControlHorasPage() {
           return false
         }
       }
+
+      // Filter by status (activos/inactivos)
+      if (statusColaborador !== 'todos') {
+        const isActivo = colaboradorStatusMap[entry.colaborador_id] ?? true
+        if (statusColaborador === 'activos' && !isActivo) {
+          return false
+        }
+        if (statusColaborador === 'inactivos' && isActivo) {
+          return false
+        }
+      }
       
       return true
     })
-  }, [allEntries, users, selectedMonth, selectedYear, selectedColaborador, selectedCliente, departamentoFilter])
+  }, [allEntries, users, selectedMonth, selectedYear, selectedColaborador, selectedCliente, departamentoFilter, statusColaborador])
 
   // Calculate client summaries from filtered entries
   const clientSummaries: ClientSummary[] = useMemo(() => {
@@ -474,11 +490,17 @@ export default function ControlHorasPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los colaboradores</SelectItem>
-            {users.map((user) => (
-              <SelectItem key={user.id} value={user.id}>
-                {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
-              </SelectItem>
-            ))}
+            {users
+              .filter(user => {
+                if (statusColaborador === 'todos') return true
+                const isActivo = user.activo ?? true
+                return statusColaborador === 'activos' ? isActivo : !isActivo
+              })
+              .map((user) => (
+                <SelectItem key={user.id} value={user.id}>
+                  {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
 
@@ -513,6 +535,22 @@ export default function ControlHorasPage() {
                 {dep.nombre}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+
+        {/* Status Filter */}
+        <Select value={statusColaborador} onValueChange={(v) => {
+          setStatusColaborador(v as 'activos' | 'inactivos' | 'todos')
+          // Reset colaborador filter when status changes to avoid invalid state
+          setSelectedColaborador('all')
+        }}>
+          <SelectTrigger className="w-[170px]">
+            <SelectValue placeholder="Estado" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="activos">Activos</SelectItem>
+            <SelectItem value="inactivos">Inactivos</SelectItem>
+            <SelectItem value="todos">Todos</SelectItem>
           </SelectContent>
         </Select>
       </div>
