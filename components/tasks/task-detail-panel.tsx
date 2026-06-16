@@ -1238,9 +1238,9 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
             onKeyDown={handleKeyDown}
             onInput={handleInput}
             data-placeholder={compact ? "Escribe..." : "Escribe un comentario... usa @ para mencionar (podes pegar imagenes con Ctrl+V)"}
-            className={cn(
+              className={cn(
               "w-full p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary overflow-y-auto empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/50 [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1 [&_.mention]:bg-primary/20 [&_.mention]:text-primary [&_.mention]:px-1 [&_.mention]:rounded",
-              compact ? "min-h-[50px] text-xs" : "min-h-[88px]"
+              compact ? "min-h-[50px] max-h-[120px] text-xs" : "min-h-[88px] max-h-[250px]"
             )}
           />
           
