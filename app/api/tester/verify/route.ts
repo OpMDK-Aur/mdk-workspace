@@ -71,31 +71,33 @@ export async function POST(req: Request) {
     const rows: string[][] = sheetsData.values || []
 
     console.log('[Verify] total filas en Sheet:', rows.length)
-    console.log('[Verify] últimas 5 filas:', JSON.stringify(rows.slice(-5)))
     console.log('[Verify] buscando cliente:', nombre_cliente)
 
     const hace10min = Date.now() - 10 * 60 * 1000
     console.log('[Verify] ventana de tiempo desde:', new Date(hace10min).toISOString())
 
     const encontrado = rows.some(row => {
-      const fechaStr = row[1]
-      const clienteNombre = row[4]
-      if (!fechaStr || !clienteNombre) return false
-      const [datePart, timePart] = fechaStr.trim().split(' ')
-      if (!datePart || !timePart) return false
-      const [day, month, year] = datePart.split('/')
-      if (!day || !month || !year) return false
-      const fechaUTC = new Date(`${year}-${month}-${day}T${timePart}:00-03:00`).getTime()
-      const clienteMatch = clienteNombre.toLowerCase().includes(nombre_cliente.toLowerCase()) ||
-                           nombre_cliente.toLowerCase().includes(clienteNombre.toLowerCase())
-
-      if (clienteMatch) {
-        console.log('[Verify] fila con cliente match:', fechaStr, clienteNombre, 
-          'fechaUTC:', new Date(fechaUTC).toISOString(), 
-          'esReciente:', fechaUTC > hace10min)
+      try {
+        const fechaStr = row[1]
+        const clienteNombre = row[4]
+        if (!fechaStr || !clienteNombre) return false
+        const [datePart, timePart] = fechaStr.trim().split(' ')
+        if (!datePart || !timePart) return false
+        const parts = datePart.split('/')
+        if (parts.length !== 3) return false
+        const [day, month, year] = parts
+        if (!day || !month || !year || year.length !== 4) return false
+        const fechaUTC = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${timePart}:00-03:00`).getTime()
+        if (isNaN(fechaUTC)) return false
+        const clienteMatch = clienteNombre.toLowerCase().includes(nombre_cliente.toLowerCase()) ||
+                             nombre_cliente.toLowerCase().includes(clienteNombre.toLowerCase())
+        if (clienteMatch) {
+          console.log('[Verify] match:', fechaStr, clienteNombre, 'reciente:', fechaUTC > hace10min)
+        }
+        return fechaUTC > hace10min && clienteMatch
+      } catch {
+        return false
       }
-
-      return fechaUTC > hace10min && clienteMatch
     })
 
     console.log('[Verify] encontrado:', encontrado)
