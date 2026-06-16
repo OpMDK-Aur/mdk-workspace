@@ -265,39 +265,51 @@ export function TesterModal({ open, onOpenChange }: TesterModalProps) {
       // Si hay resultados pendientes, iniciar polling
       const pendientes = data.resultados.filter((r: TesterResultado) => r.estado === 'pendiente')
       if (pendientes.length > 0) {
-        let pollCount = 0
         const pollInterval = setInterval(async () => {
-          pollCount++
           try {
-            const { data: updated } = await supabase
+            const { data: updated, error } = await supabase
               .from('tester_resultados')
               .select('*')
               .in('id', pendientes.map((r: TesterResultado) => r.id))
-            
-            if (updated) {
-              const allResolved = updated.every(r => r.estado !== 'pendiente')
+
+            if (error) {
+              console.error('[Tester] polling error:', error)
+              return
+            }
+
+            if (updated && updated.length > 0) {
+              // Actualizar testResults con los nuevos estados
               setTestResults(prev => prev.map(r => {
-                const u = updated.find(u => u.id === r.id)
-                return u || r
+                const u = updated.find((u: TesterResultado) => u.id === r.id)
+                return u ? u : r
               }))
-              setSelectedItems(prev =>
-                prev.map(item => {
-                  const updatedResult = updated.find((r: TesterResultado) =>
-                    (item.tipo === 'meta_form' && r.form_id === item.id) ||
-                    (item.tipo === 'landing' && r.landing_url === item.id)
-                  )
-                  return updatedResult ? { ...item, status: updatedResult.estado === 'ok' ? 'ok' : 'fallo' } : item
-                })
-              )
-              if (allResolved) clearInterval(pollInterval)
+
+              // Actualizar selectedItems también
+              setSelectedItems(prev => prev.map(item => {
+                const u = updated.find((u: TesterResultado) => 
+                  (item.tipo === 'meta_form' && u.form_id === item.id) ||
+                  (item.tipo === 'landing' && u.landing_url === item.id)
+                )
+                if (u) {
+                  return { ...item, status: u.estado === 'ok' ? 'ok' : u.estado === 'fallo' ? 'fallo' : u.estado === 'pendiente' ? 'pendiente' : 'fallo' }
+                }
+                return item
+              }))
+
+              // Detener polling si todos resolvieron
+              const allResolved = updated.every((r: TesterResultado) => r.estado !== 'pendiente')
+              if (allResolved) {
+                console.log('[Tester] todos resueltos, deteniendo polling')
+                clearInterval(pollInterval)
+              }
             }
           } catch (err) {
-            console.error('[Tester] Polling error:', err)
+            console.error('[Tester] polling exception:', err)
           }
-          
-          // Dejar de hacer polling después de 2 minutos
-          if (pollCount * 5000 > 120000) clearInterval(pollInterval)
         }, 5000)
+
+        // Limpiar después de 2 minutos máximo
+        setTimeout(() => clearInterval(pollInterval), 120000)
       }
 
       toast.success('Test completado')
