@@ -416,7 +416,7 @@ function CompactProgressBar({
   )
 }
 
-async function fetchMetricas(mes: number, anio: number, departamento: string = 'all') {
+async function fetchMetricas(mes: number, anio: number, departamento: string = 'all', statusColaborador: 'activos' | 'inactivos' | 'todos' = 'todos') {
   const supabase = createClient()
   
   // Calculate the date range for the selected month
@@ -437,19 +437,27 @@ async function fetchMetricas(mes: number, anio: number, departamento: string = '
       `)
       .eq('mes', mes)
       .eq('anio', anio),
-    supabase.from('colaboradores').select('id, nombre, apellido, email, departamento_id'),
+    supabase.from('colaboradores').select('id, nombre, apellido, email, departamento_id, activo'),
     supabase.from('clientes').select('id, nombre_del_negocio'),
   ])
 
-  // Build set of colaborador ids whose departamento matches the selected one
+  // Build set of colaborador ids that match the departamento and status filters
   const allowedColaboradorIds = new Set<string>()
-  if (departamento !== 'all') {
-    ;(colaboradoresRes.data || []).forEach((c: { id: string; departamento_id?: string | null }) => {
-      if (c.departamento_id === departamento) {
-        allowedColaboradorIds.add(c.id)
-      }
-    })
-  }
+  ;(colaboradoresRes.data || []).forEach((c: { id: string; departamento_id?: string | null; activo?: boolean | null }) => {
+    // Check department filter
+    if (departamento !== 'all' && c.departamento_id !== departamento) {
+      return
+    }
+    
+    // Check status filter
+    const isActivo = c.activo ?? true
+    if (statusColaborador !== 'todos') {
+      if (statusColaborador === 'activos' && !isActivo) return
+      if (statusColaborador === 'inactivos' && isActivo) return
+    }
+    
+    allowedColaboradorIds.add(c.id)
+  })
   
   // Fetch entries in multiple pages to bypass Supabase 1000 row limit
   const allEntries: { colaborador_id: string; cliente_id: string; duracion_seg: number }[] = []
@@ -468,7 +476,7 @@ async function fetchMetricas(mes: number, anio: number, departamento: string = '
     if (pageError) throw pageError
     
     if (pageData && pageData.length > 0) {
-      allEntries.push(...pageData)
+      allEntries.push(...pageData.filter(e => allowedColaboradorIds.has(e.colaborador_id)))
       hasMore = pageData.length === pageSize
       page++
     } else {
@@ -586,6 +594,7 @@ interface HoursControlPanelProps {
   colaboradorId?: string
   clienteId?: string
   departamento?: string
+  statusColaborador?: 'activos' | 'inactivos' | 'todos'
 }
 
 export function HoursControlPanel({ 
@@ -594,14 +603,15 @@ export function HoursControlPanel({
   colaboradorId,
   clienteId,
   departamento = 'all',
+  statusColaborador = 'todos',
 }: HoursControlPanelProps) {
   // Use props for filtering instead of local state
   const filterColaborador = colaboradorId || 'all'
   const filterCliente = clienteId || 'all'
 
   const { data: metricas, isLoading, error } = useSWR(
-    `metricas-${selectedMonth}-${selectedYear}-${departamento}`,
-    () => fetchMetricas(selectedMonth, selectedYear, departamento)
+    `metricas-${selectedMonth}-${selectedYear}-${departamento}-${statusColaborador}`,
+    () => fetchMetricas(selectedMonth, selectedYear, departamento, statusColaborador)
   )
 
   // Get unique colaboradores and clientes for filters

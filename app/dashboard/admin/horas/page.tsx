@@ -226,7 +226,15 @@ export default function ControlHorasPage() {
     const totalHoursColab = Object.values(colabHoursMap).reduce((acc, c) => acc + c.hours, 0)
     
     return users
-      .filter((user) => colabHoursMap[user.id])
+      .filter((user) => {
+        // Only show users that have hours and match status filter
+        if (!colabHoursMap[user.id]) return false
+        
+        const isActivo = user.activo ?? true
+        if (statusColaborador === 'activos' && !isActivo) return false
+        if (statusColaborador === 'inactivos' && isActivo) return false
+        return true
+      })
       .map((user) => {
         const data = colabHoursMap[user.id] || { hours: 0, billableHours: 0 }
         const userName = `${user.nombre}${user.apellido ? ` ${user.apellido}` : ''}`
@@ -240,14 +248,27 @@ export default function ControlHorasPage() {
         }
       })
       .sort((a, b) => b.hours - a.hours)
-  }, [users, filteredEntries])
+  }, [users, filteredEntries, statusColaborador])
 
   // Calculate collaborator-client matrix
   const collaboratorClientMatrix = useMemo(() => {
     const matrix: Record<string, Record<string, number>> = {}
     
+    // Build map of colaborador status
+    const colaboradorStatus: Record<string, boolean> = {}
+    users.forEach((u) => {
+      colaboradorStatus[u.id] = u.activo ?? true
+    })
+    
     filteredEntries.forEach((entry) => {
       if (entry.colaborador_id && entry.cliente_id) {
+        // Filter by status
+        const isActivo = colaboradorStatus[entry.colaborador_id] ?? true
+        if (statusColaborador !== 'todos') {
+          if (statusColaborador === 'activos' && !isActivo) return
+          if (statusColaborador === 'inactivos' && isActivo) return
+        }
+        
         if (!matrix[entry.colaborador_id]) {
           matrix[entry.colaborador_id] = {}
         }
@@ -265,7 +286,7 @@ export default function ControlHorasPage() {
       clientIds,
       collaboratorIds: Object.keys(matrix)
     }
-  }, [filteredEntries])
+  }, [filteredEntries, users, statusColaborador])
 
   // Per-unidad de negocio summary (uses the client's PRIMARY unidad = first in array)
   const UNIDADES = ['MDK', 'Aurelia', 'Consultoría'] as const
@@ -621,6 +642,7 @@ export default function ControlHorasPage() {
             colaboradorId={selectedColaborador !== 'all' ? selectedColaborador : undefined}
             clienteId={selectedCliente !== 'all' ? selectedCliente : undefined}
             departamento={departamentoFilter}
+            statusColaborador={statusColaborador}
           />
         </TabsContent>
 
