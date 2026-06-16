@@ -300,22 +300,21 @@ export default function ColaboradoresPage() {
         const processedMetricas = mets.map(m => {
           const colaborador = m.colaborador as Colaborador
           const cliente = m.cliente as Cliente
-          const valorHora = Number(m.valor_hora) || 150000
-          const feeMdk = cliente?.fee_mdk || 0
-          const horasTeoricas = calcularHorasTeoricas(feeMdk, valorHora, colaborador)
           const acumuladoReal = hoursMap.get(`${m.colaborador_id}-${m.cliente_id}`) || 0
+          
+          // Usar valores de la DB, solo recalcular si están en 0
+          const storedTeoricas = Number(m.horas_teoricas_cliente) || 0
           const storedObjetivo = Number(m.horas_objetivo) || 0
           const storedMinimo = Number(m.minimo_no_negociable_horas) || 0
-          const finalObjetivo = storedObjetivo > 0 ? storedObjetivo : horasTeoricas
-          const finalMinimo = storedMinimo > 0 ? storedMinimo : horasTeoricas / 2
-          
+          const valorHora = Number(m.valor_hora) || 150000
+
           return {
             ...m,
             colaborador,
             cliente,
-            horas_teoricas_cliente: horasTeoricas,
-            minimo_no_negociable_horas: finalMinimo,
-            horas_objetivo: finalObjetivo,
+            horas_teoricas_cliente: storedTeoricas,
+            minimo_no_negociable_horas: storedMinimo,
+            horas_objetivo: storedObjetivo,
             acumulado_mes_asignado: acumuladoReal,
             valor_hora: valorHora,
           }
@@ -1135,7 +1134,7 @@ export default function ColaboradoresPage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* ─── PERMISSIONS TAB ─────────────────────────────────────────────────────── */}
+        {/* ─── PERMISSIONS TAB ──────────────────────────────────────────────────────��� */}
         <TabsContent value="permisos" className="space-y-4">
           <Card>
             <CardHeader className="pb-3">
