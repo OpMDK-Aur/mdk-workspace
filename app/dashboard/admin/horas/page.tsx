@@ -575,7 +575,7 @@ export default function ControlHorasPage() {
         {/* Status Filter */}
         <Select value={statusColaborador} onValueChange={(v) => {
           setStatusColaborador(v as 'activos' | 'inactivos' | 'todos')
-          // Reset colaborador filter when status changes to avoid invalid state
+          // Reset colaborador filter when status changes to avoid showing wrong data
           setSelectedColaborador('all')
         }}>
           <SelectTrigger className="w-[170px]">
