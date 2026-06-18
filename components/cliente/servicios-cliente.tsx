@@ -24,7 +24,7 @@ interface ServiciosClienteProps {
 export function ServiciosCliente({ clientId }: ServiciosClienteProps) {
   // Placeholder component - tabla servicios_contratados no existe aún
   // Cuando se cree la tabla, descomentar el useEffect con la carga de datos
-  const [servicios] = useState<any[]>([])
+  const [servicios, setServicios] = useState<any[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [nuevoServicio, setNuevoServicio] = useState({ nombre: '', categoria: '' })
 
@@ -34,6 +34,15 @@ export function ServiciosCliente({ clientId }: ServiciosClienteProps) {
       return
     }
 
+    const servicio = {
+      id: `servicio-${Date.now()}`,
+      nombre: nuevoServicio.nombre,
+      categoria: nuevoServicio.categoria || '',
+      activo: true,
+      cliente_id: clientId
+    }
+
+    setServicios(prev => [...prev, servicio])
     toast.success('Servicio agregado correctamente')
     setNuevoServicio({ nombre: '', categoria: '' })
     setDialogOpen(false)
