@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { ChevronDown, DeviceFloppy, AlertCircle } from '@tabler/icons-react'
 import {
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { toast } from 'sonner'
+import { createClient } from '@/lib/supabase/client'
 
 export interface ServicioContratado {
   id: string
@@ -36,15 +37,15 @@ export interface CategoriaContratada {
 }
 
 interface ServiciosClienteProps {
-  clienteId: string
-  serviciosContratados: ServicioContratado[]
-  categoriasConfig: {
+  clientId: string
+  serviciosContratados?: ServicioContratado[]
+  categoriasConfig?: {
     mdk: CategoriaContratada
     tecnologia: CategoriaContratada
     consultoria: CategoriaContratada
     adicionales: CategoriaContratada
   }
-  onSave: (data: {
+  onSave?: (data: {
     servicios: ServicioContratado[]
     categorias: ServiciosClienteProps['categoriasConfig']
   }) => Promise<void>
@@ -125,9 +126,14 @@ const CATEGORIAS_CONFIG = {
 }
 
 export function ServiciosCliente({
-  clienteId,
-  serviciosContratados,
-  categoriasConfig,
+  clientId,
+  serviciosContratados = [],
+  categoriasConfig = {
+    mdk: { fecha_inicio: null, fecha_fin: null },
+    tecnologia: { fecha_inicio: null, fecha_fin: null },
+    consultoria: { fecha_inicio: null, fecha_fin: null },
+    adicionales: { fecha_inicio: null, fecha_fin: null },
+  },
   onSave,
 }: ServiciosClienteProps) {
   const [servicios, setServicios] = useState<ServicioContratado[]>(serviciosContratados)
@@ -143,6 +149,35 @@ export function ServiciosCliente({
     )
   )
   const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  // Load services from Supabase if not provided
+  useEffect(() => {
+    if (serviciosContratados && serviciosContratados.length > 0) {
+      return // Data was provided via props
+    }
+
+    const loadServicios = async () => {
+      try {
+        setLoading(true)
+        const supabase = createClient()
+        const { data, error } = await supabase
+          .from('servicios_contratados')
+          .select('*')
+          .eq('cliente_id', clientId)
+
+        if (error) throw error
+        setServicios(data || [])
+      } catch (error) {
+        console.error('Error loading servicios:', error)
+        toast.error('Error al cargar servicios')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadServicios()
+  }, [clientId, serviciosContratados])
 
   const toggleCategory = (categoria: string) => {
     const newExpanded = new Set(expandedCategories)
