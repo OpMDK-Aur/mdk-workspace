@@ -197,7 +197,7 @@ export function ServiciosCliente({
       if (!servicio) {
         servicio = {
           id: `${categoria}-${nombre}-${Date.now()}`,
-          cliente_id: clienteId,
+          cliente_id: clientId,
           categoria,
           nombre,
           activo: false,
