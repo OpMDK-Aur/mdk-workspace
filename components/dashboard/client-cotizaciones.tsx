@@ -123,7 +123,13 @@ export function ClientCotizaciones({ clientId, currentUserId }: ClientCotizacion
       if (!error) {
         setCotizaciones(prev => prev.map(c => 
           c.id === editingCotizacion.id 
-            ? { ...c, ...cotizacionData }
+            ? { 
+                ...c, 
+                ...cotizacionData,
+                id: c.id,
+                cliente_id: c.cliente_id,
+                created_at: c.created_at
+              }
             : c
         ))
       }
@@ -169,28 +175,15 @@ export function ClientCotizaciones({ clientId, currentUserId }: ClientCotizacion
       .delete()
       .eq('id', id)
 
-    if (!error) {
-      setCotizaciones(prev => prev.filter(c => c.id !== id))
+      if (!error && data) {
+        setCotizaciones(prev => [data, ...prev])
+      } else if (error) {
+        console.error('[v0] Error saving cotización:', error)
+      }
     }
-  }
 
-  const openEdit = (cotizacion: Cotizacion) => {
-    setEditingCotizacion(cotizacion)
-    setForm({
-      numero: cotizacion.numero,
-      titulo: cotizacion.titulo,
-      descripcion: cotizacion.descripcion || '',
-      monto: cotizacion.monto.toString(),
-      moneda: cotizacion.moneda,
-      estado: cotizacion.estado,
-      fecha_emision: cotizacion.fecha_emision,
-      fecha_vencimiento: cotizacion.fecha_vencimiento || '',
-      url_documento: cotizacion.url_documento || '',
-    })
-    setDialogOpen(true)
-  }
-
-  const openNew = () => {
+    setSaving(false)
+    setDialogOpen(false)
     setEditingCotizacion(null)
     resetForm()
     setForm(prev => ({ ...prev, numero: generateNumero() }))
