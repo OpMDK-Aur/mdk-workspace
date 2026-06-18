@@ -35,6 +35,13 @@ interface Servicio {
   cantidad?: number
 }
 
+interface CategoriaFechas {
+  [key: string]: {
+    fecha_inicio?: string
+    fecha_fin?: string
+  }
+}
+
 const SERVICIOS_POR_CATEGORIA = {
   mdk: [
     'Servicios de publicidad y soporte técnico mensual',
@@ -92,11 +99,15 @@ interface ServiciosClienteProps {
 
 export function ServiciosCliente({ clientId }: ServiciosClienteProps) {
   const [servicios, setServicios] = useState<Servicio[]>([])
+  const [categoriasFechas, setCategoriasFechas] = useState<CategoriaFechas>({})
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [nuevoServicio, setNuevoServicio] = useState<Partial<Servicio>>({
     categoria: 'mdk',
     activo: true,
   })
+  const [editCategoriaDialogOpen, setEditCategoriaDialogOpen] = useState(false)
+  const [editingCategoria, setEditingCategoria] = useState<string | null>(null)
 
   const serviciosDisponibles = SERVICIOS_POR_CATEGORIA[nuevoServicio.categoria as keyof typeof SERVICIOS_POR_CATEGORIA] || []
   const mostrarCRM = nuevoServicio.categoria === 'tecnologia' && nuevoServicio.nombre === 'CRM'
@@ -116,21 +127,49 @@ export function ServiciosCliente({ clientId }: ServiciosClienteProps) {
       return
     }
 
-    const servicio: Servicio = {
-      id: `servicio-${Date.now()}`,
-      nombre: nuevoServicio.nombre,
-      categoria: (nuevoServicio.categoria as 'mdk' | 'diseño' | 'tecnologia' | 'consultoria' | 'adicionales') || 'mdk',
-      activo: true,
-      fecha_inicio: nuevoServicio.fecha_inicio,
-      fecha_fin: nuevoServicio.fecha_fin,
-      crm: nuevoServicio.crm as 'odoo' | 'aurelia' | 'ghl' | undefined,
-      cantidad: nuevoServicio.cantidad,
+    if (editingId) {
+      // Editar servicio existente
+      setServicios(prev =>
+        prev.map(s =>
+          s.id === editingId
+            ? {
+                ...s,
+                nombre: nuevoServicio.nombre || s.nombre,
+                fecha_inicio: nuevoServicio.fecha_inicio,
+                fecha_fin: nuevoServicio.fecha_fin,
+                crm: nuevoServicio.crm as 'odoo' | 'aurelia' | 'ghl' | undefined,
+                cantidad: nuevoServicio.cantidad,
+              }
+            : s
+        )
+      )
+      toast.success('Servicio actualizado correctamente')
+      setEditingId(null)
+    } else {
+      // Agregar nuevo servicio
+      const servicio: Servicio = {
+        id: `servicio-${Date.now()}`,
+        nombre: nuevoServicio.nombre,
+        categoria: (nuevoServicio.categoria as 'mdk' | 'diseño' | 'tecnologia' | 'consultoria' | 'adicionales') || 'mdk',
+        activo: true,
+        fecha_inicio: nuevoServicio.fecha_inicio,
+        fecha_fin: nuevoServicio.fecha_fin,
+        crm: nuevoServicio.crm as 'odoo' | 'aurelia' | 'ghl' | undefined,
+        cantidad: nuevoServicio.cantidad,
+      }
+
+      setServicios(prev => [...prev, servicio])
+      toast.success('Servicio agregado correctamente')
     }
 
-    setServicios(prev => [...prev, servicio])
-    toast.success('Servicio agregado correctamente')
     setNuevoServicio({ categoria: 'mdk', activo: true })
     setDialogOpen(false)
+  }
+
+  const handleEditServicio = (servicio: Servicio) => {
+    setEditingId(servicio.id)
+    setNuevoServicio(servicio)
+    setDialogOpen(true)
   }
 
   const handleRemoveServicio = (id: string) => {
@@ -181,9 +220,13 @@ export function ServiciosCliente({ clientId }: ServiciosClienteProps) {
             </DialogTrigger>
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Agregar nuevo servicio</DialogTitle>
+                <DialogTitle>
+                  {editingId ? 'Editar servicio' : 'Agregar nuevo servicio'}
+                </DialogTitle>
                 <DialogDescription>
-                  Selecciona el servicio a contratar y completa los detalles
+                  {editingId
+                    ? 'Actualiza los detalles del servicio'
+                    : 'Selecciona el servicio a contratar y completa los detalles'}
                 </DialogDescription>
               </DialogHeader>
 
@@ -213,21 +256,30 @@ export function ServiciosCliente({ clientId }: ServiciosClienteProps) {
                 {/* Servicio */}
                 <div className="space-y-2">
                   <Label className="text-sm">Servicio *</Label>
-                  <Select
-                    value={nuevoServicio.nombre || ''}
-                    onValueChange={(v) => setNuevoServicio({ ...nuevoServicio, nombre: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecciona un servicio" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {serviciosDisponibles.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {editingId ? (
+                    <Input
+                      value={nuevoServicio.nombre || ''}
+                      onChange={(e) => setNuevoServicio({ ...nuevoServicio, nombre: e.target.value })}
+                      placeholder="Nombre del servicio"
+                      className="h-9"
+                    />
+                  ) : (
+                    <Select
+                      value={nuevoServicio.nombre || ''}
+                      onValueChange={(v) => setNuevoServicio({ ...nuevoServicio, nombre: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona un servicio" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {serviciosDisponibles.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
 
                 {/* CRM - Solo para Tecnología */}
@@ -321,20 +373,49 @@ export function ServiciosCliente({ clientId }: ServiciosClienteProps) {
             if (items.length === 0) return null
 
             return (
-              <div key={categoria} className="space-y-2">
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase">
-                  {categoriasTitulos[categoria as keyof typeof categoriasTitulos]}
-                </h4>
+              <div key={categoria} className="space-y-3 border-l-2 border-primary/20 pl-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase">
+                      {categoriasTitulos[categoria as keyof typeof categoriasTitulos]}
+                    </h4>
+                    {categoriasFechas[categoria] && (
+                      <div className="flex gap-2 mt-1 text-xs text-muted-foreground">
+                        {categoriasFechas[categoria].fecha_inicio && (
+                          <span>Inicio: {new Date(categoriasFechas[categoria].fecha_inicio!).toLocaleDateString('es-ES')}</span>
+                        )}
+                        {categoriasFechas[categoria].fecha_fin && (
+                          <span>Fin: {new Date(categoriasFechas[categoria].fecha_fin!).toLocaleDateString('es-ES')}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => {
+                      setEditingCategoria(categoria)
+                      setEditCategoriaDialogOpen(true)
+                    }}
+                  >
+                    Editar fechas
+                  </Button>
+                </div>
                 <div className="space-y-2">
                   {items.map((servicio) => (
                     <div
                       key={servicio.id}
-                      className="flex items-start gap-3 p-3 rounded-lg border border-border/50 bg-muted/30"
+                      className="flex items-start gap-3 p-3 rounded-lg border border-border/50 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
+                      onClick={() => handleEditServicio(servicio)}
                     >
                       <Switch
                         checked={servicio.activo}
-                        onCheckedChange={() => toggleServicio(servicio.id)}
+                        onCheckedChange={() => {
+                          toggleServicio(servicio.id)
+                        }}
                         className="mt-1"
+                        onClick={(e) => e.stopPropagation()}
                       />
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm font-medium truncate ${!servicio.activo && 'line-through text-muted-foreground'}`}>
@@ -355,7 +436,10 @@ export function ServiciosCliente({ clientId }: ServiciosClienteProps) {
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6 text-destructive hover:text-destructive flex-shrink-0"
-                        onClick={() => handleRemoveServicio(servicio.id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleRemoveServicio(servicio.id)
+                        }}
                       >
                         <X className="h-3 w-3" />
                       </Button>
@@ -367,6 +451,78 @@ export function ServiciosCliente({ clientId }: ServiciosClienteProps) {
           })
         )}
       </CardContent>
+
+      {/* Dialog para editar fechas de categoría */}
+      <Dialog open={editCategoriaDialogOpen} onOpenChange={setEditCategoriaDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Editar fechas - {editingCategoria && categoriasTitulos[editingCategoria as keyof typeof categoriasTitulos]}
+            </DialogTitle>
+            <DialogDescription>
+              Establece las fechas de inicio y fin para esta categoría
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-sm">Fecha de inicio</Label>
+              <Input
+                type="date"
+                value={editingCategoria ? (categoriasFechas[editingCategoria]?.fecha_inicio || '') : ''}
+                onChange={(e) => {
+                  if (editingCategoria) {
+                    setCategoriasFechas(prev => ({
+                      ...prev,
+                      [editingCategoria]: {
+                        ...prev[editingCategoria],
+                        fecha_inicio: e.target.value
+                      }
+                    }))
+                  }
+                }}
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm">Fecha de fin</Label>
+              <Input
+                type="date"
+                value={editingCategoria ? (categoriasFechas[editingCategoria]?.fecha_fin || '') : ''}
+                onChange={(e) => {
+                  if (editingCategoria) {
+                    setCategoriasFechas(prev => ({
+                      ...prev,
+                      [editingCategoria]: {
+                        ...prev[editingCategoria],
+                        fecha_fin: e.target.value
+                      }
+                    }))
+                  }
+                }}
+                className="h-9"
+              />
+            </div>
+            <div className="flex gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setEditCategoriaDialogOpen(false)}
+                className="flex-1"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => {
+                  toast.success('Fechas de categoría actualizadas')
+                  setEditCategoriaDialogOpen(false)
+                }}
+                className="flex-1"
+              >
+                Guardar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
