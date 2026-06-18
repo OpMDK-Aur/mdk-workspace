@@ -207,7 +207,7 @@ export function ServiciosCliente({
       }
       return servicio
     },
-    [servicios, clienteId]
+    [servicios, clientId]
   )
 
   const updateServicio = useCallback((id: string, updates: Partial<ServicioContratado>) => {
