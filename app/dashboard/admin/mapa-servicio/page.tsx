@@ -40,6 +40,7 @@ export default function MapaServicioPage() {
   const [pmFilter, setPmFilter] = useState<string | 'all'>('all')
   const [amFilter, setAmFilter] = useState<string | 'all'>('all')
   const [clienteFilter, setClienteFilter] = useState<string | 'all'>('all')
+  const [statusColaborador, setStatusColaborador] = useState<'activos' | 'inactivos' | 'todos'>('activos')
   const [projectManagers, setProjectManagers] = useState<Array<{ id: string; full_name: string | null; email: string; role: string }>>([])
   const [accountManagers, setAccountManagers] = useState<Array<{ id: string; full_name: string | null; email: string; role: string }>>([])
   const [clientes, setClientes] = useState<Array<{ id: string; nombre_del_negocio: string }>>([])
@@ -207,7 +208,19 @@ export default function MapaServicioPage() {
           </SelectContent>
         </Select>
 
-        {(pmFilter !== 'all' || amFilter !== 'all' || clienteFilter !== 'all') && (
+        {/* Status Filter */}
+        <Select value={statusColaborador} onValueChange={(v) => setStatusColaborador(v as 'activos' | 'inactivos' | 'todos')}>
+          <SelectTrigger className="w-[170px]">
+            <SelectValue placeholder="Estado" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="activos">Activos</SelectItem>
+            <SelectItem value="inactivos">Inactivos</SelectItem>
+            <SelectItem value="todos">Todos</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {(pmFilter !== 'all' || amFilter !== 'all' || clienteFilter !== 'all' || statusColaborador !== 'activos') && (
           <Button
             size="sm"
             variant="ghost"
@@ -216,6 +229,7 @@ export default function MapaServicioPage() {
               setPmFilter('all')
               setAmFilter('all')
               setClienteFilter('all')
+              setStatusColaborador('activos')
             }}
           >
             <X className="h-3 w-3 mr-1" />

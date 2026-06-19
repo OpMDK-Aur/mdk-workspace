@@ -71,6 +71,10 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   })
+  const [dateRange, setDateRange] = useState<'month' | 'custom'>('month')
+  const [customStartDate, setCustomStartDate] = useState('')
+  const [customEndDate, setCustomEndDate] = useState('')
+  const [selectedClientFilter, setSelectedClientFilter] = useState<string>('all')
   
   // Shared state
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -120,10 +124,20 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
     try {
       const supabase = createClient()
       
-      // Parse month filter
-      const [year, month] = selectedMonth.split('-').map(Number)
-      const startDate = new Date(year, month - 1, 1)
-      const endDate = new Date(year, month, 0, 23, 59, 59)
+      // Determine date range
+      let startDate: Date
+      let endDate: Date
+      
+      if (dateRange === 'custom') {
+        startDate = new Date(customStartDate)
+        endDate = new Date(customEndDate)
+        endDate.setHours(23, 59, 59, 999)
+      } else {
+        // Month range
+        const [year, month] = selectedMonth.split('-').map(Number)
+        startDate = new Date(year, month - 1, 1)
+        endDate = new Date(year, month, 0, 23, 59, 59)
+      }
       
       let query = supabase
         .from('entradas_de_tiempo')
@@ -137,6 +151,11 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
         query = query.in('colaborador_id', selectedColaboradores)
       }
       
+      // Filter by selected cliente
+      if (selectedClientFilter !== 'all') {
+        query = query.eq('cliente_id', selectedClientFilter)
+      }
+      
       const { data, error } = await query
       
       if (error) {
@@ -148,7 +167,7 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
     } finally {
       setAdminLoading(false)
     }
-  }, [isMaster, selectedMonth, selectedColaboradores])
+  }, [isMaster, selectedMonth, selectedColaboradores, dateRange, customStartDate, customEndDate, selectedClientFilter])
 
   useEffect(() => {
     if (isMaster) {
@@ -303,57 +322,114 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
     <div className="space-y-6">
       {/* Admin Filters */}
       {isMaster && (
-        <div className="flex flex-wrap items-center gap-3 p-4 bg-card border border-border rounded-lg">
-          {/* Month Navigation */}
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigateMonth('prev')}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm font-medium min-w-[140px] text-center capitalize">
-              {formatMonthLabel(selectedMonth)}
-            </span>
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigateMonth('next')}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+        <div className="space-y-3 p-4 bg-card border border-border rounded-lg">
+          {/* Date Range Selector */}
+          <div className="flex flex-wrap items-center gap-3">
+            <Select value={dateRange} onValueChange={(v) => setDateRange(v as 'month' | 'custom')}>
+              <SelectTrigger className="w-[140px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="month">Por Mes</SelectItem>
+                <SelectItem value="custom">Fecha Personalizada</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Month Navigation */}
+            {dateRange === 'month' && (
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigateMonth('prev')}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm font-medium min-w-[140px] text-center capitalize">
+                  {formatMonthLabel(selectedMonth)}
+                </span>
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigateMonth('next')}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
+            {/* Custom Date Range */}
+            {dateRange === 'custom' && (
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="h-8 text-xs w-32"
+                  placeholder="Fecha inicio"
+                />
+                <span className="text-xs text-muted-foreground">a</span>
+                <Input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="h-8 text-xs w-32"
+                  placeholder="Fecha fin"
+                />
+              </div>
+            )}
           </div>
 
-          {/* Colaborador Filter */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8 gap-2 min-w-[180px] justify-between">
-                <Users className="h-4 w-4" />
-                <span>{selectedColaboradores.length === 0 ? 'Todos los colaboradores' : `${selectedColaboradores.length} seleccionado${selectedColaboradores.length > 1 ? 's' : ''}`}</span>
-                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+          {/* Filters Row */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Colaborador Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 gap-2 min-w-[180px] justify-between">
+                  <Users className="h-4 w-4" />
+                  <span>{selectedColaboradores.length === 0 ? 'Todos los colaboradores' : `${selectedColaboradores.length} seleccionado${selectedColaboradores.length > 1 ? 's' : ''}`}</span>
+                  <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-64 max-h-64 overflow-y-auto">
+                {colaboradores.map(col => (
+                  <DropdownMenuCheckboxItem
+                    key={col.id}
+                    checked={selectedColaboradores.includes(col.id)}
+                    onCheckedChange={(checked) => {
+                      setSelectedColaboradores(prev => 
+                        checked ? [...prev, col.id] : prev.filter(id => id !== col.id)
+                      )
+                    }}
+                  >
+                    {col.full_name || col.email}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Cliente Filter */}
+            <Select value={selectedClientFilter} onValueChange={setSelectedClientFilter}>
+              <SelectTrigger className="w-[150px] h-8 text-xs">
+                <SelectValue placeholder="Cliente" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los clientes</SelectItem>
+                {clientes.map(cliente => (
+                  <SelectItem key={cliente.id} value={cliente.id}>
+                    {cliente.nombre_del_negocio}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Clear Filters */}
+            {(selectedColaboradores.length > 0 || selectedClientFilter !== 'all') && (
+              <Button variant="ghost" size="sm" className="h-8" onClick={() => {
+                setSelectedColaboradores([])
+                setSelectedClientFilter('all')
+              }}>
+                Limpiar filtros
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-64 max-h-64 overflow-y-auto">
-              {colaboradores.map(col => (
-                <DropdownMenuCheckboxItem
-                  key={col.id}
-                  checked={selectedColaboradores.includes(col.id)}
-                  onCheckedChange={(checked) => {
-                    setSelectedColaboradores(prev => 
-                      checked ? [...prev, col.id] : prev.filter(id => id !== col.id)
-                    )
-                  }}
-                >
-                  {col.full_name || col.email}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            )}
 
-          {/* Clear Filters */}
-          {selectedColaboradores.length > 0 && (
-            <Button variant="ghost" size="sm" className="h-8" onClick={() => setSelectedColaboradores([])}>
-              Limpiar filtros
-            </Button>
-          )}
-
-          {/* Total Stats */}
-          <div className="ml-auto flex items-center gap-4 text-sm text-muted-foreground">
-            <span>{entries.length} entradas</span>
-            <span className="font-medium text-foreground">{formatDurationShort(totalMonthSeconds)} total</span>
+            {/* Total Stats */}
+            <div className="ml-auto flex items-center gap-4 text-sm text-muted-foreground">
+              <span>{entries.length} entradas</span>
+              <span className="font-medium text-foreground">{formatDurationShort(totalMonthSeconds)} total</span>
+            </div>
           </div>
         </div>
       )}

@@ -51,7 +51,7 @@ const MONEDAS = [
   { value: 'MXN', label: 'MXN ($)' },
 ]
 
-export function ClientCotizaciones({ clientId, currentUserId }: ClientCotizacionesProps) {
+export function ClientCotizaciones({ clientId }: ClientCotizacionesProps) {
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -96,50 +96,47 @@ export function ClientCotizaciones({ clientId, currentUserId }: ClientCotizacion
 
   const handleSave = async () => {
     if (!form.titulo.trim() || !form.monto) return
-
     setSaving(true)
-    
+
     const cotizacionData = {
       numero: form.numero || generateNumero(),
-      titulo: form.titulo.trim(),
-      descripcion: form.descripcion.trim() || null,
+      titulo: form.titulo,
+      descripcion: form.descripcion || null,
       monto: parseFloat(form.monto),
       moneda: form.moneda,
       estado: form.estado,
       fecha_emision: form.fecha_emision,
       fecha_vencimiento: form.fecha_vencimiento || null,
-      url_documento: form.url_documento.trim() || null,
+      url_documento: form.url_documento || null,
     }
 
     if (editingCotizacion) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('cliente_cotizaciones')
-        .update({
-          ...cotizacionData,
-          updated_at: new Date().toISOString(),
-        })
+        .update(cotizacionData)
         .eq('id', editingCotizacion.id)
+        .select()
 
-      if (!error) {
+      if (!error && data && data[0]) {
         setCotizaciones(prev => prev.map(c => 
           c.id === editingCotizacion.id 
-            ? { ...c, ...cotizacionData }
+            ? { 
+                ...data[0],
+                id: c.id,
+                cliente_id: c.cliente_id,
+                created_at: c.created_at
+              }
             : c
         ))
       }
     } else {
       const { data, error } = await supabase
         .from('cliente_cotizaciones')
-        .insert({
-          cliente_id: clientId,
-          creado_por: currentUserId,
-          ...cotizacionData,
-        })
+        .insert({ ...cotizacionData, cliente_id: clientId })
         .select()
-        .single()
 
-      if (!error && data) {
-        setCotizaciones(prev => [data, ...prev])
+      if (!error && data && data[0]) {
+        setCotizaciones(prev => [data[0], ...prev])
       }
     }
 
@@ -163,15 +160,9 @@ export function ClientCotizaciones({ clientId, currentUserId }: ClientCotizacion
     })
   }
 
-  const handleDelete = async (id: string) => {
-    const { error } = await supabase
-      .from('cliente_cotizaciones')
-      .delete()
-      .eq('id', id)
-
-    if (!error) {
-      setCotizaciones(prev => prev.filter(c => c.id !== id))
-    }
+  const openNew = () => {
+    setEditingCotizacion(null)
+    resetForm()
   }
 
   const openEdit = (cotizacion: Cotizacion) => {
@@ -180,7 +171,7 @@ export function ClientCotizaciones({ clientId, currentUserId }: ClientCotizacion
       numero: cotizacion.numero,
       titulo: cotizacion.titulo,
       descripcion: cotizacion.descripcion || '',
-      monto: cotizacion.monto.toString(),
+      monto: String(cotizacion.monto),
       moneda: cotizacion.moneda,
       estado: cotizacion.estado,
       fecha_emision: cotizacion.fecha_emision,
@@ -190,11 +181,9 @@ export function ClientCotizaciones({ clientId, currentUserId }: ClientCotizacion
     setDialogOpen(true)
   }
 
-  const openNew = () => {
-    setEditingCotizacion(null)
-    resetForm()
-    setForm(prev => ({ ...prev, numero: generateNumero() }))
-    setDialogOpen(true)
+  const handleDelete = async (id: string) => {
+    await supabase.from('cliente_cotizaciones').delete().eq('id', id)
+    setCotizaciones(prev => prev.filter(c => c.id !== id))
   }
 
   const getEstadoInfo = (estado: string) => {
@@ -208,20 +197,19 @@ export function ClientCotizaciones({ clientId, currentUserId }: ClientCotizacion
     }).format(monto)
   }
 
-  // Calculate totals
   const totales = {
     total: cotizaciones.reduce((sum, c) => sum + c.monto, 0),
     aceptadas: cotizaciones.filter(c => c.estado === 'aceptada').reduce((sum, c) => sum + c.monto, 0),
     pendientes: cotizaciones.filter(c => c.estado === 'enviada').reduce((sum, c) => sum + c.monto, 0),
   }
 
-  // Currency used for the totals summary: most frequent currency among quotes (defaults to ARS)
-  const monedaTotales = (() => {
-    if (cotizaciones.length === 0) return 'ARS'
-    const counts: Record<string, number> = {}
-    for (const c of cotizaciones) counts[c.moneda] = (counts[c.moneda] ?? 0) + 1
-    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0]
-  })()
+  const monedaTotales = cotizaciones.length === 0 
+    ? 'ARS'
+    : (() => {
+        const counts: Record<string, number> = {}
+        for (const c of cotizaciones) counts[c.moneda] = (counts[c.moneda] ?? 0) + 1
+        return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0]
+      })()
 
   return (
     <div className="rounded-xl border bg-card p-5">
@@ -247,6 +235,7 @@ export function ClientCotizaciones({ clientId, currentUserId }: ClientCotizacion
                     id="numero"
                     value={form.numero}
                     onChange={(e) => setForm(prev => ({ ...prev, numero: e.target.value }))}
+                    placeholder="Auto-generado"
                     className="mt-1"
                   />
                 </div>
@@ -353,7 +342,6 @@ export function ClientCotizaciones({ clientId, currentUserId }: ClientCotizacion
         </Dialog>
       </div>
 
-      {/* Totals summary */}
       {cotizaciones.length > 0 && (
         <div className="grid grid-cols-3 gap-2 mb-4">
           <div className="rounded-lg bg-muted/50 p-2 text-center">

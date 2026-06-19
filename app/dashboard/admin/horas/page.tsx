@@ -56,6 +56,7 @@ interface User {
   id: string
   nombre: string
   apellido?: string | null
+  activo?: boolean | null
 }
 
 // Generate consistent color from string
@@ -79,7 +80,7 @@ async function fetchControlHorasData() {
   const [clientsRes, entriesRes, profilesRes, departamentosRes] = await Promise.all([
     supabase.from('clientes').select('*').order('nombre_del_negocio'),
     supabase.from('entradas_de_tiempo').select('*').order('iniciado_en', { ascending: false }),
-    supabase.from('colaboradores').select('id, nombre, apellido, departamento_id, departamentos(id, nombre)').order('nombre'),
+    supabase.from('colaboradores').select('id, nombre, apellido, departamento_id, activo, departamentos(id, nombre)').order('nombre'),
     supabase.from('departamentos').select('id, nombre').order('nombre'),
   ])
 
@@ -101,6 +102,7 @@ export default function ControlHorasPage() {
   const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
   const [departamentoFilter, setDepartamentoFilter] = useState<string>('all')
+  const [statusColaborador, setStatusColaborador] = useState<'activos' | 'inactivos' | 'todos'>('activos')
 
   // Fetch data with SWR
   const { data, isLoading, error } = useSWR('control-horas-data', fetchControlHorasData)
@@ -117,8 +119,11 @@ export default function ControlHorasPage() {
 
     // Build a lookup of colaborador id -> departamento_id for the department filter
     const colaboradorDeptMap: Record<string, string | null> = {}
+    // Build a lookup of colaborador id -> activo status for the status filter
+    const colaboradorStatusMap: Record<string, boolean> = {}
     users.forEach((u: any) => {
       colaboradorDeptMap[u.id] = u.departamento_id ?? null
+      colaboradorStatusMap[u.id] = u.activo ?? true
     })
 
     return allEntries.filter((entry) => {
@@ -147,10 +152,21 @@ export default function ControlHorasPage() {
           return false
         }
       }
+
+      // Filter by status (activos/inactivos)
+      if (statusColaborador !== 'todos') {
+        const isActivo = colaboradorStatusMap[entry.colaborador_id] ?? true
+        if (statusColaborador === 'activos' && !isActivo) {
+          return false
+        }
+        if (statusColaborador === 'inactivos' && isActivo) {
+          return false
+        }
+      }
       
       return true
     })
-  }, [allEntries, users, selectedMonth, selectedYear, selectedColaborador, selectedCliente, departamentoFilter])
+  }, [allEntries, users, selectedMonth, selectedYear, selectedColaborador, selectedCliente, departamentoFilter, statusColaborador])
 
   // Calculate client summaries from filtered entries
   const clientSummaries: ClientSummary[] = useMemo(() => {
@@ -210,7 +226,15 @@ export default function ControlHorasPage() {
     const totalHoursColab = Object.values(colabHoursMap).reduce((acc, c) => acc + c.hours, 0)
     
     return users
-      .filter((user) => colabHoursMap[user.id])
+      .filter((user) => {
+        // Only show users that have hours and match status filter
+        if (!colabHoursMap[user.id]) return false
+        
+        const isActivo = user.activo ?? true
+        if (statusColaborador === 'activos' && !isActivo) return false
+        if (statusColaborador === 'inactivos' && isActivo) return false
+        return true
+      })
       .map((user) => {
         const data = colabHoursMap[user.id] || { hours: 0, billableHours: 0 }
         const userName = `${user.nombre}${user.apellido ? ` ${user.apellido}` : ''}`
@@ -224,14 +248,27 @@ export default function ControlHorasPage() {
         }
       })
       .sort((a, b) => b.hours - a.hours)
-  }, [users, filteredEntries])
+  }, [users, filteredEntries, statusColaborador])
 
   // Calculate collaborator-client matrix
   const collaboratorClientMatrix = useMemo(() => {
     const matrix: Record<string, Record<string, number>> = {}
     
+    // Build map of colaborador status
+    const colaboradorStatus: Record<string, boolean> = {}
+    users.forEach((u) => {
+      colaboradorStatus[u.id] = u.activo ?? true
+    })
+    
     filteredEntries.forEach((entry) => {
       if (entry.colaborador_id && entry.cliente_id) {
+        // Filter by status
+        const isActivo = colaboradorStatus[entry.colaborador_id] ?? true
+        if (statusColaborador !== 'todos') {
+          if (statusColaborador === 'activos' && !isActivo) return
+          if (statusColaborador === 'inactivos' && isActivo) return
+        }
+        
         if (!matrix[entry.colaborador_id]) {
           matrix[entry.colaborador_id] = {}
         }
@@ -249,7 +286,7 @@ export default function ControlHorasPage() {
       clientIds,
       collaboratorIds: Object.keys(matrix)
     }
-  }, [filteredEntries])
+  }, [filteredEntries, users, statusColaborador])
 
   // Per-unidad de negocio summary (uses the client's PRIMARY unidad = first in array)
   const UNIDADES = ['MDK', 'Aurelia', 'Consultoría'] as const
@@ -288,6 +325,12 @@ export default function ControlHorasPage() {
       clientPrimaryUnidad[c.id] = (c.unidades_negocio as string[] | undefined)?.[0]
     })
 
+    // Build map of colaborador status
+    const colaboradorStatus: Record<string, boolean> = {}
+    users.forEach((u) => {
+      colaboradorStatus[u.id] = u.activo ?? true
+    })
+
     const userName = (id: string) => {
       const u = users.find((x) => x.id === id)
       return u ? `${u.nombre}${u.apellido ? ` ${u.apellido}` : ''}` : 'Desconocido'
@@ -305,6 +348,13 @@ export default function ControlHorasPage() {
       if (!cid || !entry.colaborador_id) return
       // Filter by active unidad tab (using the client's PRIMARY unidad)
       if (unidadTab !== 'all' && clientPrimaryUnidad[cid] !== unidadTab) return
+
+      // Double-check status filter here (should already be in filteredEntries, but be explicit)
+      const isActivo = colaboradorStatus[entry.colaborador_id] ?? true
+      if (statusColaborador !== 'todos') {
+        if (statusColaborador === 'activos' && !isActivo) return
+        if (statusColaborador === 'inactivos' && isActivo) return
+      }
 
       if (!map[cid]) map[cid] = { hours: 0, colaboradores: {} }
       const hours = (entry.duracion_seg || 0) / 3600
@@ -327,7 +377,7 @@ export default function ControlHorasPage() {
           .sort((a, b) => b.hours - a.hours),
       }))
       .sort((a, b) => b.hours - a.hours)
-  }, [clients, users, filteredEntries, unidadTab])
+  }, [clients, users, filteredEntries, unidadTab, statusColaborador])
 
   // Calculate daily hours for the chart (with optional collaborator filter)
   const dailyHours = useMemo(() => {
@@ -474,11 +524,17 @@ export default function ControlHorasPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los colaboradores</SelectItem>
-            {users.map((user) => (
-              <SelectItem key={user.id} value={user.id}>
-                {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
-              </SelectItem>
-            ))}
+            {users
+              .filter(user => {
+                if (statusColaborador === 'todos') return true
+                const isActivo = user.activo ?? true
+                return statusColaborador === 'activos' ? isActivo : !isActivo
+              })
+              .map((user) => (
+                <SelectItem key={user.id} value={user.id}>
+                  {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
 
@@ -513,6 +569,22 @@ export default function ControlHorasPage() {
                 {dep.nombre}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+
+        {/* Status Filter */}
+        <Select value={statusColaborador} onValueChange={(v) => {
+          setStatusColaborador(v as 'activos' | 'inactivos' | 'todos')
+          // Reset colaborador filter when status changes to avoid showing wrong data
+          setSelectedColaborador('all')
+        }}>
+          <SelectTrigger className="w-[170px]">
+            <SelectValue placeholder="Estado" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="activos">Activos</SelectItem>
+            <SelectItem value="inactivos">Inactivos</SelectItem>
+            <SelectItem value="todos">Todos</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -570,6 +642,7 @@ export default function ControlHorasPage() {
             colaboradorId={selectedColaborador !== 'all' ? selectedColaborador : undefined}
             clienteId={selectedCliente !== 'all' ? selectedCliente : undefined}
             departamento={departamentoFilter}
+            statusColaborador={statusColaborador}
           />
         </TabsContent>
 

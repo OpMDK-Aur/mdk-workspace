@@ -59,6 +59,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [pmFilter, setPmFilter] = useState<string | null>(projectManagerId || null)
   const [amFilter, setAmFilter] = useState<string | null>(accountManagerId || null)
   const [projectManagers, setProjectManagers] = useState<Array<{ id: string; full_name: string | null; email: string }>>([])
@@ -172,49 +173,136 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
   const handleSave = async () => {
     setSaving(true)
     
-    // Insert into history
-    const { data, error } = await supabase
-      .from('cliente_nps_historial')
-      .insert({
-        cliente_id: clientId,
-        score: form.score,
-        comentario: form.comentario.trim() || null,
-        fecha: form.fecha,
-        encuestado_nombre: form.encuestado_nombre.trim() || null,
-        encuestado_cargo: form.encuestado_cargo.trim() || null,
-        registrado_por: currentUserId || null,
-      })
-      .select()
-      .single()
+    if (editingId) {
+      // Update existing record
+      const { error } = await supabase
+        .from('cliente_nps_historial')
+        .update({
+          score: form.score,
+          comentario: form.comentario.trim() || null,
+          fecha: form.fecha,
+          encuestado_nombre: form.encuestado_nombre.trim() || null,
+          encuestado_cargo: form.encuestado_cargo.trim() || null,
+        })
+        .eq('id', editingId)
 
-    if (!error && data) {
-      // Add to records and sort by date
-      const newRecords = [...records, data].sort((a, b) => 
-        new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
-      )
-      setRecords(newRecords)
-      
-      // Set current score from most recent record
-      const mostRecent = newRecords[newRecords.length - 1]
-      setCurrentScore(mostRecent.score)
-      
-      // Update clientes table with most recent score
-      await supabase
-        .from('clientes')
-        .update({ nps_score: mostRecent.score })
-        .eq('id', clientId)
+      if (!error) {
+        // Update records array
+        const updatedRecords = records.map(r => 
+          r.id === editingId 
+            ? { ...r, score: form.score, comentario: form.comentario || null, fecha: form.fecha, encuestado_nombre: form.encuestado_nombre || null, encuestado_cargo: form.encuestado_cargo || null }
+            : r
+        ).sort((a, b) => 
+          new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+        )
+        setRecords(updatedRecords)
+        
+        // Set current score from most recent record
+        const mostRecent = updatedRecords[updatedRecords.length - 1]
+        setCurrentScore(mostRecent.score)
+        
+        // Update clientes table with most recent score
+        await supabase
+          .from('clientes')
+          .update({ nps_score: mostRecent.score })
+          .eq('id', clientId)
 
-      setDialogOpen(false)
-      setForm({
-        score: 3,
-        comentario: '',
-        encuestado_nombre: '',
-        encuestado_cargo: '',
-        fecha: new Date().toISOString().split('T')[0],
-      })
+        setDialogOpen(false)
+        setEditingId(null)
+        setForm({
+          score: 3,
+          comentario: '',
+          encuestado_nombre: '',
+          encuestado_cargo: '',
+          fecha: new Date().toISOString().split('T')[0],
+        })
+      }
+    } else {
+      // Insert new record
+      const { data, error } = await supabase
+        .from('cliente_nps_historial')
+        .insert({
+          cliente_id: clientId,
+          score: form.score,
+          comentario: form.comentario.trim() || null,
+          fecha: form.fecha,
+          encuestado_nombre: form.encuestado_nombre.trim() || null,
+          encuestado_cargo: form.encuestado_cargo.trim() || null,
+          registrado_por: currentUserId || null,
+        })
+        .select()
+        .single()
+
+      if (!error && data) {
+        // Add to records and sort by date
+        const newRecords = [...records, data].sort((a, b) => 
+          new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+        )
+        setRecords(newRecords)
+        
+        // Set current score from most recent record
+        const mostRecent = newRecords[newRecords.length - 1]
+        setCurrentScore(mostRecent.score)
+        
+        // Update clientes table with most recent score
+        await supabase
+          .from('clientes')
+          .update({ nps_score: mostRecent.score })
+          .eq('id', clientId)
+
+        setDialogOpen(false)
+        setForm({
+          score: 3,
+          comentario: '',
+          encuestado_nombre: '',
+          encuestado_cargo: '',
+          fecha: new Date().toISOString().split('T')[0],
+        })
+      }
     }
     
     setSaving(false)
+  }
+
+  const handleEdit = (record: NPSRecord) => {
+    setEditingId(record.id)
+    setForm({
+      score: record.score,
+      comentario: record.comentario || '',
+      encuestado_nombre: record.encuestado_nombre || '',
+      encuestado_cargo: record.encuestado_cargo || '',
+      fecha: record.fecha,
+    })
+    setDialogOpen(true)
+  }
+
+  const handleDelete = async (recordId: string) => {
+    if (!confirm('¿Estás seguro de que quieres eliminar este registro?')) return
+    
+    const { error } = await supabase
+      .from('cliente_nps_historial')
+      .delete()
+      .eq('id', recordId)
+
+    if (!error) {
+      const updatedRecords = records.filter(r => r.id !== recordId).sort((a, b) => 
+        new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+      )
+      setRecords(updatedRecords)
+      
+      if (updatedRecords.length > 0) {
+        const mostRecent = updatedRecords[updatedRecords.length - 1]
+        setCurrentScore(mostRecent.score)
+        
+        // Update clientes table with most recent score
+        await supabase
+          .from('clientes')
+          .update({ nps_score: mostRecent.score })
+          .eq('id', clientId)
+      } else {
+        setCurrentScore(null)
+      }
+    }
   }
 
   // Calculate trend
@@ -248,7 +336,19 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
           NPS Score
         </h3>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => {
+          setDialogOpen(open)
+          if (!open) {
+            setEditingId(null)
+            setForm({
+              score: 3,
+              comentario: '',
+              encuestado_nombre: '',
+              encuestado_cargo: '',
+              fecha: new Date().toISOString().split('T')[0],
+            })
+          }
+        }}>
           <DialogTrigger asChild>
             <Button variant="ghost" size="sm" className="h-7 px-2">
               <Plus className="h-4 w-4" />
@@ -256,7 +356,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Registrar Encuesta NPS</DialogTitle>
+              <DialogTitle>{editingId ? 'Editar Encuesta NPS' : 'Registrar Encuesta NPS'}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
@@ -327,7 +427,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
               </div>
               <Button onClick={handleSave} disabled={saving} className="w-full">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Registrar
+                {editingId ? 'Actualizar' : 'Registrar'}
               </Button>
             </div>
           </DialogContent>
@@ -476,17 +576,52 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
               <p className="text-xs font-medium text-muted-foreground uppercase">Historial reciente</p>
               <div className="space-y-1 max-h-44 overflow-y-auto">
                 {filteredRecords.slice(-5).reverse().map(record => (
-                  <div key={record.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 text-sm">
+                  <div key={record.id} className="group flex items-center gap-2 p-2 rounded-lg bg-muted/50 text-sm hover:bg-muted transition-colors">
                     <div className={cn(
                       "w-6 h-6 rounded flex items-center justify-center text-white text-xs font-medium shrink-0",
                       getNPSCategory(record.score).bgColor
                     )}>
                       {record.score}
                     </div>
-                    <span className="flex-1 text-muted-foreground truncate">
-                      {formatDate(record.fecha)}
-                      {record.encuestado_nombre && ` - ${record.encuestado_nombre}`}
-                    </span>
+                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleEdit(record)}>
+                      <div className="text-xs text-muted-foreground">
+                        {formatDate(record.fecha)}
+                      </div>
+                      {record.encuestado_nombre && (
+                        <div className="text-xs truncate">
+                          {record.encuestado_nombre}
+                        </div>
+                      )}
+                      {record.comentario && (
+                        <div className="text-xs text-muted-foreground truncate">
+                          {record.comentario}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleEdit(record)
+                        }}
+                      >
+                        <span className="text-xs">✏️</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-destructive hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDelete(record.id)
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
