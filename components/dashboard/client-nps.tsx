@@ -592,6 +592,11 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
                           {record.encuestado_nombre}
                         </div>
                       )}
+                      {record.comentario && (
+                        <div className="text-xs text-muted-foreground truncate">
+                          {record.comentario}
+                        </div>
+                      )}
                     </div>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button
