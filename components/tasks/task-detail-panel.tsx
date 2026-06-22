@@ -33,6 +33,7 @@ interface Cliente {
   plan?: ClientPlan
 }
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -1618,6 +1619,9 @@ export function TaskDetailPanel() {
   const [filterFechaHasta, setFilterFechaHasta] = useState<string>('')
   const [filterPersonaOpen, setFilterPersonaOpen] = useState(false)
 
+  // Image viewer state
+  const [expandedImage, setExpandedImage] = useState<{ url: string; name: string } | null>(null)
+
   // Description editing state
   const descriptionRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -2266,16 +2270,33 @@ export function TaskDetailPanel() {
                                         <div className="flex flex-wrap gap-1.5 mt-2">
                                           {c.attachments.map((att: { url: string; name: string; mimeType: string }, i: number) => (
                                             att.mimeType.startsWith('image/') ? (
-                                              <img
+                                              <div
                                                 key={i}
-                                                src={att.url}
-                                                alt={att.name}
-                                                className="h-16 w-16 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity border border-border"
-                                              />
+                                                className="relative group"
+                                                onClick={() => setExpandedImage({ url: att.url, name: att.name })}
+                                              >
+                                                <img
+                                                  src={att.url}
+                                                  alt={att.name}
+                                                  className="h-16 w-16 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity border border-border"
+                                                />
+                                                <div className="absolute inset-0 rounded bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                                  <a
+                                                    href={att.url}
+                                                    download={att.name}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="p-1 bg-white/20 rounded hover:bg-white/30 transition-colors"
+                                                    title="Descargar"
+                                                  >
+                                                    <Download className="h-3 w-3 text-white" />
+                                                  </a>
+                                                </div>
+                                              </div>
                                             ) : (
                                               <a
                                                 key={i}
                                                 href={att.url}
+                                                download={att.name}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded border border-border bg-muted hover:bg-accent transition-colors"
@@ -2327,6 +2348,34 @@ export function TaskDetailPanel() {
           onCancel={handleHitoCancel}
         />
       )}
+
+      {/* Image Viewer Dialog */}
+      <Dialog open={!!expandedImage} onOpenChange={() => setExpandedImage(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden p-0">
+          <DialogHeader className="bg-muted/50 p-4 border-b">
+            <DialogTitle className="text-sm">{expandedImage?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center justify-center bg-black/80 p-4" style={{ height: 'calc(90vh - 80px)' }}>
+            {expandedImage && (
+              <>
+                <img
+                  src={expandedImage.url}
+                  alt={expandedImage.name}
+                  className="max-w-full max-h-full object-contain"
+                />
+                <a
+                  href={expandedImage.url}
+                  download={expandedImage.name}
+                  className="absolute bottom-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-white"
+                  title="Descargar"
+                >
+                  <Download className="h-5 w-5" />
+                </a>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   )
 }
