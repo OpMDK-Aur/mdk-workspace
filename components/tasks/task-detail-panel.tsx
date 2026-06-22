@@ -1092,7 +1092,8 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
   const handleSubmit = async () => {
     if (!editorRef.current) return
     const content = editorRef.current.innerHTML.trim()
-    if (!content || content === '<br>') return
+    // Allow submit if there's content OR if there are attachments
+    if ((!content || content === '<br>') && pendingAttachments.length === 0) return
     if (isSubmitting) return
     
     setIsSubmitting(true)
@@ -1332,7 +1333,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
             size="sm"
             className={cn("gap-2 px-4 ml-auto", compact && "h-7 px-2 gap-1 text-xs")}
             onClick={handleSubmit}
-            disabled={isSubmitting}
+            disabled={isSubmitting || ((!editorRef.current?.innerHTML.trim() || editorRef.current?.innerHTML.trim() === '<br>') && pendingAttachments.length === 0)}
           >
             <Send className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} />
             {isSubmitting ? (compact ? 'Env...' : 'Enviando...') : 'Enviar'}
