@@ -172,11 +172,11 @@ export async function POST(req: Request) {
       .order('created_at', { ascending: false })
       .limit(5)
 
-    // Get tasks completed/resolved for this client during the period
+    // Get tasks (completed, resolved, or in progress) for this client during the period
     const { data: clientTareas } = await supabase
       .from('tareas')
       .select('id, titulo, descripcion, estado, fecha_completada, created_at, cliente_id, cliente_ids')
-      .in('estado', ['completada', 'resuelto'])
+      .in('estado', ['completada', 'resuelto', 'en_progreso', 'en progress'])
       .order('fecha_completada', { ascending: false })
       .limit(30)
 
@@ -307,10 +307,6 @@ export async function POST(req: Request) {
     }
 
     console.log('[v0] Total metrics collected:', metricsByAccount.length, { spend: metricsByAccount.reduce((s, m) => s + m.spend, 0), leads: metricsByAccount.reduce((s, m) => s + m.leads, 0) })
-    console.log('[v0] DEBUG - Client:', { id: clientId, nombre: client.business_name, metaAccounts, googleAccounts })
-    console.log('[v0] DEBUG - Tokens:', { meta: !!metaAccessToken, google: !!googleAccessToken, googleDev: !!googleDeveloperToken })
-    console.log('[v0] DEBUG - Selected cuentas:', selectedCuentas)
-    console.log('[v0] DEBUG - Metrics by account:', JSON.stringify(metricsByAccount, null, 2))
 
     // Build context
     const clienteMemoriaText = memoria?.map(m => `- ${m.contenido}`).join('\n') || 'Sin historial'
@@ -332,8 +328,13 @@ export async function POST(req: Request) {
         }).join('\n')
       : 'Sin tareas registradas en este periodo'
     
+    // Format period for display
+    const periodoTexto = periodo?.start && periodo?.end 
+      ? `${periodo.start} al ${periodo.end}`
+      : 'últimos 7 días'
+
     // Build metrics text from real account data
-    let metricasText = 'Sin metricas disponibles'
+    let metricasText = 'Sin métricas disponibles en este período'
     if (metricsByAccount.length > 0) {
       const totalSpend = metricsByAccount.reduce((sum, m) => sum + m.spend, 0)
       const totalLeads = metricsByAccount.reduce((sum, m) => sum + m.leads, 0)
@@ -341,7 +342,9 @@ export async function POST(req: Request) {
       const totalImpressions = metricsByAccount.reduce((sum, m) => sum + m.impressions, 0)
       const totalClicks = metricsByAccount.reduce((sum, m) => sum + m.clicks, 0)
 
-      metricasText = `RESUMEN GLOBAL (últimos 7 días):
+      // Only show detailed metrics if there's actual data
+      if (totalSpend > 0 || totalLeads > 0 || totalImpressions > 0 || totalClicks > 0) {
+        metricasText = `RESUMEN GLOBAL (${periodoTexto}):
 - Inversión total: $${totalSpend.toFixed(2)}
 - Leads/Conversiones totales: ${totalLeads}
 - CPL promedio: $${totalCpl.toFixed(2)}
@@ -352,12 +355,10 @@ DESGLOSE POR CUENTA:
 ${metricsByAccount.map(m => 
   `• ${m.platform} (${m.account}): $${m.spend.toFixed(2)} invertido, ${m.leads} leads, CPL: $${m.cpl.toFixed(2)}`
 ).join('\n')}`
+      } else {
+        metricasText = `Cuentas conectadas en período (${periodoTexto}): ${metricsByAccount.map(m => `${m.platform} (${m.account})`).join(', ')}\nSin datos de gasto o conversiones registrados.`
+      }
     }
-
-    // Format period for display
-    const periodoTexto = periodo?.start && periodo?.end 
-      ? `${periodo.start} al ${periodo.end}`
-      : 'últimos 7 días'
 
     const tipoMensaje = tipo === 'inicio' ? 'inicio de semana' : 'cierre de semana'
     const cuentasText = metricsByAccount.length > 0 
