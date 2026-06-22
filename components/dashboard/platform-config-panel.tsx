@@ -45,6 +45,10 @@ interface ClientItem {
   crm_type: string | null
   ghl_location_id: string | null
   ghl_token: string | null
+  project_manager_id?: string | null
+  project_manager_name?: string | null
+  account_manager_id?: string | null
+  account_manager_name?: string | null
 }
 
 interface MetaAccount {
@@ -450,6 +454,11 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [autoSaving, setAutoSaving] = useState(false)
 
+  // Filters
+  const [filterClientName, setFilterClientName] = useState('')
+  const [filterProjectManager, setFilterProjectManager] = useState('')
+  const [filterAccountManager, setFilterAccountManager] = useState('')
+
   useEffect(() => {
     fetchMetaAccounts()
     fetchGoogleAccounts()
@@ -591,19 +600,88 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     setGoogleMatchResults(prev => ({ ...prev, [clientId]: { status: 'manual', candidates: [] } }))
   }
 
-  const connectedCount = clients.filter(c => configs[c.id]?.meta || configs[c.id]?.google).length
+  // Get unique project managers and account managers for filter dropdowns
+  const projectManagers = Array.from(new Map(
+    clients
+      .filter(c => c.project_manager_name)
+      .map(c => [c.project_manager_id, c.project_manager_name])
+  ).values())
+  
+  const accountManagers = Array.from(new Map(
+    clients
+      .filter(c => c.account_manager_name)
+      .map(c => [c.account_manager_id, c.account_manager_name])
+  ).values())
+
+  // Filter clients based on selected filters
+  const filteredClients = clients.filter(c => {
+    const matchesClient = c.business_name.toLowerCase().includes(filterClientName.toLowerCase())
+    const matchesProjectManager = !filterProjectManager || c.project_manager_name?.toLowerCase().includes(filterProjectManager.toLowerCase())
+    const matchesAccountManager = !filterAccountManager || c.account_manager_name?.toLowerCase().includes(filterAccountManager.toLowerCase())
+    return matchesClient && matchesProjectManager && matchesAccountManager
+  })
+
+  const connectedCount = filteredClients.filter(c => configs[c.id]?.meta || configs[c.id]?.google).length
   const alertCount =
-    Object.values(matchResults).filter(r => r.status === 'not_found' || r.status === 'multiple').length +
-    Object.values(googleMatchResults).filter(r => r.status === 'not_found' || r.status === 'multiple').length
+    filteredClients.filter(c => {
+      const match = matchResults[c.id]
+      const googleMatch = googleMatchResults[c.id]
+      return match?.status === 'not_found' || match?.status === 'multiple' || googleMatch?.status === 'not_found'
+    }).length
 
   return (
     <div className="space-y-4">
+      {/* Filters */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Cliente</Label>
+          <Input
+            placeholder="Buscar por nombre..."
+            value={filterClientName}
+            onChange={(e) => setFilterClientName(e.target.value)}
+            className="h-8 text-sm"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Project Manager</Label>
+          <Select value={filterProjectManager} onValueChange={setFilterProjectManager}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Todos</SelectItem>
+              {projectManagers.map((pm) => (
+                <SelectItem key={pm} value={pm}>
+                  {pm}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Account Manager</Label>
+          <Select value={filterAccountManager} onValueChange={setFilterAccountManager}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Todos</SelectItem>
+              {accountManagers.map((am) => (
+                <SelectItem key={am} value={am}>
+                  {am}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       {/* Header bar */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
           <span>
             <span className="font-semibold text-foreground">{connectedCount}</span> de{' '}
-            <span className="font-semibold text-foreground">{clients.length}</span> clientes conectados
+            <span className="font-semibold text-foreground">{filteredClients.length}</span> clientes conectados
           </span>
           {alertCount > 0 && (
             <Badge variant="outline" className="border-amber-500/40 text-amber-600 bg-amber-500/5 text-xs gap-1">

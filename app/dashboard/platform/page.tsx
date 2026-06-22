@@ -20,7 +20,19 @@ export default async function PlatformPage() {
 
   const { data: clientes } = await supabase
     .from('clientes')
-    .select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, crm_type, ghl_location_id, ghl_token')
+    .select(`
+      id, 
+      nombre_del_negocio, 
+      meta_ads_account_id, 
+      google_ads_customer_id, 
+      crm_type, 
+      ghl_location_id, 
+      ghl_token,
+      project_manager_id,
+      account_manager_id,
+      colaboradores_project_manager: colaboradores!project_manager_id(full_name),
+      colaboradores_account_manager: colaboradores!account_manager_id(full_name)
+    `)
     .order('nombre_del_negocio')
 
   return (
@@ -42,6 +54,10 @@ export default async function PlatformPage() {
           crm_type: c.crm_type,
           ghl_location_id: c.ghl_location_id,
           ghl_token: c.ghl_token,
+          project_manager_id: c.project_manager_id,
+          project_manager_name: c.colaboradores_project_manager?.full_name,
+          account_manager_id: c.account_manager_id,
+          account_manager_name: c.colaboradores_account_manager?.full_name,
         }))} />
       </div>
     </div>
