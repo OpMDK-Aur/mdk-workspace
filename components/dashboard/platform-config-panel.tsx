@@ -631,13 +631,6 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     
     return matchesClient && matchesProjectManager && matchesAccountManager && matchesConnected
   })
-  
-  console.log("[v0] Sample clients with managers:", clients.slice(0, 2).map(c => ({
-    nombre: c.business_name,
-    project_manager_name: c.project_manager_name,
-    account_manager_name: c.account_manager_name
-  })))
-  console.log("[v0] Project managers set:", projectManagers)
 
   const connectedCount = filteredClients.filter(c => configs[c.id]?.meta || configs[c.id]?.google).length
   const alertCount =

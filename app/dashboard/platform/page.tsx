@@ -33,20 +33,12 @@ export default async function PlatformPage() {
     `)
     .order('nombre_del_negocio')
 
-  // Fetch manager names separately if needed
-  const managerIds = new Set<string>(
-    clientes?.flatMap(c => [c.project_manager_id, c.account_manager_id]).filter(Boolean) as string[] || []
-  )
-  
-  const managerIdsList = Array.from(managerIds)
-  
-  const { data: managers } = managerIdsList.length > 0 ? await supabase
+  // Fetch all colaboradores once to use as a map
+  const { data: allColaboradores } = await supabase
     .from('colaboradores')
     .select('id, full_name')
-    .in('id', managerIdsList)
-    : { data: [] }
 
-  const managerMap = new Map(managers?.map(m => [m.id, m.full_name]) || [])
+  const managerMap = new Map(allColaboradores?.map(m => [m.id, m.full_name]) || [])
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-8">
