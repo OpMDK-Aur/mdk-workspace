@@ -481,7 +481,7 @@ IMPORTANTE:
     }]
     const modelMessages = await convertToModelMessages(userMessage)
 
-    const result = streamText({
+    const result = await streamText({
       model: 'openai/gpt-4o-mini',
       system: systemPrompt,
       messages: modelMessages,
