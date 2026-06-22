@@ -458,6 +458,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [filterClientName, setFilterClientName] = useState('__all__')
   const [filterProjectManager, setFilterProjectManager] = useState('__all__')
   const [filterAccountManager, setFilterAccountManager] = useState('__all__')
+  const [filterConnected, setFilterConnected] = useState<'__all__' | 'connected' | 'not_connected'>('__all__')
 
   useEffect(() => {
     fetchMetaAccounts()
@@ -622,8 +623,21 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     const matchesClient = filterClientName === '__all__' || c.business_name === filterClientName
     const matchesProjectManager = filterProjectManager === '__all__' || c.project_manager_name === filterProjectManager
     const matchesAccountManager = filterAccountManager === '__all__' || c.account_manager_name === filterAccountManager
-    return matchesClient && matchesProjectManager && matchesAccountManager
+    
+    const isConnected = configs[c.id]?.meta || configs[c.id]?.google
+    const matchesConnected = filterConnected === '__all__' || 
+      (filterConnected === 'connected' && isConnected) ||
+      (filterConnected === 'not_connected' && !isConnected)
+    
+    return matchesClient && matchesProjectManager && matchesAccountManager && matchesConnected
   })
+  
+  console.log("[v0] Sample clients with managers:", clients.slice(0, 2).map(c => ({
+    nombre: c.business_name,
+    project_manager_name: c.project_manager_name,
+    account_manager_name: c.account_manager_name
+  })))
+  console.log("[v0] Project managers set:", projectManagers)
 
   const connectedCount = filteredClients.filter(c => configs[c.id]?.meta || configs[c.id]?.google).length
   const alertCount =
@@ -636,7 +650,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Cliente</Label>
           <Select value={filterClientName} onValueChange={setFilterClientName}>
@@ -682,6 +696,19 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                   {am}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Conexión</Label>
+          <Select value={filterConnected} onValueChange={(value: any) => setFilterConnected(value)}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Todos</SelectItem>
+              <SelectItem value="connected">Conectadas</SelectItem>
+              <SelectItem value="not_connected">No conectadas</SelectItem>
             </SelectContent>
           </Select>
         </div>
