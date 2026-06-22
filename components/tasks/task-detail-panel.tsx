@@ -407,6 +407,15 @@ function RichTextEditor({
     }
   }
 
+  // Handle paste event to paste as plain text
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const text = e.clipboardData.getData('text/plain')
+    if (text) {
+      document.execCommand('insertText', false, text)
+    }
+  }
+
   // Check if cursor is inside a table
   const checkTableContext = () => {
     const selection = window.getSelection()
@@ -620,6 +629,7 @@ function RichTextEditor({
         ref={editorRef}
         contentEditable
         onInput={handleInput}
+        onPaste={handlePaste}
         onClick={checkTableContext}
         onKeyUp={checkTableContext}
         className="min-h-[120px] p-3 text-sm focus:outline-none prose prose-sm prose-invert max-w-none [&_table]:w-full [&_th]:bg-muted [&_td]:p-2 [&_th]:p-2 [&_td]:border [&_th]:border [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-md [&_blockquote]:border-l-2 [&_blockquote]:border-primary [&_blockquote]:pl-3 [&_blockquote]:italic"
@@ -909,9 +919,12 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
   // Handle paste event - insert images inline
   const handlePaste = async (e: React.ClipboardEvent<HTMLDivElement>) => {
     const items = e.clipboardData?.items
-    if (!items) return
+    const text = e.clipboardData?.getData('text/plain')
+    
+    if (!items && !text) return
 
-    for (const item of Array.from(items)) {
+    // Handle images
+    for (const item of Array.from(items || [])) {
       if (item.type.startsWith('image/')) {
         e.preventDefault()
         const file = item.getAsFile()
@@ -946,6 +959,12 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
           reader.readAsDataURL(file)
         }
       }
+    }
+
+    // Handle text paste - convert to plain text to remove formatting
+    if (text && items && Array.from(items).some(item => !item.type.startsWith('image/'))) {
+      e.preventDefault()
+      document.execCommand('insertText', false, text)
     }
   }
 
