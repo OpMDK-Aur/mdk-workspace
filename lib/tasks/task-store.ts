@@ -708,7 +708,7 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
   }
 }
 
-// ���─ Store ──────────────────────────────────────────────────────────────────�������──
+// ���─ Store ──────────────────────────────────────────────────────────────────���������──
 
 // Advanced filter types
 export interface FilterRule {
@@ -1794,6 +1794,7 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
       autor_id: userId === 'system' ? null : userId,
       autor_nombre: userName,
       es_sistema: userName === 'Madky',
+      adjuntos: attachments.length > 0 ? attachments : null,
     }
 
     // Insert comment into Supabase
@@ -1852,6 +1853,7 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
                   userName,
                   userAvatar,
                   createdAt: now,
+                  attachments: attachments.length > 0 ? attachments : undefined,
                 },
               ],
               updatedAt: now,
