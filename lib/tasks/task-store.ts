@@ -929,6 +929,7 @@ export const useTaskStore = create<TaskStore>()(
         }
         
         if (comentarios && comentarios.length > 0) {
+          console.log('[v0] Loaded comments:', comentarios.map(c => ({ id: c.id, contenido: c.contenido.substring(0, 20), adjuntos: (c as any).adjuntos })))
           // Enrich comments with user avatars from colaboradores table
           const userIds = [...new Set(comentarios.map(c => c.autor_id).filter(Boolean))] as string[]
           
