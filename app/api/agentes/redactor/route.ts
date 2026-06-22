@@ -49,40 +49,69 @@ export async function POST(req: Request) {
       }
     }
 
+    // Get advertising account metrics
+    let metricsText = ''
+    const startDate = periodo?.start || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const endDate = periodo?.end || new Date().toISOString().split('T')[0]
+    
+    // Try to get metrics from agentes_metricas or similar table if available
+    const { data: metricsData } = await supabase
+      .from('agentes_metricas')
+      .select('*')
+      .eq('cliente_id', clientId)
+      .gte('fecha', startDate)
+      .lte('fecha', endDate)
+      .order('fecha', { ascending: false })
+      .limit(1)
+    
+    if (metricsData && metricsData.length > 0) {
+      const metric = metricsData[0]
+      metricsText = `\n\nMétricas del Período (${startDate} al ${endDate}):\n`
+      if (metric.gasto_total) metricsText += `• Inversión: $${parseFloat(metric.gasto_total).toFixed(2)}\n`
+      if (metric.leads) metricsText += `• Leads/Conversiones: ${metric.leads}\n`
+      if (metric.cpl) metricsText += `• CPL Promedio: $${parseFloat(metric.cpl).toFixed(2)}\n`
+      if (metric.impresiones) metricsText += `• Impresiones: ${metric.impresiones.toLocaleString()}\n`
+      if (metric.clics) metricsText += `• Clics: ${metric.clics.toLocaleString()}\n`
+    }
+
     // Build system prompt with template format
     const tasksText = tasks && tasks.length > 0
       ? tasks.map(t => `• ${t.titulo}${t.descripcion ? ': ' + t.descripcion.substring(0, 80) : ''}`).join('\n')
       : 'Sin tareas registradas'
 
-    const systemPrompt = `You are a professional copywriter for a digital marketing agency. Your role is to generate personalized, contextual messages for clients.
+    const systemPrompt = `Eres un redactor profesional de una agencia digital. Tu rol es generar mensajes personalizados y contextualizados para clientes.
 
-# Client Information
-**Name:** ${client.nombre_del_negocio || 'Not specified'}
-**Industry:** ${client.industria || 'Not specified'}
-**Contact:** ${client.contacto_principal || 'Not specified'}
+# INFORMACIÓN DEL CLIENTE
+Nombre: ${client.nombre_del_negocio || 'No especificado'}
+Industria: ${client.industria || 'No especificada'}
+Contacto Principal: ${client.contacto_principal || 'No especificado'}
 
-# Recent Work
-${tasksText}${comentariosText}
+# TRABAJO RECIENTE
+${tasksText}${comentariosText}${metricsText}
 
-# Message Requirements
-Generate a professional ${tipo || 'welcome'} message that:
-- Is warm, professional, and personal
-- References specific client context when relevant
-- Shows understanding of their business
-- Includes a clear call-to-action
-- Is concise (3-4 paragraphs max)
-- In Spanish, using natural conversational tone
+# INSTRUCCIONES PARA EL MENSAJE
+Genera un mensaje de ${tipo || 'bienvenida'} que:
+- Sea cálido, profesional y personalizado
+- Incluya datos específicos del cliente y sus campañas cuando sea relevante
+- Demuestre comprensión profunda de su negocio
+- Incluya una llamada a la acción clara
+- Tenga 3-4 párrafos máximo
+- Esté completamente en español con tono natural
 
-# Format Template
-Subject: [Compelling subject line]
+# PLANTILLA OBLIGATORIA
+El mensaje DEBE seguir exactamente esta estructura:
 
-[Greeting with personalization]
+Asunto: [Línea de asunto compelling y personalizada]
 
-[Main content - 2-3 sentences about their work/achievements]
+[Saludo personalizado con el nombre del cliente]
 
-[Call to action or next steps]
+[Párrafo principal: menciona logros específicos, trabajos recientes o métricas si están disponibles]
 
-[Professional sign-off with sender name and title]`
+[Párrafo 2: propuesta de valor o siguiente paso]
+
+[Despedida profesional con nombre y cargo]
+
+IMPORTANTE: Respeta esta estructura exactamente. No omitas ninguna sección.`
 
     const userMessage: CoreMessage = {
       role: 'user',
