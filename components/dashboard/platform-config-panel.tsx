@@ -455,9 +455,9 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [autoSaving, setAutoSaving] = useState(false)
 
   // Filters
-  const [filterClientName, setFilterClientName] = useState('')
-  const [filterProjectManager, setFilterProjectManager] = useState('')
-  const [filterAccountManager, setFilterAccountManager] = useState('')
+  const [filterClientName, setFilterClientName] = useState('__all__')
+  const [filterProjectManager, setFilterProjectManager] = useState('__all__')
+  const [filterAccountManager, setFilterAccountManager] = useState('__all__')
 
   useEffect(() => {
     fetchMetaAccounts()
@@ -616,12 +616,20 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     }
   })
   const accountManagers = Array.from(accountManagersSet).sort()
+  
+  console.log("[v0] Project managers extracted:", projectManagers)
+  console.log("[v0] Account managers extracted:", accountManagers)
+  console.log("[v0] First 3 clients:", clients.slice(0, 3).map(c => ({
+    nombre: c.business_name,
+    project_manager_name: c.project_manager_name,
+    account_manager_name: c.account_manager_name
+  })))
 
   // Filter clients based on selected filters
   const filteredClients = clients.filter(c => {
-    const matchesClient = c.business_name.toLowerCase().includes(filterClientName.toLowerCase())
-    const matchesProjectManager = filterProjectManager === '__all__' || !filterProjectManager || c.project_manager_name?.toLowerCase().includes(filterProjectManager.toLowerCase())
-    const matchesAccountManager = filterAccountManager === '__all__' || !filterAccountManager || c.account_manager_name?.toLowerCase().includes(filterAccountManager.toLowerCase())
+    const matchesClient = filterClientName === '__all__' || c.business_name === filterClientName
+    const matchesProjectManager = filterProjectManager === '__all__' || c.project_manager_name === filterProjectManager
+    const matchesAccountManager = filterAccountManager === '__all__' || c.account_manager_name === filterAccountManager
     return matchesClient && matchesProjectManager && matchesAccountManager
   })
 
@@ -639,12 +647,19 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Cliente</Label>
-          <Input
-            placeholder="Buscar por nombre..."
-            value={filterClientName}
-            onChange={(e) => setFilterClientName(e.target.value)}
-            className="h-8 text-sm"
-          />
+          <Select value={filterClientName} onValueChange={setFilterClientName}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Todos</SelectItem>
+              {clients.map((c) => (
+                <SelectItem key={c.id} value={c.business_name}>
+                  {c.business_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Project Manager</Label>
