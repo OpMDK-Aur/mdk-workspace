@@ -307,6 +307,10 @@ export async function POST(req: Request) {
     }
 
     console.log('[v0] Total metrics collected:', metricsByAccount.length, { spend: metricsByAccount.reduce((s, m) => s + m.spend, 0), leads: metricsByAccount.reduce((s, m) => s + m.leads, 0) })
+    console.log('[v0] DEBUG - Client:', { id: clientId, nombre: client.business_name, metaAccounts, googleAccounts })
+    console.log('[v0] DEBUG - Tokens:', { meta: !!metaAccessToken, google: !!googleAccessToken, googleDev: !!googleDeveloperToken })
+    console.log('[v0] DEBUG - Selected cuentas:', selectedCuentas)
+    console.log('[v0] DEBUG - Metrics by account:', JSON.stringify(metricsByAccount, null, 2))
 
     // Build context
     const clienteMemoriaText = memoria?.map(m => `- ${m.contenido}`).join('\n') || 'Sin historial'
