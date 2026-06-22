@@ -14,23 +14,17 @@ async function fetchMetaMetrics(
   periodo?: { start: string; end: string }
 ): Promise<{ spend: number; leads: number; cpl: number; impressions: number; clicks: number } | null> {
   try {
-    console.log('[v0] fetchMetaMetrics - Starting for account:', accountId)
-    
     // Build date params
     const today = new Date()
     const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
     const startDate = periodo?.start || sevenDaysAgo.toISOString().split('T')[0]
     const endDate = periodo?.end || today.toISOString().split('T')[0]
     
-    console.log('[v0] fetchMetaMetrics - Date range:', { startDate, endDate })
-    
     const timeRange = JSON.stringify({ since: startDate, until: endDate })
     const fields = 'impressions,clicks,spend,actions'
     
     const cleanAccountId = accountId.replace('act_', '')
     const url = `https://graph.facebook.com/${META_API_VERSION}/act_${cleanAccountId}/insights?access_token=${accessToken}&fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=account`
-    
-    console.log('[v0] fetchMetaMetrics - URL:', url.substring(0, 100) + '...')
     
     const response = await fetch(url)
     if (!response.ok) {
@@ -40,10 +34,8 @@ async function fetchMetaMetrics(
     }
     
     const data = await response.json()
-    console.log('[v0] fetchMetaMetrics - Response data:', JSON.stringify(data).substring(0, 200))
     
     if (!data.data || data.data.length === 0) {
-      console.log('[v0] fetchMetaMetrics - No data returned')
       return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0 }
     }
     
@@ -65,8 +57,6 @@ async function fetchMetaMetrics(
     
     const cpl = leads > 0 ? spend / leads : 0
     
-    console.log('[v0] fetchMetaMetrics - Result:', { spend, leads, cpl, impressions, clicks })
-    
     return { spend, leads, cpl, impressions, clicks }
   } catch (error) {
     console.error('[v0] Error fetching Meta metrics:', error)
@@ -83,14 +73,10 @@ async function fetchGoogleMetrics(
   periodo?: { start: string; end: string }
 ): Promise<{ spend: number; leads: number; cpl: number; impressions: number; clicks: number } | null> {
   try {
-    console.log('[v0] fetchGoogleMetrics - Starting for customer:', customerId)
-    
     const today = new Date()
     const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
     const startDate = periodo?.start || sevenDaysAgo.toISOString().split('T')[0]
     const endDate = periodo?.end || today.toISOString().split('T')[0]
-    
-    console.log('[v0] fetchGoogleMetrics - Date range:', { startDate, endDate })
     
     const cleanCustomerId = customerId.replace(/-/g, '')
     
@@ -103,8 +89,6 @@ async function fetchGoogleMetrics(
       FROM customer
       WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
     `
-    
-    console.log('[v0] fetchGoogleMetrics - Query:', query.substring(0, 100) + '...')
     
     const response = await fetch(`https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}/googleAds:search`, {
       method: 'POST',
@@ -124,10 +108,8 @@ async function fetchGoogleMetrics(
     }
     
     const data = await response.json()
-    console.log('[v0] fetchGoogleMetrics - Results count:', data.results?.length || 0)
     
     if (!data.results || data.results.length === 0) {
-      console.log('[v0] fetchGoogleMetrics - No results returned')
       return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0 }
     }
     
@@ -147,8 +129,6 @@ async function fetchGoogleMetrics(
     const leads = Math.round(conversions)
     const cpl = leads > 0 ? spend / leads : 0
     
-    console.log('[v0] fetchGoogleMetrics - Result:', { spend, leads, cpl, impressions, clicks })
-    
     return { spend, leads, cpl, impressions, clicks }
   } catch (error) {
     console.error('[v0] Error fetching Google metrics:', error)
@@ -157,10 +137,11 @@ async function fetchGoogleMetrics(
 }
 
 export async function POST(req: Request) {
-  console.log('🔴 REDACTOR API CALLED - TIMESTAMP:', new Date().toISOString())
   try {
     const { clientId, tipo, cuentas, periodo } = await req.json()
-    console.log('[v0] Redactor POST request:', { clientId, tipo, cuentasCount: cuentas?.length || 0, periodo })
+    
+    // Initialize Supabase client
+    const supabase = createClient()
     
     // Get agent config
     const { data: agentConfig } = await supabase
@@ -243,8 +224,6 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log('[v0] Tareas del periodo:', { count: tareasDelPeriodo.length, periodo, comentarios: Object.keys(comentariosMap).length })
-
     // Get access tokens for direct API calls (same approach as the Analista agent)
     // Meta: from environment variable
     const metaAccessToken = process.env.META_ADS_ACCESS_TOKEN
@@ -267,9 +246,6 @@ export async function POST(req: Request) {
     // Determine which accounts to fetch based on selection
     const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
     
-    console.log('[v0] Tokens found:', { meta: !!metaAccessToken, google: !!googleAccessToken, googleDevToken: !!googleDeveloperToken })
-    console.log('[v0] Selected cuentas:', selectedCuentas.length, selectedCuentas)
-    
     // Fetch Meta accounts metrics (check plural first, then singular as fallback)
     const metaAccounts = (client.meta_ads_account_ids && Array.isArray(client.meta_ads_account_ids) && client.meta_ads_account_ids.length > 0)
       ? client.meta_ads_account_ids 
@@ -278,16 +254,12 @@ export async function POST(req: Request) {
         : []
     
     if (metaAccessToken && metaAccounts.length > 0) {
-      console.log('[v0] Meta accounts available:', metaAccounts)
       for (const accountId of metaAccounts) {
         // If cuentas are selected, only fetch those. Otherwise fetch all
         if (selectedCuentas.length > 0 && !selectedCuentas.includes(accountId)) {
-          console.log('[v0] Skipping Meta account (not selected):', accountId)
           continue
         }
-        console.log('[v0] Fetching Meta metrics for:', accountId)
         const metrics = await fetchMetaMetrics(accountId, metaAccessToken, periodo)
-        console.log('[v0] Meta metrics result:', { accountId, ...metrics })
         if (metrics) {
           metricsByAccount.push({
             account: accountId,
@@ -306,16 +278,12 @@ export async function POST(req: Request) {
         : []
     
     if (googleAccessToken && googleDeveloperToken && googleAccounts.length > 0) {
-      console.log('[v0] Google accounts available:', googleAccounts)
       for (const accountId of googleAccounts) {
         // If cuentas are selected, only fetch those. Otherwise fetch all
         if (selectedCuentas.length > 0 && !selectedCuentas.includes(accountId)) {
-          console.log('[v0] Skipping Google account (not selected):', accountId)
           continue
         }
-        console.log('[v0] Fetching Google metrics for:', accountId)
         const metrics = await fetchGoogleMetrics(accountId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, periodo)
-        console.log('[v0] Google metrics result:', { accountId, ...metrics })
         if (metrics) {
           metricsByAccount.push({
             account: accountId,
@@ -325,8 +293,6 @@ export async function POST(req: Request) {
         }
       }
     }
-
-    console.log('[v0] Total metrics collected:', metricsByAccount.length, { spend: metricsByAccount.reduce((s, m) => s + m.spend, 0), leads: metricsByAccount.reduce((s, m) => s + m.leads, 0) })
 
     // Build context
     const clienteMemoriaText = memoria?.map(m => `- ${m.contenido}`).join('\n') || 'Sin historial'
