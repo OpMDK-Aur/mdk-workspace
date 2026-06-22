@@ -173,49 +173,57 @@ export async function POST(req: Request) {
       .limit(5)
 
     // Get tasks completed/resolved for this client during the period
-    const tareasQuery = supabase
-      .from('tareas')
-      .select('titulo, descripcion, estado, fecha_completada, created_at')
-      .in('estado', ['completada', 'resuelto'])
-      .order('fecha_completada', { ascending: false })
-    
-    // Filter by client (can be in cliente_id or cliente_ids array)
-    // We'll fetch all and filter in JS since Supabase doesn't support OR with contains
-    const { data: allTareas } = await tareasQuery
-
-    // Filter tasks that belong to this client
-    const tareas = allTareas?.filter(t => {
-      // Check if task was completed in the selected period
-      const completedDate = t.fecha_completada || t.created_at
-      if (periodo?.start && periodo?.end && completedDate) {
-        const taskDate = completedDate.split('T')[0]
-        if (taskDate < periodo.start || taskDate > periodo.end) {
-          return false
-        }
-      }
-      return true
-    }).slice(0, 10) || []
-
-    // Also get tasks specifically for this client
     const { data: clientTareas } = await supabase
       .from('tareas')
-      .select('titulo, descripcion, estado, fecha_completada, created_at')
-      .or(`cliente_id.eq.${clientId},cliente_ids.cs.{${clientId}}`)
+      .select('id, titulo, descripcion, estado, fecha_completada, created_at, cliente_id, cliente_ids')
       .in('estado', ['completada', 'resuelto'])
       .order('fecha_completada', { ascending: false })
-      .limit(10)
+      .limit(30)
 
-    // Filter by period
-    const tareasDelPeriodo = clientTareas?.filter(t => {
+    // Filter tasks that belong to this client
+    const tareasDelCliente = clientTareas?.filter(t => {
+      if (t.cliente_id === clientId) return true
+      // Check if client ID is in the cliente_ids array
+      if (t.cliente_ids && Array.isArray(t.cliente_ids) && t.cliente_ids.includes(clientId)) {
+        return true
+      }
+      return false
+    }) || []
+
+    // Further filter by period
+    const tareasDelPeriodo = tareasDelCliente.filter(t => {
       const completedDate = t.fecha_completada || t.created_at
       if (periodo?.start && periodo?.end && completedDate) {
         const taskDate = completedDate.split('T')[0]
         return taskDate >= periodo.start && taskDate <= periodo.end
       }
       return true
-    }) || []
+    }).slice(0, 15)
 
-    console.log('[v0] Tareas del periodo:', { count: tareasDelPeriodo.length, periodo })
+    // Get comments for the tasks to include context
+    const tareasIds = tareasDelPeriodo.map(t => t.id)
+    let comentariosMap: Record<string, any[]> = {}
+    
+    if (tareasIds.length > 0) {
+      const { data: comentarios } = await supabase
+        .from('comentarios_tareas')
+        .select('tarea_id, contenido, autor_nombre, created_at')
+        .in('tarea_id', tareasIds)
+        .order('created_at', { ascending: false })
+        .limit(100)
+      
+      if (comentarios) {
+        comentariosMap = comentarios.reduce((acc, c) => {
+          if (!acc[c.tarea_id]) {
+            acc[c.tarea_id] = []
+          }
+          acc[c.tarea_id].push(c)
+          return acc
+        }, {} as Record<string, any[]>)
+      }
+    }
+
+    console.log('[v0] Tareas del periodo:', { count: tareasDelPeriodo.length, periodo, comentarios: Object.keys(comentariosMap).length })
 
     // Get access tokens for direct API calls (same approach as the Analista agent)
     // Meta: from environment variable
@@ -240,65 +248,84 @@ export async function POST(req: Request) {
     const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
     
     console.log('[v0] Tokens found:', { meta: !!metaAccessToken, google: !!googleAccessToken, googleDevToken: !!googleDeveloperToken })
+    console.log('[v0] Selected cuentas:', selectedCuentas.length, selectedCuentas)
     
     // Fetch Meta accounts metrics (check plural first, then singular as fallback)
-    const metaAccounts = client.meta_ads_account_ids?.length 
+    const metaAccounts = (client.meta_ads_account_ids && Array.isArray(client.meta_ads_account_ids) && client.meta_ads_account_ids.length > 0)
       ? client.meta_ads_account_ids 
       : client.meta_ads_account_id 
         ? [client.meta_ads_account_id]
         : []
     
     if (metaAccessToken && metaAccounts.length > 0) {
-      console.log('[v0] Meta accounts to fetch:', metaAccounts)
+      console.log('[v0] Meta accounts available:', metaAccounts)
       for (const accountId of metaAccounts) {
-        if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
-          console.log('[v0] Fetching Meta metrics for:', accountId)
-          const metrics = await fetchMetaMetrics(accountId, metaAccessToken, periodo)
-          console.log('[v0] Meta metrics result:', metrics)
-          if (metrics) {
-            metricsByAccount.push({
-              account: accountId,
-              platform: 'Meta Ads',
-              ...metrics
-            })
-          }
+        // If cuentas are selected, only fetch those. Otherwise fetch all
+        if (selectedCuentas.length > 0 && !selectedCuentas.includes(accountId)) {
+          console.log('[v0] Skipping Meta account (not selected):', accountId)
+          continue
+        }
+        console.log('[v0] Fetching Meta metrics for:', accountId)
+        const metrics = await fetchMetaMetrics(accountId, metaAccessToken, periodo)
+        console.log('[v0] Meta metrics result:', { accountId, ...metrics })
+        if (metrics) {
+          metricsByAccount.push({
+            account: accountId,
+            platform: 'Meta Ads',
+            ...metrics
+          })
         }
       }
     }
 
     // Fetch Google accounts metrics (check plural first, then singular as fallback)
-    const googleAccounts = client.google_ads_customer_ids?.length
+    const googleAccounts = (client.google_ads_customer_ids && Array.isArray(client.google_ads_customer_ids) && client.google_ads_customer_ids.length > 0)
       ? client.google_ads_customer_ids
       : client.google_ads_customer_id
         ? [client.google_ads_customer_id]
         : []
     
     if (googleAccessToken && googleDeveloperToken && googleAccounts.length > 0) {
-      console.log('[v0] Google accounts to fetch:', googleAccounts)
+      console.log('[v0] Google accounts available:', googleAccounts)
       for (const accountId of googleAccounts) {
-        if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
-          console.log('[v0] Fetching Google metrics for:', accountId)
-          const metrics = await fetchGoogleMetrics(accountId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, periodo)
-          console.log('[v0] Google metrics result:', metrics)
-          if (metrics) {
-            metricsByAccount.push({
-              account: accountId,
-              platform: 'Google Ads',
-              ...metrics
-            })
-          }
+        // If cuentas are selected, only fetch those. Otherwise fetch all
+        if (selectedCuentas.length > 0 && !selectedCuentas.includes(accountId)) {
+          console.log('[v0] Skipping Google account (not selected):', accountId)
+          continue
+        }
+        console.log('[v0] Fetching Google metrics for:', accountId)
+        const metrics = await fetchGoogleMetrics(accountId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, periodo)
+        console.log('[v0] Google metrics result:', { accountId, ...metrics })
+        if (metrics) {
+          metricsByAccount.push({
+            account: accountId,
+            platform: 'Google Ads',
+            ...metrics
+          })
         }
       }
     }
 
-    console.log('[v0] Total metrics collected:', metricsByAccount.length)
+    console.log('[v0] Total metrics collected:', metricsByAccount.length, { spend: metricsByAccount.reduce((s, m) => s + m.spend, 0), leads: metricsByAccount.reduce((s, m) => s + m.leads, 0) })
 
     // Build context
     const clienteMemoriaText = memoria?.map(m => `- ${m.contenido}`).join('\n') || 'Sin historial'
     
-    // Build tasks text from completed tasks in the period
+    // Build tasks text from completed tasks in the period, including comments
     const tareasText = tareasDelPeriodo.length > 0
-      ? tareasDelPeriodo.map(t => `- ${t.titulo}${t.descripcion ? `: ${t.descripcion.substring(0, 100)}` : ''}`).join('\n')
+      ? tareasDelPeriodo.map(t => {
+          let taskText = `- **${t.titulo}**${t.descripcion ? `: ${t.descripcion.substring(0, 100)}` : ''}`
+          const comments = comentariosMap[t.id]
+          if (comments && comments.length > 0) {
+            // Include first 2 most relevant comments
+            const firstComments = comments.slice(0, 2).map(c => {
+              const cleanContent = c.contenido.split('|||ATTACHMENTS|||')[0].trim()
+              return `  • ${c.autor_nombre}: ${cleanContent.substring(0, 80)}`
+            }).join('\n')
+            taskText += `\n${firstComments}`
+          }
+          return taskText
+        }).join('\n')
       : 'Sin tareas registradas en este periodo'
     
     // Build metrics text from real account data
