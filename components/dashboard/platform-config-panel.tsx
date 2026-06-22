@@ -601,17 +601,21 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   }
 
   // Get unique project managers and account managers for filter dropdowns
-  const projectManagers = Array.from(new Map(
-    clients
-      .filter(c => c.project_manager_name)
-      .map(c => [c.project_manager_id, c.project_manager_name])
-  ).values())
+  const projectManagersSet = new Set<string>()
+  clients.forEach(c => {
+    if (c.project_manager_name) {
+      projectManagersSet.add(c.project_manager_name)
+    }
+  })
+  const projectManagers = Array.from(projectManagersSet).sort()
   
-  const accountManagers = Array.from(new Map(
-    clients
-      .filter(c => c.account_manager_name)
-      .map(c => [c.account_manager_id, c.account_manager_name])
-  ).values())
+  const accountManagersSet = new Set<string>()
+  clients.forEach(c => {
+    if (c.account_manager_name) {
+      accountManagersSet.add(c.account_manager_name)
+    }
+  })
+  const accountManagers = Array.from(accountManagersSet).sort()
 
   // Filter clients based on selected filters
   const filteredClients = clients.filter(c => {

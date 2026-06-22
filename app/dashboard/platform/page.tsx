@@ -29,11 +29,22 @@ export default async function PlatformPage() {
       ghl_location_id, 
       ghl_token,
       project_manager_id,
-      account_manager_id,
-      colaboradores_project_manager: colaboradores!project_manager_id(full_name),
-      colaboradores_account_manager: colaboradores!account_manager_id(full_name)
+      account_manager_id
     `)
     .order('nombre_del_negocio')
+
+  // Fetch manager names separately if needed
+  const managerIds = new Set(
+    clientes?.flatMap(c => [c.project_manager_id, c.account_manager_id]).filter(Boolean) || []
+  )
+  
+  const { data: managers } = managerIds.size > 0 ? await supabase
+    .from('colaboradores')
+    .select('id, full_name')
+    .in('id', Array.from(managerIds))
+    : { data: [] }
+
+  const managerMap = new Map(managers?.map(m => [m.id, m.full_name]) || [])
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-8">
@@ -55,9 +66,9 @@ export default async function PlatformPage() {
           ghl_location_id: c.ghl_location_id,
           ghl_token: c.ghl_token,
           project_manager_id: c.project_manager_id,
-          project_manager_name: c.colaboradores_project_manager?.full_name,
+          project_manager_name: c.project_manager_id ? managerMap.get(c.project_manager_id) : undefined,
           account_manager_id: c.account_manager_id,
-          account_manager_name: c.colaboradores_account_manager?.full_name,
+          account_manager_name: c.account_manager_id ? managerMap.get(c.account_manager_id) : undefined,
         }))} />
       </div>
     </div>
