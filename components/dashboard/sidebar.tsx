@@ -215,7 +215,7 @@ export function Sidebar({
       const { count, error } = await supabase
         .from('tareas')
         .select('*', { count: 'exact', head: true })
-        .contains('responsable_ids', [profile.id])
+        .or(`responsable_id.eq.${profile.id},responsable_ids.cs.{${profile.id}}`)
         .eq('estado', 'pendiente')
       
       if (!error && count !== null) {
