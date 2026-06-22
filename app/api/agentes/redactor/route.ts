@@ -488,21 +488,23 @@ IMPORTANTE:
       abortSignal: req.signal,
     })
 
-    // Log execution
+    // Log execution (non-blocking)
     supabase.from('agentes_log').insert({
       agente: 'redactor',
-      ejecutado_por: user.id,
       cliente_id: clientId,
-      clientes_auditados: 1,
       estado: 'ok',
-    }).then(() => {})
+    }).catch(err => console.error('[v0] Error logging agent execution:', err))
 
     return result.toUIMessageStreamResponse({
       originalMessages: userMessage,
       consumeSseStream: consumeStream,
     })
   } catch (error) {
-    console.error('Error in redactor agent:', error)
-    return new Response('Internal error', { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.error('[v0] Error in redactor agent:', errorMessage, error)
+    return new Response(JSON.stringify({ error: errorMessage }), { 
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    })
   }
 }
