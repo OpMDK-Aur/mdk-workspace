@@ -100,6 +100,9 @@ import {
   Power,
   Download,
   ExternalLink,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { TaskFilesSection } from './task-files-section'
@@ -1387,7 +1390,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
   )
 }
 
-// ── Custom Fields Component ──────────────────────�������─────����──────────────────────
+// ── Custom Fields Component ──���───────────────────�������─────����──────────────────────
 
 function CustomFields({ task }: { task: Task }) {
   const { addCustomField, removeCustomField, updateTask } = useTaskStore()
@@ -1623,6 +1626,7 @@ export function TaskDetailPanel() {
 
   // Image viewer state
   const [expandedImage, setExpandedImage] = useState<{ url: string; name: string } | null>(null)
+  const [imageZoom, setImageZoom] = useState(100)
 
   // Description editing state
   const descriptionRef = useRef<HTMLDivElement>(null)
@@ -2352,29 +2356,73 @@ export function TaskDetailPanel() {
       )}
 
       {/* Image Viewer Dialog */}
-      <Dialog open={!!expandedImage} onOpenChange={() => setExpandedImage(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden p-0">
-          <DialogHeader className="bg-muted/50 p-4 border-b">
-            <DialogTitle className="text-sm">{expandedImage?.name}</DialogTitle>
+      <Dialog open={!!expandedImage} onOpenChange={() => {
+        setExpandedImage(null)
+        setImageZoom(100)
+      }}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="bg-muted/50 p-4 border-b flex items-center justify-between">
+            <DialogTitle className="text-sm truncate flex-1">{expandedImage?.name}</DialogTitle>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">{imageZoom}%</span>
+            </div>
           </DialogHeader>
-          <div className="flex items-center justify-center bg-black/80 p-4" style={{ height: 'calc(90vh - 80px)' }}>
+          <div className="flex-1 flex items-center justify-center bg-black/80 p-4 overflow-auto">
             {expandedImage && (
-              <>
-                <img
-                  src={expandedImage.url}
-                  alt={expandedImage.name}
-                  className="max-w-full max-h-full object-contain"
-                />
-                <a
-                  href={expandedImage.url}
-                  download={expandedImage.name}
-                  className="absolute bottom-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-white"
-                  title="Descargar"
-                >
-                  <Download className="h-5 w-5" />
-                </a>
-              </>
+              <img
+                src={expandedImage.url}
+                alt={expandedImage.name}
+                style={{ transform: `scale(${imageZoom / 100})` }}
+                className="object-contain transition-transform duration-200"
+                onWheel={(e) => {
+                  e.preventDefault()
+                  const newZoom = Math.max(50, Math.min(300, imageZoom + (e.deltaY > 0 ? -10 : 10)))
+                  setImageZoom(newZoom)
+                }}
+              />
             )}
+          </div>
+          <div className="bg-muted/50 p-4 border-t flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setImageZoom(Math.max(50, imageZoom - 10))}
+              >
+                <ZoomOut className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setImageZoom(100)}
+              >
+                <RotateCw className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setImageZoom(Math.min(300, imageZoom + 10))}
+              >
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => expandedImage && window.open(expandedImage.url, '_blank')}
+                title="Abrir en nueva pestaña"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+              <a
+                href={expandedImage?.url}
+                download={expandedImage?.name}
+                className="inline-flex items-center justify-center rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 text-sm"
+              >
+                <Download className="h-4 w-4" />
+              </a>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
