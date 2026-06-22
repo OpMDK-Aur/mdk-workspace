@@ -708,7 +708,7 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
   }
 }
 
-// ���─ Store ──────────────────────────────────────────────────────────────────�������──
+// ���─ Store ──────────────────────────────────────────────────────────────────�����������──
 
 // Advanced filter types
 export interface FilterRule {
@@ -1852,6 +1852,7 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
                   userName,
                   userAvatar,
                   createdAt: now,
+                  attachments: attachments.length > 0 ? attachments : undefined,
                 },
               ],
               updatedAt: now,

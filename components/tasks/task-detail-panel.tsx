@@ -33,6 +33,7 @@ interface Cliente {
   plan?: ClientPlan
 }
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -97,6 +98,11 @@ import {
   Send,
   FileIcon,
   Power,
+  Download,
+  ExternalLink,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { TaskFilesSection } from './task-files-section'
@@ -407,6 +413,15 @@ function RichTextEditor({
     }
   }
 
+  // Handle paste event to paste as plain text
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const text = e.clipboardData.getData('text/plain')
+    if (text) {
+      document.execCommand('insertText', false, text)
+    }
+  }
+
   // Check if cursor is inside a table
   const checkTableContext = () => {
     const selection = window.getSelection()
@@ -620,6 +635,7 @@ function RichTextEditor({
         ref={editorRef}
         contentEditable
         onInput={handleInput}
+        onPaste={handlePaste}
         onClick={checkTableContext}
         onKeyUp={checkTableContext}
         className="min-h-[120px] p-3 text-sm focus:outline-none prose prose-sm prose-invert max-w-none [&_table]:w-full [&_th]:bg-muted [&_td]:p-2 [&_th]:p-2 [&_td]:border [&_th]:border [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-md [&_blockquote]:border-l-2 [&_blockquote]:border-primary [&_blockquote]:pl-3 [&_blockquote]:italic"
@@ -760,7 +776,7 @@ function TimeTracker({ task }: { task: Task }) {
   )
 }
 
-// ── Files Section ─�����───��───────────────────────────────────────────────────────
+// ── Files Section ─�������───��───────────────────────────────────────────────────────
 
 // ── Comments Section (with rich text editor) ──────────────────────────────────
 
@@ -909,9 +925,12 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
   // Handle paste event - insert images inline
   const handlePaste = async (e: React.ClipboardEvent<HTMLDivElement>) => {
     const items = e.clipboardData?.items
-    if (!items) return
+    const text = e.clipboardData?.getData('text/plain')
+    
+    if (!items && !text) return
 
-    for (const item of Array.from(items)) {
+    // Handle images
+    for (const item of Array.from(items || [])) {
       if (item.type.startsWith('image/')) {
         e.preventDefault()
         const file = item.getAsFile()
@@ -946,6 +965,12 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
           reader.readAsDataURL(file)
         }
       }
+    }
+
+    // Handle text paste - convert to plain text to remove formatting
+    if (text && items && Array.from(items).some(item => !item.type.startsWith('image/'))) {
+      e.preventDefault()
+      document.execCommand('insertText', false, text)
     }
   }
 
@@ -1092,7 +1117,8 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
   const handleSubmit = async () => {
     if (!editorRef.current) return
     const content = editorRef.current.innerHTML.trim()
-    if (!content || content === '<br>') return
+    // Allow submit if there's content OR if there are attachments
+    if ((!content || content === '<br>') && pendingAttachments.length === 0) return
     if (isSubmitting) return
     
     setIsSubmitting(true)
@@ -1292,7 +1318,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
             ref={commentFileInputRef}
             type="file"
             multiple
-            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+            accept="*/*"
             className="hidden"
             onChange={async (e) => {
               const files = Array.from(e.target.files || [])
@@ -1332,7 +1358,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
             size="sm"
             className={cn("gap-2 px-4 ml-auto", compact && "h-7 px-2 gap-1 text-xs")}
             onClick={handleSubmit}
-            disabled={isSubmitting}
+            disabled={isSubmitting || ((!editorRef.current?.innerHTML.trim() || editorRef.current?.innerHTML.trim() === '<br>') && pendingAttachments.length === 0)}
           >
             <Send className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} />
             {isSubmitting ? (compact ? 'Env...' : 'Enviando...') : 'Enviar'}
@@ -1364,7 +1390,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
   )
 }
 
-// ── Custom Fields Component ──────────────────────�������─────����──────────────────────
+// ── Custom Fields Component ──���───────────────────�������─────����──────────────────────
 
 function CustomFields({ task }: { task: Task }) {
   const { addCustomField, removeCustomField, updateTask } = useTaskStore()
@@ -1597,6 +1623,10 @@ export function TaskDetailPanel() {
   const [filterFechaDesde, setFilterFechaDesde] = useState<string>('')
   const [filterFechaHasta, setFilterFechaHasta] = useState<string>('')
   const [filterPersonaOpen, setFilterPersonaOpen] = useState(false)
+
+  // Image viewer state
+  const [expandedImage, setExpandedImage] = useState<{ url: string; name: string } | null>(null)
+  const [imageZoom, setImageZoom] = useState(100)
 
   // Description editing state
   const descriptionRef = useRef<HTMLDivElement>(null)
@@ -2219,7 +2249,73 @@ export function TaskDetailPanel() {
                               <div className={cn(!hasFilters && "pt-2 border-t mt-2")}>
                                 {!hasFilters && <p className="text-xs font-semibold mb-3">Comentarios ({(task.comments || []).length})</p>}
                                 {filteredComments.map((c) => (
-                                  <CommentItem key={c.id} comment={c} taskId={task.id} />
+                                  <div key={c.id} className="group flex items-start gap-3 text-xs mb-3">
+                                    <Avatar className="h-5 w-5 mt-0.5 shrink-0">
+                                      <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
+                                      <AvatarFallback className="text-[8px]">{getInitials(c.userName)}</AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 mb-0.5">
+                                        <span className="text-xs font-medium text-foreground">{c.userName}</span>
+                                        <span className="text-[11px] text-muted-foreground">
+                                          {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
+                                        </span>
+                                        <Button
+                                          variant="ghost" size="icon" className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100"
+                                          onClick={() => deleteComment(task.id, c.id)}
+                                        >
+                                          <X className="h-2.5 w-2.5" />
+                                        </Button>
+                                      </div>
+                                      <div
+                                        className="text-[11px] text-foreground/80 break-words [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity"
+                                        dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
+                                      />
+                                      {/* Attachments */}
+                                      {c.attachments && c.attachments.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5 mt-2">
+                                          {c.attachments.map((att: { url: string; name: string; mimeType: string }, i: number) => (
+                                            att.mimeType.startsWith('image/') ? (
+                                              <div
+                                                key={i}
+                                                className="relative group"
+                                                onClick={() => setExpandedImage({ url: att.url, name: att.name })}
+                                              >
+                                                <img
+                                                  src={att.url}
+                                                  alt={att.name}
+                                                  className="h-16 w-16 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity border border-border"
+                                                />
+                                                <div className="absolute inset-0 rounded bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                                  <a
+                                                    href={att.url}
+                                                    download={att.name}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="p-1 bg-white/20 rounded hover:bg-white/30 transition-colors"
+                                                    title="Descargar"
+                                                  >
+                                                    <Download className="h-3 w-3 text-white" />
+                                                  </a>
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <a
+                                                key={i}
+                                                href={att.url}
+                                                download={att.name}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded border border-border bg-muted hover:bg-accent transition-colors"
+                                              >
+                                                <Paperclip className="h-3 w-3 shrink-0" />
+                                                <span className="max-w-[100px] truncate">{att.name}</span>
+                                              </a>
+                                            )
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
                                 ))}
                               </div>
                             )
@@ -2258,6 +2354,78 @@ export function TaskDetailPanel() {
           onCancel={handleHitoCancel}
         />
       )}
+
+      {/* Image Viewer Dialog */}
+      <Dialog open={!!expandedImage} onOpenChange={() => {
+        setExpandedImage(null)
+        setImageZoom(100)
+      }}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="bg-muted/50 p-4 border-b flex items-center justify-between">
+            <DialogTitle className="text-sm truncate flex-1">{expandedImage?.name}</DialogTitle>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">{imageZoom}%</span>
+            </div>
+          </DialogHeader>
+          <div className="flex-1 flex items-center justify-center bg-black/80 p-4 overflow-auto">
+            {expandedImage && (
+              <img
+                src={expandedImage.url}
+                alt={expandedImage.name}
+                style={{ transform: `scale(${imageZoom / 100})` }}
+                className="object-contain transition-transform duration-200"
+                onWheel={(e) => {
+                  e.preventDefault()
+                  const newZoom = Math.max(50, Math.min(300, imageZoom + (e.deltaY > 0 ? -10 : 10)))
+                  setImageZoom(newZoom)
+                }}
+              />
+            )}
+          </div>
+          <div className="bg-muted/50 p-4 border-t flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setImageZoom(Math.max(50, imageZoom - 10))}
+              >
+                <ZoomOut className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setImageZoom(100)}
+              >
+                <RotateCw className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setImageZoom(Math.min(300, imageZoom + 10))}
+              >
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => expandedImage && window.open(expandedImage.url, '_blank')}
+                title="Abrir en nueva pestaña"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+              <a
+                href={expandedImage?.url}
+                download={expandedImage?.name}
+                className="inline-flex items-center justify-center rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 text-sm"
+              >
+                <Download className="h-4 w-4" />
+              </a>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   )
 }

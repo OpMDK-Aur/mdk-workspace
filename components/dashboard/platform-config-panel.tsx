@@ -45,6 +45,10 @@ interface ClientItem {
   crm_type: string | null
   ghl_location_id: string | null
   ghl_token: string | null
+  project_manager_id?: string | null
+  project_manager_name?: string | null
+  account_manager_id?: string | null
+  account_manager_name?: string | null
 }
 
 interface MetaAccount {
@@ -450,6 +454,12 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [autoSaving, setAutoSaving] = useState(false)
 
+  // Filters
+  const [filterClientName, setFilterClientName] = useState('__all__')
+  const [filterProjectManager, setFilterProjectManager] = useState('__all__')
+  const [filterAccountManager, setFilterAccountManager] = useState('__all__')
+  const [filterConnected, setFilterConnected] = useState<'__all__' | 'connected' | 'not_connected'>('__all__')
+
   useEffect(() => {
     fetchMetaAccounts()
     fetchGoogleAccounts()
@@ -591,19 +601,118 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     setGoogleMatchResults(prev => ({ ...prev, [clientId]: { status: 'manual', candidates: [] } }))
   }
 
-  const connectedCount = clients.filter(c => configs[c.id]?.meta || configs[c.id]?.google).length
+  // Get unique project managers and account managers for filter dropdowns
+  const projectManagersSet = new Set<string>()
+  clients.forEach(c => {
+    if (c.project_manager_name) {
+      projectManagersSet.add(c.project_manager_name)
+    }
+  })
+  const projectManagers = Array.from(projectManagersSet).sort()
+  
+  const accountManagersSet = new Set<string>()
+  clients.forEach(c => {
+    if (c.account_manager_name) {
+      accountManagersSet.add(c.account_manager_name)
+    }
+  })
+  const accountManagers = Array.from(accountManagersSet).sort()
+
+  // Filter clients based on selected filters
+  const filteredClients = clients.filter(c => {
+    const matchesClient = filterClientName === '__all__' || c.business_name === filterClientName
+    const matchesProjectManager = filterProjectManager === '__all__' || c.project_manager_name === filterProjectManager
+    const matchesAccountManager = filterAccountManager === '__all__' || c.account_manager_name === filterAccountManager
+    
+    const isConnected = configs[c.id]?.meta || configs[c.id]?.google
+    const matchesConnected = filterConnected === '__all__' || 
+      (filterConnected === 'connected' && isConnected) ||
+      (filterConnected === 'not_connected' && !isConnected)
+    
+    return matchesClient && matchesProjectManager && matchesAccountManager && matchesConnected
+  })
+
+  const connectedCount = filteredClients.filter(c => configs[c.id]?.meta || configs[c.id]?.google).length
   const alertCount =
-    Object.values(matchResults).filter(r => r.status === 'not_found' || r.status === 'multiple').length +
-    Object.values(googleMatchResults).filter(r => r.status === 'not_found' || r.status === 'multiple').length
+    filteredClients.filter(c => {
+      const match = matchResults[c.id]
+      const googleMatch = googleMatchResults[c.id]
+      return match?.status === 'not_found' || match?.status === 'multiple' || googleMatch?.status === 'not_found'
+    }).length
 
   return (
     <div className="space-y-4">
+      {/* Filters */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Cliente</Label>
+          <Select value={filterClientName} onValueChange={setFilterClientName}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Todos</SelectItem>
+              {clients.map((c) => (
+                <SelectItem key={c.id} value={c.business_name}>
+                  {c.business_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Project Manager</Label>
+          <Select value={filterProjectManager || '__all__'} onValueChange={setFilterProjectManager}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Todos</SelectItem>
+              {projectManagers.map((pm) => (
+                <SelectItem key={pm} value={pm}>
+                  {pm}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Account Manager</Label>
+          <Select value={filterAccountManager || '__all__'} onValueChange={setFilterAccountManager}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Todos</SelectItem>
+              {accountManagers.map((am) => (
+                <SelectItem key={am} value={am}>
+                  {am}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Conexión</Label>
+          <Select value={filterConnected} onValueChange={(value: any) => setFilterConnected(value)}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Todos</SelectItem>
+              <SelectItem value="connected">Conectadas</SelectItem>
+              <SelectItem value="not_connected">No conectadas</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       {/* Header bar */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
           <span>
             <span className="font-semibold text-foreground">{connectedCount}</span> de{' '}
-            <span className="font-semibold text-foreground">{clients.length}</span> clientes conectados
+            <span className="font-semibold text-foreground">{filteredClients.length}</span> clientes conectados
           </span>
           {alertCount > 0 && (
             <Badge variant="outline" className="border-amber-500/40 text-amber-600 bg-amber-500/5 text-xs gap-1">
@@ -668,7 +777,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
         <p className="text-sm text-muted-foreground text-center py-8">No hay clientes cargados todavia.</p>
       )}
 
-      {clients.map(client => {
+      {filteredClients.map(client => {
         const config = configs[client.id]
         if (!config) return null
 

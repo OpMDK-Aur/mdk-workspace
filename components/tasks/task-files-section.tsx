@@ -198,7 +198,7 @@ export function TaskFilesSection({ task, currentUserId, colaboradorNombre }: Tas
         <div className="flex items-center justify-center py-8">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
-      ) : adjuntos.length === 0 ? (
+      ) : (adjuntos.length === 0 && (!task.files || task.files.length === 0)) ? (
         <div
           className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
           onClick={() => fileInputRef.current?.click()}
@@ -214,6 +214,47 @@ export function TaskFilesSection({ task, currentUserId, colaboradorNombre }: Tas
         </div>
       ) : (
         <div className="space-y-2">
+          {/* Show task.files first (newly created files) */}
+          {task.files && task.files.length > 0 && task.files.map(file => {
+            const Icon = getFileIcon(file.mimeType)
+            return (
+              <div
+                key={file.id}
+                className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors group"
+              >
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <Icon className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{file.name}</p>
+                  <div className="flex items-center gap-2">
+                    {file.size && (
+                      <span className="text-xs text-muted-foreground">
+                        {formatFileSize(file.size)}
+                      </span>
+                    )}
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                      {file.mimeType || 'archivo'}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    variant="ghost" size="sm" className="h-7 w-7 p-0"
+                    onClick={() => window.open(file.url, '_blank')}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" asChild>
+                    <a href={file.url} download={file.name}>
+                      <Download className="h-3.5 w-3.5" />
+                    </a>
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+          {/* Show database files (uploaded files) */}
           {adjuntos.map(adjunto => {
             const Icon = getFileIcon(adjunto.tipo)
             const canDelete = adjunto.subido_por === currentUserId

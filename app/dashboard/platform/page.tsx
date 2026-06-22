@@ -20,8 +20,30 @@ export default async function PlatformPage() {
 
   const { data: clientes } = await supabase
     .from('clientes')
-    .select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, crm_type, ghl_location_id, ghl_token')
+    .select(`
+      id, 
+      nombre_del_negocio, 
+      meta_ads_account_id, 
+      google_ads_customer_id, 
+      crm_type, 
+      ghl_location_id, 
+      ghl_token,
+      project_manager_id,
+      account_manager_id
+    `)
     .order('nombre_del_negocio')
+
+  // Fetch all colaboradores once to use as a map
+  const { data: allColaboradores } = await supabase
+    .from('colaboradores')
+    .select('id, nombre, apellido')
+
+  const managerMap = new Map(
+    allColaboradores?.map(m => [
+      m.id, 
+      `${m.nombre || ''}${m.apellido ? ' ' + m.apellido : ''}`.trim()
+    ]) || []
+  )
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-8">
@@ -42,6 +64,10 @@ export default async function PlatformPage() {
           crm_type: c.crm_type,
           ghl_location_id: c.ghl_location_id,
           ghl_token: c.ghl_token,
+          project_manager_id: c.project_manager_id,
+          project_manager_name: c.project_manager_id ? managerMap.get(c.project_manager_id) : undefined,
+          account_manager_id: c.account_manager_id,
+          account_manager_name: c.account_manager_id ? managerMap.get(c.account_manager_id) : undefined,
         }))} />
       </div>
     </div>
