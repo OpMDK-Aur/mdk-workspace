@@ -166,7 +166,8 @@ export async function POST(req: Request) {
 
   try {
     const { clientId, tipo, cuentas, periodo } = await req.json()
-
+    console.log('[v0] Redactor POST request:', { clientId, tipo, cuentasCount: cuentas?.length || 0, periodo })
+    
     // Get agent config
     const { data: agentConfig } = await supabase
       .from('agentes_config')
