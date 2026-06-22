@@ -620,8 +620,8 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   // Filter clients based on selected filters
   const filteredClients = clients.filter(c => {
     const matchesClient = c.business_name.toLowerCase().includes(filterClientName.toLowerCase())
-    const matchesProjectManager = !filterProjectManager || c.project_manager_name?.toLowerCase().includes(filterProjectManager.toLowerCase())
-    const matchesAccountManager = !filterAccountManager || c.account_manager_name?.toLowerCase().includes(filterAccountManager.toLowerCase())
+    const matchesProjectManager = filterProjectManager === '__all__' || !filterProjectManager || c.project_manager_name?.toLowerCase().includes(filterProjectManager.toLowerCase())
+    const matchesAccountManager = filterAccountManager === '__all__' || !filterAccountManager || c.account_manager_name?.toLowerCase().includes(filterAccountManager.toLowerCase())
     return matchesClient && matchesProjectManager && matchesAccountManager
   })
 
@@ -648,12 +648,12 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
         </div>
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Project Manager</Label>
-          <Select value={filterProjectManager} onValueChange={setFilterProjectManager}>
+          <Select value={filterProjectManager || '__all__'} onValueChange={setFilterProjectManager}>
             <SelectTrigger className="h-8 text-sm">
               <SelectValue placeholder="Todos" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Todos</SelectItem>
+              <SelectItem value="__all__">Todos</SelectItem>
               {projectManagers.map((pm) => (
                 <SelectItem key={pm} value={pm}>
                   {pm}
@@ -664,12 +664,12 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
         </div>
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Account Manager</Label>
-          <Select value={filterAccountManager} onValueChange={setFilterAccountManager}>
+          <Select value={filterAccountManager || '__all__'} onValueChange={setFilterAccountManager}>
             <SelectTrigger className="h-8 text-sm">
               <SelectValue placeholder="Todos" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Todos</SelectItem>
+              <SelectItem value="__all__">Todos</SelectItem>
               {accountManagers.map((am) => (
                 <SelectItem key={am} value={am}>
                   {am}
