@@ -479,14 +479,19 @@ IMPORTANTE:
       content: `Genera el mensaje de ${tipoMensaje} para ${client.nombre_del_negocio}`,
       parts: [{ type: 'text', text: `Genera el mensaje de ${tipoMensaje} para ${client.nombre_del_negocio}` }]
     }]
+    
+    console.log('[v0] Converting messages to model format...')
     const modelMessages = await convertToModelMessages(userMessage)
+    console.log('[v0] Model messages converted, total:', modelMessages.length)
 
-    const result = await streamText({
+    console.log('[v0] Starting streamText with model openai/gpt-4o-mini')
+    const result = streamText({
       model: 'openai/gpt-4o-mini',
       system: systemPrompt,
       messages: modelMessages,
       abortSignal: req.signal,
     })
+    console.log('[v0] streamText result created')
 
     // Log execution (non-blocking)
     supabase.from('agentes_log').insert({
