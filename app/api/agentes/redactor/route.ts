@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { consumeStream, convertToModelMessages, streamText, type UIMessage } from 'ai'
+import { consumeStream, convertToModelMessages, streamText, type UIMessage, type CoreMessage } from 'ai'
 import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
 
 export const maxDuration = 60
@@ -473,22 +473,21 @@ IMPORTANTE:
 - Reemplaza [Nombre del contacto] con el nombre real del cliente
 `
 
-    const userMessage: UIMessage[] = [{ 
-      id: crypto.randomUUID(),
-      role: 'user', 
-      content: `Genera el mensaje de ${tipoMensaje} para ${client.nombre_del_negocio}`,
-      parts: [{ type: 'text', text: `Genera el mensaje de ${tipoMensaje} para ${client.nombre_del_negocio}` }]
-    }]
+    console.log('[v0] Preparing message for redactor agent')
+    const userContent = `Genera el mensaje de ${tipoMensaje} para ${client.nombre_del_negocio}`
+    const messages: CoreMessage[] = [
+      { 
+        role: 'user', 
+        content: userContent
+      }
+    ]
     
-    console.log('[v0] Converting messages to model format...')
-    const modelMessages = await convertToModelMessages(userMessage)
-    console.log('[v0] Model messages converted, total:', modelMessages.length)
-
     console.log('[v0] Starting streamText with model openai/gpt-4o-mini')
+    console.log('[v0] System prompt length:', systemPrompt.length)
     const result = streamText({
       model: 'openai/gpt-4o-mini',
       system: systemPrompt,
-      messages: modelMessages,
+      messages,
       abortSignal: req.signal,
     })
     console.log('[v0] streamText result created')
@@ -500,10 +499,7 @@ IMPORTANTE:
       estado: 'ok',
     }).catch(err => console.error('[v0] Error logging agent execution:', err))
 
-    return result.toUIMessageStreamResponse({
-      originalMessages: userMessage,
-      consumeSseStream: consumeStream,
-    })
+    return result.toTextStreamResponse()
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     console.error('[v0] Error in redactor agent:', errorMessage, error)
