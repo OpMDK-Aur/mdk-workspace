@@ -157,13 +157,7 @@ async function fetchGoogleMetrics(
 }
 
 export async function POST(req: Request) {
-  const supabase = await createClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return new Response('Unauthorized', { status: 401 })
-  }
-
+  console.log('🔴 REDACTOR API CALLED - TIMESTAMP:', new Date().toISOString())
   try {
     const { clientId, tipo, cuentas, periodo } = await req.json()
     console.log('[v0] Redactor POST request:', { clientId, tipo, cuentasCount: cuentas?.length || 0, periodo })
