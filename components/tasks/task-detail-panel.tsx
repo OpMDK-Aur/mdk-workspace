@@ -98,6 +98,8 @@ import {
   Send,
   FileIcon,
   Power,
+  Download,
+  ExternalLink,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { TaskFilesSection } from './task-files-section'
