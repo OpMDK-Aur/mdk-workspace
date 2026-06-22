@@ -36,9 +36,14 @@ export default async function PlatformPage() {
   // Fetch all colaboradores once to use as a map
   const { data: allColaboradores } = await supabase
     .from('colaboradores')
-    .select('id, full_name')
+    .select('id, nombre, apellido')
 
-  const managerMap = new Map(allColaboradores?.map(m => [m.id, m.full_name]) || [])
+  const managerMap = new Map(
+    allColaboradores?.map(m => [
+      m.id, 
+      `${m.nombre || ''}${m.apellido ? ' ' + m.apellido : ''}`.trim()
+    ]) || []
+  )
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-8">
