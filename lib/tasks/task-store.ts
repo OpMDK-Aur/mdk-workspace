@@ -54,14 +54,28 @@ interface ComentarioDB {
 }
 
 function mapComentarioToComment(comentario: ComentarioDB): TaskComment {
+  // Deserialize attachments from content if present
+  let content = comentario.contenido
+  let attachments: any[] = []
+  
+  if (content && content.includes('|||ATTACHMENTS|||')) {
+    const [mainContent, attachmentJson] = content.split('|||ATTACHMENTS|||')
+    content = mainContent
+    try {
+      attachments = JSON.parse(attachmentJson)
+    } catch (e) {
+      console.error('[v0] Error parsing attachments:', e)
+    }
+  }
+  
   return {
     id: comentario.id,
-    content: comentario.contenido,
+    content,
     userId: comentario.autor_id || 'system',
     userName: comentario.autor_nombre,
     userAvatar: comentario.colaboradores?.avatar_url || null,
     createdAt: new Date(comentario.created_at),
-    attachments: (comentario as any).adjuntos || [],
+    attachments,
   }
 }
 
@@ -1787,10 +1801,17 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
   const commentId = crypto.randomUUID()
   const now = new Date()
 
+    // Serialize attachments info with content if there are attachments
+    let contentWithAttachments = content
+    if (attachments.length > 0) {
+      const attachmentInfo = JSON.stringify(attachments)
+      contentWithAttachments = `${content}|||ATTACHMENTS|||${attachmentInfo}`
+    }
+
     const insertData = {
       id: commentId,
       tarea_id: taskId,
-      contenido: content,
+      contenido: contentWithAttachments,
       autor_id: userId === 'system' ? null : userId,
       autor_nombre: userName,
       es_sistema: userName === 'Madky',
