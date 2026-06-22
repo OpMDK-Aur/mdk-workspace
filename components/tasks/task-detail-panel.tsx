@@ -760,7 +760,7 @@ function TimeTracker({ task }: { task: Task }) {
   )
 }
 
-// ── Files Section ─�����───��───────────────────────────────────────────────────────
+// ── Files Section ─�������───��───────────────────────────────────────────────────────
 
 // ── Comments Section (with rich text editor) ──────────────────────────────────
 
@@ -1292,7 +1292,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
             ref={commentFileInputRef}
             type="file"
             multiple
-            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+            accept="*/*"
             className="hidden"
             onChange={async (e) => {
               const files = Array.from(e.target.files || [])
