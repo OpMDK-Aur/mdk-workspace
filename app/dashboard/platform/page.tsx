@@ -34,27 +34,19 @@ export default async function PlatformPage() {
     .order('nombre_del_negocio')
 
   // Fetch manager names separately if needed
-  const managerIds = new Set(
-    clientes?.flatMap(c => [c.project_manager_id, c.account_manager_id]).filter(Boolean) || []
+  const managerIds = new Set<string>(
+    clientes?.flatMap(c => [c.project_manager_id, c.account_manager_id]).filter(Boolean) as string[] || []
   )
   
-  const { data: managers } = managerIds.size > 0 ? await supabase
+  const managerIdsList = Array.from(managerIds)
+  
+  const { data: managers } = managerIdsList.length > 0 ? await supabase
     .from('colaboradores')
     .select('id, full_name')
-    .in('id', Array.from(managerIds))
+    .in('id', managerIdsList)
     : { data: [] }
 
   const managerMap = new Map(managers?.map(m => [m.id, m.full_name]) || [])
-  
-  console.log("[v0] Manager IDs found:", Array.from(managerIds))
-  console.log("[v0] Managers fetched:", managers)
-  console.log("[v0] Manager map:", Array.from(managerMap.entries()))
-  console.log("[v0] Sample client:", clientes?.[0] ? {
-    nombre: clientes[0].nombre_del_negocio,
-    project_manager_id: clientes[0].project_manager_id,
-    account_manager_id: clientes[0].account_manager_id,
-    project_manager_name: clientes[0].project_manager_id ? managerMap.get(clientes[0].project_manager_id) : 'N/A'
-  } : 'No clients')
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-8">

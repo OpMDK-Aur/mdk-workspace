@@ -616,14 +616,6 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     }
   })
   const accountManagers = Array.from(accountManagersSet).sort()
-  
-  console.log("[v0] Project managers extracted:", projectManagers)
-  console.log("[v0] Account managers extracted:", accountManagers)
-  console.log("[v0] First 3 clients:", clients.slice(0, 3).map(c => ({
-    nombre: c.business_name,
-    project_manager_name: c.project_manager_name,
-    account_manager_name: c.account_manager_name
-  })))
 
   // Filter clients based on selected filters
   const filteredClients = clients.filter(c => {
