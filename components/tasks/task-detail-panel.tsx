@@ -2220,7 +2220,56 @@ export function TaskDetailPanel() {
                               <div className={cn(!hasFilters && "pt-2 border-t mt-2")}>
                                 {!hasFilters && <p className="text-xs font-semibold mb-3">Comentarios ({(task.comments || []).length})</p>}
                                 {filteredComments.map((c) => (
-                                  <CommentItem key={c.id} comment={c} taskId={task.id} />
+                                  <div key={c.id} className="group flex items-start gap-3 text-xs mb-3">
+                                    <Avatar className="h-5 w-5 mt-0.5 shrink-0">
+                                      <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
+                                      <AvatarFallback className="text-[8px]">{getInitials(c.userName)}</AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 mb-0.5">
+                                        <span className="text-xs font-medium text-foreground">{c.userName}</span>
+                                        <span className="text-[11px] text-muted-foreground">
+                                          {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
+                                        </span>
+                                        <Button
+                                          variant="ghost" size="icon" className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100"
+                                          onClick={() => deleteComment(task.id, c.id)}
+                                        >
+                                          <X className="h-2.5 w-2.5" />
+                                        </Button>
+                                      </div>
+                                      <div
+                                        className="text-[11px] text-foreground/80 break-words [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity"
+                                        dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
+                                      />
+                                      {/* Attachments */}
+                                      {c.attachments && c.attachments.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5 mt-2">
+                                          {c.attachments.map((att: { url: string; name: string; mimeType: string }, i: number) => (
+                                            att.mimeType.startsWith('image/') ? (
+                                              <img
+                                                key={i}
+                                                src={att.url}
+                                                alt={att.name}
+                                                className="h-16 w-16 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity border border-border"
+                                              />
+                                            ) : (
+                                              <a
+                                                key={i}
+                                                href={att.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded border border-border bg-muted hover:bg-accent transition-colors"
+                                              >
+                                                <Paperclip className="h-3 w-3 shrink-0" />
+                                                <span className="max-w-[100px] truncate">{att.name}</span>
+                                              </a>
+                                            )
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
                                 ))}
                               </div>
                             )
