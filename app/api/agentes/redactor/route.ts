@@ -137,11 +137,16 @@ async function fetchGoogleMetrics(
 }
 
 export async function POST(req: Request) {
+  console.log('🔴 REDACTOR API STARTING')
   try {
+    console.log('🔴 Parsing request body')
     const { clientId, tipo, cuentas, periodo } = await req.json()
+    console.log('🔴 Request parsed:', { clientId, tipo, cuentasCount: cuentas?.length })
     
     // Initialize Supabase client
+    console.log('🔴 Creating Supabase client')
     const supabase = createClient()
+    console.log('🔴 Supabase client created')
     
     // Get agent config
     const { data: agentConfig } = await supabase
@@ -155,15 +160,23 @@ export async function POST(req: Request) {
     }
 
     // Get client data with ad account IDs (both singular and plural fields)
-    const { data: client } = await supabase
+    console.log('🔴 Fetching client data for:', clientId)
+    const { data: client, error: clientError } = await supabase
       .from('clientes')
       .select('*, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids')
       .eq('id', clientId)
       .single()
 
+    if (clientError) {
+      console.error('🔴 Error fetching client:', clientError)
+      return new Response(JSON.stringify({ error: 'Client query failed', details: clientError }), { status: 500, headers: { 'Content-Type': 'application/json' } })
+    }
+
     if (!client) {
+      console.error('🔴 Client not found:', clientId)
       return new Response('Client not found', { status: 404 })
     }
+    console.log('🔴 Client found:', client.nombre_del_negocio)
 
     // Get client memoria
     const { data: memoria } = await supabase
