@@ -36,12 +36,22 @@ async function fetchMetaMetrics(
     const spend = parseFloat(row.spend || '0')
     
     let leads = 0
-    if (row.actions) {
+    if (row.actions && Array.isArray(row.actions)) {
+      // Try different lead-related action types that Meta might report
       const leadAction = row.actions.find((a: { action_type: string; value: string }) => 
-        a.action_type === 'lead' || a.action_type === 'onsite_conversion.lead_grouped'
+        a.action_type === 'lead' || 
+        a.action_type === 'onsite_conversion.lead_grouped' ||
+        a.action_type === 'onsite_conversion' ||
+        a.action_type === 'purchase' ||
+        a.action_type.includes('lead') ||
+        a.action_type.includes('conversion')
       )
-      if (leadAction) leads = parseInt(leadAction.value, 10)
+      if (leadAction) {
+        leads = parseInt(leadAction.value || '0', 10)
+      }
     }
+    
+    console.log('[redactor] Meta lead search:', { accountId, hasActions: !!row.actions, allActions: row.actions?.map((a: any) => a.action_type), foundLeads: leads })
     
     const cpl = leads > 0 ? spend / leads : 0
     return { spend, leads, cpl }
@@ -71,7 +81,10 @@ async function fetchGoogleMetrics(
         metrics.impressions,
         metrics.clicks,
         metrics.cost_micros,
-        metrics.conversions
+        metrics.conversions,
+        metrics.conversions_value,
+        metrics.all_conversions,
+        metrics.all_conversions_value
       FROM customer
       WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
     `
@@ -96,14 +109,27 @@ async function fetchGoogleMetrics(
     
     let costMicros = 0
     let conversions = 0
+    let allConversions = 0
+    
     for (const result of data.results) {
       const m = result.metrics || {}
       costMicros += parseInt(m.costMicros || m.cost_micros || '0', 10)
-      conversions += parseFloat(m.conversions || '0')
+      
+      // Try to get conversions from different fields
+      const conv = parseFloat(m.conversions || '0')
+      const allConv = parseFloat(m.all_conversions || m.allConversions || '0')
+      
+      // Use whichever is larger (conversions or allConversions)
+      conversions += conv
+      allConversions += allConv
     }
+    
     const spend = costMicros / 1000000
-    const leads = Math.round(conversions)
+    // Use conversions if available, otherwise use allConversions
+    const leads = Math.round(conversions > 0 ? conversions : allConversions)
     const cpl = leads > 0 ? spend / leads : 0
+    
+    console.log('[redactor] Google conversion search:', { customerId, conversions, allConversions, selectedLeads: leads, spend })
     
     return { spend, leads, cpl }
   } catch (error) {
