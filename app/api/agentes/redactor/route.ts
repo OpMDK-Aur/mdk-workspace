@@ -172,40 +172,6 @@ export async function POST(req: Request) {
     }
 
     console.log('[redactor] Total metrics collected:', { totalSpend, totalLeads })
-        console.log('[redactor] Fetching Meta metrics for:', accountId)
-        const metrics = await fetchMetaMetrics(accountId, metaAccessToken, periodo)
-        console.log('[redactor] Meta metrics result:', metrics)
-        if (metrics) {
-          totalSpend += metrics.spend
-          totalLeads += metrics.leads
-        }
-      }
-    }
-
-    // Fetch Google accounts metrics
-    const googleAccounts = client.google_ads_customer_ids?.length
-      ? client.google_ads_customer_ids
-      : client.google_ads_customer_id
-        ? [client.google_ads_customer_id]
-        : []
-
-    console.log('[redactor] Fetching Google metrics:', { googleToken: !!googleAccessToken, googleAccounts, selectedCuentas })
-    if (googleAccessToken && googleDeveloperToken && googleLoginCustomerId && googleAccounts.length > 0) {
-      for (const customerId of googleAccounts) {
-        // If cuentas are selected, only fetch those
-        if (selectedCuentas.length > 0 && !selectedCuentas.includes(customerId)) {
-          console.log('[redactor] Skipping Google account (not selected):', customerId)
-          continue
-        }
-        console.log('[redactor] Fetching Google metrics for:', customerId)
-        const metrics = await fetchGoogleMetrics(customerId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, periodo)
-        console.log('[redactor] Google metrics result:', metrics)
-        if (metrics) {
-          totalSpend += metrics.spend
-          totalLeads += metrics.leads
-        }
-      }
-    }
 
     // Calculate CPL
     totalCpl = totalLeads > 0 ? totalSpend / totalLeads : 0
