@@ -214,7 +214,17 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
         toast.error('Tu sesión expiró. Recargá la página e iniciá sesión de nuevo.')
         throw new Error('Unauthorized')
       }
-      if (!response.ok) throw new Error('Failed to generate')
+      
+      if (!response.ok) {
+        try {
+          const errorData = await response.json()
+          console.error('[redactor-modal] Server error:', errorData)
+          throw new Error(errorData.error || `Server error: ${response.status}`)
+        } catch (e) {
+          console.error('[redactor-modal] Response not ok:', response.status)
+          throw new Error(`Server error: ${response.status}`)
+        }
+      }
 
       // Read the stream
       const reader = response.body?.getReader()
@@ -264,16 +274,34 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
       
       setStep(5)
     } catch (error) {
-      console.error('Error generating draft:', error)
-      toast.error('Error al generar el borrador')
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      console.error('[redactor-modal] Error generating draft:', errorMsg, error)
+      toast.error(`Error: ${errorMsg}`)
     } finally {
       setLoading(false)
     }
   }
 
   const handleCopyToClipboard = async () => {
-    await navigator.clipboard.writeText(draft)
-    toast.success('Copiado al portapapeles')
+    try {
+      await navigator.clipboard.writeText(draft)
+      toast.success('Copiado al portapapeles')
+    } catch (error) {
+      // Fallback for when Clipboard API is not available
+      const textArea = document.createElement('textarea')
+      textArea.value = draft
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.select()
+      try {
+        document.execCommand('copy')
+        toast.success('Copiado al portapapeles')
+      } catch (execError) {
+        toast.error('No se pudo copiar al portapapeles')
+      }
+      document.body.removeChild(textArea)
+    }
   }
 
   // Register the sent message as a comment on the task so it stays on record

@@ -47,14 +47,18 @@ export default function AgentesPage() {
         // Fetch last log for each agent
         const logsMap: Record<string, AgentLog | null> = {}
         for (const agent of agentsData) {
-          const { data: logData } = await supabase
-            .from('agentes_log')
-            .select('*')
-            .eq('agente', agent.slug)
-            .order('ejecutado_en', { ascending: false })
-            .limit(1)
-            .single()
-          logsMap[agent.slug] = logData || null
+          try {
+            const { data: logData } = await supabase
+              .from('agentes_log')
+              .select('*')
+              .eq('agente', agent.slug)
+              .order('ejecutado_en', { ascending: false })
+              .limit(1)
+            logsMap[agent.slug] = (logData && logData.length > 0) ? logData[0] : null
+          } catch (err) {
+            console.error(`Error fetching logs for agent ${agent.slug}:`, err)
+            logsMap[agent.slug] = null
+          }
         }
         setLogs(logsMap)
       }
