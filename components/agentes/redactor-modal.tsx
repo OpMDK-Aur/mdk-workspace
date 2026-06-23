@@ -283,8 +283,25 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
   }
 
   const handleCopyToClipboard = async () => {
-    await navigator.clipboard.writeText(draft)
-    toast.success('Copiado al portapapeles')
+    try {
+      await navigator.clipboard.writeText(draft)
+      toast.success('Copiado al portapapeles')
+    } catch (error) {
+      // Fallback for when Clipboard API is not available
+      const textArea = document.createElement('textarea')
+      textArea.value = draft
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.select()
+      try {
+        document.execCommand('copy')
+        toast.success('Copiado al portapapeles')
+      } catch (execError) {
+        toast.error('No se pudo copiar al portapapeles')
+      }
+      document.body.removeChild(textArea)
+    }
   }
 
   // Register the sent message as a comment on the task so it stays on record
