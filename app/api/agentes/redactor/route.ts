@@ -60,6 +60,59 @@ async function fetchMetaMetrics(
   }
 }
 
+// Helper to fetch Meta Ads metrics by campaign
+async function fetchMetaCampaignMetrics(
+  accountId: string,
+  accessToken: string,
+  periodo?: { start: string; end: string }
+): Promise<Array<{ campaign_name: string; spend: number; leads: number; cpl: number }> | null> {
+  try {
+    const today = new Date()
+    const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const startDate = periodo?.start || sevenDaysAgo.toISOString().split('T')[0]
+    const endDate = periodo?.end || today.toISOString().split('T')[0]
+    
+    const timeRange = JSON.stringify({ since: startDate, until: endDate })
+    const fields = 'campaign_name,impressions,clicks,spend,actions'
+    
+    const url = `https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}/insights?access_token=${accessToken}&fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=campaign`
+    
+    const response = await fetch(url)
+    if (!response.ok) return null
+    
+    const data = await response.json()
+    if (!data.data || data.data.length === 0) return []
+    
+    return data.data.map((row: any) => {
+      const spend = parseFloat(row.spend || '0')
+      let leads = 0
+      
+      if (row.actions && Array.isArray(row.actions)) {
+        const leadAction = row.actions.find((a: { action_type: string; value: string }) => 
+          a.action_type === 'lead' || 
+          a.action_type === 'onsite_conversion.lead_grouped' ||
+          a.action_type === 'onsite_conversion' ||
+          a.action_type === 'purchase' ||
+          a.action_type.includes('lead') ||
+          a.action_type.includes('conversion')
+        )
+        if (leadAction) leads = parseInt(leadAction.value || '0', 10)
+      }
+      
+      const cpl = leads > 0 ? spend / leads : 0
+      return {
+        campaign_name: row.campaign_name || 'Sin nombre',
+        spend,
+        leads,
+        cpl
+      }
+    })
+  } catch (error) {
+    console.log('[redactor] Meta campaign fetch error:', error)
+    return null
+  }
+}
+
 // Helper to fetch Google Ads metrics
 async function fetchGoogleMetrics(
   customerId: string,
@@ -137,6 +190,92 @@ async function fetchGoogleMetrics(
   }
 }
 
+// Helper to fetch Google Ads metrics by campaign
+async function fetchGoogleCampaignMetrics(
+  customerId: string,
+  accessToken: string,
+  developerToken: string,
+  loginCustomerId: string,
+  periodo?: { start: string; end: string }
+): Promise<Array<{ campaign_name: string; spend: number; leads: number; cpl: number }> | null> {
+  try {
+    const today = new Date()
+    const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const startDate = periodo?.start || sevenDaysAgo.toISOString().split('T')[0]
+    const endDate = periodo?.end || today.toISOString().split('T')[0]
+    
+    const cleanCustomerId = customerId.replace(/-/g, '')
+    
+    const query = `
+      SELECT 
+        campaign.name,
+        metrics.cost_micros,
+        metrics.conversions,
+        metrics.all_conversions
+      FROM campaign
+      WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
+      ORDER BY metrics.cost_micros DESC
+    `
+    
+    const body = {
+      query,
+      validateOnly: false
+    }
+    
+    const response = await fetch(`https://googleads.googleapis.com/v17/customers/${cleanCustomerId}/googleAds:searchStream`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'developer-token': developerToken,
+        'login-customer-id': loginCustomerId,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    })
+    
+    if (!response.ok) return null
+    
+    const text = await response.text()
+    const lines = text.trim().split('\n')
+    
+    const campaigns = lines
+      .map((line) => {
+        try {
+          return JSON.parse(line)
+        } catch {
+          return null
+        }
+      })
+      .filter((item) => item !== null && item.results?.length > 0)
+      .map((item: any) => {
+        const results = item.results || []
+        let totalCost = 0
+        let totalConversions = 0
+        let totalAllConversions = 0
+        let campaignName = 'Sin nombre'
+        
+        for (const result of results) {
+          const m = result.metrics || {}
+          totalCost += parseInt(m.costMicros || m.cost_micros || '0', 10)
+          totalConversions += parseFloat(m.conversions || '0')
+          totalAllConversions += parseFloat(m.all_conversions || m.allConversions || '0')
+          campaignName = result.campaign?.name || campaignName
+        }
+        
+        const spend = totalCost / 1000000
+        const leads = Math.round(totalConversions > 0 ? totalConversions : totalAllConversions)
+        const cpl = leads > 0 ? spend / leads : 0
+        
+        return { campaign_name: campaignName, spend, leads, cpl }
+      })
+    
+    return campaigns.length > 0 ? campaigns : null
+  } catch (error) {
+    console.log('[redactor] Google campaign fetch error:', error)
+    return null
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()
@@ -188,6 +327,8 @@ export async function POST(req: Request) {
     let metaLeads = 0
     let googleSpend = 0
     let googleLeads = 0
+    let metaCampaigns: Array<{ campaign_name: string; spend: number; leads: number; cpl: number }> = []
+    let googleCampaigns: Array<{ campaign_name: string; spend: number; leads: number; cpl: number }> = []
 
     const startDate = periodo?.start || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     const endDate = periodo?.end || new Date().toISOString().split('T')[0]
@@ -202,25 +343,25 @@ export async function POST(req: Request) {
       for (const accountId of cuentas) {
         // Meta accounts are numeric or start with 'act_'
         const isMetaAccount = accountId.startsWith('act_') || /^\d+$/.test(accountId)
-        console.log('[redactor] Checking account:', { accountId, isMetaAccount, startsWithAct: accountId.startsWith('act_'), isNumeric: /^\d+$/.test(accountId) })
         
         if (isMetaAccount) {
-          console.log('[redactor] Fetching Meta metrics for:', accountId)
           try {
             const metaMetrics = await fetchMetaMetrics(accountId, metaAccessToken, { start: startDate, end: endDate })
-            console.log('[redactor] Meta fetch result for', accountId, ':', metaMetrics)
             if (metaMetrics) {
               metaSpend += metaMetrics.spend || 0
               metaLeads += metaMetrics.leads || 0
-              console.log('[redactor] Added Meta metrics:', metaMetrics)
+            }
+            
+            // Also fetch campaign-level metrics
+            const metaCamps = await fetchMetaCampaignMetrics(accountId, metaAccessToken, { start: startDate, end: endDate })
+            if (metaCamps && metaCamps.length > 0) {
+              metaCampaigns.push(...metaCamps)
             }
           } catch (error) {
             console.log('[redactor] Meta fetch error for', accountId, ':', error)
           }
         }
       }
-    } else {
-      console.log('[redactor] Skipping Meta - token:', !!metaAccessToken, 'cuentas:', cuentas)
     }
 
     // Fetch Google metrics for selected accounts
@@ -230,31 +371,29 @@ export async function POST(req: Request) {
       const googleDeveloperToken = getGoogleAdsDeveloperToken()
       const googleLoginCustomerId = getGoogleAdsLoginCustomerId()
 
-      console.log('[redactor] Google tokens available:', { accessToken: !!googleAccessToken, developerToken: !!googleDeveloperToken, loginCustomerId: !!googleLoginCustomerId })
-
       if (googleAccessToken && googleDeveloperToken && googleLoginCustomerId && cuentas && cuentas.length > 0) {
         for (const customerId of cuentas) {
           // Google accounts typically contain dashes (formatted as 123-456-7890)
           const isGoogleAccount = !customerId.startsWith('act_') && (customerId.includes('-') || /^\d+-\d+-\d+$/.test(customerId))
-          console.log('[redactor] Checking account:', { customerId, isGoogleAccount, hasDash: customerId.includes('-') })
           
           if (isGoogleAccount) {
-            console.log('[redactor] Fetching Google metrics for:', customerId)
             try {
               const googleMetrics = await fetchGoogleMetrics(customerId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, { start: startDate, end: endDate })
-              console.log('[redactor] Google fetch result for', customerId, ':', googleMetrics)
               if (googleMetrics) {
                 googleSpend += googleMetrics.spend || 0
                 googleLeads += googleMetrics.leads || 0
-                console.log('[redactor] Added Google metrics:', googleMetrics)
+              }
+              
+              // Also fetch campaign-level metrics
+              const googleCamps = await fetchGoogleCampaignMetrics(customerId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, { start: startDate, end: endDate })
+              if (googleCamps && googleCamps.length > 0) {
+                googleCampaigns.push(...googleCamps)
               }
             } catch (error) {
               console.log('[redactor] Google fetch error for', customerId, ':', error)
             }
           }
         }
-      } else {
-        console.log('[redactor] Skipping Google - tokens:', { accessToken: !!googleAccessToken, developerToken: !!googleDeveloperToken, loginCustomerId: !!googleLoginCustomerId, cuentas })
       }
     } catch (error) {
       console.log('[redactor] Google initialization error:', error)
@@ -264,7 +403,7 @@ export async function POST(req: Request) {
     const totalLeads = metaLeads + googleLeads
     const totalCpl = totalLeads > 0 ? totalSpend / totalLeads : 0
 
-    console.log('[redactor] Final metrics:', { metaSpend, metaLeads, googleSpend, googleLeads, totalSpend, totalLeads, totalCpl })
+    console.log('[redactor] Final metrics:', { metaSpend, metaLeads, googleSpend, googleLeads, totalSpend, totalLeads, totalCpl, metaCampaigns: metaCampaigns.length, googleCampaigns: googleCampaigns.length })
 
     // Format period
     const periodText = periodo?.start && periodo?.end 
@@ -277,18 +416,34 @@ export async function POST(req: Request) {
       : 'optimizaciones generales'
 
     // Build system prompt - always use the strategic template with metrics
+    const metaCampaignBreakdown = metaCampaigns.length > 0
+      ? '\n\nDETALLE DE CAMPAÑAS - META ADS:\n' + metaCampaigns
+          .sort((a, b) => b.spend - a.spend)
+          .slice(0, 5)
+          .map(c => `• ${c.campaign_name}: Inversión $${c.spend.toFixed(2)}, Leads ${c.leads}, CPL $${c.cpl.toFixed(2)}`)
+          .join('\n')
+      : ''
+
+    const googleCampaignBreakdown = googleCampaigns.length > 0
+      ? '\n\nDETALLE DE CAMPAÑAS - GOOGLE ADS:\n' + googleCampaigns
+          .sort((a, b) => b.spend - a.spend)
+          .slice(0, 5)
+          .map(c => `• ${c.campaign_name}: Inversión $${c.spend.toFixed(2)}, Leads ${c.leads}, CPL $${c.cpl.toFixed(2)}`)
+          .join('\n')
+      : ''
+
     const metricsSection = `CLIENTE: ${client.nombre_del_negocio}
 PERÍODO: ${periodText}
 
 MÉTRICAS REALES - META ADS:
 - Inversión: $${metaSpend.toFixed(2)}
 - Leads: ${metaLeads}
-- CPL: $${metaLeads > 0 ? (metaSpend / metaLeads).toFixed(2) : '0.00'}
+- CPL: $${metaLeads > 0 ? (metaSpend / metaLeads).toFixed(2) : '0.00'}${metaCampaignBreakdown}
 
 MÉTRICAS REALES - GOOGLE ADS:
 - Inversión: $${googleSpend.toFixed(2)}
 - Leads: ${googleLeads}
-- CPL: $${googleLeads > 0 ? (googleSpend / googleLeads).toFixed(2) : '0.00'}
+- CPL: $${googleLeads > 0 ? (googleSpend / googleLeads).toFixed(2) : '0.00'}${googleCampaignBreakdown}
 
 TOTAL COMBINADO:
 - Inversión Total: $${totalSpend.toFixed(2)}
