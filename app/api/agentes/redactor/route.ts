@@ -157,13 +157,18 @@ export async function POST(req: Request) {
     const metaAccessToken = process.env.META_ADS_ACCESS_TOKEN
     if (metaAccessToken && cuentas) {
       for (const accountId of cuentas) {
-        if (accountId.startsWith('act_') || !isNaN(Number(accountId))) {
+        // Meta accounts are numeric or start with 'act_'
+        if (accountId.startsWith('act_') || /^\d+$/.test(accountId)) {
           console.log('[redactor] Fetching Meta metrics for:', accountId)
-          const metaMetrics = await fetchMetaMetrics(accountId, metaAccessToken, { start: startDate, end: endDate })
-          if (metaMetrics) {
-            metaSpend += metaMetrics.spend
-            metaLeads += metaMetrics.leads
-            console.log('[redactor] Meta metrics:', metaMetrics)
+          try {
+            const metaMetrics = await fetchMetaMetrics(accountId, metaAccessToken, { start: startDate, end: endDate })
+            if (metaMetrics) {
+              metaSpend += metaMetrics.spend || 0
+              metaLeads += metaMetrics.leads || 0
+              console.log('[redactor] Meta metrics:', metaMetrics)
+            }
+          } catch (error) {
+            console.log('[redactor] Meta fetch error for', accountId, ':', error)
           }
         }
       }
@@ -177,19 +182,24 @@ export async function POST(req: Request) {
 
       if (googleAccessToken && googleDeveloperToken && googleLoginCustomerId && cuentas) {
         for (const customerId of cuentas) {
-          if (!customerId.startsWith('act_') && isNaN(Number(accountId))) {
+          // Google accounts typically contain dashes (formatted as 123-456-7890)
+          if (!customerId.startsWith('act_') && customerId.includes('-')) {
             console.log('[redactor] Fetching Google metrics for:', customerId)
-            const googleMetrics = await fetchGoogleMetrics(customerId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, { start: startDate, end: endDate })
-            if (googleMetrics) {
-              googleSpend += googleMetrics.spend
-              googleLeads += googleMetrics.leads
-              console.log('[redactor] Google metrics:', googleMetrics)
+            try {
+              const googleMetrics = await fetchGoogleMetrics(customerId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, { start: startDate, end: endDate })
+              if (googleMetrics) {
+                googleSpend += googleMetrics.spend || 0
+                googleLeads += googleMetrics.leads || 0
+                console.log('[redactor] Google metrics:', googleMetrics)
+              }
+            } catch (error) {
+              console.log('[redactor] Google fetch error for', customerId, ':', error)
             }
           }
         }
       }
     } catch (error) {
-      console.log('[redactor] Google fetch error:', error)
+      console.log('[redactor] Google initialization error:', error)
     }
 
     const totalSpend = metaSpend + googleSpend
