@@ -114,9 +114,24 @@ async function fetchGoogleMetrics(
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { clientId, tipo, cuentas, periodo } = body
+    let { clientId, tipo, cuentas, periodo } = body
 
-    console.log('[redactor] Request received:', { clientId, cuentasCount: cuentas?.length, periodo })
+    // Parse cuentas - they may come as comma-separated strings in each array element
+    let parsedCuentas: string[] = []
+    if (cuentas && Array.isArray(cuentas)) {
+      for (const cuenta of cuentas) {
+        if (typeof cuenta === 'string') {
+          // Split by comma and trim each ID
+          const ids = cuenta.split(',').map((id: string) => id.trim()).filter((id: string) => id)
+          parsedCuentas.push(...ids)
+        } else if (typeof cuenta === 'number') {
+          parsedCuentas.push(String(cuenta))
+        }
+      }
+    }
+    cuentas = parsedCuentas
+
+    console.log('[redactor] Request received:', { clientId, cuentasCount: cuentas?.length, cuentas, periodo })
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || '',
