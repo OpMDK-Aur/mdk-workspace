@@ -116,6 +116,8 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { clientId, tipo, cuentas, periodo } = body
 
+    console.log('[redactor] Request received:', { clientId, tipo, cuentasCount: cuentas?.length, periodo })
+
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || '',
       process.env.SUPABASE_SERVICE_ROLE_KEY || ''
@@ -161,13 +163,17 @@ export async function POST(req: Request) {
         ? [client.meta_ads_account_id]
         : []
 
+    console.log('[redactor] Fetching Meta metrics:', { metaToken: !!metaAccessToken, metaAccounts, selectedCuentas })
     if (metaAccessToken && metaAccounts.length > 0) {
       for (const accountId of metaAccounts) {
         // If cuentas are selected, only fetch those
         if (selectedCuentas.length > 0 && !selectedCuentas.includes(accountId)) {
+          console.log('[redactor] Skipping Meta account (not selected):', accountId)
           continue
         }
+        console.log('[redactor] Fetching Meta metrics for:', accountId)
         const metrics = await fetchMetaMetrics(accountId, metaAccessToken, periodo)
+        console.log('[redactor] Meta metrics result:', metrics)
         if (metrics) {
           totalSpend += metrics.spend
           totalLeads += metrics.leads
@@ -182,13 +188,17 @@ export async function POST(req: Request) {
         ? [client.google_ads_customer_id]
         : []
 
+    console.log('[redactor] Fetching Google metrics:', { googleToken: !!googleAccessToken, googleAccounts, selectedCuentas })
     if (googleAccessToken && googleDeveloperToken && googleLoginCustomerId && googleAccounts.length > 0) {
       for (const customerId of googleAccounts) {
         // If cuentas are selected, only fetch those
         if (selectedCuentas.length > 0 && !selectedCuentas.includes(customerId)) {
+          console.log('[redactor] Skipping Google account (not selected):', customerId)
           continue
         }
+        console.log('[redactor] Fetching Google metrics for:', customerId)
         const metrics = await fetchGoogleMetrics(customerId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, periodo)
+        console.log('[redactor] Google metrics result:', metrics)
         if (metrics) {
           totalSpend += metrics.spend
           totalLeads += metrics.leads
@@ -198,6 +208,8 @@ export async function POST(req: Request) {
 
     // Calculate CPL
     totalCpl = totalLeads > 0 ? totalSpend / totalLeads : 0
+
+    console.log('[redactor] Metrics after calculation:', { totalSpend, totalLeads, totalCpl, selectedCuentas })
 
     // Format period
     const periodText = periodo?.start && periodo?.end 
