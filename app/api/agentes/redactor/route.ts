@@ -143,43 +143,61 @@ export async function POST(req: Request) {
     // Fetch real metrics from advertising platforms
     let totalSpend = 0
     let totalLeads = 0
-    let accountMetricsCount = 0
+    let totalCpl = 0
 
-    // Get Meta tokens and fetch metrics for Meta accounts
-    const { data: metaAuth } = await supabase
-      .from('integraciones_meta')
-      .select('access_token, meta_ads_account_ids')
-      .eq('cliente_id', clientId)
-      .single()
+    // Get tokens (same as Analista)
+    const metaAccessToken = process.env.META_ADS_ACCESS_TOKEN
+    const { accessToken: googleAccessToken } = await getGoogleAdsAccessToken()
+    const googleDeveloperToken = getGoogleAdsDeveloperToken()
+    const googleLoginCustomerId = getGoogleAdsLoginCustomerId()
 
-    if (metaAuth && metaAuth.access_token && cuentas && cuentas.length > 0) {
-      for (const accountId of cuentas) {
-        if (accountId.startsWith('act_')) {
-          const metrics = await fetchMetaMetrics(accountId, metaAuth.access_token, periodo)
-          if (metrics) {
-            totalSpend += metrics.spend
-            totalLeads += metrics.leads
-            accountMetricsCount++
-          }
+    // Use selected accounts or get all from client
+    const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
+    
+    // Fetch Meta accounts metrics
+    const metaAccounts = client.meta_ads_account_ids?.length 
+      ? client.meta_ads_account_ids 
+      : client.meta_ads_account_id 
+        ? [client.meta_ads_account_id]
+        : []
+
+    if (metaAccessToken && metaAccounts.length > 0) {
+      for (const accountId of metaAccounts) {
+        // If cuentas are selected, only fetch those
+        if (selectedCuentas.length > 0 && !selectedCuentas.includes(accountId)) {
+          continue
+        }
+        const metrics = await fetchMetaMetrics(accountId, metaAccessToken, periodo)
+        if (metrics) {
+          totalSpend += metrics.spend
+          totalLeads += metrics.leads
         }
       }
     }
 
-    // Get Google tokens and fetch metrics for Google accounts
-    const googleAccessToken = await getGoogleAdsAccessToken(clientId)
-    const googleDeveloperToken = await getGoogleAdsDeveloperToken()
-    const googleLoginCustomerId = await getGoogleAdsLoginCustomerId()
+    // Fetch Google accounts metrics
+    const googleAccounts = client.google_ads_customer_ids?.length
+      ? client.google_ads_customer_ids
+      : client.google_ads_customer_id
+        ? [client.google_ads_customer_id]
+        : []
 
-    if (googleAccessToken && googleDeveloperToken && googleLoginCustomerId && cuentas && cuentas.length > 0) {
-      for (const customerId of cuentas) {
-        if (!customerId.startsWith('act_')) {
-          const metrics = await fetchGoogleMetrics(customerId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, periodo)
-          if (metrics) {
-            totalSpend += metrics.spend
-            totalLeads += metrics.leads
-            accountMetricsCount++
-          }
+    if (googleAccessToken && googleDeveloperToken && googleLoginCustomerId && googleAccounts.length > 0) {
+      for (const customerId of googleAccounts) {
+        // If cuentas are selected, only fetch those
+        if (selectedCuentas.length > 0 && !selectedCuentas.includes(customerId)) {
+          continue
         }
+        const metrics = await fetchGoogleMetrics(customerId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, periodo)
+        if (metrics) {
+          totalSpend += metrics.spend
+          totalLeads += metrics.leads
+        }
+      }
+    }
+
+    // Calculate CPL
+    totalCpl = totalLeads > 0 ? totalSpend / totalLeads : 0
       }
     }
 
