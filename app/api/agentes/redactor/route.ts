@@ -1,12 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 import { streamText, type CoreMessage } from 'ai'
+import { getTemplateForMessage } from '@/lib/redactor-templates'
 
 export const maxDuration = 60
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { clientId, tipo, cuentas, periodo } = body
+    const { clientId, tipo, cuentas, periodo, nivelCliente = 'esencial' } = body
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -44,17 +45,21 @@ export async function POST(req: Request) {
         .limit(5)
       
       if (comentarios && comentarios.length > 0) {
-        comentariosText = '\n\nÚltimas actualizaciones:\n' + 
-          comentarios.map(c => `• ${c.autor_nombre}: ${c.contenido.substring(0, 60)}...`).join('\n')
+        comentariosText = comentarios.map(c => `${c.contenido}`).join('\n')
       }
     }
 
-    // Get advertising account metrics
-    let metricsText = ''
+    // Get advertising account metrics - MANDATORY
+    let inversion = 0
+    let leads = 0
+    let cpl = 0
+    let impresiones = 0
+    let clics = 0
+
     const startDate = periodo?.start || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     const endDate = periodo?.end || new Date().toISOString().split('T')[0]
     
-    // Try to get metrics from agentes_metricas or similar table if available
+    // Get metrics from agentes_metricas
     const { data: metricsData } = await supabase
       .from('agentes_metricas')
       .select('*')
@@ -66,56 +71,60 @@ export async function POST(req: Request) {
     
     if (metricsData && metricsData.length > 0) {
       const metric = metricsData[0]
-      metricsText = `\n\nMétricas del Período (${startDate} al ${endDate}):\n`
-      if (metric.gasto_total) metricsText += `• Inversión: $${parseFloat(metric.gasto_total).toFixed(2)}\n`
-      if (metric.leads) metricsText += `• Leads/Conversiones: ${metric.leads}\n`
-      if (metric.cpl) metricsText += `• CPL Promedio: $${parseFloat(metric.cpl).toFixed(2)}\n`
-      if (metric.impresiones) metricsText += `• Impresiones: ${metric.impresiones.toLocaleString()}\n`
-      if (metric.clics) metricsText += `• Clics: ${metric.clics.toLocaleString()}\n`
+      inversion = parseFloat(metric.gasto_total || 0)
+      leads = parseInt(metric.leads || 0)
+      cpl = parseFloat(metric.cpl || 0)
+      impresiones = parseInt(metric.impresiones || 0)
+      clics = parseInt(metric.clics || 0)
     }
 
-    // Build system prompt with template format
-    const tasksText = tasks && tasks.length > 0
-      ? tasks.map(t => `• ${t.titulo}${t.descripcion ? ': ' + t.descripcion.substring(0, 80) : ''}`).join('\n')
-      : 'Sin tareas registradas'
+    // Get template for the message
+    const template = getTemplateForMessage(tipo, nivelCliente)
 
-    const systemPrompt = `Eres un redactor profesional de una agencia digital. Tu rol es generar mensajes personalizados y contextualizados para clientes.
+    // Extract task titles for context
+    const tasksText = tasks && tasks.length > 0
+      ? tasks.map(t => t.titulo).join(', ')
+      : 'Sin tareas específicas'
+
+    const systemPrompt = `Eres un redactor experto en mensajes para agencia digital. Tu trabajo es generar mensajes profesionales siguiendo EXACTAMENTE una plantilla predefinida.
 
 # INFORMACIÓN DEL CLIENTE
-Nombre: ${client.nombre_del_negocio || 'No especificado'}
-Industria: ${client.industria || 'No especificada'}
-Contacto Principal: ${client.contacto_principal || 'No especificado'}
+- Nombre: ${client.nombre_del_negocio}
+- Industria: ${client.industria || 'No especificada'}
+- Contacto: ${client.contacto_principal || 'No especificado'}
 
-# TRABAJO RECIENTE
-${tasksText}${comentariosText}${metricsText}
+# TAREAS RECIENTES
+${tasksText}
 
-# INSTRUCCIONES PARA EL MENSAJE
-Genera un mensaje de ${tipo || 'bienvenida'} que:
-- Sea cálido, profesional y personalizado
-- Incluya datos específicos del cliente y sus campañas cuando sea relevante
-- Demuestre comprensión profunda de su negocio
-- Incluya una llamada a la acción clara
-- Tenga 3-4 párrafos máximo
-- Esté completamente en español con tono natural
+# COMENTARIOS RECIENTES
+${comentariosText || 'No hay comentarios'}
 
-# PLANTILLA OBLIGATORIA
-El mensaje DEBE seguir exactamente esta estructura:
+# DATOS DE CAMPAÑA OBLIGATORIOS (PERÍODO: ${startDate} al ${endDate})
+- Inversión Total: $${inversion.toFixed(2)}
+- Leads/Conversiones: ${leads}
+- CPL Promedio: $${cpl.toFixed(2)}
+- Impresiones: ${impresiones.toLocaleString()}
+- Clics: ${clics.toLocaleString()}
 
-Asunto: [Línea de asunto compelling y personalizada]
+# PLANTILLA A SEGUIR
+Debes generar el mensaje EXACTAMENTE siguiendo esta plantilla, reemplazando los placeholders con información real del cliente:
 
-[Saludo personalizado con el nombre del cliente]
+${template}
 
-[Párrafo principal: menciona logros específicos, trabajos recientes o métricas si están disponibles]
-
-[Párrafo 2: propuesta de valor o siguiente paso]
-
-[Despedida profesional con nombre y cargo]
-
-IMPORTANTE: Respeta esta estructura exactamente. No omitas ninguna sección.`
+# INSTRUCCIONES CRÍTICAS
+1. REEMPLAZA los placeholders [Nombre] con: ${client.nombre_del_negocio}
+2. REEMPLAZA [MONTO] con: ${inversion.toFixed(2)}
+3. REEMPLAZA [CANTIDAD] con: ${leads}
+4. REEMPLAZA [VALOR] con: ${cpl.toFixed(2)}
+5. REEMPLAZA los items de ejemplo con contexto REAL del cliente
+6. Mantén TODOS los emojis y la estructura exacta
+7. El mensaje DEBE incluir las tres métricas: Inversión, Leads y CPL
+8. No agregues párrafos adicionales fuera de la plantilla
+9. Respeta el tono y estructura exacta de la plantilla`
 
     const userMessage: CoreMessage = {
       role: 'user',
-      content: `Genera un mensaje de ${tipo || 'bienvenida'} para ${client.nombre_del_negocio}`
+      content: `Genera el mensaje siguiendo EXACTAMENTE la plantilla proporcionada. Reemplaza todos los placeholders con información real. Las métricas son obligatorias en el mensaje.`
     }
 
     const result = streamText({
