@@ -468,15 +468,26 @@ TOTAL COMBINADO:
 - Leads Total: ${totalLeads}
 - CPL Promedio: $${totalCpl.toFixed(2)}`
 
-    const systemPrompt = `Eres un redactor profesional de una agencia digital. Tu trabajo es generar un mensaje estratégico siguiendo EXACTAMENTE esta plantilla.
+    const systemPrompt = `Eres un redactor profesional de una agencia digital. Tu trabajo es generar ÚNICAMENTE el mensaje final para el cliente, sin incluir ninguna instrucción ni nota interna.
 
+DATOS DEL CLIENTE Y MÉTRICAS (usar como referencia, NO copiar literal):
 ${metricsSection}
 
 TAREAS RECIENTES: ${tasksText}
 
-Genera el mensaje con EXACTAMENTE esta estructura:
+REGLAS INTERNAS (NO incluir en el mensaje final):
+- Reemplaza [Nombre] con ${client.nombre_del_negocio}
+- Las métricas DEBEN ser exactas: Inversión $${totalSpend.toFixed(2)}, Leads ${totalLeads}, CPL $${totalCpl.toFixed(2)}
+- INCLUYE SIEMPRE el desglose de campañas
+- Si hay datos de Meta Ads y Google Ads, muéstralos con el formato: • Nombre Campaña: Inversión $X.XX, Leads Y, CPL $Z.ZZ
+- Mantén TODOS los emojis
+- Usa contexto real del cliente para los items
+- NO incluyas las palabras "IMPORTANTE", "REGLAS", ni ninguna nota interna en tu respuesta
+- Devuelve SOLO el mensaje, comenzando con "¡Hola" y terminando con el objetivo
 
-¡Hola [Nombre]! 👋 Buen lunes.
+El mensaje final debe seguir EXACTAMENTE esta estructura (rellena los corchetes con contenido real y elimina los corchetes):
+
+¡Hola ${client.nombre_del_negocio}! 👋 Buen lunes.
 Desde el equipo de Operaciones de MDK te compartimos los hitos clave en los que vamos a estar trabajando en tu cuenta esta semana:
 🎯 Foco principal: [Contexto específico del cliente basado en sus tareas/métricas]
 ✅ Checklist de la semana: — [Item 1] — [Item 2] — [Item 3]
@@ -487,15 +498,7 @@ Desde el equipo de Operaciones de MDK te compartimos los hitos clave en los que 
 
 📈 Desglose por Plataforma y Campaña:${metaCampaignBreakdown}${googleCampaignBreakdown}
 
-🚀 Objetivo: [Objetivo realista basado en las métricas actuales]
-
-IMPORTANTE:
-- Reemplaza [Nombre] con ${client.nombre_del_negocio}
-- Las métricas DEBEN ser exactas: Inversión $${totalSpend.toFixed(2)}, Leads ${totalLeads}, CPL $${totalCpl.toFixed(2)}
-- INCLUYE SIEMPRE el desglose de campañas en el mensaje final
-- Si hay datos de Meta Ads y Google Ads, muéstralos con el formato: • Nombre Campaña: Inversión $X.XX, Leads Y, CPL $Z.ZZ
-- Mantén TODOS los emojis
-- Usa contexto real del cliente para los items`
+🚀 Objetivo: [Objetivo realista basado en las métricas actuales]`
 
     const userMessage: CoreMessage = {
       role: 'user',
