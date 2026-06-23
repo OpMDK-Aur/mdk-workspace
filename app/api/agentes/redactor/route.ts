@@ -317,6 +317,24 @@ IMPORTANTE:
 - Las métricas DEBEN ser exactas: Inversión $${totalSpend.toFixed(2)}, Leads ${totalLeads}, CPL $${totalCpl.toFixed(2)}
 - Mantén TODOS los emojis
 - Una sola línea en cada sección`
+    } else {
+      // Fallback para tipo desconocido
+      console.log('[redactor] WARNING: tipo desconocido:', tipo)
+      systemPrompt = `Eres un redactor profesional de una agencia digital.
+
+CLIENTE: ${client.nombre_del_negocio}
+PERÍODO: ${periodText}
+MÉTRICAS REALES:
+- Inversión: $${totalSpend.toFixed(2)}
+- Leads: ${totalLeads}
+- CPL: $${totalCpl.toFixed(2)}
+
+Genera un mensaje profesional para ${client.nombre_del_negocio} que incluya las métricas proporcionadas.`
+    }
+
+    if (!systemPrompt) {
+      console.error('[redactor] ERROR: systemPrompt está vacío para tipo:', tipo)
+      return new Response(JSON.stringify({ error: 'Invalid message type: ' + tipo }), { status: 400, headers: { 'Content-Type': 'application/json' } })
     }
 
     const userMessage: CoreMessage = {
