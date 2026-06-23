@@ -198,11 +198,6 @@ export async function POST(req: Request) {
 
     // Calculate CPL
     totalCpl = totalLeads > 0 ? totalSpend / totalLeads : 0
-      }
-    }
-
-    // Calculate average CPL
-    const totalCpl = totalLeads > 0 ? totalSpend / totalLeads : 0
 
     // Format period
     const periodText = periodo?.start && periodo?.end 
