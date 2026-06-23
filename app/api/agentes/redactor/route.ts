@@ -151,52 +151,69 @@ export async function POST(req: Request) {
     const startDate = periodo?.start || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     const endDate = periodo?.end || new Date().toISOString().split('T')[0]
 
-    console.log('[redactor] Fetching real metrics:', { clientId, cuentas, startDate, endDate })
+    console.log('[redactor] Fetching real metrics:', { clientId, cuentasCount: cuentas?.length, cuentas, startDate, endDate })
 
     // Fetch Meta metrics for selected accounts
     const metaAccessToken = process.env.META_ADS_ACCESS_TOKEN
-    if (metaAccessToken && cuentas) {
+    console.log('[redactor] Meta token available:', !!metaAccessToken)
+    
+    if (metaAccessToken && cuentas && cuentas.length > 0) {
       for (const accountId of cuentas) {
         // Meta accounts are numeric or start with 'act_'
-        if (accountId.startsWith('act_') || /^\d+$/.test(accountId)) {
+        const isMetaAccount = accountId.startsWith('act_') || /^\d+$/.test(accountId)
+        console.log('[redactor] Checking account:', { accountId, isMetaAccount, startsWithAct: accountId.startsWith('act_'), isNumeric: /^\d+$/.test(accountId) })
+        
+        if (isMetaAccount) {
           console.log('[redactor] Fetching Meta metrics for:', accountId)
           try {
             const metaMetrics = await fetchMetaMetrics(accountId, metaAccessToken, { start: startDate, end: endDate })
+            console.log('[redactor] Meta fetch result for', accountId, ':', metaMetrics)
             if (metaMetrics) {
               metaSpend += metaMetrics.spend || 0
               metaLeads += metaMetrics.leads || 0
-              console.log('[redactor] Meta metrics:', metaMetrics)
+              console.log('[redactor] Added Meta metrics:', metaMetrics)
             }
           } catch (error) {
             console.log('[redactor] Meta fetch error for', accountId, ':', error)
           }
         }
       }
+    } else {
+      console.log('[redactor] Skipping Meta - token:', !!metaAccessToken, 'cuentas:', cuentas)
     }
 
     // Fetch Google metrics for selected accounts
     try {
-      const { accessToken: googleAccessToken } = await getGoogleAdsAccessToken()
+      const googleTokenData = await getGoogleAdsAccessToken()
+      const googleAccessToken = googleTokenData?.accessToken
       const googleDeveloperToken = getGoogleAdsDeveloperToken()
       const googleLoginCustomerId = getGoogleAdsLoginCustomerId()
 
-      if (googleAccessToken && googleDeveloperToken && googleLoginCustomerId && cuentas) {
+      console.log('[redactor] Google tokens available:', { accessToken: !!googleAccessToken, developerToken: !!googleDeveloperToken, loginCustomerId: !!googleLoginCustomerId })
+
+      if (googleAccessToken && googleDeveloperToken && googleLoginCustomerId && cuentas && cuentas.length > 0) {
         for (const customerId of cuentas) {
           // Google accounts typically contain dashes (formatted as 123-456-7890)
-          if (!customerId.startsWith('act_') && customerId.includes('-')) {
+          const isGoogleAccount = !customerId.startsWith('act_') && (customerId.includes('-') || /^\d+-\d+-\d+$/.test(customerId))
+          console.log('[redactor] Checking account:', { customerId, isGoogleAccount, hasDash: customerId.includes('-') })
+          
+          if (isGoogleAccount) {
             console.log('[redactor] Fetching Google metrics for:', customerId)
             try {
               const googleMetrics = await fetchGoogleMetrics(customerId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, { start: startDate, end: endDate })
+              console.log('[redactor] Google fetch result for', customerId, ':', googleMetrics)
               if (googleMetrics) {
                 googleSpend += googleMetrics.spend || 0
                 googleLeads += googleMetrics.leads || 0
-                console.log('[redactor] Google metrics:', googleMetrics)
+                console.log('[redactor] Added Google metrics:', googleMetrics)
               }
             } catch (error) {
               console.log('[redactor] Google fetch error for', customerId, ':', error)
             }
           }
         }
+      } else {
+        console.log('[redactor] Skipping Google - tokens:', { accessToken: !!googleAccessToken, developerToken: !!googleDeveloperToken, loginCustomerId: !!googleLoginCustomerId, cuentas })
       }
     } catch (error) {
       console.log('[redactor] Google initialization error:', error)

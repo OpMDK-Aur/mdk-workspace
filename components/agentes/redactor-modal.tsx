@@ -155,25 +155,52 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
 
     const accounts: AdAccount[] = []
     
-    // Check plural fields first, then singular as fallback
-    const metaIds = selectedClient.meta_ads_account_ids?.length 
-      ? selectedClient.meta_ads_account_ids 
-      : selectedClient.meta_ads_account_id 
-        ? [selectedClient.meta_ads_account_id]
-        : []
+    // Parse Meta IDs - handle arrays, JSON strings, and single values
+    let metaIds: string[] = []
+    const metaField = (selectedClient as any).meta_ads_account_ids || (selectedClient as any).meta_ads_account_id || (selectedClient as any).cuentas_meta
+    if (metaField) {
+      if (Array.isArray(metaField)) {
+        metaIds = metaField.filter(id => id)
+      } else if (typeof metaField === 'string') {
+        try {
+          // Try to parse as JSON array first
+          metaIds = JSON.parse(metaField).filter((id: string) => id)
+        } catch {
+          // If not JSON, treat as single value
+          metaIds = metaField ? [metaField] : []
+        }
+      }
+    }
     
-    const googleIds = selectedClient.google_ads_customer_ids?.length
-      ? selectedClient.google_ads_customer_ids
-      : selectedClient.google_ads_customer_id
-        ? [selectedClient.google_ads_customer_id]
-        : []
+    // Parse Google IDs - handle arrays, JSON strings, and single values
+    let googleIds: string[] = []
+    const googleField = (selectedClient as any).google_ads_customer_ids || (selectedClient as any).google_ads_customer_id || (selectedClient as any).cuentas_google
+    if (googleField) {
+      if (Array.isArray(googleField)) {
+        googleIds = googleField.filter(id => id)
+      } else if (typeof googleField === 'string') {
+        try {
+          // Try to parse as JSON array first
+          googleIds = JSON.parse(googleField).filter((id: string) => id)
+        } catch {
+          // If not JSON, treat as single value
+          googleIds = googleField ? [googleField] : []
+        }
+      }
+    }
+
+    console.log('[redactor-modal] Parsed accounts:', { metaIds, googleIds })
     
     metaIds.forEach((id: string) => {
-      accounts.push({ id, platform: 'meta', label: `Meta Ads · ${id}` })
+      if (id && id.trim()) {
+        accounts.push({ id: id.trim(), platform: 'meta', label: `Meta Ads · ${id}` })
+      }
     })
     
     googleIds.forEach((id: string) => {
-      accounts.push({ id, platform: 'google', label: `Google Ads · ${id}` })
+      if (id && id.trim()) {
+        accounts.push({ id: id.trim(), platform: 'google', label: `Google Ads · ${id}` })
+      }
     })
 
     setAdAccounts(accounts)
