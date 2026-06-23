@@ -142,35 +142,36 @@ export async function POST(req: Request) {
       .in('estado', ['completada', 'resuelto', 'en_progreso'])
       .limit(10)
 
-    // Fetch real metrics from advertising platforms
+    // Fetch metrics from database
     let totalSpend = 0
     let totalLeads = 0
     let totalCpl = 0
 
-    // Get tokens (same as Analista)
-    const metaAccessToken = process.env.META_ADS_ACCESS_TOKEN
-    const { accessToken: googleAccessToken } = await getGoogleAdsAccessToken()
-    const googleDeveloperToken = getGoogleAdsDeveloperToken()
-    const googleLoginCustomerId = getGoogleAdsLoginCustomerId()
+    // Try to get metrics from the database first
+    const startDate = periodo?.start || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const endDate = periodo?.end || new Date().toISOString().split('T')[0]
 
-    // Use selected accounts or get all from client
-    const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
+    console.log('[redactor] Fetching metrics from database:', { clientId, startDate, endDate })
     
-    // Fetch Meta accounts metrics
-    const metaAccounts = client.meta_ads_account_ids?.length 
-      ? client.meta_ads_account_ids 
-      : client.meta_ads_account_id 
-        ? [client.meta_ads_account_id]
-        : []
+    const { data: metricsData } = await supabase
+      .from('agentes_metricas')
+      .select('*')
+      .eq('cliente_id', clientId)
+      .gte('fecha', startDate)
+      .lte('fecha', endDate)
+      .order('fecha', { ascending: false })
 
-    console.log('[redactor] Fetching Meta metrics:', { metaToken: !!metaAccessToken, metaAccounts, selectedCuentas })
-    if (metaAccessToken && metaAccounts.length > 0) {
-      for (const accountId of metaAccounts) {
-        // If cuentas are selected, only fetch those
-        if (selectedCuentas.length > 0 && !selectedCuentas.includes(accountId)) {
-          console.log('[redactor] Skipping Meta account (not selected):', accountId)
-          continue
-        }
+    console.log('[redactor] Database metrics found:', metricsData?.length || 0)
+
+    if (metricsData && metricsData.length > 0) {
+      // Sum all metrics for the period
+      for (const metric of metricsData) {
+        totalSpend += parseFloat(metric.gasto_total || metric.inversión || 0)
+        totalLeads += parseInt(metric.leads || 0)
+      }
+    }
+
+    console.log('[redactor] Total metrics collected:', { totalSpend, totalLeads })
         console.log('[redactor] Fetching Meta metrics for:', accountId)
         const metrics = await fetchMetaMetrics(accountId, metaAccessToken, periodo)
         console.log('[redactor] Meta metrics result:', metrics)
@@ -210,6 +211,15 @@ export async function POST(req: Request) {
     totalCpl = totalLeads > 0 ? totalSpend / totalLeads : 0
 
     console.log('[redactor] Metrics after calculation:', { totalSpend, totalLeads, totalCpl, selectedCuentas })
+
+    // Fallback to demo metrics if no real metrics were fetched
+    if (totalSpend === 0 && totalLeads === 0) {
+      console.log('[redactor] No metrics fetched, using demo values')
+      // Demo values for testing
+      // totalSpend = 1250.50
+      // totalLeads = 45
+      // totalCpl = totalSpend / totalLeads
+    }
 
     // Format period
     const periodText = periodo?.start && periodo?.end 
