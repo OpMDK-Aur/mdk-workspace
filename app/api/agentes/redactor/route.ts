@@ -142,50 +142,61 @@ export async function POST(req: Request) {
       .in('estado', ['completada', 'resuelto', 'en_progreso'])
       .limit(10)
 
-    // Fetch metrics from database
-    let totalSpend = 0
-    let totalLeads = 0
-    let totalCpl = 0
+    // Fetch real metrics from advertising platforms
+    let metaSpend = 0
+    let metaLeads = 0
+    let googleSpend = 0
+    let googleLeads = 0
 
-    // Try to get metrics from the database first
     const startDate = periodo?.start || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     const endDate = periodo?.end || new Date().toISOString().split('T')[0]
 
-    console.log('[redactor] Fetching metrics from database:', { clientId, startDate, endDate })
-    
-    const { data: metricsData } = await supabase
-      .from('agentes_metricas')
-      .select('*')
-      .eq('cliente_id', clientId)
-      .gte('fecha', startDate)
-      .lte('fecha', endDate)
-      .order('fecha', { ascending: false })
+    console.log('[redactor] Fetching real metrics:', { clientId, cuentas, startDate, endDate })
 
-    console.log('[redactor] Database metrics found:', metricsData?.length || 0)
-
-    if (metricsData && metricsData.length > 0) {
-      // Sum all metrics for the period
-      for (const metric of metricsData) {
-        totalSpend += parseFloat(metric.gasto_total || metric.inversión || 0)
-        totalLeads += parseInt(metric.leads || 0)
+    // Fetch Meta metrics for selected accounts
+    const metaAccessToken = process.env.META_ADS_ACCESS_TOKEN
+    if (metaAccessToken && cuentas) {
+      for (const accountId of cuentas) {
+        if (accountId.startsWith('act_') || !isNaN(Number(accountId))) {
+          console.log('[redactor] Fetching Meta metrics for:', accountId)
+          const metaMetrics = await fetchMetaMetrics(accountId, metaAccessToken, { start: startDate, end: endDate })
+          if (metaMetrics) {
+            metaSpend += metaMetrics.spend
+            metaLeads += metaMetrics.leads
+            console.log('[redactor] Meta metrics:', metaMetrics)
+          }
+        }
       }
     }
 
-    console.log('[redactor] Total metrics collected:', { totalSpend, totalLeads })
+    // Fetch Google metrics for selected accounts
+    try {
+      const { accessToken: googleAccessToken } = await getGoogleAdsAccessToken()
+      const googleDeveloperToken = getGoogleAdsDeveloperToken()
+      const googleLoginCustomerId = getGoogleAdsLoginCustomerId()
 
-    // Calculate CPL
-    totalCpl = totalLeads > 0 ? totalSpend / totalLeads : 0
-
-    console.log('[redactor] Metrics after calculation:', { totalSpend, totalLeads, totalCpl })
-
-    // Fallback to demo metrics if no real metrics were fetched
-    if (totalSpend === 0 && totalLeads === 0) {
-      console.log('[redactor] No metrics fetched, using demo values')
-      // Demo values for testing
-      // totalSpend = 1250.50
-      // totalLeads = 45
-      // totalCpl = totalSpend / totalLeads
+      if (googleAccessToken && googleDeveloperToken && googleLoginCustomerId && cuentas) {
+        for (const customerId of cuentas) {
+          if (!customerId.startsWith('act_') && isNaN(Number(accountId))) {
+            console.log('[redactor] Fetching Google metrics for:', customerId)
+            const googleMetrics = await fetchGoogleMetrics(customerId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, { start: startDate, end: endDate })
+            if (googleMetrics) {
+              googleSpend += googleMetrics.spend
+              googleLeads += googleMetrics.leads
+              console.log('[redactor] Google metrics:', googleMetrics)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.log('[redactor] Google fetch error:', error)
     }
+
+    const totalSpend = metaSpend + googleSpend
+    const totalLeads = metaLeads + googleLeads
+    const totalCpl = totalLeads > 0 ? totalSpend / totalLeads : 0
+
+    console.log('[redactor] Final metrics:', { metaSpend, metaLeads, googleSpend, googleLeads, totalSpend, totalLeads, totalCpl })
 
     // Format period
     const periodText = periodo?.start && periodo?.end 
@@ -198,14 +209,27 @@ export async function POST(req: Request) {
       : 'optimizaciones generales'
 
     // Build system prompt - always use the strategic template with metrics
+    const metricsSection = `CLIENTE: ${client.nombre_del_negocio}
+PERÍODO: ${periodText}
+
+MÉTRICAS REALES - META ADS:
+- Inversión: $${metaSpend.toFixed(2)}
+- Leads: ${metaLeads}
+- CPL: $${metaLeads > 0 ? (metaSpend / metaLeads).toFixed(2) : '0.00'}
+
+MÉTRICAS REALES - GOOGLE ADS:
+- Inversión: $${googleSpend.toFixed(2)}
+- Leads: ${googleLeads}
+- CPL: $${googleLeads > 0 ? (googleSpend / googleLeads).toFixed(2) : '0.00'}
+
+TOTAL COMBINADO:
+- Inversión Total: $${totalSpend.toFixed(2)}
+- Leads Total: ${totalLeads}
+- CPL Promedio: $${totalCpl.toFixed(2)}`
+
     const systemPrompt = `Eres un redactor profesional de una agencia digital. Tu trabajo es generar un mensaje estratégico siguiendo EXACTAMENTE esta plantilla.
 
-CLIENTE: ${client.nombre_del_negocio}
-PERÍODO: ${periodText}
-MÉTRICAS REALES:
-- Inversión: $${totalSpend.toFixed(2)}
-- Leads: ${totalLeads}
-- CPL: $${totalCpl.toFixed(2)}
+${metricsSection}
 
 TAREAS RECIENTES: ${tasksText}
 
