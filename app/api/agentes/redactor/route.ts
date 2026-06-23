@@ -176,7 +176,7 @@ export async function POST(req: Request) {
     // Calculate CPL
     totalCpl = totalLeads > 0 ? totalSpend / totalLeads : 0
 
-    console.log('[redactor] Metrics after calculation:', { totalSpend, totalLeads, totalCpl, selectedCuentas })
+    console.log('[redactor] Metrics after calculation:', { totalSpend, totalLeads, totalCpl })
 
     // Fallback to demo metrics if no real metrics were fetched
     if (totalSpend === 0 && totalLeads === 0) {
