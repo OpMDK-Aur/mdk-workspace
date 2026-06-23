@@ -116,7 +116,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { clientId, tipo, cuentas, periodo } = body
 
-    console.log('[redactor] Request received:', { clientId, tipo, cuentasCount: cuentas?.length, periodo })
+    console.log('[redactor] Request received:', { clientId, cuentasCount: cuentas?.length, periodo })
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -197,11 +197,8 @@ export async function POST(req: Request) {
       ? tasks.slice(0, 3).map(t => t.titulo).join(', ')
       : 'optimizaciones generales'
 
-    // Build system prompt based on message type
-    let systemPrompt = ''
-
-    if (tipo === 'inicio_semana_estrategico') {
-      systemPrompt = `Eres un redactor profesional de una agencia digital. Tu trabajo es generar un mensaje de inicio de semana siguiendo EXACTAMENTE esta plantilla.
+    // Build system prompt - always use the strategic template with metrics
+    const systemPrompt = `Eres un redactor profesional de una agencia digital. Tu trabajo es generar un mensaje estratégico siguiendo EXACTAMENTE esta plantilla.
 
 CLIENTE: ${client.nombre_del_negocio}
 PERÍODO: ${periodText}
@@ -229,113 +226,6 @@ IMPORTANTE:
 - Las métricas DEBEN ser exactas: Inversión $${totalSpend.toFixed(2)}, Leads ${totalLeads}, CPL $${totalCpl.toFixed(2)}
 - Mantén TODOS los emojis
 - Usa contexto real del cliente para los items`
-    } else if (tipo === 'inicio_semana_esencial') {
-      systemPrompt = `Eres un redactor profesional de una agencia digital. Tu trabajo es generar un mensaje de inicio de semana siguiendo EXACTAMENTE esta plantilla.
-
-CLIENTE: ${client.nombre_del_negocio}
-PERÍODO: ${periodText}
-MÉTRICAS REALES:
-- Inversión: $${totalSpend.toFixed(2)}
-- Leads: ${totalLeads}
-- CPL: $${totalCpl.toFixed(2)}
-
-TAREAS RECIENTES: ${tasksText}
-
-Genera el mensaje con EXACTAMENTE esta estructura:
-
-¡Hola [Nombre]! 👋 Buen lunes.
-Esta semana en tu cuenta vamos a estar trabajando en:
-🎯 ${tasksText}
-📊 Métricas de esta semana (${periodText}):
-— Inversión: $${totalSpend.toFixed(2)}
-— Leads: ${totalLeads}
-— CPL: $${totalCpl.toFixed(2)}
-🚀 Objetivo: Mantener/mejorar los KPIs actuales
-Cualquier consulta, acá estamos. 💪
-
-IMPORTANTE:
-- Reemplaza [Nombre] con ${client.nombre_del_negocio}
-- Las métricas DEBEN ser exactas: Inversión $${totalSpend.toFixed(2)}, Leads ${totalLeads}, CPL $${totalCpl.toFixed(2)}
-- Mantén TODOS los emojis
-- Una sola línea en cada sección principal`
-    } else if (tipo === 'cierre_semana_estrategico') {
-      systemPrompt = `Eres un redactor profesional de una agencia digital. Tu trabajo es generar un mensaje de cierre de semana siguiendo EXACTAMENTE esta plantilla.
-
-CLIENTE: ${client.nombre_del_negocio}
-PERÍODO: ${periodText}
-MÉTRICAS REALES:
-- Inversión: $${totalSpend.toFixed(2)}
-- Leads: ${totalLeads}
-- CPL: $${totalCpl.toFixed(2)}
-
-TAREAS COMPLETADAS: ${tasksText}
-
-Genera el mensaje con EXACTAMENTE esta estructura:
-
-¡Hola [Nombre del Cliente]! 👋 Cerramos la semana en MDK con los avances y métricas clave de tu cuenta:
-✅ Hitos Completados:
-Logro 1: [Basado en tareas reales del cliente]
-Logro 2: [Otro logro relevante]
-📊 Métricas de Gestión (${periodText}):
-— Inversión: $${totalSpend.toFixed(2)}
-— Leads: ${totalLeads}
-— CPL: $${totalCpl.toFixed(2)}
-💡 Conclusión: [Análisis breve de las métricas]
-⏭️ Próximos pasos: [Acciones para la próxima semana]
-¡Buen fin de semana para todo el equipo! 🥂
-
-IMPORTANTE:
-- Reemplaza [Nombre del Cliente] con ${client.nombre_del_negocio}
-- Las métricas DEBEN ser exactas: Inversión $${totalSpend.toFixed(2)}, Leads ${totalLeads}, CPL $${totalCpl.toFixed(2)}
-- Mantén TODOS los emojis
-- Usa contexto real de tareas del cliente`
-    } else if (tipo === 'cierre_semana_esencial') {
-      systemPrompt = `Eres un redactor profesional de una agencia digital. Tu trabajo es generar un mensaje de cierre de semana siguiendo EXACTAMENTE esta plantilla.
-
-CLIENTE: ${client.nombre_del_negocio}
-PERÍODO: ${periodText}
-MÉTRICAS REALES:
-- Inversión: $${totalSpend.toFixed(2)}
-- Leads: ${totalLeads}
-- CPL: $${totalCpl.toFixed(2)}
-
-TAREAS COMPLETADAS: ${tasksText}
-
-Genera el mensaje con EXACTAMENTE esta estructura:
-
-¡Hola [Nombre]! 👋 Cerramos la semana con tu cuenta al día.
-✅ Lo que hicimos: ${tasksText}
-📊 Números de la semana (${periodText}):
-— Inversión: $${totalSpend.toFixed(2)}
-— Leads: ${totalLeads}
-— CPL: $${totalCpl.toFixed(2)}
-⏭️ La semana que viene: [Una sola acción clave]
-¡Buen finde! 🙌
-
-IMPORTANTE:
-- Reemplaza [Nombre] con ${client.nombre_del_negocio}
-- Las métricas DEBEN ser exactas: Inversión $${totalSpend.toFixed(2)}, Leads ${totalLeads}, CPL $${totalCpl.toFixed(2)}
-- Mantén TODOS los emojis
-- Una sola línea en cada sección`
-    } else {
-      // Fallback para tipo desconocido
-      console.log('[redactor] WARNING: tipo desconocido:', tipo)
-      systemPrompt = `Eres un redactor profesional de una agencia digital.
-
-CLIENTE: ${client.nombre_del_negocio}
-PERÍODO: ${periodText}
-MÉTRICAS REALES:
-- Inversión: $${totalSpend.toFixed(2)}
-- Leads: ${totalLeads}
-- CPL: $${totalCpl.toFixed(2)}
-
-Genera un mensaje profesional para ${client.nombre_del_negocio} que incluya las métricas proporcionadas.`
-    }
-
-    if (!systemPrompt) {
-      console.error('[redactor] ERROR: systemPrompt está vacío para tipo:', tipo)
-      return new Response(JSON.stringify({ error: 'Invalid message type: ' + tipo }), { status: 400, headers: { 'Content-Type': 'application/json' } })
-    }
 
     const userMessage: CoreMessage = {
       role: 'user',
