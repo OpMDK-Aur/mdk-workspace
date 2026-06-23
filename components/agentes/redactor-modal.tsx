@@ -461,7 +461,7 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[560px]">
+      <DialogContent className="max-w-[560px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Redactor de mensajes</DialogTitle>
         </DialogHeader>
@@ -729,7 +729,7 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
                   <Textarea
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    className="min-h-[200px]"
+                    className="min-h-[320px]"
                     placeholder="Borrador del mensaje..."
                   />
                   <div className="flex gap-2">
