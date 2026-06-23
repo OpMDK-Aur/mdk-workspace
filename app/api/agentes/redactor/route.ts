@@ -77,10 +77,19 @@ async function fetchMetaCampaignMetrics(
     
     const url = `https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}/insights?access_token=${accessToken}&fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=campaign`
     
+    console.log('[redactor] Fetching Meta campaigns from:', url.substring(0, 100) + '...')
+    
     const response = await fetch(url)
-    if (!response.ok) return null
+    console.log('[redactor] Meta campaign response status:', response.status)
+    
+    if (!response.ok) {
+      console.log('[redactor] Meta campaign error response:', await response.text())
+      return null
+    }
     
     const data = await response.json()
+    console.log('[redactor] Meta campaign data received:', data.data?.length || 0, 'campaigns')
+    
     if (!data.data || data.data.length === 0) return []
     
     return data.data.map((row: any) => {
@@ -217,6 +226,8 @@ async function fetchGoogleCampaignMetrics(
       ORDER BY metrics.cost_micros DESC
     `
     
+    console.log('[redactor] Fetching Google campaigns for customer:', customerId)
+    
     const body = {
       query,
       validateOnly: false
@@ -233,7 +244,12 @@ async function fetchGoogleCampaignMetrics(
       body: JSON.stringify(body)
     })
     
-    if (!response.ok) return null
+    console.log('[redactor] Google campaign response status:', response.status)
+    
+    if (!response.ok) {
+      console.log('[redactor] Google campaign error response:', await response.text())
+      return null
+    }
     
     const text = await response.text()
     const lines = text.trim().split('\n')
@@ -404,6 +420,8 @@ export async function POST(req: Request) {
     const totalCpl = totalLeads > 0 ? totalSpend / totalLeads : 0
 
     console.log('[redactor] Final metrics:', { metaSpend, metaLeads, googleSpend, googleLeads, totalSpend, totalLeads, totalCpl, metaCampaigns: metaCampaigns.length, googleCampaigns: googleCampaigns.length })
+    console.log('[redactor] Meta campaigns:', JSON.stringify(metaCampaigns, null, 2))
+    console.log('[redactor] Google campaigns:', JSON.stringify(googleCampaigns, null, 2))
 
     // Format period
     const periodText = periodo?.start && periodo?.end 
@@ -466,11 +484,16 @@ Desde el equipo de Operaciones de MDK te compartimos los hitos clave en los que 
 — Inversión: $${totalSpend.toFixed(2)}
 — Leads: ${totalLeads}
 — CPL: $${totalCpl.toFixed(2)}
+
+📈 Desglose por Plataforma y Campaña:${metaCampaignBreakdown}${googleCampaignBreakdown}
+
 🚀 Objetivo: [Objetivo realista basado en las métricas actuales]
 
 IMPORTANTE:
 - Reemplaza [Nombre] con ${client.nombre_del_negocio}
 - Las métricas DEBEN ser exactas: Inversión $${totalSpend.toFixed(2)}, Leads ${totalLeads}, CPL $${totalCpl.toFixed(2)}
+- INCLUYE SIEMPRE el desglose de campañas en el mensaje final
+- Si hay datos de Meta Ads y Google Ads, muéstralos con el formato: • Nombre Campaña: Inversión $X.XX, Leads Y, CPL $Z.ZZ
 - Mantén TODOS los emojis
 - Usa contexto real del cliente para los items`
 
