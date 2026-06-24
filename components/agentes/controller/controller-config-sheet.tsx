@@ -11,7 +11,7 @@ import { Toggle } from '@/components/ui/toggle'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ControllerConfiguracion, ControllerAlerta } from '@/lib/types'
-import { IconEye, IconEyeOff, IconTrash, IconPlus, IconAlertTriangle, IconCoin, IconCheck, IconAlertCircle, IconBrandMeta, IconBrandGoogle, IconChevronDown, IconInfoCircle, IconSparkles } from '@tabler/icons-react'
+import { IconEye, IconEyeOff, IconTrash, IconPlus, IconAlertTriangle, IconCoin, IconCheck, IconAlertCircle, IconBrandMeta, IconBrandGoogle, IconChevronDown, IconInfoCircle, IconSparkles, IconMaximize, IconMinimize } from '@tabler/icons-react'
 import { toast } from 'sonner'
 
 interface CuentaPublicitaria {
@@ -97,6 +97,7 @@ export function ControllerConfigSheet({
   const [alertas, setAlertas] = useState<ControllerAlerta[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingCuentas, setLoadingCuentas] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
 
   // Cargar configuración y cuentas al abrir el sheet
   useEffect(() => {
@@ -154,11 +155,22 @@ export function ControllerConfigSheet({
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent className="max-w-2xl bg-[#161616] border-white/10 text-white overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>{clienteNombre}</SheetTitle>
-          <SheetDescription>Configura conexiones, alertas e historial</SheetDescription>
-        </SheetHeader>
+      <SheetContent className={`${fullscreen ? 'max-w-full w-full' : 'max-w-2xl'} bg-[#161616] border-white/10 text-white overflow-y-auto transition-all duration-300`}>
+        <div className="flex items-center justify-between mb-6">
+          <SheetHeader>
+            <SheetTitle>{clienteNombre}</SheetTitle>
+            <SheetDescription>Configura conexiones, alertas e historial</SheetDescription>
+          </SheetHeader>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setFullscreen(!fullscreen)}
+            className="text-white/60 hover:text-white"
+            title={fullscreen ? 'Reducir' : 'Expandir a pantalla completa'}
+          >
+            {fullscreen ? <IconMinimize className="w-4 h-4" /> : <IconMaximize className="w-4 h-4" />}
+          </Button>
+        </div>
 
         <Tabs defaultValue="conexion" className="mt-6">
           <TabsList className="grid w-full grid-cols-3 bg-[#0f0f0f] border-white/10">
@@ -300,7 +312,7 @@ export function ControllerConfigSheet({
           </TabsContent>
 
           {/* TAB 2: Alertas */}
-          <TabsContent value="alertas" className="mt-6 max-h-[600px] overflow-y-auto">
+          <TabsContent value="alertas" className={`mt-6 overflow-y-auto ${fullscreen ? 'max-h-[calc(100vh-200px)]' : 'max-h-[600px]'}`}>
             {/* RENDIMIENTO */}
             <div className="space-y-4">
               <div className="text-[11px] uppercase tracking-widest text-white/30 font-semibold flex items-center gap-2 mb-4">
