@@ -25,6 +25,12 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
   const [filterCliente, setFilterCliente] = useState<string>('todos')
   const [selectedClienteId, setSelectedClienteId] = useState<string | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
+  const [clienteActivos, setClienteActivos] = useState<Record<string, boolean>>(
+    clientes.reduce((acc, c) => {
+      acc[c.id] = c.configuracion?.activo ?? false
+      return acc
+    }, {} as Record<string, boolean>)
+  )
 
   // Obtener lista única de PMs y AMs
   const pmList = useMemo(() => {
@@ -67,6 +73,27 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
     setFilterPM('todos')
     setFilterAM('todos')
     setFilterCliente('todos')
+  }
+
+  const handleToggleClienteActivo = async (clienteId: string, novoActivo: boolean) => {
+    // Actualizar estado local inmediatamente
+    setClienteActivos((prev) => ({ ...prev, [clienteId]: novoActivo }))
+
+    // Llamar API para guardar
+    try {
+      await fetch('/api/controller/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clienteId,
+          activo: novoActivo,
+        }),
+      })
+    } catch (error) {
+      console.error('Error actualizando agente:', error)
+      // Revertir cambio en caso de error
+      setClienteActivos((prev) => ({ ...prev, [clienteId]: !novoActivo }))
+    }
   }
 
   const selectedCliente = clientes.find((c) => c.id === selectedClienteId)
@@ -177,7 +204,24 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
           <tbody>
             {filtered.map((cliente) => (
               <tr key={cliente.id} className="border-b border-white/10 hover:bg-[#0f0f0f]/50">
-                <td className="px-6 py-4 text-sm text-white font-medium">{cliente.nombre_del_negocio}</td>
+                <td className="px-6 py-4 text-sm text-white font-medium">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleToggleClienteActivo(cliente.id, !clienteActivos[cliente.id])}
+                      className={`relative h-5 w-10 rounded-full transition-all duration-300 flex-shrink-0 ${
+                        clienteActivos[cliente.id] ? 'bg-[#10B981]' : 'bg-[#4B5563]'
+                      }`}
+                      title={clienteActivos[cliente.id] ? 'Desactivar agente' : 'Activar agente'}
+                    >
+                      <div
+                        className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-md transition-all duration-300 ${
+                          clienteActivos[cliente.id] ? 'translate-x-5' : 'translate-x-0.5'
+                        }`}
+                      />
+                    </button>
+                    {cliente.nombre_del_negocio}
+                  </div>
+                </td>
                 <td className="px-6 py-4">
                   <div className="flex gap-2">
                     {cliente.configuracion?.meta_ad_account_id && (
