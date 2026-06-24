@@ -332,6 +332,7 @@ export function ControllerConfigSheet({
                           alerta={alerta}
                           alertaData={alertaData}
                           onDataChange={(data) => setAlertasData({ ...alertasData, [alerta.subtipo]: data })}
+                          clienteId={clienteId}
                         />
                       )
                     })}
@@ -375,6 +376,7 @@ export function ControllerConfigSheet({
                           alerta={alerta}
                           alertaData={alertaData}
                           onDataChange={(data) => setAlertasData({ ...alertasData, [alerta.subtipo]: data })}
+                          clienteId={clienteId}
                         />
                       )
                     })}
@@ -415,13 +417,17 @@ interface AlertCardData {
 function AlertCard({ 
   alerta, 
   alertaData, 
-  onDataChange 
+  onDataChange,
+  clienteId,
 }: { 
   alerta: any
   alertaData: AlertCardData
   onDataChange: (data: AlertCardData) => void
+  clienteId: string
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [ejecutando, setEjecutando] = useState(false)
+  const [resultadoEjecucion, setResultadoEjecucion] = useState<any>(null)
 
   const sinCamposConfig = ['tasa_conversion_baja', 'presupuesto_agotado_diario', 'limitada_google', 'limitada_meta_demanda']
 
@@ -440,6 +446,35 @@ function AlertCard({
   const handleHeaderClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     setExpanded(!expanded)
+  }
+
+  const handleEjecutarAlerta = async () => {
+    setEjecutando(true)
+    setResultadoEjecucion(null)
+    try {
+      const response = await fetch('/api/controller/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clienteId,
+          alertaSubtipo: alerta.subtipo,
+        }),
+      })
+
+      if (response.ok) {
+        const resultado = await response.json()
+        setResultadoEjecucion(resultado)
+        toast.success(`Alerta "${alerta.label}" ejecutada correctamente`)
+      } else {
+        const error = await response.json()
+        toast.error(error.error || 'Error ejecutando alerta')
+      }
+    } catch (error) {
+      console.error('Error ejecutando alerta:', error)
+      toast.error('Error ejecutando alerta')
+    } finally {
+      setEjecutando(false)
+    }
   }
 
   const handleAddVariante = () => {
@@ -664,6 +699,33 @@ function AlertCard({
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Botón Ejecutar */}
+            {alertaData.activa && (
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <button
+                  onClick={handleEjecutarAlerta}
+                  disabled={ejecutando}
+                  className="w-full px-3 py-2 bg-[#7F77DD]/15 border border-[#7F77DD]/30 hover:bg-[#7F77DD]/25 hover:border-[#7F77DD]/50 rounded-md text-sm text-[#7F77DD] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {ejecutando ? 'Ejecutando...' : 'Ejecutar alerta'}
+                </button>
+
+                {resultadoEjecucion && (
+                  <div className="mt-3 p-3 bg-green-500/10 border border-green-500/20 rounded-md">
+                    <p className="text-[12px] text-green-400 font-medium mb-2">Ejecutada correctamente</p>
+                    <div className="space-y-1">
+                      {resultadoEjecucion.acciones.map((accion: string, idx: number) => (
+                        <p key={idx} className="text-[11px] text-green-400/70 flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                          {accion}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
