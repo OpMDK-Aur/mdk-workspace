@@ -11,7 +11,7 @@ import { Toggle } from '@/components/ui/toggle'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ControllerConfiguracion, ControllerAlerta } from '@/lib/types'
-import { IconEye, IconEyeOff, IconTrash, IconPlus, IconAlertTriangle, IconCoin, IconCheck, IconAlertCircle, IconBrandMeta, IconBrandGoogle, IconChevronDown, IconInfoCircle, IconSparkles, IconMaximize, IconMinimize } from '@tabler/icons-react'
+import { IconEye, IconEyeOff, IconTrash, IconPlus, IconAlertTriangle, IconCoin, IconCheck, IconAlertCircle, IconBrandMeta, IconBrandGoogle, IconChevronDown, IconInfoCircle, IconSparkles, IconMaximize, IconMinimize, IconX } from '@tabler/icons-react'
 import { toast } from 'sonner'
 
 interface CuentaPublicitaria {
@@ -447,16 +447,24 @@ function AlertCard({ alerta }: { alerta: any }) {
             className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none"
             onClick={handleHeaderClick}
           >
-            <div onClick={(e) => e.stopPropagation()}>
-              <Toggle 
-                pressed={active} 
-                onPressedChange={handleSwitchChange}
-                size="sm"
-                className="data-[state=on]:bg-[#7F77DD] data-[state=on]:text-white"
-              >
-                {/* Empty toggle, just for visual */}
-              </Toggle>
-            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                handleSwitchChange(!active)
+              }}
+              className={`relative h-6 w-10 rounded-full border transition-all duration-300 flex items-center justify-center flex-shrink-0 ${
+                active
+                  ? 'bg-[#7F77DD] border-[#7F77DD]'
+                  : 'bg-[#2a2a2a] border-white/15 hover:border-white/25'
+              }`}
+              title={active ? 'Desactivar alerta' : 'Activar alerta'}
+            >
+              {active ? (
+                <IconCheck className="w-3.5 h-3.5 text-white" />
+              ) : (
+                <IconX className="w-3.5 h-3.5 text-white/40" />
+              )}
+            </button>
 
             <div className="flex-1">
               <span className={`text-[13px] font-normal ${active ? 'text-white' : 'text-white/40'}`}>
