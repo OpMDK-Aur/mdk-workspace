@@ -12,6 +12,23 @@ export async function POST(req: NextRequest) {
 
     const supabase = await createClient()
 
+    // Obtener usuario actual
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Usuario no autenticado' }, { status: 401 })
+    }
+
+    // Obtener datos del cliente
+    const { data: cliente } = await supabase
+      .from('clientes')
+      .select('id, nombre_del_negocio, account_manager_ids')
+      .eq('id', clienteId)
+      .maybeSingle()
+
+    if (!cliente) {
+      return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
+    }
+
     // Obtener la alerta si existe en BD
     const { data: alerta } = await supabase
       .from('controller_alertas')
@@ -20,7 +37,7 @@ export async function POST(req: NextRequest) {
       .eq('subtipo', alertaSubtipo)
       .maybeSingle()
 
-    // Crear resultado simulado
+    // Crear resultado
     const resultado = {
       alerta_id: alerta?.id || `test-${alertaSubtipo}`,
       subtipo: alertaSubtipo,
@@ -29,13 +46,69 @@ export async function POST(req: NextRequest) {
       acciones: [] as string[],
     }
 
-    // Simular acciones según configuración guardada o defaults
+    // Determinar qué acciones ejecutar
     const accion = alerta?.accion || 'ambas'
+    const account_managers = cliente?.account_manager_ids || []
+
+    // ACCIÓN 1: Crear tarea si aplica
     if (accion === 'tarea' || accion === 'ambas') {
-      resultado.acciones.push('Crear tarea asignada al Account Manager')
+      try {
+        const { data: tarea } = await supabase
+          .from('tareas')
+          .insert({
+            titulo: `[Alerta Controller] ${alertaSubtipo} — ${cliente.nombre_del_negocio}`,
+            descripcion: `Alerta automática disparada por el Controller: ${alertaSubtipo}. Revisar configuración de la cuenta.`,
+            cliente_ids: [clienteId],
+            asignado_a: user.id,
+            asignados_a: [user.id, ...account_managers],
+            prioridad: 'media',
+            estado: 'pendiente',
+            creado_por: user.id,
+          })
+          .select()
+          .maybeSingle()
+
+        if (tarea) {
+          resultado.acciones.push(`✓ Tarea creada (ID: ${tarea.id})`)
+        } else {
+          resultado.acciones.push('✗ Error al crear tarea')
+        }
+      } catch (error) {
+        console.error('Error creating task:', error)
+        resultado.acciones.push('✗ Error al crear tarea')
+      }
     }
+
+    // ACCIÓN 2: Enviar notificación si aplica
     if (accion === 'notificacion' || accion === 'ambas') {
-      resultado.acciones.push('Enviar notificación interna')
+      try {
+        // Obtener IDs de colaboradores para notificar
+        const notifyUsers = [user.id, ...account_managers]
+
+        const { error: notifError } = await supabase
+          .from('notificaciones')
+          .insert(
+            notifyUsers.map((colaboradorId) => ({
+              colaborador_id: colaboradorId,
+              tipo: 'alerta_controller',
+              titulo: `Alerta Controller: ${alertaSubtipo}`,
+              descripcion: `Se disparó una alerta del Controller para ${cliente.nombre_del_negocio}`,
+              referencia_id: alerta?.id || clienteId,
+              referencia_tipo: 'alerta_controller',
+              cliente_id: clienteId,
+              leida: false,
+            }))
+          )
+
+        if (!notifError) {
+          resultado.acciones.push(`✓ ${notifyUsers.length} notificaciones enviadas`)
+        } else {
+          resultado.acciones.push('✗ Error al enviar notificaciones')
+        }
+      } catch (error) {
+        console.error('Error creating notifications:', error)
+        resultado.acciones.push('✗ Error al enviar notificaciones')
+      }
     }
 
     // Guardar en ejecuciones si alerta existe en BD
