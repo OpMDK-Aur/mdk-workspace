@@ -1,5 +1,4 @@
-import { createClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 import { IconAlertTriangle, IconClock } from '@tabler/icons-react'
 import { ControllerBoard } from '@/components/agentes/controller/controller-board'
 import { ClienteConController } from '@/lib/types'
@@ -9,13 +8,11 @@ export const metadata = {
   description: 'Monitoreo automático de cuentas publicitarias',
 }
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 async function getControllerData() {
-  const cookieStore = await cookies()
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  )
+  const supabase = await createSupabaseClient()
 
   // 1. Fetch clientes activos
   const { data: clientes } = await supabase
