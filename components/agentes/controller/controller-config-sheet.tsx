@@ -155,7 +155,7 @@ export function ControllerConfigSheet({
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent className={`${fullscreen ? 'max-w-full w-full' : 'max-w-2xl'} bg-[#161616] border-white/10 text-white overflow-y-auto transition-all duration-300 p-0`}>
+      <SheetContent className={`${fullscreen ? '!max-w-none w-full' : 'max-w-2xl'} bg-[#161616] border-white/10 text-white overflow-y-auto transition-all duration-300 p-0`}>
         <div className="px-6 py-4 border-b border-white/10 sticky top-0 bg-[#161616]">
           <div className="flex items-center justify-between">
             <SheetHeader className="space-y-1">
