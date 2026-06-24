@@ -18,15 +18,21 @@ export async function POST(req: NextRequest) {
       { cookies: { getAll: () => cookieStore.getAll() } }
     )
 
-    // Obtener la alerta
+    // Obtener la alerta - buscar por subtipo
     const { data: alerta, error: alertError } = await supabase
       .from('controller_alertas')
       .select('*')
       .eq('cliente_id', clienteId)
       .eq('subtipo', alertaSubtipo)
-      .single()
+      .maybeSingle()
 
-    if (alertError || !alerta) {
+    if (alertError) {
+      console.error('Error fetching alert:', alertError)
+      return NextResponse.json({ error: 'Error obteniendo alerta' }, { status: 500 })
+    }
+
+    if (!alerta) {
+      console.error('Alerta no encontrada para:', { clienteId, alertaSubtipo })
       return NextResponse.json({ error: 'Alerta no encontrada' }, { status: 404 })
     }
 
@@ -44,32 +50,34 @@ export async function POST(req: NextRequest) {
     }
 
     // Simular acciones según el tipo de alerta
-    if (alerta.accion === 'tarea' || alerta.accion === 'ambas') {
+    const accion = alerta.accion || 'ambas'
+    if (accion === 'tarea' || accion === 'ambas') {
       resultado.acciones.push('Crear tarea asignada al Account Manager')
     }
-    if (alerta.accion === 'notificacion' || alerta.accion === 'ambas') {
+    if (accion === 'notificacion' || accion === 'ambas') {
       resultado.acciones.push('Enviar notificación interna')
     }
 
-    // Guardar en historial
-    const { error: historialError } = await supabase.from('controller_historial').insert({
-      cliente_id: clienteId,
-      alerta_id: alerta.id,
-      tipo: 'ejecucion_manual',
-      detalles: {
-        subtipo: alertaSubtipo,
-        acciones: resultado.acciones,
-      },
-      creado_at: new Date().toISOString(),
-    })
-
-    if (historialError) {
-      console.error('Error guardando en historial:', historialError)
+    // Guardar en historial (opcional, solo si la tabla existe)
+    try {
+      await supabase.from('controller_historial').insert({
+        cliente_id: clienteId,
+        alerta_id: alerta.id,
+        tipo: 'ejecucion_manual',
+        detalles: {
+          subtipo: alertaSubtipo,
+          acciones: resultado.acciones,
+        },
+        creado_at: new Date().toISOString(),
+      })
+    } catch (historialError) {
+      console.error('Error guardando en historial (continuando):', historialError)
+      // Continuar sin guardar en historial si la tabla no existe
     }
 
     return NextResponse.json(resultado, { status: 200 })
   } catch (error) {
     console.error('[controller/execute] Error:', error)
-    return NextResponse.json({ error: 'Error ejecutando alerta' }, { status: 500 })
+    return NextResponse.json({ error: 'Error ejecutando alerta', details: String(error) }, { status: 500 })
   }
 }
