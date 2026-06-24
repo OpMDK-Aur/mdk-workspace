@@ -47,21 +47,42 @@ export async function POST(req: NextRequest) {
       .eq('subtipo', alertaSubtipo)
       .maybeSingle()
 
-    // Generar datos simulados detectados según el tipo de alerta
-    const generarDatosDetectados = (subtipo: string, config?: any) => {
-      const platforma = plataforma || alerta?.plataforma || 'google'
+    // Generar datos simulados detectados según el tipo de alerta y plataforma
+    const generarDatosDetectados = (subtipo: string, platformaActual: string, config?: any) => {
+      const esMeta = platformaActual?.toLowerCase() === 'meta'
+      const esGoogle = platformaActual?.toLowerCase() === 'google'
       
-      // Simulación de datos realistas según el tipo de alerta
-      const simulaciones: Record<string, string> = {
-        'caida_conversiones_porcentual': `Se detectó una caída del 42% en conversiones en los últimos 7 días en ${platforma}. Conversiones: 145 → 84.`,
-        'tasa_conversion_baja': `Tasa de conversión crítica detectada: 1.2% (crítico < 2%). Visitas: 8,420 | Conversiones: 101.`,
-        'presupuesto_agotado_diario': `Presupuesto diario agotado en ${platforma}. Gastado: $250.00 / $250.00 (100%).`,
-        'limitada_google': `Limitación detectada en Google Ads. Presupuesto disponible: $0. Campañas pausadas: 3.`,
-        'limitada_meta_demanda': `Limitación de demanda en Meta. Presupuesto disponible: $0. Audiencias agotadas: 12.`,
-        'cpl_aumento_porcentual': `CPL aumentó un 58% respecto a hace 7 días. CPL actual: $12.50 → $19.75.`,
+      // Simulación de datos realistas según plataforma y tipo de alerta
+      if (esMeta) {
+        // Datos específicos para Meta (CPL, Acciones, Leads)
+        const simulacionesMeta: Record<string, string> = {
+          'caida_conversiones_porcentual': `Se detectó una caída del 42% en acciones en los últimos 7 días en Meta. Acciones completadas: 156 → 91 (caída en "Compras").`,
+          'tasa_conversion_baja': `Tasa de conversión de acciones crítica detectada: 0.8% (crítico < 1.5%). Impresiones: 12,500 | Acciones: 100.`,
+          'presupuesto_agotado_diario': `Presupuesto diario agotado en Meta. Gastado: $200.00 / $200.00 (100%). CPL alcanzado: $2.10.`,
+          'limitada_meta_demanda': `Limitación de demanda en Meta. Presupuesto disponible: $0. Audiencias agotadas: 8. Recomendación: aumentar presupuesto o ampliar audiencias.`,
+          'cpl_aumento_porcentual': `CPL (Costo por Acción) aumentó un 65% respecto a hace 7 días. CPL anterior: $1.50 → CPL actual: $2.48.`,
+        }
+        return simulacionesMeta[subtipo] || `Se disparó la alerta ${subtipo} en Meta.`
+      } else if (esGoogle) {
+        // Datos específicos para Google Ads (ROAS, CPC, Conversiones)
+        const simulacionesGoogle: Record<string, string> = {
+          'caida_conversiones_porcentual': `Se detectó una caída del 42% en conversiones en los últimos 7 días en Google Ads. Conversiones: 145 → 84 (caída en búsqueda). ROAS: 2.5x → 1.8x.`,
+          'tasa_conversion_baja': `Tasa de conversión crítica detectada: 1.2% (crítico < 2%). Clics: 8,420 | Conversiones: 101. CPC: $3.50.`,
+          'presupuesto_agotado_diario': `Presupuesto diario agotado en Google Ads. Gastado: $300.00 / $300.00 (100%). Impresiones: 15,230.`,
+          'limitada_google': `Limitación de presupuesto detectada en Google Ads. Presupuesto disponible: $0. Campañas pausadas: 3 (por falta de presupuesto).`,
+          'cpl_aumento_porcentual': `CPC (Costo por Clic) aumentó un 58% respecto a hace 7 días. CPC anterior: $1.25 → CPC actual: $1.98.`,
+        }
+        return simulacionesGoogle[subtipo] || `Se disparó la alerta ${subtipo} en Google Ads.`
+      } else {
+        // Datos genéricos para "ambas" plataformas
+        const simulacionesGeneral: Record<string, string> = {
+          'caida_conversiones_porcentual': `Se detectó una caída del 42% en conversiones en los últimos 7 días en ambas plataformas. Meta: 156 → 91 acciones. Google: 145 → 84 conversiones.`,
+          'tasa_conversion_baja': `Tasa de conversión crítica detectada en ambas plataformas. Meta: 0.8% | Google: 1.2% (ambas bajo umbral crítico).`,
+          'presupuesto_agotado_diario': `Presupuesto diario agotado en ambas plataformas. Meta: $200/$200. Google: $300/$300. Total gastado: $500.`,
+          'cpl_aumento_porcentual': `Costo por acción aumentó en ambas plataformas. Meta CPL: $1.50 → $2.48 (+65%). Google CPC: $1.25 → $1.98 (+58%).`,
+        }
+        return simulacionesGeneral[subtipo] || `Se disparó la alerta ${subtipo} en ambas plataformas.`
       }
-      
-      return simulaciones[subtipo] || `Se disparó la alerta ${subtipo} en ${platforma}.`
     }
 
     // Construir descripción detallada de la alerta
@@ -72,7 +93,7 @@ export async function POST(req: NextRequest) {
     
     // Agregar QUÉ SE DETECTÓ
     descripcionDetallada += `\n━━━ QUÉ SE DETECTÓ ━━━\n`
-    descripcionDetallada += generarDatosDetectados(alertaSubtipo, alerta?.configuracion) + `\n`
+    descripcionDetallada += generarDatosDetectados(alertaSubtipo, plataforma || alerta?.plataforma || 'ambas', alerta?.configuracion) + `\n`
     
     if (alerta) {
       descripcionDetallada += `\n━━━ CONFIGURACIÓN ━━━\n`
