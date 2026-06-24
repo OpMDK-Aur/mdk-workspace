@@ -94,6 +94,7 @@ export function ControllerConfigSheet({
   const [loading, setLoading] = useState(false)
   const [loadingCuentas, setLoadingCuentas] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
+  const [alertasData, setAlertasData] = useState<Record<string, AlertCardData>>({})
 
   // Cargar configuración y cuentas al abrir el sheet
   useEffect(() => {
@@ -140,6 +141,43 @@ export function ControllerConfigSheet({
       }
     } catch (error) {
       toast.error('Error al guardar')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSaveAlertas = async () => {
+    setLoading(true)
+    try {
+      // Transformar alertasData al formato esperado por el endpoint
+      const alertasArray = Object.entries(alertasData).map(([subtipo, data]) => ({
+        subtipo,
+        activa: data.activa,
+        plataforma: data.plataforma,
+        accion: data.accion,
+        configuracion: {
+          campos: data.campos,
+          variantes: data.variantes,
+        },
+      }))
+
+      const response = await fetch('/api/controller/alertas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clienteId,
+          alertas: alertasArray,
+        }),
+      })
+
+      if (response.ok) {
+        toast.success('Alertas guardadas correctamente')
+      } else {
+        toast.error('Error al guardar alertas')
+      }
+    } catch (error) {
+      console.error('Error guardando alertas:', error)
+      toast.error('Error al guardar alertas')
     } finally {
       setLoading(false)
     }
@@ -276,9 +314,27 @@ export function ControllerConfigSheet({
                     {grupo.grupo}
                   </div>
                   <div className="space-y-2">
-                    {grupo.alertas.map((alerta) => (
-                      <AlertCard key={alerta.subtipo} alerta={alerta} />
-                    ))}
+                    {grupo.alertas.map((alerta) => {
+                      const alertaData = alertasData[alerta.subtipo] || {
+                        subtipo: alerta.subtipo,
+                        activa: false,
+                        plataforma: 'ambas',
+                        accion: 'ambas',
+                        campos: alerta.campos?.reduce((acc: Record<string, string | number>, campo: string) => {
+                          acc[campo] = ''
+                          return acc
+                        }, {}) || {},
+                        variantes: alerta.subtipo === 'cpl_aumento_porcentual' ? [{ porcentaje: '', dias: '' }] : [],
+                      }
+                      return (
+                        <AlertCard 
+                          key={alerta.subtipo} 
+                          alerta={alerta}
+                          alertaData={alertaData}
+                          onDataChange={(data) => setAlertasData({ ...alertasData, [alerta.subtipo]: data })}
+                        />
+                      )
+                    })}
                   </div>
                 </div>
               ))}
@@ -301,16 +357,38 @@ export function ControllerConfigSheet({
                     {grupo.grupo}
                   </div>
                   <div className="space-y-2">
-                    {grupo.alertas.map((alerta) => (
-                      <AlertCard key={alerta.subtipo} alerta={alerta} />
-                    ))}
+                    {grupo.alertas.map((alerta) => {
+                      const alertaData = alertasData[alerta.subtipo] || {
+                        subtipo: alerta.subtipo,
+                        activa: false,
+                        plataforma: 'ambas',
+                        accion: 'ambas',
+                        campos: alerta.campos?.reduce((acc: Record<string, string | number>, campo: string) => {
+                          acc[campo] = ''
+                          return acc
+                        }, {}) || {},
+                        variantes: alerta.subtipo === 'cpl_aumento_porcentual' ? [{ porcentaje: '', dias: '' }] : [],
+                      }
+                      return (
+                        <AlertCard 
+                          key={alerta.subtipo} 
+                          alerta={alerta}
+                          alertaData={alertaData}
+                          onDataChange={(data) => setAlertasData({ ...alertasData, [alerta.subtipo]: data })}
+                        />
+                      )
+                    })}
                   </div>
                 </div>
               ))}
             </div>
 
-            <Button className="w-full bg-[#7F77DD] hover:bg-[#7F77DD]/90 mt-6">
-              Guardar alertas
+            <Button 
+              onClick={handleSaveAlertas}
+              disabled={loading}
+              className="w-full bg-[#7F77DD] hover:bg-[#7F77DD]/90 mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Guardando...' : 'Guardar alertas'}
             </Button>
           </TabsContent>
 
@@ -325,53 +403,33 @@ export function ControllerConfigSheet({
   )
 }
 
-function AlertCard({ alerta }: { alerta: any }) {
-  const [active, setActive] = useState(false)
+interface AlertCardData {
+  subtipo: string
+  activa: boolean
+  plataforma: string
+  accion: string
+  campos: Record<string, string | number>
+  variantes: Array<Record<string, string | number>>
+}
+
+function AlertCard({ 
+  alerta, 
+  alertaData, 
+  onDataChange 
+}: { 
+  alerta: any
+  alertaData: AlertCardData
+  onDataChange: (data: AlertCardData) => void
+}) {
   const [expanded, setExpanded] = useState(false)
-  const [plataforma, setPlataforma] = useState('ambas')
-  const [accion, setAccion] = useState('ambas')
-  const [campos, setCampos] = useState<Record<string, string | number>>({})
-  const [variantes, setVariantes] = useState<Array<Record<string, string | number>>>([])
 
   const sinCamposConfig = ['tasa_conversion_baja', 'presupuesto_agotado_diario', 'limitada_google', 'limitada_meta_demanda']
 
   const tooltipPlataforma = '¿En qué plataforma aplica esta alerta? Elegí Meta, Google, o Ambas para monitorear las dos.'
   const tooltipAccion = '¿Qué hace el sistema cuando se dispara esta alerta? Tarea: crea una tarea asignada al AM. Notificación: envía una alerta interna. Ambas: hace las dos cosas.'
 
-  // Inicializar campos según el subtipo
-  useEffect(() => {
-    const camposIniciales: Record<string, string | number> = {}
-    alerta.campos?.forEach((campo: string) => {
-      camposIniciales[campo] = ''
-    })
-    setCampos(camposIniciales)
-
-    // Para cpl_aumento_porcentual, inicializar con una variante
-    if (alerta.subtipo === 'cpl_aumento_porcentual') {
-      setVariantes([{ porcentaje: '', dias: '' }])
-    }
-  }, [alerta])
-
-  const handleAddVariante = () => {
-    setVariantes([...variantes, { porcentaje: '', dias: '' }])
-  }
-
-  const handleRemoveVariante = (index: number) => {
-    setVariantes(variantes.filter((_, i) => i !== index))
-  }
-
-  const handleCampoChange = (campo: string, valor: string | number) => {
-    setCampos({ ...campos, [campo]: valor })
-  }
-
-  const handleVarianteChange = (index: number, campo: string, valor: string | number) => {
-    const nuevasVariantes = [...variantes]
-    nuevasVariantes[index] = { ...nuevasVariantes[index], [campo]: valor }
-    setVariantes(nuevasVariantes)
-  }
-
   const handleSwitchChange = (newActive: boolean) => {
-    setActive(newActive)
+    onDataChange({ ...alertaData, activa: newActive })
     if (newActive) {
       setExpanded(true)
     } else {
@@ -382,6 +440,27 @@ function AlertCard({ alerta }: { alerta: any }) {
   const handleHeaderClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     setExpanded(!expanded)
+  }
+
+  const handleAddVariante = () => {
+    const nuevasVariantes = [...alertaData.variantes, { porcentaje: '', dias: '' }]
+    onDataChange({ ...alertaData, variantes: nuevasVariantes })
+  }
+
+  const handleRemoveVariante = (index: number) => {
+    const nuevasVariantes = alertaData.variantes.filter((_, i) => i !== index)
+    onDataChange({ ...alertaData, variantes: nuevasVariantes })
+  }
+
+  const handleCampoChange = (campo: string, valor: string | number) => {
+    const nuevosCampos = { ...alertaData.campos, [campo]: valor }
+    onDataChange({ ...alertaData, campos: nuevosCampos })
+  }
+
+  const handleVarianteChange = (index: number, campo: string, valor: string | number) => {
+    const nuevasVariantes = [...alertaData.variantes]
+    nuevasVariantes[index] = { ...nuevasVariantes[index], [campo]: valor }
+    onDataChange({ ...alertaData, variantes: nuevasVariantes })
   }
 
   return (
@@ -396,27 +475,27 @@ function AlertCard({ alerta }: { alerta: any }) {
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                handleSwitchChange(!active)
+                handleSwitchChange(!alertaData.activa)
               }}
               className={`relative h-5 w-10 rounded-full transition-all duration-300 flex-shrink-0 ${
-                active ? 'bg-[#10B981]' : 'bg-[#4B5563]'
+                alertaData.activa ? 'bg-[#10B981]' : 'bg-[#4B5563]'
               }`}
-              title={active ? 'Desactivar alerta' : 'Activar alerta'}
+              title={alertaData.activa ? 'Desactivar alerta' : 'Activar alerta'}
             >
               <div
                 className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-md transition-all duration-300 ${
-                  active ? 'translate-x-5' : 'translate-x-0.5'
+                  alertaData.activa ? 'translate-x-5' : 'translate-x-0.5'
                 }`}
               />
             </button>
 
             <div className="flex-1">
-              <span className={`text-[13px] font-normal ${active ? 'text-white' : 'text-white/40'}`}>
+              <span className={`text-[13px] font-normal ${alertaData.activa ? 'text-white' : 'text-white/40'}`}>
                 {alerta.label}
               </span>
             </div>
 
-            {active && (
+            {alertaData.activa && (
               <div className="flex items-center gap-2">
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#7F77DD]/15 text-[#7F77DD]">
                   Activa
@@ -449,7 +528,7 @@ function AlertCard({ alerta }: { alerta: any }) {
                     </Tooltip>
                   </TooltipProvider>
                 </label>
-                <Select value={plataforma} onValueChange={setPlataforma}>
+                <Select value={alertaData.plataforma} onValueChange={(val) => onDataChange({ ...alertaData, plataforma: val })}>
                   <SelectTrigger className="h-9 text-sm bg-[#0f0f0f] border-white/10">
                     <SelectValue />
                   </SelectTrigger>
@@ -475,7 +554,7 @@ function AlertCard({ alerta }: { alerta: any }) {
                     </Tooltip>
                   </TooltipProvider>
                 </label>
-                <Select value={accion} onValueChange={setAccion}>
+                <Select value={alertaData.accion} onValueChange={(val) => onDataChange({ ...alertaData, accion: val })}>
                   <SelectTrigger className="h-9 text-sm bg-[#0f0f0f] border-white/10">
                     <SelectValue />
                   </SelectTrigger>
@@ -502,12 +581,12 @@ function AlertCard({ alerta }: { alerta: any }) {
                   Variantes
                 </p>
 
-                {variantes.map((variante, idx) => (
+                {alertaData.variantes.map((variante, idx) => (
                   <div 
                     key={idx} 
                     className="bg-[#1a1a1a] border border-white/8 rounded-md p-3 mb-2 relative"
                   >
-                    {variantes.length > 1 && (
+                    {alertaData.variantes.length > 1 && (
                       <button
                         onClick={() => handleRemoveVariante(idx)}
                         className="absolute top-2 right-2 text-red-400/40 hover:text-red-400 transition-colors"
@@ -576,7 +655,7 @@ function AlertCard({ alerta }: { alerta: any }) {
                         <Input
                           type="number"
                           min="0"
-                          value={campos[campo]}
+                          value={alertaData.campos[campo] || ''}
                           onChange={(e) => handleCampoChange(campo, e.target.value)}
                           className="bg-[#1a1a1a] border border-white/10 rounded-md h-9 px-3 text-[14px] text-white focus:border-[#7F77DD]/60 focus:outline-none focus:ring-1 focus:ring-[#7F77DD]/20"
                           placeholder="0"
