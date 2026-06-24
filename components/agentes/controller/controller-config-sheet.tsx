@@ -11,7 +11,7 @@ import { Toggle } from '@/components/ui/toggle'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ControllerConfiguracion, ControllerAlerta } from '@/lib/types'
-import { IconTrash, IconPlus, IconAlertTriangle, IconCoin, IconAlertCircle, IconBrandMeta, IconBrandGoogle, IconChevronDown, IconInfoCircle, IconSparkles, IconMaximize, IconMinimize } from '@tabler/icons-react'
+import { IconTrash, IconPlus, IconAlertTriangle, IconCoin, IconCheck, IconAlertCircle, IconBrandMeta, IconBrandGoogle, IconChevronDown, IconInfoCircle, IconSparkles, IconMaximize, IconMinimize } from '@tabler/icons-react'
 import { toast } from 'sonner'
 
 interface CuentaPublicitaria {
