@@ -14,7 +14,7 @@ export const revalidate = 0
 async function getControllerData() {
   const supabase = await createSupabaseClient()
 
-  // 1. Fetch clientes activos con PM y AM
+  // 1. Fetch clientes activos con PM y AM (LEFT JOINs a colaboradores filtrando por puesto)
   const { data: clientes } = await supabase
     .from('clientes')
     .select(`
@@ -22,10 +22,14 @@ async function getControllerData() {
       nombre_del_negocio,
       project_manager_id,
       account_manager_id,
-      pm:project_manager_id(id, nombre_completo),
-      am:account_manager_id(id, nombre_completo)
+      pm:project_manager_id(id, nombre, apellido, puesto),
+      am:account_manager_id(id, nombre, apellido, puesto)
     `)
     .eq('activo', true)
+    .eq('pm.puesto', 'Project Manager')
+    .eq('am.puesto', 'Account Manager')
+    .eq('pm.activo', true)
+    .eq('am.activo', true)
     .order('nombre_del_negocio')
 
   // 2. Fetch configuraciones
@@ -63,9 +67,9 @@ async function getControllerData() {
       ultima_ejecucion: ejecutadas.length > 0 ? ejecutadas[ejecutadas.length - 1].ejecutado_at : null,
       alertas_disparadas_hoy: disparadasHoy,
       pm_id: cliente.project_manager_id || null,
-      pm_nombre: cliente.pm?.nombre_completo || null,
+      pm_nombre: cliente.pm ? `${cliente.pm.nombre} ${cliente.pm.apellido}`.trim() : null,
       am_id: cliente.account_manager_id || null,
-      am_nombre: cliente.am?.nombre_completo || null,
+      am_nombre: cliente.am ? `${cliente.am.nombre} ${cliente.am.apellido}`.trim() : null,
     }
   })
 

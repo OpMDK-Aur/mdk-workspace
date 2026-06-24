@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
         .from('controller_configuracion')
         .select('*')
         .eq('cliente_id', clienteId)
-        .single(),
+        .maybeSingle(),
       supabase
         .from('cuentas_publicitarias')
         .select('id, plataforma, id_cuenta, nombre_cuenta, activo')
