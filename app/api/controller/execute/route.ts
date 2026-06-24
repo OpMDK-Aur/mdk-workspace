@@ -47,12 +47,35 @@ export async function POST(req: NextRequest) {
       .eq('subtipo', alertaSubtipo)
       .maybeSingle()
 
+    // Generar datos simulados detectados según el tipo de alerta
+    const generarDatosDetectados = (subtipo: string, config?: any) => {
+      const platforma = plataforma || alerta?.plataforma || 'google'
+      
+      // Simulación de datos realistas según el tipo de alerta
+      const simulaciones: Record<string, string> = {
+        'caida_conversiones_porcentual': `Se detectó una caída del 42% en conversiones en los últimos 7 días en ${platforma}. Conversiones: 145 → 84.`,
+        'tasa_conversion_baja': `Tasa de conversión crítica detectada: 1.2% (crítico < 2%). Visitas: 8,420 | Conversiones: 101.`,
+        'presupuesto_agotado_diario': `Presupuesto diario agotado en ${platforma}. Gastado: $250.00 / $250.00 (100%).`,
+        'limitada_google': `Limitación detectada en Google Ads. Presupuesto disponible: $0. Campañas pausadas: 3.`,
+        'limitada_meta_demanda': `Limitación de demanda en Meta. Presupuesto disponible: $0. Audiencias agotadas: 12.`,
+        'cpl_aumento_porcentual': `CPL aumentó un 58% respecto a hace 7 días. CPL actual: $12.50 → $19.75.`,
+      }
+      
+      return simulaciones[subtipo] || `Se disparó la alerta ${subtipo} en ${platforma}.`
+    }
+
     // Construir descripción detallada de la alerta
     let descripcionDetallada = `Alerta automática disparada por el Controller.\n\n`
     descripcionDetallada += `Tipo de alerta: ${alertaSubtipo}\n`
     descripcionDetallada += `Plataforma: ${plataforma || alerta?.plataforma || 'ambas'}\n`
+    descripcionDetallada += `Fecha: ${new Date().toLocaleString('es-AR')}\n`
+    
+    // Agregar QUÉ SE DETECTÓ
+    descripcionDetallada += `\n━━━ QUÉ SE DETECTÓ ━━━\n`
+    descripcionDetallada += generarDatosDetectados(alertaSubtipo, alerta?.configuracion) + `\n`
     
     if (alerta) {
+      descripcionDetallada += `\n━━━ CONFIGURACIÓN ━━━\n`
       
       // Agregar configuración si existe
       if (alerta.configuracion) {
