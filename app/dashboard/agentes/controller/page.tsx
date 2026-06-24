@@ -14,10 +14,17 @@ export const revalidate = 0
 async function getControllerData() {
   const supabase = await createSupabaseClient()
 
-  // 1. Fetch clientes activos
+  // 1. Fetch clientes activos con PM y AM
   const { data: clientes } = await supabase
     .from('clientes')
-    .select('id, nombre_del_negocio')
+    .select(`
+      id, 
+      nombre_del_negocio,
+      project_manager_id,
+      account_manager_id,
+      pm:project_manager_id(id, nombre_completo),
+      am:account_manager_id(id, nombre_completo)
+    `)
     .eq('activo', true)
     .order('nombre_del_negocio')
 
@@ -55,6 +62,10 @@ async function getControllerData() {
       alertas_activas: alertas.filter((a) => a.activa).length,
       ultima_ejecucion: ejecutadas.length > 0 ? ejecutadas[ejecutadas.length - 1].ejecutado_at : null,
       alertas_disparadas_hoy: disparadasHoy,
+      pm_id: cliente.project_manager_id || null,
+      pm_nombre: cliente.pm?.nombre_completo || null,
+      am_id: cliente.account_manager_id || null,
+      am_nombre: cliente.am?.nombre_completo || null,
     }
   })
 

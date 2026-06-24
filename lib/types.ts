@@ -700,4 +700,8 @@ export interface ClienteConController {
   alertas_activas: number
   ultima_ejecucion: string | null
   alertas_disparadas_hoy: number
+  pm_id: string | null
+  pm_nombre: string | null
+  am_id: string | null
+  am_nombre: string | null
 }

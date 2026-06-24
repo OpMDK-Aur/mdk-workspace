@@ -299,44 +299,46 @@ export function ControllerConfigSheet({
           </TabsContent>
 
           {/* TAB 2: Alertas */}
-          <TabsContent value="alertas" className="space-y-6 mt-6">
+          <TabsContent value="alertas" className="space-y-6 mt-6 max-h-[600px] overflow-y-auto">
             {/* Rendimiento */}
-            <div>
-              <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+            <div className="space-y-4">
+              <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-semibold flex items-center gap-2">
                 <IconAlertTriangle className="w-4 h-4 text-red-400" />
                 Rendimiento
-              </h3>
+                <div className="flex-1 h-px bg-white/10" />
+              </h2>
               {ALERTAS_RENDIMIENTO.map((grupo) => (
-                <Collapsible key={grupo.grupo} defaultOpen className="mb-4">
-                  <CollapsibleTrigger className="text-sm font-medium text-[#7F77DD] hover:text-[#7F77DD]/80">
+                <div key={grupo.grupo} className="space-y-2">
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
                     {grupo.grupo}
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="space-y-2 mt-2">
+                  </div>
+                  <div className="space-y-2">
                     {grupo.alertas.map((alerta) => (
                       <AlertCard key={alerta.subtipo} alerta={alerta} />
                     ))}
-                  </CollapsibleContent>
-                </Collapsible>
+                  </div>
+                </div>
               ))}
             </div>
 
             {/* Presupuesto */}
-            <div className="border-t border-white/10 pt-6">
-              <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+            <div className="space-y-4 border-t border-white/10 pt-6">
+              <h2 className="text-xs uppercase tracking-widest text-muted-foreground font-semibold flex items-center gap-2">
                 <IconCoin className="w-4 h-4 text-yellow-400" />
                 Presupuesto
-              </h3>
+                <div className="flex-1 h-px bg-white/10" />
+              </h2>
               {ALERTAS_PRESUPUESTO.map((grupo) => (
-                <Collapsible key={grupo.grupo} defaultOpen className="mb-4">
-                  <CollapsibleTrigger className="text-sm font-medium text-[#7F77DD] hover:text-[#7F77DD]/80">
+                <div key={grupo.grupo} className="space-y-2">
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
                     {grupo.grupo}
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="space-y-2 mt-2">
+                  </div>
+                  <div className="space-y-2">
                     {grupo.alertas.map((alerta) => (
                       <AlertCard key={alerta.subtipo} alerta={alerta} />
                     ))}
-                  </CollapsibleContent>
-                </Collapsible>
+                  </div>
+                </div>
               ))}
             </div>
 
@@ -359,43 +361,162 @@ function AlertCard({ alerta }: { alerta: any }) {
   const [active, setActive] = useState(false)
   const [plataforma, setPlataforma] = useState('ambas')
   const [accion, setAccion] = useState('ambas')
+  const [campos, setCampos] = useState<Record<string, string | number>>({})
+  const [variantes, setVariantes] = useState<Array<Record<string, string | number>>>([])
+
+  // Inicializar campos según el subtipo
+  useEffect(() => {
+    const camposIniciales: Record<string, string | number> = {}
+    alerta.campos?.forEach((campo: string) => {
+      camposIniciales[campo] = ''
+    })
+    setCampos(camposIniciales)
+
+    // Para cpl_aumento_porcentual, inicializar con una variante
+    if (alerta.subtipo === 'cpl_aumento_porcentual') {
+      setVariantes([{ porcentaje: '', dias: '' }])
+    }
+  }, [alerta])
+
+  const handleAddVariante = () => {
+    setVariantes([...variantes, { porcentaje: '', dias: '' }])
+  }
+
+  const handleRemoveVariante = (index: number) => {
+    setVariantes(variantes.filter((_, i) => i !== index))
+  }
+
+  const handleCampoChange = (campo: string, valor: string | number) => {
+    setCampos({ ...campos, [campo]: valor })
+  }
+
+  const handleVarianteChange = (index: number, campo: string, valor: string | number) => {
+    const nuevasVariantes = [...variantes]
+    nuevasVariantes[index] = { ...nuevasVariantes[index], [campo]: valor }
+    setVariantes(nuevasVariantes)
+  }
+
+  const sinCamposConfig = ['tasa_conversion_baja', 'presupuesto_agotado_diario', 'limitada_google', 'limitada_meta_demanda']
 
   return (
-    <div className="border border-white/10 rounded-lg p-3 bg-[#0f0f0f]">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <Toggle pressed={active} onPressedChange={setActive} size="sm" className="data-[state=on]:bg-[#7F77DD]">
-              {active ? '✓' : 'O'}
-            </Toggle>
-            <label className="text-sm font-medium cursor-pointer flex-1">{alerta.label}</label>
+    <div className={`rounded-lg border transition-all duration-200 ${active ? 'bg-[#1a1a1a] border-[#7F77DD]/40' : 'bg-[#1a1a1a] border-white/8 opacity-50'}`}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 gap-4">
+        <div className="flex items-center gap-3">
+          <Toggle pressed={active} onPressedChange={setActive} className="data-[state=on]:bg-[#7F77DD] data-[state=on]:text-white">
+            <span className="text-xs">{active ? '✓' : ''}</span>
+          </Toggle>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-muted-foreground">{active ? 'Activa' : 'Activar'}</span>
+            <span className={`text-xs font-medium ${active ? 'text-white' : 'text-white/60'}`}>{alerta.label}</span>
           </div>
-          {active && (
-            <div className="grid grid-cols-3 gap-2 mt-3">
-              <Select value={plataforma} onValueChange={setPlataforma}>
-                <SelectTrigger className="h-8 text-xs bg-[#161616] border-white/10">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="meta">Meta</SelectItem>
-                  <SelectItem value="google">Google</SelectItem>
-                  <SelectItem value="ambas">Ambas</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={accion} onValueChange={setAccion}>
-                <SelectTrigger className="h-8 text-xs bg-[#161616] border-white/10">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="tarea">Tarea</SelectItem>
-                  <SelectItem value="notificacion">Notificación</SelectItem>
-                  <SelectItem value="ambas">Ambas</SelectItem>
-                </SelectContent>
-              </Select>
+        </div>
+      </div>
+
+      {/* Body (expandido cuando active) */}
+      {active && (
+        <div className="px-4 pb-4 space-y-3 border-t border-white/8">
+          {/* Fila 1: Selectores */}
+          <div className="flex items-center gap-2 pt-3">
+            <Select value={plataforma} onValueChange={setPlataforma}>
+              <SelectTrigger className="h-8 text-xs bg-[#111] border-white/10 flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="meta">Meta</SelectItem>
+                <SelectItem value="google">Google</SelectItem>
+                <SelectItem value="ambas">Ambas</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground">→</span>
+            <Select value={accion} onValueChange={setAccion}>
+              <SelectTrigger className="h-8 text-xs bg-[#111] border-white/10 flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="tarea">Crear tarea</SelectItem>
+                <SelectItem value="notificacion">Notificación</SelectItem>
+                <SelectItem value="ambas">Ambas</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Fila 2: Configuración */}
+          {sinCamposConfig.includes(alerta.subtipo) ? (
+            <div className="bg-[#7F77DD]/10 text-[#7F77DD] text-xs rounded px-2 py-1 w-fit">
+              Se detecta automáticamente al ejecutar
+            </div>
+          ) : alerta.subtipo === 'cpl_aumento_porcentual' ? (
+            <div className="space-y-2">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">Variantes</div>
+              {variantes.map((variante, idx) => (
+                <div key={idx} className="relative bg-[#111] border border-white/10 rounded p-3 flex gap-3">
+                  <div className="flex-1">
+                    <Label className="text-xs text-muted-foreground">Aumento (%)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={variante.porcentaje}
+                      onChange={(e) => handleVarianteChange(idx, 'porcentaje', e.target.value)}
+                      className="h-9 mt-1 text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Label className="text-xs text-muted-foreground">Comparar (días)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={variante.dias}
+                      onChange={(e) => handleVarianteChange(idx, 'dias', e.target.value)}
+                      className="h-9 mt-1 text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                  {variantes.length > 1 && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-red-400/60 hover:text-red-400 mt-6"
+                      onClick={() => handleRemoveVariante(idx)}
+                    >
+                      <IconTrash className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full border-dashed border-white/20 h-8 text-xs gap-1"
+                onClick={handleAddVariante}
+              >
+                <IconPlus className="h-3 w-3" />
+                Agregar variante
+              </Button>
+            </div>
+          ) : (
+            <div className="bg-[#111] rounded p-3 space-y-3">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">Configuración</div>
+              <div className={`grid gap-3 ${alerta.campos?.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {alerta.campos?.map((campo: string) => (
+                  <div key={campo}>
+                    <Label className="text-xs text-muted-foreground capitalize">{campo.replace(/_/g, ' ')}</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={campos[campo]}
+                      onChange={(e) => handleCampoChange(campo, e.target.value)}
+                      className="h-9 mt-1 text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
-      </div>
+      )}
     </div>
   )
 }

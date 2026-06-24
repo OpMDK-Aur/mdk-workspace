@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ClienteConController } from '@/lib/types'
-import { IconBrandMeta, IconBrandGoogle, IconCalendar } from '@tabler/icons-react'
+import { IconBrandMeta, IconBrandGoogle, IconCalendar, IconX } from '@tabler/icons-react'
 import { ControllerConfigSheet } from './controller-config-sheet'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -19,17 +20,54 @@ type FilterState = 'todos' | 'configurados' | 'sin-configurar'
 export function ControllerBoard({ clientes }: ControllerBoardProps) {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterState>('todos')
+  const [filterPM, setFilterPM] = useState<string>('todos')
+  const [filterAM, setFilterAM] = useState<string>('todos')
+  const [filterCliente, setFilterCliente] = useState<string>('todos')
   const [selectedClienteId, setSelectedClienteId] = useState<string | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
 
-  const filtered = clientes.filter((c) => {
-    const matchSearch = c.nombre_del_negocio.toLowerCase().includes(search.toLowerCase())
-    const matchFilter =
-      filter === 'todos' ||
-      (filter === 'configurados' && c.configuracion) ||
-      (filter === 'sin-configurar' && !c.configuracion)
-    return matchSearch && matchFilter
-  })
+  // Obtener lista única de PMs y AMs
+  const pmList = useMemo(() => {
+    const pms = new Map<string, string>()
+    clientes.forEach((c) => {
+      if (c.pm_id && c.pm_nombre) {
+        pms.set(c.pm_id, c.pm_nombre)
+      }
+    })
+    return Array.from(pms.entries()).sort((a, b) => a[1].localeCompare(b[1]))
+  }, [clientes])
+
+  const amList = useMemo(() => {
+    const ams = new Map<string, string>()
+    clientes.forEach((c) => {
+      if (c.am_id && c.am_nombre) {
+        ams.set(c.am_id, c.am_nombre)
+      }
+    })
+    return Array.from(ams.entries()).sort((a, b) => a[1].localeCompare(b[1]))
+  }, [clientes])
+
+  const filtered = useMemo(() => {
+    return clientes.filter((c) => {
+      const matchSearch = c.nombre_del_negocio.toLowerCase().includes(search.toLowerCase())
+      const matchFilter =
+        filter === 'todos' ||
+        (filter === 'configurados' && c.configuracion) ||
+        (filter === 'sin-configurar' && !c.configuracion)
+      const matchPM = filterPM === 'todos' || c.pm_id === filterPM
+      const matchAM = filterAM === 'todos' || c.am_id === filterAM
+      const matchCliente = filterCliente === 'todos' || c.id === filterCliente
+      return matchSearch && matchFilter && matchPM && matchAM && matchCliente
+    })
+  }, [clientes, search, filter, filterPM, filterAM, filterCliente])
+
+  const hasActiveFilters = filterPM !== 'todos' || filterAM !== 'todos' || filterCliente !== 'todos'
+
+  const clearFilters = () => {
+    setFilterPM('todos')
+    setFilterAM('todos')
+    setFilterCliente('todos')
+  }
 
   const selectedCliente = clientes.find((c) => c.id === selectedClienteId)
 
@@ -37,6 +75,7 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
     <>
       {/* Controles */}
       <div className="bg-[#161616] border border-white/10 rounded-lg p-4 mb-6">
+        {/* Buscador */}
         <div className="flex items-center gap-4 mb-4">
           <Input
             placeholder="Buscar cliente..."
@@ -45,7 +84,9 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
             className="flex-1 bg-[#0f0f0f] border-white/10 text-white placeholder:text-gray-500"
           />
         </div>
-        <div className="flex gap-2">
+
+        {/* Tabs de configuración */}
+        <div className="flex gap-2 mb-4">
           {(['todos', 'configurados', 'sin-configurar'] as FilterState[]).map((f) => (
             <Button
               key={f}
@@ -59,6 +100,63 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
               {f === 'sin-configurar' && 'Sin configurar'}
             </Button>
           ))}
+        </div>
+
+        {/* Filtros adicionales */}
+        <div className="flex gap-2 items-center flex-wrap">
+          <Select value={filterPM} onValueChange={setFilterPM}>
+            <SelectTrigger className="w-44 h-9 bg-[#0f0f0f] border-white/10 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos los PM</SelectItem>
+              {pmList.map(([id, nombre]) => (
+                <SelectItem key={id} value={id}>
+                  {nombre}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterAM} onValueChange={setFilterAM}>
+            <SelectTrigger className="w-44 h-9 bg-[#0f0f0f] border-white/10 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos los AM</SelectItem>
+              {amList.map(([id, nombre]) => (
+                <SelectItem key={id} value={id}>
+                  {nombre}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filterCliente} onValueChange={setFilterCliente}>
+            <SelectTrigger className="w-44 h-9 bg-[#0f0f0f] border-white/10 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos los clientes</SelectItem>
+              {clientes.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.nombre_del_negocio}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {hasActiveFilters && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={clearFilters}
+              className="h-9 gap-1"
+            >
+              <IconX className="w-3 h-3" />
+              Limpiar
+            </Button>
+          )}
         </div>
       </div>
 
