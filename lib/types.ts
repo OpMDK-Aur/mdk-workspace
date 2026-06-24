@@ -651,3 +651,53 @@ export interface TesterItem {
   whatsapp_numero?: string | null
   webhook_format?: string | null
 }
+
+// ── Controller ────────────────────────────────────────────────────────────────
+
+export interface ControllerConfiguracion {
+  id: string
+  cliente_id: string
+  meta_ad_account_id: string | null
+  meta_access_token: string | null
+  google_customer_id: string | null
+  google_refresh_token: string | null
+  activo: boolean
+  configurado_por: string | null
+  creado_at: string
+  actualizado_at: string
+}
+
+export interface ControllerAlerta {
+  id: string
+  cliente_id: string
+  categoria: 'rendimiento' | 'presupuesto'
+  tipo: string
+  subtipo: string
+  plataforma: 'meta' | 'google' | 'ambas'
+  parametros: Record<string, unknown>
+  accion: 'tarea' | 'notificacion' | 'ambas'
+  activa: boolean
+  creado_at: string
+}
+
+export interface ControllerEjecucion {
+  id: string
+  cliente_id: string
+  alerta_id: string | null
+  plataforma: string | null
+  disparada: boolean
+  datos_capturados: Record<string, unknown> | null
+  mensaje: string | null
+  tarea_id: string | null
+  ejecutado_at: string
+}
+
+export interface ClienteConController {
+  id: string
+  nombre_del_negocio: string
+  configuracion: ControllerConfiguracion | null
+  total_alertas: number
+  alertas_activas: number
+  ultima_ejecucion: string | null
+  alertas_disparadas_hoy: number
+}
