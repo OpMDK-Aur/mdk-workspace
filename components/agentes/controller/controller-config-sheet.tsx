@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -10,8 +10,16 @@ import { Button } from '@/components/ui/button'
 import { Toggle } from '@/components/ui/toggle'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ControllerConfiguracion, ControllerAlerta } from '@/lib/types'
-import { IconEye, IconEyeOff, IconTrash, IconPlus, IconAlertTriangle, IconCoin, IconCheck, IconAlertCircle } from '@tabler/icons-react'
+import { IconEye, IconEyeOff, IconTrash, IconPlus, IconAlertTriangle, IconCoin, IconCheck, IconAlertCircle, IconBrandMeta, IconBrandGoogle } from '@tabler/icons-react'
 import { toast } from 'sonner'
+
+interface CuentaPublicitaria {
+  id: string
+  plataforma: 'meta' | 'google'
+  id_cuenta: string
+  nombre_cuenta: string | null
+  activo: boolean
+}
 
 interface ControllerConfigSheetProps {
   isOpen: boolean
@@ -79,32 +87,54 @@ export function ControllerConfigSheet({
   clienteNombre,
   configuracion,
 }: ControllerConfigSheetProps) {
-  const [metaActive, setMetaActive] = useState(!!configuracion?.meta_ad_account_id)
-  const [googleActive, setGoogleActive] = useState(!!configuracion?.google_customer_id)
-  const [metaAccountId, setMetaAccountId] = useState(configuracion?.meta_ad_account_id || '')
+  const [cuentas, setCuentas] = useState<CuentaPublicitaria[]>([])
   const [metaToken, setMetaToken] = useState(configuracion?.meta_access_token || '')
-  const [googleCustomerId, setGoogleCustomerId] = useState(configuracion?.google_customer_id || '')
   const [googleRefreshToken, setGoogleRefreshToken] = useState(configuracion?.google_refresh_token || '')
   const [showMetaToken, setShowMetaToken] = useState(false)
   const [showGoogleToken, setShowGoogleToken] = useState(false)
+  const [activo, setActivo] = useState(configuracion?.activo ?? true)
   const [alertas, setAlertas] = useState<ControllerAlerta[]>([])
   const [loading, setLoading] = useState(false)
-  const [historialOpen, setHistorialOpen] = useState(false)
+  const [loadingCuentas, setLoadingCuentas] = useState(false)
+
+  // Cargar configuración y cuentas al abrir el sheet
+  useEffect(() => {
+    if (isOpen) {
+      loadConfigAndCuentas()
+    }
+  }, [isOpen])
+
+  const loadConfigAndCuentas = async () => {
+    setLoadingCuentas(true)
+    try {
+      const response = await fetch(`/api/controller/config?clienteId=${clienteId}`)
+      if (response.ok) {
+        const data = await response.json()
+        setCuentas(data.cuentas || [])
+        if (data.configuracion) {
+          setMetaToken(data.configuracion.meta_access_token || '')
+          setGoogleRefreshToken(data.configuracion.google_refresh_token || '')
+          setActivo(data.configuracion.activo ?? true)
+        }
+      }
+    } catch (error) {
+      console.error('Error cargando configuración:', error)
+    } finally {
+      setLoadingCuentas(false)
+    }
+  }
 
   const handleSaveConexion = async () => {
     setLoading(true)
     try {
       const response = await fetch('/api/controller/config', {
-        method: configuracion ? 'PUT' : 'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clienteId,
-          metaActive,
-          metaAccountId: metaActive ? metaAccountId : null,
-          metaToken: metaActive ? metaToken : null,
-          googleActive,
-          googleCustomerId: googleActive ? googleCustomerId : null,
-          googleRefreshToken: googleActive ? googleRefreshToken : null,
+          meta_access_token: metaToken || null,
+          google_refresh_token: googleRefreshToken || null,
+          activo,
         }),
       })
 
@@ -138,98 +168,134 @@ export function ControllerConfigSheet({
 
           {/* TAB 1: Conexión */}
           <TabsContent value="conexion" className="space-y-6 mt-6">
-            {/* Meta Ads */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Meta Ads</label>
-                <Toggle pressed={metaActive} onPressedChange={setMetaActive} className="data-[state=on]:bg-[#7F77DD]">
-                  {metaActive ? 'Activo' : 'Inactivo'}
-                </Toggle>
+            {loadingCuentas ? (
+              <div className="flex items-center justify-center py-8">
+                <p className="text-sm text-muted-foreground">Cargando...</p>
               </div>
-              {metaActive && (
-                <div className="space-y-3 pl-4 border-l border-[#7F77DD]/30">
-                  <div>
-                    <Label className="text-xs">Ad Account ID</Label>
-                    <Input
-                      placeholder="act_XXXXXXXXX"
-                      value={metaAccountId}
-                      onChange={(e) => setMetaAccountId(e.target.value)}
-                      className="bg-[#0f0f0f] border-white/10 text-white mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Access Token</Label>
-                    <div className="flex gap-2 mt-1">
-                      <Input
-                        placeholder="EAAxxxxx..."
-                        type={showMetaToken ? 'text' : 'password'}
-                        value={metaToken}
-                        onChange={(e) => setMetaToken(e.target.value)}
-                        className="bg-[#0f0f0f] border-white/10 text-white"
-                      />
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => setShowMetaToken(!showMetaToken)}
-                      >
-                        {showMetaToken ? <IconEyeOff className="w-4 h-4" /> : <IconEye className="w-4 h-4" />}
-                      </Button>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-1">Usá un Page Access Token long-lived</p>
-                  </div>
+            ) : cuentas.length === 0 ? (
+              // Empty state
+              <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                <IconAlertCircle className="h-8 w-8 text-yellow-500" />
+                <div className="text-center">
+                  <p className="font-medium text-white">Sin cuentas publicitarias</p>
+                  <p className="text-xs text-muted-foreground mt-1">Configurá las cuentas del cliente en Plataformas → Cuentas publicitarias antes de activar el Controller</p>
                 </div>
-              )}
-            </div>
-
-            {/* Google Ads */}
-            <div className="space-y-4 border-t border-white/10 pt-6">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Google Ads</label>
-                <Toggle pressed={googleActive} onPressedChange={setGoogleActive} className="data-[state=on]:bg-[#7F77DD]">
-                  {googleActive ? 'Activo' : 'Inactivo'}
-                </Toggle>
+                <Button variant="outline" size="sm" className="mt-4" asChild>
+                  <a href="/dashboard/plataformas/cuentas">Ir a Plataformas</a>
+                </Button>
               </div>
-              {googleActive && (
-                <div className="space-y-3 pl-4 border-l border-[#7F77DD]/30">
-                  <div>
-                    <Label className="text-xs">Customer ID</Label>
-                    <Input
-                      placeholder="XXX-XXX-XXXX"
-                      value={googleCustomerId}
-                      onChange={(e) => setGoogleCustomerId(e.target.value)}
-                      className="bg-[#0f0f0f] border-white/10 text-white mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Refresh Token</Label>
-                    <div className="flex gap-2 mt-1">
-                      <Input
-                        placeholder="..."
-                        type={showGoogleToken ? 'text' : 'password'}
-                        value={googleRefreshToken}
-                        onChange={(e) => setGoogleRefreshToken(e.target.value)}
-                        className="bg-[#0f0f0f] border-white/10 text-white"
-                      />
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => setShowGoogleToken(!showGoogleToken)}
-                      >
-                        {showGoogleToken ? <IconEyeOff className="w-4 h-4" /> : <IconEye className="w-4 h-4" />}
-                      </Button>
+            ) : (
+              <>
+                {/* Meta Ads Section */}
+                {cuentas.some(c => c.plataforma === 'meta') && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-medium flex items-center gap-2">
+                      <IconBrandMeta className="h-4 w-4" />
+                      Meta Ads
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {cuentas.filter(c => c.plataforma === 'meta').map(cuenta => (
+                        <div
+                          key={cuenta.id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1877F2]/15 border border-[#1877F2]/30 text-white/80 text-xs"
+                        >
+                          <IconCheck className="h-3 w-3 text-[#1877F2]" />
+                          {cuenta.nombre_cuenta || cuenta.id_cuenta}
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs text-muted-foreground">Access Token</Label>
+                        {metaToken && <span className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400">Configurado</span>}
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <Input
+                          placeholder="EAAxxxxx..."
+                          type={showMetaToken ? 'text' : 'password'}
+                          value={metaToken}
+                          onChange={(e) => setMetaToken(e.target.value)}
+                          className="bg-[#0f0f0f] border-white/10 text-white"
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setShowMetaToken(!showMetaToken)}
+                        >
+                          {showMetaToken ? <IconEyeOff className="h-4 w-4" /> : <IconEye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">Page Access Token long-lived del Business Manager de MDK</p>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
 
-            <Button
-              onClick={handleSaveConexion}
-              disabled={loading}
-              className="w-full bg-[#7F77DD] hover:bg-[#7F77DD]/90 mt-6"
-            >
-              Guardar conexión
-            </Button>
+                {cuentas.some(c => c.plataforma === 'meta') && cuentas.some(c => c.plataforma === 'google') && (
+                  <div className="border-t border-white/10" />
+                )}
+
+                {/* Google Ads Section */}
+                {cuentas.some(c => c.plataforma === 'google') && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-medium flex items-center gap-2">
+                      <IconBrandGoogle className="h-4 w-4" />
+                      Google Ads
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {cuentas.filter(c => c.plataforma === 'google').map(cuenta => (
+                        <div
+                          key={cuenta.id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#EA4335]/15 border border-[#EA4335]/30 text-white/80 text-xs"
+                        >
+                          <IconCheck className="h-3 w-3 text-[#EA4335]" />
+                          {cuenta.nombre_cuenta || cuenta.id_cuenta}
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs text-muted-foreground">Refresh Token</Label>
+                        {googleRefreshToken && <span className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400">Configurado</span>}
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <Input
+                          placeholder="..."
+                          type={showGoogleToken ? 'text' : 'password'}
+                          value={googleRefreshToken}
+                          onChange={(e) => setGoogleRefreshToken(e.target.value)}
+                          className="bg-[#0f0f0f] border-white/10 text-white"
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setShowGoogleToken(!showGoogleToken)}
+                        >
+                          {showGoogleToken ? <IconEyeOff className="h-4 w-4" /> : <IconEye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">OAuth2 Refresh Token de la cuenta de Google Ads</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Agente Activo Toggle */}
+                <div className="border-t border-white/10 pt-4 flex items-center justify-between">
+                  <Label className="text-sm">Agente activo</Label>
+                  <Toggle pressed={activo} onPressedChange={setActivo} className="data-[state=on]:bg-[#7F77DD]">
+                    {activo ? 'Sí' : 'No'}
+                  </Toggle>
+                </div>
+
+                {/* Save Button */}
+                <Button
+                  onClick={handleSaveConexion}
+                  disabled={loading}
+                  className="w-full bg-[#7F77DD] hover:bg-[#7F77DD]/90 mt-6"
+                >
+                  {loading ? 'Guardando...' : 'Guardar configuración'}
+                </Button>
+              </>
+            )}
           </TabsContent>
 
           {/* TAB 2: Alertas */}

@@ -1,5 +1,4 @@
-import { createClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(req: NextRequest) {
@@ -10,24 +9,27 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const cookieStore = await cookies()
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll: () => cookieStore.getAll() } }
-    )
+    const supabase = await createClient()
 
-    const { data, error } = await supabase
-      .from('controller_configuracion')
-      .select('*')
-      .eq('cliente_id', clienteId)
-      .single()
+    // Ejecutar ambas queries en paralelo
+    const [configResult, cuentasResult] = await Promise.all([
+      supabase
+        .from('controller_configuracion')
+        .select('*')
+        .eq('cliente_id', clienteId)
+        .single(),
+      supabase
+        .from('cuentas_publicitarias')
+        .select('id, plataforma, id_cuenta, nombre_cuenta, activo')
+        .eq('cliente_id', clienteId)
+        .eq('activo', true)
+        .order('plataforma', { ascending: true })
+    ])
 
-    if (error && error.code !== 'PGRST116') {
-      throw error
-    }
+    const configuracion = configResult.data
+    const cuentas = cuentasResult.data || []
 
-    return NextResponse.json(data || null)
+    return NextResponse.json({ configuracion, cuentas })
   } catch (error) {
     console.error('[controller/config] Error:', error)
     return NextResponse.json({ error: 'Error al obtener configuración' }, { status: 500 })
@@ -37,96 +39,35 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const {
-      clienteId,
-      metaActive,
-      metaAccountId,
-      metaToken,
-      googleActive,
-      googleCustomerId,
-      googleRefreshToken,
-    } = body
+    const { clienteId, meta_access_token, google_refresh_token, activo } = body
 
     if (!clienteId) {
       return NextResponse.json({ error: 'clienteId requerido' }, { status: 400 })
     }
 
-    const cookieStore = await cookies()
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll: () => cookieStore.getAll() } }
-    )
+    const supabase = await createClient()
 
+    // UPSERT usando cliente_id como clave de conflicto
     const { data, error } = await supabase
       .from('controller_configuracion')
-      .insert([
+      .upsert(
         {
           cliente_id: clienteId,
-          meta_ad_account_id: metaAccountId,
-          meta_access_token: metaToken,
-          google_customer_id: googleCustomerId,
-          google_refresh_token: googleRefreshToken,
-          activo: metaActive || googleActive,
-          creado_at: new Date().toISOString(),
+          meta_access_token: meta_access_token || null,
+          google_refresh_token: google_refresh_token || null,
+          activo: activo ?? true,
           actualizado_at: new Date().toISOString(),
         },
-      ])
+        { onConflict: 'cliente_id' }
+      )
       .select()
       .single()
 
     if (error) throw error
 
-    return NextResponse.json(data, { status: 201 })
+    return NextResponse.json(data, { status: 200 })
   } catch (error) {
     console.error('[controller/config] Error:', error)
     return NextResponse.json({ error: 'Error al guardar configuración' }, { status: 500 })
-  }
-}
-
-export async function PUT(req: NextRequest) {
-  try {
-    const body = await req.json()
-    const {
-      clienteId,
-      metaActive,
-      metaAccountId,
-      metaToken,
-      googleActive,
-      googleCustomerId,
-      googleRefreshToken,
-    } = body
-
-    if (!clienteId) {
-      return NextResponse.json({ error: 'clienteId requerido' }, { status: 400 })
-    }
-
-    const cookieStore = await cookies()
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll: () => cookieStore.getAll() } }
-    )
-
-    const { data, error } = await supabase
-      .from('controller_configuracion')
-      .update({
-        meta_ad_account_id: metaAccountId,
-        meta_access_token: metaToken,
-        google_customer_id: googleCustomerId,
-        google_refresh_token: googleRefreshToken,
-        activo: metaActive || googleActive,
-        actualizado_at: new Date().toISOString(),
-      })
-      .eq('cliente_id', clienteId)
-      .select()
-      .single()
-
-    if (error) throw error
-
-    return NextResponse.json(data)
-  } catch (error) {
-    console.error('[controller/config] Error:', error)
-    return NextResponse.json({ error: 'Error al actualizar configuración' }, { status: 500 })
   }
 }
