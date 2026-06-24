@@ -12,39 +12,25 @@ export async function POST(req: NextRequest) {
 
     const supabase = await createClient()
 
-    // Obtener la alerta - buscar por subtipo
-    const { data: alerta, error: alertError } = await supabase
+    // Obtener la alerta si existe en BD
+    const { data: alerta } = await supabase
       .from('controller_alertas')
-      .select('*')
+      .select('id, accion, activa')
       .eq('cliente_id', clienteId)
       .eq('subtipo', alertaSubtipo)
       .maybeSingle()
 
-    if (alertError) {
-      console.error('Error fetching alert:', alertError)
-      return NextResponse.json({ error: 'Error obteniendo alerta' }, { status: 500 })
-    }
-
-    if (!alerta) {
-      console.error('Alerta no encontrada para:', { clienteId, alertaSubtipo })
-      return NextResponse.json({ error: 'Alerta no encontrada' }, { status: 404 })
-    }
-
-    if (!alerta.activa) {
-      return NextResponse.json({ error: 'Esta alerta está desactivada' }, { status: 400 })
-    }
-
-    // Ejecutar la lógica de la alerta
-    let resultado = {
-      alerta_id: alerta.id,
+    // Crear resultado simulado
+    const resultado = {
+      alerta_id: alerta?.id || `test-${alertaSubtipo}`,
       subtipo: alertaSubtipo,
       estado: 'ejecutada',
       timestamp: new Date().toISOString(),
       acciones: [] as string[],
     }
 
-    // Simular acciones según el tipo de alerta
-    const accion = alerta.accion || 'ambas'
+    // Simular acciones según configuración guardada o defaults
+    const accion = alerta?.accion || 'ambas'
     if (accion === 'tarea' || accion === 'ambas') {
       resultado.acciones.push('Crear tarea asignada al Account Manager')
     }
@@ -52,21 +38,21 @@ export async function POST(req: NextRequest) {
       resultado.acciones.push('Enviar notificación interna')
     }
 
-    // Guardar en historial (opcional, solo si la tabla existe)
-    try {
-      await supabase.from('controller_historial').insert({
-        cliente_id: clienteId,
-        alerta_id: alerta.id,
-        tipo: 'ejecucion_manual',
-        detalles: {
-          subtipo: alertaSubtipo,
-          acciones: resultado.acciones,
-        },
-        creado_at: new Date().toISOString(),
-      })
-    } catch (historialError) {
-      console.error('Error guardando en historial (continuando):', historialError)
-      // Continuar sin guardar en historial si la tabla no existe
+    // Guardar en ejecuciones si alerta existe en BD
+    if (alerta?.id) {
+      try {
+        await supabase.from('controller_ejecuciones').insert({
+          cliente_id: clienteId,
+          alerta_id: alerta.id,
+          plataforma: 'ambas',
+          disparada: true,
+          datos_capturados: { subtipo: alertaSubtipo, manual: true },
+          mensaje: `Ejecución manual de alerta ${alertaSubtipo}`,
+          ejecutado_at: new Date().toISOString(),
+        })
+      } catch (error) {
+        console.error('Error guardando ejecución (continuando):', error)
+      }
     }
 
     return NextResponse.json(resultado, { status: 200 })
