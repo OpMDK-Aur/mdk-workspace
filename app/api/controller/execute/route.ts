@@ -1,5 +1,4 @@
-import { createClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
@@ -11,12 +10,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'clienteId y alertaSubtipo requeridos' }, { status: 400 })
     }
 
-    const cookieStore = await cookies()
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll: () => cookieStore.getAll() } }
-    )
+    const supabase = await createClient()
 
     // Obtener la alerta - buscar por subtipo
     const { data: alerta, error: alertError } = await supabase
