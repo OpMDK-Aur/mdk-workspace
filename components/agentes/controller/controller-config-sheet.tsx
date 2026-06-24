@@ -458,6 +458,8 @@ function AlertCard({
         body: JSON.stringify({
           clienteId,
           alertaSubtipo: alerta.subtipo,
+          accion: alertaData.accion,
+          plataforma: alertaData.plataforma,
         }),
       })
 

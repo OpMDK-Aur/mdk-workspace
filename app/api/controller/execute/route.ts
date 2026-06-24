@@ -4,7 +4,17 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { clienteId, alertaSubtipo }: { clienteId: string; alertaSubtipo: string } = body
+    const { 
+      clienteId, 
+      alertaSubtipo,
+      accion,
+      plataforma,
+    }: { 
+      clienteId: string
+      alertaSubtipo: string
+      accion?: string
+      plataforma?: string
+    } = body
 
     if (!clienteId || !alertaSubtipo) {
       return NextResponse.json({ error: 'clienteId y alertaSubtipo requeridos' }, { status: 400 })
@@ -40,9 +50,9 @@ export async function POST(req: NextRequest) {
     // Construir descripción detallada de la alerta
     let descripcionDetallada = `Alerta automática disparada por el Controller.\n\n`
     descripcionDetallada += `Tipo de alerta: ${alertaSubtipo}\n`
+    descripcionDetallada += `Plataforma: ${plataforma || alerta?.plataforma || 'ambas'}\n`
     
     if (alerta) {
-      descripcionDetallada += `Plataforma: ${alerta.plataforma || 'ambas'}\n`
       
       // Agregar configuración si existe
       if (alerta.configuracion) {
@@ -74,12 +84,12 @@ export async function POST(req: NextRequest) {
       acciones: [] as string[],
     }
 
-    // Determinar qué acciones ejecutar
-    const accion = alerta?.accion || 'ambas'
+    // Determinar qué acciones ejecutar (priorizar frontend > BD > default)
+    const accionFinal = accion || alerta?.accion || 'ambas'
     const account_managers = cliente?.account_manager_ids || []
 
     // ACCIÓN 1: Crear tarea si aplica
-    if (accion === 'tarea' || accion === 'ambas') {
+    if (accionFinal === 'tarea' || accionFinal === 'ambas') {
       try {
         const { data: tarea } = await supabase
           .from('tareas')
@@ -108,7 +118,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ACCIÓN 2: Enviar notificación si aplica
-    if (accion === 'notificacion' || accion === 'ambas') {
+    if (accionFinal === 'notificacion' || accionFinal === 'ambas') {
       try {
         // Obtener IDs de colaboradores para notificar
         const notifyUsers = [user.id, ...account_managers]
@@ -126,8 +136,7 @@ export async function POST(req: NextRequest) {
               colaborador_id: colaboradorId,
               tipo: 'alerta_controller',
               titulo: `Alerta Controller: ${alertaSubtipo}`,
-              descripcion: resumenNotificacion,
-              mensaje_largo: descripcionDetallada,
+              descripcion: descripcionDetallada,
               referencia_id: alerta?.id || clienteId,
               referencia_tipo: 'alerta_controller',
               cliente_id: clienteId,
