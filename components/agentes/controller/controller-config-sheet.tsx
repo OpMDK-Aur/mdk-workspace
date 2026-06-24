@@ -155,24 +155,27 @@ export function ControllerConfigSheet({
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent className={`${fullscreen ? 'max-w-full w-full' : 'max-w-2xl'} bg-[#161616] border-white/10 text-white overflow-y-auto transition-all duration-300`}>
-        <div className="flex items-center justify-between mb-6">
-          <SheetHeader>
-            <SheetTitle>{clienteNombre}</SheetTitle>
-            <SheetDescription>Configura conexiones, alertas e historial</SheetDescription>
-          </SheetHeader>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setFullscreen(!fullscreen)}
-            className="text-white/60 hover:text-white"
-            title={fullscreen ? 'Reducir' : 'Expandir a pantalla completa'}
-          >
-            {fullscreen ? <IconMinimize className="w-4 h-4" /> : <IconMaximize className="w-4 h-4" />}
-          </Button>
+      <SheetContent className={`${fullscreen ? 'max-w-full w-full' : 'max-w-2xl'} bg-[#161616] border-white/10 text-white overflow-y-auto transition-all duration-300 p-0`}>
+        <div className="px-6 py-4 border-b border-white/10 sticky top-0 bg-[#161616]">
+          <div className="flex items-center justify-between">
+            <SheetHeader className="space-y-1">
+              <SheetTitle>{clienteNombre}</SheetTitle>
+              <SheetDescription>Configura conexiones, alertas e historial</SheetDescription>
+            </SheetHeader>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setFullscreen(!fullscreen)}
+              className="text-white/60 hover:text-white"
+              title={fullscreen ? 'Reducir' : 'Expandir a pantalla completa'}
+            >
+              {fullscreen ? <IconMinimize className="w-4 h-4" /> : <IconMaximize className="w-4 h-4" />}
+            </Button>
+          </div>
         </div>
 
-        <Tabs defaultValue="conexion" className="mt-6">
+        <div className="px-6 py-4">
+          <Tabs defaultValue="conexion" className="mt-2">
           <TabsList className="grid w-full grid-cols-3 bg-[#0f0f0f] border-white/10">
             <TabsTrigger value="conexion">Conexión</TabsTrigger>
             <TabsTrigger value="alertas">Alertas</TabsTrigger>
@@ -370,6 +373,7 @@ export function ControllerConfigSheet({
             <HistorialTable clienteId={clienteId} />
           </TabsContent>
         </Tabs>
+        </div>
       </SheetContent>
     </Sheet>
   )
