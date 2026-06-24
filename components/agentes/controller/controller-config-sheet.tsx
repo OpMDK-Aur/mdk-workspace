@@ -320,6 +320,7 @@ export function ControllerConfigSheet({
                         activa: false,
                         plataforma: 'ambas',
                         accion: 'ambas',
+                        periodo: '7dias',
                         campos: alerta.campos?.reduce((acc: Record<string, string | number>, campo: string) => {
                           acc[campo] = ''
                           return acc
@@ -364,6 +365,7 @@ export function ControllerConfigSheet({
                         activa: false,
                         plataforma: 'ambas',
                         accion: 'ambas',
+                        periodo: '7dias',
                         campos: alerta.campos?.reduce((acc: Record<string, string | number>, campo: string) => {
                           acc[campo] = ''
                           return acc
@@ -410,6 +412,7 @@ interface AlertCardData {
   activa: boolean
   plataforma: string
   accion: string
+  periodo: string // 'hoy', '7dias', '30dias', 'personalizado'
   campos: Record<string, string | number>
   variantes: Array<Record<string, string | number>>
 }
@@ -460,6 +463,7 @@ function AlertCard({
           alertaSubtipo: alerta.subtipo,
           accion: alertaData.accion,
           plataforma: alertaData.plataforma,
+          periodo: alertaData.periodo,
         }),
       })
 
@@ -599,6 +603,32 @@ function AlertCard({
                     <SelectItem value="tarea">Crear tarea</SelectItem>
                     <SelectItem value="notificacion">Notificación</SelectItem>
                     <SelectItem value="ambas">Ambas</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-[11px] text-white/40 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  Período de análisis
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <IconInfoCircle className="w-3 h-3 text-white/20 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[200px] text-[12px] bg-[#2a2a2a] border border-white/10">
+                        Define el período con el que se compararán los datos actuales para detectar cambios
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </label>
+                <Select value={alertaData.periodo} onValueChange={(val) => onDataChange({ ...alertaData, periodo: val })}>
+                  <SelectTrigger className="h-9 text-sm bg-[#0f0f0f] border-white/10">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="hoy">Hoy vs ayer</SelectItem>
+                    <SelectItem value="7dias">Últimos 7 días</SelectItem>
+                    <SelectItem value="30dias">Últimos 30 días</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
