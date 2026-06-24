@@ -195,7 +195,7 @@ export async function POST(req: NextRequest) {
         const cambioAcciones = calcularCambio(accionesActuales, accionesPrevias)
         const cplActual = metaActual.cpl || 0
         const cplPrevio = metaPrevio.cpl || cplActual
-        const cambio CPI = calcularCambio(cplActual, cplPrevio)
+        const cambioCPI = calcularCambio(cplActual, cplPrevio)
         
         if (subtipo === 'caida_conversiones_porcentual') {
           return `Se detectó un cambio del ${cambioAcciones}% en acciones en el período analizado en Meta. Acciones: ${accionesPrevias} → ${accionesActuales}. CPL: $${cplPrevio} → $${cplActual}.`
