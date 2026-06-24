@@ -11,7 +11,7 @@ import { Toggle } from '@/components/ui/toggle'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ControllerConfiguracion, ControllerAlerta } from '@/lib/types'
-import { IconTrash, IconPlus, IconAlertTriangle, IconCoin, IconCheck, IconAlertCircle, IconBrandMeta, IconBrandGoogle, IconChevronDown, IconInfoCircle, IconSparkles, IconMaximize, IconMinimize, IconX } from '@tabler/icons-react'
+import { IconTrash, IconPlus, IconAlertTriangle, IconCoin, IconAlertCircle, IconBrandMeta, IconBrandGoogle, IconChevronDown, IconInfoCircle, IconSparkles, IconMaximize, IconMinimize } from '@tabler/icons-react'
 import { toast } from 'sonner'
 
 interface CuentaPublicitaria {
@@ -398,18 +398,16 @@ function AlertCard({ alerta }: { alerta: any }) {
                 e.stopPropagation()
                 handleSwitchChange(!active)
               }}
-              className={`relative h-6 w-10 rounded-full border transition-all duration-300 flex items-center justify-center flex-shrink-0 ${
-                active
-                  ? 'bg-[#7F77DD] border-[#7F77DD]'
-                  : 'bg-[#2a2a2a] border-white/15 hover:border-white/25'
+              className={`relative h-5 w-10 rounded-full transition-all duration-300 flex-shrink-0 ${
+                active ? 'bg-[#10B981]' : 'bg-[#4B5563]'
               }`}
               title={active ? 'Desactivar alerta' : 'Activar alerta'}
             >
-              {active ? (
-                <IconCheck className="w-3.5 h-3.5 text-white" />
-              ) : (
-                <IconX className="w-3.5 h-3.5 text-white/40" />
-              )}
+              <div
+                className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-md transition-all duration-300 ${
+                  active ? 'translate-x-5' : 'translate-x-0.5'
+                }`}
+              />
             </button>
 
             <div className="flex-1">
