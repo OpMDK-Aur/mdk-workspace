@@ -11,7 +11,7 @@ import { Toggle } from '@/components/ui/toggle'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ControllerConfiguracion, ControllerAlerta } from '@/lib/types'
-import { IconEye, IconEyeOff, IconTrash, IconPlus, IconAlertTriangle, IconCoin, IconCheck, IconAlertCircle, IconBrandMeta, IconBrandGoogle, IconChevronDown, IconInfoCircle, IconSparkles, IconMaximize, IconMinimize, IconX } from '@tabler/icons-react'
+import { IconTrash, IconPlus, IconAlertTriangle, IconCoin, IconCheck, IconAlertCircle, IconBrandMeta, IconBrandGoogle, IconChevronDown, IconInfoCircle, IconSparkles, IconMaximize, IconMinimize, IconX } from '@tabler/icons-react'
 import { toast } from 'sonner'
 
 interface CuentaPublicitaria {
@@ -89,10 +89,6 @@ export function ControllerConfigSheet({
   configuracion,
 }: ControllerConfigSheetProps) {
   const [cuentas, setCuentas] = useState<CuentaPublicitaria[]>([])
-  const [metaToken, setMetaToken] = useState(configuracion?.meta_access_token || '')
-  const [googleRefreshToken, setGoogleRefreshToken] = useState(configuracion?.google_refresh_token || '')
-  const [showMetaToken, setShowMetaToken] = useState(false)
-  const [showGoogleToken, setShowGoogleToken] = useState(false)
   const [activo, setActivo] = useState(configuracion?.activo ?? true)
   const [alertas, setAlertas] = useState<ControllerAlerta[]>([])
   const [loading, setLoading] = useState(false)
@@ -114,8 +110,6 @@ export function ControllerConfigSheet({
         const data = await response.json()
         setCuentas(data.cuentas || [])
         if (data.configuracion) {
-          setMetaToken(data.configuracion.meta_access_token || '')
-          setGoogleRefreshToken(data.configuracion.google_refresh_token || '')
           setActivo(data.configuracion.activo ?? true)
         }
       }
@@ -134,8 +128,6 @@ export function ControllerConfigSheet({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clienteId,
-          meta_access_token: metaToken || null,
-          google_refresh_token: googleRefreshToken || null,
           activo,
         }),
       })
@@ -220,29 +212,6 @@ export function ControllerConfigSheet({
                         </div>
                       ))}
                     </div>
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs text-muted-foreground">Access Token</Label>
-                        {metaToken && <span className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400">Configurado</span>}
-                      </div>
-                      <div className="flex gap-2 mt-2">
-                        <Input
-                          placeholder="EAAxxxxx..."
-                          type={showMetaToken ? 'text' : 'password'}
-                          value={metaToken}
-                          onChange={(e) => setMetaToken(e.target.value)}
-                          className="bg-[#0f0f0f] border-white/10 text-white"
-                        />
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => setShowMetaToken(!showMetaToken)}
-                        >
-                          {showMetaToken ? <IconEyeOff className="h-4 w-4" /> : <IconEye className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Page Access Token long-lived del Business Manager de MDK</p>
-                    </div>
                   </div>
                 )}
 
@@ -267,29 +236,6 @@ export function ControllerConfigSheet({
                           {cuenta.nombre_cuenta || cuenta.id_cuenta}
                         </div>
                       ))}
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs text-muted-foreground">Refresh Token</Label>
-                        {googleRefreshToken && <span className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400">Configurado</span>}
-                      </div>
-                      <div className="flex gap-2 mt-2">
-                        <Input
-                          placeholder="..."
-                          type={showGoogleToken ? 'text' : 'password'}
-                          value={googleRefreshToken}
-                          onChange={(e) => setGoogleRefreshToken(e.target.value)}
-                          className="bg-[#0f0f0f] border-white/10 text-white"
-                        />
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => setShowGoogleToken(!showGoogleToken)}
-                        >
-                          {showGoogleToken ? <IconEyeOff className="h-4 w-4" /> : <IconEye className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">OAuth2 Refresh Token de la cuenta de Google Ads</p>
                     </div>
                   </div>
                 )}
