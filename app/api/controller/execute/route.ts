@@ -47,42 +47,79 @@ export async function POST(req: NextRequest) {
       .eq('subtipo', alertaSubtipo)
       .maybeSingle()
 
-    // Generar datos simulados detectados según el tipo de alerta y plataforma
+    // Generar datos aleatorios realistas según el tipo de alerta y plataforma
     const generarDatosDetectados = (subtipo: string, platformaActual: string, config?: any) => {
       const esMeta = platformaActual?.toLowerCase() === 'meta'
       const esGoogle = platformaActual?.toLowerCase() === 'google'
       
-      // Simulación de datos realistas según plataforma y tipo de alerta
+      // Función auxiliar para generar número aleatorio en rango
+      const random = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min
+      const randomFloat = (min: number, max: number) => (Math.random() * (max - min) + min).toFixed(2)
+      
       if (esMeta) {
-        // Datos específicos para Meta (CPL, Acciones, Leads)
-        const simulacionesMeta: Record<string, string> = {
-          'caida_conversiones_porcentual': `Se detectó una caída del 42% en acciones en los últimos 7 días en Meta. Acciones completadas: 156 → 91 (caída en "Compras").`,
-          'tasa_conversion_baja': `Tasa de conversión de acciones crítica detectada: 0.8% (crítico < 1.5%). Impresiones: 12,500 | Acciones: 100.`,
-          'presupuesto_agotado_diario': `Presupuesto diario agotado en Meta. Gastado: $200.00 / $200.00 (100%). CPL alcanzado: $2.10.`,
-          'limitada_meta_demanda': `Limitación de demanda en Meta. Presupuesto disponible: $0. Audiencias agotadas: 8. Recomendación: aumentar presupuesto o ampliar audiencias.`,
-          'cpl_aumento_porcentual': `CPL (Costo por Acción) aumentó un 65% respecto a hace 7 días. CPL anterior: $1.50 → CPL actual: $2.48.`,
+        // Datos aleatorios realistas para Meta (CPL, Acciones, Leads)
+        if (subtipo === 'caida_conversiones_porcentual') {
+          const caida = random(25, 60)
+          const accAntes = random(150, 300)
+          const accDespues = Math.round(accAntes * (1 - caida / 100))
+          return `Se detectó una caída del ${caida}% en acciones en los últimos 7 días en Meta. Acciones completadas: ${accAntes} → ${accDespues} (caída en "Compras").`
+        } else if (subtipo === 'tasa_conversion_baja') {
+          const tasa = randomFloat(0.5, 1.2)
+          const impresiones = random(8000, 15000)
+          const acciones = Math.round(impresiones * (parseFloat(tasa) / 100))
+          return `Tasa de conversión de acciones crítica detectada: ${tasa}% (crítico < 1.5%). Impresiones: ${impresiones.toLocaleString()} | Acciones: ${acciones}.`
+        } else if (subtipo === 'presupuesto_agotado_diario') {
+          const presupuesto = random(100, 500)
+          const cpl = randomFloat(1.5, 3.5)
+          return `Presupuesto diario agotado en Meta. Gastado: $${presupuesto}.00 / $${presupuesto}.00 (100%). CPL alcanzado: $${cpl}.`
+        } else if (subtipo === 'limitada_meta_demanda') {
+          const audienciasAgotadas = random(5, 15)
+          return `Limitación de demanda en Meta. Presupuesto disponible: $0. Audiencias agotadas: ${audienciasAgotadas}. Recomendación: aumentar presupuesto o ampliar audiencias.`
+        } else if (subtipo === 'cpl_aumento_porcentual') {
+          const aumento = random(30, 80)
+          const cplAntes = randomFloat(1.0, 2.5)
+          const cplDespues = (parseFloat(cplAntes) * (1 + aumento / 100)).toFixed(2)
+          return `CPL (Costo por Acción) aumentó un ${aumento}% respecto a hace 7 días. CPL anterior: $${cplAntes} → CPL actual: $${cplDespues}.`
         }
-        return simulacionesMeta[subtipo] || `Se disparó la alerta ${subtipo} en Meta.`
       } else if (esGoogle) {
-        // Datos específicos para Google Ads (ROAS, CPC, Conversiones)
-        const simulacionesGoogle: Record<string, string> = {
-          'caida_conversiones_porcentual': `Se detectó una caída del 42% en conversiones en los últimos 7 días en Google Ads. Conversiones: 145 → 84 (caída en búsqueda). ROAS: 2.5x → 1.8x.`,
-          'tasa_conversion_baja': `Tasa de conversión crítica detectada: 1.2% (crítico < 2%). Clics: 8,420 | Conversiones: 101. CPC: $3.50.`,
-          'presupuesto_agotado_diario': `Presupuesto diario agotado en Google Ads. Gastado: $300.00 / $300.00 (100%). Impresiones: 15,230.`,
-          'limitada_google': `Limitación de presupuesto detectada en Google Ads. Presupuesto disponible: $0. Campañas pausadas: 3 (por falta de presupuesto).`,
-          'cpl_aumento_porcentual': `CPC (Costo por Clic) aumentó un 58% respecto a hace 7 días. CPC anterior: $1.25 → CPC actual: $1.98.`,
+        // Datos aleatorios realistas para Google Ads (ROAS, CPC, Conversiones)
+        if (subtipo === 'caida_conversiones_porcentual') {
+          const caida = random(25, 60)
+          const convAntes = random(120, 200)
+          const convDespues = Math.round(convAntes * (1 - caida / 100))
+          const roasAntes = randomFloat(2.0, 3.5)
+          const roasDespues = (parseFloat(roasAntes) * (1 - caida / 100)).toFixed(1)
+          return `Se detectó una caída del ${caida}% en conversiones en los últimos 7 días en Google Ads. Conversiones: ${convAntes} → ${convDespues} (caída en búsqueda). ROAS: ${roasAntes}x → ${roasDespues}x.`
+        } else if (subtipo === 'tasa_conversion_baja') {
+          const tasa = randomFloat(0.8, 1.5)
+          const clics = random(6000, 10000)
+          const conversiones = Math.round(clics * (parseFloat(tasa) / 100))
+          const cpc = randomFloat(2.5, 4.5)
+          return `Tasa de conversión crítica detectada: ${tasa}% (crítico < 2%). Clics: ${clics.toLocaleString()} | Conversiones: ${conversiones}. CPC: $${cpc}.`
+        } else if (subtipo === 'presupuesto_agotado_diario') {
+          const presupuesto = random(150, 600)
+          const impresiones = random(10000, 20000)
+          return `Presupuesto diario agotado en Google Ads. Gastado: $${presupuesto}.00 / $${presupuesto}.00 (100%). Impresiones: ${impresiones.toLocaleString()}.`
+        } else if (subtipo === 'limitada_google') {
+          const campaniasPausadas = random(1, 5)
+          return `Limitación de presupuesto detectada en Google Ads. Presupuesto disponible: $0. Campañas pausadas: ${campaniasPausadas} (por falta de presupuesto).`
+        } else if (subtipo === 'cpl_aumento_porcentual') {
+          const aumento = random(30, 70)
+          const cpcAntes = randomFloat(1.0, 2.0)
+          const cpcDespues = (parseFloat(cpcAntes) * (1 + aumento / 100)).toFixed(2)
+          return `CPC (Costo por Clic) aumentó un ${aumento}% respecto a hace 7 días. CPC anterior: $${cpcAntes} → CPC actual: $${cpcDespues}.`
         }
-        return simulacionesGoogle[subtipo] || `Se disparó la alerta ${subtipo} en Google Ads.`
       } else {
-        // Datos genéricos para "ambas" plataformas
-        const simulacionesGeneral: Record<string, string> = {
-          'caida_conversiones_porcentual': `Se detectó una caída del 42% en conversiones en los últimos 7 días en ambas plataformas. Meta: 156 → 91 acciones. Google: 145 → 84 conversiones.`,
-          'tasa_conversion_baja': `Tasa de conversión crítica detectada en ambas plataformas. Meta: 0.8% | Google: 1.2% (ambas bajo umbral crítico).`,
-          'presupuesto_agotado_diario': `Presupuesto diario agotado en ambas plataformas. Meta: $200/$200. Google: $300/$300. Total gastado: $500.`,
-          'cpl_aumento_porcentual': `Costo por acción aumentó en ambas plataformas. Meta CPL: $1.50 → $2.48 (+65%). Google CPC: $1.25 → $1.98 (+58%).`,
-        }
-        return simulacionesGeneral[subtipo] || `Se disparó la alerta ${subtipo} en ambas plataformas.`
+        // Datos aleatorios para "ambas" plataformas (resumen comparativo)
+        const caida = random(25, 60)
+        const accAntes = random(150, 250)
+        const accDespues = Math.round(accAntes * (1 - caida / 100))
+        const convAntes = random(120, 180)
+        const convDespues = Math.round(convAntes * (1 - caida / 100))
+        return `Se detectó una caída del ${caida}% en conversiones en los últimos 7 días en ambas plataformas. Meta: ${accAntes} → ${accDespues} acciones. Google: ${convAntes} → ${convDespues} conversiones.`
       }
+      
+      return `Se disparó la alerta ${subtipo} en ${platformaActual}.`
     }
 
     // Construir descripción detallada de la alerta
