@@ -465,7 +465,7 @@ function AlertCard({
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded}>
-      <div className={`rounded-lg border transition-all duration-200 ${active ? 'bg-[#1a1a1a] border-[#7F77DD]/40 shadow-[0_0_0_1px_rgba(127,119,221,0.15)]' : 'bg-[#1a1a1a] border-white/8'}`}>
+      <div className={`rounded-lg border transition-all duration-200 ${alertaData.activa ? 'bg-[#1a1a1a] border-[#7F77DD]/40 shadow-[0_0_0_1px_rgba(127,119,221,0.15)]' : 'bg-[#1a1a1a] border-white/8'}`}>
         {/* Header - Clickeable para expandir/colapsar */}
         <CollapsibleTrigger asChild>
           <div 
