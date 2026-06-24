@@ -110,15 +110,25 @@ export default function AgentesPage() {
         <section className="space-y-4">
           <h2 className="text-lg font-medium text-muted-foreground">Automaticos</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {automaticAgents.map(agent => (
-              <AgentCard
-                key={agent.id}
-                agente={agent}
-                lastLog={logs[agent.slug]}
-                onRun={handleRun}
-                profile={profile}
-              />
-            ))}
+            {automaticAgents.map(agent => {
+              let actionHref: string | undefined
+              if (agent.slug === 'controller') {
+                actionHref = '/dashboard/agentes/controller'
+              } else if (agent.slug === 'tester') {
+                actionHref = '/dashboard/agentes/tester'
+              }
+              
+              return (
+                <AgentCard
+                  key={agent.id}
+                  agente={agent}
+                  lastLog={logs[agent.slug]}
+                  onRun={handleRun}
+                  profile={profile}
+                  actionHref={actionHref}
+                />
+              )
+            })}
           </div>
         </section>
       )}
