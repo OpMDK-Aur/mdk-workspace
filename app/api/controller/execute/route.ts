@@ -32,10 +32,38 @@ export async function POST(req: NextRequest) {
     // Obtener la alerta si existe en BD
     const { data: alerta } = await supabase
       .from('controller_alertas')
-      .select('id, accion, activa')
+      .select('id, accion, activa, plataforma, configuracion')
       .eq('cliente_id', clienteId)
       .eq('subtipo', alertaSubtipo)
       .maybeSingle()
+
+    // Construir descripción detallada de la alerta
+    let descripcionDetallada = `Alerta automática disparada por el Controller.\n\n`
+    descripcionDetallada += `Tipo de alerta: ${alertaSubtipo}\n`
+    
+    if (alerta) {
+      descripcionDetallada += `Plataforma: ${alerta.plataforma || 'ambas'}\n`
+      
+      // Agregar configuración si existe
+      if (alerta.configuracion) {
+        const config = alerta.configuracion as any
+        if (config.campos && Object.keys(config.campos).length > 0) {
+          descripcionDetallada += `\nCampos configurados:\n`
+          Object.entries(config.campos).forEach(([campo, valor]) => {
+            if (valor) {
+              descripcionDetallada += `• ${campo}: ${valor}\n`
+            }
+          })
+        }
+        
+        if (config.variantes && Array.isArray(config.variantes) && config.variantes.length > 0) {
+          descripcionDetallada += `\nVariantes configuradas:\n`
+          config.variantes.forEach((v: any, idx: number) => {
+            descripcionDetallada += `• Variante ${idx + 1}: ${v.porcentaje}% en ${v.dias} días\n`
+          })
+        }
+      }
+    }
 
     // Crear resultado
     const resultado = {
@@ -57,7 +85,7 @@ export async function POST(req: NextRequest) {
           .from('tareas')
           .insert({
             titulo: `[Alerta Controller] ${alertaSubtipo} — ${cliente.nombre_del_negocio}`,
-            descripcion: `Alerta automática disparada por el Controller: ${alertaSubtipo}. Revisar configuración de la cuenta.`,
+            descripcion: descripcionDetallada,
             cliente_ids: [clienteId],
             asignado_a: user.id,
             asignados_a: [user.id, ...account_managers],
@@ -85,6 +113,12 @@ export async function POST(req: NextRequest) {
         // Obtener IDs de colaboradores para notificar
         const notifyUsers = [user.id, ...account_managers]
 
+        // Construir resumen breve para notificación
+        let resumenNotificacion = `Se disparó una alerta del Controller para ${cliente.nombre_del_negocio}.\n`
+        if (alerta) {
+          resumenNotificacion += `Plataforma: ${alerta.plataforma || 'ambas'}`
+        }
+
         const { error: notifError } = await supabase
           .from('notificaciones')
           .insert(
@@ -92,7 +126,8 @@ export async function POST(req: NextRequest) {
               colaborador_id: colaboradorId,
               tipo: 'alerta_controller',
               titulo: `Alerta Controller: ${alertaSubtipo}`,
-              descripcion: `Se disparó una alerta del Controller para ${cliente.nombre_del_negocio}`,
+              descripcion: resumenNotificacion,
+              mensaje_largo: descripcionDetallada,
               referencia_id: alerta?.id || clienteId,
               referencia_tipo: 'alerta_controller',
               cliente_id: clienteId,
