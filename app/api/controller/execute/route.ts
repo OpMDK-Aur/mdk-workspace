@@ -1,144 +1,90 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { fetchMetaTotals, fetchGoogleTotals } from '@/lib/ads-data'
 
-// Función para obtener datos reales de Meta y Google Ads
+// Calcula rangos de fecha (actual vs previo) según el período configurado
+function calcularRangos(periodo: string) {
+  const hoy = new Date()
+  const fmt = (d: Date) => d.toISOString().split('T')[0]
+
+  if (periodo === 'hoy') {
+    const ayer = new Date(hoy.getTime() - 24 * 60 * 60 * 1000)
+    return {
+      actual: { since: fmt(hoy), until: fmt(hoy) },
+      previo: { since: fmt(ayer), until: fmt(ayer) },
+    }
+  } else if (periodo === '30dias') {
+    const hace30 = new Date(hoy.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const hace60 = new Date(hoy.getTime() - 60 * 24 * 60 * 60 * 1000)
+    const hace30Menos1 = new Date(hace30.getTime() - 24 * 60 * 60 * 1000)
+    return {
+      actual: { since: fmt(hace30), until: fmt(hoy) },
+      previo: { since: fmt(hace60), until: fmt(hace30Menos1) },
+    }
+  }
+  // 7dias (default)
+  const hace7 = new Date(hoy.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const hace14 = new Date(hoy.getTime() - 14 * 24 * 60 * 60 * 1000)
+  const hace7Menos1 = new Date(hace7.getTime() - 24 * 60 * 60 * 1000)
+  return {
+    actual: { since: fmt(hace7), until: fmt(hoy) },
+    previo: { since: fmt(hace14), until: fmt(hace7Menos1) },
+  }
+}
+
+// Obtiene datos REALES llamando directamente a las APIs (sin HTTP a rutas propias)
 async function obtenerDatosReales(
-  clienteId: string, 
-  plataforma: string, 
+  clienteId: string,
+  plataforma: string,
   periodo: string,
   supabase: any
 ) {
   const datosActuales: any = {}
   const datosPrevios: any = {}
-  
+  const errores: string[] = []
+
   try {
-    // Obtener cuentas del cliente
-    const { data: cuentas, error: errorCuentas } = await supabase
+    const { data: cuentas } = await supabase
       .from('cuentas_publicitarias')
       .select('id_cuenta, plataforma')
       .eq('cliente_id', clienteId)
-    
-    console.log('[v0] obtenerDatosReales - Buscando cuentas:', { clienteId, cuentas: cuentas?.length || 0, errorCuentas })
-    
+      .eq('activo', true)
+
     if (!cuentas || cuentas.length === 0) {
-      console.log('[v0] obtenerDatosReales - No se encontraron cuentas publicitarias')
-      return { datosActuales, datosPrevios, periodo }
+      return { datosActuales, datosPrevios, periodo, errores: ['No hay cuentas publicitarias configuradas para este cliente.'] }
     }
-    
-    console.log('[v0] obtenerDatosReales - Cuentas encontradas:', cuentas)
-    
-    // Calcular fechas según período
-    const hoy = new Date()
-    let fechaActualIni: string, fechaActualFin: string, fechaPreviaIni: string, fechaPreviaFin: string
-    
-    if (periodo === 'hoy') {
-      const ayer = new Date(hoy.getTime() - 24 * 60 * 60 * 1000)
-      const antesDeAyer = new Date(ayer.getTime() - 24 * 60 * 60 * 1000)
-      fechaActualIni = hoy.toISOString().split('T')[0]
-      fechaActualFin = hoy.toISOString().split('T')[0]
-      fechaPreviaIni = ayer.toISOString().split('T')[0]
-      fechaPreviaFin = ayer.toISOString().split('T')[0]
-    } else if (periodo === '7dias') {
-      const hace7 = new Date(hoy.getTime() - 7 * 24 * 60 * 60 * 1000)
-      const hace14 = new Date(hoy.getTime() - 14 * 24 * 60 * 60 * 1000)
-      const hace7Menos1 = new Date(hace7.getTime() - 24 * 60 * 60 * 1000)
-      fechaActualIni = hace7.toISOString().split('T')[0]
-      fechaActualFin = hoy.toISOString().split('T')[0]
-      fechaPreviaIni = hace14.toISOString().split('T')[0]
-      fechaPreviaFin = hace7Menos1.toISOString().split('T')[0]
-    } else {
-      // 30dias
-      const hace30 = new Date(hoy.getTime() - 30 * 24 * 60 * 60 * 1000)
-      const hace60 = new Date(hoy.getTime() - 60 * 24 * 60 * 60 * 1000)
-      const hace30Menos1 = new Date(hace30.getTime() - 24 * 60 * 60 * 1000)
-      fechaActualIni = hace30.toISOString().split('T')[0]
-      fechaActualFin = hoy.toISOString().split('T')[0]
-      fechaPreviaIni = hace60.toISOString().split('T')[0]
-      fechaPreviaFin = hace30Menos1.toISOString().split('T')[0]
-    }
-    
-    // Obtener datos de Meta
+
+    const rangos = calcularRangos(periodo)
+
+    // META
     const cuentaMeta = cuentas.find((c: any) => c.plataforma === 'meta')
-    console.log('[v0] obtenerDatosReales - Buscando Meta:', { cuentaMeta, requiereMeta: plataforma === 'meta' || plataforma === 'ambas' })
-    
     if (cuentaMeta && (plataforma === 'meta' || plataforma === 'ambas')) {
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-        const urlActual = `${baseUrl}/api/ads/meta?account_id=${cuentaMeta.id_cuenta}&start_date=${fechaActualIni}&end_date=${fechaActualFin}`
-        const urlPrevio = `${baseUrl}/api/ads/meta?account_id=${cuentaMeta.id_cuenta}&start_date=${fechaPreviaIni}&end_date=${fechaPreviaFin}`
-        
-        console.log('[v0] obtenerDatosReales - Llamando Meta APIs:', { urlActual, urlPrevio })
-        
-        const [respActual, respPrevio] = await Promise.all([
-          fetch(urlActual),
-          fetch(urlPrevio),
-        ])
-        
-        console.log('[v0] obtenerDatosReales - Respuestas Meta:', { statusActual: respActual.status, statusPrevio: respPrevio.status })
-        
-        if (respActual.ok) {
-          const data = await respActual.json()
-          console.log('[v0] obtenerDatosReales - Datos Meta actual:', data)
-          datosActuales.meta = data.totals || data
-        } else {
-          console.error('[v0] obtenerDatosReales - Meta actual falló:', respActual.status, await respActual.text())
-        }
-        
-        if (respPrevio.ok) {
-          const data = await respPrevio.json()
-          console.log('[v0] obtenerDatosReales - Datos Meta previo:', data)
-          datosPrevios.meta = data.totals || data
-        } else {
-          console.error('[v0] obtenerDatosReales - Meta previo falló:', respPrevio.status)
-        }
-      } catch (err) {
-        console.error('[v0] obtenerDatosReales - Error obteniendo datos Meta:', err)
-      }
+      const [actual, previo] = await Promise.all([
+        fetchMetaTotals(cuentaMeta.id_cuenta, rangos.actual.since, rangos.actual.until),
+        fetchMetaTotals(cuentaMeta.id_cuenta, rangos.previo.since, rangos.previo.until),
+      ])
+      if (actual.error) errores.push(`Meta: ${actual.error}`)
+      datosActuales.meta = actual.totals
+      datosPrevios.meta = previo.totals
     }
-    
-    // Obtener datos de Google
+
+    // GOOGLE
     const cuentaGoogle = cuentas.find((c: any) => c.plataforma === 'google')
-    console.log('[v0] obtenerDatosReales - Buscando Google:', { cuentaGoogle, requiereGoogle: plataforma === 'google' || plataforma === 'ambas' })
-    
     if (cuentaGoogle && (plataforma === 'google' || plataforma === 'ambas')) {
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-        const urlActual = `${baseUrl}/api/google-ads/conversions?customer_id=${cuentaGoogle.id_cuenta}&start_date=${fechaActualIni}&end_date=${fechaActualFin}`
-        const urlPrevio = `${baseUrl}/api/google-ads/conversions?customer_id=${cuentaGoogle.id_cuenta}&start_date=${fechaPreviaIni}&end_date=${fechaPreviaFin}`
-        
-        console.log('[v0] obtenerDatosReales - Llamando Google APIs:', { urlActual, urlPrevio })
-        
-        const [respActual, respPrevio] = await Promise.all([
-          fetch(urlActual),
-          fetch(urlPrevio),
-        ])
-        
-        console.log('[v0] obtenerDatosReales - Respuestas Google:', { statusActual: respActual.status, statusPrevio: respPrevio.status })
-        
-        if (respActual.ok) {
-          const data = await respActual.json()
-          console.log('[v0] obtenerDatosReales - Datos Google actual:', data)
-          datosActuales.google = data.totals || data
-        } else {
-          console.error('[v0] obtenerDatosReales - Google actual falló:', respActual.status, await respActual.text())
-        }
-        
-        if (respPrevio.ok) {
-          const data = await respPrevio.json()
-          console.log('[v0] obtenerDatosReales - Datos Google previo:', data)
-          datosPrevios.google = data.totals || data
-        } else {
-          console.error('[v0] obtenerDatosReales - Google previo falló:', respPrevio.status)
-        }
-      } catch (err) {
-        console.error('[v0] obtenerDatosReales - Error obteniendo datos Google:', err)
-      }
+      const [actual, previo] = await Promise.all([
+        fetchGoogleTotals(cuentaGoogle.id_cuenta, rangos.actual.since, rangos.actual.until),
+        fetchGoogleTotals(cuentaGoogle.id_cuenta, rangos.previo.since, rangos.previo.until),
+      ])
+      if (actual.error) errores.push(`Google: ${actual.error}`)
+      datosActuales.google = actual.totals
+      datosPrevios.google = previo.totals
     }
   } catch (error) {
     console.error('[controller/execute] Error obteniendo datos reales:', error)
+    errores.push(String(error))
   }
-  
-  return { datosActuales, datosPrevios, periodo }
+
+  return { datosActuales, datosPrevios, periodo, errores }
 }
 
 export async function POST(req: NextRequest) {
@@ -192,76 +138,84 @@ export async function POST(req: NextRequest) {
       .eq('subtipo', alertaSubtipo)
       .maybeSingle()
 
+    // Calcula porcentaje de cambio entre dos valores
+    const calcularCambio = (actual: number, anterior: number) => {
+      if (!anterior || anterior === 0) return '0'
+      return (((actual - anterior) / anterior) * 100).toFixed(1)
+    }
+
+    // Genera el bloque de métricas reales para una plataforma específica
+    const lineaMeta = (subtipo: string, actual: any, previo: any) => {
+      const leadsAct = actual.leads || 0
+      const leadsPrev = previo.leads || 0
+      const cplAct = actual.cpl || 0
+      const cplPrev = previo.cpl || 0
+      const spend = actual.spend || 0
+      const impressions = actual.impressions || 0
+      const clicks = actual.clicks || 0
+
+      if (subtipo === 'caida_conversiones_porcentual') {
+        return `Meta: cambio del ${calcularCambio(leadsAct, leadsPrev)}% en resultados. Resultados: ${leadsPrev} → ${leadsAct}. Inversión: $${spend.toFixed(2)}. CPL: $${cplAct.toFixed(2)}.`
+      } else if (subtipo === 'cpl_aumento_porcentual') {
+        return `Meta: CPL cambió ${calcularCambio(cplAct, cplPrev)}%. CPL: $${cplPrev.toFixed(2)} → $${cplAct.toFixed(2)}. Resultados: ${leadsAct}. Inversión: $${spend.toFixed(2)}.`
+      } else if (subtipo === 'presupuesto_agotado_diario') {
+        return `Meta: inversión del período $${spend.toFixed(2)}. Resultados: ${leadsAct}. CPL: $${cplAct.toFixed(2)}.`
+      } else if (subtipo === 'tasa_conversion_baja') {
+        const tasa = clicks > 0 ? ((leadsAct / clicks) * 100).toFixed(2) : '0'
+        return `Meta: tasa de conversión ${tasa}%. Clics: ${clicks} | Resultados: ${leadsAct} | Impresiones: ${impressions}.`
+      }
+      return `Meta: Resultados ${leadsAct} | Inversión $${spend.toFixed(2)} | CPL $${cplAct.toFixed(2)}.`
+    }
+
+    const lineaGoogle = (subtipo: string, actual: any, previo: any) => {
+      const convAct = actual.conversions || 0
+      const convPrev = previo.conversions || 0
+      const cpcAct = actual.cpc || 0
+      const cpcPrev = previo.cpc || 0
+      const spend = actual.spend || 0
+      const clicks = actual.clicks || 0
+      const impressions = actual.impressions || 0
+
+      if (subtipo === 'caida_conversiones_porcentual') {
+        return `Google Ads: cambio del ${calcularCambio(convAct, convPrev)}% en conversiones. Conversiones: ${convPrev} → ${convAct}. Inversión: $${spend.toFixed(2)}. CPC: $${cpcAct.toFixed(2)}.`
+      } else if (subtipo === 'cpl_aumento_porcentual') {
+        return `Google Ads: CPC cambió ${calcularCambio(cpcAct, cpcPrev)}%. CPC: $${cpcPrev.toFixed(2)} → $${cpcAct.toFixed(2)}. Conversiones: ${convAct}. Inversión: $${spend.toFixed(2)}.`
+      } else if (subtipo === 'presupuesto_agotado_diario') {
+        return `Google Ads: inversión del período $${spend.toFixed(2)}. Clics: ${clicks}. Conversiones: ${convAct}.`
+      } else if (subtipo === 'tasa_conversion_baja') {
+        const tasa = clicks > 0 ? ((convAct / clicks) * 100).toFixed(2) : '0'
+        return `Google Ads: tasa de conversión ${tasa}%. Clics: ${clicks} | Conversiones: ${convAct} | Impresiones: ${impressions}.`
+      }
+      return `Google Ads: Conversiones ${convAct} | Inversión $${spend.toFixed(2)} | CPC $${cpcAct.toFixed(2)}.`
+    }
+
     // Generar descripción con datos reales de las APIs
     const generarDatosDetectados = (subtipo: string, platformaActual: string, datos: any) => {
-      const esMeta = platformaActual?.toLowerCase() === 'meta'
-      const esGoogle = platformaActual?.toLowerCase() === 'google'
-      const esAmbas = platformaActual?.toLowerCase() === 'ambas'
-      
-      console.log('[v0] generarDatosDetectados:', { subtipo, platformaActual, esMeta, esGoogle, esAmbas, datosKeys: Object.keys(datos) })
-      
-      // Extraer datos reales
-      const metaActual = datos.datosActuales?.meta || {}
-      const metaPrevio = datos.datosPrevios?.meta || {}
-      const googleActual = datos.datosActuales?.google || {}
-      const googlePrevio = datos.datosPrevios?.google || {}
-      
-      console.log('[v0] generarDatosDetectados - Datos extraídos:', { metaActualKeys: Object.keys(metaActual), googleActualKeys: Object.keys(googleActual) })
-      
-      // Función para calcular porcentaje de cambio
-      const calcularCambio = (actual: number, anterior: number) => {
-        if (anterior === 0) return 0
-        return (((actual - anterior) / anterior) * 100).toFixed(1)
+      const plat = platformaActual?.toLowerCase()
+      const metaActual = datos.datosActuales?.meta
+      const metaPrevio = datos.datosPrevios?.meta
+      const googleActual = datos.datosActuales?.google
+      const googlePrevio = datos.datosPrevios?.google
+
+      const lineas: string[] = []
+
+      if ((plat === 'meta' || plat === 'ambas') && metaActual) {
+        lineas.push(lineaMeta(subtipo, metaActual, metaPrevio || {}))
       }
-      
-      if (esMeta && (metaActual.leads !== undefined || Object.keys(metaActual).length > 0)) {
-        // Datos reales de Meta - mapear campos correctos
-        const leadsActuales = metaActual.leads || 0
-        const leadsPrevios = metaPrevio.leads || leadsActuales
-        const cambioLeads = calcularCambio(leadsActuales, leadsPrevios)
-        const cplActual = metaActual.cpl || 0
-        const cplPrevio = metaPrevio.cpl || cplActual
-        const cambioCPI = calcularCambio(cplActual, cplPrevio)
-        
-        if (subtipo === 'caida_conversiones_porcentual') {
-          return `Se detectó un cambio del ${cambioLeads}% en leads en el período analizado en Meta. Leads: ${leadsPrevios} → ${leadsActuales}. CPL: $${cplPrevio} → $${cplActual}.`
-        } else if (subtipo === 'cpl_aumento_porcentual') {
-          return `CPL (Costo por Lead) cambió un ${cambioCPI}% en Meta. CPL anterior: $${cplPrevio} → CPL actual: $${cplActual}. Leads completados: ${leadsActuales}.`
-        } else if (subtipo === 'presupuesto_agotado_diario') {
-          const presupuesto = metaActual.spend || 0
-          return `Presupuesto diario agotado en Meta. Gastado: $${presupuesto.toFixed(2)}. CPL: $${cplActual.toFixed(2)}. Leads: ${leadsActuales}.`
-        } else if (subtipo === 'tasa_conversion_baja') {
-          const impressions = metaActual.impressions || 1
-          const tasa = ((leadsActuales / impressions) * 100).toFixed(2)
-          return `Tasa de conversión de leads crítica detectada: ${tasa}% en Meta. Impresiones: ${impressions} | Leads: ${leadsActuales}.`
-        }
-      } else if (esGoogle && (googleActual.conversions !== undefined || googleActual.leads !== undefined || Object.keys(googleActual).length > 0)) {
-        // Datos reales de Google Ads - conversions o leads
-        const conversionesActuales = googleActual.conversions || googleActual.leads || 0
-        const conversionesPrevias = googlePrevio.conversions || googlePrevio.leads || conversionesActuales
-        const cambioConversiones = calcularCambio(conversionesActuales, conversionesPrevias)
-        const cpcActual = googleActual.cpc || 0
-        const cpcPrevio = googlePrevio.cpc || cpcActual
-        
-        if (subtipo === 'caida_conversiones_porcentual') {
-          return `Se detectó un cambio del ${cambioConversiones}% en conversiones en el período analizado en Google Ads. Conversiones: ${conversionesPrevias} → ${conversionesActuales}. CPC: $${cpcPrevio.toFixed(2)} → $${cpcActual.toFixed(2)}.`
-        } else if (subtipo === 'cpl_aumento_porcentual') {
-          const cambioCPC = calcularCambio(cpcActual, cpcPrevio)
-          return `CPC (Costo por Clic) cambió un ${cambioCPC}% en Google Ads. CPC anterior: $${cpcPrevio.toFixed(2)} → CPC actual: $${cpcActual.toFixed(2)}. Conversiones: ${conversionesActuales}.`
-        } else if (subtipo === 'presupuesto_agotado_diario') {
-          const spend = googleActual.spend || 0
-          return `Presupuesto diario agotado en Google Ads. Gastado: $${spend.toFixed(2)}. Clics: ${googleActual.clicks || 0}.`
-        } else if (subtipo === 'tasa_conversion_baja') {
-          const clicks = googleActual.clicks || 1
-          const tasa = ((conversionesActuales / clicks) * 100).toFixed(2)
-          return `Tasa de conversión crítica detectada: ${tasa}% en Google Ads. Clics: ${clicks} | Conversiones: ${conversionesActuales}. CPC: $${cpcActual.toFixed(2)}.`
-        }
-      } else {
-        // Fallback si no hay datos reales
-        return `Se disparó la alerta ${subtipo} en ${platformaActual}. Período analizado: ${datos.periodo}.`
+      if ((plat === 'google' || plat === 'ambas') && googleActual) {
+        lineas.push(lineaGoogle(subtipo, googleActual, googlePrevio || {}))
       }
-      
-      return `Se disparó la alerta ${subtipo} en ${platformaActual}.`
+
+      // Si hubo errores y no hay datos, mostrarlos para diagnóstico
+      if (lineas.length === 0) {
+        if (datos.errores && datos.errores.length > 0) {
+          return `No se pudieron obtener datos reales. Motivo: ${datos.errores.join(' | ')}`
+        }
+        return `Se disparó la alerta ${subtipo} en ${platformaActual}. Período analizado: ${datos.periodo}. (Sin datos disponibles para el período)`
+      }
+
+      const sufijoPeriodo = datos.periodo === 'hoy' ? 'Hoy vs Ayer' : datos.periodo === '30dias' ? 'Últimos 30 días vs 30 previos' : 'Últimos 7 días vs 7 previos'
+      return `${lineas.join('\n')}\n(Período: ${sufijoPeriodo})`
     }
 
     // Construir descripción detallada de la alerta
