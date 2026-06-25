@@ -49,6 +49,14 @@ const ALERTAS_RENDIMIENTO = [
     ],
   },
   {
+    grupo: 'Análisis de Conversiones',
+    alertas: [
+      { subtipo: 'conversiones_tendencia_7d', label: 'Análisis de conversiones en últimos 7 días (curva de funcionamiento)', campos: [] },
+      { subtipo: 'conversiones_tendencia_14d', label: 'Análisis de conversiones en últimos 14 días (curva de funcionamiento)', campos: [] },
+      { subtipo: 'conversiones_tendencia_30d', label: 'Análisis de conversiones en últimos 30 días (curva de funcionamiento)', campos: [] },
+    ],
+  },
+  {
     grupo: 'Caída de Conversiones',
     alertas: [
       { subtipo: 'caida_conversiones_porcentual', label: 'Las conversiones caen más del X%', campos: ['porcentaje', 'leads_referencia'] },

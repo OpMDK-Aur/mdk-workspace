@@ -13,29 +13,30 @@ export interface AlertaMeta {
   campos: string[]
 }
 
-// Catálogo completo de alertas configurables
+// Catálogo completo de alertas configurables (especificación final: 12 alertas)
 export const ALERTAS_META: AlertaMeta[] = [
-  // RENDIMIENTO ─ CPA Elevado
-  { subtipo: 'cpl_aumento_porcentual', categoria: 'rendimiento', tipo: 'CPA Elevado', label: 'CPL aumenta más de X% respecto a los últimos N días', badgeLabel: 'CPL en aumento', campos: ['porcentaje', 'dias'] },
-  { subtipo: 'cpl_supera_objetivo', categoria: 'rendimiento', tipo: 'CPA Elevado', label: 'CPL supera el objetivo establecido', badgeLabel: 'CPL sobre objetivo', campos: ['cpl_objetivo'] },
-  { subtipo: 'cpl_supera_ticket', categoria: 'rendimiento', tipo: 'CPA Elevado', label: 'CPL superior al ticket promedio permitido', badgeLabel: 'CPL sobre ticket', campos: ['ticket_promedio'] },
+  // RENDIMIENTO ─ CPL / CPA Elevado
+  { subtipo: 'cpl_aumento_porcentual', categoria: 'rendimiento', tipo: 'CPL / CPA Elevado', label: 'CPL aumenta más de X% respecto a los últimos N días', badgeLabel: 'CPL en aumento', campos: ['porcentaje', 'dias'] },
+  { subtipo: 'cpl_supera_objetivo', categoria: 'rendimiento', tipo: 'CPL / CPA Elevado', label: 'CPL supera el objetivo establecido', badgeLabel: 'CPL sobre objetivo', campos: ['cpl_objetivo'] },
+  // RENDIMIENTO ─ Análisis CPL
+  { subtipo: 'cpl_tendencia_7d', categoria: 'rendimiento', tipo: 'Análisis CPL', label: 'Análisis del CPL en últimos 7 días (curva de funcionamiento)', badgeLabel: 'Análisis CPL 7d', campos: [] },
+  { subtipo: 'cpl_tendencia_14d', categoria: 'rendimiento', tipo: 'Análisis CPL', label: 'Análisis del CPL en últimos 14 días (curva de funcionamiento)', badgeLabel: 'Análisis CPL 14d', campos: [] },
+  { subtipo: 'cpl_tendencia_30d', categoria: 'rendimiento', tipo: 'Análisis CPL', label: 'Análisis del CPL en últimos 30 días (curva de funcionamiento)', badgeLabel: 'Análisis CPL 30d', campos: [] },
+  // RENDIMIENTO ─ Análisis de Conversiones
+  { subtipo: 'conversiones_tendencia_7d', categoria: 'rendimiento', tipo: 'Análisis de Conversiones', label: 'Análisis de conversiones en últimos 7 días (curva de funcionamiento)', badgeLabel: 'Análisis Conv 7d', campos: [] },
+  { subtipo: 'conversiones_tendencia_14d', categoria: 'rendimiento', tipo: 'Análisis de Conversiones', label: 'Análisis de conversiones en últimos 14 días (curva de funcionamiento)', badgeLabel: 'Análisis Conv 14d', campos: [] },
+  { subtipo: 'conversiones_tendencia_30d', categoria: 'rendimiento', tipo: 'Análisis de Conversiones', label: 'Análisis de conversiones en últimos 30 días (curva de funcionamiento)', badgeLabel: 'Análisis Conv 30d', campos: [] },
   // RENDIMIENTO ─ Caída de Conversiones
   { subtipo: 'caida_conversiones_porcentual', categoria: 'rendimiento', tipo: 'Caída de Conversiones', label: 'Las conversiones caen más del X%', badgeLabel: 'Caída conversiones', campos: ['porcentaje', 'leads_referencia'] },
   { subtipo: 'sin_conversiones_horas', categoria: 'rendimiento', tipo: 'Caída de Conversiones', label: 'Sin conversiones durante X horas', badgeLabel: 'Sin conversiones', campos: ['horas'] },
-  { subtipo: 'tasa_conversion_baja', categoria: 'rendimiento', tipo: 'Caída de Conversiones', label: 'Tasa de conversión baja respecto al promedio', badgeLabel: 'Conversión baja', campos: [] },
-  // RENDIMIENTO ─ CTR Bajo
-  { subtipo: 'ctr_bajo_benchmark', categoria: 'rendimiento', tipo: 'CTR Bajo', label: 'CTR inferior al benchmark de la cuenta', badgeLabel: 'CTR bajo benchmark', campos: ['ctr_benchmark'] },
-  { subtipo: 'ctr_caida_semanal', categoria: 'rendimiento', tipo: 'CTR Bajo', label: 'CTR cae más del X% vs semana anterior', badgeLabel: 'CTR en caída', campos: ['porcentaje'] },
-  // PRESUPUESTO ─ Presupuesto Agotado
-  { subtipo: 'presupuesto_hora_limite', categoria: 'presupuesto', tipo: 'Presupuesto Agotado', label: 'Presupuesto agotado antes de determinada hora', badgeLabel: 'Presup. agotado', campos: ['hora_limite'] },
-  { subtipo: 'presupuesto_agotado_diario', categoria: 'presupuesto', tipo: 'Presupuesto Agotado', label: 'Presupuesto agotado todos los días de la semana', badgeLabel: 'Presup. agotado', campos: [] },
+  // RENDIMIENTO ─ Impresiones
+  { subtipo: 'cero_impresiones', categoria: 'rendimiento', tipo: 'Impresiones', label: '0 impresiones', badgeLabel: 'Sin impresiones', campos: [] },
+  // PRESUPUESTO ─ Presupuesto Bajo
+  { subtipo: 'presupuesto_cerca_limite', categoria: 'presupuesto', tipo: 'Presupuesto Bajo', label: 'Presupuesto cerca del límite (hay que cargar saldo)', badgeLabel: 'Presup. bajo', campos: ['porcentaje_limite'] },
   // PRESUPUESTO ─ Limitada por Presupuesto
   { subtipo: 'limitada_google', categoria: 'presupuesto', tipo: 'Limitada por Presupuesto', label: 'Google informa "Limitada por presupuesto"', badgeLabel: 'Limitada presup.', campos: [] },
-  { subtipo: 'limitada_meta_demanda', categoria: 'presupuesto', tipo: 'Limitada por Presupuesto', label: 'Meta detecta alta demanda con presupuesto insuficiente', badgeLabel: 'Limitada presup.', campos: [] },
   // PRESUPUESTO ─ Gasto Anormal
-  { subtipo: 'gasto_anormal_alto', categoria: 'presupuesto', tipo: 'Gasto Anormal', label: 'Gastó mucho más de lo habitual', badgeLabel: 'Gasto alto', campos: ['desvio_maximo'] },
   { subtipo: 'gasto_anormal_bajo', categoria: 'presupuesto', tipo: 'Gasto Anormal', label: 'Gastó mucho menos de lo habitual', badgeLabel: 'Gasto bajo', campos: ['desvio_minimo'] },
-  { subtipo: 'sin_gasto_horas', categoria: 'presupuesto', tipo: 'Gasto Anormal', label: 'Sin gasto durante las últimas X horas', badgeLabel: 'Sin gasto', campos: ['horas'] },
 ]
 
 export const ALERTA_META_BY_SUBTIPO: Record<string, AlertaMeta> = ALERTAS_META.reduce(
