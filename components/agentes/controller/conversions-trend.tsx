@@ -54,7 +54,14 @@ export function ConversionsTrend({ clienteId }: ConversionsTrendProps) {
   }, [clienteId])
 
   if (!clienteId) {
-    return null
+    return (
+      <Card className="bg-[#0a0a0a] border-white/5">
+        <CardHeader>
+          <CardTitle>Análisis de Conversiones</CardTitle>
+          <CardDescription>Selecciona un cliente para ver el análisis</CardDescription>
+        </CardHeader>
+      </Card>
+    )
   }
 
   if (loading) {
@@ -69,7 +76,14 @@ export function ConversionsTrend({ clienteId }: ConversionsTrendProps) {
   }
 
   if (!trends) {
-    return null
+    return (
+      <Card className="bg-[#0a0a0a] border-white/5">
+        <CardHeader>
+          <CardTitle>Análisis de Conversiones</CardTitle>
+          <CardDescription>No hay datos disponibles</CardDescription>
+        </CardHeader>
+      </Card>
+    )
   }
 
   const renderTrendCard = (period: 'data7d' | 'data14d' | 'data30d', label: string) => {
