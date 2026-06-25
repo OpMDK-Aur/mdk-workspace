@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import type { AgentConfig, AgentLog, Profile } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -32,9 +33,11 @@ interface AgentCardProps {
   lastLog: AgentLog | null
   onRun: (slug: string) => void
   profile: Profile | null
+  actionHref?: string
 }
 
-export function AgentCard({ agente, lastLog, onRun, profile }: AgentCardProps) {
+export function AgentCard({ agente, lastLog, onRun, profile, actionHref }: AgentCardProps) {
+  const router = useRouter()
   const [configOpen, setConfigOpen] = useState(false)
   const [logPanelOpen, setLogPanelOpen] = useState(false)
 
@@ -134,15 +137,27 @@ export function AgentCard({ agente, lastLog, onRun, profile }: AgentCardProps) {
               </Button>
             </>
           ) : isAutomatic ? (
-            <Button 
-              variant="outline" 
-              size="sm"
-              className="flex-1 gap-1.5"
-              onClick={() => setLogPanelOpen(true)}
-            >
-              <Eye className="h-4 w-4" />
-              Ver ultimo reporte
-            </Button>
+            <>
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="flex-1 gap-1.5"
+                onClick={() => setLogPanelOpen(true)}
+              >
+                <Eye className="h-4 w-4" />
+                Ver historial
+              </Button>
+              <Button 
+                size="sm"
+                className="flex-1 gap-1.5 bg-[#7F77DD] hover:bg-[#6B63C7]"
+                onClick={() => actionHref ? router.push(actionHref) : setLogPanelOpen(true)}
+              >
+                <Play className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">
+                  {agente.slug === 'controller' ? 'Configurar alertas' : agente.nombre}
+                </span>
+              </Button>
+            </>
           ) : (
             <Button 
               size="sm"

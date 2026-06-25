@@ -132,6 +132,7 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
   const [scorecardRows, setScorecardRows] = useState<ScorecardRow[]>([])
   const [alertsRows, setAlertsRows] = useState<ScorecardRow[]>([])
   const [alertsLoading, setAlertsLoading] = useState(false)
+  const [alertsRefreshKey, setAlertsRefreshKey] = useState(0)
   const [loading, setLoading] = useState(false)
   const [scorecardView, setScorecardView] = useState<'clients' | 'campaigns'>('clients')
   const [scorecardClientId, setScorecardClientId] = useState<string | null>(null)
@@ -443,9 +444,9 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
                 size="sm"
                 variant="outline"
                 className="h-9 gap-2"
-                disabled={loading}
-                onClick={() => fetchData(targetClients, filters, true)}
-              >
+            disabled={loading}
+            onClick={() => { fetchData(targetClients, filters, true); setAlertsRefreshKey(k => k + 1) }}
+          >
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 Actualizar
               </Button>
@@ -471,6 +472,7 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
             clients={clients}
             loading={alertsLoading}
             onDateRangeChange={handleAlertsDateRangeChange}
+            refreshKey={alertsRefreshKey}
           />
         </section>
 

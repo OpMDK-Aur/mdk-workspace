@@ -508,21 +508,6 @@ export function ServiciosCliente({ clientId }: ServiciosClienteProps) {
                   </div>
                 )}
 
-                {/* Precio sin IVA */}
-                <div className="space-y-2">
-                  <Label className="text-sm">Precio sin IVA</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={nuevoServicio.precio_sin_iva || ''}
-                    onChange={(e) =>
-                      setNuevoServicio({ ...nuevoServicio, precio_sin_iva: parseFloat(e.target.value) || null })
-                    }
-                    placeholder="Ej: 500000"
-                    className="h-9"
-                  />
-                </div>
-
                 {/* Fecha Inicio */}
                 <div className="space-y-2">
                   <Label className="text-sm">Fecha de inicio</Label>
@@ -637,11 +622,6 @@ export function ServiciosCliente({ clientId }: ServiciosClienteProps) {
                           {servicio.nombre}
                         </p>
                         <div className="flex flex-wrap gap-2 mt-1 text-xs text-muted-foreground">
-                          {servicio.precio_sin_iva && (
-                            <span className="text-primary/80">
-                              ${servicio.precio_sin_iva.toLocaleString('es-AR')}
-                            </span>
-                          )}
                           {servicio.crm_tipo && <span>CRM: {servicio.crm_tipo}</span>}
                           {servicio.plan_nombre && <span>{servicio.plan_nombre}</span>}
                           {servicio.cantidad && <span>x{servicio.cantidad}</span>}

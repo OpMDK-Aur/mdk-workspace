@@ -1,7 +1,15 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import type { ScorecardRow, Client, DateRangePreset } from '@/lib/types'
+import Link from 'next/link'
+import type { ScorecardRow, Client } from '@/lib/types'
+import {
+  type AlertaConfigurada,
+  type AlertaCategoria,
+  type BaselineCliente,
+  evaluarAlerta,
+  getAlertaMeta,
+} from '@/lib/controller-alertas'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -15,18 +23,14 @@ import { Checkbox } from '@/components/ui/checkbox'
 import {
   AlertTriangle,
   Search,
-  TrendingDown,
   TrendingUp,
-  Ban,
   DollarSign,
-  MousePointerClick,
-  Eye,
-  Target,
   ChevronDown,
   ChevronUp,
   Info,
   CalendarDays,
   Filter,
+  Settings2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { format, subDays } from 'date-fns'
@@ -68,14 +72,6 @@ function buildAlertDateRange(preset: AlertDatePreset, customStart?: string, cust
 // ── Alert Types ───────────────────────────────────────────────────────────────
 
 type AlertSeverity = 'critical' | 'warning' | 'info'
-type AlertType = 
-  | 'saldo_negativo'
-  | 'cpl_alto'
-  | 'cpl_bajo'
-  | 'zero_impressions'
-  | 'zero_clicks'
-  | 'zero_conversions'
-  | 'crm_mismatch'
 
 interface CampaignAlert {
   id: string
@@ -84,11 +80,11 @@ interface CampaignAlert {
   campaignId: string
   campaignName: string
   platform: 'meta' | 'google'
-  alertType: AlertType
+  subtipo: string
+  categoria: AlertaCategoria
+  badgeLabel: string
   severity: AlertSeverity
   message: string
-  value: number | null
-  threshold: number | null
 }
 
 interface ClientAlertGroup {
@@ -101,61 +97,20 @@ interface ClientAlertGroup {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const ALERT_TYPE_CONFIG: Record<AlertType, {
-  label: string
+const CATEGORIA_BADGE: Record<AlertaCategoria, {
   icon: React.ReactNode
   color: string
   bgColor: string
-  borderColor: string
 }> = {
-  saldo_negativo: {
-    label: 'Saldo en rojo',
-    icon: <DollarSign className="h-3.5 w-3.5" />,
-    color: 'text-red-400',
-    bgColor: 'bg-red-500/10',
-    borderColor: 'border-red-500/30',
-  },
-  cpl_alto: {
-    label: 'CPL alto',
+  rendimiento: {
     icon: <TrendingUp className="h-3.5 w-3.5" />,
     color: 'text-amber-400',
     bgColor: 'bg-amber-500/10',
-    borderColor: 'border-amber-500/30',
   },
-  cpl_bajo: {
-    label: 'CPL muy bajo',
-    icon: <TrendingDown className="h-3.5 w-3.5" />,
+  presupuesto: {
+    icon: <DollarSign className="h-3.5 w-3.5" />,
     color: 'text-blue-400',
     bgColor: 'bg-blue-500/10',
-    borderColor: 'border-blue-500/30',
-  },
-  zero_impressions: {
-    label: '0 impresiones',
-    icon: <Eye className="h-3.5 w-3.5" />,
-    color: 'text-red-400',
-    bgColor: 'bg-red-500/10',
-    borderColor: 'border-red-500/30',
-  },
-  zero_clicks: {
-    label: '0 clics',
-    icon: <MousePointerClick className="h-3.5 w-3.5" />,
-    color: 'text-orange-400',
-    bgColor: 'bg-orange-500/10',
-    borderColor: 'border-orange-500/30',
-  },
-  zero_conversions: {
-    label: '0 conversiones',
-    icon: <Target className="h-3.5 w-3.5" />,
-    color: 'text-amber-400',
-    bgColor: 'bg-amber-500/10',
-    borderColor: 'border-amber-500/30',
-  },
-  crm_mismatch: {
-    label: 'Diferencia CRM',
-    icon: <AlertTriangle className="h-3.5 w-3.5" />,
-    color: 'text-violet-400',
-    bgColor: 'bg-violet-500/10',
-    borderColor: 'border-violet-500/30',
   },
 }
 
@@ -185,138 +140,102 @@ const SEVERITY_CONFIG: Record<AlertSeverity, {
   },
 }
 
-// ── Thresholds ────────────────────────────────────────────────────────────────
+// ── Alert Detection (basada en la configuración del Controller) ─────────────────
 
-const THRESHOLDS = {
-  CPL_HIGH_MULTIPLIER: 2.0, // CPL > 2x average = high
-  CPL_LOW_MULTIPLIER: 0.3,  // CPL < 0.3x average = suspiciously low
-  MIN_SPEND_FOR_ALERTS: 100, // Minimum spend to consider for CPL alerts
-  CRM_MISMATCH_THRESHOLD: 0.2, // 20% difference between platform and CRM
+// Calcula promedios de referencia por cliente para las alertas comparativas
+function buildBaselines(rows: ScorecardRow[]): Map<string, BaselineCliente> {
+  const acc = new Map<string, {
+    cplSum: number; cplN: number
+    ctrSum: number; ctrN: number
+    spendSum: number; spendN: number
+    tasaSum: number; tasaN: number
+  }>()
+
+  for (const row of rows) {
+    if (!acc.has(row.clientId)) {
+      acc.set(row.clientId, { cplSum: 0, cplN: 0, ctrSum: 0, ctrN: 0, spendSum: 0, spendN: 0, tasaSum: 0, tasaN: 0 })
+    }
+    const a = acc.get(row.clientId)!
+    if (row.cpl > 0) { a.cplSum += row.cpl; a.cplN++ }
+    if (row.impressions > 0) { a.ctrSum += row.ctr; a.ctrN++ }
+    if (row.spend > 0) { a.spendSum += row.spend; a.spendN++ }
+    if (row.clicks > 0) { a.tasaSum += row.leads / row.clicks; a.tasaN++ }
+  }
+
+  const result = new Map<string, BaselineCliente>()
+  for (const [clientId, a] of acc.entries()) {
+    result.set(clientId, {
+      cplPromedio: a.cplN > 0 ? a.cplSum / a.cplN : 0,
+      ctrPromedio: a.ctrN > 0 ? a.ctrSum / a.ctrN : 0,
+      spendPromedio: a.spendN > 0 ? a.spendSum / a.spendN : 0,
+      tasaConversionPromedio: a.tasaN > 0 ? a.tasaSum / a.tasaN : 0,
+    })
+  }
+  return result
 }
 
-// ── Alert Detection ───────────────────────────────────────────────────────────
+function platformMatches(plataforma: string, rowPlatform: 'meta' | 'google'): boolean {
+  return plataforma === 'ambas' || plataforma === rowPlatform
+}
 
 function detectAlerts(
   rows: ScorecardRow[],
-  clients: Client[],
-  averageCPL: number
+  configuredAlerts: AlertaConfigurada[]
 ): CampaignAlert[] {
   const alerts: CampaignAlert[] = []
 
+  // Solo alertas activas, agrupadas por cliente
+  const activasPorCliente = new Map<string, AlertaConfigurada[]>()
+  for (const alerta of configuredAlerts) {
+    if (!alerta.activa) continue
+    if (!activasPorCliente.has(alerta.cliente_id)) activasPorCliente.set(alerta.cliente_id, [])
+    activasPorCliente.get(alerta.cliente_id)!.push(alerta)
+  }
+
+  if (activasPorCliente.size === 0) return alerts
+
+  const baselines = buildBaselines(rows)
+
   for (const row of rows) {
-    const client = clients.find(c => c.id === row.clientId)
+    const configs = activasPorCliente.get(row.clientId)
+    if (!configs || configs.length === 0) continue // cliente sin configuración → no se muestra
+
     const campaignId = row.campaignId || `${row.clientId}-${row.platform}`
     const campaignName = row.campaignName || `${row.platform} Ads`
+    const baseline = baselines.get(row.clientId) || {
+      cplPromedio: 0, ctrPromedio: 0, spendPromedio: 0, tasaConversionPromedio: 0,
+    }
 
-    // Zero impressions (critical if spend > 0)
-    if (row.impressions === 0 && row.spend > 0) {
+    const metrica = {
+      cpl: row.cpl,
+      ctr: row.ctr,
+      leads: row.leads,
+      clicks: row.clicks,
+      impressions: row.impressions,
+      spend: row.spend,
+      budget: row.budget,
+    }
+
+    for (const config of configs) {
+      if (!platformMatches(config.plataforma, row.platform)) continue
+
+      const resultado = evaluarAlerta(config.subtipo, config.parametros || {}, metrica, baseline)
+      if (!resultado.disparada) continue
+
+      const meta = getAlertaMeta(config.subtipo)
       alerts.push({
-        id: `${campaignId}-zero-impressions`,
+        id: `${campaignId}-${config.subtipo}`,
         clientId: row.clientId,
         clientName: row.clientName,
         campaignId,
         campaignName,
         platform: row.platform,
-        alertType: 'zero_impressions',
-        severity: 'critical',
-        message: `Sin impresiones con $${row.spend.toFixed(0)} gastados`,
-        value: row.impressions,
-        threshold: null,
+        subtipo: config.subtipo,
+        categoria: meta?.categoria ?? 'rendimiento',
+        badgeLabel: meta?.badgeLabel ?? config.subtipo,
+        severity: resultado.severidad,
+        message: resultado.mensaje,
       })
-    }
-
-    // Zero clicks (warning if impressions > 1000)
-    if (row.clicks === 0 && row.impressions > 1000) {
-      alerts.push({
-        id: `${campaignId}-zero-clicks`,
-        clientId: row.clientId,
-        clientName: row.clientName,
-        campaignId,
-        campaignName,
-        platform: row.platform,
-        alertType: 'zero_clicks',
-        severity: 'warning',
-        message: `Sin clics con ${row.impressions.toLocaleString()} impresiones`,
-        value: row.clicks,
-        threshold: null,
-      })
-    }
-
-    // Zero conversions (warning if spend > threshold)
-    if (row.leads === 0 && row.spend >= THRESHOLDS.MIN_SPEND_FOR_ALERTS) {
-      alerts.push({
-        id: `${campaignId}-zero-conversions`,
-        clientId: row.clientId,
-        clientName: row.clientName,
-        campaignId,
-        campaignName,
-        platform: row.platform,
-        alertType: 'zero_conversions',
-        severity: 'warning',
-        message: `Sin conversiones con $${row.spend.toFixed(0)} invertidos`,
-        value: row.leads,
-        threshold: null,
-      })
-    }
-
-    // High CPL
-    if (row.cpl > 0 && averageCPL > 0 && row.spend >= THRESHOLDS.MIN_SPEND_FOR_ALERTS) {
-      const threshold = averageCPL * THRESHOLDS.CPL_HIGH_MULTIPLIER
-      if (row.cpl > threshold) {
-        alerts.push({
-          id: `${campaignId}-high-cpl`,
-          clientId: row.clientId,
-          clientName: row.clientName,
-          campaignId,
-          campaignName,
-          platform: row.platform,
-          alertType: 'cpl_alto',
-          severity: row.cpl > threshold * 1.5 ? 'critical' : 'warning',
-          message: `CPL $${row.cpl.toFixed(0)} (promedio: $${averageCPL.toFixed(0)})`,
-          value: row.cpl,
-          threshold,
-        })
-      }
-    }
-
-    // Suspiciously low CPL
-    if (row.cpl > 0 && averageCPL > 0 && row.leads >= 3) {
-      const threshold = averageCPL * THRESHOLDS.CPL_LOW_MULTIPLIER
-      if (row.cpl < threshold) {
-        alerts.push({
-          id: `${campaignId}-low-cpl`,
-          clientId: row.clientId,
-          clientName: row.clientName,
-          campaignId,
-          campaignName,
-          platform: row.platform,
-          alertType: 'cpl_bajo',
-          severity: 'info',
-          message: `CPL muy bajo $${row.cpl.toFixed(0)} - revisar calidad`,
-          value: row.cpl,
-          threshold,
-        })
-      }
-    }
-
-    // CRM mismatch (coming soon - placeholder logic)
-    if (row.crmContacts > 0 && row.leads > 0) {
-      const diff = Math.abs(row.leads - row.crmContacts) / row.leads
-      if (diff > THRESHOLDS.CRM_MISMATCH_THRESHOLD) {
-        alerts.push({
-          id: `${campaignId}-crm-mismatch`,
-          clientId: row.clientId,
-          clientName: row.clientName,
-          campaignId,
-          campaignName,
-          platform: row.platform,
-          alertType: 'crm_mismatch',
-          severity: diff > 0.5 ? 'warning' : 'info',
-          message: `Plataforma: ${row.leads} vs CRM: ${row.crmContacts}`,
-          value: row.leads,
-          threshold: row.crmContacts,
-        })
-      }
     }
   }
 
@@ -325,15 +244,15 @@ function detectAlerts(
 
 // ── Components ────────────────────────────────────────────────────────────────
 
-function AlertTypeBadge({ type }: { type: AlertType }) {
-  const config = ALERT_TYPE_CONFIG[type]
+function AlertTypeBadge({ categoria, badgeLabel }: { categoria: AlertaCategoria; badgeLabel: string }) {
+  const config = CATEGORIA_BADGE[categoria]
   return (
     <span className={cn(
       'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium',
       config.bgColor, config.color
     )}>
       {config.icon}
-      {config.label}
+      {badgeLabel}
     </span>
   )
 }
@@ -433,7 +352,7 @@ function ClientAlertRow({ group, expanded, onToggle }: {
                 <p className="text-[11px] text-muted-foreground mt-0.5">{alert.message}</p>
               </div>
 
-              <AlertTypeBadge type={alert.alertType} />
+              <AlertTypeBadge categoria={alert.categoria} badgeLabel={alert.badgeLabel} />
             </div>
           ))}
         </div>
@@ -444,14 +363,14 @@ function ClientAlertRow({ group, expanded, onToggle }: {
 
 // ── Filter Options ────────────────────────────────────────────────────────────
 
-type FilterOption = 'all' | 'critical' | 'warning' | 'zero_metrics' | 'cpl_issues'
+type FilterOption = 'all' | 'critical' | 'warning' | 'rendimiento' | 'presupuesto'
 
 const FILTER_OPTIONS: { value: FilterOption; label: string }[] = [
   { value: 'all', label: 'Todas' },
   { value: 'critical', label: 'Criticas' },
   { value: 'warning', label: 'Atencion' },
-  { value: 'zero_metrics', label: '0 metricas' },
-  { value: 'cpl_issues', label: 'CPL' },
+  { value: 'rendimiento', label: 'Rendimiento' },
+  { value: 'presupuesto', label: 'Presupuesto' },
 ]
 
 // ── Main Component ─────────────────────────────��────────────────────────��─────
@@ -461,9 +380,11 @@ interface CampaignAlertsPanelProps {
   clients: Client[]
   loading?: boolean
   onDateRangeChange?: (range: { preset: string; start: string; end: string }) => void
+  // Cambia este valor para forzar recarga de la configuración (p.ej. botón Actualizar)
+  refreshKey?: number
 }
 
-export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange }: CampaignAlertsPanelProps) {
+export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange, refreshKey = 0 }: CampaignAlertsPanelProps) {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterOption>('all')
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
@@ -546,7 +467,7 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
       if (!campaigns.find(c => c.id === row.campaignId)) {
         campaigns.push({
           id: row.campaignId,
-          name: row.campaignName,
+          name: row.campaignName ?? `${row.platform} Ads`,
           platform: row.platform,
         })
       }
@@ -555,12 +476,28 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
     return { grouped, clientNames }
   }, [rows])
 
-  // Calculate average CPL for threshold
-  const averageCPL = useMemo(() => {
-    const validCPLs = rows.filter(r => r.cpl > 0 && r.spend >= THRESHOLDS.MIN_SPEND_FOR_ALERTS)
-    if (validCPLs.length === 0) return 0
-    return validCPLs.reduce((sum, r) => sum + r.cpl, 0) / validCPLs.length
-  }, [rows])
+  // Cargar la configuración de alertas del Controller (todos los clientes, solo activas)
+  const [configuredAlerts, setConfiguredAlerts] = useState<AlertaConfigurada[]>([])
+  const [configLoading, setConfigLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setConfigLoading(true)
+    fetch('/api/controller/alertas?all=true&activas=true')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!cancelled) setConfiguredAlerts(Array.isArray(data) ? data : [])
+      })
+      .catch(() => {
+        if (!cancelled) setConfiguredAlerts([])
+      })
+      .finally(() => {
+        if (!cancelled) setConfigLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [refreshKey])
 
   // Filter rows based on selected campaigns
   // Empty set = show all campaigns (default)
@@ -569,8 +506,8 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
     return rows.filter(r => selectedCampaignIds.has(r.campaignId ?? ''))
   }, [rows, selectedCampaignIds])
 
-  // Detect all alerts using filtered rows
-  const allAlerts = useMemo(() => detectAlerts(filteredRows, clients, averageCPL), [filteredRows, clients, averageCPL])
+  // Detect all alerts using filtered rows + configuración del paid media
+  const allAlerts = useMemo(() => detectAlerts(filteredRows, configuredAlerts), [filteredRows, configuredAlerts])
 
   // Group alerts by client
   const groupedAlerts = useMemo(() => {
@@ -617,16 +554,10 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
           filteredAlerts = g.alerts.filter(a => a.severity === 'critical')
         } else if (filter === 'warning') {
           filteredAlerts = g.alerts.filter(a => a.severity === 'warning')
-        } else if (filter === 'zero_metrics') {
-          filteredAlerts = g.alerts.filter(a => 
-            a.alertType === 'zero_impressions' || 
-            a.alertType === 'zero_clicks' || 
-            a.alertType === 'zero_conversions'
-          )
-        } else if (filter === 'cpl_issues') {
-          filteredAlerts = g.alerts.filter(a => 
-            a.alertType === 'cpl_alto' || a.alertType === 'cpl_bajo'
-          )
+        } else if (filter === 'rendimiento') {
+          filteredAlerts = g.alerts.filter(a => a.categoria === 'rendimiento')
+        } else if (filter === 'presupuesto') {
+          filteredAlerts = g.alerts.filter(a => a.categoria === 'presupuesto')
         }
 
         return {
@@ -664,8 +595,8 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
   const totalWarning = allAlerts.filter(a => a.severity === 'warning').length
   const totalAlerts = allAlerts.length
 
-  // Don't render if no alerts
-  if (!loading && totalAlerts === 0) {
+  // Don't render if no alerts (una vez cargados datos y configuración)
+  if (!loading && !configLoading && totalAlerts === 0) {
     return null
   }
 
@@ -703,14 +634,22 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
             </div>
           </div>
 
-          <div className="relative w-full sm:w-52">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Buscar cliente o campana..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="h-8 pl-8 text-xs"
-            />
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="relative w-full sm:w-52">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Buscar cliente o campana..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="h-8 pl-8 text-xs"
+              />
+            </div>
+            <Button asChild size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 text-xs">
+              <Link href="/dashboard/agentes/controller">
+                <Settings2 className="h-3.5 w-3.5" />
+                Configurar Alertas
+              </Link>
+            </Button>
           </div>
         </div>
       </CardHeader>
@@ -909,9 +848,7 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
           <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/50">
             <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             <p className="text-[11px] text-muted-foreground">
-              Umbrales: CPL alto {'>'} {THRESHOLDS.CPL_HIGH_MULTIPLIER}x promedio | 
-              CPL bajo {'<'} {THRESHOLDS.CPL_LOW_MULTIPLIER}x promedio | 
-              Min. inversion: ${THRESHOLDS.MIN_SPEND_FOR_ALERTS}
+              Alertas según la configuración del Controller por cliente. Solo se muestran clientes con alertas activas configuradas por el equipo de paid media.
             </p>
           </div>
         )}

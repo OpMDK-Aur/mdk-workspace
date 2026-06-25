@@ -48,6 +48,8 @@ import { toast } from 'sonner'
 interface TesterModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  // Cliente inicial para autocompletar (p.ej. desde una tarea/hito de Testing)
+  initialClientId?: string
 }
 
 interface TesterFormItem extends MetaForm {
@@ -70,7 +72,7 @@ interface ItemWithStatus extends TesterItem {
   status: ItemStatus
 }
 
-export function TesterModal({ open, onOpenChange }: TesterModalProps) {
+export function TesterModal({ open, onOpenChange, initialClientId }: TesterModalProps) {
   const supabase = createClient()
   
   const [tab, setTab] = useState<'manual' | 'historial' | 'cron'>('manual')
@@ -107,16 +109,23 @@ export function TesterModal({ open, onOpenChange }: TesterModalProps) {
         .select('*')
         .eq('activo', true)
         .order('nombre_del_negocio')
-      if (data) setClients(data)
+      if (data) {
+        setClients(data)
+        // Preseleccionar cliente inicial (p.ej. desde una tarea/hito de Testing)
+        if (initialClientId) {
+          const match = data.find((c) => c.id === initialClientId)
+          if (match) setSelectedClient(match)
+        }
+      }
     }
     if (open) {
       fetchClients()
       setStep(1)
-      setSelectedClient(null)
+      if (!initialClientId) setSelectedClient(null)
       setTab('manual')
       loadHistorial()
     }
-  }, [open, supabase])
+  }, [open, supabase, initialClientId])
 
   // Load meta forms when client selected
   useEffect(() => {

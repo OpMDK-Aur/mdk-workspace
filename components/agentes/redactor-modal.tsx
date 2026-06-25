@@ -47,6 +47,9 @@ import { toast } from 'sonner'
 interface RedactorModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  // Valores iniciales para autocompletar (p.ej. desde una tarea de Hito)
+  initialClientId?: string
+  initialType?: MessageType
 }
 
 type MessageType = 'inicio' | 'cierre'
@@ -66,6 +69,14 @@ interface ClientOption {
   google_ads_customer_ids: string[] | null
 }
 
+// Format a Date to a local YYYY-MM-DD string (avoids UTC timezone shifts)
+function toLocalISO(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 // Helper to get last week's Monday and Sunday
 function getLastWeekDates() {
   const today = new Date()
@@ -81,9 +92,29 @@ function getLastWeekDates() {
   lastSunday.setDate(lastMonday.getDate() + 6)
   
   return {
-    start: lastMonday.toISOString().split('T')[0],
-    end: lastSunday.toISOString().split('T')[0]
+    start: toLocalISO(lastMonday),
+    end: toLocalISO(lastSunday)
   }
+}
+
+// Auto-detect the relevant week range based on message type.
+// - cierre: lunes de la semana actual → hoy (ej: hoy vie 26/06 → lun 22/06 a vie 26/06)
+// - inicio: semana anterior completa, lunes anterior → este lunes (ej: hoy lun 22/06 → lun 15/06 a lun 22/06)
+function getWeekRangeForType(type: MessageType) {
+  const today = new Date()
+  const dayOfWeek = today.getDay() // 0=Dom .. 6=Sab
+  const daysSinceMonday = (dayOfWeek + 6) % 7
+  const thisMonday = new Date(today)
+  thisMonday.setDate(today.getDate() - daysSinceMonday)
+
+  if (type === 'cierre') {
+    return { start: toLocalISO(thisMonday), end: toLocalISO(today) }
+  }
+
+  // inicio
+  const prevMonday = new Date(thisMonday)
+  prevMonday.setDate(thisMonday.getDate() - 7)
+  return { start: toLocalISO(prevMonday), end: toLocalISO(thisMonday) }
 }
 
 // Helper to format date for display
@@ -92,7 +123,7 @@ function formatDateDisplay(dateStr: string) {
   return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
 }
 
-export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
+export function RedactorModal({ open, onOpenChange, initialClientId, initialType }: RedactorModalProps) {
   const supabase = createClient()
   const router = useRouter()
   
@@ -127,24 +158,42 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
         .select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids')
         .eq('activo', true)
         .order('nombre_del_negocio')
-      if (data) setClients(data as ClientOption[])
+      if (data) {
+        setClients(data as ClientOption[])
+        // Preseleccionar cliente inicial (p.ej. desde una tarea de Hito)
+        if (initialClientId) {
+          const match = (data as ClientOption[]).find((c) => c.id === initialClientId)
+          if (match) setSelectedClient(match)
+        }
+      }
     }
     if (open) {
       fetchClients()
       // Reset state when opening
-      setStep(1)
-      setSelectedClient(null)
-      setMessageType(null)
       setSelectedAccounts([])
       setDraft('')
       setSuccess(null)
       setShowTaskSelector(false)
-      // Set default period to last week
-      const lastWeek = getLastWeekDates()
-      setPeriodStart(lastWeek.start)
-      setPeriodEnd(lastWeek.end)
+
+      // Si vienen valores iniciales (cliente + tipo), autocompletar y
+      // detectar la semana automáticamente según el tipo.
+      if (initialType) {
+        setMessageType(initialType)
+        const range = getWeekRangeForType(initialType)
+        setPeriodStart(range.start)
+        setPeriodEnd(range.end)
+        // Saltar a la revisión del período (cliente y tipo ya resueltos)
+        setStep(initialClientId ? 3 : 1)
+      } else {
+        setSelectedClient(null)
+        setMessageType(null)
+        setStep(1)
+        const lastWeek = getLastWeekDates()
+        setPeriodStart(lastWeek.start)
+        setPeriodEnd(lastWeek.end)
+      }
     }
-  }, [open, supabase])
+  }, [open, supabase, initialClientId, initialType])
 
   // Update ad accounts when client changes
   useEffect(() => {
@@ -155,25 +204,52 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
 
     const accounts: AdAccount[] = []
     
-    // Check plural fields first, then singular as fallback
-    const metaIds = selectedClient.meta_ads_account_ids?.length 
-      ? selectedClient.meta_ads_account_ids 
-      : selectedClient.meta_ads_account_id 
-        ? [selectedClient.meta_ads_account_id]
-        : []
+    // Parse Meta IDs - handle arrays, JSON strings, and single values
+    let metaIds: string[] = []
+    const metaField = (selectedClient as any).meta_ads_account_ids || (selectedClient as any).meta_ads_account_id || (selectedClient as any).cuentas_meta
+    if (metaField) {
+      if (Array.isArray(metaField)) {
+        metaIds = metaField.filter(id => id)
+      } else if (typeof metaField === 'string') {
+        try {
+          // Try to parse as JSON array first
+          metaIds = JSON.parse(metaField).filter((id: string) => id)
+        } catch {
+          // If not JSON, treat as single value
+          metaIds = metaField ? [metaField] : []
+        }
+      }
+    }
     
-    const googleIds = selectedClient.google_ads_customer_ids?.length
-      ? selectedClient.google_ads_customer_ids
-      : selectedClient.google_ads_customer_id
-        ? [selectedClient.google_ads_customer_id]
-        : []
+    // Parse Google IDs - handle arrays, JSON strings, and single values
+    let googleIds: string[] = []
+    const googleField = (selectedClient as any).google_ads_customer_ids || (selectedClient as any).google_ads_customer_id || (selectedClient as any).cuentas_google
+    if (googleField) {
+      if (Array.isArray(googleField)) {
+        googleIds = googleField.filter(id => id)
+      } else if (typeof googleField === 'string') {
+        try {
+          // Try to parse as JSON array first
+          googleIds = JSON.parse(googleField).filter((id: string) => id)
+        } catch {
+          // If not JSON, treat as single value
+          googleIds = googleField ? [googleField] : []
+        }
+      }
+    }
+
+    console.log('[redactor-modal] Parsed accounts:', { metaIds, googleIds })
     
     metaIds.forEach((id: string) => {
-      accounts.push({ id, platform: 'meta', label: `Meta Ads · ${id}` })
+      if (id && id.trim()) {
+        accounts.push({ id: id.trim(), platform: 'meta', label: `Meta Ads · ${id}` })
+      }
     })
     
     googleIds.forEach((id: string) => {
-      accounts.push({ id, platform: 'google', label: `Google Ads · ${id}` })
+      if (id && id.trim()) {
+        accounts.push({ id: id.trim(), platform: 'google', label: `Google Ads · ${id}` })
+      }
     })
 
     setAdAccounts(accounts)
@@ -434,7 +510,7 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[560px]">
+      <DialogContent className="max-w-[560px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Redactor de mensajes</DialogTitle>
         </DialogHeader>
@@ -702,7 +778,7 @@ export function RedactorModal({ open, onOpenChange }: RedactorModalProps) {
                   <Textarea
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    className="min-h-[200px]"
+                    className="min-h-[320px]"
                     placeholder="Borrador del mensaje..."
                   />
                   <div className="flex gap-2">

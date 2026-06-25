@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { MultiSelect } from '@/components/ui/multi-select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Download, Users, Loader2, Building2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -96,12 +97,12 @@ export default function ControlHorasPage() {
   const currentDate = new Date()
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
-  const [selectedColaborador, setSelectedColaborador] = useState<string>('all')
-  const [selectedCliente, setSelectedCliente] = useState<string>('all')
+  const [selectedColaboradores, setSelectedColaboradores] = useState<string[]>([])
+  const [selectedClientes, setSelectedClientes] = useState<string[]>([])
   const [selectedMatrixColab, setSelectedMatrixColab] = useState<string>('all')
   const [selectedDayColab, setSelectedDayColab] = useState<string>('all')
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
-  const [departamentoFilter, setDepartamentoFilter] = useState<string>('all')
+  const [selectedDepartamentos, setSelectedDepartamentos] = useState<string[]>([])
   const [statusColaborador, setStatusColaborador] = useState<'activos' | 'inactivos' | 'todos'>('activos')
 
   // Fetch data with SWR
@@ -136,19 +137,19 @@ export default function ControlHorasPage() {
       })
       if (!isInRange) return false
       
-      // Filter by selected colaborador (global filter)
-      if (selectedColaborador !== 'all' && entry.colaborador_id !== selectedColaborador) {
+      // Filter by selected colaboradores (multi-select - if empty, show all)
+      if (selectedColaboradores.length > 0 && !selectedColaboradores.includes(entry.colaborador_id!)) {
         return false
       }
       
-      // Filter by selected cliente (global filter)
-      if (selectedCliente !== 'all' && entry.cliente_id !== selectedCliente) {
+      // Filter by selected clientes (multi-select - if empty, show all)
+      if (selectedClientes.length > 0 && !selectedClientes.includes(entry.cliente_id!)) {
         return false
       }
 
-      // Filter by selected departamento (matches the colaborador's departamento)
-      if (departamentoFilter !== 'all') {
-        if (colaboradorDeptMap[entry.colaborador_id] !== departamentoFilter) {
+      // Filter by selected departamentos (matches the colaborador's departamento)
+      if (selectedDepartamentos.length > 0) {
+        if (!selectedDepartamentos.includes(colaboradorDeptMap[entry.colaborador_id])) {
           return false
         }
       }
@@ -166,7 +167,7 @@ export default function ControlHorasPage() {
       
       return true
     })
-  }, [allEntries, users, selectedMonth, selectedYear, selectedColaborador, selectedCliente, departamentoFilter, statusColaborador])
+  }, [allEntries, users, selectedMonth, selectedYear, selectedColaboradores, selectedClientes, selectedDepartamentos, statusColaborador])
 
   // Calculate client summaries from filtered entries
   const clientSummaries: ClientSummary[] = useMemo(() => {
@@ -514,63 +515,45 @@ export default function ControlHorasPage() {
         </Select>
 
         {/* Colaborador Filter */}
-        <Select
-          value={selectedColaborador}
-          onValueChange={setSelectedColaborador}
-        >
-          <SelectTrigger className="w-[200px]">
-            <Users className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="Colaborador" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los colaboradores</SelectItem>
-            {users
-              .filter(user => {
-                if (statusColaborador === 'todos') return true
-                const isActivo = user.activo ?? true
-                return statusColaborador === 'activos' ? isActivo : !isActivo
-              })
-              .map((user) => (
-                <SelectItem key={user.id} value={user.id}>
-                  {user.nombre}{user.apellido ? ` ${user.apellido}` : ''}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          options={users
+            .filter(user => {
+              if (statusColaborador === 'todos') return true
+              const isActivo = user.activo ?? true
+              return statusColaborador === 'activos' ? isActivo : !isActivo
+            })
+            .map(user => ({
+              value: user.id,
+              label: `${user.nombre}${user.apellido ? ` ${user.apellido}` : ''}`
+            }))}
+          values={selectedColaboradores}
+          onValuesChange={setSelectedColaboradores}
+          placeholder="Colaboradores"
+          icon={<Users className="h-4 w-4" />}
+        />
 
         {/* Cliente Filter */}
-        <Select
-          value={selectedCliente}
-          onValueChange={setSelectedCliente}
-        >
-          <SelectTrigger className="w-[200px]">
-            <Building2 className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="Cliente" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los clientes</SelectItem>
-            {clients.map((client) => (
-              <SelectItem key={client.id} value={client.id}>
-                {client.nombre_del_negocio || client.business_name || 'Sin nombre'}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          options={clients.map(client => ({
+            value: client.id,
+            label: client.nombre_del_negocio || client.business_name || 'Sin nombre'
+          }))}
+          values={selectedClientes}
+          onValuesChange={setSelectedClientes}
+          placeholder="Clientes"
+          icon={<Building2 className="h-4 w-4" />}
+        />
 
         {/* Departamento Filter */}
-        <Select value={departamentoFilter} onValueChange={(v) => setDepartamentoFilter(v)}>
-          <SelectTrigger className="w-[170px]">
-            <SelectValue placeholder="Departamento" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los departamentos</SelectItem>
-            {departamentos.map((dep) => (
-              <SelectItem key={dep.id} value={dep.id}>
-                {dep.nombre}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          options={departamentos.map(dep => ({
+            value: dep.id,
+            label: dep.nombre
+          }))}
+          values={selectedDepartamentos}
+          onValuesChange={setSelectedDepartamentos}
+          placeholder="Departamentos"
+        />
 
         {/* Status Filter */}
         <Select value={statusColaborador} onValueChange={(v) => {
@@ -639,9 +622,9 @@ export default function ControlHorasPage() {
           <HoursControlPanel 
             month={selectedMonth} 
             year={selectedYear}
-            colaboradorId={selectedColaborador !== 'all' ? selectedColaborador : undefined}
-            clienteId={selectedCliente !== 'all' ? selectedCliente : undefined}
-            departamento={departamentoFilter}
+            colaboradorId={selectedColaboradores.length > 0 ? selectedColaboradores[0] : undefined}
+            clienteId={selectedClientes.length > 0 ? selectedClientes[0] : undefined}
+            departamento={selectedDepartamentos.length > 0 ? selectedDepartamentos[0] : undefined}
             statusColaborador={statusColaborador}
           />
         </TabsContent>
