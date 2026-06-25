@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { updateClientHitosAccountManager } from '@/app/actions/client-hitos'
 import { ClientBudgetAlertCard } from './client-budget-alert-card'
 import { computeClientBudgetAlerts } from './budget-alerts-shared'
 import { ClientMemoria } from './client-memoria'
@@ -709,7 +710,17 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           account_manager_id: newIds[0] ?? null,
         })
         .eq('id', client.id)
-      if (!error) setAmIds(newIds)
+      if (!error) {
+        setAmIds(newIds)
+        // Actualizar automáticamente todos los hitos del cliente con el nuevo Account Manager
+        try {
+          const result = await updateClientHitosAccountManager(client.id, newIds[0] ?? null)
+          console.log('[v0] Updated', result.updated, 'hitos for client:', client.id)
+        } catch (hitoError) {
+          console.error('[v0] Error updating hitos:', hitoError)
+          // No lanzar error, pero loguear - esto es una operación secundaria
+        }
+      }
     } catch (e) {
       console.error('Error updating AM:', e)
     } finally {
