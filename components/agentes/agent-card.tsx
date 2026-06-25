@@ -153,7 +153,9 @@ export function AgentCard({ agente, lastLog, onRun, profile, actionHref }: Agent
                 onClick={() => actionHref ? router.push(actionHref) : setLogPanelOpen(true)}
               >
                 <Play className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">{agente.nombre}</span>
+                <span className="truncate">
+                  {agente.slug === 'controller' ? 'Configurar alertas' : agente.nombre}
+                </span>
               </Button>
             </>
           ) : (
