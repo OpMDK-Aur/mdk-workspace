@@ -45,6 +45,7 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { HitoCompletionModal } from './hito-completion-modal'
+import { RedactorModal } from '@/components/agentes/redactor-modal'
 import {
   Select,
   SelectContent,
@@ -1615,6 +1616,8 @@ export function TaskDetailPanel() {
 
   // Hito completion modal state
   const [hitoModalOpen, setHitoModalOpen] = useState(false)
+  // Redactor modal state (para tareas de Hito de mensajes de semana)
+  const [redactorOpen, setRedactorOpen] = useState(false)
   const [pendingStatus, setPendingStatus] = useState<TaskStatus | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   // Activity filters
@@ -1736,6 +1739,20 @@ export function TaskDetailPanel() {
     setIsFullscreen(false)
     setSelectedTask(null)
   }
+
+  // Detectar si es una tarea de Hito de mensaje de inicio/cierre de semana
+  // para mostrar el botón "Ejecutar redactor".
+  const titleLower = (task.title || '').toLowerCase()
+  const isHitoMensaje = titleLower.includes('[hito]') && titleLower.includes('mensaje')
+  const redactorType: 'inicio' | 'cierre' | null = isHitoMensaje
+    ? titleLower.includes('inicio')
+      ? 'inicio'
+      : titleLower.includes('cierre')
+        ? 'cierre'
+        : null
+    : null
+  // Cliente de la tarea para autocompletar el redactor
+  const redactorClientId = task.clients?.[0]?.id || task.clientId || undefined
 
   // Navigation between tasks
   const currentIndex = tasks.findIndex(t => t.id === selectedTaskId)
@@ -1878,6 +1895,18 @@ export function TaskDetailPanel() {
                       >
                         {task.title}
                       </h1>
+                    )}
+
+                    {/* Ejecutar redactor - solo para tareas de Hito de mensaje de semana */}
+                    {redactorType && (
+                      <Button
+                        size="sm"
+                        className="mt-4 gap-2 bg-[#7F77DD] hover:bg-[#6B63C7] text-white"
+                        onClick={() => setRedactorOpen(true)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Ejecutar redactor ({redactorType === 'inicio' ? 'inicio' : 'cierre'} de semana)
+                      </Button>
                     )}
                   </div>
 
@@ -2352,6 +2381,16 @@ export function TaskDetailPanel() {
           completadoPor={currentUserId || ''}
           onComplete={handleHitoComplete}
           onCancel={handleHitoCancel}
+        />
+      )}
+
+      {/* Redactor Modal - autocompletado desde la tarea de Hito */}
+      {redactorType && (
+        <RedactorModal
+          open={redactorOpen}
+          onOpenChange={setRedactorOpen}
+          initialClientId={redactorClientId}
+          initialType={redactorType}
         />
       )}
 
