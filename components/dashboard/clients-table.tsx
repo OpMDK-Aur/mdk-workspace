@@ -79,6 +79,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
             <TableRow>
               <TableHead>Cliente</TableHead>
               <TableHead>Unidades</TableHead>
+              <TableHead className="text-right">NPS</TableHead>
               <TableHead className="text-right">ROAS</TableHead>
               <TableHead className="text-right">Inversion</TableHead>
             </TableRow>
@@ -115,6 +116,23 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                         <span className="text-xs text-muted-foreground">-</span>
                       )}
                     </div>
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    {client.nps_score !== null && client.nps_score !== undefined ? (
+                      <Badge 
+                        variant="outline"
+                        className={cn(
+                          'text-xs',
+                          client.nps_score >= 70 ? 'bg-green-500/10 text-green-700 border-green-500/20' :
+                          client.nps_score >= 50 ? 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20' :
+                          'bg-red-500/10 text-red-700 border-red-500/20'
+                        )}
+                      >
+                        {client.nps_score}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">-</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     {roas.toFixed(1)}x
