@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
+import Link from 'next/link'
 import type { ScorecardRow, Client } from '@/lib/types'
 import {
   type AlertaConfigurada,
@@ -29,6 +30,7 @@ import {
   Info,
   CalendarDays,
   Filter,
+  Settings2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { format, subDays } from 'date-fns'
@@ -632,14 +634,22 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange,
             </div>
           </div>
 
-          <div className="relative w-full sm:w-52">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Buscar cliente o campana..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="h-8 pl-8 text-xs"
-            />
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="relative w-full sm:w-52">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Buscar cliente o campana..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="h-8 pl-8 text-xs"
+              />
+            </div>
+            <Button asChild size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 text-xs">
+              <Link href="/dashboard/agentes/controller">
+                <Settings2 className="h-3.5 w-3.5" />
+                Configurar Alertas
+              </Link>
+            </Button>
           </div>
         </div>
       </CardHeader>
