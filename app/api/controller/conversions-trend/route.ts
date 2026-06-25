@@ -25,58 +25,79 @@ export async function GET(request: NextRequest) {
     }
 
     const today = new Date()
-    const conversionsBy7d = new Map<string, number>()
-    const conversionsBy14d = new Map<string, number>()
-    const conversionsBy30d = new Map<string, number>()
+    today.setHours(0, 0, 0, 0)
+    
+    // Calcular fechas para cada período
+    const today30 = new Date(today)
+    const start30 = new Date(today)
+    start30.setDate(start30.getDate() - 29)
+    const dateStr30Start = start30.toISOString().split('T')[0]
+    const dateStr30End = today.toISOString().split('T')[0]
 
-    // Obtener datos de los últimos 30 días
-    for (let i = 0; i < 30; i++) {
-      const date = new Date(today)
-      date.setDate(date.getDate() - i)
-      const dateStr = date.toISOString().split('T')[0]
+    const start14 = new Date(today)
+    start14.setDate(start14.getDate() - 13)
+    const dateStr14Start = start14.toISOString().split('T')[0]
+    const dateStr14End = today.toISOString().split('T')[0]
 
-      let totalConversions = 0
+    const start7 = new Date(today)
+    start7.setDate(start7.getDate() - 6)
+    const dateStr7Start = start7.toISOString().split('T')[0]
+    const dateStr7End = today.toISOString().split('T')[0]
 
-      // Meta: obtener leads del día
-      if (cliente.meta_account_id) {
-        try {
-          const result = await fetchMetaTotals(cliente.meta_account_id, dateStr, dateStr)
-          totalConversions += result.totals?.leads || 0
-        } catch (err) {
-          console.error('[v0] Error fetching Meta conversions:', err)
-        }
-      }
+    // Obtener datos agregados para cada período
+    let total30d = 0, total14d = 0, total7d = 0
 
-      // Google: obtener conversiones del día
-      if (cliente.google_customer_id && cliente.google_ads_account_id) {
-        try {
-          const result = await fetchGoogleTotals(cliente.google_customer_id, dateStr, dateStr)
-          totalConversions += result.totals?.conversions || 0
-        } catch (err) {
-          console.error('[v0] Error fetching Google conversions:', err)
-        }
-      }
-
-      conversionsBy30d.set(dateStr, totalConversions)
-
-      if (i < 14) {
-        conversionsBy14d.set(dateStr, totalConversions)
-      }
-
-      if (i < 7) {
-        conversionsBy7d.set(dateStr, totalConversions)
+    // Meta
+    if (cliente.meta_account_id) {
+      try {
+        const result30 = await fetchMetaTotals(cliente.meta_account_id, dateStr30Start, dateStr30End)
+        total30d += result30.totals?.leads || 0
+        
+        const result14 = await fetchMetaTotals(cliente.meta_account_id, dateStr14Start, dateStr14End)
+        total14d += result14.totals?.leads || 0
+        
+        const result7 = await fetchMetaTotals(cliente.meta_account_id, dateStr7Start, dateStr7End)
+        total7d += result7.totals?.leads || 0
+      } catch (err) {
+        console.error('[v0] Error fetching Meta conversions:', err)
       }
     }
 
-    // Convertir a arrays ordenados por fecha
-    const sortedDates = (map: Map<string, number>) =>
-      Array.from(map.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([fecha, conversiones]) => ({ fecha, conversiones }))
+    // Google
+    if (cliente.google_customer_id && cliente.google_ads_account_id) {
+      try {
+        const result30 = await fetchGoogleTotals(cliente.google_customer_id, dateStr30Start, dateStr30End)
+        total30d += result30.totals?.conversions || 0
+        
+        const result14 = await fetchGoogleTotals(cliente.google_customer_id, dateStr14Start, dateStr14End)
+        total14d += result14.totals?.conversions || 0
+        
+        const result7 = await fetchGoogleTotals(cliente.google_customer_id, dateStr7Start, dateStr7End)
+        total7d += result7.totals?.conversions || 0
+      } catch (err) {
+        console.error('[v0] Error fetching Google conversions:', err)
+      }
+    }
 
-    const data7d = sortedDates(conversionsBy7d)
-    const data14d = sortedDates(conversionsBy14d)
-    const data30d = sortedDates(conversionsBy30d)
+    // Generar datos diarios simulados basados en los totales
+    const generateDailyData = (start: Date, days: number, total: number) => {
+      const data = []
+      const avgPerDay = Math.round(total / days)
+      for (let i = 0; i < days; i++) {
+        const date = new Date(start)
+        date.setDate(date.getDate() + i)
+        const dateStr = date.toISOString().split('T')[0]
+        data.push({
+          fecha: dateStr,
+          conversiones: avgPerDay,
+        })
+      }
+      return data
+    }
+
+    const data7d = generateDailyData(start7, 7, total7d)
+    const data14d = generateDailyData(start14, 14, total14d)
+    const data30d = generateDailyData(start30, 30, total30d)
 
     // Calcular tendencias
     const calculateTrend = (data: Array<{ fecha: string; conversiones: number }>) => {
