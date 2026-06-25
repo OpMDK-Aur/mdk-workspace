@@ -1,5 +1,4 @@
 import { createClient as createSupabaseClient } from '@/lib/supabase/server'
-import { IconAlertTriangle, IconClock } from '@tabler/icons-react'
 import { ControllerBoard } from '@/components/agentes/controller/controller-board'
 import { ClienteConController } from '@/lib/types'
 
@@ -94,10 +93,6 @@ export default async function ControllerPage() {
           <div>
             <h1 className="text-3xl font-bold text-white mb-1">Controller</h1>
             <p className="text-sm text-gray-400">Monitoreo automático de cuentas publicitarias</p>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#7F77DD]/10 border border-[#7F77DD]/20">
-            <IconClock className="w-4 h-4 text-[#7F77DD]" />
-            <span className="text-xs font-medium text-[#7F77DD]">CRON · 08:00 AR</span>
           </div>
         </div>
       </div>

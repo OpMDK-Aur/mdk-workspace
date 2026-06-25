@@ -27,7 +27,9 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
   const [isSheetOpen, setIsSheetOpen] = useState(false)
   const [clienteActivos, setClienteActivos] = useState<Record<string, boolean>>(
     clientes.reduce((acc, c) => {
-      acc[c.id] = c.configuracion?.activo ?? false
+      // El agente se considera activo si la config lo indica, o si el cliente
+      // tiene alertas guardadas (configurado antes de existir la fila de config).
+      acc[c.id] = c.configuracion?.activo ?? c.total_alertas > 0
       return acc
     }, {} as Record<string, boolean>)
   )
