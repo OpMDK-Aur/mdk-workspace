@@ -106,12 +106,37 @@ export function ControllerConfigSheet({
   const loadConfigAndCuentas = async () => {
     setLoadingCuentas(true)
     try {
-      const response = await fetch(`/api/controller/config?clienteId=${clienteId}`)
-      if (response.ok) {
-        const data = await response.json()
+      const [responseConfig, responseAlertas] = await Promise.all([
+        fetch(`/api/controller/config?clienteId=${clienteId}`),
+        fetch(`/api/controller/alertas?clienteId=${clienteId}`),
+      ])
+
+      if (responseConfig.ok) {
+        const data = await responseConfig.json()
         setCuentas(data.cuentas || [])
         if (data.configuracion) {
           setActivo(data.configuracion.activo ?? true)
+        }
+      }
+
+      // Cargar alertas guardadas y poblar el estado del formulario
+      if (responseAlertas.ok) {
+        const alertas = await responseAlertas.json()
+        if (Array.isArray(alertas) && alertas.length > 0) {
+          const restored: Record<string, AlertCardData> = {}
+          for (const a of alertas) {
+            const params = a.parametros || {}
+            restored[a.subtipo] = {
+              subtipo: a.subtipo,
+              activa: a.activa ?? false,
+              plataforma: a.plataforma ?? 'ambas',
+              accion: a.accion ?? 'ambas',
+              periodo: params.periodo ?? '7dias',
+              campos: params.campos ?? {},
+              variantes: params.variantes ?? [],
+            }
+          }
+          setAlertasData(restored)
         }
       }
     } catch (error) {
@@ -155,9 +180,10 @@ export function ControllerConfigSheet({
         activa: data.activa,
         plataforma: data.plataforma,
         accion: data.accion,
-        configuracion: {
+        parametros: {
           campos: data.campos,
           variantes: data.variantes,
+          periodo: data.periodo,
         },
       }))
 
