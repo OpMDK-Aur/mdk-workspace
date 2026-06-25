@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { ControllerConfiguracion, ControllerAlerta } from '@/lib/types'
 import { IconTrash, IconPlus, IconAlertTriangle, IconCoin, IconCheck, IconAlertCircle, IconBrandMeta, IconBrandGoogle, IconChevronDown, IconInfoCircle, IconSparkles, IconMaximize, IconMinimize } from '@tabler/icons-react'
 import { toast } from 'sonner'
+import { ConversionsTrend } from './conversions-trend'
 
 interface CuentaPublicitaria {
   id: string
@@ -253,9 +254,10 @@ export function ControllerConfigSheet({
 
         <div className="px-6 py-4">
           <Tabs defaultValue="conexion" className="mt-2">
-          <TabsList className="grid w-full grid-cols-3 bg-[#0f0f0f] border-white/10">
+          <TabsList className="grid w-full grid-cols-4 bg-[#0f0f0f] border-white/10">
             <TabsTrigger value="conexion">Conexión</TabsTrigger>
             <TabsTrigger value="alertas">Alertas</TabsTrigger>
+            <TabsTrigger value="conversiones">Conversiones</TabsTrigger>
             <TabsTrigger value="historial">Historial</TabsTrigger>
           </TabsList>
 
@@ -444,7 +446,12 @@ export function ControllerConfigSheet({
             </Button>
           </TabsContent>
 
-          {/* TAB 3: Historial */}
+          {/* TAB 3: Análisis de Conversiones */}
+          <TabsContent value="conversiones" className="mt-6">
+            <ConversionsTrend clienteId={clienteId} />
+          </TabsContent>
+
+          {/* TAB 4: Historial */}
           <TabsContent value="historial" className="space-y-4 mt-6">
             <HistorialTable clienteId={clienteId} />
           </TabsContent>
@@ -820,7 +827,7 @@ function HistorialTable({ clienteId }: { clienteId: string }) {
   const [historial, setHistorial] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  useState(() => {
+  useEffect(() => {
     async function fetchHistorial() {
       try {
         const res = await fetch(`/api/controller/historial?clienteId=${clienteId}`)
