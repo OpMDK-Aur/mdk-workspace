@@ -81,7 +81,7 @@ export default async function ControllerPage() {
 
   const stats = {
     totalClientes: clientesConController.length,
-    clientesConfigurados: clientesConController.filter((c) => c.configuracion).length,
+    clientesConfigurados: clientesConController.filter((c) => c.configuracion || c.total_alertas > 0).length,
     alertasActivas: clientesConController.reduce((sum, c) => sum + c.alertas_activas, 0),
     alertasDisparadasHoy: clientesConController.reduce((sum, c) => sum + c.alertas_disparadas_hoy, 0),
   }

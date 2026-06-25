@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -87,7 +88,8 @@ export function ControllerConfigSheet({
   clienteId,
   clienteNombre,
   configuracion,
-}: ControllerConfigSheetProps) {
+  }: ControllerConfigSheetProps) {
+  const router = useRouter()
   const [cuentas, setCuentas] = useState<CuentaPublicitaria[]>([])
   const [activo, setActivo] = useState(configuracion?.activo ?? true)
   const [alertas, setAlertas] = useState<ControllerAlerta[]>([])
@@ -160,6 +162,7 @@ export function ControllerConfigSheet({
 
       if (response.ok) {
         toast.success('Configuración guardada')
+        router.refresh()
         onOpenChange(false)
       } else {
         toast.error('Error al guardar')
@@ -187,17 +190,34 @@ export function ControllerConfigSheet({
         },
       }))
 
-      const response = await fetch('/api/controller/alertas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clienteId,
-          alertas: alertasArray,
+      // Hay al menos una alerta activa → el cliente queda "configurado" y activo
+      const hayAlertasActivas = alertasArray.some((a) => a.activa)
+
+      const [response] = await Promise.all([
+        fetch('/api/controller/alertas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clienteId,
+            alertas: alertasArray,
+          }),
         }),
-      })
+        // Asegurar que exista la fila de configuración para que el cliente
+        // aparezca como "Configurado" en el board y se active el agente.
+        fetch('/api/controller/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clienteId,
+            activo: hayAlertasActivas ? true : activo,
+          }),
+        }),
+      ])
 
       if (response.ok) {
         toast.success('Alertas guardadas correctamente')
+        router.refresh()
+        onOpenChange(false)
       } else {
         toast.error('Error al guardar alertas')
       }

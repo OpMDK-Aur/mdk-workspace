@@ -53,13 +53,16 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
     return Array.from(ams.entries()).sort((a, b) => a[1].localeCompare(b[1]))
   }, [clientes])
 
+  // Un cliente está "configurado" si tiene fila de configuración o alertas guardadas
+  const estaConfigurado = (c: ClienteConController) => !!c.configuracion || c.total_alertas > 0
+
   const filtered = useMemo(() => {
     return clientes.filter((c) => {
       const matchSearch = c.nombre_del_negocio.toLowerCase().includes(search.toLowerCase())
       const matchFilter =
         filter === 'todos' ||
-        (filter === 'configurados' && c.configuracion) ||
-        (filter === 'sin-configurar' && !c.configuracion)
+        (filter === 'configurados' && estaConfigurado(c)) ||
+        (filter === 'sin-configurar' && !estaConfigurado(c))
       const matchPM = filterPM === 'todos' || c.pm_id === filterPM
       const matchAM = filterAM === 'todos' || c.am_id === filterAM
       const matchCliente = filterCliente === 'todos' || c.id === filterCliente
@@ -267,14 +270,14 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
                 </td>
                 <td className="px-6 py-4">
                   <Badge
-                    variant={cliente.configuracion ? 'default' : 'secondary'}
+                    variant={estaConfigurado(cliente) ? 'default' : 'secondary'}
                     className={
-                      cliente.configuracion
+                      estaConfigurado(cliente)
                         ? 'bg-green-500/20 text-green-400 border-0'
                         : 'bg-gray-500/20 text-gray-400 border-0'
                     }
                   >
-                    {cliente.configuracion ? 'Configurado' : 'Sin configurar'}
+                    {estaConfigurado(cliente) ? 'Configurado' : 'Sin configurar'}
                   </Badge>
                 </td>
                 <td className="px-6 py-4 text-right">
@@ -286,7 +289,7 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
                       setIsSheetOpen(true)
                     }}
                   >
-                    {cliente.configuracion ? 'Editar' : 'Configurar'}
+                    {estaConfigurado(cliente) ? 'Editar' : 'Configurar'}
                   </Button>
                 </td>
               </tr>
