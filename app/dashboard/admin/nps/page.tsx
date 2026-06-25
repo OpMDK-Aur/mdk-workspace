@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { MultiSelect } from '@/components/ui/multi-select'
 import { Button } from '@/components/ui/button'
 import { X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -36,10 +37,10 @@ export default function NPSPage() {
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
-  const [departamentoFilter, setDepartamentoFilter] = useState<string>('all')
-  const [pmFilter, setPmFilter] = useState<string | 'all'>('all')
-  const [amFilter, setAmFilter] = useState<string | 'all'>('all')
-  const [clienteFilter, setClienteFilter] = useState<string | 'all'>('all')
+  const [selectedDepartamentos, setSelectedDepartamentos] = useState<string[]>([])
+  const [selectedPMs, setSelectedPMs] = useState<string[]>([])
+  const [selectedAMs, setSelectedAMs] = useState<string[]>([])
+  const [selectedClientes, setSelectedClientes] = useState<string[]>([])
   const [statusColaborador, setStatusColaborador] = useState<'activos' | 'inactivos' | 'todos'>('activos')
   const [projectManagers, setProjectManagers] = useState<Array<{ id: string; full_name: string | null; email: string; role: string }>>([])
   const [accountManagers, setAccountManagers] = useState<Array<{ id: string; full_name: string | null; email: string; role: string }>>([])
@@ -161,62 +162,48 @@ export default function NPSPage() {
         </Select>
 
         {/* Departamento Filter */}
-        <Select value={departamentoFilter} onValueChange={(v) => setDepartamentoFilter(v)}>
-          <SelectTrigger className="w-[170px]">
-            <SelectValue placeholder="Departamento" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los departamentos</SelectItem>
-            {departamentos.map((dep) => (
-              <SelectItem key={dep.id} value={dep.id}>
-                {dep.nombre}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          options={departamentos.map(dep => ({
+            value: dep.id,
+            label: dep.nombre
+          }))}
+          values={selectedDepartamentos}
+          onValuesChange={setSelectedDepartamentos}
+          placeholder="Departamentos"
+        />
 
         {/* Project Manager Filter */}
-        <Select value={pmFilter} onValueChange={(v) => setPmFilter(v)}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Project Manager" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los PM</SelectItem>
-            {projectManagers.map(pm => (
-              <SelectItem key={pm.id} value={pm.id}>
-                {pm.full_name || pm.email}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          options={projectManagers.map(pm => ({
+            value: pm.id,
+            label: pm.full_name || pm.email
+          }))}
+          values={selectedPMs}
+          onValuesChange={setSelectedPMs}
+          placeholder="Project Managers"
+        />
 
         {/* Account Manager Filter */}
-        <Select value={amFilter} onValueChange={(v) => setAmFilter(v)}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Account Manager" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los AM</SelectItem>
-            {accountManagers.map(am => (
-              <SelectItem key={am.id} value={am.id}>
-                {am.full_name || am.email}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          options={accountManagers.map(am => ({
+            value: am.id,
+            label: am.full_name || am.email
+          }))}
+          values={selectedAMs}
+          onValuesChange={setSelectedAMs}
+          placeholder="Account Managers"
+        />
 
         {/* Cliente Filter */}
-        <Select value={clienteFilter} onValueChange={(v) => setClienteFilter(v)}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Cliente" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los clientes</SelectItem>
-            {clientes.map(cliente => (
-              <SelectItem key={cliente.id} value={cliente.id}>{cliente.nombre_del_negocio}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          options={clientes.map(cliente => ({
+            value: cliente.id,
+            label: cliente.nombre_del_negocio
+          }))}
+          values={selectedClientes}
+          onValuesChange={setSelectedClientes}
+          placeholder="Clientes"
+        />
 
         {/* Status Filter */}
         <Select value={statusColaborador} onValueChange={(v) => setStatusColaborador(v as 'activos' | 'inactivos' | 'todos')}>
@@ -230,15 +217,16 @@ export default function NPSPage() {
           </SelectContent>
         </Select>
 
-        {(pmFilter !== 'all' || amFilter !== 'all' || clienteFilter !== 'all' || statusColaborador !== 'activos') && (
+        {(selectedDepartamentos.length > 0 || selectedPMs.length > 0 || selectedAMs.length > 0 || selectedClientes.length > 0 || statusColaborador !== 'activos') && (
           <Button
             size="sm"
             variant="ghost"
             className="h-8 px-2 text-xs"
             onClick={() => {
-              setPmFilter('all')
-              setAmFilter('all')
-              setClienteFilter('all')
+              setSelectedDepartamentos([])
+              setSelectedPMs([])
+              setSelectedAMs([])
+              setSelectedClientes([])
               setStatusColaborador('activos')
             }}
           >
@@ -253,10 +241,10 @@ export default function NPSPage() {
         month={selectedMonth} 
         year={selectedYear} 
         planFilter={planFilter}
-        departamentoFilter={departamentoFilter}
-        pmFilter={pmFilter}
-        amFilter={amFilter}
-        clienteFilter={clienteFilter}
+        departamentoFilter={selectedDepartamentos}
+        pmFilter={selectedPMs}
+        amFilter={selectedAMs}
+        clienteFilter={selectedClientes}
       />
     </div>
   )
