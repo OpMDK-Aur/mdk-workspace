@@ -18,9 +18,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { Loader2, CheckCircle2, Clock, Circle, Ban, ExternalLink, ChevronLeft, ChevronRight, ClipboardCheck, XCircle, Pencil } from 'lucide-react'
+import { Loader2, CheckCircle2, Clock, Circle, Ban, ExternalLink, ChevronLeft, ChevronRight, ClipboardCheck, XCircle, Pencil, FlaskConical } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RedactorModal } from '@/components/agentes/redactor-modal'
+import { TesterModal } from '@/components/agentes/tester-modal'
 import { generateMonthInstances, getClientServiceMap, completeInstance } from '@/lib/service-map'
 import type { MapaServicioInstancia, ClientPlan, HitoCatalogo, EstadoInstancia, ChecklistItem, ChecklistItemSnapshot } from '@/lib/types'
 import {
@@ -62,6 +63,7 @@ const HitoRow = memo(({
   currentUserId,
   onOpenCompletion,
   onRunRedactor,
+  onRunTester,
 }: {
   hitoId: string
   hitoInstances: MapaServicioInstancia[]
@@ -69,6 +71,7 @@ const HitoRow = memo(({
   currentUserId?: string | null
   onOpenCompletion: (instance: MapaServicioInstancia) => void
   onRunRedactor: (type: 'inicio' | 'cierre') => void
+  onRunTester: () => void
 }) => {
   const hito = hitoInstances[0]?.hito as HitoCatalogo | undefined
   if (!hito) return null
@@ -81,6 +84,9 @@ const HitoRow = memo(({
       : nombreLower.includes('mensaje') && nombreLower.includes('cierre')
         ? 'cierre'
         : null
+
+  // Detectar hitos de Testing de Integración para el botón del tester
+  const isTesting = nombreLower.includes('testing')
 
   const completedCount = hitoInstances.filter((i) => i.estado === 'listo').length
   const totalCount = hitoInstances.length
@@ -193,6 +199,17 @@ const HitoRow = memo(({
             Ejecutar redactor
           </Button>
         )}
+
+        {isTesting && (
+          <Button
+            size="sm"
+            className="mt-2 h-7 gap-1.5 bg-[#7F77DD] hover:bg-[#6B63C7] text-white text-xs"
+            onClick={onRunTester}
+          >
+            <FlaskConical className="h-3.5 w-3.5" />
+            Ejecutar tester
+          </Button>
+        )}
       </div>
     </div>
   )
@@ -207,6 +224,9 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
   // Redactor modal state (hitos de mensaje de inicio/cierre de semana)
   const [redactorOpen, setRedactorOpen] = useState(false)
   const [redactorType, setRedactorType] = useState<'inicio' | 'cierre'>('cierre')
+
+  // Tester modal state (hitos de Testing de Integración)
+  const [testerOpen, setTesterOpen] = useState(false)
 
   // Modal state for completing hitos directly
   const [completingInstance, setCompletingInstance] = useState<MapaServicioInstancia | null>(null)
@@ -624,6 +644,7 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
                   setRedactorType(type)
                   setRedactorOpen(true)
                 }}
+                onRunTester={() => setTesterOpen(true)}
               />
             )
           })}
@@ -737,6 +758,13 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
         onOpenChange={setRedactorOpen}
         initialClientId={clientId}
         initialType={redactorType}
+      />
+
+      {/* Tester Modal - autocompletado desde el hito de Testing de Integración */}
+      <TesterModal
+        open={testerOpen}
+        onOpenChange={setTesterOpen}
+        initialClientId={clientId}
       />
     </div>
   )
