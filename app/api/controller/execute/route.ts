@@ -13,15 +13,19 @@ async function obtenerDatosReales(
   
   try {
     // Obtener cuentas del cliente
-    const { data: cuentas } = await supabase
+    const { data: cuentas, error: errorCuentas } = await supabase
       .from('cuentas_publicitarias')
       .select('id_cuenta, plataforma')
       .eq('cliente_id', clienteId)
     
+    console.log('[v0] obtenerDatosReales - Buscando cuentas:', { clienteId, cuentas: cuentas?.length || 0, errorCuentas })
+    
     if (!cuentas || cuentas.length === 0) {
-      console.log('[controller/execute] No se encontraron cuentas publicitarias')
+      console.log('[v0] obtenerDatosReales - No se encontraron cuentas publicitarias')
       return { datosActuales, datosPrevios, periodo }
     }
+    
+    console.log('[v0] obtenerDatosReales - Cuentas encontradas:', cuentas)
     
     // Calcular fechas según período
     const hoy = new Date()
@@ -55,50 +59,79 @@ async function obtenerDatosReales(
     
     // Obtener datos de Meta
     const cuentaMeta = cuentas.find((c: any) => c.plataforma === 'meta')
+    console.log('[v0] obtenerDatosReales - Buscando Meta:', { cuentaMeta, requiereMeta: plataforma === 'meta' || plataforma === 'ambas' })
+    
     if (cuentaMeta && (plataforma === 'meta' || plataforma === 'ambas')) {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        const urlActual = `${baseUrl}/api/ads/meta?account_id=${cuentaMeta.id_cuenta}&start_date=${fechaActualIni}&end_date=${fechaActualFin}`
+        const urlPrevio = `${baseUrl}/api/ads/meta?account_id=${cuentaMeta.id_cuenta}&start_date=${fechaPreviaIni}&end_date=${fechaPreviaFin}`
+        
+        console.log('[v0] obtenerDatosReales - Llamando Meta APIs:', { urlActual, urlPrevio })
         
         const [respActual, respPrevio] = await Promise.all([
-          fetch(`${baseUrl}/api/ads/meta?account_id=${cuentaMeta.id_cuenta}&start_date=${fechaActualIni}&end_date=${fechaActualFin}`),
-          fetch(`${baseUrl}/api/ads/meta?account_id=${cuentaMeta.id_cuenta}&start_date=${fechaPreviaIni}&end_date=${fechaPreviaFin}`),
+          fetch(urlActual),
+          fetch(urlPrevio),
         ])
+        
+        console.log('[v0] obtenerDatosReales - Respuestas Meta:', { statusActual: respActual.status, statusPrevio: respPrevio.status })
         
         if (respActual.ok) {
           const data = await respActual.json()
-          // Extraer totals que contiene: impressions, clicks, spend, leads, ctr, cpc, cpl
+          console.log('[v0] obtenerDatosReales - Datos Meta actual:', data)
           datosActuales.meta = data.totals || data
+        } else {
+          console.error('[v0] obtenerDatosReales - Meta actual falló:', respActual.status, await respActual.text())
         }
+        
         if (respPrevio.ok) {
           const data = await respPrevio.json()
+          console.log('[v0] obtenerDatosReales - Datos Meta previo:', data)
           datosPrevios.meta = data.totals || data
+        } else {
+          console.error('[v0] obtenerDatosReales - Meta previo falló:', respPrevio.status)
         }
       } catch (err) {
-        console.error('[controller/execute] Error obteniendo datos Meta:', err)
+        console.error('[v0] obtenerDatosReales - Error obteniendo datos Meta:', err)
       }
     }
     
     // Obtener datos de Google
     const cuentaGoogle = cuentas.find((c: any) => c.plataforma === 'google')
+    console.log('[v0] obtenerDatosReales - Buscando Google:', { cuentaGoogle, requiereGoogle: plataforma === 'google' || plataforma === 'ambas' })
+    
     if (cuentaGoogle && (plataforma === 'google' || plataforma === 'ambas')) {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        const urlActual = `${baseUrl}/api/google-ads/conversions?customer_id=${cuentaGoogle.id_cuenta}&start_date=${fechaActualIni}&end_date=${fechaActualFin}`
+        const urlPrevio = `${baseUrl}/api/google-ads/conversions?customer_id=${cuentaGoogle.id_cuenta}&start_date=${fechaPreviaIni}&end_date=${fechaPreviaFin}`
+        
+        console.log('[v0] obtenerDatosReales - Llamando Google APIs:', { urlActual, urlPrevio })
         
         const [respActual, respPrevio] = await Promise.all([
-          fetch(`${baseUrl}/api/google-ads/conversions?customer_id=${cuentaGoogle.id_cuenta}&start_date=${fechaActualIni}&end_date=${fechaActualFin}`),
-          fetch(`${baseUrl}/api/google-ads/conversions?customer_id=${cuentaGoogle.id_cuenta}&start_date=${fechaPreviaIni}&end_date=${fechaPreviaFin}`),
+          fetch(urlActual),
+          fetch(urlPrevio),
         ])
+        
+        console.log('[v0] obtenerDatosReales - Respuestas Google:', { statusActual: respActual.status, statusPrevio: respPrevio.status })
         
         if (respActual.ok) {
           const data = await respActual.json()
+          console.log('[v0] obtenerDatosReales - Datos Google actual:', data)
           datosActuales.google = data.totals || data
+        } else {
+          console.error('[v0] obtenerDatosReales - Google actual falló:', respActual.status, await respActual.text())
         }
+        
         if (respPrevio.ok) {
           const data = await respPrevio.json()
+          console.log('[v0] obtenerDatosReales - Datos Google previo:', data)
           datosPrevios.google = data.totals || data
+        } else {
+          console.error('[v0] obtenerDatosReales - Google previo falló:', respPrevio.status)
         }
       } catch (err) {
-        console.error('[controller/execute] Error obteniendo datos Google:', err)
+        console.error('[v0] obtenerDatosReales - Error obteniendo datos Google:', err)
       }
     }
   } catch (error) {
@@ -163,12 +196,17 @@ export async function POST(req: NextRequest) {
     const generarDatosDetectados = (subtipo: string, platformaActual: string, datos: any) => {
       const esMeta = platformaActual?.toLowerCase() === 'meta'
       const esGoogle = platformaActual?.toLowerCase() === 'google'
+      const esAmbas = platformaActual?.toLowerCase() === 'ambas'
+      
+      console.log('[v0] generarDatosDetectados:', { subtipo, platformaActual, esMeta, esGoogle, esAmbas, datosKeys: Object.keys(datos) })
       
       // Extraer datos reales
       const metaActual = datos.datosActuales?.meta || {}
       const metaPrevio = datos.datosPrevios?.meta || {}
       const googleActual = datos.datosActuales?.google || {}
       const googlePrevio = datos.datosPrevios?.google || {}
+      
+      console.log('[v0] generarDatosDetectados - Datos extraídos:', { metaActualKeys: Object.keys(metaActual), googleActualKeys: Object.keys(googleActual) })
       
       // Función para calcular porcentaje de cambio
       const calcularCambio = (actual: number, anterior: number) => {
