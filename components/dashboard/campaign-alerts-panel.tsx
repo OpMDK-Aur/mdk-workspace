@@ -22,13 +22,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import {
   AlertTriangle,
   Search,
-  TrendingDown,
   TrendingUp,
-  Ban,
   DollarSign,
-  MousePointerClick,
-  Eye,
-  Target,
   ChevronDown,
   ChevronUp,
   Info,
@@ -247,15 +242,15 @@ function detectAlerts(
 
 // ── Components ────────────────────────────────────────────────────────────────
 
-function AlertTypeBadge({ type }: { type: AlertType }) {
-  const config = ALERT_TYPE_CONFIG[type]
+function AlertTypeBadge({ categoria, badgeLabel }: { categoria: AlertaCategoria; badgeLabel: string }) {
+  const config = CATEGORIA_BADGE[categoria]
   return (
     <span className={cn(
       'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium',
       config.bgColor, config.color
     )}>
       {config.icon}
-      {config.label}
+      {badgeLabel}
     </span>
   )
 }
@@ -355,7 +350,7 @@ function ClientAlertRow({ group, expanded, onToggle }: {
                 <p className="text-[11px] text-muted-foreground mt-0.5">{alert.message}</p>
               </div>
 
-              <AlertTypeBadge type={alert.alertType} />
+              <AlertTypeBadge categoria={alert.categoria} badgeLabel={alert.badgeLabel} />
             </div>
           ))}
         </div>
@@ -366,14 +361,14 @@ function ClientAlertRow({ group, expanded, onToggle }: {
 
 // ── Filter Options ────────────────────────────────────────────────────────────
 
-type FilterOption = 'all' | 'critical' | 'warning' | 'zero_metrics' | 'cpl_issues'
+type FilterOption = 'all' | 'critical' | 'warning' | 'rendimiento' | 'presupuesto'
 
 const FILTER_OPTIONS: { value: FilterOption; label: string }[] = [
   { value: 'all', label: 'Todas' },
   { value: 'critical', label: 'Criticas' },
   { value: 'warning', label: 'Atencion' },
-  { value: 'zero_metrics', label: '0 metricas' },
-  { value: 'cpl_issues', label: 'CPL' },
+  { value: 'rendimiento', label: 'Rendimiento' },
+  { value: 'presupuesto', label: 'Presupuesto' },
 ]
 
 // ── Main Component ─────────────────────────────��────────────────────────��─────
@@ -383,9 +378,11 @@ interface CampaignAlertsPanelProps {
   clients: Client[]
   loading?: boolean
   onDateRangeChange?: (range: { preset: string; start: string; end: string }) => void
+  // Cambia este valor para forzar recarga de la configuración (p.ej. botón Actualizar)
+  refreshKey?: number
 }
 
-export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange }: CampaignAlertsPanelProps) {
+export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange, refreshKey = 0 }: CampaignAlertsPanelProps) {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterOption>('all')
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
@@ -468,7 +465,7 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
       if (!campaigns.find(c => c.id === row.campaignId)) {
         campaigns.push({
           id: row.campaignId,
-          name: row.campaignName,
+          name: row.campaignName ?? `${row.platform} Ads`,
           platform: row.platform,
         })
       }
@@ -477,12 +474,28 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
     return { grouped, clientNames }
   }, [rows])
 
-  // Calculate average CPL for threshold
-  const averageCPL = useMemo(() => {
-    const validCPLs = rows.filter(r => r.cpl > 0 && r.spend >= THRESHOLDS.MIN_SPEND_FOR_ALERTS)
-    if (validCPLs.length === 0) return 0
-    return validCPLs.reduce((sum, r) => sum + r.cpl, 0) / validCPLs.length
-  }, [rows])
+  // Cargar la configuración de alertas del Controller (todos los clientes, solo activas)
+  const [configuredAlerts, setConfiguredAlerts] = useState<AlertaConfigurada[]>([])
+  const [configLoading, setConfigLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setConfigLoading(true)
+    fetch('/api/controller/alertas?all=true&activas=true')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!cancelled) setConfiguredAlerts(Array.isArray(data) ? data : [])
+      })
+      .catch(() => {
+        if (!cancelled) setConfiguredAlerts([])
+      })
+      .finally(() => {
+        if (!cancelled) setConfigLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [refreshKey])
 
   // Filter rows based on selected campaigns
   // Empty set = show all campaigns (default)
@@ -491,8 +504,8 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
     return rows.filter(r => selectedCampaignIds.has(r.campaignId ?? ''))
   }, [rows, selectedCampaignIds])
 
-  // Detect all alerts using filtered rows
-  const allAlerts = useMemo(() => detectAlerts(filteredRows, clients, averageCPL), [filteredRows, clients, averageCPL])
+  // Detect all alerts using filtered rows + configuración del paid media
+  const allAlerts = useMemo(() => detectAlerts(filteredRows, configuredAlerts), [filteredRows, configuredAlerts])
 
   // Group alerts by client
   const groupedAlerts = useMemo(() => {
@@ -539,16 +552,10 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
           filteredAlerts = g.alerts.filter(a => a.severity === 'critical')
         } else if (filter === 'warning') {
           filteredAlerts = g.alerts.filter(a => a.severity === 'warning')
-        } else if (filter === 'zero_metrics') {
-          filteredAlerts = g.alerts.filter(a => 
-            a.alertType === 'zero_impressions' || 
-            a.alertType === 'zero_clicks' || 
-            a.alertType === 'zero_conversions'
-          )
-        } else if (filter === 'cpl_issues') {
-          filteredAlerts = g.alerts.filter(a => 
-            a.alertType === 'cpl_alto' || a.alertType === 'cpl_bajo'
-          )
+        } else if (filter === 'rendimiento') {
+          filteredAlerts = g.alerts.filter(a => a.categoria === 'rendimiento')
+        } else if (filter === 'presupuesto') {
+          filteredAlerts = g.alerts.filter(a => a.categoria === 'presupuesto')
         }
 
         return {
@@ -586,8 +593,8 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
   const totalWarning = allAlerts.filter(a => a.severity === 'warning').length
   const totalAlerts = allAlerts.length
 
-  // Don't render if no alerts
-  if (!loading && totalAlerts === 0) {
+  // Don't render if no alerts (una vez cargados datos y configuración)
+  if (!loading && !configLoading && totalAlerts === 0) {
     return null
   }
 
@@ -831,9 +838,7 @@ export function CampaignAlertsPanel({ rows, clients, loading, onDateRangeChange 
           <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/50">
             <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             <p className="text-[11px] text-muted-foreground">
-              Umbrales: CPL alto {'>'} {THRESHOLDS.CPL_HIGH_MULTIPLIER}x promedio | 
-              CPL bajo {'<'} {THRESHOLDS.CPL_LOW_MULTIPLIER}x promedio | 
-              Min. inversion: ${THRESHOLDS.MIN_SPEND_FOR_ALERTS}
+              Alertas según la configuración del Controller por cliente. Solo se muestran clientes con alertas activas configuradas por el equipo de paid media.
             </p>
           </div>
         )}
