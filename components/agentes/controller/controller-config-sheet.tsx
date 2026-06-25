@@ -364,7 +364,8 @@ export function ControllerConfigSheet({
                       const alertaData = alertasData[alerta.subtipo] || {
                         subtipo: alerta.subtipo,
                         activa: false,
-                        plataforma: 'ambas',
+                        // limitada_google solo funciona con Google
+                        plataforma: alerta.subtipo === 'limitada_google' ? 'google' : 'ambas',
                         accion: 'ambas',
                         periodo: '7dias',
                         campos: alerta.campos?.reduce((acc: Record<string, string | number>, campo: string) => {
