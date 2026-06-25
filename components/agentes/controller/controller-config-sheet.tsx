@@ -481,7 +481,7 @@ function AlertCard({
   const sinCamposConfig = ['tasa_conversion_baja', 'presupuesto_agotado_diario', 'limitada_google', 'limitada_meta_demanda']
 
   const tooltipPlataforma = '¿En qué plataforma aplica esta alerta? Elegí Meta, Google, o Ambas para monitorear las dos.'
-  const tooltipAccion = '¿Qué hace el sistema cuando se dispara esta alerta? Tarea: crea una tarea asignada al AM. Notificación: envía una alerta interna. Ambas: hace las dos cosas.'
+  const tooltipAccion = '¿Qué hace el sistema cuando se dispara esta alerta? Ninguna: solo se muestra en el panel de alertas, sin crear tarea ni enviar notificación. Tarea: crea una tarea asignada al AM. Notificación: envía una alerta interna. Ambas: hace las dos cosas.'
 
   const handleSwitchChange = (newActive: boolean) => {
     onDataChange({ ...alertaData, activa: newActive })
@@ -646,6 +646,7 @@ function AlertCard({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="ninguna">Ninguna</SelectItem>
                     <SelectItem value="tarea">Crear tarea</SelectItem>
                     <SelectItem value="notificacion">Notificación</SelectItem>
                     <SelectItem value="ambas">Ambas</SelectItem>

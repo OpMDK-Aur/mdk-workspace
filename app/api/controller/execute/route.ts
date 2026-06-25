@@ -332,6 +332,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ACCIÓN "ninguna": solo se registra/visualiza en el panel de alertas,
+    // sin crear tarea ni enviar notificación.
+    if (accionFinal === 'ninguna') {
+      resultado.acciones.push('• Sin acción: la alerta solo se muestra en el panel de alertas')
+    }
+
     // Guardar en ejecuciones si alerta existe en BD
     if (alerta?.id) {
       try {
