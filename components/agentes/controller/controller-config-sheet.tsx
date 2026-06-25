@@ -33,11 +33,18 @@ interface ControllerConfigSheetProps {
 
 const ALERTAS_RENDIMIENTO = [
   {
-    grupo: 'CPA Elevado',
+    grupo: 'CPL / CPA Elevado',
     alertas: [
       { subtipo: 'cpl_aumento_porcentual', label: 'CPL aumenta más de X% respecto a los últimos N días', campos: ['porcentaje', 'dias'] },
       { subtipo: 'cpl_supera_objetivo', label: 'CPL supera el objetivo establecido', campos: ['cpl_objetivo'] },
-      { subtipo: 'cpl_supera_ticket', label: 'CPL superior al ticket promedio permitido', campos: ['ticket_promedio'] },
+    ],
+  },
+  {
+    grupo: 'Análisis CPL',
+    alertas: [
+      { subtipo: 'cpl_tendencia_7d', label: 'Análisis del CPL en últimos 7 días (curva de funcionamiento)', campos: [] },
+      { subtipo: 'cpl_tendencia_14d', label: 'Análisis del CPL en últimos 14 días (curva de funcionamiento)', campos: [] },
+      { subtipo: 'cpl_tendencia_30d', label: 'Análisis del CPL en últimos 30 días (curva de funcionamiento)', campos: [] },
     ],
   },
   {
@@ -45,39 +52,33 @@ const ALERTAS_RENDIMIENTO = [
     alertas: [
       { subtipo: 'caida_conversiones_porcentual', label: 'Las conversiones caen más del X%', campos: ['porcentaje', 'leads_referencia'] },
       { subtipo: 'sin_conversiones_horas', label: 'Sin conversiones durante X horas', campos: ['horas'] },
-      { subtipo: 'tasa_conversion_baja', label: 'Tasa de conversión baja respecto al promedio', campos: [] },
     ],
   },
   {
-    grupo: 'CTR Bajo',
+    grupo: 'Impresiones',
     alertas: [
-      { subtipo: 'ctr_bajo_benchmark', label: 'CTR inferior al benchmark de la cuenta', campos: ['ctr_benchmark'] },
-      { subtipo: 'ctr_caida_semanal', label: 'CTR cae más del X% vs semana anterior', campos: ['porcentaje'] },
+      { subtipo: 'cero_impresiones', label: '0 impresiones', campos: [] },
     ],
   },
 ]
 
 const ALERTAS_PRESUPUESTO = [
   {
-    grupo: 'Presupuesto Agotado',
+    grupo: 'Presupuesto Bajo',
     alertas: [
-      { subtipo: 'presupuesto_hora_limite', label: 'Presupuesto agotado antes de determinada hora', campos: ['hora_limite'] },
-      { subtipo: 'presupuesto_agotado_diario', label: 'Presupuesto agotado todos los días de la semana', campos: [] },
+      { subtipo: 'presupuesto_cerca_limite', label: 'Presupuesto cerca del límite (hay que cargar saldo)', campos: ['porcentaje_limite'] },
     ],
   },
   {
     grupo: 'Limitada por Presupuesto',
     alertas: [
       { subtipo: 'limitada_google', label: 'Google informa "Limitada por presupuesto"', campos: [] },
-      { subtipo: 'limitada_meta_demanda', label: 'Meta detecta alta demanda con presupuesto insuficiente', campos: [] },
     ],
   },
   {
     grupo: 'Gasto Anormal',
     alertas: [
-      { subtipo: 'gasto_anormal_alto', label: 'Gastó mucho más de lo habitual', campos: ['desvio_maximo'] },
       { subtipo: 'gasto_anormal_bajo', label: 'Gastó mucho menos de lo habitual', campos: ['desvio_minimo'] },
-      { subtipo: 'sin_gasto_horas', label: 'Sin gasto durante las últimas X horas', campos: ['horas'] },
     ],
   },
 ]
