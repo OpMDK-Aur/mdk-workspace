@@ -103,11 +103,11 @@ const primaryItems: NavItem[] = [
 
 // Administration section
 const adminItems: NavItem[] = [
-  { id: 'time-settings', name: 'Control de horas', href: '/dashboard/admin/horas', icon: ClockCheck },
-  { id: 'service-map', name: 'Mapa de servicio', href: '/dashboard/admin/mapa-servicio', icon: Map },
-  { id: 'nps', name: 'NPS', href: '/dashboard/admin/nps', icon: Smile },
-  { id: 'facturacion', name: 'Facturacion', href: '/dashboard/saldos', icon: FileText },
-  { id: 'colaboradores', name: 'Colaboradores', href: '/dashboard/colaboradores', icon: Users },
+  { id: 'time-settings', name: 'Control de horas', href: '/dashboard/admin/horas', icon: ClockCheck, moduleId: 'control_horas' },
+  { id: 'service-map', name: 'Mapa de servicio', href: '/dashboard/admin/mapa-servicio', icon: Map, moduleId: 'mapa_servicio' },
+  { id: 'nps', name: 'NPS', href: '/dashboard/admin/nps', icon: Smile, moduleId: 'nps' },
+  { id: 'facturacion', name: 'Facturacion', href: '/dashboard/saldos', icon: FileText, moduleId: 'facturacion' },
+  { id: 'colaboradores', name: 'Colaboradores', href: '/dashboard/colaboradores', icon: Users, moduleId: 'colaboradores_accesos' },
 ]
 
 // Integraciones section (formerly Platforms)
@@ -275,6 +275,9 @@ export function Sidebar({
   const renderNavItem = (item: NavItem, collapsed = false) => {
     // Check masterOnly
     if (item.masterOnly && !userIsMaster) return null
+    
+    // Check moduleId - if specified, user must have the module enabled (or be Master)
+    if (item.moduleId && !userIsMaster && !userModulos.includes(item.moduleId)) return null
     
     const isActive = isItemActive(item.href)
     const isComingSoon = item.badge === 'proximamente'
