@@ -310,18 +310,25 @@ export default function ControlHorasPage() {
       const billable = entries
         .filter((e) => e.facturable)
         .reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
+      console.log('[v0] compute() - entries:', entries.length, 'total:', total.toFixed(1), 'billable:', billable.toFixed(1))
       return { total, billable, pct: total > 0 ? (billable / total) * 100 : 0 }
     }
 
-    return {
+    const result = {
       all: compute(() => true),
       MDK: compute((id) => !!id && clientPrimaryUnidad[id] === 'MDK'),
       Aurelia: compute((id) => !!id && clientPrimaryUnidad[id] === 'Aurelia'),
       'Consultoría': compute((id) => !!id && clientPrimaryUnidad[id] === 'Consultoría'),
     }
+    console.log('[v0] unidadSummary.all:', result.all)
+    return result
   }, [filteredEntries, clients])
 
   const currentSummary = unidadSummary[unidadTab]
+  
+  // DEBUG: Log filteredEntries info
+  console.log('[v0] filteredEntries count:', filteredEntries.length, 'total horas:', filteredEntries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0).toFixed(1))
+  console.log('[v0] selectedColaboradores:', selectedColaboradores.length, 'selectedClientes:', selectedClientes.length, 'selectedDepartamentos:', selectedDepartamentos.length)
 
   // Clients grouped by the active unidad tab, with the breakdown of involved collaborators.
   // filteredEntries already respects month / colaborador / cliente / departamento filters.
