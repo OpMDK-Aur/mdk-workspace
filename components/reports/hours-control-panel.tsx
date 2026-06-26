@@ -416,7 +416,7 @@ function CompactProgressBar({
   )
 }
 
-async function fetchMetricas(mes: number, anio: number, departamento: string = 'all', statusColaborador: 'activos' | 'inactivos' | 'todos' = 'todos') {
+async function fetchMetricas(mes: number, anio: number, departamentos: string[] = [], statusColaborador: 'activos' | 'inactivos' | 'todos' = 'todos') {
   const supabase = createClient()
   
   // Calculate the date range for the selected month
@@ -444,8 +444,8 @@ async function fetchMetricas(mes: number, anio: number, departamento: string = '
   // Build set of colaborador ids that match the departamento and status filters
   const allowedColaboradorIds = new Set<string>()
   ;(colaboradoresRes.data || []).forEach((c: { id: string; departamento_id?: string | null; activo?: boolean | null }) => {
-    // Check department filter
-    if (departamento !== 'all' && c.departamento_id !== departamento) {
+    // Check department filter - if departamentos is set, only include matching departments
+    if (departamentos.length > 0 && c.departamento_id && !departamentos.includes(c.departamento_id)) {
       return
     }
     
@@ -578,8 +578,8 @@ async function fetchMetricas(mes: number, anio: number, departamento: string = '
     }
   })
   
-  // Apply departamento filter: keep only metricas of colaboradores in the selected departamento.
-  if (departamento !== 'all') {
+  // Apply departamento filter: keep only metricas of colaboradores in the selected departamentos.
+  if (departamentos.length > 0) {
     return metricasWithHours.filter(
       m => allowedColaboradorIds.has(m.colaborador_id)
     ) as MetricaColaborador[]
@@ -591,27 +591,24 @@ async function fetchMetricas(mes: number, anio: number, departamento: string = '
 interface HoursControlPanelProps {
   month: number
   year: number
-  colaboradorId?: string
-  clienteId?: string
-  departamento?: string
+  colaboradorIds?: string[]
+  clienteIds?: string[]
+  departamentos?: string[]
   statusColaborador?: 'activos' | 'inactivos' | 'todos'
 }
 
 export function HoursControlPanel({ 
   month: selectedMonth, 
   year: selectedYear,
-  colaboradorId,
-  clienteId,
-  departamento = 'all',
+  colaboradorIds = [],
+  clienteIds = [],
+  departamentos = [],
   statusColaborador = 'todos',
 }: HoursControlPanelProps) {
   // Use props for filtering instead of local state
-  const filterColaborador = colaboradorId || 'all'
-  const filterCliente = clienteId || 'all'
-
   const { data: metricas, isLoading, error } = useSWR(
-    `metricas-${selectedMonth}-${selectedYear}-${departamento}-${statusColaborador}`,
-    () => fetchMetricas(selectedMonth, selectedYear, departamento, statusColaborador)
+    `metricas-${selectedMonth}-${selectedYear}-${departamentos.join(',')}-${statusColaborador}`,
+    () => fetchMetricas(selectedMonth, selectedYear, departamentos, statusColaborador)
   )
 
   // Get unique colaboradores and clientes for filters
@@ -682,9 +679,9 @@ export function HoursControlPanel({
     })
 
     return Array.from(grouped.values())
-      .filter(item => filterColaborador === 'all' || item.colaborador.id === filterColaborador)
+      .filter(item => colaboradorIds.length === 0 || colaboradorIds.includes(item.colaborador.id))
       .sort((a, b) => a.colaborador.nombre.localeCompare(b.colaborador.nombre))
-  }, [metricas, filterColaborador])
+  }, [metricas, colaboradorIds])
 
   // Aggregate by cliente
   const byCliente = useMemo(() => {
@@ -731,9 +728,9 @@ export function HoursControlPanel({
     })
 
     return Array.from(grouped.values())
-      .filter(item => filterCliente === 'all' || item.cliente.id === filterCliente)
+      .filter(item => clienteIds.length === 0 || clienteIds.includes(item.cliente.id))
       .sort((a, b) => a.cliente.nombre_del_negocio.localeCompare(b.cliente.nombre_del_negocio))
-  }, [metricas, filterCliente])
+  }, [metricas, clienteIds])
 
   // Summary stats
   const summary = useMemo(() => {

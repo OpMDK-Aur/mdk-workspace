@@ -627,9 +627,9 @@ export default function ControlHorasPage() {
           <HoursControlPanel 
             month={selectedMonth} 
             year={selectedYear}
-            colaboradorId={selectedColaboradores.length > 0 ? selectedColaboradores[0] : undefined}
-            clienteId={selectedClientes.length > 0 ? selectedClientes[0] : undefined}
-            departamento={selectedDepartamentos.length > 0 ? selectedDepartamentos[0] : undefined}
+            colaboradorIds={selectedColaboradores}
+            clienteIds={selectedClientes}
+            departamentos={selectedDepartamentos}
             statusColaborador={statusColaborador}
           />
         </TabsContent>
