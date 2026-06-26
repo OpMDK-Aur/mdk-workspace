@@ -161,6 +161,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   
   // Webhook loading state
   const [sendingNpsWebhook, setSendingNpsWebhook] = useState<Record<string, boolean>>({})
+  const [sentNpsWebhook, setSentNpsWebhook] = useState<Record<string, boolean>>({})
   
   // Load from localStorage on client side only
   useEffect(() => {
@@ -296,6 +297,11 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       if (!response.ok) {
         throw new Error(`Webhook error: ${response.statusText}`)
       }
+
+      setSentNpsWebhook(prev => ({ ...prev, [client.id]: true }))
+      setTimeout(() => {
+        setSentNpsWebhook(prev => ({ ...prev, [client.id]: false }))
+      }, 2000)
 
       console.log('[v0] NPS webhook sent successfully for client:', client.id)
     } catch (error) {
@@ -1942,20 +1948,24 @@ const applyFilter = (filter: SavedFilter) => {
                           <TableCell className="text-sm">
                             <div className="flex items-center gap-2">
                               <span className="text-sm">{npsMap[client.id]?.score ?? '-'}</span>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => sendNpsWebhook(client)}
-                                disabled={sendingNpsWebhook[client.id]}
-                                className="h-7 w-7 p-0"
-                                title="Enviar NPS al webhook"
-                              >
-                                {sendingNpsWebhook[client.id] ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Send className="h-4 w-4" />
-                                )}
-                              </Button>
+                              {sentNpsWebhook[client.id] ? (
+                                <span className="text-xs text-green-600 font-medium">enviada!</span>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => sendNpsWebhook(client)}
+                                  disabled={sendingNpsWebhook[client.id]}
+                                  className="h-7 w-7 p-0"
+                                  title="Enviar NPS al webhook"
+                                >
+                                  {sendingNpsWebhook[client.id] ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Send className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         )}
