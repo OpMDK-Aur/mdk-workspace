@@ -103,11 +103,11 @@ const primaryItems: NavItem[] = [
 
 // Administration section
 const adminItems: NavItem[] = [
-  { id: 'time-settings', name: 'Control de horas', href: '/dashboard/admin/horas', icon: ClockCheck, moduleId: 'Control de horas' },
-  { id: 'service-map', name: 'Mapa de servicio', href: '/dashboard/admin/mapa-servicio', icon: Map, moduleId: 'Mapa de servicio' },
-  { id: 'nps', name: 'NPS', href: '/dashboard/admin/nps', icon: Smile, moduleId: 'NPS' },
-  { id: 'facturacion', name: 'Facturacion', href: '/dashboard/saldos', icon: FileText, moduleId: 'Facturacion' },
-  { id: 'colaboradores', name: 'Colaboradores', href: '/dashboard/colaboradores', icon: Users, moduleId: 'Colaboradores' },
+  { id: 'time-settings', name: 'Control de horas', href: '/dashboard/admin/horas', icon: ClockCheck },
+  { id: 'service-map', name: 'Mapa de servicio', href: '/dashboard/admin/mapa-servicio', icon: Map },
+  { id: 'nps', name: 'NPS', href: '/dashboard/admin/nps', icon: Smile },
+  { id: 'facturacion', name: 'Facturacion', href: '/dashboard/saldos', icon: FileText },
+  { id: 'colaboradores', name: 'Colaboradores', href: '/dashboard/colaboradores', icon: Users },
 ]
 
 // Integraciones section (formerly Platforms)
@@ -276,9 +276,6 @@ export function Sidebar({
     // Check masterOnly
     if (item.masterOnly && !userIsMaster) return null
     
-    // Check moduleId - if specified, user must have the module enabled (or be Master)
-    if (item.moduleId && !userIsMaster && !userModulos.includes(item.moduleId)) return null
-    
     const isActive = isItemActive(item.href)
     const isComingSoon = item.badge === 'proximamente'
     const showNuevo = item.badge === 'nuevo' && (!item.badgeUntil || new Date() < new Date(item.badgeUntil))
@@ -439,8 +436,8 @@ export function Sidebar({
                 {primaryItems.map(item => renderNavItem(item, true))}
               </div>
 
-              {/* Admin section - for Master users or users with admin modules */}
-              {(userIsMaster || adminItems.some(item => item.moduleId && userModulos.includes(item.moduleId))) && (
+              {/* Admin section - ONLY for Master users */}
+              {userIsMaster && (
                 <div className="space-y-1 pt-2 border-t border-border">
                   {adminItems.map(item => renderNavItem(item, true))}
                 </div>
@@ -646,8 +643,8 @@ export function Sidebar({
                   {primaryItems.map(item => renderNavItem(item))}
                 </div>
 
-                {/* Administration section - for Master users or users with admin modules */}
-                {(userIsMaster || adminItems.some(item => item.moduleId && userModulos.includes(item.moduleId))) && (
+                {/* Administration section - ONLY for Master users */}
+                {userIsMaster && (
                   <div className="space-y-1">
                     <Collapsible open={adminOpen} onOpenChange={setAdminOpen}>
                       <div className="flex items-center">
@@ -672,7 +669,6 @@ export function Sidebar({
                       </div>
                       <CollapsibleContent className="space-y-1 mt-1">
                         {adminItems.map(item => (
-                          (userIsMaster || !item.moduleId || userModulos.includes(item.moduleId)) && (
                           <Link
                             key={item.id}
                             href={item.href}
@@ -686,7 +682,6 @@ export function Sidebar({
                             <item.icon className="h-4 w-4" />
                             <span>{item.name}</span>
                           </Link>
-                          )
                         ))}
                       </CollapsibleContent>
                     </Collapsible>
