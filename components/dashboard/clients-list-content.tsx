@@ -139,6 +139,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // Advanced filter state
   const [feeMinFilter, setFeeMinFilter] = useState<string>('')
   const [feeMaxFilter, setFeeMaxFilter] = useState<string>('')
+  const [npsOperator, setNpsOperator] = useState<'empty' | 'not_empty' | 'contains' | 'not_contains' | 'equals' | 'not_equals'>('empty')
+  const [npsValue, setNpsValue] = useState<string>('')
   const [sortBy, setSortBy] = useState<string>('fee_total')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -323,6 +325,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     fechaActivacionHasta: string
     feeMin: string
     feeMax: string
+    npsOperator?: 'empty' | 'not_empty' | 'contains' | 'not_contains' | 'equals' | 'not_equals'
+    npsValue?: string
     sortBy: string
     sortOrder: 'asc' | 'desc'
     columns: string[]
@@ -341,7 +345,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [saveFilterName, setSaveFilterName] = useState('')
   const [saveFilterOpen, setSaveFilterOpen] = useState(false)
 
-  const hasActiveFilters = planFilters.length > 0 || pmFilters.length > 0 || amFilters.length > 0 || platformFilters.length > 0 || unidadFilters.length > 0 || etapaFilters.length > 0 || moraFilters.length > 0 || activoFilter !== 'activos' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
+  const hasActiveFilters = planFilters.length > 0 || pmFilters.length > 0 || amFilters.length > 0 || platformFilters.length > 0 || unidadFilters.length > 0 || etapaFilters.length > 0 || moraFilters.length > 0 || activoFilter !== 'activos' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== '' || npsValue !== '' || (npsOperator !== 'empty')
 
   const clearAllFilters = () => {
     setSearchTerm('')
@@ -357,6 +361,8 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setFeeMaxFilter('')
     setFechaActivacionDesde('')
     setFechaActivacionHasta('')
+    setNpsOperator('empty')
+    setNpsValue('')
   }
 
 const saveCurrentFilter = () => {
@@ -375,6 +381,8 @@ const saveCurrentFilter = () => {
   fechaActivacionHasta,
   feeMin: feeMinFilter,
   feeMax: feeMaxFilter,
+  npsOperator,
+  npsValue,
   sortBy,
   sortOrder,
   columns: visibleColumns,
@@ -399,6 +407,8 @@ const applyFilter = (filter: SavedFilter) => {
   setFechaActivacionHasta(filter.fechaActivacionHasta || '')
   setFeeMinFilter(filter.feeMin || '')
   setFeeMaxFilter(filter.feeMax || '')
+  setNpsOperator(filter.npsOperator || 'empty')
+  setNpsValue(filter.npsValue || '')
   setSortBy(filter.sortBy || 'nombre_del_negocio')
   setSortOrder(filter.sortOrder || 'asc')
   if (filter.columns?.length) {
@@ -577,7 +587,28 @@ const applyFilter = (filter: SavedFilter) => {
     const totalFee = (client.fee_mdk || 0) + (client.fee_aurelia || 0)
     const matchesFeeMin = !feeMinFilter || totalFee >= parseFloat(feeMinFilter)
     const matchesFeeMax = !feeMaxFilter || totalFee <= parseFloat(feeMaxFilter)
-    return matchesActivo && matchesSearch && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesMora && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
+    
+    // NPS filter matching
+    let matchesNps = true
+    if (npsOperator === 'empty') {
+      matchesNps = client.nps === null || client.nps === undefined || client.nps === ''
+    } else if (npsOperator === 'not_empty') {
+      matchesNps = client.nps !== null && client.nps !== undefined && client.nps !== ''
+    } else if (npsValue) {
+      const npsNumValue = parseFloat(npsValue)
+      const clientNps = parseFloat(String(client.nps || 0))
+      if (npsOperator === 'contains') {
+        matchesNps = String(client.nps).includes(npsValue)
+      } else if (npsOperator === 'not_contains') {
+        matchesNps = !String(client.nps).includes(npsValue)
+      } else if (npsOperator === 'equals') {
+        matchesNps = clientNps === npsNumValue
+      } else if (npsOperator === 'not_equals') {
+        matchesNps = clientNps !== npsNumValue
+      }
+    }
+    
+    return matchesActivo && matchesSearch && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesMora && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax && matchesNps
   }).sort((a, b) => {
     let valueA: string | number = ''
     let valueB: string | number = ''
@@ -1388,6 +1419,35 @@ const applyFilter = (filter: SavedFilter) => {
                           onChange={(e) => setFechaActivacionHasta(e.target.value)}
                           className="h-8"
                         />
+                      </div>
+                    </div>
+                    
+                    {/* NPS Filter */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Filtro NPS</Label>
+                      <div className="flex gap-2">
+                        <Select value={npsOperator} onValueChange={(value: any) => setNpsOperator(value)}>
+                          <SelectTrigger className="h-8 flex-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="empty">Está vacío</SelectItem>
+                            <SelectItem value="not_empty">No está vacío</SelectItem>
+                            <SelectItem value="contains">Contiene</SelectItem>
+                            <SelectItem value="not_contains">No contiene</SelectItem>
+                            <SelectItem value="equals">Es igual</SelectItem>
+                            <SelectItem value="not_equals">No es igual</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {(npsOperator === 'contains' || npsOperator === 'not_contains' || npsOperator === 'equals' || npsOperator === 'not_equals') && (
+                          <Input
+                            type="text"
+                            placeholder="Valor"
+                            value={npsValue}
+                            onChange={(e) => setNpsValue(e.target.value)}
+                            className="h-8 flex-1"
+                          />
+                        )}
                       </div>
                     </div>
                     
