@@ -1303,44 +1303,30 @@ const applyFilter = (filter: SavedFilter) => {
               </DropdownMenu>
               
               {/* NPS Filter */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[120px] justify-between">
-                    <span>NPS</span>
-                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56 space-y-2 p-3">
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium">Operador</label>
-                    <Select value={npsOperator} onValueChange={(value: any) => setNpsOperator(value)}>
-                      <SelectTrigger className="h-8">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="empty">Está vacío</SelectItem>
-                        <SelectItem value="not_empty">No está vacío</SelectItem>
-                        <SelectItem value="contains">Contiene</SelectItem>
-                        <SelectItem value="not_contains">No contiene</SelectItem>
-                        <SelectItem value="equals">Es igual</SelectItem>
-                        <SelectItem value="not_equals">No es igual</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {(npsOperator === 'contains' || npsOperator === 'not_contains' || npsOperator === 'equals' || npsOperator === 'not_equals') && (
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium">Valor</label>
-                      <Input
-                        type="text"
-                        placeholder="Ingresa el valor"
-                        value={npsValue}
-                        onChange={(e) => setNpsValue(e.target.value)}
-                        className="h-8"
-                      />
-                    </div>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div className="flex gap-2 items-center">
+                <Select value={npsOperator} onValueChange={(value: any) => setNpsOperator(value)}>
+                  <SelectTrigger className="h-9 w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="empty">Está vacío</SelectItem>
+                    <SelectItem value="not_empty">No está vacío</SelectItem>
+                    <SelectItem value="contains">Contiene</SelectItem>
+                    <SelectItem value="not_contains">No contiene</SelectItem>
+                    <SelectItem value="equals">Es igual</SelectItem>
+                    <SelectItem value="not_equals">No es igual</SelectItem>
+                  </SelectContent>
+                </Select>
+                {(npsOperator === 'contains' || npsOperator === 'not_contains' || npsOperator === 'equals' || npsOperator === 'not_equals') && (
+                  <Input
+                    type="text"
+                    placeholder="Valor"
+                    value={npsValue}
+                    onChange={(e) => setNpsValue(e.target.value)}
+                    className="h-9 w-[100px]"
+                  />
+                )}
+              </div>
               
               {/* Clear filters */}
               {hasActiveFilters && (
