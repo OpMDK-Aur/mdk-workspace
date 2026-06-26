@@ -464,8 +464,6 @@ async function fetchMetricas(mes: number, anio: number, departamentos: string[] 
     allowedColaboradorIds.add(c.id)
   })
   
-  console.log('[v0] fetchMetricas - allowedColaboradorIds:', allowedColaboradorIds.size, 'colaboradores:', colaboradores.length, 'departamentos:', departamentos.length)
-  
   // Fetch entries in multiple pages to bypass Supabase 1000 row limit
   const allEntries: { colaborador_id: string; cliente_id: string; duracion_seg: number }[] = []
   let page = 0
@@ -591,14 +589,10 @@ async function fetchMetricas(mes: number, anio: number, departamentos: string[] 
   })
   
   // Apply filters: keep only metricas of colaboradores in the selected departamentos/colaboradores
-  console.log('[v0] Before filter - metricasWithHours:', metricasWithHours.length, 'unique colabs:', new Set(metricasWithHours.map(m => m.colaborador_id)).size)
-  
   if (departamentos.length > 0 || colaboradores.length > 0) {
-    const filtered = metricasWithHours.filter(
+    return metricasWithHours.filter(
       m => allowedColaboradorIds.has(m.colaborador_id)
     ) as MetricaColaborador[]
-    console.log('[v0] After filter - filtered:', filtered.length, 'unique colabs:', new Set(filtered.map(m => m.colaborador_id)).size)
-    return filtered
   }
 
   return metricasWithHours as MetricaColaborador[]

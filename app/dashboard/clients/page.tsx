@@ -66,6 +66,12 @@ export default async function ClientsPage() {
         .not('ended_at', 'is', null)
     : { data: [] }
 
+  // Get latest NPS scores for each client
+  const { data: npsData } = await supabase
+    .from('cliente_nps_historial')
+    .select('cliente_id, score, created_at')
+    .order('created_at', { ascending: false })
+  
   // Build maps
   const assignmentMap: Record<string, { min_hours: number; max_hours: number }> = {}
   assignments?.forEach(a => { assignmentMap[a.client_id] = a })
@@ -75,6 +81,16 @@ export default async function ClientsPage() {
     if (!e.client_id) return
     hoursMap[e.client_id] = (hoursMap[e.client_id] ?? 0) + ((e.duration_sec ?? 0) / 3600)
   })
+  
+  // Build NPS map - get latest NPS score for each client
+  const npsMap: Record<string, number> = {}
+  if (npsData) {
+    npsData.forEach(record => {
+      if (!npsMap[record.cliente_id]) {
+        npsMap[record.cliente_id] = record.score
+      }
+    })
+  }
 
   return (
     <ClientsListContent
@@ -83,6 +99,7 @@ export default async function ClientsPage() {
       currentProfile={currentProfile as Profile | null}
       assignmentMap={assignmentMap}
       hoursMap={hoursMap}
+      npsMap={npsMap}
     />
   )
 }
