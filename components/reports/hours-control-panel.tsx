@@ -591,10 +591,14 @@ async function fetchMetricas(mes: number, anio: number, departamentos: string[] 
   })
   
   // Apply filters: keep only metricas of colaboradores in the selected departamentos/colaboradores
+  console.log('[v0] Before filter - metricasWithHours:', metricasWithHours.length, 'unique colabs:', new Set(metricasWithHours.map(m => m.colaborador_id)).size)
+  
   if (departamentos.length > 0 || colaboradores.length > 0) {
-    return metricasWithHours.filter(
+    const filtered = metricasWithHours.filter(
       m => allowedColaboradorIds.has(m.colaborador_id)
     ) as MetricaColaborador[]
+    console.log('[v0] After filter - filtered:', filtered.length, 'unique colabs:', new Set(filtered.map(m => m.colaborador_id)).size)
+    return filtered
   }
 
   return metricasWithHours as MetricaColaborador[]
