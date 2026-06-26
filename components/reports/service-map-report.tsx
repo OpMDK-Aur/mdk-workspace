@@ -32,9 +32,9 @@ interface ServiceMapReportProps {
   month: number
   year: number
   planFilter?: string | 'all'
-  pmFilter?: string | 'all'
-  amFilter?: string | 'all'
-  clienteFilter?: string | 'all'
+  pmFilter?: string[] | string | 'all'
+  amFilter?: string[] | string | 'all'
+  clienteFilter?: string[] | string | 'all'
 }
 
 export function ServiceMapReport({ month, year, planFilter = 'all', pmFilter = 'all', amFilter = 'all', clienteFilter = 'all' }: ServiceMapReportProps) {
@@ -79,12 +79,17 @@ export function ServiceMapReport({ month, year, planFilter = 'all', pmFilter = '
         }
       }
 
+      // Convert array filters to first value or undefined
+      const pmValue = pmFilter === 'all' ? undefined : (Array.isArray(pmFilter) && pmFilter.length > 0 ? pmFilter[0] : undefined)
+      const amValue = amFilter === 'all' ? undefined : (Array.isArray(amFilter) && amFilter.length > 0 ? amFilter[0] : undefined)
+      const planValue = planFilter === 'all' ? undefined : (planFilter as ClientPlan | undefined)
+
       const result = await getServiceMapKPIs({
         mes: selectedMonth,
         anio: selectedYear,
-        planFilter: planFilter === 'all' ? undefined : planFilter,
-        pmFilter: pmFilter === 'all' ? undefined : pmFilter,
-        amFilter: amFilter === 'all' ? undefined : amFilter,
+        planFilter: planValue,
+        pmFilter: pmValue,
+        amFilter: amValue,
       })
 
       if (result.error) {

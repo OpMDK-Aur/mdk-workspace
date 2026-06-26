@@ -88,10 +88,10 @@ interface NPSReportProps {
   month: number
   year: number
   planFilter?: ClientPlan | 'all'
-  departamentoFilter?: string | 'all'
-  pmFilter?: string | 'all'
-  amFilter?: string | 'all'
-  clienteFilter?: string | 'all'
+  departamentoFilter?: string[] | string | 'all'
+  pmFilter?: string[] | string | 'all'
+  amFilter?: string[] | string | 'all'
+  clienteFilter?: string[] | string | 'all'
 }
 
 export function NPSReport({ 
@@ -254,8 +254,23 @@ export function NPSReport({
     }
 
     // Filter by PM
-    if (pmFilter !== 'all') {
-      filteredClients = filteredClients.filter(c => c.project_manager_id === pmFilter)
+    if (pmFilter !== 'all' && Array.isArray(pmFilter) && pmFilter.length > 0) {
+      filteredClients = filteredClients.filter(c => pmFilter.includes(c.project_manager_id || ''))
+    }
+
+    if (amFilter !== 'all' && Array.isArray(amFilter) && amFilter.length > 0) {
+      filteredClients = filteredClients.filter(c => amFilter.includes(c.account_manager_id || ''))
+    }
+
+    if (departamentoFilter !== 'all' && Array.isArray(departamentoFilter) && departamentoFilter.length > 0) {
+      filteredClients = filteredClients.filter(c => {
+        const am = colaboradores.find(col => col.id === c.account_manager_id)
+        return departamentoFilter.includes(am?.departamento_id || '')
+      })
+    }
+
+    if (clienteFilter !== 'all' && Array.isArray(clienteFilter) && clienteFilter.length > 0) {
+      filteredClients = filteredClients.filter(c => clienteFilter.includes(c.id))
     }
 
     // Filter by AM
