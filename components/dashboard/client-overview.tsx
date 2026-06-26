@@ -1080,11 +1080,17 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         <div className="max-w-5xl mx-auto px-6 py-8 space-y-8 transition-all duration-300 ease-in-out">
 
         {/* Back + header */}
-        <div className="flex items-start gap-4">
+        <div className="flex items-start gap-2">
           <Link href="/dashboard">
             <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground -ml-2 mt-0.5">
               <ArrowLeft className="h-4 w-4" />
               Dashboard
+            </Button>
+          </Link>
+          <Link href="/dashboard/clients">
+            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground mt-0.5">
+              <Users className="h-4 w-4" />
+              Clientes
             </Button>
           </Link>
         </div>
