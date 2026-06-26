@@ -464,6 +464,8 @@ async function fetchMetricas(mes: number, anio: number, departamentos: string[] 
     allowedColaboradorIds.add(c.id)
   })
   
+  console.log('[v0] fetchMetricas - allowedColaboradorIds:', allowedColaboradorIds.size, 'colaboradores:', colaboradores.length, 'departamentos:', departamentos.length)
+  
   // Fetch entries in multiple pages to bypass Supabase 1000 row limit
   const allEntries: { colaborador_id: string; cliente_id: string; duracion_seg: number }[] = []
   let page = 0
