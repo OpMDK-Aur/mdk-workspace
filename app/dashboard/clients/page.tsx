@@ -69,7 +69,7 @@ export default async function ClientsPage() {
   // Get latest NPS scores for each client
   const { data: npsData } = await supabase
     .from('cliente_nps_historial')
-    .select('cliente_id, score, created_at')
+    .select('cliente_id, score, comentario, created_at')
     .order('created_at', { ascending: false })
   
   // Build maps
@@ -82,12 +82,22 @@ export default async function ClientsPage() {
     hoursMap[e.client_id] = (hoursMap[e.client_id] ?? 0) + ((e.duration_sec ?? 0) / 3600)
   })
   
-  // Build NPS map - get latest NPS score for each client
-  const npsMap: Record<string, number> = {}
+  // Build NPS map - get latest NPS status for each client
+  // Status can be: 'completada' (has score), 'no_completada' (no score), 'no_responde' (comentario = "NO RESPONDE")
+  const npsMap: Record<string, { score: number | null; status: 'completada' | 'no_completada' | 'no_responde' }> = {}
   if (npsData) {
     npsData.forEach(record => {
       if (!npsMap[record.cliente_id]) {
-        npsMap[record.cliente_id] = record.score
+        let status: 'completada' | 'no_completada' | 'no_responde' = 'no_completada'
+        if (record.comentario && record.comentario.toUpperCase().includes('NO RESPONDE')) {
+          status = 'no_responde'
+        } else if (record.score !== null && record.score !== undefined) {
+          status = 'completada'
+        }
+        npsMap[record.cliente_id] = {
+          score: record.score,
+          status
+        }
       }
     })
   }

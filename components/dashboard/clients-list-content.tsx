@@ -139,8 +139,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // Advanced filter state
   const [feeMinFilter, setFeeMinFilter] = useState<string>('')
   const [feeMaxFilter, setFeeMaxFilter] = useState<string>('')
-  const [npsOperator, setNpsOperator] = useState<'empty' | 'not_empty' | 'contains' | 'not_contains' | 'equals' | 'not_equals'>('empty')
-  const [npsValue, setNpsValue] = useState<string>('')
+  const [npsStatusFilter, setNpsStatusFilter] = useState<'completada' | 'no_completada' | 'no_responde' | 'todos'>('todos')
   const [sortBy, setSortBy] = useState<string>('fee_total')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -325,8 +324,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     fechaActivacionHasta: string
     feeMin: string
     feeMax: string
-    npsOperator?: 'empty' | 'not_empty' | 'contains' | 'not_contains' | 'equals' | 'not_equals'
-    npsValue?: string
+    npsStatus?: 'completada' | 'no_completada' | 'no_responde' | 'todos'
     sortBy: string
     sortOrder: 'asc' | 'desc'
     columns: string[]
@@ -345,7 +343,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [saveFilterName, setSaveFilterName] = useState('')
   const [saveFilterOpen, setSaveFilterOpen] = useState(false)
 
-  const hasActiveFilters = planFilters.length > 0 || pmFilters.length > 0 || amFilters.length > 0 || platformFilters.length > 0 || unidadFilters.length > 0 || etapaFilters.length > 0 || moraFilters.length > 0 || activoFilter !== 'activos' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== '' || npsValue !== '' || (npsOperator !== 'empty')
+  const hasActiveFilters = planFilters.length > 0 || pmFilters.length > 0 || amFilters.length > 0 || platformFilters.length > 0 || unidadFilters.length > 0 || etapaFilters.length > 0 || moraFilters.length > 0 || activoFilter !== 'activos' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== '' || npsStatusFilter !== 'todos'
 
   const clearAllFilters = () => {
     setSearchTerm('')
@@ -361,8 +359,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setFeeMaxFilter('')
     setFechaActivacionDesde('')
     setFechaActivacionHasta('')
-    setNpsOperator('empty')
-    setNpsValue('')
+    setNpsStatusFilter('todos')
   }
 
 const saveCurrentFilter = () => {
@@ -381,8 +378,7 @@ const saveCurrentFilter = () => {
   fechaActivacionHasta,
   feeMin: feeMinFilter,
   feeMax: feeMaxFilter,
-  npsOperator,
-  npsValue,
+  npsStatus: npsStatusFilter,
   sortBy,
   sortOrder,
   columns: visibleColumns,
@@ -407,8 +403,7 @@ const applyFilter = (filter: SavedFilter) => {
   setFechaActivacionHasta(filter.fechaActivacionHasta || '')
   setFeeMinFilter(filter.feeMin || '')
   setFeeMaxFilter(filter.feeMax || '')
-  setNpsOperator(filter.npsOperator || 'empty')
-  setNpsValue(filter.npsValue || '')
+  setNpsStatusFilter(filter.npsStatus || 'todos')
   setSortBy(filter.sortBy || 'nombre_del_negocio')
   setSortOrder(filter.sortOrder || 'asc')
   if (filter.columns?.length) {
@@ -590,27 +585,10 @@ const applyFilter = (filter: SavedFilter) => {
     
     // NPS filter matching
     let matchesNps = true
-    const hasNps = client.nps !== null && client.nps !== undefined && client.nps !== '' && client.nps !== 0 && client.nps !== '-'
-    
-    if (npsOperator === 'empty') {
-      matchesNps = !hasNps
-      if (client.nombre === 'VN Global') console.log('[v0] VN Global - hasNps:', hasNps, 'matchesNps:', matchesNps, 'nps value:', client.nps)
-    } else if (npsOperator === 'not_empty') {
-      matchesNps = hasNps
-    } else if (npsValue && hasNps) {
-      const npsNumValue = parseFloat(npsValue)
-      const clientNps = parseFloat(String(client.nps))
-      if (npsOperator === 'contains') {
-        matchesNps = String(client.nps).includes(npsValue)
-      } else if (npsOperator === 'not_contains') {
-        matchesNps = !String(client.nps).includes(npsValue)
-      } else if (npsOperator === 'equals') {
-        matchesNps = clientNps === npsNumValue
-      } else if (npsOperator === 'not_equals') {
-        matchesNps = clientNps !== npsNumValue
-      }
-    } else if (npsValue && !hasNps) {
-      matchesNps = false
+    if (npsStatusFilter !== 'todos') {
+      const npsInfo = npsMap[client.id]
+      const clientNpsStatus = npsInfo?.status || 'no_completada'
+      matchesNps = clientNpsStatus === npsStatusFilter
     }
     
     return matchesActivo && matchesSearch && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesMora && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax && matchesNps
@@ -1310,28 +1288,17 @@ const applyFilter = (filter: SavedFilter) => {
               {/* NPS Filter */}
               <div className="flex gap-2 items-center">
                 <span className="text-sm text-muted-foreground">NPS</span>
-                <Select value={npsOperator} onValueChange={(value: any) => setNpsOperator(value)}>
-                  <SelectTrigger className="h-9 w-[140px]">
+                <Select value={npsStatusFilter} onValueChange={(value: any) => setNpsStatusFilter(value)}>
+                  <SelectTrigger className="h-9 w-[170px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="empty">Está vacío</SelectItem>
-                    <SelectItem value="not_empty">No está vacío</SelectItem>
-                    <SelectItem value="contains">Contiene</SelectItem>
-                    <SelectItem value="not_contains">No contiene</SelectItem>
-                    <SelectItem value="equals">Es igual</SelectItem>
-                    <SelectItem value="not_equals">No es igual</SelectItem>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    <SelectItem value="completada">NPS Completada</SelectItem>
+                    <SelectItem value="no_completada">NPS No Completada</SelectItem>
+                    <SelectItem value="no_responde">NPS No Responde</SelectItem>
                   </SelectContent>
                 </Select>
-                {(npsOperator === 'contains' || npsOperator === 'not_contains' || npsOperator === 'equals' || npsOperator === 'not_equals') && (
-                  <Input
-                    type="text"
-                    placeholder="Valor"
-                    value={npsValue}
-                    onChange={(e) => setNpsValue(e.target.value)}
-                    className="h-9 w-[100px]"
-                  />
-                )}
               </div>
               
               {/* Clear filters */}
