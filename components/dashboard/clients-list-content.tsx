@@ -590,11 +590,11 @@ const applyFilter = (filter: SavedFilter) => {
     
     // NPS filter matching
     let matchesNps = true
-    const hasNps = client.nps !== null && client.nps !== undefined && client.nps !== '' && client.nps !== 0
+    const hasNps = client.nps !== null && client.nps !== undefined && client.nps !== '' && client.nps !== 0 && client.nps !== '-'
     if (npsOperator === 'empty') {
-      matchesNps = hasNps
-    } else if (npsOperator === 'not_empty') {
       matchesNps = !hasNps
+    } else if (npsOperator === 'not_empty') {
+      matchesNps = hasNps
     } else if (npsValue && hasNps) {
       const npsNumValue = parseFloat(npsValue)
       const clientNps = parseFloat(String(client.nps))
