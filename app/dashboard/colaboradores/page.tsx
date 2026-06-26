@@ -382,6 +382,8 @@ export default function ColaboradoresPage() {
       for (const id of editedColaboradores) {
         const colab = colaboradores.find(c => c.id === id)
         if (!colab) continue
+        
+        console.log('[v0] Saving modules for', colab.nombre, ':', colab.modulos_habilitados)
 
         const { error } = await supabase
           .from('colaboradores')
