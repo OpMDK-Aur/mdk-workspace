@@ -1623,7 +1623,7 @@ const applyFilter = (filter: SavedFilter) => {
                         {visibleColumns.includes('nps') && npsMap[client.id] != null && (
                           <div className="flex items-center gap-3">
                             <span className="text-muted-foreground w-24 shrink-0">NPS</span>
-                            <span className="font-medium">{npsMap[client.id]}</span>
+                            <span className="font-medium">{npsMap[client.id]?.score ?? '-'}</span>
                             </div>
                           )}
                           {visibleColumns.includes('etapa') && client.etapa && (
@@ -1903,7 +1903,7 @@ const applyFilter = (filter: SavedFilter) => {
                         )}
                         {visibleColumns.includes('nps') && (
                           <TableCell className="text-sm">
-                            <span className="text-sm">{npsMap[client.id] ?? '-'}</span>
+                            <span className="text-sm">{npsMap[client.id]?.score ?? '-'}</span>
                           </TableCell>
                         )}
                         {visibleColumns.includes('mora') && (
