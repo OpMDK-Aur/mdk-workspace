@@ -68,7 +68,7 @@ export default async function ClientsPage() {
 
   // Get latest NPS scores for each client
   const { data: npsData } = await supabase
-    .from('nps_records')
+    .from('cliente_nps_historial')
     .select('cliente_id, nps_score, creado_en')
     .order('creado_en', { ascending: false })
   
@@ -84,21 +84,12 @@ export default async function ClientsPage() {
   
   // Build NPS map - get latest NPS score for each client
   const npsMap: Record<string, number> = {}
-  console.log('[v0] NPS Data received:', npsData?.length ?? 0, 'records')
-  if (npsData && npsData.length > 0) {
-    console.log('[v0] First NPS record:', npsData[0])
+  if (npsData) {
     npsData.forEach(record => {
       if (!npsMap[record.cliente_id]) {
         npsMap[record.cliente_id] = record.nps_score
       }
     })
-    console.log('[v0] NPS Map built:', Object.keys(npsMap).length, 'clients with NPS')
-    console.log('[v0] NPS Map keys sample:', Object.keys(npsMap).slice(0, 3))
-  }
-  
-  console.log('[v0] Clients loaded:', clients?.length)
-  if (clients && clients.length > 0) {
-    console.log('[v0] First client:', clients[0].id, clients[0].nombre_del_negocio)
   }
 
   return (
