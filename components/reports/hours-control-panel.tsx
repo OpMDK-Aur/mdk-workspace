@@ -416,7 +416,7 @@ function CompactProgressBar({
   )
 }
 
-async function fetchMetricas(mes: number, anio: number, departamentos: string[] = [], statusColaborador: 'activos' | 'inactivos' | 'todos' = 'todos') {
+async function fetchMetricas(mes: number, anio: number, departamentos: string[] = [], colaboradores: string[] = [], clienteIds: string[] = [], statusColaborador: 'activos' | 'inactivos' | 'todos' = 'todos') {
   const supabase = createClient()
   
   // Calculate the date range for the selected month
@@ -454,6 +454,11 @@ async function fetchMetricas(mes: number, anio: number, departamentos: string[] 
     if (statusColaborador !== 'todos') {
       if (statusColaborador === 'activos' && !isActivo) return
       if (statusColaborador === 'inactivos' && isActivo) return
+    }
+    
+    // Check colaborador filter - if colaboradores is set, only include selected colaboradores
+    if (colaboradores.length > 0 && !colaboradores.includes(c.id)) {
+      return
     }
     
     allowedColaboradorIds.add(c.id)
@@ -497,6 +502,11 @@ async function fetchMetricas(mes: number, anio: number, departamentos: string[] 
   const hoursNoClienteMap = new Map<string, number>() // colaborador_id -> hours without cliente
   entries.forEach(entry => {
     if (entry.colaborador_id && entry.duracion_seg) {
+      // Apply cliente filter - if clienteIds is set, only include those clientes
+      if (clienteIds.length > 0 && entry.cliente_id && !clienteIds.includes(entry.cliente_id)) {
+        return
+      }
+      
       if (entry.cliente_id) {
         const key = `${entry.colaborador_id}::${entry.cliente_id}`
         hoursMap.set(key, (hoursMap.get(key) || 0) + (entry.duracion_seg / 3600))
@@ -607,8 +617,8 @@ export function HoursControlPanel({
 }: HoursControlPanelProps) {
   // Use props for filtering instead of local state
   const { data: metricas, isLoading, error } = useSWR(
-    `metricas-${selectedMonth}-${selectedYear}-${departamentos.join(',')}-${statusColaborador}`,
-    () => fetchMetricas(selectedMonth, selectedYear, departamentos, statusColaborador)
+    `metricas-${selectedMonth}-${selectedYear}-${departamentos.join(',')}-${colaboradorIds.join(',')}-${clienteIds.join(',')}-${statusColaborador}`,
+    () => fetchMetricas(selectedMonth, selectedYear, departamentos, colaboradorIds, clienteIds, statusColaborador)
   )
 
   // Get unique colaboradores and clientes for filters
