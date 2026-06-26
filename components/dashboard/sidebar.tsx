@@ -439,8 +439,8 @@ export function Sidebar({
                 {primaryItems.map(item => renderNavItem(item, true))}
               </div>
 
-              {/* Admin section - ONLY for Master users */}
-              {userIsMaster && (
+              {/* Admin section - for Master users or users with admin module access */}
+              {(userIsMaster || adminItems.some(item => item.moduleId && userModulos.includes(item.moduleId))) && (
                 <div className="space-y-1 pt-2 border-t border-border">
                   {adminItems.map(item => renderNavItem(item, true))}
                 </div>
@@ -647,7 +647,7 @@ export function Sidebar({
                 </div>
 
                 {/* Administration section - ONLY for Master users */}
-                {userIsMaster && (
+                {(userIsMaster || adminItems.some(item => item.moduleId && userModulos.includes(item.moduleId))) && (
                   <div className="space-y-1">
                     <Collapsible open={adminOpen} onOpenChange={setAdminOpen}>
                       <div className="flex items-center">
@@ -672,6 +672,7 @@ export function Sidebar({
                       </div>
                       <CollapsibleContent className="space-y-1 mt-1">
                         {adminItems.map(item => (
+                          (userIsMaster || !item.moduleId || userModulos.includes(item.moduleId)) && (
                           <Link
                             key={item.id}
                             href={item.href}
@@ -685,6 +686,7 @@ export function Sidebar({
                             <item.icon className="h-4 w-4" />
                             <span>{item.name}</span>
                           </Link>
+                          )
                         ))}
                       </CollapsibleContent>
                     </Collapsible>
