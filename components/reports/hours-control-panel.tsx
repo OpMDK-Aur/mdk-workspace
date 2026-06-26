@@ -588,8 +588,8 @@ async function fetchMetricas(mes: number, anio: number, departamentos: string[] 
     }
   })
   
-  // Apply departamento filter: keep only metricas of colaboradores in the selected departamentos.
-  if (departamentos.length > 0) {
+  // Apply filters: keep only metricas of colaboradores in the selected departamentos/colaboradores
+  if (departamentos.length > 0 || colaboradores.length > 0) {
     return metricasWithHours.filter(
       m => allowedColaboradorIds.has(m.colaborador_id)
     ) as MetricaColaborador[]
@@ -615,19 +615,11 @@ export function HoursControlPanel({
   departamentos = [],
   statusColaborador = 'todos',
 }: HoursControlPanelProps) {
-  console.log('[v0] HoursControlPanel - colaboradorIds:', colaboradorIds.length, colaboradorIds)
-  
   // Use props for filtering instead of local state
   const { data: metricas, isLoading, error } = useSWR(
     `metricas-${selectedMonth}-${selectedYear}-${departamentos.join(',')}-${colaboradorIds.join(',')}-${clienteIds.join(',')}-${statusColaborador}`,
     () => fetchMetricas(selectedMonth, selectedYear, departamentos, colaboradorIds, clienteIds, statusColaborador)
   )
-  
-  if (metricas) {
-    const uniqueColabs = new Set(metricas.map(m => m.colaborador_id)).size
-    const totalHoras = metricas.reduce((acc, m) => acc + (m.acumulado_mes_asignado || 0), 0)
-    console.log('[v0] metricas from API:', metricas.length, 'unique colaboradores:', uniqueColabs, 'total horas:', totalHoras.toFixed(1))
-  }
 
   // Get unique colaboradores and clientes for filters
   const colaboradores = useMemo(() => {
