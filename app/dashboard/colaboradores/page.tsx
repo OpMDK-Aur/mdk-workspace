@@ -383,6 +383,8 @@ export default function ColaboradoresPage() {
         const colab = colaboradores.find(c => c.id === id)
         if (!colab) continue
 
+        console.log('[v0] Saving for', colab.nombre, '- modulos:', JSON.stringify(colab.modulos_habilitados))
+
         const { error } = await supabase
           .from('colaboradores')
           .update({
@@ -391,6 +393,12 @@ export default function ColaboradoresPage() {
             modulos_habilitados: colab.modulos_habilitados,
           })
           .eq('id', id)
+        
+        if (error) {
+          console.log('[v0] Supabase error:', error)
+        } else {
+          console.log('[v0] Successfully saved modules for', colab.nombre)
+        }
 
         if (error) {
           console.error('Error saving permissions:', error)
