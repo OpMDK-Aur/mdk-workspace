@@ -125,6 +125,10 @@ const AVAILABLE_MODULES = [
   { id: 'colaboradores_metricas', name: 'Colaboradores - Métricas', description: 'Visualización de métricas de colaboradores' },
 ]
 
+if (typeof window !== 'undefined') {
+  console.log('[v0] AVAILABLE_MODULES loaded:', AVAILABLE_MODULES.length, 'modules')
+}
+
 // Available puestos
 const PUESTOS = [
   'Project Manager',
