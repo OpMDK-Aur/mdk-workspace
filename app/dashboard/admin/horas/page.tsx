@@ -138,18 +138,23 @@ export default function ControlHorasPage() {
       if (!isInRange) return false
       
       // Filter by selected colaboradores (multi-select - if empty, show all)
-      if (selectedColaboradores.length > 0 && !selectedColaboradores.includes(entry.colaborador_id!)) {
-        return false
+      if (selectedColaboradores.length > 0) {
+        if (!entry.colaborador_id || !selectedColaboradores.includes(entry.colaborador_id)) {
+          return false
+        }
       }
       
       // Filter by selected clientes (multi-select - if empty, show all)
-      if (selectedClientes.length > 0 && !selectedClientes.includes(entry.cliente_id!)) {
-        return false
+      if (selectedClientes.length > 0) {
+        if (!entry.cliente_id || !selectedClientes.includes(entry.cliente_id)) {
+          return false
+        }
       }
 
       // Filter by selected departamentos (matches the colaborador's departamento)
       if (selectedDepartamentos.length > 0) {
-        if (!selectedDepartamentos.includes(colaboradorDeptMap[entry.colaborador_id])) {
+        const deptId = entry.colaborador_id ? colaboradorDeptMap[entry.colaborador_id] : null
+        if (!deptId || !selectedDepartamentos.includes(deptId)) {
           return false
         }
       }
