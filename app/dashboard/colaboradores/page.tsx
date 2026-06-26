@@ -362,12 +362,14 @@ export default function ColaboradoresPage() {
   }
 
   const handleModuleToggle = (colaboradorId: string, moduleId: string, enabled: boolean) => {
+    console.log('[v0] handleModuleToggle called - moduleId:', moduleId, 'enabled:', enabled)
     setColaboradores(colaboradores.map(c => {
       if (c.id === colaboradorId) {
         const currentModules = c.modulos_habilitados || []
         const newModules = enabled
           ? [...currentModules, moduleId]
           : currentModules.filter(m => m !== moduleId)
+        console.log('[v0] New modules for', c.nombre, ':', JSON.stringify(newModules))
         return { ...c, modulos_habilitados: newModules }
       }
       return c
@@ -417,7 +419,7 @@ export default function ColaboradoresPage() {
     setSavingPermissions(false)
   }
 
-  // ─── CREATE USER HANDLER ──────────────────────────────────────────────────────
+  // ─��─ CREATE USER HANDLER ──────────────────────────────────────────────────────
 
   const handleCreateUser = async () => {
     if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim()) {
