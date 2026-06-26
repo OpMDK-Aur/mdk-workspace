@@ -168,8 +168,6 @@ export function Sidebar({
   const userRole = profile?.role_name || profile?.role || 'Usuario'
   const userModulos = profile?.modulos_habilitados || []
   const userIsMaster = isMaster(userRole)
-  
-  console.log('[v0] Sidebar - profile:', profile?.nombre, 'modulos:', JSON.stringify(userModulos))
 
   // Fetch unread notification count
   useEffect(() => {
