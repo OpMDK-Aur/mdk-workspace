@@ -168,10 +168,6 @@ export function Sidebar({
   const userRole = profile?.role_name || profile?.role || 'Usuario'
   const userModulos = profile?.modulos_habilitados || []
   const userIsMaster = isMaster(userRole)
-  
-  // Debug: check if control_horas would match
-  const hasControlHoras = userModulos.includes('control_horas')
-  console.log('[v0] userModulos:', JSON.stringify(userModulos), '- has control_horas:', hasControlHoras)
 
   // Fetch unread notification count
   useEffect(() => {

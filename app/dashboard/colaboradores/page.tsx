@@ -362,14 +362,12 @@ export default function ColaboradoresPage() {
   }
 
   const handleModuleToggle = (colaboradorId: string, moduleId: string, enabled: boolean) => {
-    console.log('[v0] handleModuleToggle - moduleId:', moduleId, 'enabled:', enabled)
     setColaboradores(colaboradores.map(c => {
       if (c.id === colaboradorId) {
         const currentModules = c.modulos_habilitados || []
         const newModules = enabled
           ? [...currentModules, moduleId]
           : currentModules.filter(m => m !== moduleId)
-        console.log('[v0] New modules for', c.nombre, ':', newModules)
         return { ...c, modulos_habilitados: newModules }
       }
       return c
@@ -384,8 +382,6 @@ export default function ColaboradoresPage() {
       for (const id of editedColaboradores) {
         const colab = colaboradores.find(c => c.id === id)
         if (!colab) continue
-        
-        console.log('[v0] Saving modules for', colab.nombre, ':', colab.modulos_habilitados)
 
         const { error } = await supabase
           .from('colaboradores')
