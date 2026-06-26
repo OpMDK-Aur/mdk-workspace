@@ -85,6 +85,7 @@ interface ClientsListContentProps {
   currentProfile: Profile | null
   assignmentMap: Record<string, { min_hours: number; max_hours: number }>
   hoursMap: Record<string, number>
+  npsMap?: Record<string, number>
 }
 
 
@@ -115,7 +116,7 @@ function getSemaforoBadge(semaforo: SemaforoStatus | undefined) {
   }
 }
 
-export function ClientsListContent({ clients, profiles, currentProfile, assignmentMap, hoursMap }: ClientsListContentProps) {
+export function ClientsListContent({ clients, profiles, currentProfile, assignmentMap, hoursMap, npsMap = {} }: ClientsListContentProps) {
   const supabase = createClient()
   // Permitir crear a direccion, master, project_manager y account_manager
   const userRole = currentProfile?.role?.toLowerCase() || ''
@@ -1581,10 +1582,10 @@ const applyFilter = (filter: SavedFilter) => {
                               </span>
                             </div>
                           )}
-                          {visibleColumns.includes('nps') && client.nps_score != null && (
-                            <div className="flex gap-2">
-                              <span className="text-muted-foreground w-24 shrink-0">NPS</span>
-                              <span className="font-medium">{client.nps_score}</span>
+                        {visibleColumns.includes('nps') && npsMap[client.id] != null && (
+                          <div className="flex items-center gap-3">
+                            <span className="text-muted-foreground w-24 shrink-0">NPS</span>
+                            <span className="font-medium">{npsMap[client.id]}</span>
                             </div>
                           )}
                           {visibleColumns.includes('etapa') && client.etapa && (
@@ -1863,8 +1864,8 @@ const applyFilter = (filter: SavedFilter) => {
                           </TableCell>
                         )}
                         {visibleColumns.includes('nps') && (
-                          <TableCell>
-                            <span className="text-sm">{client.nps_score ?? '-'}</span>
+                          <TableCell className="text-sm">
+                            <span className="text-sm">{npsMap[client.id] ?? '-'}</span>
                           </TableCell>
                         )}
                         {visibleColumns.includes('mora') && (
