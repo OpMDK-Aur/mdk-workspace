@@ -169,7 +169,7 @@ export function Sidebar({
   const userModulos = profile?.modulos_habilitados || []
   const userIsMaster = isMaster(userRole)
   
-  console.log('[v0] Sidebar - userModulos:', userModulos, 'type:', typeof userModulos, 'userIsMaster:', userIsMaster)
+  console.log('[v0] Sidebar - userModulos[0]:', userModulos[0], 'full array:', JSON.stringify(userModulos.slice(0, 3)))
 
   // Fetch unread notification count
   useEffect(() => {
