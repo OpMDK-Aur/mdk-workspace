@@ -47,6 +47,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { HitoCompletionModal } from './hito-completion-modal'
 import { RedactorModal } from '@/components/agentes/redactor-modal'
 import { TesterModal } from '@/components/agentes/tester-modal'
+import { AnalistaModal } from '@/components/agentes/analista-modal'
 import {
   Select,
   SelectContent,
@@ -1622,6 +1623,8 @@ export function TaskDetailPanel() {
   const [redactorOpen, setRedactorOpen] = useState(false)
   // Tester modal state (para tareas de Hito de Testing de Integración)
   const [testerOpen, setTesterOpen] = useState(false)
+  // Analista modal state (para tareas de Hito de Informe de Cierre de Mes)
+  const [analistaOpen, setAnalistaOpen] = useState(false)
   const [pendingStatus, setPendingStatus] = useState<TaskStatus | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   // Activity filters
@@ -1758,7 +1761,10 @@ export function TaskDetailPanel() {
   // Detectar si es una tarea de Hito de Testing de Integración
   // para mostrar el botón "Ejecutar tester".
   const isHitoTesting = titleLower.includes('[hito]') && titleLower.includes('testing')
-  // Cliente de la tarea para autocompletar el redactor/tester
+  // Detectar si es una tarea de Hito de Informe de Cierre de Mes
+  // para mostrar el botón "Ejecutar Analista".
+  const isHitoInformeCierre = titleLower.includes('[hito]') && titleLower.includes('informe') && titleLower.includes('cierre')
+  // Cliente de la tarea para autocompletar el redactor/tester/analista
   const redactorClientId = task.clients?.[0]?.id || task.clientId || undefined
 
   // Navigation between tasks
@@ -1925,6 +1931,18 @@ export function TaskDetailPanel() {
                       >
                         <FlaskConical className="h-3.5 w-3.5" />
                         Ejecutar tester
+                      </Button>
+                    )}
+
+                    {/* Ejecutar Analista - solo para tareas de Hito de Informe de Cierre de Mes */}
+                    {isHitoInformeCierre && (
+                      <Button
+                        size="sm"
+                        className="mt-4 gap-2 bg-[#7F77DD] hover:bg-[#6B63C7] text-white"
+                        onClick={() => setAnalistaOpen(true)}
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        Ejecutar Analista
                       </Button>
                     )}
                   </div>
@@ -2418,6 +2436,15 @@ export function TaskDetailPanel() {
         <TesterModal
           open={testerOpen}
           onOpenChange={setTesterOpen}
+          initialClientId={redactorClientId}
+        />
+      )}
+
+      {/* Analista Modal - para tareas de Hito de Informe de Cierre de Mes */}
+      {isHitoInformeCierre && (
+        <AnalistaModal
+          open={analistaOpen}
+          onOpenChange={setAnalistaOpen}
           initialClientId={redactorClientId}
         />
       )}

@@ -47,7 +47,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
-import { format } from 'date-fns'
+import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { toast } from 'sonner'
 import { MessageContent, type Artifact } from '@/components/chat/message-content'
@@ -102,6 +102,8 @@ export default function AnalistaPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
   const [clientOpen, setClientOpen] = useState(false)
+  const [dateStart, setDateStart] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
+  const [dateEnd, setDateEnd] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'))
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1))
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()))
   const [isActive, setIsActive] = useState(false)
@@ -161,11 +163,18 @@ export default function AnalistaPage() {
       return
     }
 
+    // Extract month/year from dateStart for backward compatibility
+    const startDate = new Date(dateStart)
+    const calcMonth = startDate.getMonth() + 1
+    const calcYear = startDate.getFullYear()
+
+    const dateRangeLabel = `${format(new Date(dateStart), 'd MMM', { locale: es })} - ${format(new Date(dateEnd), 'd MMM yyyy', { locale: es })}`
+
     const conv = await createConversacion({
       clienteId: selectedClient.id,
-      titulo: `${selectedClient.nombre_del_negocio} - ${MONTHS[parseInt(selectedMonth) - 1]?.label} ${selectedYear}`,
-      mes: parseInt(selectedMonth),
-      anio: parseInt(selectedYear),
+      titulo: `${selectedClient.nombre_del_negocio} - ${dateRangeLabel}`,
+      mes: calcMonth,
+      anio: calcYear,
     })
 
     setCurrentConvId(conv?.id ?? null)
@@ -177,7 +186,7 @@ export default function AnalistaPage() {
     const greeting: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'assistant',
-      content: `Hola, soy tu analista para **${selectedClient.nombre_del_negocio}** (${MONTHS[parseInt(selectedMonth) - 1]?.label} ${selectedYear}).\n\nPuedes pedirme lo que necesites: un análisis puntual, comparar métricas, generar un informe completo, crear gráficos, exportar datos a CSV o incluso generar imágenes para tus reportes. También puedes adjuntar capturas o archivos para que los analice.\n\n¿En qué te ayudo?`,
+      content: `Hola, soy tu analista para **${selectedClient.nombre_del_negocio}** (${dateRangeLabel}).\n\nPuedes pedirme lo que necesites: un análisis puntual, comparar métricas, generar un informe completo, crear gráficos, exportar datos a CSV o incluso generar imágenes para tus reportes. También puedes adjuntar capturas o archivos para que los analice.\n\n¿En qué te ayudo?`,
     }
     setChatMessages([greeting])
     if (conv) {
@@ -322,6 +331,11 @@ export default function AnalistaPage() {
     }
 
     try {
+      // Extract month/year from dateStart for API compatibility
+      const startDate = new Date(dateStart)
+      const apiMonth = startDate.getMonth() + 1
+      const apiYear = startDate.getFullYear()
+
       const response = await fetch('/api/agentes/analista', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -333,8 +347,10 @@ export default function AnalistaPage() {
               : m.content,
           })),
           clientId: selectedClient.id,
-          month: parseInt(selectedMonth),
-          year: parseInt(selectedYear),
+          month: apiMonth,
+          year: apiYear,
+          dateStart,
+          dateEnd,
           attachments: uploadedFiles,
         }),
       })
@@ -418,8 +434,10 @@ export default function AnalistaPage() {
         .limit(1)
         .single()
 
+      const dateRangeLabel = `${format(new Date(dateStart), 'd MMM', { locale: es })} - ${format(new Date(dateEnd), 'd MMM yyyy', { locale: es })}`
+
       await supabase.from('tareas').insert({
-        titulo: `Informe ${selectedClient.nombre_del_negocio} - ${MONTHS[parseInt(selectedMonth) - 1]?.label} ${selectedYear}`,
+        titulo: `Informe ${selectedClient.nombre_del_negocio} - ${dateRangeLabel}`,
         descripcion: messageText,
         tipo_id: tipoTarea?.id,
         cliente_ids: [selectedClient.id],
@@ -430,7 +448,7 @@ export default function AnalistaPage() {
       toast.success('Informe guardado como tarea')
 
       // Exportar el PDF con la plantilla de marca MDK (Esencial / Estratégico)
-      const periodLabel = `${MONTHS[parseInt(selectedMonth) - 1]?.label} ${selectedYear}`
+      const periodLabel = dateRangeLabel
       try {
         await generateReportPdf({
           clientName: selectedClient.nombre_del_negocio,
@@ -560,29 +578,23 @@ export default function AnalistaPage() {
             </PopoverContent>
           </Popover>
 
-          {/* Month/Year Selects */}
-          <div className="flex gap-2">
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="flex-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MONTHS.map((m) => (
-                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={selectedYear} onValueChange={setSelectedYear}>
-              <SelectTrigger className="w-[90px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {years.map((y) => (
-                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Date Range Inputs */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">Rango de fechas</label>
+            <div className="flex gap-2">
+              <input
+                type="date"
+                value={dateStart}
+                onChange={(e) => setDateStart(e.target.value)}
+                className="flex-1 px-3 py-2 text-sm border rounded-md bg-background"
+              />
+              <input
+                type="date"
+                value={dateEnd}
+                onChange={(e) => setDateEnd(e.target.value)}
+                className="flex-1 px-3 py-2 text-sm border rounded-md bg-background"
+              />
+            </div>
           </div>
 
           <Button

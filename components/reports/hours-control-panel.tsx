@@ -416,7 +416,7 @@ function CompactProgressBar({
   )
 }
 
-async function fetchMetricas(mes: number, anio: number, departamento: string = 'all', statusColaborador: 'activos' | 'inactivos' | 'todos' = 'todos') {
+async function fetchMetricas(mes: number, anio: number, departamentos: string[] = [], colaboradores: string[] = [], clienteIds: string[] = [], statusColaborador: 'activos' | 'inactivos' | 'todos' = 'todos') {
   const supabase = createClient()
   
   // Calculate the date range for the selected month
@@ -444,8 +444,8 @@ async function fetchMetricas(mes: number, anio: number, departamento: string = '
   // Build set of colaborador ids that match the departamento and status filters
   const allowedColaboradorIds = new Set<string>()
   ;(colaboradoresRes.data || []).forEach((c: { id: string; departamento_id?: string | null; activo?: boolean | null }) => {
-    // Check department filter
-    if (departamento !== 'all' && c.departamento_id !== departamento) {
+    // Check department filter - if departamentos is set, only include matching departments
+    if (departamentos.length > 0 && c.departamento_id && !departamentos.includes(c.departamento_id)) {
       return
     }
     
@@ -456,8 +456,15 @@ async function fetchMetricas(mes: number, anio: number, departamento: string = '
       if (statusColaborador === 'inactivos' && isActivo) return
     }
     
+    // Check colaborador filter - if colaboradores is set, only include selected colaboradores
+    if (colaboradores.length > 0 && !colaboradores.includes(c.id)) {
+      return
+    }
+    
     allowedColaboradorIds.add(c.id)
   })
+  
+  console.log('[v0] fetchMetricas - allowedColaboradorIds:', allowedColaboradorIds.size, 'colaboradores:', colaboradores.length, 'departamentos:', departamentos.length)
   
   // Fetch entries in multiple pages to bypass Supabase 1000 row limit
   const allEntries: { colaborador_id: string; cliente_id: string; duracion_seg: number }[] = []
@@ -497,6 +504,11 @@ async function fetchMetricas(mes: number, anio: number, departamento: string = '
   const hoursNoClienteMap = new Map<string, number>() // colaborador_id -> hours without cliente
   entries.forEach(entry => {
     if (entry.colaborador_id && entry.duracion_seg) {
+      // Apply cliente filter - if clienteIds is set, only include those clientes
+      if (clienteIds.length > 0 && entry.cliente_id && !clienteIds.includes(entry.cliente_id)) {
+        return
+      }
+      
       if (entry.cliente_id) {
         const key = `${entry.colaborador_id}::${entry.cliente_id}`
         hoursMap.set(key, (hoursMap.get(key) || 0) + (entry.duracion_seg / 3600))
@@ -578,11 +590,15 @@ async function fetchMetricas(mes: number, anio: number, departamento: string = '
     }
   })
   
-  // Apply departamento filter: keep only metricas of colaboradores in the selected departamento.
-  if (departamento !== 'all') {
-    return metricasWithHours.filter(
+  // Apply filters: keep only metricas of colaboradores in the selected departamentos/colaboradores
+  console.log('[v0] Before filter - metricasWithHours:', metricasWithHours.length, 'unique colabs:', new Set(metricasWithHours.map(m => m.colaborador_id)).size)
+  
+  if (departamentos.length > 0 || colaboradores.length > 0) {
+    const filtered = metricasWithHours.filter(
       m => allowedColaboradorIds.has(m.colaborador_id)
     ) as MetricaColaborador[]
+    console.log('[v0] After filter - filtered:', filtered.length, 'unique colabs:', new Set(filtered.map(m => m.colaborador_id)).size)
+    return filtered
   }
 
   return metricasWithHours as MetricaColaborador[]
@@ -591,53 +607,31 @@ async function fetchMetricas(mes: number, anio: number, departamento: string = '
 interface HoursControlPanelProps {
   month: number
   year: number
-  colaboradorId?: string
-  clienteId?: string
-  departamento?: string
+  colaboradorIds?: string[]
+  clienteIds?: string[]
+  departamentos?: string[]
   statusColaborador?: 'activos' | 'inactivos' | 'todos'
 }
 
 export function HoursControlPanel({ 
   month: selectedMonth, 
   year: selectedYear,
-  colaboradorId,
-  clienteId,
-  departamento = 'all',
+  colaboradorIds = [],
+  clienteIds = [],
+  departamentos = [],
   statusColaborador = 'todos',
 }: HoursControlPanelProps) {
   // Use props for filtering instead of local state
-  const filterColaborador = colaboradorId || 'all'
-  const filterCliente = clienteId || 'all'
-
   const { data: metricas, isLoading, error } = useSWR(
-    `metricas-${selectedMonth}-${selectedYear}-${departamento}-${statusColaborador}`,
-    () => fetchMetricas(selectedMonth, selectedYear, departamento, statusColaborador)
+    `metricas-${selectedMonth}-${selectedYear}-${departamentos.join(',')}-${colaboradorIds.join(',')}-${clienteIds.join(',')}-${statusColaborador}`,
+    () => fetchMetricas(selectedMonth, selectedYear, departamentos, colaboradorIds, clienteIds, statusColaborador)
   )
+  
+  if (metricas) {
+    const uniqueColabs = new Set(metricas.map(m => m.colaborador_id))
+    console.log('[v0] HoursControlPanel metricas received:', metricas.length, 'unique colabs:', uniqueColabs.size, 'colabs:', Array.from(uniqueColabs))
+  }
 
-  // Get unique colaboradores and clientes for filters
-  const colaboradores = useMemo(() => {
-    if (!metricas) return []
-    const unique = new Map<string, { id: string; nombre: string; apellido: string | null }>()
-    metricas.forEach(m => {
-      if (m.colaborador) {
-        unique.set(m.colaborador.id, m.colaborador)
-      }
-    })
-    return Array.from(unique.values()).sort((a, b) => a.nombre.localeCompare(b.nombre))
-  }, [metricas])
-
-  const clientes = useMemo(() => {
-    if (!metricas) return []
-    const unique = new Map<string, { id: string; nombre_del_negocio: string }>()
-    metricas.forEach(m => {
-      if (m.cliente) {
-        unique.set(m.cliente.id, m.cliente)
-      }
-    })
-    return Array.from(unique.values()).sort((a, b) => a.nombre_del_negocio.localeCompare(b.nombre_del_negocio))
-  }, [metricas])
-
-  // Aggregate by colaborador
   const byColaborador = useMemo(() => {
     if (!metricas) return []
     
@@ -682,9 +676,9 @@ export function HoursControlPanel({
     })
 
     return Array.from(grouped.values())
-      .filter(item => filterColaborador === 'all' || item.colaborador.id === filterColaborador)
+      .filter(item => colaboradorIds.length === 0 || colaboradorIds.includes(item.colaborador.id))
       .sort((a, b) => a.colaborador.nombre.localeCompare(b.colaborador.nombre))
-  }, [metricas, filterColaborador])
+  }, [metricas, colaboradorIds])
 
   // Aggregate by cliente
   const byCliente = useMemo(() => {
@@ -731,9 +725,9 @@ export function HoursControlPanel({
     })
 
     return Array.from(grouped.values())
-      .filter(item => filterCliente === 'all' || item.cliente.id === filterCliente)
+      .filter(item => clienteIds.length === 0 || clienteIds.includes(item.cliente.id))
       .sort((a, b) => a.cliente.nombre_del_negocio.localeCompare(b.cliente.nombre_del_negocio))
-  }, [metricas, filterCliente])
+  }, [metricas, clienteIds])
 
   // Summary stats
   const summary = useMemo(() => {

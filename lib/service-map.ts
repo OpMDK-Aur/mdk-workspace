@@ -503,8 +503,8 @@ export async function getServiceMapKPIs(filters?: {
   mes?: number
   anio?: number
   planFilter?: ClientPlan
-  pmFilter?: string
-  amFilter?: string
+  pmFilter?: string | string[]
+  amFilter?: string | string[]
 }): Promise<{ data: ServiceMapKPIs[] | null; error?: string }> {
   const supabase = createClient()
 
@@ -581,8 +581,17 @@ export async function getServiceMapKPIs(filters?: {
 
       // Apply filters (normalize plan comparison)
       if (filters?.planFilter && normalizePlan(cliente.plan) !== normalizePlan(filters.planFilter)) continue
-      if (filters?.pmFilter && cliente.project_manager_id !== filters.pmFilter) continue
-      if (filters?.amFilter && cliente.account_manager_id !== filters.amFilter) continue
+      // Filter by PM - support both string and array
+      if (filters?.pmFilter) {
+        const pmFilters = Array.isArray(filters.pmFilter) ? filters.pmFilter : [filters.pmFilter]
+        if (!pmFilters.includes(cliente.project_manager_id || '')) continue
+      }
+      
+      // Filter by AM - support both string and array
+      if (filters?.amFilter) {
+        const amFilters = Array.isArray(filters.amFilter) ? filters.amFilter : [filters.amFilter]
+        if (!amFilters.includes(cliente.account_manager_id || '')) continue
+      }
 
       let kpi = clientMap.get(cliente.id)
 
