@@ -134,8 +134,8 @@ export default function ControlHorasPage() {
       const isInRange = isWithinInterval(entryDate, {
         start: monthStart,
         end: monthEnd,
-      })
-      if (!isInRange) return false
+    })
+    if (!isInRange) return false
       
       // Filter by selected colaboradores (multi-select - if empty, show all)
       if (selectedColaboradores.length > 0) {
