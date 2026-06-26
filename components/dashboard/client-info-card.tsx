@@ -542,16 +542,16 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
           </Select>
         </CardContent>
       </Card>
+    </div>
 
-      {/* Back to clients button */}
-      <div className="lg:col-span-2">
-        <Link href="/dashboard/clients">
-          <Button variant="outline" className="w-full" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Volver a clientes
-          </Button>
-        </Link>
-      </div>
+    {/* Back to clients button */}
+    <div className="mt-4">
+      <Link href="/dashboard/clients">
+        <Button variant="outline" className="w-full" size="sm">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Volver a clientes
+        </Button>
+      </Link>
     </div>
   )
 }
