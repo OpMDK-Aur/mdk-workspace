@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback, memo } from 'react'
+import { useState, useMemo, useCallback, useEffect, memo } from 'react'
 import Link from 'next/link'
 import type { Client, Profile, ClientPlan, UnidadNegocio, SemaforoStatus } from '@/lib/types'
 import { MORA_OPTIONS, getMoraColor } from '@/lib/types'
@@ -147,35 +147,39 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const requiredColumns = ['cliente', 'unidad_negocio', 'plan', 'fee_mdk', 'fee_aurelia', 'fee_consultoria', 'fee_total', 'pm', 'am', 'nps', 'mora']
 
   // Visible columns - ahora incluye todas las columnas disponibles
-  const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('clientVisibleColumns')
-      const base: string[] = saved ? JSON.parse(saved) : []
-      // Asegurar que las columnas requeridas siempre estén presentes
-      const merged = [...base]
-      requiredColumns.forEach(c => { if (!merged.includes(c)) merged.push(c) })
-      return merged.length ? merged : requiredColumns
-    }
-    return requiredColumns
-  })
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(requiredColumns)
+  const [columnWidthsLoaded, setColumnWidthsLoaded] = useState(false)
   
   // View mode: 'table' or 'cards'
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('clientViewMode')
-      return (saved as 'table' | 'cards') || 'cards'
-    }
-    return 'cards'
-  })
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards')
 
   // Column widths (resizable columns) - persisted per column id
-  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
+  
+  // Load from localStorage on client side only
+  useEffect(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('clientColumnWidths')
-      return saved ? JSON.parse(saved) : {}
+      const savedColumns = localStorage.getItem('clientVisibleColumns')
+      if (savedColumns) {
+        const base: string[] = JSON.parse(savedColumns)
+        const merged = [...base]
+        requiredColumns.forEach(c => { if (!merged.includes(c)) merged.push(c) })
+        setVisibleColumns(merged.length ? merged : requiredColumns)
+      }
+      
+      const savedViewMode = localStorage.getItem('clientViewMode')
+      if (savedViewMode) {
+        setViewMode(savedViewMode as 'table' | 'cards')
+      }
+      
+      const savedColumnWidths = localStorage.getItem('clientColumnWidths')
+      if (savedColumnWidths) {
+        setColumnWidths(JSON.parse(savedColumnWidths))
+      }
+      
+      setColumnWidthsLoaded(true)
     }
-    return {}
-  })
+  }, [])
 
   // Anchos por defecto (px) para mantener la tabla equilibrada con tableLayout fixed
   const defaultColumnWidths: Record<string, number> = {
@@ -323,13 +327,17 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     sortOrder: 'asc' | 'desc'
     columns: string[]
   }
-  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>(() => {
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([])
+  
+  // Load saved filters on client side only
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('clientFiltersV2')
-      return saved ? JSON.parse(saved) : []
+      if (saved) {
+        setSavedFilters(JSON.parse(saved))
+      }
     }
-    return []
-  })
+  }, [])
   const [saveFilterName, setSaveFilterName] = useState('')
   const [saveFilterOpen, setSaveFilterOpen] = useState(false)
 
