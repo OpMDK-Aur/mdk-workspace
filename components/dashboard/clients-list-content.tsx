@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, memo } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import type { Client, Profile, ClientPlan, UnidadNegocio, SemaforoStatus } from '@/lib/types'
 import { MORA_OPTIONS, getMoraColor } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
@@ -120,6 +121,7 @@ function getSemaforoBadge(semaforo: SemaforoStatus | undefined) {
 
 export function ClientsListContent({ clients, profiles, currentProfile, assignmentMap, hoursMap, npsMap = {} }: ClientsListContentProps) {
   const supabase = createClient()
+  const router = useRouter()
   // Permitir crear a direccion, master, project_manager y account_manager
   const userRole = currentProfile?.role?.toLowerCase() || ''
   const canCreate = ['direccion', 'master', 'project_manager', 'account_manager'].includes(userRole) || true // TODO: ajustar permisos según necesidades
@@ -580,12 +582,8 @@ const applyFilter = (filter: SavedFilter) => {
       // Add to local state
       setLocalClients(prev => [...prev, data as Client].sort((a, b) => a.nombre_del_negocio.localeCompare(b.nombre_del_negocio)))
 
-      setCreateSuccess(true)
-      setTimeout(() => {
-        setCreateSuccess(false)
-        setCreateOpen(false)
-        resetForm()
-      }, 1500)
+      // Navigate to the new client page
+      router.push(`/dashboard/clients/${data.id}`)
     } catch (err) {
       setCreateError('Error al crear el cliente')
     } finally {
