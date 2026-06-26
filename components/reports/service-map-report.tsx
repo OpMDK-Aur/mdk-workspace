@@ -79,9 +79,9 @@ export function ServiceMapReport({ month, year, planFilter = 'all', pmFilter = '
         }
       }
 
-      // Convert array filters to first value or undefined
-      const pmValue = pmFilter === 'all' ? undefined : (Array.isArray(pmFilter) && pmFilter.length > 0 ? pmFilter[0] : undefined)
-      const amValue = amFilter === 'all' ? undefined : (Array.isArray(amFilter) && amFilter.length > 0 ? amFilter[0] : undefined)
+      // Convert array filters or undefined
+      const pmValue = pmFilter === 'all' ? undefined : (Array.isArray(pmFilter) && pmFilter.length > 0 ? pmFilter : undefined)
+      const amValue = amFilter === 'all' ? undefined : (Array.isArray(amFilter) && amFilter.length > 0 ? amFilter : undefined)
       const planValue = planFilter === 'all' ? undefined : (planFilter as ClientPlan | undefined)
 
       const result = await getServiceMapKPIs({

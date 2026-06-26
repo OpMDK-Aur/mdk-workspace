@@ -273,24 +273,6 @@ export function NPSReport({
       filteredClients = filteredClients.filter(c => clienteFilter.includes(c.id))
     }
 
-    // Filter by AM
-    if (amFilter !== 'all') {
-      filteredClients = filteredClients.filter(c => c.account_manager_id === amFilter)
-    }
-
-    // Filter by Departamento (based on the client's Account Manager departamento)
-    if (departamentoFilter !== 'all') {
-      filteredClients = filteredClients.filter(c => {
-        const am = colaboradores.find(col => col.id === c.account_manager_id) as { departamento_id?: string | null } | undefined
-        return am?.departamento_id === departamentoFilter
-      })
-    }
-
-    // Filter by Cliente
-    if (clienteFilter !== 'all') {
-      filteredClients = filteredClients.filter(c => c.id === clienteFilter)
-    }
-
     return filteredClients.map(client => {
       const clientHistory = npsHistorial.filter(h => h.cliente_id === client.id)
       
