@@ -590,13 +590,14 @@ const applyFilter = (filter: SavedFilter) => {
     
     // NPS filter matching
     let matchesNps = true
+    const hasNps = client.nps !== null && client.nps !== undefined && client.nps !== '' && client.nps !== 0
     if (npsOperator === 'empty') {
-      matchesNps = client.nps === null || client.nps === undefined || client.nps === ''
+      matchesNps = !hasNps
     } else if (npsOperator === 'not_empty') {
-      matchesNps = client.nps !== null && client.nps !== undefined && client.nps !== ''
-    } else if (npsValue) {
+      matchesNps = hasNps
+    } else if (npsValue && hasNps) {
       const npsNumValue = parseFloat(npsValue)
-      const clientNps = parseFloat(String(client.nps || 0))
+      const clientNps = parseFloat(String(client.nps))
       if (npsOperator === 'contains') {
         matchesNps = String(client.nps).includes(npsValue)
       } else if (npsOperator === 'not_contains') {
@@ -606,6 +607,8 @@ const applyFilter = (filter: SavedFilter) => {
       } else if (npsOperator === 'not_equals') {
         matchesNps = clientNps !== npsNumValue
       }
+    } else if (npsValue && !hasNps) {
+      matchesNps = false
     }
     
     return matchesActivo && matchesSearch && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesMora && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax && matchesNps
@@ -1304,6 +1307,7 @@ const applyFilter = (filter: SavedFilter) => {
               
               {/* NPS Filter */}
               <div className="flex gap-2 items-center">
+                <span className="text-sm text-muted-foreground">NPS</span>
                 <Select value={npsOperator} onValueChange={(value: any) => setNpsOperator(value)}>
                   <SelectTrigger className="h-9 w-[140px]">
                     <SelectValue />
