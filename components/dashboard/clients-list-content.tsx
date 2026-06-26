@@ -591,8 +591,10 @@ const applyFilter = (filter: SavedFilter) => {
     // NPS filter matching
     let matchesNps = true
     const hasNps = client.nps !== null && client.nps !== undefined && client.nps !== '' && client.nps !== 0 && client.nps !== '-'
+    
     if (npsOperator === 'empty') {
       matchesNps = !hasNps
+      if (client.nombre === 'VN Global') console.log('[v0] VN Global - hasNps:', hasNps, 'matchesNps:', matchesNps, 'nps value:', client.nps)
     } else if (npsOperator === 'not_empty') {
       matchesNps = hasNps
     } else if (npsValue && hasNps) {
