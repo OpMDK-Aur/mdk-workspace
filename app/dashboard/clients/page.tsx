@@ -68,7 +68,7 @@ export default async function ClientsPage() {
 
   // Get latest NPS scores for each client
   const { data: npsData } = await supabase
-    .from('cliente_nps')
+    .from('cliente_nps_historial')
     .select('cliente_id, score, created_at')
     .order('created_at', { ascending: false })
   
