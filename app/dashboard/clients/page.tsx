@@ -84,16 +84,12 @@ export default async function ClientsPage() {
   
   // Build NPS map - get latest NPS score for each client
   const npsMap: Record<string, number> = {}
-  console.log('[v0] NPS Data received:', npsData?.length ?? 0, 'records')
-  if (npsData && npsData.length > 0) {
-    console.log('[v0] First NPS record:', JSON.stringify(npsData[0]))
+  if (npsData) {
     npsData.forEach(record => {
-      console.log('[v0] Processing NPS record - cliente_id:', record.cliente_id, 'nps_score:', record.nps_score)
       if (!npsMap[record.cliente_id]) {
         npsMap[record.cliente_id] = record.nps_score
       }
     })
-    console.log('[v0] Final NPS Map:', JSON.stringify(npsMap))
   }
 
   return (
