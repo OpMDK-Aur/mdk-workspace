@@ -77,6 +77,8 @@ import {
   ChevronsUpDown,
   LayoutGrid,
   List,
+  Send,
+  Loader2,
 } from 'lucide-react'
 
 interface ClientsListContentProps {
@@ -85,7 +87,7 @@ interface ClientsListContentProps {
   currentProfile: Profile | null
   assignmentMap: Record<string, { min_hours: number; max_hours: number }>
   hoursMap: Record<string, number>
-  npsMap?: Record<string, number>
+  npsMap?: Record<string, { score: number | null; status: 'completada' | 'no_completada' | 'no_responde' }>
 }
 
 
@@ -156,6 +158,9 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
 
   // Column widths (resizable columns) - persisted per column id
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
+  
+  // Webhook loading state
+  const [sendingNpsWebhook, setSendingNpsWebhook] = useState<Record<string, boolean>>({})
   
   // Load from localStorage on client side only
   useEffect(() => {
@@ -266,6 +271,38 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
       })
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  // Enviar NPS al webhook
+  const sendNpsWebhook = async (client: Client) => {
+    setSendingNpsWebhook(prev => ({ ...prev, [client.id]: true }))
+    try {
+      const payload = {
+        nombre_empresa: client.nombre_del_negocio,
+        nombre_contacto: client.contacto_nombre || client.nombre || '',
+        telefono_contacto: client.contacto_telefono || client.telefono || '',
+        cliente_id: client.id,
+      }
+
+      const response = await fetch('https://n8n.madketing.io/webhook/2bd4953d-c818-4440-8009-f294a8a1aa6f', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Webhook error: ${response.statusText}`)
+      }
+
+      console.log('[v0] NPS webhook sent successfully for client:', client.id)
+    } catch (error) {
+      console.error('[v0] Error sending NPS webhook:', error)
+      alert('Error al enviar el NPS. Intenta nuevamente.')
+    } finally {
+      setSendingNpsWebhook(prev => ({ ...prev, [client.id]: false }))
     }
   }
 
@@ -1903,7 +1940,23 @@ const applyFilter = (filter: SavedFilter) => {
                         )}
                         {visibleColumns.includes('nps') && (
                           <TableCell className="text-sm">
-                            <span className="text-sm">{npsMap[client.id]?.score ?? '-'}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm">{npsMap[client.id]?.score ?? '-'}</span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => sendNpsWebhook(client)}
+                                disabled={sendingNpsWebhook[client.id]}
+                                className="h-7 w-7 p-0"
+                                title="Enviar NPS al webhook"
+                              >
+                                {sendingNpsWebhook[client.id] ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Send className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </div>
                           </TableCell>
                         )}
                         {visibleColumns.includes('mora') && (
