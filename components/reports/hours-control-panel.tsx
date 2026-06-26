@@ -626,31 +626,12 @@ export function HoursControlPanel({
     `metricas-${selectedMonth}-${selectedYear}-${departamentos.join(',')}-${colaboradorIds.join(',')}-${clienteIds.join(',')}-${statusColaborador}`,
     () => fetchMetricas(selectedMonth, selectedYear, departamentos, colaboradorIds, clienteIds, statusColaborador)
   )
+  
+  if (metricas) {
+    const uniqueColabs = new Set(metricas.map(m => m.colaborador_id))
+    console.log('[v0] HoursControlPanel metricas received:', metricas.length, 'unique colabs:', uniqueColabs.size, 'colabs:', Array.from(uniqueColabs))
+  }
 
-  // Get unique colaboradores and clientes for filters
-  const colaboradores = useMemo(() => {
-    if (!metricas) return []
-    const unique = new Map<string, { id: string; nombre: string; apellido: string | null }>()
-    metricas.forEach(m => {
-      if (m.colaborador) {
-        unique.set(m.colaborador.id, m.colaborador)
-      }
-    })
-    return Array.from(unique.values()).sort((a, b) => a.nombre.localeCompare(b.nombre))
-  }, [metricas])
-
-  const clientes = useMemo(() => {
-    if (!metricas) return []
-    const unique = new Map<string, { id: string; nombre_del_negocio: string }>()
-    metricas.forEach(m => {
-      if (m.cliente) {
-        unique.set(m.cliente.id, m.cliente)
-      }
-    })
-    return Array.from(unique.values()).sort((a, b) => a.nombre_del_negocio.localeCompare(b.nombre_del_negocio))
-  }, [metricas])
-
-  // Aggregate by colaborador
   const byColaborador = useMemo(() => {
     if (!metricas) return []
     
