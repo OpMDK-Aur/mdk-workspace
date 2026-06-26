@@ -279,10 +279,13 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const sendNpsWebhook = async (client: Client) => {
     setSendingNpsWebhook(prev => ({ ...prev, [client.id]: true }))
     try {
+      const unidadNegocio = client.unidades_negocio?.[0]?.nombre || ''
       const payload = {
         nombre_empresa: client.nombre_del_negocio,
         nombre_contacto: client.contacto_nombre || client.nombre || '',
+        apellido_contacto: client.apellido || '',
         telefono_contacto: client.contacto_telefono || client.telefono || '',
+        unidad_negocio: unidadNegocio,
         cliente_id: client.id,
       }
 
