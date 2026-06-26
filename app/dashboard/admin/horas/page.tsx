@@ -173,6 +173,13 @@ export default function ControlHorasPage() {
       return true
     })
   }, [allEntries, users, selectedMonth, selectedYear, selectedColaboradores, selectedClientes, selectedDepartamentos, statusColaborador])
+  
+  // DEBUG
+  if (filteredEntries.length > 0) {
+    const totalHoras = filteredEntries.reduce((acc, e) => acc + ((e.duracion_seg || 0) / 3600), 0)
+    const uniqueColab = new Set(filteredEntries.map(e => e.colaborador_id)).size
+    console.log('[v0] filteredEntries:', filteredEntries.length, 'unique colaboradores:', uniqueColab, 'total horas:', totalHoras.toFixed(1), 'selectedColab:', selectedColaboradores.length)
+  }
 
   // Calculate client summaries from filtered entries
   const clientSummaries: ClientSummary[] = useMemo(() => {
