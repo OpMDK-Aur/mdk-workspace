@@ -201,12 +201,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
         const mostRecent = updatedRecords[updatedRecords.length - 1]
         setCurrentScore(mostRecent.score)
         
-        // Update clientes table with most recent score
-        await supabase
-          .from('clientes')
-          .update({ nps_score: mostRecent.score })
-          .eq('id', clientId)
-
+        // Close dialog immediately without waiting for clientes table update
         setDialogOpen(false)
         setEditingId(null)
         setForm({
@@ -216,6 +211,13 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
           encuestado_cargo: '',
           fecha: new Date().toISOString().split('T')[0],
         })
+
+        // Update clientes table in background (don't await)
+        supabase
+          .from('clientes')
+          .update({ nps_score: mostRecent.score })
+          .eq('id', clientId)
+          .catch(err => console.error('[v0] Error updating client NPS score:', err))
       }
     } else {
       // Insert new record
@@ -244,12 +246,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
         const mostRecent = newRecords[newRecords.length - 1]
         setCurrentScore(mostRecent.score)
         
-        // Update clientes table with most recent score
-        await supabase
-          .from('clientes')
-          .update({ nps_score: mostRecent.score })
-          .eq('id', clientId)
-
+        // Close dialog immediately without waiting for clientes table update
         setDialogOpen(false)
         setForm({
           score: 3,
@@ -258,6 +255,13 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
           encuestado_cargo: '',
           fecha: new Date().toISOString().split('T')[0],
         })
+
+        // Update clientes table in background (don't await)
+        supabase
+          .from('clientes')
+          .update({ nps_score: mostRecent.score })
+          .eq('id', clientId)
+          .catch(err => console.error('[v0] Error updating client NPS score:', err))
       }
     }
     

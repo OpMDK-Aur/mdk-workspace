@@ -117,6 +117,12 @@ const AVAILABLE_MODULES = [
   { id: 'clientes', name: 'Clientes', description: 'Ver informacion de clientes' },
   { id: 'reportes', name: 'Reportes', description: 'Ver reportes de horas' },
   { id: 'plataformas', name: 'Plataformas', description: 'Acceso a cuentas publicitarias, apps, CRM' },
+  { id: 'control_horas', name: 'Control de horas', description: 'Gestión y control de horas trabajadas' },
+  { id: 'mapa_servicio', name: 'Mapa de servicio', description: 'Visualización de mapa de servicios' },
+  { id: 'nps', name: 'NPS', description: 'Gestión de NPS y satisfacción de clientes' },
+  { id: 'facturacion', name: 'Facturacion', description: 'Control de facturación y saldos' },
+  { id: 'colaboradores_accesos', name: 'Colaboradores - Accesos', description: 'Gestión de accesos de colaboradores' },
+  { id: 'colaboradores_metricas', name: 'Colaboradores - Métricas', description: 'Visualización de métricas de colaboradores' },
 ]
 
 // Available puestos
@@ -385,6 +391,10 @@ export default function ColaboradoresPage() {
             modulos_habilitados: colab.modulos_habilitados,
           })
           .eq('id', id)
+        
+        if (error) {
+          throw error
+        }
 
         if (error) {
           console.error('Error saving permissions:', error)
@@ -403,7 +413,7 @@ export default function ColaboradoresPage() {
     setSavingPermissions(false)
   }
 
-  // ─── CREATE USER HANDLER ──────────────────────────────────────────────────────
+  // ─��─ CREATE USER HANDLER ──────────────────────────────────────────────────────
 
   const handleCreateUser = async () => {
     if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim()) {

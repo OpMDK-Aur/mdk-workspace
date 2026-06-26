@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import type { Client, ClientEtapa, ServicioContratado, ClientPlan, UnidadNegocio, SemaforoStatus } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -43,7 +44,7 @@ import {
   Plus, X, CheckCircle2, Circle, Edit2, Save, Loader2,
   Megaphone, Search, TrendingUp, Users, Palette, Code,
   MessageCircle, Database, FileText, Settings, Trash2, Star,
-  Power,
+  Power, ArrowLeft,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -274,6 +275,7 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
   }
   
   return (
+    <>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* Servicios Contratados - Gestión completa de servicios */}
       <ServiciosCliente clientId={client.id} />
@@ -542,6 +544,17 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
         </CardContent>
       </Card>
     </div>
+
+    {/* Back to clients button */}
+    <div className="mt-4">
+      <Link href="/dashboard/clients">
+        <Button variant="outline" className="w-full" size="sm">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Volver a clientes
+        </Button>
+      </Link>
+    </div>
+    </>
   )
 }
 

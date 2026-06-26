@@ -22,7 +22,7 @@ export default async function DashboardLayout({
   // Get colaborador data
   const { data: colaborador } = await supabase
     .from('colaboradores')
-    .select('*, roles(id, nombre), departamentos(id, nombre)')
+    .select('id, nombre, apellido, email, rol_id, puesto, activo, avatar_url, onboarding_completado, modulos_habilitados, roles(id, nombre), departamentos(id, nombre)')
     .eq('id', user.id)
     .maybeSingle()
 

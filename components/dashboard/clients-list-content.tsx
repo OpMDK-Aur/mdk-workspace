@@ -77,6 +77,8 @@ import {
   ChevronsUpDown,
   LayoutGrid,
   List,
+  Send,
+  Loader2,
 } from 'lucide-react'
 
 interface ClientsListContentProps {
@@ -85,7 +87,7 @@ interface ClientsListContentProps {
   currentProfile: Profile | null
   assignmentMap: Record<string, { min_hours: number; max_hours: number }>
   hoursMap: Record<string, number>
-  npsMap?: Record<string, number>
+  npsMap?: Record<string, { score: number | null; status: 'completada' | 'no_completada' | 'no_responde' }>
 }
 
 
@@ -139,6 +141,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   // Advanced filter state
   const [feeMinFilter, setFeeMinFilter] = useState<string>('')
   const [feeMaxFilter, setFeeMaxFilter] = useState<string>('')
+  const [npsStatusFilter, setNpsStatusFilter] = useState<'completada' | 'no_completada' | 'no_responde' | 'todos'>('todos')
   const [sortBy, setSortBy] = useState<string>('fee_total')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -155,6 +158,10 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
 
   // Column widths (resizable columns) - persisted per column id
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
+  
+  // Webhook loading state
+  const [sendingNpsWebhook, setSendingNpsWebhook] = useState<Record<string, boolean>>({})
+  const [sentNpsWebhook, setSentNpsWebhook] = useState<Record<string, boolean>>({})
   
   // Load from localStorage on client side only
   useEffect(() => {
@@ -268,6 +275,46 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     }
   }
 
+  // Enviar NPS al webhook
+  const sendNpsWebhook = async (client: Client) => {
+    setSendingNpsWebhook(prev => ({ ...prev, [client.id]: true }))
+    try {
+      const unidadNegocio = client.unidades_negocio?.[0] || client.unidad_negocio || ''
+      const payload = {
+        nombre_empresa: client.nombre_del_negocio,
+        nombre_contacto: client.contacto_nombre || client.nombre || '',
+        apellido_contacto: client.apellido || '',
+        telefono_contacto: client.contacto_telefono || client.telefono || '',
+        unidad_negocio: unidadNegocio,
+        cliente_id: client.id,
+      }
+
+      const response = await fetch('https://n8n.madketing.io/webhook/2bd4953d-c818-4440-8009-f294a8a1aa6f', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Webhook error: ${response.statusText}`)
+      }
+
+      setSentNpsWebhook(prev => ({ ...prev, [client.id]: true }))
+      setTimeout(() => {
+        setSentNpsWebhook(prev => ({ ...prev, [client.id]: false }))
+      }, 2000)
+
+      console.log('[v0] NPS webhook sent successfully for client:', client.id)
+    } catch (error) {
+      console.error('[v0] Error sending NPS webhook:', error)
+      alert('Error al enviar el NPS. Intenta nuevamente.')
+    } finally {
+      setSendingNpsWebhook(prev => ({ ...prev, [client.id]: false }))
+    }
+  }
+
 
 
   const allColumns = [
@@ -323,6 +370,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     fechaActivacionHasta: string
     feeMin: string
     feeMax: string
+    npsStatus?: 'completada' | 'no_completada' | 'no_responde' | 'todos'
     sortBy: string
     sortOrder: 'asc' | 'desc'
     columns: string[]
@@ -341,7 +389,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
   const [saveFilterName, setSaveFilterName] = useState('')
   const [saveFilterOpen, setSaveFilterOpen] = useState(false)
 
-  const hasActiveFilters = planFilters.length > 0 || pmFilters.length > 0 || amFilters.length > 0 || platformFilters.length > 0 || unidadFilters.length > 0 || etapaFilters.length > 0 || moraFilters.length > 0 || activoFilter !== 'activos' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== ''
+  const hasActiveFilters = planFilters.length > 0 || pmFilters.length > 0 || amFilters.length > 0 || platformFilters.length > 0 || unidadFilters.length > 0 || etapaFilters.length > 0 || moraFilters.length > 0 || activoFilter !== 'activos' || searchTerm !== '' || feeMinFilter !== '' || feeMaxFilter !== '' || fechaActivacionDesde !== '' || fechaActivacionHasta !== '' || npsStatusFilter !== 'todos'
 
   const clearAllFilters = () => {
     setSearchTerm('')
@@ -357,6 +405,7 @@ export function ClientsListContent({ clients, profiles, currentProfile, assignme
     setFeeMaxFilter('')
     setFechaActivacionDesde('')
     setFechaActivacionHasta('')
+    setNpsStatusFilter('todos')
   }
 
 const saveCurrentFilter = () => {
@@ -375,6 +424,7 @@ const saveCurrentFilter = () => {
   fechaActivacionHasta,
   feeMin: feeMinFilter,
   feeMax: feeMaxFilter,
+  npsStatus: npsStatusFilter,
   sortBy,
   sortOrder,
   columns: visibleColumns,
@@ -399,6 +449,7 @@ const applyFilter = (filter: SavedFilter) => {
   setFechaActivacionHasta(filter.fechaActivacionHasta || '')
   setFeeMinFilter(filter.feeMin || '')
   setFeeMaxFilter(filter.feeMax || '')
+  setNpsStatusFilter(filter.npsStatus || 'todos')
   setSortBy(filter.sortBy || 'nombre_del_negocio')
   setSortOrder(filter.sortOrder || 'asc')
   if (filter.columns?.length) {
@@ -577,7 +628,16 @@ const applyFilter = (filter: SavedFilter) => {
     const totalFee = (client.fee_mdk || 0) + (client.fee_aurelia || 0)
     const matchesFeeMin = !feeMinFilter || totalFee >= parseFloat(feeMinFilter)
     const matchesFeeMax = !feeMaxFilter || totalFee <= parseFloat(feeMaxFilter)
-    return matchesActivo && matchesSearch && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesMora && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax
+    
+    // NPS filter matching
+    let matchesNps = true
+    if (npsStatusFilter !== 'todos') {
+      const npsInfo = npsMap[client.id]
+      const clientNpsStatus = npsInfo?.status || 'no_completada'
+      matchesNps = clientNpsStatus === npsStatusFilter
+    }
+    
+    return matchesActivo && matchesSearch && matchesPlan && matchesPm && matchesAm && matchesPlatform && matchesUnidad && matchesEtapa && matchesMora && matchesFechaDesde && matchesFechaHasta && matchesFeeMin && matchesFeeMax && matchesNps
   }).sort((a, b) => {
     let valueA: string | number = ''
     let valueB: string | number = ''
@@ -1271,6 +1331,22 @@ const applyFilter = (filter: SavedFilter) => {
                 </DropdownMenuContent>
               </DropdownMenu>
               
+              {/* NPS Filter */}
+              <div className="flex gap-2 items-center">
+                <span className="text-sm text-muted-foreground">NPS</span>
+                <Select value={npsStatusFilter} onValueChange={(value: any) => setNpsStatusFilter(value)}>
+                  <SelectTrigger className="h-9 w-[170px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    <SelectItem value="completada">NPS Completada</SelectItem>
+                    <SelectItem value="no_completada">NPS No Completada</SelectItem>
+                    <SelectItem value="no_responde">NPS No Responde</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
               {/* Clear filters */}
               {hasActiveFilters && (
                 <Button variant="ghost" size="sm" onClick={clearAllFilters} className="h-9 px-2 gap-1">
@@ -1593,7 +1669,7 @@ const applyFilter = (filter: SavedFilter) => {
                         {visibleColumns.includes('nps') && npsMap[client.id] != null && (
                           <div className="flex items-center gap-3">
                             <span className="text-muted-foreground w-24 shrink-0">NPS</span>
-                            <span className="font-medium">{npsMap[client.id]}</span>
+                            <span className="font-medium">{npsMap[client.id]?.score ?? '-'}</span>
                             </div>
                           )}
                           {visibleColumns.includes('etapa') && client.etapa && (
@@ -1873,7 +1949,27 @@ const applyFilter = (filter: SavedFilter) => {
                         )}
                         {visibleColumns.includes('nps') && (
                           <TableCell className="text-sm">
-                            <span className="text-sm">{npsMap[client.id] ?? '-'}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm">{npsMap[client.id]?.score ?? '-'}</span>
+                              {sentNpsWebhook[client.id] ? (
+                                <span className="text-xs text-green-600 font-medium">enviada!</span>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => sendNpsWebhook(client)}
+                                  disabled={sendingNpsWebhook[client.id]}
+                                  className="h-7 w-7 p-0"
+                                  title="Enviar NPS al webhook"
+                                >
+                                  {sendingNpsWebhook[client.id] ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Send className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         )}
                         {visibleColumns.includes('mora') && (
