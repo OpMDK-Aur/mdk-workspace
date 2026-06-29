@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Client, TesterResultado, MetaForm, TesterItem } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -74,6 +75,7 @@ interface ItemWithStatus extends TesterItem {
 
 export function TesterModal({ open, onOpenChange, initialClientId }: TesterModalProps) {
   const supabase = createClient()
+  const router = useRouter()
   
   const [tab, setTab] = useState<'manual' | 'historial' | 'cron'>('manual')
   const [step, setStep] = useState(1)
@@ -88,6 +90,8 @@ export function TesterModal({ open, onOpenChange, initialClientId }: TesterModal
   const [selectedItems, setSelectedItems] = useState<ItemWithStatus[]>([])
   const [testResults, setTestResults] = useState<TesterResultado[]>([])
   const [testing, setTesting] = useState(false)
+  const [markingHitoComplete, setMarkingHitoComplete] = useState(false)
+  const [generatingTask, setGeneratingTask] = useState(false)
   
   // Historial state
   const [historialResults, setHistorialResults] = useState<TesterResultado[]>([])
@@ -339,6 +343,7 @@ export function TesterModal({ open, onOpenChange, initialClientId }: TesterModal
       return
     }
 
+    setGeneratingTask(true)
     try {
       const response = await fetch('/api/tester/generar-tarea', {
         method: 'POST',
@@ -353,12 +358,56 @@ export function TesterModal({ open, onOpenChange, initialClientId }: TesterModal
         })
       })
 
-      if (!response.ok) throw new Error('Failed to generate task')
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Error al generar la tarea')
+      }
       
       toast.success('Tarea generada exitosamente')
+      
+      // Close modal and redirect to the new task
+      onOpenChange(false)
+      if (data.tarea?.id) {
+        router.push(`/dashboard/tasks?task=${data.tarea.id}`)
+      }
     } catch (error) {
       console.error('Error generating task:', error)
-      toast.error('Error al generar tarea')
+      toast.error(error instanceof Error ? error.message : 'Error al generar tarea')
+    } finally {
+      setGeneratingTask(false)
+    }
+  }
+
+  const handleMarkHitoComplete = async () => {
+    if (!selectedClient?.id) return
+
+    setMarkingHitoComplete(true)
+    try {
+      const response = await fetch('/api/tester/mark-hito-complete', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'authorization': 'Bearer ' + Date.now()
+        },
+        body: JSON.stringify({
+          cliente_id: selectedClient.id
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to mark hito as complete')
+      }
+      
+      toast.success('Hito marcado como completado')
+      onOpenChange(false)
+    } catch (error) {
+      console.error('Error marking hito complete:', error)
+      toast.error(error instanceof Error ? error.message : 'Error al marcar hito como completado')
+    } finally {
+      setMarkingHitoComplete(false)
     }
   }
 
@@ -575,13 +624,42 @@ export function TesterModal({ open, onOpenChange, initialClientId }: TesterModal
                 </Button>
               ) : (
                 <div className="flex gap-2 ml-auto">
+                  {testResults.length > 0 && testResults.every(r => r.estado === 'ok') && (
+                    <Button
+                      onClick={handleMarkHitoComplete}
+                      disabled={markingHitoComplete}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      {markingHitoComplete ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          Marcando...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 mr-1" />
+                          Marcar hito completado
+                        </>
+                      )}
+                    </Button>
+                  )}
                   {testResults.length > 0 && testResults.some(r => r.estado === 'fallo') && (
                     <Button
                       onClick={handleGenerateTask}
+                      disabled={generatingTask}
                       variant="outline"
                     >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Generar tarea
+                      {generatingTask ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          Generando...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="h-4 w-4 mr-1" />
+                          Generar tarea
+                        </>
+                      )}
                     </Button>
                   )}
                   <Button

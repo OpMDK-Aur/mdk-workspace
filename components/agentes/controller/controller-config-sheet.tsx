@@ -262,7 +262,7 @@ export function ControllerConfigSheet({
 
         <div className="px-6 py-4">
           <Tabs defaultValue="conexion" className="mt-2">
-          <TabsList className="grid w-full grid-cols-4 bg-[#0f0f0f] border-white/10">
+          <TabsList className="grid w-full grid-cols-4 bg-background border-border">
             <TabsTrigger value="conexion">Conexión</TabsTrigger>
             <TabsTrigger value="alertas">Alertas</TabsTrigger>
             <TabsTrigger value="conversiones">Conversiones</TabsTrigger>
@@ -633,7 +633,7 @@ function AlertCard({
                   </TooltipProvider>
                 </label>
                 <Select value={alertaData.plataforma} onValueChange={(val) => onDataChange({ ...alertaData, plataforma: val })}>
-                  <SelectTrigger className="h-9 text-sm bg-[#0f0f0f] border-white/10">
+                  <SelectTrigger className="h-9 text-sm bg-background border-border">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -659,7 +659,7 @@ function AlertCard({
                   </TooltipProvider>
                 </label>
                 <Select value={alertaData.accion} onValueChange={(val) => onDataChange({ ...alertaData, accion: val })}>
-                  <SelectTrigger className="h-9 text-sm bg-[#0f0f0f] border-white/10">
+                  <SelectTrigger className="h-9 text-sm bg-background border-border">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -686,7 +686,7 @@ function AlertCard({
                   </TooltipProvider>
                 </label>
                 <Select value={alertaData.periodo} onValueChange={(val) => onDataChange({ ...alertaData, periodo: val })}>
-                  <SelectTrigger className="h-9 text-sm bg-[#0f0f0f] border-white/10">
+                  <SelectTrigger className="h-9 text-sm bg-background border-border">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

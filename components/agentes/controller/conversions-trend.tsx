@@ -55,7 +55,7 @@ export function ConversionsTrend({ clienteId }: ConversionsTrendProps) {
 
   if (!clienteId) {
     return (
-      <Card className="bg-[#0a0a0a] border-white/5">
+      <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle>Análisis de Conversiones</CardTitle>
           <CardDescription>Selecciona un cliente para ver el análisis</CardDescription>
@@ -66,7 +66,7 @@ export function ConversionsTrend({ clienteId }: ConversionsTrendProps) {
 
   if (loading) {
     return (
-      <Card className="bg-[#0a0a0a] border-white/5">
+      <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle>Análisis de Conversiones</CardTitle>
           <CardDescription>Cargando datos...</CardDescription>
@@ -77,7 +77,7 @@ export function ConversionsTrend({ clienteId }: ConversionsTrendProps) {
 
   if (!trends) {
     return (
-      <Card className="bg-[#0a0a0a] border-white/5">
+      <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle>Análisis de Conversiones</CardTitle>
           <CardDescription>No hay datos disponibles</CardDescription>
@@ -90,7 +90,7 @@ export function ConversionsTrend({ clienteId }: ConversionsTrendProps) {
     const stat = trends[period]
 
     return (
-      <div key={period} className="bg-[#0f0f0f] border border-white/5 rounded-lg p-4">
+      <div key={period} className="bg-background border border-border rounded-lg p-4">
         <p className="text-xs text-gray-400 mb-3">{label}</p>
         <div className="space-y-2">
           <div className="flex items-baseline justify-between">
@@ -125,7 +125,7 @@ export function ConversionsTrend({ clienteId }: ConversionsTrendProps) {
     const stat = trends[period]
 
     return (
-      <div key={`chart-${period}`} className="bg-[#0f0f0f] border border-white/5 rounded-lg p-4">
+      <div key={`chart-${period}`} className="bg-background border border-border rounded-lg p-4">
         <p className="text-xs font-semibold text-gray-300 mb-4">{label}</p>
         <ResponsiveContainer width="100%" height={250}>
           <LineChart data={stat.data}>
@@ -152,7 +152,7 @@ export function ConversionsTrend({ clienteId }: ConversionsTrendProps) {
   }
 
   return (
-    <Card className="bg-[#0a0a0a] border-white/5">
+    <Card className="bg-card border-border">
       <CardHeader>
         <CardTitle>Análisis de Conversiones</CardTitle>
         <CardDescription>Curva de funcionamiento en últimos 7, 14 y 30 días</CardDescription>

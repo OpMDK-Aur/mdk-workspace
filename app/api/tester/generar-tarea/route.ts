@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import crypto from 'crypto'
 
 interface ResultadoFallido {
   nombre: string
@@ -44,6 +45,15 @@ export async function POST(req: Request) {
       .limit(1)
       .single()
 
+    // Find Erika Gordillo to assign the task
+    const { data: erika } = await supabase
+      .from('colaboradores')
+      .select('id')
+      .ilike('nombre', '%erika%')
+      .ilike('apellido', '%gordillo%')
+      .limit(1)
+      .single()
+
     // Build description with failed results
     const failureDetails = resultados_fallidos
       .map((r, idx) => `
@@ -78,7 +88,13 @@ export async function POST(req: Request) {
 <p><strong>Acción requerida:</strong> Revisar y corregir los formularios y landings indicados.</p>
     `.trim()
 
-    // Create task
+    // Create task - assign to Erika Gordillo, created by current user
+    const asignadoA = erika?.id || user.id // Fallback to current user if Erika not found
+    const asignadosA = [asignadoA]
+    if (cliente.account_manager_ids && !cliente.account_manager_ids.includes(asignadoA)) {
+      asignadosA.push(...cliente.account_manager_ids)
+    }
+
     const { data: tarea } = await supabase
       .from('tareas')
       .insert({
@@ -86,8 +102,8 @@ export async function POST(req: Request) {
         descripcion,
         cliente_ids: [cliente_id],
         tipo_tarea_id: tipoTarea?.id || null,
-        asignado_a: user.id,
-        asignados_a: [user.id, ...(cliente.account_manager_ids || [])],
+        asignado_a: asignadoA,
+        asignados_a: asignadosA,
         prioridad: 'alta',
         estado: 'pendiente',
         creado_por: user.id
@@ -95,7 +111,29 @@ export async function POST(req: Request) {
       .select()
       .single()
 
-    return NextResponse.json({ tarea })
+    if (!tarea) {
+      return NextResponse.json({ error: 'Failed to create task' }, { status: 500 })
+    }
+
+    // Add system comment with tested forms/landings
+    const testedFormsText = resultados_fallidos
+      .map(r => `• **${r.nombre}** (${r.tipo === 'meta_form' ? 'Formulario Meta' : 'Landing'})`)
+      .join('\n')
+
+    const comentario = `**Testing automático ejecutado**\n\nFormularios/Landings testeados:\n${testedFormsText}`
+
+    await supabase
+      .from('comentarios_tareas')
+      .insert({
+        id: crypto.randomUUID(),
+        tarea_id: tarea.id,
+        contenido: comentario,
+        autor_id: null,
+        autor_nombre: 'Madky',
+        es_sistema: true
+      })
+
+    return NextResponse.json({ tarea, message: 'Tarea generada exitosamente' })
   } catch (error) {
     console.error('Error generating task:', error)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })

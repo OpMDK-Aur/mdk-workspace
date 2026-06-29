@@ -106,14 +106,14 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
   return (
     <>
       {/* Controles */}
-      <div className="bg-[#161616] border border-white/10 rounded-lg p-4 mb-6">
+      <div className="bg-card border border-border rounded-lg p-4 mb-6">
         {/* Buscador */}
         <div className="flex items-center gap-4 mb-4">
           <Input
             placeholder="Buscar cliente..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 bg-[#0f0f0f] border-white/10 text-white placeholder:text-gray-500"
+            className="flex-1 bg-background border-border text-foreground placeholder:text-muted-foreground"
           />
         </div>
 
@@ -137,7 +137,7 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
         {/* Filtros adicionales */}
         <div className="flex gap-2 items-center flex-wrap">
           <Select value={filterPM} onValueChange={setFilterPM}>
-            <SelectTrigger className="w-44 h-9 bg-[#0f0f0f] border-white/10 text-xs">
+            <SelectTrigger className="w-44 h-9 bg-background border-border text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -151,7 +151,7 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
           </Select>
 
           <Select value={filterAM} onValueChange={setFilterAM}>
-            <SelectTrigger className="w-44 h-9 bg-[#0f0f0f] border-white/10 text-xs">
+            <SelectTrigger className="w-44 h-9 bg-background border-border text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -165,7 +165,7 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
           </Select>
 
           <Select value={filterCliente} onValueChange={setFilterCliente}>
-            <SelectTrigger className="w-44 h-9 bg-[#0f0f0f] border-white/10 text-xs">
+            <SelectTrigger className="w-44 h-9 bg-background border-border text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -193,23 +193,23 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
       </div>
 
       {/* Tabla */}
-      <div className="bg-[#161616] border border-white/10 rounded-lg overflow-hidden">
+      <div className="bg-card border border-border rounded-lg overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-white/10 bg-[#0f0f0f]/50">
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400">Cliente</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400">Plataformas</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400">Alertas</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400">Última ejecución</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400">Disparadas hoy</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400">Estado</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-400">Acciones</th>
+            <tr className="border-b border-border bg-muted">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground">Cliente</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground">Plataformas</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground">Alertas</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground">Última ejecución</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground">Disparadas hoy</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground">Estado</th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((cliente) => (
-              <tr key={cliente.id} className="border-b border-white/10 hover:bg-[#0f0f0f]/50">
-                <td className="px-6 py-4 text-sm text-white font-medium">
+              <tr key={cliente.id} className="border-b border-border hover:bg-muted/50">
+                <td className="px-6 py-4 text-sm text-foreground font-medium">
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => handleToggleClienteActivo(cliente.id, !clienteActivos[cliente.id])}
@@ -242,18 +242,18 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
                       </Badge>
                     )}
                     {!cliente.configuracion && (
-                      <span className="text-xs text-gray-400">—</span>
+                      <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </div>
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-300">
+                <td className="px-6 py-4 text-sm text-foreground">
                   {cliente.alertas_activas > 0 ? (
                     <span>{cliente.alertas_activas} / {cliente.total_alertas}</span>
                   ) : (
-                    <span className="text-gray-500">0 / {cliente.total_alertas}</span>
+                    <span className="text-muted-foreground">0 / {cliente.total_alertas}</span>
                   )}
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-400">
+                <td className="px-6 py-4 text-sm text-muted-foreground">
                   {cliente.ultima_ejecucion ? (
                     <div className="flex items-center gap-1">
                       <IconCalendar className="w-4 h-4" />
@@ -265,9 +265,9 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
                 </td>
                 <td className="px-6 py-4 text-sm">
                   {cliente.alertas_disparadas_hoy > 0 ? (
-                    <span className="text-red-400 font-medium">{cliente.alertas_disparadas_hoy}</span>
+                    <span className="text-destructive font-medium">{cliente.alertas_disparadas_hoy}</span>
                   ) : (
-                    <span className="text-gray-500">0</span>
+                    <span className="text-muted-foreground">0</span>
                   )}
                 </td>
                 <td className="px-6 py-4">
@@ -275,8 +275,8 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
                     variant={estaConfigurado(cliente) ? 'default' : 'secondary'}
                     className={
                       estaConfigurado(cliente)
-                        ? 'bg-green-500/20 text-green-400 border-0'
-                        : 'bg-gray-500/20 text-gray-400 border-0'
+                        ? 'bg-green-500/20 text-green-600 dark:text-green-400 border-0'
+                        : 'bg-muted text-muted-foreground border-0'
                     }
                   >
                     {estaConfigurado(cliente) ? 'Configurado' : 'Sin configurar'}

@@ -418,6 +418,20 @@ export function DashboardContent({ clients, profile }: DashboardContentProps) {
     ? scorecardRows.filter(r => !r.campaignId)
     : scorecardRows.filter(r => !!r.campaignId)
 
+  if (clients.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <p className="text-center text-muted-foreground mb-4">
+              No hay clientes disponibles. Por favor, contacta al administrador.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="h-full">
       {/* Header */}

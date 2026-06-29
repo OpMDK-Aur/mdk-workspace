@@ -367,7 +367,6 @@ export function NPSReport({
 
     return Array.from(grouped.entries()).map(([acId, acClients]) => {
       const respondedClients = acClients.filter(c => c.responded)
-      const totalScore = acClients.reduce((sum, c) => sum + (c.currentScore ?? 0), 0)
       const respondedScore = respondedClients.reduce((sum, c) => sum + (c.currentScore ?? 0), 0)
 
       return {
@@ -376,7 +375,7 @@ export function NPSReport({
         clients: acClients.sort((a, b) => (b.currentScore ?? -1) - (a.currentScore ?? -1)),
         totalClients: acClients.length,
         respondedCount: respondedClients.length,
-        avgWithRule: acClients.length > 0 ? totalScore / acClients.length : 0,
+        avgWithRule: respondedClients.length > 0 ? respondedScore / respondedClients.length : 0,
         avgOnlyResponded: respondedClients.length > 0 ? respondedScore / respondedClients.length : 0,
       }
     }).sort((a, b) => b.avgOnlyResponded - a.avgOnlyResponded)
@@ -580,8 +579,15 @@ export function NPSReport({
             {/* Clients detail */}
             <div className="text-xs text-muted-foreground p-3 bg-muted/10 flex flex-wrap gap-x-3 gap-y-1">
               {ac.clients.map((client, idx) => (
-                <span key={client.clientId}>
-                  {client.clientName}
+                <span key={client.clientId} className="flex items-center">
+                  <a
+                    href={`/dashboard/clients/${client.clientId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                  >
+                    {client.clientName}
+                  </a>
                   <span className={cn("font-semibold ml-0.5", client.responded ? getNPSColor(client.currentScore!) : 'text-muted-foreground')}>
                     ({client.responded ? client.currentScore : '0'})
                   </span>
@@ -642,7 +648,14 @@ export function NPSReport({
                     filteredData.map((data) => (
                       <TableRow key={data.clientId}>
                         <TableCell className="font-medium truncate max-w-[200px]" title={data.clientName || ''}>
-                          {data.clientName}
+                          <a 
+                            href={`/dashboard/clients/${data.clientId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                          >
+                            {data.clientName}
+                          </a>
                         </TableCell>
                         <TableCell className="text-center">
                           {data.plan ? (
