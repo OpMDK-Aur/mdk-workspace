@@ -28,6 +28,18 @@ CREATE TABLE IF NOT EXISTS clients (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Ads Accounts mapping (stores account names for Google Ads and Meta Ads)
+CREATE TABLE IF NOT EXISTS ads_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+  platform TEXT NOT NULL CHECK (platform IN ('google_ads', 'meta_ads')),
+  account_id TEXT NOT NULL,
+  account_name TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(client_id, platform, account_id)
+);
+
 -- User-Client access relationship
 CREATE TABLE IF NOT EXISTS user_client_access (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -94,6 +106,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
 -- Enable Row Level Security on all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ads_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_client_access ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ad_campaigns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ad_insights ENABLE ROW LEVEL SECURITY;
@@ -116,6 +129,19 @@ USING (
   EXISTS (
     SELECT 1 FROM user_client_access 
     WHERE user_id = auth.uid() AND client_id = clients.id
+  )
+  OR
+  EXISTS (
+    SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'direccion'
+  )
+);
+
+-- Ads accounts - view if you have access to the client
+CREATE POLICY "ads_accounts_select" ON ads_accounts FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM user_client_access 
+    WHERE user_id = auth.uid() AND client_id = ads_accounts.client_id
   )
   OR
   EXISTS (

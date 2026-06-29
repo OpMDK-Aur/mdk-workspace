@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { openai } from '@ai-sdk/openai'
 import { streamText } from 'ai'
 import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
+import { getClientAdsAccounts, formatAdsAccount } from '@/lib/ads-accounts'
 
 export const maxDuration = 120
 
@@ -339,9 +340,21 @@ export async function POST(req: Request) {
     const googleDeveloperToken = getGoogleAdsDeveloperToken()
     const googleLoginCustomerId = getGoogleAdsLoginCustomerId()
 
+    // Get ads accounts mapping from DB
+    const adsAccountsDB = await getClientAdsAccounts(clientId)
+    const accountNameMap = new Map<string, { name: string; platform: string }>()
+    
+    for (const account of adsAccountsDB) {
+      accountNameMap.set(account.account_id, {
+        name: account.account_name,
+        platform: account.platform === 'google_ads' ? 'Google Ads' : 'Meta Ads'
+      })
+    }
+
     // Fetch metrics for accounts
     const metricsByAccount: Array<{
       account: string
+      accountName: string
       platform: string
       spend: number
       leads: number
@@ -354,6 +367,7 @@ export async function POST(req: Request) {
     const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
     
     console.log('[v0] Tokens found:', { meta: !!metaAccessToken, google: !!googleAccessToken, googleDevToken: !!googleDeveloperToken })
+    console.log('[v0] Ads accounts from DB:', adsAccountsDB.length)
     
     // Fetch Meta accounts metrics
     // Parse Meta Ads account IDs (can be string like "123,456" or array)
@@ -378,13 +392,16 @@ export async function POST(req: Request) {
         if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
           const metrics = await fetchMetaMetrics(accountId, metaAccessToken, effectivePeriodo)
           if (metrics) {
+            const accountName = accountNameMap.get(accountId)?.name || accountId
             metricsByAccount.push({
               account: accountId,
+              accountName,
               platform: 'Meta Ads',
               ...metrics
             })
           } else {
-            metaErrors.push(`Meta Ads ${accountId}: No se pudieron obtener métricas (verifica que la cuenta esté activa y tenga datos en el periodo)`)
+            const accountName = accountNameMap.get(accountId)?.name || accountId
+            metaErrors.push(`Meta Ads ${accountName} (${accountId}): No se pudieron obtener métricas (verifica que la cuenta esté activa y tenga datos en el periodo)`)
           }
         }
       }
@@ -416,13 +433,16 @@ export async function POST(req: Request) {
         if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
           const metrics = await fetchGoogleMetrics(accountId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, effectivePeriodo)
           if (metrics) {
+            const accountName = accountNameMap.get(accountId)?.name || accountId
             metricsByAccount.push({
               account: accountId,
+              accountName,
               platform: 'Google Ads',
               ...metrics
             })
           } else {
-            googleErrors.push(`Google Ads ${accountId}: No se pudieron obtener métricas (verifica las credenciales y que la cuenta esté activa)`)
+            const accountName = accountNameMap.get(accountId)?.name || accountId
+            googleErrors.push(`Google Ads ${accountName} (${accountId}): No se pudieron obtener métricas (verifica las credenciales y que la cuenta esté activa)`)
           }
         }
       }
@@ -458,7 +478,7 @@ export async function POST(req: Request) {
 
 DESGLOSE POR CUENTA:
 ${metricsByAccount.map(m => 
-  `• ${m.platform} (${m.account}):
+  `• ${m.accountName} (${m.account}) - ${m.platform}:
     - Inversión: $${m.spend.toFixed(2)}
     - Leads: ${m.leads}
     - CPL: $${m.cpl.toFixed(2)}
@@ -470,25 +490,25 @@ ${metricsByAccount.map(m =>
 DESGLOSE DIARIO POR CUENTA (datos reales día por día):
 ${metricsByAccount.map(m => {
   if (!m.daily || m.daily.length === 0) {
-    return `• ${m.platform} (${m.account}): sin datos diarios disponibles`
+    return `• ${m.accountName} (${m.account}) - ${m.platform}: sin datos diarios disponibles`
   }
   const rows = m.daily.map(d => 
     `    ${d.date}: ${d.leads} leads | $${d.spend.toFixed(2)} inversión | ${d.impressions.toLocaleString()} impresiones | ${d.clicks.toLocaleString()} clics`
   ).join('\n')
-  return `• ${m.platform} (${m.account}):\n${rows}`
+  return `• ${m.accountName} (${m.account}) - ${m.platform}:\n${rows}`
 }).join('\n')}
 
 DESGLOSE POR CAMPAÑA (datos reales por campaña):
 ${metricsByAccount.map(m => {
   if (!m.campaigns || m.campaigns.length === 0) {
-    return `• ${m.platform} (${m.account}): sin datos de campañas disponibles`
+    return `• ${m.accountName} (${m.account}) - ${m.platform}: sin datos de campañas disponibles`
   }
   const rows = m.campaigns
     .sort((a, b) => b.spend - a.spend)
     .map(c => 
       `    "${c.name}": ${c.leads} leads | $${c.spend.toFixed(2)} inversión | CPL $${c.cpl.toFixed(2)} | ${c.impressions.toLocaleString()} impresiones | ${c.clicks.toLocaleString()} clics | CTR ${c.ctr.toFixed(2)}%`
     ).join('\n')
-  return `• ${m.platform} (${m.account}):\n${rows}`
+  return `• ${m.accountName} (${m.account}) - ${m.platform}:\n${rows}`
 }).join('\n')}`
     }
 

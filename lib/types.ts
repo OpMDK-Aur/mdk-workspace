@@ -350,6 +350,16 @@ export interface BudgetPlatformSummary {
   campaigns: BudgetCampaignAlert[]
 }
 
+export interface AdsAccount {
+  id: string
+  client_id: string
+  platform: 'google_ads' | 'meta_ads'
+  account_id: string
+  account_name: string
+  created_at: string
+  updated_at: string
+}
+
 export interface ClientBudgetAlert {
   clientId: string
   clientName: string
