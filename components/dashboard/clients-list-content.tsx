@@ -523,6 +523,38 @@ const applyFilter = (filter: SavedFilter) => {
     setCreateSuccess(false)
   }
 
+  // Quick create client with minimal data
+  const handleQuickCreateClient = async () => {
+    setCreating(true)
+    try {
+      const clientData = {
+        nombre_del_negocio: `Nuevo Cliente ${new Date().getTime()}`,
+        activo: true,
+      }
+
+      const { data, error } = await supabase
+        .from('clientes')
+        .insert(clientData)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('[v0] Error creating client:', error)
+        return
+      }
+
+      // Add to local state
+      setLocalClients(prev => [...prev, data as Client].sort((a, b) => a.nombre_del_negocio.localeCompare(b.nombre_del_negocio)))
+
+      // Navigate to the new client page
+      router.push(`/dashboard/clients/${data.id}`)
+    } catch (err) {
+      console.error('[v0] Error:', err)
+    } finally {
+      setCreating(false)
+    }
+  }
+
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault()
     setCreating(true)
@@ -827,329 +859,13 @@ const applyFilter = (filter: SavedFilter) => {
             </p>
           </div>
           {canCreate && (
-            <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) resetForm(); }}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Nuevo cliente
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Crear nuevo cliente</DialogTitle>
-                  <DialogDescription>
-                    Completa la informacion del cliente. Los campos marcados con * son obligatorios.
-                  </DialogDescription>
-                </DialogHeader>
+            <Button className="gap-2" onClick={handleQuickCreateClient} disabled={creating}>
+              <Plus className="h-4 w-4" />
+              Nuevo cliente
+            </Button>
+          )}
 
-                <form onSubmit={handleCreateClient} className="space-y-6 mt-4">
-                  {/* Basic Info */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                      <Building2 className="h-4 w-4" />
-                      Informacion del negocio
-                    </h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="col-span-2">
-<Label htmlFor="nombre_del_negocio">Nombre del negocio *</Label>
-                      <Input
-                        id="nombre_del_negocio"
-                        value={newClient.nombre_del_negocio}
-                        onChange={(e) => setNewClient(prev => ({ ...prev, nombre_del_negocio: e.target.value }))}
-                          placeholder="Ej: Mi Empresa S.A."
-                          required
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="status">Estado inicial</Label>
-                        <Select
-                          value={newClient.status}
-                          onValueChange={(v) => setNewClient(prev => ({ ...prev, status: v as SemaforoStatus }))}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="verde">Optimo</SelectItem>
-                            <SelectItem value="amarillo">Atencion</SelectItem>
-                            <SelectItem value="naranja">Alerta</SelectItem>
-                            <SelectItem value="rojo">Critico</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* Contact Info */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      Contacto principal
-                    </h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="nombre">Nombre</Label>
-                        <Input
-                          id="nombre"
-                          value={newClient.nombre}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, nombre: e.target.value }))}
-                          placeholder="Juan"
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="apellido">Apellido</Label>
-                        <Input
-                          id="apellido"
-                          value={newClient.apellido}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, apellido: e.target.value }))}
-                          placeholder="Perez"
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="telefono">Telefono</Label>
-                        <Input
-                          id="telefono"
-                          value={newClient.telefono}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, telefono: e.target.value }))}
-                          placeholder="+54 9 11 1234-5678"
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Fees */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-foreground">Honorarios</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="fee_mdk">Fee MDK (ARS)</Label>
-                        <Input
-                          id="fee_mdk"
-                          type="number"
-                          value={newClient.fee_mdk}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, fee_mdk: e.target.value }))}
-                          placeholder="0"
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="fee_aurelia">Fee Aurelia (ARS)</Label>
-                        <Input
-                          id="fee_aurelia"
-                          type="number"
-                          value={newClient.fee_aurelia}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, fee_aurelia: e.target.value }))}
-                          placeholder="0"
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="nps_score">NPS Score (0-10)</Label>
-                        <Input
-                          id="nps_score"
-                          type="number"
-                          min="0"
-                          max="10"
-                          value={newClient.nps_score}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, nps_score: e.target.value }))}
-                          placeholder="8"
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Team Assignment */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-foreground">Asignacion de equipo</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="project_manager">Project Manager</Label>
-                        <Select
-                          value={newClient.project_manager_id || 'none'}
-                          onValueChange={(v) => setNewClient(prev => ({ ...prev, project_manager_id: v === 'none' ? '' : v }))}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Seleccionar..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Sin asignar</SelectItem>
-                            {projectManagers.map(pm => (
-                              <SelectItem key={pm.id} value={pm.id}>
-                                {pm.full_name || pm.email}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="account_manager">Account Manager</Label>
-                        <Select
-                          value={newClient.account_manager_id || 'none'}
-                          onValueChange={(v) => setNewClient(prev => ({ ...prev, account_manager_id: v === 'none' ? '' : v }))}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Seleccionar..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Sin asignar</SelectItem>
-                            {accountManagers.map(am => (
-                              <SelectItem key={am.id} value={am.id}>
-                                {am.full_name || am.email}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* CRM & Landing */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-foreground">CRM y Landing</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="crm_tipo">Tipo de CRM</Label>
-                        <Select
-                          value={newClient.crm_tipo || 'none'}
-                          onValueChange={(v) => setNewClient(prev => ({ ...prev, crm_tipo: v === 'none' ? '' : v }))}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Seleccionar..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Sin CRM</SelectItem>
-                            <SelectItem value="ghl">GoHighLevel</SelectItem>
-                            <SelectItem value="hubspot">HubSpot</SelectItem>
-                            <SelectItem value="salesforce">Salesforce</SelectItem>
-                            <SelectItem value="pipedrive">Pipedrive</SelectItem>
-                            <SelectItem value="otro">Otro</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="crm_url">URL del CRM</Label>
-                        <Input
-                          id="crm_url"
-                          value={newClient.crm_url}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, crm_url: e.target.value }))}
-                          placeholder="https://app.gohighlevel.com/..."
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="crm_location_id">CRM Location ID</Label>
-                        <Input
-                          id="crm_location_id"
-                          value={newClient.crm_location_id}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, crm_location_id: e.target.value }))}
-                          placeholder="xxxxxxxxxxxxxxx"
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="landing_url">URL Landing principal</Label>
-                        <Input
-                          id="landing_url"
-                          value={newClient.landing_url}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, landing_url: e.target.value }))}
-                          placeholder="https://www.ejemplo.com"
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Integrations */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-foreground">Integraciones Ads (opcional)</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="google_ads_customer_id">Google Ads Customer ID</Label>
-                        <Input
-                          id="google_ads_customer_id"
-                          value={newClient.google_ads_customer_id}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, google_ads_customer_id: e.target.value }))}
-                          placeholder="123-456-7890"
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="meta_ads_account_id">Meta Ads Account ID</Label>
-                        <Input
-                          id="meta_ads_account_id"
-                          value={newClient.meta_ads_account_id}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, meta_ads_account_id: e.target.value }))}
-                          placeholder="act_123456789"
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="notion_id">Notion ID</Label>
-                        <Input
-                          id="notion_id"
-                          value={newClient.notion_id}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, notion_id: e.target.value }))}
-                          placeholder="ID de la pagina de Notion"
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="discord_channel_name">Canal de Discord</Label>
-                        <Input
-                          id="discord_channel_name"
-                          value={newClient.discord_channel_name}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, discord_channel_name: e.target.value }))}
-                          placeholder="ADT | Comunicacion interna"
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="discord_channel_id">Discord Channel ID</Label>
-                        <Input
-                          id="discord_channel_id"
-                          value={newClient.discord_channel_id}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, discord_channel_id: e.target.value }))}
-                          placeholder="1234567890123456789"
-                          className="mt-1"
-                        />
-                        <p className="text-[10px] text-muted-foreground mt-1">
-                          Click derecho en el canal &gt; Copiar ID del canal
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Error/Success Messages */}
-                  {createError && (
-                    <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      {createError}
-                    </div>
-                  )}
-                  {createSuccess && (
-                    <div className="flex items-center gap-2 p-3 rounded-lg bg-status-verde/10 text-status-verde text-sm">
-                      <CheckCircle2 className="h-4 w-4 shrink-0" />
-                      Cliente creado exitosamente
-                    </div>
-                  )}
-
-                  {/* Actions */}
-                  <div className="flex justify-end gap-3 pt-4 border-t">
-                    <Button type="button" variant="outline" onClick={() => { setCreateOpen(false); resetForm(); }}>
-                      Cancelar
-                    </Button>
-                    <Button type="submit" disabled={creating || !newClient.nombre_del_negocio.trim()}>
-                      {creating ? 'Creando...' : 'Crear cliente'}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
           )}
         </div>
 
