@@ -349,8 +349,10 @@ export default function AnalistaPage() {
           clientId: selectedClient.id,
           month: apiMonth,
           year: apiYear,
-          dateStart,
-          dateEnd,
+          periodo: {
+            start: dateStart,
+            end: dateEnd,
+          },
           attachments: uploadedFiles,
         }),
       })

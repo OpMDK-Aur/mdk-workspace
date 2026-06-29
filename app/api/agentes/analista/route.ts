@@ -313,12 +313,21 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { clientId, periodo, cuentas, messages, month, year, attachments } = await req.json()
+    const { clientId, periodo, cuentas, messages, month, year, attachments, dateStart, dateEnd } = await req.json()
     
-    console.log('[v0] Analista request:', { clientId, month, year, periodo, attachmentsCount: attachments?.length || 0 })
+    // Use explicit periodo if provided, otherwise fallback to dateStart/dateEnd
+    let receivedPeriodo = periodo
+    if (!receivedPeriodo && dateStart && dateEnd) {
+      receivedPeriodo = {
+        start: dateStart,
+        end: dateEnd,
+      }
+    }
+    
+    console.log('[v0] Analista request:', { clientId, month, year, periodo: receivedPeriodo, attachmentsCount: attachments?.length || 0 })
 
     // Calculate period from month/year if not provided directly
-    let effectivePeriodo = periodo
+    let effectivePeriodo = receivedPeriodo
     if (!effectivePeriodo && month && year) {
       const startDate = new Date(year, month - 1, 1)
       const endDate = new Date(year, month, 0) // Last day of month
@@ -327,6 +336,8 @@ export async function POST(req: Request) {
         end: endDate.toISOString().split('T')[0]
       }
     }
+    
+    console.log('[v0] Effective period:', effectivePeriodo)
 
     // Get agent config
     const { data: agentConfig } = await supabase
