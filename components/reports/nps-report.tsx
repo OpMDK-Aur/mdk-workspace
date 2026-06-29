@@ -367,7 +367,6 @@ export function NPSReport({
 
     return Array.from(grouped.entries()).map(([acId, acClients]) => {
       const respondedClients = acClients.filter(c => c.responded)
-      const totalScore = acClients.reduce((sum, c) => sum + (c.currentScore ?? 0), 0)
       const respondedScore = respondedClients.reduce((sum, c) => sum + (c.currentScore ?? 0), 0)
 
       return {
@@ -376,7 +375,7 @@ export function NPSReport({
         clients: acClients.sort((a, b) => (b.currentScore ?? -1) - (a.currentScore ?? -1)),
         totalClients: acClients.length,
         respondedCount: respondedClients.length,
-        avgWithRule: acClients.length > 0 ? totalScore / acClients.length : 0,
+        avgWithRule: respondedClients.length > 0 ? respondedScore / respondedClients.length : 0,
         avgOnlyResponded: respondedClients.length > 0 ? respondedScore / respondedClients.length : 0,
       }
     }).sort((a, b) => b.avgOnlyResponded - a.avgOnlyResponded)
