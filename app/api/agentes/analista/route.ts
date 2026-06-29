@@ -350,6 +350,8 @@ export async function POST(req: Request) {
         platform: account.platform === 'google_ads' ? 'Google Ads' : 'Meta Ads'
       })
     }
+    
+    console.log('[v0] Ads accounts in DB:', adsAccountsDB.length, adsAccountsDB)
 
     // Fetch metrics for accounts
     const metricsByAccount: Array<{
@@ -513,7 +515,21 @@ ${metricsByAccount.map(m => {
     }
 
     const periodoTexto = effectivePeriodo?.start && effectivePeriodo?.end 
-      ? `${effectivePeriodo.start} al ${effectivePeriodo.end}`
+      ? (() => {
+          const start = new Date(effectivePeriodo.start)
+          const end = new Date(effectivePeriodo.end)
+          const startDay = start.getDate()
+          const startMonth = start.toLocaleString('es-ES', { month: 'long' })
+          const endDay = end.getDate()
+          const endMonth = end.toLocaleString('es-ES', { month: 'long' })
+          const year = end.getFullYear()
+          
+          if (startMonth === endMonth) {
+            return `${startDay} - ${endDay} de ${startMonth} ${year}`
+          } else {
+            return `${startDay} de ${startMonth} - ${endDay} de ${endMonth} ${year}`
+          }
+        })()
       : 'últimos 30 días'
 
     // Detect which report template applies based on the client's plan
