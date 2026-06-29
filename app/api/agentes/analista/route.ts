@@ -33,13 +33,18 @@ async function fetchMetaMetrics(
     // Get account name
     let accountName = accountId
     try {
-      const nameResp = await fetch(`https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}?fields=name&access_token=${accessToken}`)
-      if (nameResp.ok) {
-        const nameData = await nameResp.json()
-        accountName = nameData.name || accountId
+      const cleanId = accountId.replace('act_', '')
+      const nameUrl = `https://graph.facebook.com/${META_API_VERSION}/act_${cleanId}?fields=name&access_token=${accessToken}`
+      const nameResp = await fetch(nameUrl)
+      const nameData = await nameResp.json()
+      if (nameResp.ok && nameData.name) {
+        accountName = nameData.name
+        console.log('[v0] Meta account name retrieved:', accountName)
+      } else {
+        console.warn('[v0] Meta name response not ok or no name:', { status: nameResp.status, nameData })
       }
     } catch (e) {
-      console.warn('[v0] Could not fetch Meta account name:', e)
+      console.warn('[v0] Error fetching Meta account name:', e)
     }
     
     const timeRange = JSON.stringify({ since: startDate, until: endDate })
@@ -56,7 +61,7 @@ async function fetchMetaMetrics(
     
     const data = await response.json()
     if (!data.data || data.data.length === 0) {
-      return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0, daily: [], campaigns: [] }
+      return { accountName, spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0, daily: [], campaigns: [] }
     }
     
     const getLeads = (row: { actions?: Array<{ action_type: string; value: string }> }) => {
@@ -158,14 +163,15 @@ async function fetchGoogleMetrics(
         },
         body: JSON.stringify({ query: nameQuery }),
       })
-      if (nameResp.ok) {
-        const nameData = await nameResp.json()
-        if (nameData.results && nameData.results[0]) {
-          accountName = nameData.results[0].customer?.descriptive_name || customerId
-        }
+      const nameData = await nameResp.json()
+      if (nameResp.ok && nameData.results && nameData.results[0]?.customer?.descriptive_name) {
+        accountName = nameData.results[0].customer.descriptive_name
+        console.log('[v0] Google account name retrieved:', accountName)
+      } else {
+        console.warn('[v0] Google name response error:', { status: nameResp.status, nameData })
       }
     } catch (e) {
-      console.warn('[v0] Could not fetch Google account name:', e)
+      console.warn('[v0] Error fetching Google account name:', e)
     }
     
     const query = `
