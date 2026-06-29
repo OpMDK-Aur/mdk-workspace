@@ -686,7 +686,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   }
 
   const saveBusinessName = async () => {
-    if (!businessName.trim() || businessName === client.business_name) {
+    const trimmedName = businessName.trim()
+    if (!trimmedName || trimmedName === client.business_name) {
       setEditingBusinessName(false)
       return
     }
@@ -695,10 +696,12 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     try {
       const { error } = await supabase
         .from('clientes')
-        .update({ nombre_del_negocio: businessName.trim() })
+        .update({ nombre_del_negocio: trimmedName })
         .eq('id', client.id)
       
       if (!error) {
+        // Keep the updated name in state for immediate UI update
+        setBusinessName(trimmedName)
         setEditingBusinessName(false)
       } else {
         setBusinessName(client.business_name)
@@ -1155,7 +1158,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
       </div>
     ) : (
       <>
-        <h1 className="text-2xl font-bold text-foreground text-balance">{client.business_name}</h1>
+        <h1 className="text-2xl font-bold text-foreground text-balance">{businessName}</h1>
         <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditingBusinessName(true)}>
           <Pencil className="h-4 w-4" />
         </Button>
