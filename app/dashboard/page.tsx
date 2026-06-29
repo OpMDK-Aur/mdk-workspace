@@ -26,6 +26,11 @@ export default async function DashboardPage() {
     )
   } catch (error) {
     console.error('[Dashboard] Error loading data:', error)
+    if (error instanceof Error) {
+      console.error('[Dashboard] Error message:', error.message)
+      console.error('[Dashboard] Error stack:', error.stack)
+    }
+    // Still render the component with empty data so user can see the UI
     return (
       <DashboardContent clients={[]} profile={null} />
     )
