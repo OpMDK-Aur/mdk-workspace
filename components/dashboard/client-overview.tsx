@@ -12,6 +12,7 @@ import {
   DollarSign, Target, TrendingDown, MousePointerClick, Eye,
   Users, MessageSquare, Calendar, Clock,
   ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown, Pencil, Check, X, Plus, Loader2,
+  AlertCircle, Trash2,
 } from 'lucide-react'
 import {
   DropdownMenu,
