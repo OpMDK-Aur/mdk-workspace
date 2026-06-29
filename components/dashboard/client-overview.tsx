@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import type { Client, Profile, ScorecardRow, DateRange } from '@/lib/types'
 import { MORA_OPTIONS, getMoraColor, MESES_CARGA } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -571,6 +572,8 @@ function sortUnidades(unidades: UnidadDeNegocio[]): UnidadDeNegocio[] {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0, unidadesDeNegocio = [], metricasColaborador = [], horasPorColaborador = [], npsNotas = [] }: ClientOverviewProps) {
+  const supabase = createClient()
+  const router = useRouter()
   const [preset, setPreset]           = useState('last_30d')
   // Month filter for "Horas del equipo" (defaults to the current month)
   const [teamMonth, setTeamMonth] = useState<string>(() => currentMonthValue())
@@ -757,6 +760,20 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
       console.error('Error updating AM:', e)
     } finally {
       setUpdatingAM(false)
+    }
+  }
+
+  const handleDeleteClient = async (clientId: string) => {
+    try {
+      await supabase
+        .from('clientes')
+        .delete()
+        .eq('id', clientId)
+      
+      router.push('/dashboard/clients')
+    } catch (err) {
+      console.error('[v0] Error deleting client:', err)
+      throw err
     }
   }
 
@@ -1606,6 +1623,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             isActivo={isActivo}
             onActivoChange={handleActivoChange}
             updatingActivo={updatingActivo}
+            onDelete={handleDeleteClient}
           />
         </div>
 

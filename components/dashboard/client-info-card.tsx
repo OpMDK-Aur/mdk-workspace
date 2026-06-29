@@ -44,7 +44,7 @@ import {
   Plus, X, CheckCircle2, Circle, Edit2, Save, Loader2,
   Megaphone, Search, TrendingUp, Users, Palette, Code,
   MessageCircle, Database, FileText, Settings, Trash2, Star,
-  Power, ArrowLeft,
+  Power, ArrowLeft, AlertCircle,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -72,6 +72,7 @@ interface ClientInfoCardProps {
   isActivo?: boolean
   onActivoChange?: (newActivo: boolean) => Promise<void>
   updatingActivo?: boolean
+  onDelete?: (clientId: string) => Promise<void>
 }
 
 const ETAPA_OPTIONS: { value: ClientEtapa; label: string; description: string; isAlert?: boolean }[] = [
@@ -127,11 +128,13 @@ const SERVICE_COLORS: Record<string, string> = {
   'gray': 'bg-gray-500/10 text-gray-500 border-gray-500/20',
 }
 
-export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isActivo = true, onActivoChange, updatingActivo = false }: ClientInfoCardProps) {
+export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isActivo = true, onActivoChange, updatingActivo = false, onDelete }: ClientInfoCardProps) {
   const supabase = createClient()
   const isMaster = userRole === 'master'
   
-
+  // Delete dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   
   // Contact state - using existing fields from clientes table (nombre, apellido, telefono)
   const [contactNombre, setContactNombre] = useState(client.nombre || '')
@@ -225,6 +228,21 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
       .update({ semaforo_unidades: newSemaforo })
       .eq('id', client.id)
     setSavingSemaforo(false)
+  }
+
+  // Delete client
+  const handleDeleteClient = async () => {
+    if (!onDelete) return
+    
+    setDeleting(true)
+    try {
+      await onDelete(client.id)
+    } catch (err) {
+      console.error('[v0] Error deleting client:', err)
+    } finally {
+      setDeleting(false)
+      setDeleteDialogOpen(false)
+    }
   }
   
   // Save plan
@@ -544,6 +562,52 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
         </CardContent>
       </Card>
     </div>
+
+    {/* Danger Zone */}
+    {onDelete && (
+      <div className="mt-8 p-4 border border-destructive/50 rounded-lg bg-destructive/5">
+        <h3 className="text-sm font-semibold text-destructive mb-3 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4" />
+          Zona de Peligro
+        </h3>
+        <p className="text-xs text-muted-foreground mb-4">
+          Esta acción no se puede deshacer. El cliente y todos sus datos asociados serán eliminados permanentemente.
+        </p>
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogTrigger asChild>
+            <Button variant="destructive" size="sm" className="w-full">
+              <Trash2 className="h-4 w-4 mr-2" />
+              Eliminar cliente
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Eliminar cliente</DialogTitle>
+              <DialogDescription>
+                ¿Estás seguro de que deseas eliminar este cliente? Esta acción no se puede deshacer.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <p className="text-sm text-foreground">
+                Cliente: <span className="font-semibold">{client.business_name}</span>
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDeleteClient}
+                disabled={deleting}
+              >
+                {deleting ? 'Eliminando...' : 'Eliminar'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    )}
 
     {/* Back to clients button */}
     <div className="mt-4">
