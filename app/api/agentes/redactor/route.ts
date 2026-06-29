@@ -297,13 +297,17 @@ export async function POST(req: Request) {
     const body = await req.json()
     let { clientId, tipo, cuentas, periodo } = body
 
+    console.log('[redactor] Raw request:', { clientId, cuentasRaw: cuentas, tipoRaw: typeof cuentas, periodo })
+
     // Parse cuentas - they may come as comma-separated strings in each array element
     let parsedCuentas: string[] = []
     if (cuentas && Array.isArray(cuentas)) {
       for (const cuenta of cuentas) {
+        console.log('[redactor] Processing cuenta:', { cuenta, type: typeof cuenta })
         if (typeof cuenta === 'string') {
           // Split by comma and trim each ID
           const ids = cuenta.split(',').map((id: string) => id.trim()).filter((id: string) => id)
+          console.log('[redactor] Split string cuenta into:', ids)
           parsedCuentas.push(...ids)
         } else if (typeof cuenta === 'number') {
           parsedCuentas.push(String(cuenta))
@@ -354,15 +358,20 @@ export async function POST(req: Request) {
     // Fetch Meta metrics for selected accounts
     const metaAccessToken = process.env.META_ADS_ACCESS_TOKEN
     console.log('[redactor] Meta token available:', !!metaAccessToken)
+    console.log('[redactor] Processing Meta accounts:', { cuentasCount: cuentas?.length, cuentas })
     
     if (metaAccessToken && cuentas && cuentas.length > 0) {
       for (const accountId of cuentas) {
+        console.log('[redactor] Checking account:', { accountId, startsWithAct: accountId.startsWith('act_'), isNumeric: /^\d+$/.test(accountId) })
         // Meta accounts are numeric or start with 'act_'
         const isMetaAccount = accountId.startsWith('act_') || /^\d+$/.test(accountId)
+        console.log('[redactor] Is Meta account?', isMetaAccount)
         
         if (isMetaAccount) {
           try {
+            console.log('[redactor] Fetching Meta metrics for:', accountId)
             const metaMetrics = await fetchMetaMetrics(accountId, metaAccessToken, { start: startDate, end: endDate })
+            console.log('[redactor] Got Meta metrics:', metaMetrics)
             if (metaMetrics) {
               metaSpend += metaMetrics.spend || 0
               metaLeads += metaMetrics.leads || 0
