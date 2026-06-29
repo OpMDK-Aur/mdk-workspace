@@ -755,8 +755,10 @@ FORMATO:
         a.type?.includes('csv') ||
         a.type?.includes('text')
       )
+      console.log('[v0] Found documents to parse:', documentAttachments.length, documentAttachments.map((a: { name?: string; type: string }) => ({ name: a.name, type: a.type })))
       try {
         documentsContext = await parseAttachments(documentAttachments as Array<{ url: string; name?: string; type?: string }>)
+        console.log('[v0] Documents parsed successfully, context length:', documentsContext.length)
       } catch (error) {
         console.error('[v0] Error parsing documents:', error)
         // Fallback to listing files if parsing fails
@@ -793,11 +795,19 @@ ${documentAttachments.map((a: { name?: string; type: string }, idx: number) =>
         })
       : [{
           role: 'user',
-          content: `Genera un informe de análisis completo para ${client.nombre_del_negocio} del periodo ${periodoTexto}. Incluye gráficos de visualización, un CSV descargable y un informe en PDF (bloque pdf) con los datos.${documentsContext}`
+          content: `El cliente ha compartido un archivo con datos de seguimiento. Por favor, analiza el contenido del archivo adjunto y compáralo con las métricas de las plataformas publicitarias (Google Ads, Meta Ads). 
+          
+Luego genera un informe de análisis completo para ${client.nombre_del_negocio} del periodo ${periodoTexto}. Incluye:
+- Comparativa entre los leads reportados en el archivo vs los leads de la plataforma
+- Cálculo de variación (diferencia entre CRM y plataforma)
+- Gráficos de visualización
+- CSV descargable
+- Informe en PDF (bloque pdf) con los datos${documentsContext}`
         }]
 
-    // Use GPT-4o for vision when images present, otherwise gpt-4o-mini
-    const modelId = hasImages ? 'gpt-4o' : 'gpt-4o-mini'
+    // Use GPT-4o for vision (images) or when documents are present (better at data analysis)
+    // Fall back to gpt-4o-mini only if neither images nor documents are present
+    const modelId = hasImages || hasDocuments ? 'gpt-4o' : 'gpt-4o-mini'
 
     const result = streamText({
       model: openai(modelId),
