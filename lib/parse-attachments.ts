@@ -115,9 +115,9 @@ export async function parseAttachments(
   let context = '\n\nARCHIVOS ADJUNTOS PARSEADOS:\n\n'
   validParsed.forEach((attachment) => {
     context += `---\nARCHIVO: ${attachment.name} (${attachment.format})\n---\n`
-    // Limit content to first 2000 chars per file to avoid bloating the context
-    const contentPreview = attachment.content.substring(0, 2000)
-    const truncated = attachment.content.length > 2000 ? '... [truncado]' : ''
+    // Limit content to first 10000 chars per file (enough for ~100+ rows of CSV data)
+    const contentPreview = attachment.content.substring(0, 10000)
+    const truncated = attachment.content.length > 10000 ? '\n... [Archivo muy grande, se muestran las primeras 10000 caracteres]' : ''
     context += contentPreview + truncated + '\n\n'
   })
 
