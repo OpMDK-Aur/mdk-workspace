@@ -758,7 +758,7 @@ export default function AnalistaPage() {
                             )}
                           </div>
                           {message.content && (
-                            <div className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="mt-2">
                               <CopyButton content={message.content} />
                             </div>
                           )}
