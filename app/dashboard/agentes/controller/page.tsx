@@ -86,34 +86,34 @@ export default async function ControllerPage() {
   }
 
   return (
-    <main className="flex-1 bg-[#0f0f0f] p-8">
+    <main className="flex-1 bg-background p-8">
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-start justify-between mb-2">
           <div>
-            <h1 className="text-3xl font-bold text-white mb-1">Controller</h1>
-            <p className="text-sm text-gray-400">Monitoreo automático de cuentas publicitarias</p>
+            <h1 className="text-3xl font-bold text-foreground mb-1">Controller</h1>
+            <p className="text-sm text-muted-foreground">Monitoreo automático de cuentas publicitarias</p>
           </div>
         </div>
       </div>
 
       {/* Stats Bar */}
       <div className="grid grid-cols-4 gap-4 mb-8">
-        <div className="bg-[#161616] border border-white/10 rounded-lg p-4">
-          <p className="text-xs text-gray-400 mb-1">Total Clientes</p>
-          <p className="text-2xl font-bold text-white">{stats.totalClientes}</p>
+        <div className="bg-card border border-border rounded-lg p-4">
+          <p className="text-xs text-muted-foreground mb-1">Total Clientes</p>
+          <p className="text-2xl font-bold text-foreground">{stats.totalClientes}</p>
         </div>
-        <div className="bg-[#161616] border border-white/10 rounded-lg p-4">
-          <p className="text-xs text-gray-400 mb-1">Configurados</p>
-          <p className="text-2xl font-bold text-white">{stats.clientesConfigurados}</p>
+        <div className="bg-card border border-border rounded-lg p-4">
+          <p className="text-xs text-muted-foreground mb-1">Configurados</p>
+          <p className="text-2xl font-bold text-foreground">{stats.clientesConfigurados}</p>
         </div>
-        <div className="bg-[#161616] border border-white/10 rounded-lg p-4">
-          <p className="text-xs text-gray-400 mb-1">Alertas Activas</p>
-          <p className="text-2xl font-bold text-white">{stats.alertasActivas}</p>
+        <div className="bg-card border border-border rounded-lg p-4">
+          <p className="text-xs text-muted-foreground mb-1">Alertas Activas</p>
+          <p className="text-2xl font-bold text-foreground">{stats.alertasActivas}</p>
         </div>
-        <div className="bg-[#161616] border border-white/10 rounded-lg p-4">
-          <p className="text-xs text-gray-400 mb-1">Disparadas Hoy</p>
-          <p className="text-2xl font-bold text-red-400">{stats.alertasDisparadasHoy}</p>
+        <div className="bg-card border border-border rounded-lg p-4">
+          <p className="text-xs text-muted-foreground mb-1">Disparadas Hoy</p>
+          <p className="text-2xl font-bold text-destructive">{stats.alertasDisparadasHoy}</p>
         </div>
       </div>
 
