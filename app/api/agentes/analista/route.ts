@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { openai } from '@ai-sdk/openai'
 import { streamText } from 'ai'
 import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
+import { parseAttachments } from '@/lib/parse-attachments'
 
 export const maxDuration = 120
 
@@ -738,24 +739,32 @@ FORMATO:
       a.type?.includes('pdf') || 
       a.type?.includes('spreadsheet') || 
       a.type?.includes('excel') ||
-      a.type?.includes('sheet')
+      a.type?.includes('sheet') ||
+      a.type?.includes('csv') ||
+      a.type?.includes('text')
     )
     
-    // Build documents context if present
+    // Parse documents if present
     let documentsContext = ''
     if (hasDocuments) {
       const documentAttachments = attachments.filter((a: { type: string }) => 
         a.type?.includes('pdf') || 
         a.type?.includes('spreadsheet') || 
         a.type?.includes('excel') ||
-        a.type?.includes('sheet')
+        a.type?.includes('sheet') ||
+        a.type?.includes('csv') ||
+        a.type?.includes('text')
       )
-      documentsContext = `\n\nARCHIVOS ADJUNTOS CARGADOS:
+      try {
+        documentsContext = await parseAttachments(documentAttachments as Array<{ url: string; name?: string; type?: string }>)
+      } catch (error) {
+        console.error('[v0] Error parsing documents:', error)
+        // Fallback to listing files if parsing fails
+        documentsContext = `\n\nARCHIVOS ADJUNTOS (no se pudieron parsear automáticamente):
 ${documentAttachments.map((a: { name?: string; type: string }, idx: number) => 
   `- Archivo ${idx + 1}: ${a.name || 'Documento'} (${a.type})`
-).join('\n')}
-
-Estos archivos han sido parseados y sus contenidos están disponibles en el contexto. Si contienen datos, tablas o información relevante, úsalos en tu análisis junto con las métricas de las APIs.`
+).join('\n')}`
+      }
     }
     
     // Build messages - if user sent messages, use them; otherwise create initial request
