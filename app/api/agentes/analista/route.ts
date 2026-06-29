@@ -12,6 +12,7 @@ const GOOGLE_ADS_API_VERSION = 'v23'
 type DailyPoint = { date: string; spend: number; leads: number; impressions: number; clicks: number }
 type CampaignPoint = { name: string; spend: number; leads: number; cpl: number; impressions: number; clicks: number; ctr: number }
 type AccountMetrics = {
+  accountName?: string
   spend: number; leads: number; cpl: number; impressions: number; clicks: number; ctr: number
   daily: DailyPoint[]
   campaigns: CampaignPoint[]
@@ -28,6 +29,18 @@ async function fetchMetaMetrics(
     const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
     const startDate = periodo?.start || thirtyDaysAgo.toISOString().split('T')[0]
     const endDate = periodo?.end || today.toISOString().split('T')[0]
+    
+    // Get account name
+    let accountName = accountId
+    try {
+      const nameResp = await fetch(`https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}?fields=name&access_token=${accessToken}`)
+      if (nameResp.ok) {
+        const nameData = await nameResp.json()
+        accountName = nameData.name || accountId
+      }
+    } catch (e) {
+      console.warn('[v0] Could not fetch Meta account name:', e)
+    }
     
     const timeRange = JSON.stringify({ since: startDate, until: endDate })
     const fields = 'impressions,clicks,spend,actions'
@@ -108,7 +121,7 @@ async function fetchMetaMetrics(
       console.error('[v0] Error fetching Meta campaigns:', e)
     }
     
-    return { spend, leads, cpl, impressions, clicks, ctr, daily, campaigns }
+    return { accountName, spend, leads, cpl, impressions, clicks, ctr, daily, campaigns }
   } catch (error) {
     console.error('[v0] Error fetching Meta metrics:', error)
     return null
@@ -130,6 +143,30 @@ async function fetchGoogleMetrics(
     const endDate = (periodo?.end || today.toISOString().split('T')[0])
     
     const cleanCustomerId = customerId.replace(/-/g, '')
+    
+    // Get account name
+    let accountName = customerId
+    try {
+      const nameQuery = `SELECT customer.descriptive_name FROM customer`
+      const nameResp = await fetch(`https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}/googleAds:search`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'developer-token': developerToken,
+          'login-customer-id': loginCustomerId,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: nameQuery }),
+      })
+      if (nameResp.ok) {
+        const nameData = await nameResp.json()
+        if (nameData.results && nameData.results[0]) {
+          accountName = nameData.results[0].customer?.descriptive_name || customerId
+        }
+      }
+    } catch (e) {
+      console.warn('[v0] Could not fetch Google account name:', e)
+    }
     
     const query = `
       SELECT 
@@ -195,6 +232,8 @@ async function fetchGoogleMetrics(
     const cpl = leads > 0 ? spend / leads : 0
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0
     
+    console.log('[v0] Google Ads account name:', accountName)
+    
     // Second query: campaign-level breakdown for the same period
     const campaigns: CampaignPoint[] = []
     try {
@@ -252,7 +291,7 @@ async function fetchGoogleMetrics(
       console.error('[v0] Error fetching Google campaigns:', e)
     }
     
-    return { spend, leads, cpl, impressions, clicks, ctr, daily, campaigns }
+    return { accountName, spend, leads, cpl, impressions, clicks, ctr, daily, campaigns }
   } catch (error) {
     console.error('[v0] Error fetching Google metrics:', error)
     return null
@@ -394,16 +433,14 @@ export async function POST(req: Request) {
         if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
           const metrics = await fetchMetaMetrics(accountId, metaAccessToken, effectivePeriodo)
           if (metrics) {
-            const accountName = accountNameMap.get(accountId)?.name || accountId
             metricsByAccount.push({
               account: accountId,
-              accountName,
+              accountName: metrics.accountName || accountId,
               platform: 'Meta Ads',
               ...metrics
             })
           } else {
-            const accountName = accountNameMap.get(accountId)?.name || accountId
-            metaErrors.push(`Meta Ads ${accountName} (${accountId}): No se pudieron obtener métricas (verifica que la cuenta esté activa y tenga datos en el periodo)`)
+            metaErrors.push(`Meta Ads (${accountId}): No se pudieron obtener métricas (verifica que la cuenta esté activa y tenga datos en el periodo)`)
           }
         }
       }
@@ -435,16 +472,14 @@ export async function POST(req: Request) {
         if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
           const metrics = await fetchGoogleMetrics(accountId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, effectivePeriodo)
           if (metrics) {
-            const accountName = accountNameMap.get(accountId)?.name || accountId
             metricsByAccount.push({
               account: accountId,
-              accountName,
+              accountName: metrics.accountName || accountId,
               platform: 'Google Ads',
               ...metrics
             })
           } else {
-            const accountName = accountNameMap.get(accountId)?.name || accountId
-            googleErrors.push(`Google Ads ${accountName} (${accountId}): No se pudieron obtener métricas (verifica las credenciales y que la cuenta esté activa)`)
+            googleErrors.push(`Google Ads (${accountId}): No se pudieron obtener métricas (verifica las credenciales y que la cuenta esté activa)`)
           }
         }
       }
