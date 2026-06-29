@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { openai } from '@ai-sdk/openai'
 import { streamText } from 'ai'
 import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
+import { parseAttachments } from '@/lib/parse-attachments'
 
 export const maxDuration = 120
 
@@ -11,6 +12,7 @@ const GOOGLE_ADS_API_VERSION = 'v23'
 type DailyPoint = { date: string; spend: number; leads: number; impressions: number; clicks: number }
 type CampaignPoint = { name: string; spend: number; leads: number; cpl: number; impressions: number; clicks: number; ctr: number }
 type AccountMetrics = {
+  accountName?: string
   spend: number; leads: number; cpl: number; impressions: number; clicks: number; ctr: number
   daily: DailyPoint[]
   campaigns: CampaignPoint[]
@@ -28,6 +30,23 @@ async function fetchMetaMetrics(
     const startDate = periodo?.start || thirtyDaysAgo.toISOString().split('T')[0]
     const endDate = periodo?.end || today.toISOString().split('T')[0]
     
+    // Get account name
+    let accountName = accountId
+    try {
+      const cleanId = accountId.replace('act_', '')
+      const nameUrl = `https://graph.facebook.com/${META_API_VERSION}/act_${cleanId}?fields=name&access_token=${accessToken}`
+      const nameResp = await fetch(nameUrl)
+      const nameData = await nameResp.json()
+      if (nameResp.ok && nameData.name) {
+        accountName = nameData.name
+        console.log('[v0] Meta account name retrieved:', accountName)
+      } else {
+        console.warn('[v0] Meta name response not ok or no name:', { status: nameResp.status, nameData })
+      }
+    } catch (e) {
+      console.warn('[v0] Error fetching Meta account name:', e)
+    }
+    
     const timeRange = JSON.stringify({ since: startDate, until: endDate })
     const fields = 'impressions,clicks,spend,actions'
     
@@ -42,7 +61,7 @@ async function fetchMetaMetrics(
     
     const data = await response.json()
     if (!data.data || data.data.length === 0) {
-      return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0, daily: [], campaigns: [] }
+      return { accountName, spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0, daily: [], campaigns: [] }
     }
     
     const getLeads = (row: { actions?: Array<{ action_type: string; value: string }> }) => {
@@ -107,7 +126,7 @@ async function fetchMetaMetrics(
       console.error('[v0] Error fetching Meta campaigns:', e)
     }
     
-    return { spend, leads, cpl, impressions, clicks, ctr, daily, campaigns }
+    return { accountName, spend, leads, cpl, impressions, clicks, ctr, daily, campaigns }
   } catch (error) {
     console.error('[v0] Error fetching Meta metrics:', error)
     return null
@@ -129,6 +148,34 @@ async function fetchGoogleMetrics(
     const endDate = (periodo?.end || today.toISOString().split('T')[0])
     
     const cleanCustomerId = customerId.replace(/-/g, '')
+    
+    // Get account name
+    let accountName = customerId
+    try {
+      const nameQuery = `SELECT customer.descriptive_name FROM customer`
+      const nameResp = await fetch(`https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}/googleAds:search`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'developer-token': developerToken,
+          'login-customer-id': loginCustomerId,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: nameQuery }),
+      })
+      const nameData = await nameResp.json()
+      // Google Ads API returns fields in camelCase (descriptiveName)
+      const customer = nameData.results?.[0]?.customer
+      const descriptiveName = customer?.descriptiveName || customer?.descriptive_name
+      if (nameResp.ok && descriptiveName) {
+        accountName = descriptiveName
+        console.log('[v0] Google account name retrieved:', accountName)
+      } else {
+        console.warn('[v0] Google name not found, using ID. Customer object:', customer)
+      }
+    } catch (e) {
+      console.warn('[v0] Error fetching Google account name:', e)
+    }
     
     const query = `
       SELECT 
@@ -194,6 +241,8 @@ async function fetchGoogleMetrics(
     const cpl = leads > 0 ? spend / leads : 0
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0
     
+    console.log('[v0] Google Ads account name:', accountName)
+    
     // Second query: campaign-level breakdown for the same period
     const campaigns: CampaignPoint[] = []
     try {
@@ -251,7 +300,7 @@ async function fetchGoogleMetrics(
       console.error('[v0] Error fetching Google campaigns:', e)
     }
     
-    return { spend, leads, cpl, impressions, clicks, ctr, daily, campaigns }
+    return { accountName, spend, leads, cpl, impressions, clicks, ctr, daily, campaigns }
   } catch (error) {
     console.error('[v0] Error fetching Google metrics:', error)
     return null
@@ -267,12 +316,21 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { clientId, periodo, cuentas, messages, month, year, attachments } = await req.json()
+    const { clientId, periodo, cuentas, messages, month, year, attachments, dateStart, dateEnd } = await req.json()
     
-    console.log('[v0] Analista request:', { clientId, month, year, periodo, attachmentsCount: attachments?.length || 0 })
+    // Use explicit periodo if provided, otherwise fallback to dateStart/dateEnd
+    let receivedPeriodo = periodo
+    if (!receivedPeriodo && dateStart && dateEnd) {
+      receivedPeriodo = {
+        start: dateStart,
+        end: dateEnd,
+      }
+    }
+    
+    console.log('[v0] Analista request:', { clientId, month, year, periodo: receivedPeriodo, attachmentsCount: attachments?.length || 0 })
 
     // Calculate period from month/year if not provided directly
-    let effectivePeriodo = periodo
+    let effectivePeriodo = receivedPeriodo
     if (!effectivePeriodo && month && year) {
       const startDate = new Date(year, month - 1, 1)
       const endDate = new Date(year, month, 0) // Last day of month
@@ -281,6 +339,8 @@ export async function POST(req: Request) {
         end: endDate.toISOString().split('T')[0]
       }
     }
+    
+    console.log('[v0] Effective period:', effectivePeriodo)
 
     // Get agent config
     const { data: agentConfig } = await supabase
@@ -339,9 +399,10 @@ export async function POST(req: Request) {
     const googleDeveloperToken = getGoogleAdsDeveloperToken()
     const googleLoginCustomerId = getGoogleAdsLoginCustomerId()
 
-    // Fetch metrics for accounts
+    // Fetch metrics for accounts (account names are fetched directly from the Meta/Google APIs)
     const metricsByAccount: Array<{
       account: string
+      accountName: string
       platform: string
       spend: number
       leads: number
@@ -349,6 +410,8 @@ export async function POST(req: Request) {
       impressions: number
       clicks: number
       ctr: number
+      daily: DailyPoint[]
+      campaigns: CampaignPoint[]
     }> = []
 
     const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
@@ -356,11 +419,22 @@ export async function POST(req: Request) {
     console.log('[v0] Tokens found:', { meta: !!metaAccessToken, google: !!googleAccessToken, googleDevToken: !!googleDeveloperToken })
     
     // Fetch Meta accounts metrics
-    const metaAccounts = client.meta_ads_account_ids?.length 
-      ? client.meta_ads_account_ids 
-      : client.meta_ads_account_id 
-        ? [client.meta_ads_account_id]
-        : []
+    // Parse Meta Ads account IDs (can be string like "123,456" or array)
+    let metaAccounts: string[] = []
+    if (client.meta_ads_account_ids?.length) {
+      metaAccounts = Array.isArray(client.meta_ads_account_ids)
+        ? client.meta_ads_account_ids
+        : String(client.meta_ads_account_ids).split(',').map(id => id.trim())
+    } else if (client.meta_ads_account_id) {
+      metaAccounts = Array.isArray(client.meta_ads_account_id)
+        ? client.meta_ads_account_id
+        : String(client.meta_ads_account_id).split(',').map(id => id.trim())
+    }
+    
+    const metaErrors: string[] = []
+    if (metaAccounts.length > 0 && !metaAccessToken) {
+      metaErrors.push('Meta Ads: Token de acceso no configurado')
+    }
     
     if (metaAccessToken && metaAccounts.length > 0) {
       for (const accountId of metaAccounts) {
@@ -369,20 +443,37 @@ export async function POST(req: Request) {
           if (metrics) {
             metricsByAccount.push({
               account: accountId,
+              accountName: metrics.accountName || accountId,
               platform: 'Meta Ads',
               ...metrics
             })
+          } else {
+            metaErrors.push(`Meta Ads (${accountId}): No se pudieron obtener métricas (verifica que la cuenta esté activa y tenga datos en el periodo)`)
           }
         }
       }
     }
 
     // Fetch Google accounts metrics
-    const googleAccounts = client.google_ads_customer_ids?.length
-      ? client.google_ads_customer_ids
-      : client.google_ads_customer_id
-        ? [client.google_ads_customer_id]
-        : []
+    // Parse Google Ads customer IDs (can be string like "123,456,789" or array)
+    let googleAccounts: string[] = []
+    if (client.google_ads_customer_ids?.length) {
+      googleAccounts = Array.isArray(client.google_ads_customer_ids) 
+        ? client.google_ads_customer_ids 
+        : String(client.google_ads_customer_ids).split(',').map(id => id.trim())
+    } else if (client.google_ads_customer_id) {
+      googleAccounts = Array.isArray(client.google_ads_customer_id)
+        ? client.google_ads_customer_id
+        : String(client.google_ads_customer_id).split(',').map(id => id.trim())
+    }
+    
+    const googleErrors: string[] = []
+    if (googleAccounts.length > 0 && !googleAccessToken) {
+      googleErrors.push('Google Ads: Token de acceso no configurado')
+    }
+    if (googleAccounts.length > 0 && !googleDeveloperToken) {
+      googleErrors.push('Google Ads: Developer token no configurado')
+    }
     
     if (googleAccessToken && googleDeveloperToken && googleAccounts.length > 0) {
       for (const accountId of googleAccounts) {
@@ -391,15 +482,20 @@ export async function POST(req: Request) {
           if (metrics) {
             metricsByAccount.push({
               account: accountId,
+              accountName: metrics.accountName || accountId,
               platform: 'Google Ads',
               ...metrics
             })
+          } else {
+            googleErrors.push(`Google Ads (${accountId}): No se pudieron obtener métricas (verifica las credenciales y que la cuenta esté activa)`)
           }
         }
       }
     }
     
     console.log('[v0] Total metrics collected:', metricsByAccount.length)
+    console.log('[v0] Meta errors:', metaErrors.length > 0 ? metaErrors : 'none')
+    console.log('[v0] Google errors:', googleErrors.length > 0 ? googleErrors : 'none')
 
     // Build context
     const clienteMemoriaText = memoria?.map(m => `- ${m.contenido}`).join('\n') || 'Sin historial'
@@ -427,7 +523,7 @@ export async function POST(req: Request) {
 
 DESGLOSE POR CUENTA:
 ${metricsByAccount.map(m => 
-  `• ${m.platform} (${m.account}):
+  `• ${m.accountName} (${m.account}) - ${m.platform}:
     - Inversión: $${m.spend.toFixed(2)}
     - Leads: ${m.leads}
     - CPL: $${m.cpl.toFixed(2)}
@@ -439,30 +535,44 @@ ${metricsByAccount.map(m =>
 DESGLOSE DIARIO POR CUENTA (datos reales día por día):
 ${metricsByAccount.map(m => {
   if (!m.daily || m.daily.length === 0) {
-    return `• ${m.platform} (${m.account}): sin datos diarios disponibles`
+    return `• ${m.accountName} (${m.account}) - ${m.platform}: sin datos diarios disponibles`
   }
   const rows = m.daily.map(d => 
     `    ${d.date}: ${d.leads} leads | $${d.spend.toFixed(2)} inversión | ${d.impressions.toLocaleString()} impresiones | ${d.clicks.toLocaleString()} clics`
   ).join('\n')
-  return `• ${m.platform} (${m.account}):\n${rows}`
+  return `• ${m.accountName} (${m.account}) - ${m.platform}:\n${rows}`
 }).join('\n')}
 
 DESGLOSE POR CAMPAÑA (datos reales por campaña):
 ${metricsByAccount.map(m => {
   if (!m.campaigns || m.campaigns.length === 0) {
-    return `• ${m.platform} (${m.account}): sin datos de campañas disponibles`
+    return `• ${m.accountName} (${m.account}) - ${m.platform}: sin datos de campañas disponibles`
   }
   const rows = m.campaigns
     .sort((a, b) => b.spend - a.spend)
     .map(c => 
       `    "${c.name}": ${c.leads} leads | $${c.spend.toFixed(2)} inversión | CPL $${c.cpl.toFixed(2)} | ${c.impressions.toLocaleString()} impresiones | ${c.clicks.toLocaleString()} clics | CTR ${c.ctr.toFixed(2)}%`
     ).join('\n')
-  return `• ${m.platform} (${m.account}):\n${rows}`
+  return `• ${m.accountName} (${m.account}) - ${m.platform}:\n${rows}`
 }).join('\n')}`
     }
 
     const periodoTexto = effectivePeriodo?.start && effectivePeriodo?.end 
-      ? `${effectivePeriodo.start} al ${effectivePeriodo.end}`
+      ? (() => {
+          const start = new Date(effectivePeriodo.start)
+          const end = new Date(effectivePeriodo.end)
+          const startDay = start.getDate()
+          const startMonth = start.toLocaleString('es-ES', { month: 'long' })
+          const endDay = end.getDate()
+          const endMonth = end.toLocaleString('es-ES', { month: 'long' })
+          const year = end.getFullYear()
+          
+          if (startMonth === endMonth) {
+            return `${startDay} - ${endDay} de ${startMonth} ${year}`
+          } else {
+            return `${startDay} de ${startMonth} - ${endDay} de ${endMonth} ${year}`
+          }
+        })()
       : 'últimos 30 días'
 
     // Detect which report template applies based on the client's plan
@@ -529,10 +639,19 @@ ${tareasText}
 METRICAS DE CUENTAS PUBLICITARIAS:
 ${metricasText}
 
+${metaErrors.length > 0 || googleErrors.length > 0 ? `ALERTAS DE CONFIGURACION:
+${metaErrors.map(e => `⚠️ ${e}`).join('\n')}
+${googleErrors.map(e => `⚠️ ${e}`).join('\n')}
+
+Si el usuario pregunta por métricas y hay alertas, explícitamente informa qué plataforma(s) no pudieron conectarse y por qué. NO ocultes estos errores.` : ''}
+
 IMPORTANTE SOBRE LAS METRICAS:
 ${metricsByAccount.length > 0
   ? 'Las métricas anteriores son DATOS REALES obtenidos directamente desde las APIs de Meta Ads y/o Google Ads para el periodo seleccionado. NO son estimaciones. Trátalas como cifras oficiales y exactas. NUNCA digas que son estimativas, aproximadas o simuladas. Tienes ACCESO al DESGLOSE DIARIO por cuenta (sección "DESGLOSE DIARIO POR CUENTA") y al DESGLOSE POR CAMPAÑA (sección "DESGLOSE POR CAMPAÑA"). Úsalos cuando el usuario pida datos, gráficos o tendencias por día o por campaña. NUNCA digas que no tienes los datos desglosados por día o por campaña si esas secciones contienen filas. Si el usuario pide un rango específico de días (ej. del 1 al 5), filtra el desglose diario a esas fechas y construye el gráfico con un punto por día. Si pide datos por campaña, usa la sección de desglose por campaña.'
-  : 'No se pudieron obtener métricas reales de las cuentas publicitarias para este periodo (puede que no haya tokens conectados, que la cuenta no tenga actividad en el periodo, o que haya un error de conexión). Si el usuario pide análisis de números, indícale claramente que no hay datos disponibles y NO inventes ni estimes cifras.'}
+  : `CUENTAS VINCULADAS: ${metaAccounts.length > 0 ? `${metaAccounts.length} Meta Ads` : ''}${metaAccounts.length > 0 && googleAccounts.length > 0 ? ' + ' : ''}${googleAccounts.length > 0 ? `${googleAccounts.length} Google Ads` : ''}
+PROBLEMA: No puedo acceder a las métricas en este momento. Las cuentas están vinculadas al cliente pero hay un error de conexión, tokens no configurados, o la cuenta no tiene actividad en el periodo.
+ACCIÓN: Si el usuario pregunta por métricas, explícita y directamente dile: "Veo que tienes [cuentas] vinculadas pero no puedo acceder a las métricas en este momento. Para que pueda ayudarte con un análisis, ¿podrías compartirme los datos (inversión, leads, CPL) por plataforma? Pueden ser en un screenshot, archivo o simplemente diciéndome los números."
+NO inventes ni estimes cifras bajo ninguna circunstancia.`}
 
 COMO RESPONDER:
 - Conversa de forma natural y directa. Si el usuario hace una pregunta corta, responde corto.
@@ -552,6 +671,17 @@ Para GRAFICOS de barras, lineas, areas o pie, usa un bloque de codigo con la pal
 
 Tipos disponibles: "bar", "line", "area", "pie"
 Campo "format" (opcional): "currency" para dinero ($), "percent" para porcentajes (%), "number" para cantidades. Úsalo para que los ejes y tooltips muestren los valores con el formato correcto (ej. inversión y CPL usan "currency", CTR usa "percent", leads/clics/impresiones usan "number").
+
+OPCIONES AVANZADAS PARA GRAFICOS DE BARRAS:
+- "layout":"horizontal" -> dibuja las barras en horizontal (de izquierda a derecha). Útil cuando hay muchas categorías o nombres largos. Por defecto es vertical.
+- "showValues":true -> muestra el valor numérico como etiqueta sobre/junto a cada barra.
+- "series" -> array para comparar VARIAS métricas por categoría (ej. inversión Y leads en el mismo gráfico). Cada serie es {"key":"campoEnData","name":"Etiqueta","format":"currency|percent|number"}. Cuando uses "series", cada fila de "data" debe incluir un campo por cada key. NO uses "yKey" si usas "series".
+
+Ejemplo: barras HORIZONTALES comparando inversión y leads por cuenta, con los valores visibles:
+` + "```" + `chart
+{"type":"bar","title":"Inversion y Leads por Cuenta","layout":"horizontal","showValues":true,"xKey":"name","series":[{"key":"inversion","name":"Inversion","format":"currency"},{"key":"leads","name":"Leads","format":"number"}],"data":[{"name":"Galeno","inversion":307618,"leads":192},{"name":"Prevencion","inversion":1120000,"leads":2033}]}
+` + "```" + `
+IMPORTANTE: si el usuario pide barras "horizontales", usa SIEMPRE "layout":"horizontal". Si pide ver la inversión y los leads juntos, usa "series" con ambas métricas. Si pide ver los valores/cifras en el gráfico, usa "showValues":true.
 
 Para generar ARCHIVOS descargables (CSV de datos, reportes), usa un bloque de codigo con la palabra file:
 
@@ -580,8 +710,29 @@ REGLAS DE VISUALIZACION:
   - Ofrece un CSV descargable cuando el usuario pida exportar datos o cuando generes un informe completo.
   - Cuando el usuario pida un PDF o un informe descargable, primero escribe el análisis completo con datos reales y sus gráficos, y luego añade el bloque pdf al final (el PDF se arma con ese contenido). NUNCA prometas enviarlo "en breve" ni emitas un bloque pdf sin haber escrito antes el análisis y los gráficos.
 
-ANALISIS DE IMAGENES:
-Si el usuario adjunta imágenes (capturas de dashboards, reportes, anuncios), analízalas detalladamente, extrae los datos que puedas ver y úsalos en tu análisis.
+ANALISIS DE IMAGENES, DOCUMENTOS Y DATOS DEL USUARIO:
+- Si el usuario adjunta imágenes (capturas de dashboards, reportes, planillas), analízalas detalladamente y extrae los datos.
+- Si el usuario adjunta archivos CSV/Excel con datos de seguimiento o métricas:
+  * PROCESA TODO EL CONTENIDO del archivo. NO pidas "más filas" ni "más datos". El archivo adjunto contiene toda la información necesaria.
+  * Crea una tabla completa con TODAS las filas del archivo: Fecha, Leads de Plataforma, Leads del CRM (suma de formulario + WhatsApp), Variación (CRM - Plataforma).
+  * Calcula la variación para CADA DÍA: Variación = (Leads Formulario + Leads WhatsApp) - Leads Plataforma.
+  * Incluye un resumen al final: total de leads por plataforma, total de leads en CRM, diferencia acumulada, porcentaje de variación.
+  * Crea gráficos visuales (barras horizontales) comparando Plataforma vs CRM para todo el período.
+  * Si el archivo tiene columnas de costo/inversión, incluye esos datos en el análisis y calcula CPL (Costo Por Lead) por día.
+- LECTURA PRECISA DE TABLAS Y PLANILLAS (CRITICO):
+  * Lee la tabla FILA POR FILA y COLUMNA POR COLUMNA. Transcribe los números EXACTAMENTE como aparecen, sin redondear ni inventar.
+  * Identifica primero los ENCABEZADOS de cada columna y respétalos. No confundas una columna con otra (ej. "costo" no es lo mismo que "leads").
+  * Presta atención a separadores: en estas planillas el punto (.) suele ser separador de miles y la coma (,) el decimal (ej. "2.093.946,13" = dos millones noventa y tres mil...).
+  * Si una columna del CRM se compone de varias (ej. "FIDELITY form" + "FIDELITY WhatsApp"), SUMA ambas para obtener el total del CRM y muestra el cálculo si ayuda.
+  * Antes de entregar la tabla final, VERIFICA que cada valor que escribiste coincide con la celda original. Si una celda no se lee con claridad, indícalo explícitamente (ej. "valor no legible") en vez de inventar un número.
+  * Si calculas una variación o diferencia, hazlo con los números exactos transcritos y muestra el resultado correcto (variación = CRM - Plataforma).
+- IMPORTANTE: si la imagen es muy densa o algún número no se distingue, dilo abiertamente y pide al usuario que reenvíe la planilla como archivo CSV/Excel o una captura más nítida, en lugar de adivinar.
+- Si el usuario pega datos de métricas en el chat (ej: "Meta: $1500 inversión, 45 leads" o una tabla con números):
+  * EXTRAE los datos y úsalos como si fueran reales
+  * CONSTRUYE gráficos y análisis igual que si vinieran de las APIs
+  * ASUME que son correctos y no cuestiones su veracidad
+  * Si faltan datos, PREGUNTA: "Entiendo, pero ¿qué tal el CPL? ¿Y cuántas impresiones tuviste?"
+- IMPORTANTE: Si el usuario te pide análisis pero no ve datos en tu respuesta, avísale que necesita recargar la página o reenviar el archivo/datos.
 
 FORMATO:
 - Usa markdown para estructura.
@@ -589,8 +740,41 @@ FORMATO:
 - Sé claro y conciso.
 `
 
-    // Check if there are image attachments for vision
+    // Check attachments
     const hasImages = attachments?.some((a: { type: string }) => a.type?.startsWith('image/'))
+    const hasDocuments = attachments?.some((a: { type: string }) => 
+      a.type?.includes('pdf') || 
+      a.type?.includes('spreadsheet') || 
+      a.type?.includes('excel') ||
+      a.type?.includes('sheet') ||
+      a.type?.includes('csv') ||
+      a.type?.includes('text')
+    )
+    
+    // Parse documents if present
+    let documentsContext = ''
+    if (hasDocuments) {
+      const documentAttachments = attachments.filter((a: { type: string }) => 
+        a.type?.includes('pdf') || 
+        a.type?.includes('spreadsheet') || 
+        a.type?.includes('excel') ||
+        a.type?.includes('sheet') ||
+        a.type?.includes('csv') ||
+        a.type?.includes('text')
+      )
+      console.log('[v0] Found documents to parse:', documentAttachments.length, documentAttachments.map((a: { name?: string; type: string }) => ({ name: a.name, type: a.type })))
+      try {
+        documentsContext = await parseAttachments(documentAttachments as Array<{ url: string; name?: string; type?: string }>)
+        console.log('[v0] Documents parsed successfully, context length:', documentsContext.length)
+      } catch (error) {
+        console.error('[v0] Error parsing documents:', error)
+        // Fallback to listing files if parsing fails
+        documentsContext = `\n\nARCHIVOS ADJUNTOS (no se pudieron parsear automáticamente):
+${documentAttachments.map((a: { name?: string; type: string }, idx: number) => 
+  `- Archivo ${idx + 1}: ${a.name || 'Documento'} (${a.type})`
+).join('\n')}`
+      }
+    }
     
     // Build messages - if user sent messages, use them; otherwise create initial request
     const processedMessages = messages?.length > 0 
@@ -602,24 +786,35 @@ FORMATO:
               return {
                 role: m.role,
                 content: [
-                  { type: 'text', text: m.content },
+                  { type: 'text', text: m.content + documentsContext },
                   ...imageAttachments.map((a: { url: string }) => ({
                     type: 'image',
                     image: a.url,
+                    // 'high' detail forces OpenAI to read the image at full resolution,
+                    // which is critical for accurately transcribing dense numeric tables/spreadsheets
+                    providerOptions: { openai: { imageDetail: 'high' } },
                   }))
                 ]
               }
             }
           }
-          return { role: m.role, content: m.content }
+          return { role: m.role, content: m.content + documentsContext }
         })
       : [{
           role: 'user',
-          content: `Genera un informe de análisis completo para ${client.nombre_del_negocio} del periodo ${periodoTexto}. Incluye gráficos de visualización, un CSV descargable y un informe en PDF (bloque pdf) con los datos.`
+          content: `El cliente ha compartido un archivo con datos de seguimiento. Por favor, analiza el contenido del archivo adjunto y compáralo con las métricas de las plataformas publicitarias (Google Ads, Meta Ads). 
+          
+Luego genera un informe de análisis completo para ${client.nombre_del_negocio} del periodo ${periodoTexto}. Incluye:
+- Comparativa entre los leads reportados en el archivo vs los leads de la plataforma
+- Cálculo de variación (diferencia entre CRM y plataforma)
+- Gráficos de visualización
+- CSV descargable
+- Informe en PDF (bloque pdf) con los datos${documentsContext}`
         }]
 
-    // Use GPT-4o for vision when images present, otherwise gpt-4o-mini
-    const modelId = hasImages ? 'gpt-4o' : 'gpt-4o-mini'
+    // Use GPT-4o for vision (images) or when documents are present (better at data analysis)
+    // Fall back to gpt-4o-mini only if neither images nor documents are present
+    const modelId = hasImages || hasDocuments ? 'gpt-4o' : 'gpt-4o-mini'
 
     const result = streamText({
       model: openai(modelId),
@@ -637,7 +832,13 @@ FORMATO:
       estado: 'ok',
     }).then(() => {})
 
-    return result.toUIMessageStreamResponse()
+    return result.toUIMessageStreamResponse({
+      onError: (error) => {
+        console.error('[v0] Analista stream error:', error)
+        if (error instanceof Error) return error.message
+        return 'Error procesando la solicitud (posible problema al leer la imagen adjunta).'
+      },
+    })
   } catch (error) {
     console.error('Error in analista agent:', error)
     return new Response('Internal error', { status: 500 })
