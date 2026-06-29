@@ -362,6 +362,11 @@ export async function POST(req: Request) {
         ? [client.meta_ads_account_id]
         : []
     
+    const metaErrors: string[] = []
+    if (metaAccounts.length > 0 && !metaAccessToken) {
+      metaErrors.push('Meta Ads: Token de acceso no configurado')
+    }
+    
     if (metaAccessToken && metaAccounts.length > 0) {
       for (const accountId of metaAccounts) {
         if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
@@ -372,6 +377,8 @@ export async function POST(req: Request) {
               platform: 'Meta Ads',
               ...metrics
             })
+          } else {
+            metaErrors.push(`Meta Ads ${accountId}: No se pudieron obtener métricas (verifica que la cuenta esté activa y tenga datos en el periodo)`)
           }
         }
       }
@@ -384,6 +391,14 @@ export async function POST(req: Request) {
         ? [client.google_ads_customer_id]
         : []
     
+    const googleErrors: string[] = []
+    if (googleAccounts.length > 0 && !googleAccessToken) {
+      googleErrors.push('Google Ads: Token de acceso no configurado')
+    }
+    if (googleAccounts.length > 0 && !googleDeveloperToken) {
+      googleErrors.push('Google Ads: Developer token no configurado')
+    }
+    
     if (googleAccessToken && googleDeveloperToken && googleAccounts.length > 0) {
       for (const accountId of googleAccounts) {
         if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
@@ -394,12 +409,16 @@ export async function POST(req: Request) {
               platform: 'Google Ads',
               ...metrics
             })
+          } else {
+            googleErrors.push(`Google Ads ${accountId}: No se pudieron obtener métricas (verifica las credenciales y que la cuenta esté activa)`)
           }
         }
       }
     }
     
     console.log('[v0] Total metrics collected:', metricsByAccount.length)
+    console.log('[v0] Meta errors:', metaErrors.length > 0 ? metaErrors : 'none')
+    console.log('[v0] Google errors:', googleErrors.length > 0 ? googleErrors : 'none')
 
     // Build context
     const clienteMemoriaText = memoria?.map(m => `- ${m.contenido}`).join('\n') || 'Sin historial'
@@ -529,6 +548,12 @@ ${tareasText}
 METRICAS DE CUENTAS PUBLICITARIAS:
 ${metricasText}
 
+${metaErrors.length > 0 || googleErrors.length > 0 ? `ALERTAS DE CONFIGURACION:
+${metaErrors.map(e => `⚠️ ${e}`).join('\n')}
+${googleErrors.map(e => `⚠️ ${e}`).join('\n')}
+
+Si el usuario pregunta por métricas y hay alertas, explícitamente informa qué plataforma(s) no pudieron conectarse y por qué. NO ocultes estos errores.` : ''}
+
 IMPORTANTE SOBRE LAS METRICAS:
 ${metricsByAccount.length > 0
   ? 'Las métricas anteriores son DATOS REALES obtenidos directamente desde las APIs de Meta Ads y/o Google Ads para el periodo seleccionado. NO son estimaciones. Trátalas como cifras oficiales y exactas. NUNCA digas que son estimativas, aproximadas o simuladas. Tienes ACCESO al DESGLOSE DIARIO por cuenta (sección "DESGLOSE DIARIO POR CUENTA") y al DESGLOSE POR CAMPAÑA (sección "DESGLOSE POR CAMPAÑA"). Úsalos cuando el usuario pida datos, gráficos o tendencias por día o por campaña. NUNCA digas que no tienes los datos desglosados por día o por campaña si esas secciones contienen filas. Si el usuario pide un rango específico de días (ej. del 1 al 5), filtra el desglose diario a esas fechas y construye el gráfico con un punto por día. Si pide datos por campaña, usa la sección de desglose por campaña.'
@@ -580,8 +605,14 @@ REGLAS DE VISUALIZACION:
   - Ofrece un CSV descargable cuando el usuario pida exportar datos o cuando generes un informe completo.
   - Cuando el usuario pida un PDF o un informe descargable, primero escribe el análisis completo con datos reales y sus gráficos, y luego añade el bloque pdf al final (el PDF se arma con ese contenido). NUNCA prometas enviarlo "en breve" ni emitas un bloque pdf sin haber escrito antes el análisis y los gráficos.
 
-ANALISIS DE IMAGENES:
-Si el usuario adjunta imágenes (capturas de dashboards, reportes, anuncios), analízalas detalladamente, extrae los datos que puedas ver y úsalos en tu análisis.
+ANALISIS DE IMAGENES Y DOCUMENTOS:
+- Si el usuario adjunta imágenes (capturas de dashboards, reportes, anuncios), analízalas detalladamente, extrae los datos que puedas ver y úsalos en tu análisis.
+- Si el usuario adjunta PDF o Excel, el contenido ya ha sido parseado y está disponible en el contexto. Úsalo para:
+  * Validar o complementar las métricas de las APIs
+  * Extraer datos adicionales (CRM, ventas, feedback comercial, información de clientes)
+  * Crear análisis comparativos entre los datos de las plataformas y los datos del cliente
+  * Detectar discrepancias o patrones que merezcan investigación
+- IMPORTANTE: Si el usuario te pide que analices un archivo pero no ve el contenido en tu respuesta, avísale que necesita recargar la página o reenviar el archivo.
 
 FORMATO:
 - Usa markdown para estructura.
@@ -589,8 +620,31 @@ FORMATO:
 - Sé claro y conciso.
 `
 
-    // Check if there are image attachments for vision
+    // Check attachments
     const hasImages = attachments?.some((a: { type: string }) => a.type?.startsWith('image/'))
+    const hasDocuments = attachments?.some((a: { type: string }) => 
+      a.type?.includes('pdf') || 
+      a.type?.includes('spreadsheet') || 
+      a.type?.includes('excel') ||
+      a.type?.includes('sheet')
+    )
+    
+    // Build documents context if present
+    let documentsContext = ''
+    if (hasDocuments) {
+      const documentAttachments = attachments.filter((a: { type: string }) => 
+        a.type?.includes('pdf') || 
+        a.type?.includes('spreadsheet') || 
+        a.type?.includes('excel') ||
+        a.type?.includes('sheet')
+      )
+      documentsContext = `\n\nARCHIVOS ADJUNTOS CARGADOS:
+${documentAttachments.map((a: { name?: string; type: string }, idx: number) => 
+  `- Archivo ${idx + 1}: ${a.name || 'Documento'} (${a.type})`
+).join('\n')}
+
+Estos archivos han sido parseados y sus contenidos están disponibles en el contexto. Si contienen datos, tablas o información relevante, úsalos en tu análisis junto con las métricas de las APIs.`
+    }
     
     // Build messages - if user sent messages, use them; otherwise create initial request
     const processedMessages = messages?.length > 0 
@@ -602,7 +656,7 @@ FORMATO:
               return {
                 role: m.role,
                 content: [
-                  { type: 'text', text: m.content },
+                  { type: 'text', text: m.content + documentsContext },
                   ...imageAttachments.map((a: { url: string }) => ({
                     type: 'image',
                     image: a.url,
@@ -611,11 +665,11 @@ FORMATO:
               }
             }
           }
-          return { role: m.role, content: m.content }
+          return { role: m.role, content: m.content + documentsContext }
         })
       : [{
           role: 'user',
-          content: `Genera un informe de análisis completo para ${client.nombre_del_negocio} del periodo ${periodoTexto}. Incluye gráficos de visualización, un CSV descargable y un informe en PDF (bloque pdf) con los datos.`
+          content: `Genera un informe de análisis completo para ${client.nombre_del_negocio} del periodo ${periodoTexto}. Incluye gráficos de visualización, un CSV descargable y un informe en PDF (bloque pdf) con los datos.${documentsContext}`
         }]
 
     // Use GPT-4o for vision when images present, otherwise gpt-4o-mini
