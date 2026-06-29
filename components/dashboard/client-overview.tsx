@@ -588,6 +588,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [editingBusinessName, setEditingBusinessName] = useState(false)
   const [businessName, setBusinessName] = useState(client.business_name)
   const [savingBusinessName, setSavingBusinessName] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletingClient, setDeletingClient] = useState(false)
   const [pmIds, setPmIds] = useState<string[]>(() => {
     if (client.project_manager_ids?.length) return client.project_manager_ids
     return client.project_manager_id ? [client.project_manager_id] : []
@@ -762,17 +764,18 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     }
   }
 
-  const handleDeleteClient = async (clientId: string) => {
+  const handleDeleteClient = async () => {
+    setDeletingClient(true)
     try {
       await supabase
         .from('clientes')
         .delete()
-        .eq('id', clientId)
+        .eq('id', client.id)
       
       router.push('/dashboard/clients')
     } catch (err) {
       console.error('[v0] Error deleting client:', err)
-      throw err
+      setDeletingClient(false)
     }
   }
 
@@ -1622,11 +1625,10 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             isActivo={isActivo}
             onActivoChange={handleActivoChange}
             updatingActivo={updatingActivo}
-            onDelete={handleDeleteClient}
           />
         </div>
 
-        {/* ── KPIs del periodo ── */}
+        {/* ��─ KPIs del periodo ── */}
         <div>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">KPIs del periodo</h2>
@@ -1811,6 +1813,52 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             title="Proximas reuniones y actividades"
             description="Agenda sincronizada con Google Calendar y actividades del cliente"
           />
+        </div>
+
+        {/* ── Danger Zone ── */}
+        <div className="mt-12 pt-8 border-t border-destructive/20">
+          <div className="space-y-4 p-4 border border-destructive/50 rounded-lg bg-destructive/5">
+            <h2 className="text-sm font-semibold text-destructive flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              Zona de Peligro
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Esta acción no se puede deshacer. El cliente y todos sus datos asociados serán eliminados permanentemente.
+            </p>
+            <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="destructive" size="sm" className="w-full">
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Eliminar cliente
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Eliminar cliente</DialogTitle>
+                  <DialogDescription>
+                    ¿Estás seguro de que deseas eliminar este cliente? Esta acción no se puede deshacer.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                  <p className="text-sm text-foreground">
+                    Cliente: <span className="font-semibold">{client.business_name}</span>
+                  </p>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    onClick={handleDeleteClient}
+                    disabled={deletingClient}
+                  >
+                    {deletingClient ? 'Eliminando...' : 'Eliminar'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
       </div>
