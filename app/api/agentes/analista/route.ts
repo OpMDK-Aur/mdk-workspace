@@ -356,11 +356,17 @@ export async function POST(req: Request) {
     console.log('[v0] Tokens found:', { meta: !!metaAccessToken, google: !!googleAccessToken, googleDevToken: !!googleDeveloperToken })
     
     // Fetch Meta accounts metrics
-    const metaAccounts = client.meta_ads_account_ids?.length 
-      ? client.meta_ads_account_ids 
-      : client.meta_ads_account_id 
-        ? [client.meta_ads_account_id]
-        : []
+    // Parse Meta Ads account IDs (can be string like "123,456" or array)
+    let metaAccounts: string[] = []
+    if (client.meta_ads_account_ids?.length) {
+      metaAccounts = Array.isArray(client.meta_ads_account_ids)
+        ? client.meta_ads_account_ids
+        : String(client.meta_ads_account_ids).split(',').map(id => id.trim())
+    } else if (client.meta_ads_account_id) {
+      metaAccounts = Array.isArray(client.meta_ads_account_id)
+        ? client.meta_ads_account_id
+        : String(client.meta_ads_account_id).split(',').map(id => id.trim())
+    }
     
     const metaErrors: string[] = []
     if (metaAccounts.length > 0 && !metaAccessToken) {
@@ -385,11 +391,17 @@ export async function POST(req: Request) {
     }
 
     // Fetch Google accounts metrics
-    const googleAccounts = client.google_ads_customer_ids?.length
-      ? client.google_ads_customer_ids
-      : client.google_ads_customer_id
-        ? [client.google_ads_customer_id]
-        : []
+    // Parse Google Ads customer IDs (can be string like "123,456,789" or array)
+    let googleAccounts: string[] = []
+    if (client.google_ads_customer_ids?.length) {
+      googleAccounts = Array.isArray(client.google_ads_customer_ids) 
+        ? client.google_ads_customer_ids 
+        : String(client.google_ads_customer_ids).split(',').map(id => id.trim())
+    } else if (client.google_ads_customer_id) {
+      googleAccounts = Array.isArray(client.google_ads_customer_id)
+        ? client.google_ads_customer_id
+        : String(client.google_ads_customer_id).split(',').map(id => id.trim())
+    }
     
     const googleErrors: string[] = []
     if (googleAccounts.length > 0 && !googleAccessToken) {
