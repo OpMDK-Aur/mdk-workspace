@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -581,14 +580,14 @@ export function NPSReport({
             <div className="text-xs text-muted-foreground p-3 bg-muted/10 flex flex-wrap gap-x-3 gap-y-1">
               {ac.clients.map((client, idx) => (
                 <span key={client.clientId} className="flex items-center">
-                  <Link
+                  <a
                     href={`/dashboard/clients/${client.clientId}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-600 dark:text-blue-400 hover:underline"
+                    className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                   >
                     {client.clientName}
-                  </Link>
+                  </a>
                   <span className={cn("font-semibold ml-0.5", client.responded ? getNPSColor(client.currentScore!) : 'text-muted-foreground')}>
                     ({client.responded ? client.currentScore : '0'})
                   </span>
@@ -649,14 +648,14 @@ export function NPSReport({
                     filteredData.map((data) => (
                       <TableRow key={data.clientId}>
                         <TableCell className="font-medium truncate max-w-[200px]" title={data.clientName || ''}>
-                          <Link 
+                          <a 
                             href={`/dashboard/clients/${data.clientId}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-600 dark:text-blue-400 hover:underline"
+                            className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                           >
                             {data.clientName}
-                          </Link>
+                          </a>
                         </TableCell>
                         <TableCell className="text-center">
                           {data.plan ? (
