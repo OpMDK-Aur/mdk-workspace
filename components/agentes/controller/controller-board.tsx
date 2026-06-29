@@ -207,14 +207,8 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((cliente) => {
-              // Genera un estilo de fondo con opacidad baja basado en el color del PM
-              const bgStyle = cliente.pm_color 
-                ? { backgroundColor: `${cliente.pm_color}15` }
-                : {}
-              
-              return (
-              <tr key={cliente.id} className="border-b border-white/10 hover:opacity-80 transition-opacity" style={bgStyle}>
+            {filtered.map((cliente) => (
+              <tr key={cliente.id} className="border-b border-white/10 hover:bg-[#0f0f0f]/50">
                 <td className="px-6 py-4 text-sm text-white font-medium">
                   <div className="flex items-center gap-3">
                     <button
@@ -230,19 +224,7 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
                         }`}
                       />
                     </button>
-                    {cliente.pm_color && (
-                      <div 
-                        className="w-2 h-6 rounded flex-shrink-0"
-                        style={{ backgroundColor: cliente.pm_color }}
-                        title={`PM: ${cliente.pm_nombre || 'N/A'}`}
-                      />
-                    )}
-                    <div>
-                      <div>{cliente.nombre_del_negocio}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">
-                        PM: {cliente.pm_nombre || 'N/A'} • AM: {cliente.am_nombre || 'N/A'}
-                      </div>
-                    </div>
+                    {cliente.nombre_del_negocio}
                   </div>
                 </td>
                 <td className="px-6 py-4">
@@ -313,8 +295,7 @@ export function ControllerBoard({ clientes }: ControllerBoardProps) {
                   </Button>
                 </td>
               </tr>
-              )
-            })}
+            ))}
           </tbody>
         </table>
       </div>
