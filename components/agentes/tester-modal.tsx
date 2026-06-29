@@ -88,6 +88,7 @@ export function TesterModal({ open, onOpenChange, initialClientId }: TesterModal
   const [selectedItems, setSelectedItems] = useState<ItemWithStatus[]>([])
   const [testResults, setTestResults] = useState<TesterResultado[]>([])
   const [testing, setTesting] = useState(false)
+  const [markingHitoComplete, setMarkingHitoComplete] = useState(false)
   
   // Historial state
   const [historialResults, setHistorialResults] = useState<TesterResultado[]>([])
@@ -362,6 +363,38 @@ export function TesterModal({ open, onOpenChange, initialClientId }: TesterModal
     }
   }
 
+  const handleMarkHitoComplete = async () => {
+    if (!selectedClient?.id) return
+
+    setMarkingHitoComplete(true)
+    try {
+      const response = await fetch('/api/tester/mark-hito-complete', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'authorization': 'Bearer ' + Date.now()
+        },
+        body: JSON.stringify({
+          cliente_id: selectedClient.id
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to mark hito as complete')
+      }
+      
+      toast.success('Hito marcado como completado')
+      onOpenChange(false)
+    } catch (error) {
+      console.error('Error marking hito complete:', error)
+      toast.error(error instanceof Error ? error.message : 'Error al marcar hito como completado')
+    } finally {
+      setMarkingHitoComplete(false)
+    }
+  }
+
   const canSelectItems = () => {
     return (metaForms.some(f => f.checked) || landings.some(l => l.checked))
   }
@@ -575,6 +608,25 @@ export function TesterModal({ open, onOpenChange, initialClientId }: TesterModal
                 </Button>
               ) : (
                 <div className="flex gap-2 ml-auto">
+                  {testResults.length > 0 && testResults.every(r => r.estado === 'ok') && (
+                    <Button
+                      onClick={handleMarkHitoComplete}
+                      disabled={markingHitoComplete}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      {markingHitoComplete ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          Marcando...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 mr-1" />
+                          Marcar hito completado
+                        </>
+                      )}
+                    </Button>
+                  )}
                   {testResults.length > 0 && testResults.some(r => r.estado === 'fallo') && (
                     <Button
                       onClick={handleGenerateTask}
