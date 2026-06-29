@@ -131,7 +131,6 @@ export interface Client {
   fee_anio_carga?: number | null
   mora?: string | null
   nps_score?: number | null
-  encuesta_enviada?: boolean | null
   google_ads_customer_id: string | null
   meta_ads_account_id: string | null
   google_ads_customer_ids?: string[] | null

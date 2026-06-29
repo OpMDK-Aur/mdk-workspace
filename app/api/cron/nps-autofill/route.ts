@@ -36,23 +36,49 @@ export async function GET(request: Request) {
     console.log('[nps-autofill] Running on last day of month:', today.toISOString())
 
     // Fetch clients that meet criteria:
-    // - activo = true
-    // - encuesta_enviada = true
+    // - activo = true (from clientes table)
+    // - encuesta_enviada = true (from cliente_nps_historial table)
     // - servicios_contratados contains "generacion-de-demanda" OR "consultoria"
-    // - nps_score IS NULL (no score yet)
+    // - nps_score IS NULL (no score yet in clientes table)
+    
+    // First, get all clients with encuesta_enviada = true from cliente_nps_historial
+    const { data: npsHistorial, error: npsError } = await supabase
+      .from('cliente_nps_historial')
+      .select('cliente_id')
+      .eq('encuesta_enviada', true)
+      .limit(1000) // Set a reasonable limit
+
+    if (npsError) {
+      console.error('[nps-autofill] Error fetching NPS historial:', npsError)
+      return NextResponse.json({ error: npsError.message }, { status: 500 })
+    }
+
+    const clientIdsWithEncuesta = npsHistorial?.map((r: any) => r.cliente_id) || []
+    console.log('[nps-autofill] Found', clientIdsWithEncuesta.length, 'clients with encuesta_enviada = true')
+
+    if (clientIdsWithEncuesta.length === 0) {
+      console.log('[nps-autofill] No clients with encuesta_enviada, exiting')
+      return NextResponse.json({
+        success: true,
+        message: 'No clients found with encuesta_enviada = true',
+        recordsCreated: 0,
+      })
+    }
+
+    // Now fetch the client details for those with encuesta_enviada = true
     const { data: clients, error: clientsError } = await supabase
       .from('clientes')
-      .select('id, nombre_del_negocio, activo, encuesta_enviada, servicios_contratados, nps_score')
+      .select('id, nombre_del_negocio, activo, servicios_contratados, nps_score')
       .eq('activo', true)
-      .eq('encuesta_enviada', true)
       .is('nps_score', null)
+      .in('id', clientIdsWithEncuesta)
 
     if (clientsError) {
       console.error('[nps-autofill] Error fetching clients:', clientsError)
       return NextResponse.json({ error: clientsError.message }, { status: 500 })
     }
 
-    console.log('[nps-autofill] Found', clients?.length || 0, 'active clients with encuesta_enviada')
+    console.log('[nps-autofill] Found', clients?.length || 0, 'active clients with encuesta_enviada and no NPS score')
 
     // Filter clients that have the correct servicios
     const serviciosToMatch = ['generacion-de-demanda', 'consultoria']
