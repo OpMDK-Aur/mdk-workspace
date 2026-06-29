@@ -583,6 +583,9 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [rows, setRows]               = useState<ScorecardRow[]>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
+  const [editingBusinessName, setEditingBusinessName] = useState(false)
+  const [businessName, setBusinessName] = useState(client.business_name)
+  const [savingBusinessName, setSavingBusinessName] = useState(false)
   const [pmIds, setPmIds] = useState<string[]>(() => {
     if (client.project_manager_ids?.length) return client.project_manager_ids
     return client.project_manager_id ? [client.project_manager_id] : []
@@ -680,6 +683,32 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
 
   const handleActivoToggle = async () => {
     await handleActivoChange(!isActivo)
+  }
+
+  const saveBusinessName = async () => {
+    if (!businessName.trim() || businessName === client.business_name) {
+      setEditingBusinessName(false)
+      return
+    }
+    
+    setSavingBusinessName(true)
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .update({ business_name: businessName.trim() })
+        .eq('id', client.id)
+      
+      if (!error) {
+        setEditingBusinessName(false)
+      } else {
+        setBusinessName(client.business_name)
+      }
+    } catch (err) {
+      console.error('[v0] Error saving business name:', err)
+      setBusinessName(client.business_name)
+    } finally {
+      setSavingBusinessName(false)
+    }
   }
 
   const handlePMChange = async (newIds: string[]) => {
@@ -1099,7 +1128,39 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           <div className="flex items-center gap-3">
   <div>
   <div className="flex items-center gap-2 flex-wrap">
-    <h1 className="text-2xl font-bold text-foreground text-balance">{client.business_name}</h1>
+    {editingBusinessName ? (
+      <div className="flex items-center gap-2">
+        <Input 
+          value={businessName}
+          onChange={(e) => setBusinessName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') saveBusinessName()
+            if (e.key === 'Escape') {
+              setEditingBusinessName(false)
+              setBusinessName(client.business_name)
+            }
+          }}
+          className="text-2xl font-bold"
+          autoFocus
+        />
+        <Button size="sm" variant="ghost" onClick={saveBusinessName} disabled={savingBusinessName}>
+          {savingBusinessName ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => {
+          setEditingBusinessName(false)
+          setBusinessName(client.business_name)
+        }}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+    ) : (
+      <>
+        <h1 className="text-2xl font-bold text-foreground text-balance">{client.business_name}</h1>
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditingBusinessName(true)}>
+          <Pencil className="h-4 w-4" />
+        </Button>
+      </>
+    )}
     {/* Active/Inactive status badge */}
     <Badge 
       variant={isActivo ? "default" : "secondary"}
