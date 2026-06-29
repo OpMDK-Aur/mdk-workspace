@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server'
 import { openai } from '@ai-sdk/openai'
 import { streamText } from 'ai'
 import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
-import { getClientAdsAccounts, formatAdsAccount } from '@/lib/ads-accounts'
 
 export const maxDuration = 120
 
@@ -164,11 +163,14 @@ async function fetchGoogleMetrics(
         body: JSON.stringify({ query: nameQuery }),
       })
       const nameData = await nameResp.json()
-      if (nameResp.ok && nameData.results && nameData.results[0]?.customer?.descriptive_name) {
-        accountName = nameData.results[0].customer.descriptive_name
+      // Google Ads API returns fields in camelCase (descriptiveName)
+      const customer = nameData.results?.[0]?.customer
+      const descriptiveName = customer?.descriptiveName || customer?.descriptive_name
+      if (nameResp.ok && descriptiveName) {
+        accountName = descriptiveName
         console.log('[v0] Google account name retrieved:', accountName)
       } else {
-        console.warn('[v0] Google name response error:', { status: nameResp.status, nameData })
+        console.warn('[v0] Google name not found, using ID. Customer object:', customer)
       }
     } catch (e) {
       console.warn('[v0] Error fetching Google account name:', e)
@@ -396,20 +398,7 @@ export async function POST(req: Request) {
     const googleDeveloperToken = getGoogleAdsDeveloperToken()
     const googleLoginCustomerId = getGoogleAdsLoginCustomerId()
 
-    // Get ads accounts mapping from DB
-    const adsAccountsDB = await getClientAdsAccounts(clientId)
-    const accountNameMap = new Map<string, { name: string; platform: string }>()
-    
-    for (const account of adsAccountsDB) {
-      accountNameMap.set(account.account_id, {
-        name: account.account_name,
-        platform: account.platform === 'google_ads' ? 'Google Ads' : 'Meta Ads'
-      })
-    }
-    
-    console.log('[v0] Ads accounts in DB:', adsAccountsDB.length, adsAccountsDB)
-
-    // Fetch metrics for accounts
+    // Fetch metrics for accounts (account names are fetched directly from the Meta/Google APIs)
     const metricsByAccount: Array<{
       account: string
       accountName: string
@@ -425,7 +414,6 @@ export async function POST(req: Request) {
     const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
     
     console.log('[v0] Tokens found:', { meta: !!metaAccessToken, google: !!googleAccessToken, googleDevToken: !!googleDeveloperToken })
-    console.log('[v0] Ads accounts from DB:', adsAccountsDB.length)
     
     // Fetch Meta accounts metrics
     // Parse Meta Ads account IDs (can be string like "123,456" or array)
