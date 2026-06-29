@@ -16,8 +16,22 @@ import {
   Legend,
   ResponsiveContainer,
   Cell,
+  LabelList,
   type TooltipProps,
 } from 'recharts'
+
+type ValueFormat = 'currency' | 'percent' | 'number'
+
+interface SeriesConfig {
+  /** Key in each data row that holds this series' value */
+  key: string
+  /** Display name for legend/tooltip */
+  name?: string
+  /** Value formatting for this series */
+  format?: ValueFormat
+  /** Optional fixed color */
+  color?: string
+}
 
 interface ChartData {
   type: 'bar' | 'line' | 'pie' | 'area'
@@ -28,9 +42,15 @@ interface ChartData {
   color?: string
   colors?: string[]
   /** Optional: "currency", "percent", or "number" — controls value formatting */
-  format?: 'currency' | 'percent' | 'number'
+  format?: ValueFormat
   /** Optional currency symbol, defaults to "$" */
   currencySymbol?: string
+  /** Bar charts only: "horizontal" renders bars left-to-right. Defaults to vertical. */
+  layout?: 'horizontal' | 'vertical'
+  /** Multiple metrics per category (e.g. inversión + leads). When set, overrides yKey. */
+  series?: SeriesConfig[]
+  /** Show value labels on bars. */
+  showValues?: boolean
 }
 
 // Palette mapped to the app design tokens (OKLCH chart tokens)
@@ -44,10 +64,11 @@ const PALETTE = [
 
 const AXIS_COLOR = 'var(--color-muted-foreground)'
 const GRID_COLOR = 'var(--color-border)'
+const LABEL_COLOR = 'var(--color-foreground)'
 
 function formatValue(
   value: number,
-  format?: 'currency' | 'percent' | 'number',
+  format?: ValueFormat,
   currencySymbol = '$'
 ): string {
   if (typeof value !== 'number' || Number.isNaN(value)) return String(value)
@@ -60,15 +81,33 @@ function formatValue(
   return value.toLocaleString('es-MX', { maximumFractionDigits: 2 })
 }
 
+// Compact format for on-bar labels to avoid clutter on large numbers
+function compactValue(
+  value: number,
+  format?: ValueFormat,
+  currencySymbol = '$'
+): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) return String(value)
+  const prefix = format === 'currency' ? currencySymbol : ''
+  const suffix = format === 'percent' ? '%' : ''
+  let n: string
+  if (Math.abs(value) >= 1_000_000) n = `${(value / 1_000_000).toFixed(1)}M`
+  else if (Math.abs(value) >= 1_000) n = `${(value / 1_000).toFixed(1)}k`
+  else n = value.toLocaleString('es-MX', { maximumFractionDigits: 2 })
+  return `${prefix}${n}${suffix}`
+}
+
 function CustomTooltip({
   active,
   payload,
   label,
   format,
   currencySymbol,
+  seriesFormats,
 }: TooltipProps<number, string> & {
-  format?: 'currency' | 'percent' | 'number'
+  format?: ValueFormat
   currencySymbol?: string
+  seriesFormats?: Record<string, ValueFormat | undefined>
 }) {
   if (!active || !payload || payload.length === 0) return null
   return (
@@ -76,19 +115,22 @@ function CustomTooltip({
       {label !== undefined && (
         <p className="mb-1 font-medium text-popover-foreground">{label}</p>
       )}
-      {payload.map((entry, i) => (
-        <div key={i} className="flex items-center gap-2 text-popover-foreground">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-sm"
-            style={{ backgroundColor: entry.color }}
-            aria-hidden
-          />
-          <span className="text-muted-foreground">{entry.name}:</span>
-          <span className="font-semibold tabular-nums">
-            {formatValue(Number(entry.value), format, currencySymbol)}
-          </span>
-        </div>
-      ))}
+      {payload.map((entry, i) => {
+        const fmt = seriesFormats?.[String(entry.dataKey)] ?? format
+        return (
+          <div key={i} className="flex items-center gap-2 text-popover-foreground">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-sm"
+              style={{ backgroundColor: entry.color }}
+              aria-hidden
+            />
+            <span className="text-muted-foreground">{entry.name}:</span>
+            <span className="font-semibold tabular-nums">
+              {formatValue(Number(entry.value), fmt, currencySymbol)}
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -104,6 +146,9 @@ export function ChartBlock({ config }: { config: ChartData }) {
     colors,
     format,
     currencySymbol = '$',
+    layout = 'vertical',
+    series,
+    showValues,
   } = config
 
   if (!data || data.length === 0) {
@@ -116,11 +161,28 @@ export function ChartBlock({ config }: { config: ChartData }) {
 
   const mainColor = color || PALETTE[0]
   const gradientId = `area-gradient-${yKey}-${type}`
+  const isHorizontal = type === 'bar' && layout === 'horizontal'
+
+  // Normalize the list of series. Single-series charts fall back to yKey.
+  const seriesList: SeriesConfig[] =
+    series && series.length > 0
+      ? series
+      : [{ key: yKey, name: yKey, format }]
+  const isMultiSeries = seriesList.length > 1
+
+  const seriesFormats: Record<string, ValueFormat | undefined> = {}
+  for (const s of seriesList) seriesFormats[s.key] = s.format ?? format
 
   const tooltip = (
     <Tooltip
       cursor={{ fill: 'var(--color-muted)', opacity: 0.25 }}
-      content={<CustomTooltip format={format} currencySymbol={currencySymbol} />}
+      content={
+        <CustomTooltip
+          format={format}
+          currencySymbol={currencySymbol}
+          seriesFormats={seriesFormats}
+        />
+      }
     />
   )
 
@@ -130,13 +192,50 @@ export function ChartBlock({ config }: { config: ChartData }) {
     axisLine: { stroke: GRID_COLOR },
   }
 
-  const yTickFormatter = (v: number) => {
+  const valueTickFormatter = (v: number) => {
     if (format === 'currency') {
       return v >= 1000 ? `${currencySymbol}${(v / 1000).toFixed(1)}k` : `${currencySymbol}${v}`
     }
     if (format === 'percent') return `${v}%`
     return v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${v}`
   }
+
+  // Bars grow with more categories/series so labels stay readable
+  const chartHeight = isHorizontal
+    ? Math.max(260, data.length * (isMultiSeries ? 56 : 44) + 60)
+    : 320
+
+  const renderBars = () =>
+    seriesList.map((s, si) => (
+      <Bar
+        key={s.key}
+        dataKey={s.key}
+        name={s.name || s.key}
+        radius={isHorizontal ? [0, 6, 6, 0] : [6, 6, 0, 0]}
+        maxBarSize={64}
+        fill={s.color || (isMultiSeries ? PALETTE[si % PALETTE.length] : undefined)}
+      >
+        {/* Per-category colors only when single series (so each account is distinct) */}
+        {!isMultiSeries &&
+          data.map((_, index) => (
+            <Cell
+              key={`cell-${index}`}
+              fill={colors?.[index] || color || PALETTE[index % PALETTE.length]}
+            />
+          ))}
+        {showValues && (
+          <LabelList
+            dataKey={s.key}
+            position={isHorizontal ? 'right' : 'top'}
+            fill={LABEL_COLOR}
+            fontSize={11}
+            formatter={(v: number) =>
+              compactValue(v, s.format ?? format, currencySymbol)
+            }
+          />
+        )}
+      </Bar>
+    ))
 
   return (
     <div className="my-4 rounded-xl border bg-card p-5 shadow-sm">
@@ -145,37 +244,60 @@ export function ChartBlock({ config }: { config: ChartData }) {
           {title}
         </h4>
       )}
-      <div className="h-[300px] w-full">
+      <div className="w-full" style={{ height: chartHeight }}>
         <ResponsiveContainer width="100%" height="100%">
           {type === 'bar' ? (
-            <BarChart data={data} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} vertical={false} />
-              <XAxis dataKey={xKey} {...axisProps} />
-              <YAxis {...axisProps} tickFormatter={yTickFormatter} width={48} />
-              {tooltip}
-              <Bar dataKey={yKey} radius={[6, 6, 0, 0]} maxBarSize={64}>
-                {data.map((_, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={colors?.[index] || color || PALETTE[index % PALETTE.length]}
-                  />
-                ))}
-              </Bar>
-            </BarChart>
+            isHorizontal ? (
+              <BarChart
+                data={data}
+                layout="vertical"
+                margin={{ top: 8, right: 48, bottom: 4, left: 8 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} horizontal={false} />
+                <XAxis type="number" {...axisProps} tickFormatter={valueTickFormatter} />
+                <YAxis
+                  type="category"
+                  dataKey={xKey}
+                  {...axisProps}
+                  width={Math.min(160, Math.max(80, ...data.map((d) => String(d[xKey] ?? '').length * 7)))}
+                />
+                {tooltip}
+                {isMultiSeries && (
+                  <Legend wrapperStyle={{ fontSize: 12, color: AXIS_COLOR }} />
+                )}
+                {renderBars()}
+              </BarChart>
+            ) : (
+              <BarChart data={data} margin={{ top: 20, right: 8, bottom: 4, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} vertical={false} />
+                <XAxis dataKey={xKey} {...axisProps} />
+                <YAxis {...axisProps} tickFormatter={valueTickFormatter} width={48} />
+                {tooltip}
+                {isMultiSeries && (
+                  <Legend wrapperStyle={{ fontSize: 12, color: AXIS_COLOR }} />
+                )}
+                {renderBars()}
+              </BarChart>
+            )
           ) : type === 'line' ? (
             <LineChart data={data} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} vertical={false} />
               <XAxis dataKey={xKey} {...axisProps} />
-              <YAxis {...axisProps} tickFormatter={yTickFormatter} width={48} />
+              <YAxis {...axisProps} tickFormatter={valueTickFormatter} width={48} />
               {tooltip}
-              <Line
-                type="monotone"
-                dataKey={yKey}
-                stroke={mainColor}
-                strokeWidth={2.5}
-                dot={{ fill: mainColor, r: 3 }}
-                activeDot={{ r: 5 }}
-              />
+              {isMultiSeries && <Legend wrapperStyle={{ fontSize: 12, color: AXIS_COLOR }} />}
+              {seriesList.map((s, si) => (
+                <Line
+                  key={s.key}
+                  type="monotone"
+                  dataKey={s.key}
+                  name={s.name || s.key}
+                  stroke={s.color || (isMultiSeries ? PALETTE[si % PALETTE.length] : mainColor)}
+                  strokeWidth={2.5}
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+              ))}
             </LineChart>
           ) : type === 'area' ? (
             <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
@@ -187,7 +309,7 @@ export function ChartBlock({ config }: { config: ChartData }) {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} vertical={false} />
               <XAxis dataKey={xKey} {...axisProps} />
-              <YAxis {...axisProps} tickFormatter={yTickFormatter} width={48} />
+              <YAxis {...axisProps} tickFormatter={valueTickFormatter} width={48} />
               {tooltip}
               <Area
                 type="monotone"

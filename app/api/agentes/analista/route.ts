@@ -409,6 +409,8 @@ export async function POST(req: Request) {
       impressions: number
       clicks: number
       ctr: number
+      daily: DailyPoint[]
+      campaigns: CampaignPoint[]
     }> = []
 
     const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
@@ -668,6 +670,17 @@ Para GRAFICOS de barras, lineas, areas o pie, usa un bloque de codigo con la pal
 
 Tipos disponibles: "bar", "line", "area", "pie"
 Campo "format" (opcional): "currency" para dinero ($), "percent" para porcentajes (%), "number" para cantidades. Úsalo para que los ejes y tooltips muestren los valores con el formato correcto (ej. inversión y CPL usan "currency", CTR usa "percent", leads/clics/impresiones usan "number").
+
+OPCIONES AVANZADAS PARA GRAFICOS DE BARRAS:
+- "layout":"horizontal" -> dibuja las barras en horizontal (de izquierda a derecha). Útil cuando hay muchas categorías o nombres largos. Por defecto es vertical.
+- "showValues":true -> muestra el valor numérico como etiqueta sobre/junto a cada barra.
+- "series" -> array para comparar VARIAS métricas por categoría (ej. inversión Y leads en el mismo gráfico). Cada serie es {"key":"campoEnData","name":"Etiqueta","format":"currency|percent|number"}. Cuando uses "series", cada fila de "data" debe incluir un campo por cada key. NO uses "yKey" si usas "series".
+
+Ejemplo: barras HORIZONTALES comparando inversión y leads por cuenta, con los valores visibles:
+` + "```" + `chart
+{"type":"bar","title":"Inversion y Leads por Cuenta","layout":"horizontal","showValues":true,"xKey":"name","series":[{"key":"inversion","name":"Inversion","format":"currency"},{"key":"leads","name":"Leads","format":"number"}],"data":[{"name":"Galeno","inversion":307618,"leads":192},{"name":"Prevencion","inversion":1120000,"leads":2033}]}
+` + "```" + `
+IMPORTANTE: si el usuario pide barras "horizontales", usa SIEMPRE "layout":"horizontal". Si pide ver la inversión y los leads juntos, usa "series" con ambas métricas. Si pide ver los valores/cifras en el gráfico, usa "showValues":true.
 
 Para generar ARCHIVOS descargables (CSV de datos, reportes), usa un bloque de codigo con la palabra file:
 
