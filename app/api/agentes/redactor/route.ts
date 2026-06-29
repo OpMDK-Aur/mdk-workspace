@@ -362,15 +362,23 @@ export async function POST(req: Request) {
     
     if (metaAccessToken && cuentas && cuentas.length > 0) {
       for (const accountId of cuentas) {
-        console.log('[redactor] Checking account:', { accountId, startsWithAct: accountId.startsWith('act_'), isNumeric: /^\d+$/.test(accountId) })
-        // Meta accounts are numeric or start with 'act_'
-        const isMetaAccount = accountId.startsWith('act_') || /^\d+$/.test(accountId)
-        console.log('[redactor] Is Meta account?', isMetaAccount)
+        const trimmedId = (accountId || '').trim()
+        if (!trimmedId) continue
         
+        console.log('[redactor] Checking account:', { accountId: trimmedId, startsWithAct: trimmedId.startsWith('act_'), isNumeric: /^\d+$/.test(trimmedId), hasHyphen: trimmedId.includes('-') })
+        
+        // Meta accounts are numeric, start with 'act_', or are all digits
+        // Google accounts have dashes or are formatted like 123-456-7890
+        const isMetaAccount = trimmedId.startsWith('act_') || /^\d+$/.test(trimmedId)
+        const isGoogleAccount = trimmedId.includes('-') || /^\d+-\d+-\d+$/.test(trimmedId)
+        
+        console.log('[redactor] Account classification:', { isMetaAccount, isGoogleAccount })
+        
+        // Try Meta first if it looks like a Meta account
         if (isMetaAccount) {
           try {
-            console.log('[redactor] Fetching Meta metrics for:', accountId)
-            const metaMetrics = await fetchMetaMetrics(accountId, metaAccessToken, { start: startDate, end: endDate })
+            console.log('[redactor] Fetching Meta metrics for:', trimmedId)
+            const metaMetrics = await fetchMetaMetrics(trimmedId, metaAccessToken, { start: startDate, end: endDate })
             console.log('[redactor] Got Meta metrics:', metaMetrics)
             if (metaMetrics) {
               metaSpend += metaMetrics.spend || 0
@@ -378,12 +386,12 @@ export async function POST(req: Request) {
             }
             
             // Also fetch campaign-level metrics
-            const metaCamps = await fetchMetaCampaignMetrics(accountId, metaAccessToken, { start: startDate, end: endDate })
+            const metaCamps = await fetchMetaCampaignMetrics(trimmedId, metaAccessToken, { start: startDate, end: endDate })
             if (metaCamps && metaCamps.length > 0) {
               metaCampaigns.push(...metaCamps)
             }
           } catch (error) {
-            console.log('[redactor] Meta fetch error for', accountId, ':', error)
+            console.log('[redactor] Meta fetch error for', trimmedId, ':', error)
           }
         }
       }
@@ -396,26 +404,37 @@ export async function POST(req: Request) {
       const googleDeveloperToken = getGoogleAdsDeveloperToken()
       const googleLoginCustomerId = getGoogleAdsLoginCustomerId()
 
+      console.log('[redactor] Google credentials available:', { hasToken: !!googleAccessToken, hasDeveloper: !!googleDeveloperToken, hasLoginCustomerId: !!googleLoginCustomerId })
+
       if (googleAccessToken && googleDeveloperToken && googleLoginCustomerId && cuentas && cuentas.length > 0) {
         for (const customerId of cuentas) {
-          // Google accounts typically contain dashes (formatted as 123-456-7890)
-          const isGoogleAccount = !customerId.startsWith('act_') && (customerId.includes('-') || /^\d+-\d+-\d+$/.test(customerId))
+          const trimmedId = (customerId || '').trim()
+          if (!trimmedId) continue
+          
+          console.log('[redactor] Checking Google account:', { customerId: trimmedId, startsWithAct: trimmedId.startsWith('act_'), hasHyphen: trimmedId.includes('-'), isFormatted: /^\d+-\d+-\d+$/.test(trimmedId) })
+          
+          // Google accounts typically contain dashes (formatted as 123-456-7890) OR are just dash-separated digits
+          const isGoogleAccount = !trimmedId.startsWith('act_') && (trimmedId.includes('-') || /^\d+-\d+-\d+$/.test(trimmedId) || /^\d+$/.test(trimmedId))
+          
+          console.log('[redactor] Is Google account?', isGoogleAccount)
           
           if (isGoogleAccount) {
             try {
-              const googleMetrics = await fetchGoogleMetrics(customerId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, { start: startDate, end: endDate })
+              console.log('[redactor] Fetching Google metrics for:', trimmedId)
+              const googleMetrics = await fetchGoogleMetrics(trimmedId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, { start: startDate, end: endDate })
+              console.log('[redactor] Got Google metrics:', googleMetrics)
               if (googleMetrics) {
                 googleSpend += googleMetrics.spend || 0
                 googleLeads += googleMetrics.leads || 0
               }
               
               // Also fetch campaign-level metrics
-              const googleCamps = await fetchGoogleCampaignMetrics(customerId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, { start: startDate, end: endDate })
+              const googleCamps = await fetchGoogleCampaignMetrics(trimmedId, googleAccessToken, googleDeveloperToken, googleLoginCustomerId, { start: startDate, end: endDate })
               if (googleCamps && googleCamps.length > 0) {
                 googleCampaigns.push(...googleCamps)
               }
             } catch (error) {
-              console.log('[redactor] Google fetch error for', customerId, ':', error)
+              console.log('[redactor] Google fetch error for', trimmedId, ':', error)
             }
           }
         }
