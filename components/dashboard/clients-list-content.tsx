@@ -864,9 +864,6 @@ const applyFilter = (filter: SavedFilter) => {
               Nuevo cliente
             </Button>
           )}
-
-
-          )}
         </div>
 
         {/* Summary Cards */}
