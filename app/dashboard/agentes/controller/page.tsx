@@ -21,8 +21,8 @@ async function getControllerData() {
       nombre_del_negocio,
       project_manager_id,
       account_manager_id,
-      pm:project_manager_id(id, nombre, apellido, puesto),
-      am:account_manager_id(id, nombre, apellido, puesto)
+      pm:project_manager_id(id, nombre, apellido, puesto, color_hex),
+      am:account_manager_id(id, nombre, apellido, puesto, color_hex)
     `)
     .eq('activo', true)
     .eq('pm.puesto', 'Project Manager')
@@ -67,8 +67,10 @@ async function getControllerData() {
       alertas_disparadas_hoy: disparadasHoy,
       pm_id: cliente.project_manager_id || null,
       pm_nombre: cliente.pm ? `${cliente.pm.nombre} ${cliente.pm.apellido}`.trim() : null,
+      pm_color: cliente.pm?.color_hex || null,
       am_id: cliente.account_manager_id || null,
       am_nombre: cliente.am ? `${cliente.am.nombre} ${cliente.am.apellido}`.trim() : null,
+      am_color: cliente.am?.color_hex || null,
     }
   })
 

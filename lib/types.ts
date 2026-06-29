@@ -469,6 +469,7 @@ export interface Colaborador {
   departamento_id?: string | null
   rol?: string | null
   activo?: boolean
+  color_hex?: string | null
 }
 
 export type TaskStatus = 'pendiente' | 'resolviendo' | 'demorada' | 'pausada' | 'pendiente_aprobacion' | 'resuelto' | 'no_realizado'
@@ -702,6 +703,8 @@ export interface ClienteConController {
   alertas_disparadas_hoy: number
   pm_id: string | null
   pm_nombre: string | null
+  pm_color?: string | null
   am_id: string | null
   am_nombre: string | null
+  am_color?: string | null
 }
