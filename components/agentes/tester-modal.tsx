@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Client, TesterResultado, MetaForm, TesterItem } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -74,6 +75,7 @@ interface ItemWithStatus extends TesterItem {
 
 export function TesterModal({ open, onOpenChange, initialClientId }: TesterModalProps) {
   const supabase = createClient()
+  const router = useRouter()
   
   const [tab, setTab] = useState<'manual' | 'historial' | 'cron'>('manual')
   const [step, setStep] = useState(1)
@@ -363,6 +365,12 @@ export function TesterModal({ open, onOpenChange, initialClientId }: TesterModal
       }
       
       toast.success('Tarea generada exitosamente')
+      
+      // Close modal and redirect to the new task
+      onOpenChange(false)
+      if (data.tarea?.id) {
+        router.push(`/dashboard/tasks?task=${data.tarea.id}`)
+      }
     } catch (error) {
       console.error('Error generating task:', error)
       toast.error(error instanceof Error ? error.message : 'Error al generar tarea')

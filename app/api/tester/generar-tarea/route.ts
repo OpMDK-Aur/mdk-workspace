@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { randomUUID } from 'crypto'
 
 interface ResultadoFallido {
   nombre: string
@@ -95,7 +96,29 @@ export async function POST(req: Request) {
       .select()
       .single()
 
-    return NextResponse.json({ tarea })
+    if (!tarea) {
+      return NextResponse.json({ error: 'Failed to create task' }, { status: 500 })
+    }
+
+    // Add system comment with tested forms/landings
+    const testedFormsText = resultados_fallidos
+      .map(r => `• **${r.nombre}** (${r.tipo === 'meta_form' ? 'Formulario Meta' : 'Landing'})`)
+      .join('\n')
+
+    const comentario = `**Testing automático ejecutado**\n\nFormularios/Landings testeados:\n${testedFormsText}`
+
+    await supabase
+      .from('comentarios_tareas')
+      .insert({
+        id: randomUUID(),
+        tarea_id: tarea.id,
+        contenido: comentario,
+        autor_id: null,
+        autor_nombre: 'Madky',
+        es_sistema: true
+      })
+
+    return NextResponse.json({ tarea, message: 'Tarea generada exitosamente' })
   } catch (error) {
     console.error('Error generating task:', error)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
