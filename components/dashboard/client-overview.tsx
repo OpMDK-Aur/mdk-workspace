@@ -695,7 +695,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     try {
       const { error } = await supabase
         .from('clientes')
-        .update({ business_name: businessName.trim() })
+        .update({ nombre_del_negocio: businessName.trim() })
         .eq('id', client.id)
       
       if (!error) {
