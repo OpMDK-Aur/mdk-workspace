@@ -44,7 +44,7 @@ import {
   Plus, X, CheckCircle2, Circle, Edit2, Save, Loader2,
   Megaphone, Search, TrendingUp, Users, Palette, Code,
   MessageCircle, Database, FileText, Settings, Trash2, Star,
-  Power, ArrowLeft,
+  Power, ArrowLeft, AlertCircle,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -130,8 +130,6 @@ const SERVICE_COLORS: Record<string, string> = {
 export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isActivo = true, onActivoChange, updatingActivo = false }: ClientInfoCardProps) {
   const supabase = createClient()
   const isMaster = userRole === 'master'
-  
-
   
   // Contact state - using existing fields from clientes table (nombre, apellido, telefono)
   const [contactNombre, setContactNombre] = useState(client.nombre || '')
@@ -226,7 +224,7 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
       .eq('id', client.id)
     setSavingSemaforo(false)
   }
-  
+
   // Save plan
   const savePlan = async (newPlan: ClientPlan) => {
     setSavingPlan(true)

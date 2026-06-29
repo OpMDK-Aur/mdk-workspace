@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import type { Client, Profile, ScorecardRow, DateRange } from '@/lib/types'
 import { MORA_OPTIONS, getMoraColor, MESES_CARGA } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,6 +12,7 @@ import {
   DollarSign, Target, TrendingDown, MousePointerClick, Eye,
   Users, MessageSquare, Calendar, Clock,
   ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown, Pencil, Check, X, Plus, Loader2,
+  AlertCircle, Trash2,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -18,6 +20,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { updateClientHitosAccountManager } from '@/app/actions/client-hitos'
@@ -571,7 +582,8 @@ function sortUnidades(unidades: UnidadDeNegocio[]): UnidadDeNegocio[] {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0, unidadesDeNegocio = [], metricasColaborador = [], horasPorColaborador = [], npsNotas = [] }: ClientOverviewProps) {
-  const [preset, setPreset]           = useState('last_30d')
+  const router = useRouter()
+  const [preset, setPreset] = useState('last_30d')
   // Month filter for "Horas del equipo" (defaults to the current month)
   const [teamMonth, setTeamMonth] = useState<string>(() => currentMonthValue())
   const monthOptions = useMemo(() => getMonthOptions(12), [])
@@ -583,6 +595,11 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [rows, setRows]               = useState<ScorecardRow[]>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
+  const [editingBusinessName, setEditingBusinessName] = useState(false)
+  const [businessName, setBusinessName] = useState(client.business_name)
+  const [savingBusinessName, setSavingBusinessName] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletingClient, setDeletingClient] = useState(false)
   const [pmIds, setPmIds] = useState<string[]>(() => {
     if (client.project_manager_ids?.length) return client.project_manager_ids
     return client.project_manager_id ? [client.project_manager_id] : []
@@ -682,6 +699,35 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
     await handleActivoChange(!isActivo)
   }
 
+  const saveBusinessName = async () => {
+    const trimmedName = businessName.trim()
+    if (!trimmedName || trimmedName === client.business_name) {
+      setEditingBusinessName(false)
+      return
+    }
+    
+    setSavingBusinessName(true)
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .update({ nombre_del_negocio: trimmedName })
+        .eq('id', client.id)
+      
+      if (!error) {
+        // Keep the updated name in state for immediate UI update
+        setBusinessName(trimmedName)
+        setEditingBusinessName(false)
+      } else {
+        setBusinessName(client.business_name)
+      }
+    } catch (err) {
+      console.error('[v0] Error saving business name:', err)
+      setBusinessName(client.business_name)
+    } finally {
+      setSavingBusinessName(false)
+    }
+  }
+
   const handlePMChange = async (newIds: string[]) => {
     setUpdatingPM(true)
     try {
@@ -725,6 +771,21 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
       console.error('Error updating AM:', e)
     } finally {
       setUpdatingAM(false)
+    }
+  }
+
+  const handleDeleteClient = async () => {
+    setDeletingClient(true)
+    try {
+      await supabase
+        .from('clientes')
+        .delete()
+        .eq('id', client.id)
+      
+      router.push('/dashboard/clients')
+    } catch (err) {
+      console.error('[v0] Error deleting client:', err)
+      setDeletingClient(false)
     }
   }
 
@@ -1099,7 +1160,39 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           <div className="flex items-center gap-3">
   <div>
   <div className="flex items-center gap-2 flex-wrap">
-    <h1 className="text-2xl font-bold text-foreground text-balance">{client.business_name}</h1>
+    {editingBusinessName ? (
+      <div className="flex items-center gap-2">
+        <Input 
+          value={businessName}
+          onChange={(e) => setBusinessName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') saveBusinessName()
+            if (e.key === 'Escape') {
+              setEditingBusinessName(false)
+              setBusinessName(client.business_name)
+            }
+          }}
+          className="text-2xl font-bold"
+          autoFocus
+        />
+        <Button size="sm" variant="ghost" onClick={saveBusinessName} disabled={savingBusinessName}>
+          {savingBusinessName ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => {
+          setEditingBusinessName(false)
+          setBusinessName(client.business_name)
+        }}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+    ) : (
+      <>
+        <h1 className="text-2xl font-bold text-foreground text-balance">{businessName}</h1>
+        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditingBusinessName(true)}>
+          <Pencil className="h-4 w-4" />
+        </Button>
+      </>
+    )}
     {/* Active/Inactive status badge */}
     <Badge 
       variant={isActivo ? "default" : "secondary"}
@@ -1545,7 +1638,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           />
         </div>
 
-        {/* ── KPIs del periodo ── */}
+        {/* ��─ KPIs del periodo ── */}
         <div>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">KPIs del periodo</h2>
@@ -1730,6 +1823,52 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             title="Proximas reuniones y actividades"
             description="Agenda sincronizada con Google Calendar y actividades del cliente"
           />
+        </div>
+
+        {/* ── Danger Zone ── */}
+        <div className="mt-12 pt-8 border-t border-destructive/20">
+          <div className="space-y-4 p-4 border border-destructive/50 rounded-lg bg-destructive/5">
+            <h2 className="text-sm font-semibold text-destructive flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              Zona de Peligro
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Esta acción no se puede deshacer. El cliente y todos sus datos asociados serán eliminados permanentemente.
+            </p>
+            <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="destructive" size="sm" className="w-full">
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Eliminar cliente
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Eliminar cliente</DialogTitle>
+                  <DialogDescription>
+                    ¿Estás seguro de que deseas eliminar este cliente? Esta acción no se puede deshacer.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                  <p className="text-sm text-foreground">
+                    Cliente: <span className="font-semibold">{client.business_name}</span>
+                  </p>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    onClick={handleDeleteClient}
+                    disabled={deletingClient}
+                  >
+                    {deletingClient ? 'Eliminando...' : 'Eliminar'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
       </div>
