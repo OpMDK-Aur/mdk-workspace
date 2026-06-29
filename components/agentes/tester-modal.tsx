@@ -89,6 +89,7 @@ export function TesterModal({ open, onOpenChange, initialClientId }: TesterModal
   const [testResults, setTestResults] = useState<TesterResultado[]>([])
   const [testing, setTesting] = useState(false)
   const [markingHitoComplete, setMarkingHitoComplete] = useState(false)
+  const [generatingTask, setGeneratingTask] = useState(false)
   
   // Historial state
   const [historialResults, setHistorialResults] = useState<TesterResultado[]>([])
@@ -340,6 +341,7 @@ export function TesterModal({ open, onOpenChange, initialClientId }: TesterModal
       return
     }
 
+    setGeneratingTask(true)
     try {
       const response = await fetch('/api/tester/generar-tarea', {
         method: 'POST',
@@ -354,12 +356,18 @@ export function TesterModal({ open, onOpenChange, initialClientId }: TesterModal
         })
       })
 
-      if (!response.ok) throw new Error('Failed to generate task')
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Error al generar la tarea')
+      }
       
       toast.success('Tarea generada exitosamente')
     } catch (error) {
       console.error('Error generating task:', error)
-      toast.error('Error al generar tarea')
+      toast.error(error instanceof Error ? error.message : 'Error al generar tarea')
+    } finally {
+      setGeneratingTask(false)
     }
   }
 
@@ -630,10 +638,20 @@ export function TesterModal({ open, onOpenChange, initialClientId }: TesterModal
                   {testResults.length > 0 && testResults.some(r => r.estado === 'fallo') && (
                     <Button
                       onClick={handleGenerateTask}
+                      disabled={generatingTask}
                       variant="outline"
                     >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Generar tarea
+                      {generatingTask ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          Generando...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="h-4 w-4 mr-1" />
+                          Generar tarea
+                        </>
+                      )}
                     </Button>
                   )}
                   <Button
