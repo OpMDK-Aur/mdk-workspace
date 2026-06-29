@@ -611,18 +611,18 @@ export default function AnalistaPage() {
           {/* Date Range Inputs */}
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground">Rango de fechas</label>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               <input
                 type="date"
                 value={dateStart}
                 onChange={(e) => setDateStart(e.target.value)}
-                className="flex-1 px-3 py-2 text-sm border rounded-md bg-background"
+                className="w-full px-3 py-2 text-sm border rounded-md bg-background"
               />
               <input
                 type="date"
                 value={dateEnd}
                 onChange={(e) => setDateEnd(e.target.value)}
-                className="flex-1 px-3 py-2 text-sm border rounded-md bg-background"
+                className="w-full px-3 py-2 text-sm border rounded-md bg-background"
               />
             </div>
           </div>
