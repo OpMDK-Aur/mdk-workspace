@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { randomUUID } from 'crypto'
+import crypto from 'crypto'
 
 interface ResultadoFallido {
   nombre: string
@@ -110,7 +110,7 @@ export async function POST(req: Request) {
     await supabase
       .from('comentarios_tareas')
       .insert({
-        id: randomUUID(),
+        id: crypto.randomUUID(),
         tarea_id: tarea.id,
         contenido: comentario,
         autor_id: null,
