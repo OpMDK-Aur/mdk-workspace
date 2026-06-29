@@ -309,9 +309,20 @@ export default function AnalistaPage() {
   }
 
   const handleSendMessage = async (content: string) => {
-    if ((!content?.trim() && attachments.length === 0) || isLoading || !selectedClient) return
+    if ((!content?.trim() && attachments.length === 0) || isLoading || uploadingFiles || !selectedClient) return
 
+    // Set loading immediately so a second Enter during the upload can't trigger a duplicate send
+    setIsLoading(true)
+
+    const hadAttachments = attachments.length > 0
     const uploadedFiles = await uploadAttachments()
+
+    // If the user attached files but none uploaded successfully, abort instead of sending an empty request
+    if (hadAttachments && uploadedFiles.length === 0) {
+      toast.error('No se pudieron subir los archivos. Intenta de nuevo.')
+      setIsLoading(false)
+      return
+    }
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -323,7 +334,6 @@ export default function AnalistaPage() {
     setChatMessages(newMessages)
     setInputValue('')
     setAttachments([])
-    setIsLoading(true)
 
     const convId = currentConvId
     if (convId) {
@@ -365,6 +375,7 @@ export default function AnalistaPage() {
       const decoder = new TextDecoder()
       let assistantContent = ''
       let buffer = ''
+      let streamError = ''
       const assistantId = crypto.randomUUID()
 
       setChatMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }])
@@ -391,11 +402,25 @@ export default function AnalistaPage() {
               setChatMessages((prev) =>
                 prev.map((m) => (m.id === assistantId ? { ...m, content: assistantContent } : m)),
               )
+            } else if (json.type === 'error') {
+              console.error('[v0] Stream error:', json.errorText || json.error)
+              streamError = json.errorText || 'El modelo no pudo procesar la solicitud.'
             }
           } catch {
             // Skip invalid JSON
           }
         }
+      }
+
+      // If the model returned nothing (e.g. it failed to read an image), show a clear message
+      if (!assistantContent) {
+        const fallback = streamError
+          ? `No pude completar el análisis: ${streamError}`
+          : 'No pude procesar la solicitud. Si adjuntaste una imagen, verifica que sea un formato válido (PNG/JPG) e inténtalo de nuevo.'
+        assistantContent = fallback
+        setChatMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, content: fallback } : m)),
+        )
       }
 
       // Persist assistant message + auto-title
@@ -412,8 +437,11 @@ export default function AnalistaPage() {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Don't submit while an IME composition is in progress (CJK input) or while sending/uploading
+    if (e.nativeEvent.isComposing || (e as unknown as { keyCode: number }).keyCode === 229) return
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
+      if (isLoading || uploadingFiles) return
       handleSendMessage(inputValue)
     }
   }

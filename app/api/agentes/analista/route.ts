@@ -796,7 +796,13 @@ Estos archivos han sido parseados y sus contenidos están disponibles en el cont
       estado: 'ok',
     }).then(() => {})
 
-    return result.toUIMessageStreamResponse()
+    return result.toUIMessageStreamResponse({
+      onError: (error) => {
+        console.error('[v0] Analista stream error:', error)
+        if (error instanceof Error) return error.message
+        return 'Error procesando la solicitud (posible problema al leer la imagen adjunta).'
+      },
+    })
   } catch (error) {
     console.error('Error in analista agent:', error)
     return new Response('Internal error', { status: 500 })
