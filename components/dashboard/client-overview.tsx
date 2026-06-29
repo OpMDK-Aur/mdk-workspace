@@ -572,9 +572,8 @@ function sortUnidades(unidades: UnidadDeNegocio[]): UnidadDeNegocio[] {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export function ClientOverview({ client, profiles, currentProfile, assignment, trackedHours, horasObjetivo = 0, horasEquipo = 0, misHoras = 0, unidadesDeNegocio = [], metricasColaborador = [], horasPorColaborador = [], npsNotas = [] }: ClientOverviewProps) {
-  const supabase = createClient()
   const router = useRouter()
-  const [preset, setPreset]           = useState('last_30d')
+  const [preset, setPreset] = useState('last_30d')
   // Month filter for "Horas del equipo" (defaults to the current month)
   const [teamMonth, setTeamMonth] = useState<string>(() => currentMonthValue())
   const monthOptions = useMemo(() => getMonthOptions(12), [])
