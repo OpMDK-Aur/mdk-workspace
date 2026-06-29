@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/expire-hito-tasks",
       "schedule": "10 0 * * *"
+    },
+    {
+      "path": "/api/cron/nps-autofill",
+      "schedule": "0 23 31 * *"
     }
   ]
 }
