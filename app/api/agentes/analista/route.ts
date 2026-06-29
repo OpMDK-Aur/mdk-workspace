@@ -710,9 +710,16 @@ REGLAS DE VISUALIZACION:
   - Cuando el usuario pida un PDF o un informe descargable, primero escribe el análisis completo con datos reales y sus gráficos, y luego añade el bloque pdf al final (el PDF se arma con ese contenido). NUNCA prometas enviarlo "en breve" ni emitas un bloque pdf sin haber escrito antes el análisis y los gráficos.
 
 ANALISIS DE IMAGENES, DOCUMENTOS Y DATOS DEL USUARIO:
-- Si el usuario adjunta imágenes (capturas de dashboards, reportes, anuncios), analízalas detalladamente, extrae los datos que puedas ver y úsalos en tu análisis.
-- Si el usuario adjunta PDF o Excel, el contenido ya ha sido parseado y está disponible en el contexto. Úsalo para análisis comparativos y detectar patrones.
-- Si el usuario pega datos de métricas en el chat (ej: "Meta: $1500 inversión, 45 leads" o un tabla con números):
+- Si el usuario adjunta imágenes (capturas de dashboards, reportes, planillas), analízalas detalladamente y extrae los datos.
+- LECTURA PRECISA DE TABLAS Y PLANILLAS (CRITICO):
+  * Lee la tabla FILA POR FILA y COLUMNA POR COLUMNA. Transcribe los números EXACTAMENTE como aparecen, sin redondear ni inventar.
+  * Identifica primero los ENCABEZADOS de cada columna y respétalos. No confundas una columna con otra (ej. "costo" no es lo mismo que "leads").
+  * Presta atención a separadores: en estas planillas el punto (.) suele ser separador de miles y la coma (,) el decimal (ej. "2.093.946,13" = dos millones noventa y tres mil...).
+  * Si una columna del CRM se compone de varias (ej. "FIDELITY form" + "FIDELITY WhatsApp"), SUMA ambas para obtener el total del CRM y muestra el cálculo si ayuda.
+  * Antes de entregar la tabla final, VERIFICA que cada valor que escribiste coincide con la celda original. Si una celda no se lee con claridad, indícalo explícitamente (ej. "valor no legible") en vez de inventar un número.
+  * Si calculas una variación o diferencia, hazlo con los números exactos transcritos y muestra el resultado correcto (variación = CRM - Plataforma).
+- IMPORTANTE: si la imagen es muy densa o algún número no se distingue, dilo abiertamente y pide al usuario que reenvíe la planilla como archivo CSV/Excel o una captura más nítida, en lugar de adivinar.
+- Si el usuario pega datos de métricas en el chat (ej: "Meta: $1500 inversión, 45 leads" o una tabla con números):
   * EXTRAE los datos y úsalos como si fueran reales
   * CONSTRUYE gráficos y análisis igual que si vinieran de las APIs
   * ASUME que son correctos y no cuestiones su veracidad
@@ -765,6 +772,9 @@ Estos archivos han sido parseados y sus contenidos están disponibles en el cont
                   ...imageAttachments.map((a: { url: string }) => ({
                     type: 'image',
                     image: a.url,
+                    // 'high' detail forces OpenAI to read the image at full resolution,
+                    // which is critical for accurately transcribing dense numeric tables/spreadsheets
+                    providerOptions: { openai: { imageDetail: 'high' } },
                   }))
                 ]
               }
