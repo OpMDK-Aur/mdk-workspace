@@ -23,7 +23,10 @@ export function CopyButton({ content, className }: CopyButtonProps) {
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(toPlainText(content))
+      const plainText = toPlainText(content)
+      console.log('[v0] Copying content length:', plainText.length)
+      await navigator.clipboard.writeText(plainText)
+      console.log('[v0] Copy successful')
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (e) {
@@ -35,14 +38,18 @@ export function CopyButton({ content, className }: CopyButtonProps) {
     <button
       onClick={handleCopy}
       className={cn(
-        'flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+        'flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-all',
+        copied
+          ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-100'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
         className,
       )}
       aria-label="Copiar respuesta"
+      type="button"
     >
       {copied ? (
         <>
-          <Check className="h-3.5 w-3.5" />
+          <Check className="h-3.5 w-3.5 animate-bounce" />
           Copiado
         </>
       ) : (
