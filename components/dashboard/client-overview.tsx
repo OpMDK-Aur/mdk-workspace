@@ -1249,7 +1249,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         {/* ── Info row: PM / AM / Fee / Dedicacion / Plataformas ── */}
         <div className={cn(
           'grid grid-cols-1 sm:grid-cols-2 gap-4',
-          showActivity ? 'lg:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-5'
+          showActivity ? 'lg:grid-cols-2 xl:grid-cols-3' : 'lg:grid-cols-5'
         )}>
           <Card>
             <CardContent className="pt-5 pb-5">
