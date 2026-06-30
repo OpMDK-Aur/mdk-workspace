@@ -33,6 +33,58 @@ const DERIVACION_PHRASES = [
 ]
 const ETAPAS_SOSPECHOSAS_KEYWORDS = ['basura', 'spam', 'descarte', 'sin contacto', 'duplicado', 'no calific']
 
+// ── Horario laboral (default global; próximo paso: configurable por cliente) ─
+// Argentina (ART) no observa horario de verano, así que el offset es fijo.
+const ART_OFFSET_MS = 3 * 60 * 60 * 1000 // ART = UTC-3 → UTC = ART + 3hs
+const HORARIO_INICIO = 9
+const HORARIO_FIN = 18
+const DIAS_HABILES = [1, 2, 3, 4, 5] // getUTCDay(): 0=domingo ... 6=sábado. Lunes a viernes.
+
+// Minutos de overlap entre [fromMs, toMs] y la ventana laboral, sumados día por
+// día en horario de Argentina. Salta noches y fines de semana.
+function minutosHabilesEntre(fromMs: number, toMs: number): number {
+  if (!isFinite(fromMs) || !isFinite(toMs) || toMs <= fromMs) return 0
+
+  // Lee los campos de fecha en ART "como si fueran UTC" restando el offset.
+  const aArt = (ms: number) => new Date(ms - ART_OFFSET_MS)
+  // Reconstruye el instante UTC real correspondiente a una hora puntual en ART.
+  const limiteArtAUtcMs = (y: number, m: number, d: number, h: number) => Date.UTC(y, m, d, h, 0, 0) + ART_OFFSET_MS
+
+  let cursor = aArt(fromMs)
+  let cy = cursor.getUTCFullYear()
+  let cm = cursor.getUTCMonth()
+  let cd = cursor.getUTCDate()
+
+  const finCursor = aArt(toMs)
+  const fy = finCursor.getUTCFullYear()
+  const fm = finCursor.getUTCMonth()
+  const fd = finCursor.getUTCDate()
+
+  let totalMs = 0
+  let guard = 0 // tope de seguridad por si hay datos corruptos con fechas absurdas
+
+  while (guard < 400) {
+    const diaSemana = new Date(Date.UTC(cy, cm, cd)).getUTCDay()
+    if (DIAS_HABILES.includes(diaSemana)) {
+      const inicioDia = limiteArtAUtcMs(cy, cm, cd, HORARIO_INICIO)
+      const finDia = limiteArtAUtcMs(cy, cm, cd, HORARIO_FIN)
+      const overlapStart = Math.max(fromMs, inicioDia)
+      const overlapEnd = Math.min(toMs, finDia)
+      if (overlapEnd > overlapStart) totalMs += overlapEnd - overlapStart
+    }
+
+    if (cy === fy && cm === fm && cd === fd) break
+
+    const siguiente = new Date(Date.UTC(cy, cm, cd + 1))
+    cy = siguiente.getUTCFullYear()
+    cm = siguiente.getUTCMonth()
+    cd = siguiente.getUTCDate()
+    guard++
+  }
+
+  return totalMs / 60000
+}
+
 function daysSince(dateStr: string | null): number {
   if (!dateStr) return Infinity
   const d = new Date(dateStr).getTime()
@@ -40,11 +92,12 @@ function daysSince(dateStr: string | null): number {
   return (Date.now() - d) / (1000 * 60 * 60 * 24)
 }
 
-function hoursSince(dateStr: string | null): number {
+// Horas HÁBILES transcurridas desde dateStr hasta ahora (no horas de reloj corridas).
+function horasHabilesDesde(dateStr: string | null): number {
   if (!dateStr) return Infinity
   const d = new Date(dateStr).getTime()
   if (isNaN(d)) return Infinity
-  return (Date.now() - d) / (1000 * 60 * 60)
+  return minutosHabilesEntre(d, Date.now()) / 60
 }
 
 // ── Módulo 1: Control de tareas (sobre una muestra de oportunidades abiertas) ─
@@ -203,7 +256,7 @@ async function analizarInbox(
     .slice(0, 30)
 
   for (const conv of aRevisar) {
-    const horas = hoursSince(conv.lastMessageDate)
+    const horas = horasHabilesDesde(conv.lastMessageDate)
     if (horas > SLA_HORAS_HANDOFF) {
       criticas.push({ conversacionId: conv.id, contacto: conv.contactName || conv.contactId, horasSinResponder: Math.round(horas * 10) / 10 })
     }
@@ -309,7 +362,7 @@ async function analizarConversacionesYTiempos(
         (m) => m.direction === 'outbound' && new Date(m.dateAdded).getTime() > new Date(primerInbound.dateAdded).getTime()
       )
       if (primeraOutbound) {
-        const diffMin = (new Date(primeraOutbound.dateAdded).getTime() - new Date(primerInbound.dateAdded).getTime()) / 60000
+        const diffMin = minutosHabilesEntre(new Date(primerInbound.dateAdded).getTime(), new Date(primeraOutbound.dateAdded).getTime())
         primeraRespuestaMin.push(diffMin)
         huboPrimeraRespuesta = true
       }
@@ -328,7 +381,7 @@ async function analizarConversacionesYTiempos(
         (m) => m.direction === 'outbound' && !!m.userId && new Date(m.dateAdded).getTime() > new Date(derivacionMsg.dateAdded).getTime()
       )
       if (tomaHumana) {
-        const diffMin = (new Date(tomaHumana.dateAdded).getTime() - new Date(derivacionMsg.dateAdded).getTime()) / 60000
+        const diffMin = minutosHabilesEntre(new Date(derivacionMsg.dateAdded).getTime(), new Date(tomaHumana.dateAdded).getTime())
         handoffMin.push(diffMin)
       } else {
         handoffsSinTomar++
@@ -405,7 +458,7 @@ function construirAlertas(resumen: RevOpsResumen): string[] {
     alertas.push('Colapso de seguimiento: 90%+ de las tareas están vencidas y no hay ninguna futura agendada.')
   }
   if (resumen.inbox.mas_2hs_sin_respuesta > 0) {
-    alertas.push(`${resumen.inbox.mas_2hs_sin_respuesta} conversaciones llevan más de ${SLA_HORAS_HANDOFF}hs sin respuesta humana.`)
+    alertas.push(`${resumen.inbox.mas_2hs_sin_respuesta} conversaciones llevan más de ${SLA_HORAS_HANDOFF}hs hábiles sin respuesta humana.`)
   }
   if (resumen.tiempos_respuesta.handoffs_sin_tomar > 0) {
     alertas.push(`${resumen.tiempos_respuesta.handoffs_sin_tomar} casos donde la IA prometió derivar y nadie tomó la conversación.`)
