@@ -17,6 +17,7 @@ import type { RevOpsResumen } from '@/lib/types'
 // ── Configuración (ajustable sin tocar la lógica) ──────────────────────────
 
 const SAMPLE_OPORTUNIDADES_TAREAS = 30
+const MAX_INTENTOS_CONVERSACIONES = 60 // techo de llamadas a /messages para no disparar costo si hay muchos threads de un solo mensaje
 const SAMPLE_CONVERSACIONES_CALIDAD = 15
 const VENTANA_DIAS = 30
 const SLA_HORAS_HANDOFF = 2
@@ -267,8 +268,6 @@ async function analizarConversacionesYTiempos(
     .filter((c) => c.lastMessageDate && new Date(c.lastMessageDate).getTime() >= cutoff)
     .sort((a, b) => new Date(b.lastMessageDate ?? 0).getTime() - new Date(a.lastMessageDate ?? 0).getTime())
 
-  const MAX_INTENTOS = 60 // techo de llamadas a /messages para no disparar costo si hay muchos threads de un solo mensaje
-
   const detalleCalidad: Array<{
     conversacionId: string
     contacto: string
@@ -285,9 +284,9 @@ async function analizarConversacionesYTiempos(
   const handoffMin: number[] = []
   let handoffsDetectados = 0
   let handoffsSinTomar = 0
-  let conConversacionReal = 0 // conversaciones con 2+ mensajes, las únicas que cuentan como "muestreadas"
+  let conConversacionReal = 0 // conversaciones con 2+ mensajes reales, las únicas que cuentan como "muestreadas"
 
-  for (let i = 0; i < poolOrdenado.length && i < MAX_INTENTOS && conConversacionReal < SAMPLE_CONVERSACIONES_CALIDAD; i++) {
+  for (let i = 0; i < poolOrdenado.length && i < MAX_INTENTOS_CONVERSACIONES && conConversacionReal < SAMPLE_CONVERSACIONES_CALIDAD; i++) {
     const conv = poolOrdenado[i]
     const mensajesCrudos = await fetchGhlConversationMessages(creds, conv.id)
 
@@ -429,11 +428,11 @@ function construirAlertas(resumen: RevOpsResumen): string[] {
   const muestraDialogoReal = resumen.tiempos_respuesta.muestreadas
   if (muestraDialogoReal > 0 && muestraDialogoReal < 5) {
     alertas.push(
-      `Solo se encontraron ${muestraDialogoReal} conversaciones con diálogo humano real al revisar hasta ${MAX_INTENTOS} conversaciones recientes: la enorme mayoría son solo actividad automática del CRM sin interacción real. Los promedios de tiempos de respuesta no son representativos con una muestra tan chica.`
+      `Solo se encontraron ${muestraDialogoReal} conversaciones con diálogo humano real al revisar hasta ${MAX_INTENTOS_CONVERSACIONES} conversaciones recientes: la enorme mayoría son solo actividad automática del CRM sin interacción real. Los promedios de tiempos de respuesta no son representativos con una muestra tan chica.`
     )
   } else if (muestraDialogoReal === 0) {
     alertas.push(
-      `No se encontró ninguna conversación con diálogo humano real entre las últimas ${MAX_INTENTOS} conversaciones revisadas: parecen ser solo registros automáticos del CRM sin interacción real con los leads.`
+      `No se encontró ninguna conversación con diálogo humano real entre las últimas ${MAX_INTENTOS_CONVERSACIONES} conversaciones revisadas: parecen ser solo registros automáticos del CRM sin interacción real con los leads.`
     )
   }
   return alertas
