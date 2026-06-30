@@ -99,6 +99,7 @@ const primaryItems: NavItem[] = [
   { id: 'clients', name: 'Clientes', href: '/dashboard/clients', icon: Building2 },
   { id: 'performance', name: 'Performance', href: '/dashboard/performance', icon: LineChart },
   { id: 'agentes', name: 'Agentes', href: '/dashboard/agentes', icon: Cpu, badge: 'nuevo', badgeUntil: '2026-06-20' },
+  { id: 'novedades', name: 'Novedades', href: '/dashboard/novedades', icon: Megaphone, badge: 'nuevo', badgeUntil: '2026-07-31' },
 ]
 
 // Administration section
