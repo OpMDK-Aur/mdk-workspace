@@ -1416,8 +1416,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 </div>
               ) : (
                 <>
-                  <div className="flex flex-col">
-                    <p className="text-base font-bold text-foreground leading-tight whitespace-nowrap">{formatCurrencyFull(feeMdk + feeAurelia + feeConsultoria)}</p>
+                  <div className="flex flex-col min-w-0">
+                    <p className="text-base font-bold text-foreground leading-tight truncate">{formatCurrencyFull(feeMdk + feeAurelia + feeConsultoria)}</p>
                     <p className="text-xs text-muted-foreground">/ mes</p>
                   </div>
                   <div className="flex flex-col gap-0.5 mt-2">
@@ -1436,7 +1436,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                       {savingMora && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
                     </div>
                     <Select value={mora || 'Al día'} onValueChange={handleSaveMora}>
-                      <SelectTrigger className={cn('h-7 mt-1.5 w-full min-w-0 text-xs font-medium', moraColor.color)}>
+                      <SelectTrigger className={cn('h-7 mt-1.5 w-full min-w-0 text-xs font-medium truncate', moraColor.color)}>
                         <SelectValue placeholder="Al día" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1553,7 +1553,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                           </Avatar>
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-foreground truncate">{nombre}</p>
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-muted-foreground truncate">
                               {miembro.porcentaje > 0 ? `${miembro.porcentaje}% dedicacion` : 'Horas registradas'}
                             </p>
                           </div>

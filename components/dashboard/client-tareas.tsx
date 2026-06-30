@@ -185,10 +185,10 @@ export function ClientTareas({ clientId, onTaskClick }: ClientTareasProps) {
                 <TabsTrigger 
                   key={estado.value} 
                   value={estado.value}
-                  className="text-xs px-2 gap-1"
+                  className="text-xs px-1.5 sm:px-2 gap-1 min-w-0"
                 >
-                  <estado.icon className={`h-3 w-3 ${estado.color}`} />
-                  <span className="hidden sm:inline">{estado.label.split(' ')[0]}</span>
+                  <estado.icon className={`h-3 w-3 ${estado.color} shrink-0`} />
+                  <span className="hidden sm:inline truncate">{estado.label.split(' ')[0]}</span>
                   {count > 0 && (
                     <Badge variant="secondary" className="h-4 px-1 text-[10px] ml-1">
                       {count}
