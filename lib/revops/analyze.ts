@@ -1,5 +1,6 @@
 // lib/revops/analyze.ts
 import { generateObject } from 'ai'
+import { createOpenAI } from '@ai-sdk/openai'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
@@ -228,9 +229,19 @@ const calidadSchema = z.object({
   score: z.number().min(1).max(10),
 })
 
+// Cliente OpenAI dedicado a RevOps, con su propia API key (variable OPENIAREVOPS)
+// para poder medir el consumo de este agente por separado del resto.
+const openaiRevOps = createOpenAI({
+  apiKey: process.env.OPENIAREVOPS,
+})
+
 async function auditarConversacion(transcript: string) {
+  if (!process.env.OPENIAREVOPS) {
+    throw new Error('Falta la variable de entorno OPENIAREVOPS')
+  }
+
   const { object } = await generateObject({
-    model: 'anthropic/claude-opus-4.6',
+    model: openaiRevOps('gpt-4o-mini'),
     schema: calidadSchema,
     system: `Sos un auditor de calidad comercial para una agencia de marketing digital. Vas a recibir la transcripción de una conversación entre un vendedor (o un bot que debería derivar a un vendedor) y un cliente potencial (lead), proveniente de WhatsApp/CRM.
 
