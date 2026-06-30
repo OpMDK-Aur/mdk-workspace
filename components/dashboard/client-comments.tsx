@@ -1254,8 +1254,18 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
             <div className="space-y-3">
               {filteredComments.map((comment) => {
                 // Use avatar from joined colaborador relation, fallback to search by name
-                const avatarUrl = comment.colaborador?.avatar_url || 
-                  colaboradores.find(c => comment.autor.toLowerCase().includes(c.nombre.toLowerCase()))?.avatar_url
+                let avatarUrl = comment.colaborador?.avatar_url
+                
+                // Fallback 1: Search by full author name
+                if (!avatarUrl) {
+                  avatarUrl = colaboradores.find(c => c.nombre.toLowerCase() === comment.autor.toLowerCase())?.avatar_url
+                }
+                
+                // Fallback 2: Search by first name or partial match
+                if (!avatarUrl) {
+                  const authorFirstName = comment.autor.split(' ')[0].toLowerCase()
+                  avatarUrl = colaboradores.find(c => c.nombre.toLowerCase().startsWith(authorFirstName))?.avatar_url
+                }
                 const wasEdited = comment.actualizado_en !== comment.creado_en && comment.editado_por
                 return (
                 <div
