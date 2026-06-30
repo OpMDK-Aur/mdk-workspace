@@ -123,12 +123,12 @@ export function RevOpsBoard({ clientes: initial }: RevOpsBoardProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Cliente</TableHead>
-              <TableHead>CRM</TableHead>
-              <TableHead>Score salud</TableHead>
-              <TableHead>Alertas</TableHead>
-              <TableHead>Última ejecución</TableHead>
-              <TableHead className="text-right">Acción</TableHead>
+              <TableHead className="px-4 py-3">Cliente</TableHead>
+              <TableHead className="px-4 py-3">CRM</TableHead>
+              <TableHead className="px-4 py-3">Score salud</TableHead>
+              <TableHead className="px-4 py-3">Alertas</TableHead>
+              <TableHead className="px-4 py-3">Última ejecución</TableHead>
+              <TableHead className="px-4 py-3 text-right">Acción</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -141,8 +141,8 @@ export function RevOpsBoard({ clientes: initial }: RevOpsBoardProps) {
                   className={ejecucion ? 'cursor-pointer hover:bg-muted/30' : ''}
                   onClick={() => ejecucion && setDetalleId(cliente.id)}
                 >
-                  <TableCell className="font-medium">{cliente.nombre_del_negocio}</TableCell>
-                  <TableCell>
+                  <TableCell className="px-4 py-3 font-medium">{cliente.nombre_del_negocio}</TableCell>
+                  <TableCell className="px-4 py-3">
                     {esGhl ? (
                       <Badge variant="outline">GHL</Badge>
                     ) : (
@@ -151,7 +151,7 @@ export function RevOpsBoard({ clientes: initial }: RevOpsBoardProps) {
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="px-4 py-3">
                     {loadingId === cliente.id || (loadingAll && esGhl && !ejecucion) ? (
                       <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Loader2 className="h-3 w-3 animate-spin" /> Analizando...
@@ -164,7 +164,7 @@ export function RevOpsBoard({ clientes: initial }: RevOpsBoardProps) {
                       </span>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="px-4 py-3">
                     {ejecucion?.resumen?.alertas?.length ? (
                       <Badge className="bg-red-500/15 text-red-500 hover:bg-red-500/15">
                         {ejecucion.resumen.alertas.length}
@@ -175,10 +175,10 @@ export function RevOpsBoard({ clientes: initial }: RevOpsBoardProps) {
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
+                  <TableCell className="px-4 py-3 text-sm text-muted-foreground">
                     {ejecucion ? new Date(ejecucion.ejecutado_en).toLocaleString('es-AR') : 'Nunca'}
                   </TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                  <TableCell className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                     <Button
                       size="sm"
                       variant="outline"
