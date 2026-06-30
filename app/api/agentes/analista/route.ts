@@ -60,14 +60,19 @@ const FALLBACK_ACTION_GROUPS: string[][] = [
   ['link_click'],
 ]
 
-function sumActions(actions: MetaAction[] | undefined, types: string[]): number {
+// IMPORTANTE: dentro de un mismo grupo (ej. los distintos action_type que representan
+// "conversaciones de WhatsApp"), Meta suele devolver más de un action_type para EL MISMO
+// resultado (ej. "onsite_conversion.messaging_conversation_started_7d" y
+// "onsite_conversion.total_messaging_connection" para la misma conversación). Si se suman
+// todos, el número queda duplicado. Por eso acá se toma el PRIMER action_type de la lista
+// que tenga datos, nunca se suman varios entre sí.
+function pickActionValue(actions: MetaAction[] | undefined, types: string[]): number {
   if (!actions || actions.length === 0) return 0
-  let total = 0
   for (const type of types) {
     const match = actions.find((a) => a.action_type === type)
-    if (match) total += parseInt(match.value, 10) || 0
+    if (match) return parseInt(match.value, 10) || 0
   }
-  return total
+  return 0
 }
 
 // Calcula el "Resultado" de una fila de insights (cuenta o campaña) respetando
@@ -80,13 +85,13 @@ function getResultValue(actions: MetaAction[] | undefined, objective?: string): 
     const key = objective.toUpperCase()
     const types = RESULT_ACTION_TYPES_BY_OBJECTIVE[key]
     if (types) {
-      const value = sumActions(actions, types)
+      const value = pickActionValue(actions, types)
       if (value > 0) return value
     }
   }
 
   for (const group of FALLBACK_ACTION_GROUPS) {
-    const value = sumActions(actions, group)
+    const value = pickActionValue(actions, group)
     if (value > 0) return value
   }
 
@@ -202,12 +207,14 @@ async function fetchMetaMetrics(
       const dImpr = parseInt(row.impressions || '0', 10)
       const dClicks = parseInt(row.clicks || '0', 10)
       const dSpend = parseFloat(row.spend || '0')
-      // Suma todos los grupos de resultado conocidos (lead + mensajes + ventas),
-      // ya que a nivel cuenta puede haber campañas con distintos objetivos en el mismo día.
+      // Para cada grupo de objetivo (leads / mensajes / ventas) se toma solo el PRIMER
+      // action_type que matchee dentro del grupo (pickActionValue evita el doble conteo),
+      // y luego SÍ se suman los distintos grupos entre sí, porque a nivel cuenta puede haber
+      // campañas con distintos objetivos corriendo el mismo día (eso no es duplicación).
       const dLeads =
-        sumActions(row.actions, RESULT_ACTION_TYPES_BY_OBJECTIVE.LEAD_GENERATION) +
-        sumActions(row.actions, RESULT_ACTION_TYPES_BY_OBJECTIVE.MESSAGES) +
-        sumActions(row.actions, RESULT_ACTION_TYPES_BY_OBJECTIVE.CONVERSIONS)
+        pickActionValue(row.actions, RESULT_ACTION_TYPES_BY_OBJECTIVE.LEAD_GENERATION) +
+        pickActionValue(row.actions, RESULT_ACTION_TYPES_BY_OBJECTIVE.MESSAGES) +
+        pickActionValue(row.actions, RESULT_ACTION_TYPES_BY_OBJECTIVE.CONVERSIONS)
       impressions += dImpr
       clicks += dClicks
       spend += dSpend
