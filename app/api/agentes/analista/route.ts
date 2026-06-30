@@ -18,6 +18,81 @@ type AccountMetrics = {
   campaigns: CampaignPoint[]
 }
 
+type MetaAction = { action_type: string; value: string }
+
+// --------------------------------------------------------------------------------
+// Mapeo de "Resultado" segun el objetivo de la campaña.
+// Meta Ads Manager no usa siempre el mismo action_type para la columna "Resultados":
+// depende de para qué está optimizada cada campaña (leads de formulario, conversaciones
+// de WhatsApp/Messenger, ventas, trafico, etc). Si solo buscamos "lead" a secas,
+// las campañas de WhatsApp (Conversaciones iniciadas) terminan en 0 o con un numero
+// suelto que no tiene nada que ver con el resultado real mostrado en la plataforma.
+// --------------------------------------------------------------------------------
+const RESULT_ACTION_TYPES_BY_OBJECTIVE: Record<string, string[]> = {
+  LEAD_GENERATION: ['lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead'],
+  OUTCOME_LEADS: ['lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead'],
+  MESSAGES: [
+    'onsite_conversion.messaging_conversation_started_7d',
+    'onsite_conversion.total_messaging_connection',
+    'messaging_conversation_started_7d',
+  ],
+  OUTCOME_ENGAGEMENT: [
+    'onsite_conversion.messaging_conversation_started_7d',
+    'onsite_conversion.total_messaging_connection',
+    'messaging_conversation_started_7d',
+  ],
+  CONVERSIONS: ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'],
+  OUTCOME_SALES: ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'],
+  LINK_CLICKS: ['link_click'],
+  OUTCOME_TRAFFIC: ['link_click', 'landing_page_view'],
+}
+
+// Orden de búsqueda "best effort" cuando no sabemos (o no llegó) el objetivo de la campaña.
+// Se prueba cada grupo en orden y se usa el primero que tenga datos > 0.
+const FALLBACK_ACTION_GROUPS: string[][] = [
+  ['lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead'],
+  [
+    'onsite_conversion.messaging_conversation_started_7d',
+    'onsite_conversion.total_messaging_connection',
+    'messaging_conversation_started_7d',
+  ],
+  ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'],
+  ['link_click'],
+]
+
+function sumActions(actions: MetaAction[] | undefined, types: string[]): number {
+  if (!actions || actions.length === 0) return 0
+  let total = 0
+  for (const type of types) {
+    const match = actions.find((a) => a.action_type === type)
+    if (match) total += parseInt(match.value, 10) || 0
+  }
+  return total
+}
+
+// Calcula el "Resultado" de una fila de insights (cuenta o campaña) respetando
+// el objetivo de la campaña cuando está disponible, y si no, probando los grupos
+// de acciones más comunes hasta encontrar uno con datos.
+function getResultValue(actions: MetaAction[] | undefined, objective?: string): number {
+  if (!actions || actions.length === 0) return 0
+
+  if (objective) {
+    const key = objective.toUpperCase()
+    const types = RESULT_ACTION_TYPES_BY_OBJECTIVE[key]
+    if (types) {
+      const value = sumActions(actions, types)
+      if (value > 0) return value
+    }
+  }
+
+  for (const group of FALLBACK_ACTION_GROUPS) {
+    const value = sumActions(actions, group)
+    if (value > 0) return value
+  }
+
+  return 0
+}
+
 // Helper to fetch Meta metrics directly from Graph API
 async function fetchMetaMetrics(
   accountId: string,
@@ -29,7 +104,7 @@ async function fetchMetaMetrics(
     const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
     const startDate = periodo?.start || thirtyDaysAgo.toISOString().split('T')[0]
     const endDate = periodo?.end || today.toISOString().split('T')[0]
-    
+
     // Get account name
     let accountName = accountId
     try {
@@ -46,63 +121,19 @@ async function fetchMetaMetrics(
     } catch (e) {
       console.warn('[v0] Error fetching Meta account name:', e)
     }
-    
+
     const timeRange = JSON.stringify({ since: startDate, until: endDate })
     const fields = 'impressions,clicks,spend,actions'
-    
-    // time_increment=1 returns one row per day so we can build daily breakdowns
-    const url = `https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}/insights?access_token=${accessToken}&fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=account&time_increment=1`
-    
-    const response = await fetch(url)
-    if (!response.ok) {
-      console.error('[v0] Meta API error:', response.status)
-      return null
-    }
-    
-    const data = await response.json()
-    if (!data.data || data.data.length === 0) {
-      return { accountName, spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0, daily: [], campaigns: [] }
-    }
-    
-    const getLeads = (row: { actions?: Array<{ action_type: string; value: string }> }) => {
-      if (!row.actions) return 0
-      const leadAction = row.actions.find((a) => 
-        a.action_type === 'lead' || a.action_type === 'onsite_conversion.lead_grouped'
-      )
-      return leadAction ? parseInt(leadAction.value, 10) : 0
-    }
-    
-    let impressions = 0
-    let clicks = 0
-    let spend = 0
-    let leads = 0
-    const daily: DailyPoint[] = []
-    
-    for (const row of data.data) {
-      const dImpr = parseInt(row.impressions || '0', 10)
-      const dClicks = parseInt(row.clicks || '0', 10)
-      const dSpend = parseFloat(row.spend || '0')
-      const dLeads = getLeads(row)
-      impressions += dImpr
-      clicks += dClicks
-      spend += dSpend
-      leads += dLeads
-      daily.push({
-        date: row.date_start || row.date_stop || '',
-        spend: dSpend,
-        leads: dLeads,
-        impressions: dImpr,
-        clicks: dClicks,
-      })
-    }
-    
-    const cpl = leads > 0 ? spend / leads : 0
-    const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0
-    
-    // Second call: campaign-level breakdown for the same period
+
+    // --------------------------------------------------------------------------
+    // 1) Campaign-level breakdown PRIMERO (incluye "objective" para poder elegir
+    //    el action_type correcto por campaña). Los totales de cuenta y el desglose
+    //    diario se derivan de acá para que todo sea consistente entre sí.
+    // --------------------------------------------------------------------------
     const campaigns: CampaignPoint[] = []
+    const campaignObjectiveById = new Map<string, string>()
     try {
-      const campUrl = `https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}/insights?access_token=${accessToken}&fields=campaign_name,${fields}&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=200`
+      const campUrl = `https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}/insights?access_token=${accessToken}&fields=campaign_id,campaign_name,objective,${fields}&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=200`
       const campResp = await fetch(campUrl)
       if (campResp.ok) {
         const campData = await campResp.json()
@@ -110,7 +141,8 @@ async function fetchMetaMetrics(
           const cImpr = parseInt(row.impressions || '0', 10)
           const cClicks = parseInt(row.clicks || '0', 10)
           const cSpend = parseFloat(row.spend || '0')
-          const cLeads = getLeads(row)
+          const cLeads = getResultValue(row.actions, row.objective)
+          if (row.campaign_id) campaignObjectiveById.set(row.campaign_id, row.objective || '')
           campaigns.push({
             name: row.campaign_name || 'Sin nombre',
             spend: cSpend,
@@ -121,12 +153,87 @@ async function fetchMetaMetrics(
             ctr: cImpr > 0 ? (cClicks / cImpr) * 100 : 0,
           })
         }
+      } else {
+        console.error('[v0] Meta campaign insights error:', campResp.status)
       }
     } catch (e) {
       console.error('[v0] Error fetching Meta campaigns:', e)
     }
-    
-    return { accountName, spend, leads, cpl, impressions, clicks, ctr, daily, campaigns }
+
+    // --------------------------------------------------------------------------
+    // 2) Desglose diario a nivel cuenta. Acá no tenemos el objetivo por fila (es
+    //    a nivel cuenta, mezcla campañas), así que usamos el fallback "best effort"
+    //    sumando los grupos de acciones más comunes (leads + mensajes + ventas).
+    // --------------------------------------------------------------------------
+    const url = `https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}/insights?access_token=${accessToken}&fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=account&time_increment=1`
+
+    const response = await fetch(url)
+    if (!response.ok) {
+      console.error('[v0] Meta API error:', response.status)
+      return null
+    }
+
+    const data = await response.json()
+    if (!data.data || data.data.length === 0) {
+      // Si no hay desglose diario pero sí hay campañas, igual devolvemos los totales por campaña
+      const spend = campaigns.reduce((s, c) => s + c.spend, 0)
+      const leads = campaigns.reduce((s, c) => s + c.leads, 0)
+      const impressions = campaigns.reduce((s, c) => s + c.impressions, 0)
+      const clicks = campaigns.reduce((s, c) => s + c.clicks, 0)
+      return {
+        accountName,
+        spend,
+        leads,
+        cpl: leads > 0 ? spend / leads : 0,
+        impressions,
+        clicks,
+        ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+        daily: [],
+        campaigns,
+      }
+    }
+
+    let impressions = 0
+    let clicks = 0
+    let spend = 0
+    const daily: DailyPoint[] = []
+
+    for (const row of data.data) {
+      const dImpr = parseInt(row.impressions || '0', 10)
+      const dClicks = parseInt(row.clicks || '0', 10)
+      const dSpend = parseFloat(row.spend || '0')
+      // Suma todos los grupos de resultado conocidos (lead + mensajes + ventas),
+      // ya que a nivel cuenta puede haber campañas con distintos objetivos en el mismo día.
+      const dLeads =
+        sumActions(row.actions, RESULT_ACTION_TYPES_BY_OBJECTIVE.LEAD_GENERATION) +
+        sumActions(row.actions, RESULT_ACTION_TYPES_BY_OBJECTIVE.MESSAGES) +
+        sumActions(row.actions, RESULT_ACTION_TYPES_BY_OBJECTIVE.CONVERSIONS)
+      impressions += dImpr
+      clicks += dClicks
+      spend += dSpend
+      daily.push({
+        date: row.date_start || row.date_stop || '',
+        spend: dSpend,
+        leads: dLeads,
+        impressions: dImpr,
+        clicks: dClicks,
+      })
+    }
+
+    // --------------------------------------------------------------------------
+    // 3) Totales de cuenta: se calculan como la SUMA de los resultados ya
+    //    corregidos por campaña (más confiable que volver a filtrar por un solo
+    //    action_type a nivel cuenta), salvo que no haya campañas (cuenta vacía).
+    // --------------------------------------------------------------------------
+    const totalSpendFromCampaigns = campaigns.reduce((s, c) => s + c.spend, 0)
+    const totalLeadsFromCampaigns = campaigns.reduce((s, c) => s + c.leads, 0)
+
+    const finalSpend = campaigns.length > 0 ? totalSpendFromCampaigns : spend
+    const finalLeads = campaigns.length > 0 ? totalLeadsFromCampaigns : daily.reduce((s, d) => s + d.leads, 0)
+    const cpl = finalLeads > 0 ? finalSpend / finalLeads : 0
+    const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0
+
+    return { accountName, spend: finalSpend, leads: finalLeads, cpl, impressions, clicks, ctr, daily, campaigns }
   } catch (error) {
     console.error('[v0] Error fetching Meta metrics:', error)
     return null
@@ -146,9 +253,9 @@ async function fetchGoogleMetrics(
     const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
     const startDate = (periodo?.start || thirtyDaysAgo.toISOString().split('T')[0])
     const endDate = (periodo?.end || today.toISOString().split('T')[0])
-    
+
     const cleanCustomerId = customerId.replace(/-/g, '')
-    
+
     // Get account name
     let accountName = customerId
     try {
@@ -176,7 +283,7 @@ async function fetchGoogleMetrics(
     } catch (e) {
       console.warn('[v0] Error fetching Google account name:', e)
     }
-    
+
     const query = `
       SELECT 
         segments.date,
@@ -188,7 +295,7 @@ async function fetchGoogleMetrics(
       WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
       ORDER BY segments.date ASC
     `
-    
+
     const response = await fetch(`https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}/googleAds:search`, {
       method: 'POST',
       headers: {
@@ -199,18 +306,18 @@ async function fetchGoogleMetrics(
       },
       body: JSON.stringify({ query }),
     })
-    
+
     if (!response.ok) {
       const errText = await response.text().catch(() => '')
       console.error('[v0] Google Ads API error:', response.status, errText.slice(0, 300))
       return null
     }
-    
+
     const data = await response.json()
     if (!data.results || data.results.length === 0) {
       return { spend: 0, leads: 0, cpl: 0, impressions: 0, clicks: 0, ctr: 0, daily: [], campaigns: [] }
     }
-    
+
     // Each row is one day. Build daily breakdown and totals.
     let impressions = 0
     let clicks = 0
@@ -240,9 +347,9 @@ async function fetchGoogleMetrics(
     const leads = Math.round(conversions)
     const cpl = leads > 0 ? spend / leads : 0
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0
-    
+
     console.log('[v0] Google Ads account name:', accountName)
-    
+
     // Second query: campaign-level breakdown for the same period
     const campaigns: CampaignPoint[] = []
     try {
@@ -299,7 +406,7 @@ async function fetchGoogleMetrics(
     } catch (e) {
       console.error('[v0] Error fetching Google campaigns:', e)
     }
-    
+
     return { accountName, spend, leads, cpl, impressions, clicks, ctr, daily, campaigns }
   } catch (error) {
     console.error('[v0] Error fetching Google metrics:', error)
@@ -309,7 +416,7 @@ async function fetchGoogleMetrics(
 
 export async function POST(req: Request) {
   const supabase = await createClient()
-  
+
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return new Response('Unauthorized', { status: 401 })
@@ -317,7 +424,7 @@ export async function POST(req: Request) {
 
   try {
     const { clientId, periodo, cuentas, messages, month, year, attachments, dateStart, dateEnd } = await req.json()
-    
+
     // Use explicit periodo if provided, otherwise fallback to dateStart/dateEnd
     let receivedPeriodo = periodo
     if (!receivedPeriodo && dateStart && dateEnd) {
@@ -326,7 +433,7 @@ export async function POST(req: Request) {
         end: dateEnd,
       }
     }
-    
+
     console.log('[v0] Analista request:', { clientId, month, year, periodo: receivedPeriodo, attachmentsCount: attachments?.length || 0 })
 
     // Calculate period from month/year if not provided directly
@@ -339,7 +446,7 @@ export async function POST(req: Request) {
         end: endDate.toISOString().split('T')[0]
       }
     }
-    
+
     console.log('[v0] Effective period:', effectivePeriodo)
 
     // Get agent config
@@ -415,9 +522,9 @@ export async function POST(req: Request) {
     }> = []
 
     const selectedCuentas = cuentas && cuentas.length > 0 ? cuentas : []
-    
+
     console.log('[v0] Tokens found:', { meta: !!metaAccessToken, google: !!googleAccessToken, googleDevToken: !!googleDeveloperToken })
-    
+
     // Fetch Meta accounts metrics
     // Parse Meta Ads account IDs (can be string like "123,456" or array)
     let metaAccounts: string[] = []
@@ -430,12 +537,12 @@ export async function POST(req: Request) {
         ? client.meta_ads_account_id
         : String(client.meta_ads_account_id).split(',').map(id => id.trim())
     }
-    
+
     const metaErrors: string[] = []
     if (metaAccounts.length > 0 && !metaAccessToken) {
       metaErrors.push('Meta Ads: Token de acceso no configurado')
     }
-    
+
     if (metaAccessToken && metaAccounts.length > 0) {
       for (const accountId of metaAccounts) {
         if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
@@ -466,7 +573,7 @@ export async function POST(req: Request) {
         ? client.google_ads_customer_id
         : String(client.google_ads_customer_id).split(',').map(id => id.trim())
     }
-    
+
     const googleErrors: string[] = []
     if (googleAccounts.length > 0 && !googleAccessToken) {
       googleErrors.push('Google Ads: Token de acceso no configurado')
@@ -474,7 +581,7 @@ export async function POST(req: Request) {
     if (googleAccounts.length > 0 && !googleDeveloperToken) {
       googleErrors.push('Google Ads: Developer token no configurado')
     }
-    
+
     if (googleAccessToken && googleDeveloperToken && googleAccounts.length > 0) {
       for (const accountId of googleAccounts) {
         if (selectedCuentas.length === 0 || selectedCuentas.includes(accountId)) {
@@ -492,7 +599,7 @@ export async function POST(req: Request) {
         }
       }
     }
-    
+
     console.log('[v0] Total metrics collected:', metricsByAccount.length)
     console.log('[v0] Meta errors:', metaErrors.length > 0 ? metaErrors : 'none')
     console.log('[v0] Google errors:', googleErrors.length > 0 ? googleErrors : 'none')
@@ -502,7 +609,7 @@ export async function POST(req: Request) {
     const tareasText = tareasDelPeriodo.length > 0
       ? tareasDelPeriodo.map(t => `- ${t.titulo}${t.descripcion ? `: ${t.descripcion.substring(0, 100)}` : ''}`).join('\n')
       : 'Sin tareas registradas en este periodo'
-    
+
     // Build metrics text
     let metricasText = 'Sin metricas disponibles'
     if (metricsByAccount.length > 0) {
@@ -566,7 +673,7 @@ ${metricsByAccount.map(m => {
           const endDay = end.getDate()
           const endMonth = end.toLocaleString('es-ES', { month: 'long' })
           const year = end.getFullYear()
-          
+
           if (startMonth === endMonth) {
             return `${startDay} - ${endDay} de ${startMonth} ${year}`
           } else {
@@ -750,7 +857,7 @@ FORMATO:
       a.type?.includes('csv') ||
       a.type?.includes('text')
     )
-    
+
     // Parse documents if present
     let documentsContext = ''
     if (hasDocuments) {
@@ -775,7 +882,7 @@ ${documentAttachments.map((a: { name?: string; type: string }, idx: number) =>
 ).join('\n')}`
       }
     }
-    
+
     // Build messages - if user sent messages, use them; otherwise create initial request
     const processedMessages = messages?.length > 0 
       ? messages.map((m: { role: string; content: string }, idx: number) => {
