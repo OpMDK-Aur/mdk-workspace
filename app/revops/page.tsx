@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { RevOpsBoard } from '@/components/agentes/revops-board'
-import { Loader2 } from 'lucide-react'
+import { Loader2, ArrowLeft } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import type { ClienteConRevOps } from '@/lib/types/revops'
 
@@ -33,11 +35,19 @@ export default function RevOpsPage() {
     <div className="min-h-dvh bg-background p-6">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold text-foreground">Dashboard RevOps</h1>
-          <p className="text-muted-foreground">
-            Monitoreo de salud de clientes, tareas, conversaciones y métricas de embudo
-          </p>
+        <div className="flex items-start justify-between">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold text-foreground">Dashboard RevOps</h1>
+            <p className="text-muted-foreground">
+              Monitoreo de salud de clientes, tareas, conversaciones y métricas de embudo
+            </p>
+          </div>
+          <Link href="/dashboard/agentes">
+            <Button variant="outline" size="sm" className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Volver a Agentes
+            </Button>
+          </Link>
         </div>
 
         {/* Content */}
