@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign, Pencil, Check, ImagePlus, Bold, Italic, List, ListOrdered } from 'lucide-react'
+import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign, Pencil, Check, ImagePlus, Bold, Italic, List, ListOrdered, Paperclip, Download, FileText } from 'lucide-react'
 import {
   Popover,
   PopoverContent,
@@ -126,6 +126,11 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   const [pendingImages, setPendingImages] = useState<string[]>([])
   const [uploadingImage, setUploadingImage] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  
+  // File attachments
+  const [pendingFiles, setPendingFiles] = useState<{ name: string; url: string }[]>([])
+  const [uploadingFile, setUploadingFile] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const supabase = createClient()
   const chatContainerRef = useRef<HTMLDivElement>(null)
@@ -339,15 +344,65 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     setPendingImages(prev => prev.filter(img => img !== url))
   }
 
+  // Upload file to Supabase Storage (any file type)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    setUploadingFile(true)
+
+    for (const file of Array.from(files)) {
+      // Sanitize filename
+      const sanitizedName = file.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '_')
+      const fileName = `comentarios/${clientId}/${Date.now()}-${sanitizedName}`
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('cliente-adjuntos')
+        .upload(fileName, file)
+
+      if (uploadError) {
+        console.error('[v0] Error uploading file:', uploadError)
+        setError(`Error al subir archivo: ${uploadError.message}`)
+        continue
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('cliente-adjuntos')
+        .getPublicUrl(fileName)
+
+      setPendingFiles(prev => [...prev, { name: file.name, url: publicUrl }])
+    }
+
+    setUploadingFile(false)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  // Remove pending file
+  const removePendingFile = (url: string) => {
+    setPendingFiles(prev => prev.filter(f => f.url !== url))
+  }
+
   // Add comment
   const handleAddComment = async () => {
-    if ((!newComment.trim() && pendingImages.length === 0) || !currentUser || sending) return
+    if ((!newComment.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || !currentUser || sending) return
 
     setSending(true)
     setError(null)
 
     const autorName = `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
     const commentContent = newComment.trim()
+    
+    // Combine images and files
+    const adjuntos = [
+      ...pendingImages,
+      ...pendingFiles.map(f => f.url)
+    ]
 
     const { data, error: insertError } = await supabase
       .from('comentarios_clientes')
@@ -356,7 +411,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
         contenido: commentContent,
         autor: autorName,
         colaborador_id: currentUser.id,
-        imagenes: pendingImages.length > 0 ? pendingImages : null,
+        imagenes: adjuntos.length > 0 ? adjuntos : null,
       })
       .select()
       .single()
@@ -368,6 +423,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       setComments(prev => [data, ...prev])
       setNewComment('')
       setPendingImages([])
+      setPendingFiles([])
       
       // Create notifications for mentioned collaborators
       const mentionedIds = extractMentionedColaboradores(commentContent)
@@ -968,26 +1024,46 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                     }
                   }}
                 />
-                {/* Pending images preview */}
-                {pendingImages.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {pendingImages.map((url, idx) => (
-                      <div key={idx} className="relative group">
-                        <img 
-                          src={url} 
-                          alt={`Imagen ${idx + 1}`} 
-                          className="h-16 w-16 object-cover rounded-md border"
-                        />
-                        <button
-                          onClick={() => removePendingImage(url)}
-                          className="absolute -top-1 -right-1 h-5 w-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                  {/* Pending images preview */}
+                  {pendingImages.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {pendingImages.map((url, idx) => (
+                        <div key={idx} className="relative group/img">
+                          <img
+                            src={url}
+                            alt={`Imagen ${idx + 1}`}
+                            className="h-16 w-16 object-cover rounded-md border"
+                          />
+                          <button
+                            onClick={() => removePendingImage(url)}
+                            className="absolute -top-1 -right-1 h-5 w-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Pending files preview */}
+                  {pendingFiles.length > 0 && (
+                    <div className="space-y-1.5">
+                      {pendingFiles.map((file, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2 rounded-md border bg-muted/50">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <span className="text-xs truncate text-foreground">{file.name}</span>
+                          </div>
+                          <button
+                            onClick={() => removePendingFile(file.url)}
+                            className="ml-2 h-5 w-5 flex items-center justify-center rounded-full hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 <div className="flex flex-wrap justify-between items-center gap-2">
                   <div className="flex items-center flex-wrap gap-1 min-w-0">
                     <Popover open={showTaskPopover} onOpenChange={setShowTaskPopover}>
@@ -1100,6 +1176,28 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                         <ImagePlus className="h-3 w-3" />
                       )}
                       <span className="hidden sm:inline">Imagen</span>
+                    </Button>
+                    {/* File upload button */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileUpload}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingFile}
+                    >
+                      {uploadingFile ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Paperclip className="h-3 w-3" />
+                      )}
+                      <span className="hidden sm:inline">Archivo</span>
                     </Button>
                     <span className="text-[10px] text-muted-foreground hidden xl:inline">
                       Cmd + Enter para enviar
@@ -1381,22 +1479,55 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                           )}
                           {/* Render images */}
                           {comment.imagenes && comment.imagenes.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {comment.imagenes.map((imgUrl, idx) => (
-                                <a 
-                                  key={idx} 
-                                  href={imgUrl} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="block"
-                                >
-                                  <img 
-                                    src={imgUrl} 
-                                    alt={`Imagen ${idx + 1}`}
-                                    className="max-h-48 max-w-xs rounded-md border hover:opacity-90 transition-opacity cursor-pointer"
-                                  />
-                                </a>
-                              ))}
+                            <div className="mt-2 space-y-2">
+                              {/* Render images */}
+                              {comment.imagenes.filter(url => /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url)).length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                  {comment.imagenes
+                                    .filter(url => /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url))
+                                    .map((imgUrl, idx) => (
+                                      <a 
+                                        key={idx} 
+                                        href={imgUrl} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="block"
+                                      >
+                                        <img 
+                                          src={imgUrl} 
+                                          alt={`Imagen ${idx + 1}`}
+                                          className="max-h-48 max-w-xs rounded-md border hover:opacity-90 transition-opacity cursor-pointer"
+                                        />
+                                      </a>
+                                    ))}
+                                </div>
+                              )}
+                              {/* Render file attachments */}
+                              {comment.imagenes.filter(url => !/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url)).length > 0 && (
+                                <div className="space-y-1.5">
+                                  {comment.imagenes
+                                    .filter(url => !/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url))
+                                    .map((fileUrl, idx) => {
+                                      const fileName = fileUrl.split('/').pop() || 'archivo'
+                                      const fileNameWithoutId = fileName.replace(/^\d+-/, '')
+                                      return (
+                                        <a
+                                          key={idx}
+                                          href={fileUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="flex items-center gap-2 p-2 rounded-md border bg-muted/30 hover:bg-muted/50 transition-colors"
+                                        >
+                                          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                                          <span className="text-xs truncate text-foreground underline flex-1">
+                                            {fileNameWithoutId}
+                                          </span>
+                                          <Download className="h-3.5 w-3.5 text-muted-foreground" />
+                                        </a>
+                                      )
+                                    })}
+                                </div>
+                              )}
                             </div>
                           )}
                         </>
