@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/client'
 import type { AgentConfig, AgentLog, Profile } from '@/lib/types'
 import { AgentCard } from '@/components/agentes/agent-card'
 import { RedactorModal } from '@/components/agentes/redactor-modal'
-import { RevOpsModal } from '@/components/agentes/revops-modal'
 import { TesterModal } from '@/components/agentes/tester-modal'
 import { Cpu } from 'lucide-react'
 
@@ -18,7 +17,6 @@ export default function AgentesPage() {
   
   // Modal states
   const [redactorOpen, setRedactorOpen] = useState(false)
-  const [revopsOpen, setRevopsOpen] = useState(false)
   const [testerOpen, setTesterOpen] = useState(false)
 
   useEffect(() => {
@@ -76,7 +74,7 @@ export default function AgentesPage() {
     if (slug === 'redactor') {
       setRedactorOpen(true)
     } else if (slug === 'revops') {
-      setRevopsOpen(true)
+      window.location.href = '/revops'
     } else if (slug === 'tester') {
       setTesterOpen(true)
     } else if (slug === 'analista') {
@@ -153,7 +151,6 @@ export default function AgentesPage() {
 
       {/* Modals */}
       <RedactorModal open={redactorOpen} onOpenChange={setRedactorOpen} />
-      <RevOpsModal open={revopsOpen} onOpenChange={setRevopsOpen} />
       <TesterModal open={testerOpen} onOpenChange={setTesterOpen} />
     </div>
   )
