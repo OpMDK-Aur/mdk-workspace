@@ -398,13 +398,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     const autorName = `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
     const commentContent = newComment.trim()
     
-    console.log('[v0] Saving comment content:', {
-      original: newComment,
-      trimmed: commentContent,
-      hasNewlines: commentContent.includes('\n'),
-      newlineCount: (commentContent.match(/\n/g) || []).length
-    })
-    
     // Combine images and files
     const adjuntos = [
       ...pendingImages,
@@ -1262,15 +1255,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
               {filteredComments.map((comment) => {
                 // Get avatar URL from joined colaborador relation (primary source)
                 let avatarUrl = comment.colaborador?.avatar_url
-                
-                // Debug: Log Fernando and Jimena avatar data
-                if (comment.autor?.includes('Fernando') || comment.autor?.includes('Jimena')) {
-                  console.log(`[v0] Avatar for ${comment.autor}:`, {
-                    from_relation: comment.colaborador?.avatar_url,
-                    colaborador_data: comment.colaborador,
-                    all_colaboradores: colaboradores.filter(c => c.nombre?.includes('Fernando') || c.nombre?.includes('Jimena'))
-                  })
-                }
                 
                 // Fallback 1: If no relation, search colaboradores by full name match
                 if (!avatarUrl && colaboradores.length > 0) {
