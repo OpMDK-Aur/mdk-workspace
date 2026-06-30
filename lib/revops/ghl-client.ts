@@ -226,6 +226,7 @@ export interface GhlMessage {
   body: string
   dateAdded: string
   userId: string | null // presente cuando un humano lo escribió desde el inbox de GHL
+  messageType: string | null // ej. TYPE_ACTIVITY_OPPORTUNITY = evento de sistema, no una respuesta real
 }
 
 export async function fetchGhlConversationMessages(creds: GhlCreds, conversationId: string): Promise<GhlMessage[]> {
@@ -246,6 +247,7 @@ export async function fetchGhlConversationMessages(creds: GhlCreds, conversation
       body: m.body ?? '',
       dateAdded: m.dateAdded ?? '',
       userId: m.userId ?? null,
+      messageType: m.messageType ?? null,
     }))
     .sort((a: GhlMessage, b: GhlMessage) => new Date(a.dateAdded).getTime() - new Date(b.dateAdded).getTime())
 }
