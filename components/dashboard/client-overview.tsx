@@ -644,6 +644,9 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [isActivo, setIsActivo] = useState(client.activo !== false) // null or true = activo
   const [updatingActivo, setUpdatingActivo] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
+  
+  // Auto-collapse performance section when activity is open for better layout
+  const showPerformanceSection = !showActivity
 
   // Ad account names (resolved from the platform account listing endpoints)
   const [metaNames, setMetaNames] = useState<Record<string, string>>({})
@@ -1697,28 +1700,32 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           {error && (
             <p className="text-sm text-destructive mb-3">{error}</p>
           )}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {[
-              { label: 'Inversion',    value: loading ? '…' : formatCurrency(totalSpend),  icon: <DollarSign className="h-4 w-4" />, color: 'text-primary' },
-              { label: 'Leads',        value: loading ? '…' : formatNumber(totalLeads),    icon: <Target className="h-4 w-4" />,     color: 'text-status-verde' },
-              { label: 'CPL prom.',    value: loading ? '…' : formatCurrency(avgCpl),      icon: <TrendingDown className="h-4 w-4" />, color: 'text-status-amarillo' },
-              { label: 'CTR prom.',    value: loading ? '…' : formatPct(avgCtr),           icon: <MousePointerClick className="h-4 w-4" />, color: 'text-blue-400' },
-              { label: 'Clics',        value: loading ? '…' : formatNumber(totalClicks),   icon: <MousePointerClick className="h-4 w-4" />, color: 'text-blue-400' },
-              { label: 'Impresiones',  value: loading ? '…' : formatNumber(totalImpr),     icon: <Eye className="h-4 w-4" />,        color: 'text-muted-foreground' },
-            ].map(kpi => (
-              <Card key={kpi.label} className="overflow-hidden">
-                <CardContent className="pt-4 pb-4">
-                  <div className={cn('mb-2', kpi.color)}>{kpi.icon}</div>
-                  <p className="text-lg font-bold text-foreground leading-none">{kpi.value}</p>
-                  <p className="text-[11px] text-muted-foreground mt-1">{kpi.label}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          {showPerformanceSection ? (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                {[
+                  { label: 'Inversion',    value: loading ? '…' : formatCurrency(totalSpend),  icon: <DollarSign className="h-4 w-4" />, color: 'text-primary' },
+                  { label: 'Leads',        value: loading ? '…' : formatNumber(totalLeads),    icon: <Target className="h-4 w-4" />,     color: 'text-status-verde' },
+                  { label: 'CPL prom.',    value: loading ? '…' : formatCurrency(avgCpl),      icon: <TrendingDown className="h-4 w-4" />, color: 'text-status-amarillo' },
+                  { label: 'CTR prom.',    value: loading ? '…' : formatPct(avgCtr),           icon: <MousePointerClick className="h-4 w-4" />, color: 'text-blue-400' },
+                  { label: 'Clics',        value: loading ? '…' : formatNumber(totalClicks),   icon: <MousePointerClick className="h-4 w-4" />, color: 'text-blue-400' },
+                  { label: 'Impresiones',  value: loading ? '…' : formatNumber(totalImpr),     icon: <Eye className="h-4 w-4" />,        color: 'text-muted-foreground' },
+                ].map(kpi => (
+                  <Card key={kpi.label} className="overflow-hidden">
+                    <CardContent className="pt-4 pb-4">
+                      <div className={cn('mb-2', kpi.color)}>{kpi.icon}</div>
+                      <p className="text-lg font-bold text-foreground leading-none">{kpi.value}</p>
+                      <p className="text-[11px] text-muted-foreground mt-1">{kpi.label}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </>
+          ) : null}
         </div>
 
         {/* ── Estado de presupuesto publicitario ── */}
-        {(client.meta_ads_account_id || client.google_ads_customer_id) && (
+        {showPerformanceSection && (client.meta_ads_account_id || client.google_ads_customer_id) ? (
           <div>
             <ClientBudgetAlertCard
               loading={loading}
@@ -1739,9 +1746,10 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
               }
             />
           </div>
-        )}
+        ) : null}
 
         {/* ── Top 5 campanas ── */}
+        {showPerformanceSection && (
         <div>
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Top 5 campanas con mejor resultado
@@ -1785,6 +1793,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             </div>
           )}
         </div>
+        )}
 
         {/* ── Landings y CRMs ── */}
         <div className="grid md:grid-cols-2 gap-4">
