@@ -1,7 +1,9 @@
 // components/agentes/revops/revops-detail-sheet.tsx
 'use client'
 
+import { useEffect, useState } from 'react'
 import type { ClienteConRevOps } from '@/lib/types'
+import { cn } from '@/lib/utils'
 import {
   Sheet,
   SheetContent,
@@ -10,7 +12,8 @@ import {
 } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { AlertTriangle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { AlertTriangle, Maximize2, Minimize2 } from 'lucide-react'
 
 interface RevOpsDetailSheetProps {
   cliente: ClienteConRevOps | null
@@ -51,23 +54,49 @@ function formatDuracion(minutos: number | null): string {
 export function RevOpsDetailSheet({ cliente, open, onOpenChange }: RevOpsDetailSheetProps) {
   const ejecucion = cliente?.ultima_ejecucion
   const r = ejecucion?.resumen
+  const [fullScreen, setFullScreen] = useState(false)
+
+  // Volver a tamaño normal cada vez que se cierra el panel, para que el
+  // próximo cliente que se abra arranque siempre en el tamaño chico.
+  useEffect(() => {
+    if (!open) setFullScreen(false)
+  }, [open])
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>{cliente?.nombre_del_negocio}</SheetTitle>
-          {ejecucion && (
-            <p className="text-xs text-muted-foreground">
-              Analizado el {new Date(ejecucion.ejecutado_en).toLocaleString('es-AR')} · Periodo{' '}
-              {ejecucion.periodo_desde} a {ejecucion.periodo_hasta}
-            </p>
-          )}
+      <SheetContent
+        className={cn(
+          'overflow-y-auto p-0',
+          fullScreen ? 'w-screen sm:max-w-none' : 'w-full sm:max-w-2xl'
+        )}
+      >
+        <SheetHeader className="px-6 py-5 border-b border-border">
+          <div className="flex items-start justify-between gap-3 pr-8">
+            <div>
+              <SheetTitle>{cliente?.nombre_del_negocio}</SheetTitle>
+              {ejecucion && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Analizado el {new Date(ejecucion.ejecutado_en).toLocaleString('es-AR')} · Periodo{' '}
+                  {ejecucion.periodo_desde} a {ejecucion.periodo_hasta}
+                </p>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={() => setFullScreen((v) => !v)}
+              title={fullScreen ? 'Volver a tamaño normal' : 'Expandir a pantalla completa'}
+            >
+              {fullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </Button>
+          </div>
         </SheetHeader>
 
-        {!r ? (
-          <p className="text-sm text-muted-foreground py-8 text-center">Sin análisis disponible todavía.</p>
-        ) : (
+        <div className="px-6 py-6">
+          {!r ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">Sin análisis disponible todavía.</p>
+          ) : (
           <div className="space-y-6 mt-4">
             {r.alertas.length > 0 && (
               <div className="space-y-2">
@@ -207,7 +236,8 @@ export function RevOpsDetailSheet({ cliente, open, onOpenChange }: RevOpsDetailS
               </TabsContent>
             </Tabs>
           </div>
-        )}
+          )}
+        </div>
       </SheetContent>
     </Sheet>
   )
