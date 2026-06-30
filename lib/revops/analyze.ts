@@ -1,4 +1,4 @@
-/// lib/revops/analyze.ts
+// lib/revops/analyze.ts
 import { generateObject } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { z } from 'zod'
@@ -425,6 +425,16 @@ function construirAlertas(resumen: RevOpsResumen): string[] {
   }
   if (resumen.embudo.etapas_sospechosas.length > 0) {
     alertas.push(`Etapas con nombre sospechoso en el embudo: ${resumen.embudo.etapas_sospechosas.join(', ')}.`)
+  }
+  const muestraDialogoReal = resumen.tiempos_respuesta.muestreadas
+  if (muestraDialogoReal > 0 && muestraDialogoReal < 5) {
+    alertas.push(
+      `Solo se encontraron ${muestraDialogoReal} conversaciones con diálogo humano real al revisar hasta ${MAX_INTENTOS} conversaciones recientes: la enorme mayoría son solo actividad automática del CRM sin interacción real. Los promedios de tiempos de respuesta no son representativos con una muestra tan chica.`
+    )
+  } else if (muestraDialogoReal === 0) {
+    alertas.push(
+      `No se encontró ninguna conversación con diálogo humano real entre las últimas ${MAX_INTENTOS} conversaciones revisadas: parecen ser solo registros automáticos del CRM sin interacción real con los leads.`
+    )
   }
   return alertas
 }
