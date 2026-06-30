@@ -398,6 +398,16 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     const autorName = `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
     const commentContent = newComment.trim()
     
+    // Debug: Log exact content being saved
+    console.log('[v0] DEBUG - Comment content before save:', {
+      raw: newComment,
+      trimmed: commentContent,
+      length: commentContent.length,
+      hasNewlines: commentContent.includes('\n'),
+      newlineCount: (commentContent.match(/\n/g) || []).length,
+      charCodes: commentContent.split('').map(c => c.charCodeAt(0))
+    })
+    
     // Combine images and files
     const adjuntos = [
       ...pendingImages,
@@ -420,6 +430,11 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       setError('Error al agregar comentario')
       console.error('[v0] Error adding comment:', insertError)
     } else if (data) {
+      console.log('[v0] DEBUG - Saved comment from DB:', {
+        contenido: data.contenido,
+        hasNewlines: data.contenido?.includes('\n'),
+        newlineCount: (data.contenido?.match(/\n/g) || []).length
+      })
       setComments(prev => [data, ...prev])
       setNewComment('')
       setPendingImages([])
