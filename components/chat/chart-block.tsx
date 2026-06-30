@@ -186,10 +186,19 @@ export function ChartBlock({ config }: { config: ChartData }) {
     />
   )
 
+  // For line/area charts with many data points, show more X-axis labels (every point or every other)
+  // For bar charts, limit labels to keep them readable
+  const isLineOrAreaChart = type === 'line' || type === 'area'
+  const shouldShowAllLabels = isLineOrAreaChart && data.length <= 31 // Show all for ≤1 month
+  const tickInterval = shouldShowAllLabels ? 0 : Math.ceil(data.length / 6) // Fallback: ~6 labels max
+
   const axisProps = {
-    tick: { fill: AXIS_COLOR, fontSize: 12 },
+    tick: { fill: AXIS_COLOR, fontSize: 11, angle: shouldShowAllLabels ? -45 : 0 },
     tickLine: { stroke: GRID_COLOR },
     axisLine: { stroke: GRID_COLOR },
+    ...(shouldShowAllLabels && { interval: 0 }), // Show every label
+    ...(!shouldShowAllLabels && { interval: tickInterval }), // Show every Nth label
+    height: shouldShowAllLabels ? 60 : 30, // Extra space for rotated labels
   }
 
   const valueTickFormatter = (v: number) => {
@@ -280,7 +289,10 @@ export function ChartBlock({ config }: { config: ChartData }) {
               </BarChart>
             )
           ) : type === 'line' ? (
-            <LineChart data={data} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
+            <LineChart 
+              data={data} 
+              margin={{ top: 8, right: 8, bottom: shouldShowAllLabels ? 50 : 4, left: 0 }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} vertical={false} />
               <XAxis dataKey={xKey} {...axisProps} />
               <YAxis {...axisProps} tickFormatter={valueTickFormatter} width={48} />
@@ -300,7 +312,10 @@ export function ChartBlock({ config }: { config: ChartData }) {
               ))}
             </LineChart>
           ) : type === 'area' ? (
-            <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
+            <AreaChart 
+              data={data} 
+              margin={{ top: 8, right: 8, bottom: shouldShowAllLabels ? 50 : 4, left: 0 }}
+            >
               <defs>
                 <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={mainColor} stopOpacity={0.35} />
