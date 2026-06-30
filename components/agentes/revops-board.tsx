@@ -1,11 +1,12 @@
+// components/agentes/revops/revops-board.tsx
 'use client'
 
 import { useState } from 'react'
-import { cn } from '@/lib/utils'
+import { useRouter } from 'next/navigation'
+import type { ClienteConRevOps } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Sheet } from '@/components/ui/sheet'
-import { 
+import {
   Table,
   TableBody,
   TableCell,
@@ -13,255 +14,198 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { 
-  AlertCircle, 
-  Loader2, 
-  Zap,
-  BarChart3
-} from 'lucide-react'
+import { Loader2, PlayCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { RevOpsDetailSheet } from './revops-detail-sheet'
-import type { ClienteConRevOps, RevOpsEjecucion } from '@/lib/types/revops'
 
 interface RevOpsBoardProps {
   clientes: ClienteConRevOps[]
 }
 
-export function RevOpsBoard({ clientes }: RevOpsBoardProps) {
-  const [selectedCliente, setSelectedCliente] = useState<ClienteConRevOps | null>(null)
-  const [detailOpen, setDetailOpen] = useState(false)
+function scoreColor(score: number | null | undefined) {
+  if (score == null) return 'bg-muted text-muted-foreground'
+  if (score >= 75) return 'bg-emerald-500/15 text-emerald-500'
+  if (score >= 50) return 'bg-amber-500/15 text-amber-500'
+  return 'bg-red-500/15 text-red-500'
+}
+
+export function RevOpsBoard({ clientes: initial }: RevOpsBoardProps) {
+  const router = useRouter()
+  const [clientes, setClientes] = useState(initial)
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [loadingAll, setLoadingAll] = useState(false)
+  const [progresoTodos, setProgresoTodos] = useState<{ actual: number; total: number } | null>(null)
+  const [detalleId, setDetalleId] = useState<string | null>(null)
 
-  // Score Health Gauge Component
-  const ScoreGauge = ({ score }: { score: number | null }) => {
-    if (score === null) return <span className="text-xs text-muted-foreground">Sin datos</span>
+  // Derivado del estado en vivo: si "clientes" se actualiza con un análisis
+  // nuevo mientras el panel está abierto, el panel se refresca solo.
+  const detalleCliente = detalleId ? clientes.find((c) => c.id === detalleId) ?? null : null
 
-    const getColor = (score: number) => {
-      if (score >= 75) return { bg: 'bg-emerald-500/15', text: 'text-emerald-600 dark:text-emerald-400', label: 'Excelente' }
-      if (score >= 50) return { bg: 'bg-amber-500/15', text: 'text-amber-600 dark:text-amber-400', label: 'Bueno' }
-      return { bg: 'bg-red-500/15', text: 'text-red-600 dark:text-red-400', label: 'Revisar' }
-    }
+  const analizarUnCliente = async (clienteId: string) => {
+    const res = await fetch('/api/agentes/revops/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clienteId }),
+    })
+    const ejecucion = await res.json()
+    if (!res.ok) throw new Error(ejecucion.error || 'Error al analizar')
 
-    const colors = getColor(score)
-    const percentage = Math.min(100, Math.max(0, score))
-
-    return (
-      <div className="flex items-center gap-3">
-        <div className="relative w-12 h-12">
-          <svg className="w-full h-full" viewBox="0 0 36 36">
-            {/* Background circle */}
-            <circle
-              cx="18"
-              cy="18"
-              r="15.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="text-muted-foreground/20"
-            />
-            {/* Progress circle */}
-            <circle
-              cx="18"
-              cy="18"
-              r="15.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeDasharray={`${percentage * 0.97} 97`}
-              strokeDashoffset="24.25"
-              strokeLinecap="round"
-              className={cn('transition-all', colors.text)}
-            />
-          </svg>
-          <span className={cn('absolute inset-0 flex items-center justify-center text-xs font-bold', colors.text)}>
-            {Math.round(score)}
-          </span>
-        </div>
-        <div>
-          <p className={cn('text-xs font-medium', colors.text)}>
-            {colors.label}
-          </p>
-        </div>
-      </div>
-    )
+    setClientes((prev) => prev.map((c) => (c.id === clienteId ? { ...c, ultima_ejecucion: ejecucion } : c)))
+    return ejecucion
   }
 
-  const handleAnalyzeClient = async (cliente: ClienteConRevOps) => {
-    setLoadingId(cliente.id)
+  const handleAnalizar = async (clienteId: string) => {
+    setLoadingId(clienteId)
     try {
-      const response = await fetch('/api/agentes/revops/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clienteId: cliente.id }),
-      })
-
-      if (!response.ok) throw new Error('Failed to analyze')
-
-      toast.success(`${cliente.nombre_del_negocio} analizado correctamente`)
-      // En una app real, aquí refrescarías la data del cliente
-    } catch (error) {
-      console.error('[v0] Error analyzing client:', error)
-      toast.error('Error al analizar el cliente')
+      await analizarUnCliente(clienteId)
+      toast.success('Análisis completado')
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al analizar el cliente')
     } finally {
       setLoadingId(null)
     }
   }
 
-  const handleAnalyzeAll = async () => {
-    const ghlClientes = clientes.filter(c => c.crm_type === 'ghl' || c.ghl_location_id)
-    if (ghlClientes.length === 0) {
-      toast.info('No hay clientes GHL para analizar')
-      return
-    }
+  const handleAnalizarTodos = async () => {
+    const elegiblesActual = clientes.filter((c) => c.crm_type === 'ghl' && c.ghl_location_id)
+    if (elegiblesActual.length === 0) return
 
     setLoadingAll(true)
-    try {
-      const response = await fetch('/api/agentes/revops/execute-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      })
+    setProgresoTodos({ actual: 0, total: elegiblesActual.length })
 
-      if (!response.ok) throw new Error('Failed to analyze all')
+    let exitosos = 0
+    let fallidos = 0
 
-      toast.success(`${ghlClientes.length} clientes analizados correctamente`)
-      // En una app real, aquí refrescarías la data de todos
-    } catch (error) {
-      console.error('[v0] Error analyzing all:', error)
-      toast.error('Error al analizar los clientes')
-    } finally {
-      setLoadingAll(false)
+    // Secuencial a propósito (no Promise.all): cada cliente ya hace 50-80 llamadas
+    // a GHL por su cuenta. Correrlos en paralelo dispararía rate limits en cadena.
+    // Como beneficio extra, cada fila se actualiza apenas termina su análisis,
+    // sin esperar a que terminen todas.
+    for (let i = 0; i < elegiblesActual.length; i++) {
+      const cliente = elegiblesActual[i]
+      try {
+        await analizarUnCliente(cliente.id)
+        exitosos++
+      } catch {
+        fallidos++
+      } finally {
+        setProgresoTodos({ actual: i + 1, total: elegiblesActual.length })
+      }
     }
+
+    setLoadingAll(false)
+    setProgresoTodos(null)
+    toast.success(`Análisis completado: ${exitosos} ok${fallidos > 0 ? `, ${fallidos} con error` : ''}`)
+    router.refresh()
   }
 
-  const ghlCount = clientes.filter(c => c.crm_type === 'ghl' || c.ghl_location_id).length
-  const withErrors = clientes.filter(c => c.ultima_ejecucion?.estado === 'error').length
+  const elegibles = clientes.filter((c) => c.crm_type === 'ghl' && c.ghl_location_id)
 
   return (
-    <>
-      <div className="space-y-4">
-        {/* Header with Analyze All Button */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold tracking-tight">Auditoría RevOps</h2>
-            <p className="text-sm text-muted-foreground">
-              {clientes.length} clientes • {ghlCount} GHL • {withErrors} con errores
-            </p>
-          </div>
-          <Button
-            onClick={handleAnalyzeAll}
-            disabled={loadingAll || ghlCount === 0}
-            className="gap-2 bg-[#7F77DD] hover:bg-[#6B63C7] text-white"
-          >
-            {loadingAll ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Analizando ({ghlCount})...
-              </>
-            ) : (
-              <>
-                <Zap className="h-4 w-4" />
-                Analizar todos ({ghlCount})
-              </>
-            )}
-          </Button>
-        </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-end gap-3">
+        {progresoTodos && (
+          <span className="text-sm text-muted-foreground">
+            Analizando {progresoTodos.actual} de {progresoTodos.total}...
+          </span>
+        )}
+        <Button
+          onClick={handleAnalizarTodos}
+          disabled={loadingAll || elegibles.length === 0}
+          className="bg-[#7F77DD] hover:bg-[#6B63C7] gap-2"
+        >
+          {loadingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          Analizar todos los clientes GHL ({elegibles.length})
+        </Button>
+      </div>
 
-        {/* Table */}
-        <div className="rounded-lg border bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border/50 hover:bg-transparent">
-                <TableHead className="w-1/4">Cliente</TableHead>
-                <TableHead className="w-1/6">CRM</TableHead>
-                <TableHead className="w-1/5">Score de Salud</TableHead>
-                <TableHead className="w-1/6">Alertas</TableHead>
-                <TableHead className="w-1/6">Última ejecución</TableHead>
-                <TableHead className="text-right w-1/6">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {clientes.map((cliente) => (
+      <div className="border border-border rounded-lg overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Cliente</TableHead>
+              <TableHead>CRM</TableHead>
+              <TableHead>Score salud</TableHead>
+              <TableHead>Alertas</TableHead>
+              <TableHead>Última ejecución</TableHead>
+              <TableHead className="text-right">Acción</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {clientes.map((cliente) => {
+              const esGhl = cliente.crm_type === 'ghl' && !!cliente.ghl_location_id
+              const ejecucion = cliente.ultima_ejecucion
+              return (
                 <TableRow
                   key={cliente.id}
-                  className="cursor-pointer hover:bg-muted/50 border-border/50"
-                  onClick={() => {
-                    setSelectedCliente(cliente)
-                    setDetailOpen(true)
-                  }}
+                  className={ejecucion ? 'cursor-pointer hover:bg-muted/30' : ''}
+                  onClick={() => ejecucion && setDetalleId(cliente.id)}
                 >
+                  <TableCell className="font-medium">{cliente.nombre_del_negocio}</TableCell>
                   <TableCell>
-                    <p className="font-medium text-foreground">{cliente.nombre_del_negocio}</p>
-                  </TableCell>
-                  <TableCell>
-                    {cliente.crm_type && (
-                      <Badge variant="outline" className="text-xs">
-                        {cliente.crm_type.toUpperCase()}
+                    {esGhl ? (
+                      <Badge variant="outline">GHL</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-muted-foreground">
+                        {cliente.crm_type || 'Sin CRM'}
                       </Badge>
                     )}
                   </TableCell>
                   <TableCell>
-                    <ScoreGauge score={cliente.ultima_ejecucion?.score_salud ?? null} />
-                  </TableCell>
-                  <TableCell>
-                    {(cliente.ultima_ejecucion?.resumen?.alertas?.length ?? 0) > 0 ? (
-                      <div className="flex items-center gap-2">
-                        <AlertCircle className="h-4 w-4 text-red-500" />
-                        <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                          {cliente.ultima_ejecucion?.resumen?.alertas?.length ?? 0}
-                        </span>
-                      </div>
+                    {loadingId === cliente.id || (loadingAll && esGhl && !ejecucion) ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Analizando...
+                      </span>
+                    ) : ejecucion?.estado === 'error' ? (
+                      <span className="text-xs text-destructive">{ejecucion.error_detalle}</span>
                     ) : (
-                      <span className="text-xs text-muted-foreground">0</span>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-sm font-semibold ${scoreColor(ejecucion?.score_salud)}`}>
+                        {ejecucion?.score_salud ?? '—'}
+                      </span>
                     )}
                   </TableCell>
                   <TableCell>
-                    {cliente.ultima_ejecucion ? (
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(cliente.ultima_ejecucion.ejecutado_en).toLocaleDateString('es-AR')}
-                      </div>
+                    {ejecucion?.resumen?.alertas?.length ? (
+                      <Badge className="bg-red-500/15 text-red-500 hover:bg-red-500/15">
+                        {ejecucion.resumen.alertas.length}
+                      </Badge>
+                    ) : ejecucion ? (
+                      <span className="text-xs text-muted-foreground">Sin alertas</span>
                     ) : (
-                      <span className="text-xs text-muted-foreground">Nunca</span>
+                      <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-sm text-muted-foreground">
+                    {ejecucion ? new Date(ejecucion.ejecutado_en).toLocaleString('es-AR') : 'Nunca'}
+                  </TableCell>
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleAnalyzeClient(cliente)
-                      }}
-                      disabled={loadingId === cliente.id}
-                      className="gap-1"
+                      disabled={!esGhl || loadingId === cliente.id || loadingAll}
+                      onClick={() => handleAnalizar(cliente.id)}
+                      className="gap-1.5"
                     >
                       {loadingId === cliente.id ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
-                        <BarChart3 className="h-3.5 w-3.5" />
+                        <PlayCircle className="h-3.5 w-3.5" />
                       )}
                       Analizar
                     </Button>
                   </TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-
-        {clientes.length === 0 && (
-          <div className="rounded-lg border border-dashed bg-card p-8 text-center">
-            <p className="text-muted-foreground">No hay clientes para analizar</p>
-          </div>
-        )}
+              )
+            })}
+          </TableBody>
+        </Table>
       </div>
 
-      {/* Detail Sheet */}
       <RevOpsDetailSheet
-        cliente={selectedCliente}
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
+        cliente={detalleCliente}
+        open={!!detalleCliente}
+        onOpenChange={(open) => !open && setDetalleId(null)}
       />
-    </>
+    </div>
   )
 }
