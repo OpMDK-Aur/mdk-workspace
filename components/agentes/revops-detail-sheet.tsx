@@ -162,7 +162,7 @@ export function RevOpsDetailSheet({ cliente, open, onOpenChange }: RevOpsDetailS
                 <div className="grid grid-cols-2 gap-3">
                   <Stat label="Conversaciones activas" value={r.inbox.total_conversaciones_activas} />
                   <Stat label="Sin leer" value={r.inbox.total_sin_leer} />
-                  <Stat label="+2hs sin respuesta" value={r.inbox.mas_2hs_sin_respuesta} />
+                  <Stat label="+2hs hábiles sin respuesta" value={r.inbox.mas_2hs_sin_respuesta} />
                   <Stat label="SLA configurado" value={r.inbox.sla_configurado ? 'Sí' : 'No'} />
                 </div>
                 <div className="space-y-1.5">
@@ -216,11 +216,11 @@ export function RevOpsDetailSheet({ cliente, open, onOpenChange }: RevOpsDetailS
                 <div className="grid grid-cols-2 gap-3">
                   <Stat label="Conversaciones evaluadas" value={r.tiempos_respuesta.muestreadas} />
                   <Stat
-                    label="Primera respuesta (prom.)"
+                    label="Primera respuesta (prom., horario hábil)"
                     value={formatDuracion(r.tiempos_respuesta.promedio_primera_respuesta_min)}
                   />
                   <Stat
-                    label="Handoff IA → humano (prom.)"
+                    label="Handoff IA → humano (prom., horario hábil)"
                     value={formatDuracion(r.tiempos_respuesta.promedio_handoff_min)}
                   />
                   <Stat label="Handoffs sin tomar" value={r.tiempos_respuesta.handoffs_sin_tomar} />
