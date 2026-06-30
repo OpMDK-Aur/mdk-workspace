@@ -289,13 +289,18 @@ async function analizarConversacionesYTiempos(
 
   for (let i = 0; i < poolOrdenado.length && i < MAX_INTENTOS && conConversacionReal < SAMPLE_CONVERSACIONES_CALIDAD; i++) {
     const conv = poolOrdenado[i]
-    const mensajes = await fetchGhlConversationMessages(creds, conv.id)
-    if (mensajes.length < 2) continue // thread sin respuesta todavía: no hay nada que medir, seguimos buscando
+    const mensajesCrudos = await fetchGhlConversationMessages(creds, conv.id)
+    if (mensajesCrudos.length < 2) continue // thread sin respuesta todavía: no hay nada que medir, seguimos buscando
 
     conConversacionReal++
 
+    // Sacamos eventos de sistema (ej. "Opportunity updated/created") que GHL marca
+    // como outbound pero no son una respuesta real a nadie.
+    const mensajes = mensajesCrudos.filter((m) => !m.messageType?.startsWith('TYPE_ACTIVITY'))
+
     // Tiempo de primera respuesta
     const primerInbound = mensajes.find((m) => m.direction === 'inbound')
+    let huboPrimeraRespuesta = false
     if (primerInbound) {
       const primeraOutbound = mensajes.find(
         (m) => m.direction === 'outbound' && new Date(m.dateAdded).getTime() > new Date(primerInbound.dateAdded).getTime()
@@ -303,8 +308,12 @@ async function analizarConversacionesYTiempos(
       if (primeraOutbound) {
         const diffMin = (new Date(primeraOutbound.dateAdded).getTime() - new Date(primerInbound.dateAdded).getTime()) / 60000
         primeraRespuestaMin.push(diffMin)
+        huboPrimeraRespuesta = true
       }
     }
+    console.log(
+      `[v0][revops] conv ${conv.id}: ${mensajesCrudos.length} msgs crudos, ${mensajes.length} reales, hayInbound=${!!primerInbound}, huboRespuesta=${huboPrimeraRespuesta}`
+    )
 
     // Tiempo de handoff: mensaje con frase de derivación -> siguiente outbound con userId (humano)
     const derivacionMsg = mensajes.find(
