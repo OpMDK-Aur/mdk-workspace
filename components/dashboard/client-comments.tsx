@@ -1253,19 +1253,31 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
           {!loading && filteredComments.length > 0 && (
             <div className="space-y-3">
               {filteredComments.map((comment) => {
-                // Use avatar from joined colaborador relation, fallback to search by name
+                // Get avatar URL from joined colaborador relation (primary source)
                 let avatarUrl = comment.colaborador?.avatar_url
                 
-                // Fallback 1: Search by full author name
-                if (!avatarUrl) {
-                  avatarUrl = colaboradores.find(c => c.nombre.toLowerCase() === comment.autor.toLowerCase())?.avatar_url
+                // Debug: Log Fernando and Jimena avatar data
+                if (comment.autor?.includes('Fernando') || comment.autor?.includes('Jimena')) {
+                  console.log(`[v0] Avatar for ${comment.autor}:`, {
+                    from_relation: comment.colaborador?.avatar_url,
+                    colaborador_data: comment.colaborador,
+                    all_colaboradores: colaboradores.filter(c => c.nombre?.includes('Fernando') || c.nombre?.includes('Jimena'))
+                  })
                 }
                 
-                // Fallback 2: Search by first name or partial match
-                if (!avatarUrl) {
-                  const authorFirstName = comment.autor.split(' ')[0].toLowerCase()
-                  avatarUrl = colaboradores.find(c => c.nombre.toLowerCase().startsWith(authorFirstName))?.avatar_url
+                // Fallback 1: If no relation, search colaboradores by full name match
+                if (!avatarUrl && colaboradores.length > 0) {
+                  const colaborador = colaboradores.find(c => c.nombre?.toLowerCase() === comment.autor?.toLowerCase())
+                  avatarUrl = colaborador?.avatar_url
                 }
+                
+                // Fallback 2: Search by first name if full name didn't match
+                if (!avatarUrl && colaboradores.length > 0) {
+                  const authorFirstName = comment.autor?.split(' ')[0]?.toLowerCase()
+                  const colaborador = colaboradores.find(c => c.nombre?.toLowerCase().startsWith(authorFirstName))
+                  avatarUrl = colaborador?.avatar_url
+                }
+                
                 const wasEdited = comment.actualizado_en !== comment.creado_en && comment.editado_por
                 return (
                 <div
