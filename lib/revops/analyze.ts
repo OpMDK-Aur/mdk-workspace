@@ -1,4 +1,4 @@
-// lib/revops/analyze.ts
+/// lib/revops/analyze.ts
 import { generateObject } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { z } from 'zod'
@@ -290,13 +290,17 @@ async function analizarConversacionesYTiempos(
   for (let i = 0; i < poolOrdenado.length && i < MAX_INTENTOS && conConversacionReal < SAMPLE_CONVERSACIONES_CALIDAD; i++) {
     const conv = poolOrdenado[i]
     const mensajesCrudos = await fetchGhlConversationMessages(creds, conv.id)
-    if (mensajesCrudos.length < 2) continue // thread sin respuesta todavía: no hay nada que medir, seguimos buscando
-
-    conConversacionReal++
 
     // Sacamos eventos de sistema (ej. "Opportunity updated/created") que GHL marca
-    // como outbound pero no son una respuesta real a nadie.
+    // como outbound pero no son una respuesta real a nadie, ANTES de decidir si
+    // esta conversación cuenta como "diálogo real" — si no lo hacemos acá, una
+    // conversación que es 100% ruido de sistema igual se cuela y se le manda al
+    // modelo de IA un transcript vacío, que inventa una evaluación genérica en vez
+    // de no tener nada que juzgar.
     const mensajes = mensajesCrudos.filter((m) => !m.messageType?.startsWith('TYPE_ACTIVITY'))
+    if (mensajes.length < 2) continue // sin diálogo real: solo logs de sistema o un único mensaje suelto
+
+    conConversacionReal++
 
     // Tiempo de primera respuesta
     const primerInbound = mensajes.find((m) => m.direction === 'inbound')
