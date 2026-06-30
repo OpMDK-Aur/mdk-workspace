@@ -12,7 +12,7 @@ import {
   DollarSign, Target, TrendingDown, MousePointerClick, Eye,
   Users, MessageSquare, Calendar, Clock,
   ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown, Pencil, Check, X, Plus, Loader2,
-  AlertCircle, Trash2,
+  AlertCircle, Trash2, BarChart3,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -597,6 +597,11 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [error, setError]             = useState<string | null>(null)
   const [editingBusinessName, setEditingBusinessName] = useState(false)
   const [businessName, setBusinessName] = useState(client.business_name)
+
+  // Detectar si el cliente tiene Consultoría y GoHighLevel
+  const hasConsultoria = unidadesDeNegocio?.some(u => u.unidad_de_negocio?.nombre === 'Consultoría') ?? false
+  const hasGHL = client.crm_type === 'ghl' && !!client.ghl_location_id && !!client.ghl_token
+  const showRevOpsButton = hasConsultoria && hasGHL
   const [savingBusinessName, setSavingBusinessName] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingClient, setDeletingClient] = useState(false)
@@ -1214,15 +1219,28 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   </div>
   </div>
   </div>
-          <Button
-            variant={showActivity ? 'default' : 'outline'}
-            size="sm"
-            className="gap-1.5 shrink-0"
-            onClick={() => setShowActivity(v => !v)}
-          >
-            <MessageSquare className="h-4 w-4" />
-            {showActivity ? 'Ocultar actividad' : 'Ver actividad'}
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant={showActivity ? 'default' : 'outline'}
+              size="sm"
+              className="gap-1.5 shrink-0"
+              onClick={() => setShowActivity(v => !v)}
+            >
+              <MessageSquare className="h-4 w-4" />
+              {showActivity ? 'Ocultar actividad' : 'Ver actividad'}
+            </Button>
+            {showRevOpsButton && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 shrink-0"
+                onClick={() => router.push('/dashboard/agentes/revops')}
+              >
+                <BarChart3 className="h-4 w-4" />
+                Ejecutar RevOps
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* ── Info row: PM / AM / Fee / Dedicacion / Plataformas ── */}
