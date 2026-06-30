@@ -74,7 +74,7 @@ export default function AgentesPage() {
     if (slug === 'redactor') {
       setRedactorOpen(true)
     } else if (slug === 'revops') {
-      window.location.href = '/revops'
+      window.location.href = '/dashboard/agentes/revops'
     } else if (slug === 'tester') {
       setTesterOpen(true)
     } else if (slug === 'analista') {
