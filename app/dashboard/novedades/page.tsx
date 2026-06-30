@@ -42,6 +42,7 @@ const agentes: Agente[] = [
     icono: LineChart,
     descripcion: 'Genera informes de cierre de mes.',
     ubicacion: 'Tarea HITO de Informe Cierre de Mes o pestaña Agentes',
+    href: '/dashboard/agentes',
   },
   {
     nombre: 'Tester',
@@ -49,6 +50,7 @@ const agentes: Agente[] = [
     descripcion:
       'Testea integraciones de formularios de landing y de Meta. No sirve para testear IA ni chatbots.',
     ubicacion: 'Tarea HITO de Testing de Formulario o pestaña Agentes',
+    href: '/dashboard/agentes',
   },
   {
     nombre: 'Redactor',
@@ -56,6 +58,7 @@ const agentes: Agente[] = [
     descripcion:
       'Redacta el mensaje de inicio y cierre de semana con las métricas de los clientes.',
     ubicacion: 'Tarea HITO de Inicio y Cierre de Semana o pestaña Agentes',
+    href: '/dashboard/agentes',
   },
   {
     nombre: 'RevOps',
@@ -63,6 +66,7 @@ const agentes: Agente[] = [
     descripcion:
       'Analiza el uso del CRM (únicamente clientes con GoHighLevel) y devuelve un score definido por Consultoría.',
     ubicacion: 'Pestaña Agentes o tarjeta del cliente con ese CRM',
+    href: '/dashboard/agentes',
   },
 ]
 
@@ -141,9 +145,9 @@ export default function NovedadesBeta() {
                   {agente.href && (
                     <a
                       href={agente.href}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-[#7F77DD] hover:underline"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-[#7F77DD] hover:underline pt-1"
                     >
-                      Ir al panel
+                      Ir a {agente.nombre}
                       <ArrowUpRight className="h-3 w-3" />
                     </a>
                   )}
@@ -160,20 +164,35 @@ export default function NovedadesBeta() {
       <div className="space-y-4">
         <h2 className="text-lg font-medium">Envío de NPS</h2>
         <Card className="border-border/60 bg-card/60">
-          <CardHeader className="flex flex-row items-center gap-3 pb-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#7F77DD]/15 text-[#7F77DD]">
-              <Smile className="h-4 w-4" />
+          <CardHeader className="flex flex-row items-center justify-between gap-3 pb-2">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#7F77DD]/15 text-[#7F77DD]">
+                <Smile className="h-4 w-4" />
+              </div>
+              <CardTitle className="text-base font-medium">
+                Clientes — vista de Lista
+              </CardTitle>
             </div>
-            <CardTitle className="text-base font-medium">
-              Clientes — vista de Lista
-            </CardTitle>
+            <Badge
+              variant="outline"
+              className="shrink-0 border-[#7F77DD]/30 text-[10px] text-[#7F77DD]"
+            >
+              Beta
+            </Badge>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-3">
             <CardDescription className="text-sm leading-relaxed">
               Se sumó el envío de NPS desde la pestaña de Clientes, en la
               vista de Lista, junto con filtros para saber qué clientes
               respondieron la encuesta y cuáles no.
             </CardDescription>
+            <a
+              href="/dashboard/clients"
+              className="inline-flex items-center gap-1 text-xs font-medium text-[#7F77DD] hover:underline"
+            >
+              Ir a Clientes
+              <ArrowUpRight className="h-3 w-3" />
+            </a>
           </CardContent>
         </Card>
       </div>
