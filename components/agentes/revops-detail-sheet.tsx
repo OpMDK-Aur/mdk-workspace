@@ -196,6 +196,14 @@ export function RevOpsDetailSheet({ cliente, open, onOpenChange }: RevOpsDetailS
                   />
                   <Stat label="Handoffs sin tomar" value={r.tiempos_respuesta.handoffs_sin_tomar} />
                 </div>
+                {r.tiempos_respuesta.muestreadas > 0 && r.tiempos_respuesta.muestreadas < 5 && (
+                  <p className="text-xs text-amber-500">
+                    Muestra muy chica ({r.tiempos_respuesta.muestreadas} conversaciones con diálogo real
+                    encontradas) — los promedios de arriba no son representativos. Esto generalmente significa que
+                    casi todas las conversaciones activas del CRM son solo actividad automática, sin interacción
+                    humana real.
+                  </p>
+                )}
               </TabsContent>
             </Tabs>
           </div>
