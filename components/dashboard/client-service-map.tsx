@@ -18,10 +18,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { Loader2, CheckCircle2, Clock, Circle, Ban, ExternalLink, ChevronLeft, ChevronRight, ClipboardCheck, XCircle, Pencil, FlaskConical } from 'lucide-react'
+import { Loader2, CheckCircle2, Clock, Circle, Ban, ExternalLink, ChevronLeft, ChevronRight, ClipboardCheck, XCircle, Pencil, FlaskConical, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RedactorModal } from '@/components/agentes/redactor-modal'
 import { TesterModal } from '@/components/agentes/tester-modal'
+import { AnalistaModal } from '@/components/agentes/analista-modal'
 import { generateMonthInstances, getClientServiceMap, completeInstance } from '@/lib/service-map'
 import type { MapaServicioInstancia, ClientPlan, HitoCatalogo, EstadoInstancia, ChecklistItem, ChecklistItemSnapshot } from '@/lib/types'
 import {
@@ -64,6 +65,7 @@ const HitoRow = memo(({
   onOpenCompletion,
   onRunRedactor,
   onRunTester,
+  onRunAnalista,
 }: {
   hitoId: string
   hitoInstances: MapaServicioInstancia[]
@@ -72,6 +74,7 @@ const HitoRow = memo(({
   onOpenCompletion: (instance: MapaServicioInstancia) => void
   onRunRedactor: (type: 'inicio' | 'cierre') => void
   onRunTester: () => void
+  onRunAnalista: () => void
 }) => {
   const hito = hitoInstances[0]?.hito as HitoCatalogo | undefined
   if (!hito) return null
@@ -87,6 +90,9 @@ const HitoRow = memo(({
 
   // Detectar hitos de Testing de Integración para el botón del tester
   const isTesting = nombreLower.includes('testing')
+
+  // Detectar hitos de Informe de Cierre para el botón del analista
+  const isAnalista = nombreLower.includes('informe') && nombreLower.includes('cierre')
 
   const completedCount = hitoInstances.filter((i) => i.estado === 'listo').length
   const totalCount = hitoInstances.length
@@ -210,6 +216,17 @@ const HitoRow = memo(({
             Ejecutar tester
           </Button>
         )}
+
+        {isAnalista && (
+          <Button
+            size="sm"
+            className="mt-2 h-7 gap-1.5 bg-[#7F77DD] hover:bg-[#6B63C7] text-white text-xs"
+            onClick={onRunAnalista}
+          >
+            <BarChart3 className="h-3.5 w-3.5" />
+            Ejecutar Analista
+          </Button>
+        )}
       </div>
     </div>
   )
@@ -227,6 +244,9 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
 
   // Tester modal state (hitos de Testing de Integración)
   const [testerOpen, setTesterOpen] = useState(false)
+
+  // Analista modal state (hitos de Informe de Cierre de Mes)
+  const [analistaOpen, setAnalistaOpen] = useState(false)
 
   // Modal state for completing hitos directly
   const [completingInstance, setCompletingInstance] = useState<MapaServicioInstancia | null>(null)
@@ -645,6 +665,7 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
                   setRedactorOpen(true)
                 }}
                 onRunTester={() => setTesterOpen(true)}
+                onRunAnalista={() => setAnalistaOpen(true)}
               />
             )
           })}
@@ -764,6 +785,13 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
       <TesterModal
         open={testerOpen}
         onOpenChange={setTesterOpen}
+        initialClientId={clientId}
+      />
+
+      {/* Analista Modal - autocompletado desde el hito de Informe de Cierre de Mes */}
+      <AnalistaModal
+        open={analistaOpen}
+        onOpenChange={setAnalistaOpen}
         initialClientId={clientId}
       />
     </div>
