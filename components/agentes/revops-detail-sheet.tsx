@@ -1,4 +1,4 @@
-'// components/agentes/revops/revops-detail-sheet.tsx
+// components/agentes/revops/revops-detail-sheet.tsx
 'use client'
 
 import type { ClienteConRevOps } from '@/lib/types'
