@@ -398,6 +398,13 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     const autorName = `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
     const commentContent = newComment.trim()
     
+    console.log('[v0] Saving comment content:', {
+      original: newComment,
+      trimmed: commentContent,
+      hasNewlines: commentContent.includes('\n'),
+      newlineCount: (commentContent.match(/\n/g) || []).length
+    })
+    
     // Combine images and files
     const adjuntos = [
       ...pendingImages,
