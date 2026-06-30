@@ -1761,9 +1761,11 @@ export function TaskDetailPanel() {
   // Detectar si es una tarea de Hito de Testing de Integración
   // para mostrar el botón "Ejecutar tester".
   const isHitoTesting = titleLower.includes('[hito]') && titleLower.includes('testing')
-  // Detectar si es una tarea de Hito de Informe de Cierre de Mes
+  // Detectar si es una tarea de Hito de Informe de Cierre de Mes O una tarea llamada "Informe de Cierre"
   // para mostrar el botón "Ejecutar Analista".
-  const isHitoInformeCierre = titleLower.includes('[hito]') && titleLower.includes('informe') && titleLower.includes('cierre')
+  const isHitoInformeCierre = 
+    (titleLower.includes('[hito]') && titleLower.includes('informe') && titleLower.includes('cierre')) ||
+    (titleLower.includes('informe') && titleLower.includes('cierre'))
   // Cliente de la tarea para autocompletar el redactor/tester/analista
   const redactorClientId = task.clients?.[0]?.id || task.clientId || undefined
 
