@@ -325,8 +325,8 @@ async function analizarConversacionesYTiempos(
         contacto: conv.contactName || conv.contactId,
         ...evalResult,
       })
-    } catch {
-      // Si falla la evaluación de una conversación puntual, seguimos con las demás
+    } catch (err) {
+      console.error('[v0][revops] Error auditando conversación', conv.id, err instanceof Error ? err.message : err)
     }
   }
 
