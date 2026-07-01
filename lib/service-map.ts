@@ -680,7 +680,7 @@ export async function getClientMinutas(
   try {
     const { data, error } = await supabase
       .from('minutas_cliente')
-      .select('*')
+      .select('*, colaborador:colaborador_id(id, nombre, apellido)')
       .eq('cliente_id', clienteId)
       .order('fecha', { ascending: false })
 
@@ -712,14 +712,18 @@ export async function createMinuta(minuta: {
   contenido?: string
   fecha: string
   tipo: TipoMinuta
-  autor?: string
+  autor?: string // usado solo para el comentario automático; minutas_cliente no tiene columna 'autor'
   colaborador_id?: string
   adjuntos?: { name: string; url: string }[]
 }): Promise<{ data: MinutaCliente | null; error?: string }> {
   const supabase = createClient()
 
   try {
-    const { data, error } = await supabase.from('minutas_cliente').insert(minuta).select().single()
+    // 'autor' no es una columna real de minutas_cliente (solo existe colaborador_id).
+    // Se separa acá para no romper el insert.
+    const { autor, ...minutaPayload } = minuta
+
+    const { data, error } = await supabase.from('minutas_cliente').insert(minutaPayload).select().single()
 
     if (error) throw error
 
@@ -738,7 +742,7 @@ export async function createMinuta(minuta: {
     const { error: commentError } = await supabase.from('comentarios_clientes').insert({
       cliente_id: minuta.cliente_id,
       contenido: comentarioContenido,
-      autor: minuta.autor || 'Sistema',
+      autor: autor || 'Sistema',
       colaborador_id: minuta.colaborador_id || null,
       imagenes:
         minuta.adjuntos && minuta.adjuntos.length > 0 ? minuta.adjuntos.map((a) => a.url) : null,
@@ -774,7 +778,7 @@ export async function updateMinuta(
   try {
     const { error } = await supabase
       .from('minutas_cliente')
-      .update({ ...updates, actualizado_en: new Date().toISOString() })
+      .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', minutaId)
 
     if (error) throw error
