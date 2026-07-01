@@ -601,7 +601,20 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   // Detectar si el cliente tiene Consultoría y GoHighLevel
   const hasConsultoria = unidadesDeNegocio?.some(u => u.unidad_de_negocio?.nombre === 'Consultoría') ?? false
   const hasGHL = client.crm_type === 'ghl' && !!client.ghl_location_id && !!client.ghl_token
-  const showRevOpsButton = hasConsultoria && hasGHL
+  
+  // Debug: Verificar qué unidades de negocio se están trayendo
+  if (client.nombre === 'Donadio') {
+    console.log('[v0] DEBUG - Donadio unidadesDeNegocio:', {
+      unidadesDeNegocio,
+      hasConsultoria,
+      hasGHL,
+      unidadesLength: unidadesDeNegocio?.length,
+      nombres: unidadesDeNegocio?.map(u => u.unidad_de_negocio?.nombre)
+    })
+  }
+  
+  // Mostrar RevOps button en todos los clientes con Consultoría
+  const showRevOpsButton = hasConsultoria
   const [savingBusinessName, setSavingBusinessName] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingClient, setDeletingClient] = useState(false)
@@ -644,6 +657,9 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [isActivo, setIsActivo] = useState(client.activo !== false) // null or true = activo
   const [updatingActivo, setUpdatingActivo] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
+  
+  // Auto-collapse performance section when activity is open for better layout
+  const showPerformanceSection = !showActivity
 
   // Ad account names (resolved from the platform account listing endpoints)
   const [metaNames, setMetaNames] = useState<Record<string, string>>({})
@@ -1246,7 +1262,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
         {/* ── Info row: PM / AM / Fee / Dedicacion / Plataformas ── */}
         <div className={cn(
           'grid grid-cols-1 sm:grid-cols-2 gap-4',
-          showActivity ? 'lg:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-5'
+          showActivity ? 'lg:grid-cols-2 xl:grid-cols-3' : 'lg:grid-cols-5'
         )}>
           <Card>
             <CardContent className="pt-5 pb-5">
@@ -1413,8 +1429,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                 </div>
               ) : (
                 <>
-                  <div className="flex flex-col">
-                    <p className="text-base font-bold text-foreground leading-tight whitespace-nowrap">{formatCurrencyFull(feeMdk + feeAurelia + feeConsultoria)}</p>
+                  <div className="flex flex-col min-w-0">
+                    <p className="text-base font-bold text-foreground leading-tight truncate">{formatCurrencyFull(feeMdk + feeAurelia + feeConsultoria)}</p>
                     <p className="text-xs text-muted-foreground">/ mes</p>
                   </div>
                   <div className="flex flex-col gap-0.5 mt-2">
@@ -1433,7 +1449,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                       {savingMora && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
                     </div>
                     <Select value={mora || 'Al día'} onValueChange={handleSaveMora}>
-                      <SelectTrigger className={cn('h-7 mt-1.5 w-full min-w-0 text-xs font-medium', moraColor.color)}>
+                      <SelectTrigger className={cn('h-7 mt-1.5 w-full min-w-0 text-xs font-medium truncate', moraColor.color)}>
                         <SelectValue placeholder="Al día" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1550,7 +1566,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
                           </Avatar>
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-foreground truncate">{nombre}</p>
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-muted-foreground truncate">
                               {miembro.porcentaje > 0 ? `${miembro.porcentaje}% dedicacion` : 'Horas registradas'}
                             </p>
                           </div>
@@ -1697,28 +1713,32 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
           {error && (
             <p className="text-sm text-destructive mb-3">{error}</p>
           )}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {[
-              { label: 'Inversion',    value: loading ? '…' : formatCurrency(totalSpend),  icon: <DollarSign className="h-4 w-4" />, color: 'text-primary' },
-              { label: 'Leads',        value: loading ? '…' : formatNumber(totalLeads),    icon: <Target className="h-4 w-4" />,     color: 'text-status-verde' },
-              { label: 'CPL prom.',    value: loading ? '…' : formatCurrency(avgCpl),      icon: <TrendingDown className="h-4 w-4" />, color: 'text-status-amarillo' },
-              { label: 'CTR prom.',    value: loading ? '…' : formatPct(avgCtr),           icon: <MousePointerClick className="h-4 w-4" />, color: 'text-blue-400' },
-              { label: 'Clics',        value: loading ? '…' : formatNumber(totalClicks),   icon: <MousePointerClick className="h-4 w-4" />, color: 'text-blue-400' },
-              { label: 'Impresiones',  value: loading ? '…' : formatNumber(totalImpr),     icon: <Eye className="h-4 w-4" />,        color: 'text-muted-foreground' },
-            ].map(kpi => (
-              <Card key={kpi.label} className="overflow-hidden">
-                <CardContent className="pt-4 pb-4">
-                  <div className={cn('mb-2', kpi.color)}>{kpi.icon}</div>
-                  <p className="text-lg font-bold text-foreground leading-none">{kpi.value}</p>
-                  <p className="text-[11px] text-muted-foreground mt-1">{kpi.label}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          {showPerformanceSection ? (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                {[
+                  { label: 'Inversion',    value: loading ? '…' : formatCurrency(totalSpend),  icon: <DollarSign className="h-4 w-4" />, color: 'text-primary' },
+                  { label: 'Leads',        value: loading ? '…' : formatNumber(totalLeads),    icon: <Target className="h-4 w-4" />,     color: 'text-status-verde' },
+                  { label: 'CPL prom.',    value: loading ? '…' : formatCurrency(avgCpl),      icon: <TrendingDown className="h-4 w-4" />, color: 'text-status-amarillo' },
+                  { label: 'CTR prom.',    value: loading ? '…' : formatPct(avgCtr),           icon: <MousePointerClick className="h-4 w-4" />, color: 'text-blue-400' },
+                  { label: 'Clics',        value: loading ? '…' : formatNumber(totalClicks),   icon: <MousePointerClick className="h-4 w-4" />, color: 'text-blue-400' },
+                  { label: 'Impresiones',  value: loading ? '…' : formatNumber(totalImpr),     icon: <Eye className="h-4 w-4" />,        color: 'text-muted-foreground' },
+                ].map(kpi => (
+                  <Card key={kpi.label} className="overflow-hidden">
+                    <CardContent className="pt-4 pb-4">
+                      <div className={cn('mb-2', kpi.color)}>{kpi.icon}</div>
+                      <p className="text-lg font-bold text-foreground leading-none">{kpi.value}</p>
+                      <p className="text-[11px] text-muted-foreground mt-1">{kpi.label}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </>
+          ) : null}
         </div>
 
         {/* ── Estado de presupuesto publicitario ── */}
-        {(client.meta_ads_account_id || client.google_ads_customer_id) && (
+        {showPerformanceSection && (client.meta_ads_account_id || client.google_ads_customer_id) ? (
           <div>
             <ClientBudgetAlertCard
               loading={loading}
@@ -1739,9 +1759,10 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
               }
             />
           </div>
-        )}
+        ) : null}
 
         {/* ── Top 5 campanas ── */}
+        {showPerformanceSection && (
         <div>
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Top 5 campanas con mejor resultado
@@ -1785,6 +1806,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             </div>
           )}
         </div>
+        )}
 
         {/* ── Landings y CRMs ── */}
         <div className="grid md:grid-cols-2 gap-4">

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -29,8 +29,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Plus, Pencil, Trash2, FileText, Calendar } from 'lucide-react'
+import { Loader2, Plus, Pencil, Trash2, FileText, Calendar, Paperclip, X, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 import { getClientMinutas, createMinuta, updateMinuta, deleteMinuta } from '@/lib/service-map'
 import type { MinutaCliente, TipoMinuta } from '@/lib/types'
 
@@ -43,6 +44,11 @@ interface CurrentUser {
 interface ClientMinutasProps {
   clientId: string
   currentUser: CurrentUser | null
+}
+
+interface Adjunto {
+  name: string
+  url: string
 }
 
 const TIPO_MINUTA_LABELS: Record<TipoMinuta, string> = {
@@ -64,6 +70,8 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const supabase = createClient()
+
   // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingMinuta, setEditingMinuta] = useState<MinutaCliente | null>(null)
@@ -78,6 +86,9 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
   const [formContenido, setFormContenido] = useState('')
   const [formFecha, setFormFecha] = useState('')
   const [formTipo, setFormTipo] = useState<TipoMinuta>('otra')
+  const [formAdjuntos, setFormAdjuntos] = useState<Adjunto[]>([])
+  const [uploadingFile, setUploadingFile] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch minutas
   useEffect(() => {
@@ -104,6 +115,7 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
     setFormContenido('')
     setFormFecha(new Date().toISOString().split('T')[0])
     setFormTipo('otra')
+    setFormAdjuntos([])
     setEditingMinuta(null)
   }
 
@@ -120,7 +132,49 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
     setFormContenido(minuta.contenido || '')
     setFormFecha(minuta.fecha)
     setFormTipo(minuta.tipo)
+    setFormAdjuntos(minuta.adjuntos || [])
     setIsDialogOpen(true)
+  }
+
+  // Upload file(s) to Supabase Storage (mismo bucket que usan los comentarios)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    setUploadingFile(true)
+
+    for (const file of Array.from(files)) {
+      const sanitizedName = file.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '_')
+      const fileName = `minutas/${clientId}/${Date.now()}-${sanitizedName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('cliente-adjuntos')
+        .upload(fileName, file)
+
+      if (uploadError) {
+        console.error('[v0] Error uploading file:', uploadError)
+        setError(`Error al subir archivo: ${uploadError.message}`)
+        continue
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('cliente-adjuntos')
+        .getPublicUrl(fileName)
+
+      setFormAdjuntos((prev) => [...prev, { name: file.name, url: publicUrl }])
+    }
+
+    setUploadingFile(false)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const removeAdjunto = (url: string) => {
+    setFormAdjuntos((prev) => prev.filter((a) => a.url !== url))
   }
 
   // Save minuta (create or update)
@@ -139,6 +193,7 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
         contenido: formContenido.trim(),
         fecha: formFecha,
         tipo: formTipo,
+        adjuntos: formAdjuntos,
       })
 
       if (result.error) {
@@ -147,7 +202,14 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
         setMinutas((prev) =>
           prev.map((m) =>
             m.id === editingMinuta.id
-              ? { ...m, titulo: formTitulo.trim(), contenido: formContenido.trim(), fecha: formFecha, tipo: formTipo }
+              ? {
+                  ...m,
+                  titulo: formTitulo.trim(),
+                  contenido: formContenido.trim(),
+                  fecha: formFecha,
+                  tipo: formTipo,
+                  adjuntos: formAdjuntos,
+                }
               : m
           )
         )
@@ -155,7 +217,8 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
         resetForm()
       }
     } else {
-      // Create new
+      // Create new (esto además crea automáticamente el comentario en el
+      // feed del cliente — ver createMinuta en lib/service-map.ts)
       const result = await createMinuta({
         cliente_id: clientId,
         titulo: formTitulo.trim(),
@@ -164,6 +227,7 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
         tipo: formTipo,
         autor: autorName,
         colaborador_id: currentUser.id,
+        adjuntos: formAdjuntos.length > 0 ? formAdjuntos : undefined,
       })
 
       if (result.error) {
@@ -200,6 +264,8 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
     const date = new Date(dateStr + 'T00:00:00')
     return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })
   }
+
+  const isImageFile = (name: string) => /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(name)
 
   if (loading) {
     return (
@@ -259,8 +325,28 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
                     {minuta.contenido}
                   </p>
                 )}
-                {minuta.autor && (
-                  <p className="text-[10px] text-muted-foreground mt-2">Por: {minuta.autor}</p>
+                {minuta.adjuntos && minuta.adjuntos.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {minuta.adjuntos.map((adj, idx) => (
+                      <a
+                        key={idx}
+                        href={adj.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-muted text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors max-w-[180px]"
+                        title={adj.name}
+                      >
+                        <Paperclip className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{adj.name}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {minuta.colaborador && (
+                  <p className="text-[10px] text-muted-foreground mt-2">
+                    Por: {[minuta.colaborador.nombre, minuta.colaborador.apellido].filter(Boolean).join(' ')}
+                  </p>
                 )}
               </div>
 
@@ -330,6 +416,59 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
                 placeholder="Notas y puntos discutidos..."
                 rows={6}
               />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Adjuntos</label>
+              {formAdjuntos.length > 0 && (
+                <div className="space-y-1.5">
+                  {formAdjuntos.map((adj, idx) => (
+                    <div key={idx} className="flex items-center justify-between gap-2 p-2 rounded-md border bg-muted/50">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {isImageFile(adj.name) ? (
+                          <img src={adj.url} alt={adj.name} className="h-8 w-8 rounded object-cover shrink-0" />
+                        ) : (
+                          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                        )}
+                        <span className="text-xs truncate text-foreground">{adj.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <a href={adj.url} target="_blank" rel="noopener noreferrer" className="h-6 w-6 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
+                          <Download className="h-3.5 w-3.5 text-muted-foreground" />
+                        </a>
+                        <button
+                          onClick={() => removeAdjunto(adj.url)}
+                          className="h-6 w-6 flex items-center justify-center rounded-full hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-8"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingFile}
+              >
+                {uploadingFile ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Paperclip className="h-3.5 w-3.5" />
+                )}
+                Adjuntar archivo
+              </Button>
             </div>
           </div>
 

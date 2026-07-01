@@ -280,13 +280,13 @@ export function ClientLandings({ clientId }: ClientLandingsProps) {
                 <Globe className="h-4 w-4 text-primary" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-medium truncate">{landing.nombre}</p>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
                     {TIPOS_LANDING.find(t => t.value === landing.tipo)?.label || landing.tipo}
                   </Badge>
                   {landing.integracion && (
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
                       {TIPOS_INTEGRACION.find(t => t.value === landing.integracion)?.label || landing.integracion}
                     </Badge>
                   )}

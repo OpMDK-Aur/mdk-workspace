@@ -26,11 +26,26 @@ export default async function ClientPage({ params }: Props) {
   // Map nombre_del_negocio to business_name for consistency
   const mappedClient = { ...client, business_name: client.nombre_del_negocio }
 
-  // Load unidades de negocio
-  const { data: unidadesDeNegocio } = await supabase
-    .from('clientes_unidades_de_negocio')
-    .select('unidad_de_negocio_id, unidad_de_negocio(id, nombre)')
-    .eq('cliente_id', id)
+  // ─────────────────────────────────────────────────────────────────────────
+  // Unidades de negocio
+  // FUENTE DE VERDAD: client.unidades_negocio (jsonb array de nombres).
+  // La tabla puente `clientes_unidades_de_negocio` quedó huérfana: ningún
+  // flujo de edición escribe ahí (ver ClientInfoCard, que solo lee/escribe
+  // client.unidades_negocio / client.unidad_negocio). Se arma acá la misma
+  // forma que antes devolvía la query a la tabla puente, para no tener que
+  // tocar ClientOverview / ClientInfoCard.
+  // ─────────────────────────────────────────────────────────────────────────
+  const nombresUnidades: string[] =
+    client.unidades_negocio && client.unidades_negocio.length > 0
+      ? client.unidades_negocio
+      : client.unidad_negocio
+        ? [client.unidad_negocio]
+        : []
+
+  const unidadesDeNegocio = nombresUnidades.map((nombre: string) => ({
+    unidad_de_negocio_id: nombre, // ya no hay id real; se usa el nombre como key estable
+    unidad_de_negocio: { id: nombre, nombre },
+  }))
 
   // Load all colaboradores (for pm/am lookup)
   const { data: colaboradores } = await supabase
@@ -173,7 +188,7 @@ export default async function ClientPage({ params }: Props) {
       horasObjetivo={horasObjetivo}
       horasEquipo={horasEquipo}
       misHoras={misHoras}
-      unidadesDeNegocio={unidadesDeNegocio ?? []}
+      unidadesDeNegocio={unidadesDeNegocio}
       metricasColaborador={metricasColaborador ?? []}
       horasPorColaborador={horasPorColaborador}
       npsNotas={npsHistorial ?? []}

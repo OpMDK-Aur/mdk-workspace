@@ -14,20 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign, Pencil, Check, ImagePlus, Bold, Italic, List, ListOrdered, Paperclip, Download, FileText } from 'lucide-react'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command'
+import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign, Pencil, Check, ImagePlus, Bold, Italic, List, ListOrdered, Paperclip, Download, FileText, Code } from 'lucide-react'
 import Link from 'next/link'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
@@ -66,7 +53,7 @@ interface TareaCliente {
   id: string
   titulo: string
   estado: string
-  shortId: string // Generated from id
+  shortId: string
 }
 
 interface Colaborador {
@@ -87,6 +74,93 @@ interface ClientCommentsProps {
   currentUser: CurrentUser | null
 }
 
+function insertAtCursor(
+  ref: React.RefObject<HTMLTextAreaElement | null>,
+  value: string,
+  setValue: (v: string) => void,
+  insertText: string
+) {
+  const el = ref.current
+  const start = el ? el.selectionStart : value.length
+  const end = el ? el.selectionEnd : value.length
+
+  const before = value.slice(0, start)
+  const triggerMatch = /(@|#)[^\s@#]*$/.exec(before)
+  const replaceStart = triggerMatch ? start - triggerMatch[0].length : start
+
+  const newValue = value.slice(0, replaceStart) + insertText + value.slice(end)
+  const newCursor = replaceStart + insertText.length
+
+  setValue(newValue)
+  setTimeout(() => {
+    if (el) {
+      el.focus()
+      el.setSelectionRange(newCursor, newCursor)
+    }
+  }, 0)
+}
+
+function insertTrigger(
+  ref: React.RefObject<HTMLTextAreaElement | null>,
+  value: string,
+  setValue: (v: string) => void,
+  trigger: '@' | '#'
+) {
+  const el = ref.current
+  const start = el ? el.selectionStart : value.length
+  const end = el ? el.selectionEnd : value.length
+  const newValue = value.slice(0, start) + trigger + value.slice(end)
+  setValue(newValue)
+  setTimeout(() => {
+    if (el) {
+      el.focus()
+      el.setSelectionRange(start + 1, start + 1)
+    }
+  }, 0)
+}
+
+function MentionDropdown<T extends { id: string }>({
+  items,
+  activeIndex,
+  onSelect,
+  onHover,
+  renderItem,
+  emptyLabel,
+}: {
+  items: T[]
+  activeIndex: number
+  onSelect: (item: T) => void
+  onHover: (index: number) => void
+  renderItem: (item: T) => React.ReactNode
+  emptyLabel: string
+}) {
+  return (
+    <div className="absolute z-50 top-full left-0 mt-1 w-72 max-h-56 overflow-y-auto rounded-md border border-border bg-card shadow-lg">
+      {items.length === 0 ? (
+        <p className="px-3 py-2 text-xs text-muted-foreground">{emptyLabel}</p>
+      ) : (
+        items.map((item, idx) => (
+          <button
+            key={item.id}
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              onSelect(item)
+            }}
+            onMouseEnter={() => onHover(idx)}
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
+              idx === activeIndex ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
+            )}
+          >
+            {renderItem(item)}
+          </button>
+        ))
+      )}
+    </div>
+  )
+}
+
 export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   const [comments, setComments] = useState<ComentarioCliente[]>([])
   const [newComment, setNewComment] = useState('')
@@ -95,39 +169,36 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'comments' | 'ai'>('comments')
   
-  // Filters
   const [searchQuery, setSearchQuery] = useState('')
   const [authorFilter, setAuthorFilter] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState<string>('all')
   const [showFilters, setShowFilters] = useState(false)
   
-  // Task mentions
   const [clientTasks, setClientTasks] = useState<TareaCliente[]>([])
   const [showTaskPopover, setShowTaskPopover] = useState(false)
   const [taskSearchQuery, setTaskSearchQuery] = useState('')
+  const [taskActiveIndex, setTaskActiveIndex] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   
-  // Collaborator mentions
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [showColabPopover, setShowColabPopover] = useState(false)
   const [colabSearchQuery, setColabSearchQuery] = useState('')
+  const [colabActiveIndex, setColabActiveIndex] = useState(0)
   
-  // Edit comment
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
   const [editingImages, setEditingImages] = useState<string[]>([])
   const [showEditColabPopover, setShowEditColabPopover] = useState(false)
   const [editColabSearchQuery, setEditColabSearchQuery] = useState('')
+  const [editColabActiveIndex, setEditColabActiveIndex] = useState(0)
   const [uploadingEditImage, setUploadingEditImage] = useState(false)
   const editTextareaRef = useRef<HTMLTextAreaElement>(null)
   const editImageInputRef = useRef<HTMLInputElement>(null)
   
-  // Image upload
   const [pendingImages, setPendingImages] = useState<string[]>([])
   const [uploadingImage, setUploadingImage] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
   
-  // File attachments
   const [pendingFiles, setPendingFiles] = useState<{ name: string; url: string }[]>([])
   const [uploadingFile, setUploadingFile] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -135,7 +206,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   const supabase = createClient()
   const chatContainerRef = useRef<HTMLDivElement>(null)
 
-  // AI Chat
   const [aiInput, setAiInput] = useState('')
   const { messages, sendMessage, status, setMessages } = useChat({
     transport: new DefaultChatTransport({
@@ -150,14 +220,12 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     setAiInput('')
   }
 
-  // Scroll to bottom when new AI messages arrive
   useEffect(() => {
     if (chatContainerRef.current && messages.length > 0) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
     }
   }, [messages])
 
-  // Fetch comments, tasks and collaborators
   useEffect(() => {
     async function fetchData() {
       setLoading(true)
@@ -169,7 +237,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
           .select('*, colaborador:colaborador_id(id, nombre, avatar_url), editor:editado_por(id, nombre)')
           .eq('cliente_id', clientId)
           .order('creado_en', { ascending: false }),
-        // Get tasks for this client
         supabase
           .from('tareas')
           .select('id, titulo, estado, cliente_id')
@@ -189,7 +256,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
         setComments(commentsRes.data || [])
       }
       
-      // Map tasks with short IDs
       if (!tasksRes.error && tasksRes.data) {
         const tasksWithShortId = tasksRes.data.map(task => ({
           ...task,
@@ -207,7 +273,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
 
     fetchData()
 
-    // Subscribe to changes in comentarios_clientes for this client
     const channel = supabase
       .channel(`comentarios_${clientId}`)
       .on(
@@ -218,8 +283,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
           table: 'comentarios_clientes',
           filter: `cliente_id=eq.${clientId}`
         },
-        (payload) => {
-          // Refetch comments when a new one is inserted
+        () => {
           console.log('[v0] New comment detected, refetching...')
           fetchData()
         }
@@ -231,34 +295,26 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     }
   }, [clientId, supabase])
 
-  // Get unique authors for filter
   const uniqueAuthors = useMemo(() => {
     const authors = new Set(comments.map(c => c.autor))
     return Array.from(authors).sort()
   }, [comments])
 
-  // Filtered comments
   const filteredComments = useMemo(() => {
     return comments.filter(comment => {
-      // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase()
         const matchesContent = comment.contenido.toLowerCase().includes(query)
         const matchesAuthor = comment.autor.toLowerCase().includes(query)
         if (!matchesContent && !matchesAuthor) return false
       }
-
-      // Author filter
       if (authorFilter !== 'all' && comment.autor !== authorFilter) {
         return false
       }
-
-      // Date filter
       if (dateFilter !== 'all') {
         const commentDate = new Date(comment.creado_en)
         const now = new Date()
         const diffDays = Math.floor((now.getTime() - commentDate.getTime()) / (1000 * 60 * 60 * 24))
-
         switch (dateFilter) {
           case 'today':
             if (diffDays > 0) return false
@@ -271,12 +327,10 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
             break
         }
       }
-
       return true
     })
   }, [comments, searchQuery, authorFilter, dateFilter])
 
-  // Extract mentioned collaborator IDs from comment
   const extractMentionedColaboradores = (content: string): string[] => {
     const mentionRegex = /@([\w\sáéíóúñÁÉÍÓÚÑ]+?)(?=\s|$|[.,;:!?])/g
     const mentionedIds: string[] = []
@@ -290,10 +344,9 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       }
     }
     
-    return [...new Set(mentionedIds)] // Remove duplicates
+    return [...new Set(mentionedIds)]
   }
 
-  // Upload image to Supabase Storage
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
@@ -301,13 +354,11 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     setUploadingImage(true)
 
     for (const file of Array.from(files)) {
-      // Validate file type
       if (!file.type.startsWith('image/')) {
         setError('Solo se permiten archivos de imagen')
         continue
       }
 
-      // Sanitize filename
       const sanitizedName = file.name
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -315,7 +366,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
         .replace(/[^a-zA-Z0-9_.-]/g, '')
       const fileName = `comentarios/${clientId}/${Date.now()}-${sanitizedName}`
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('cliente-adjuntos')
         .upload(fileName, file)
 
@@ -325,7 +376,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
         continue
       }
 
-      // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('cliente-adjuntos')
         .getPublicUrl(fileName)
@@ -339,12 +389,10 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     }
   }
 
-  // Remove pending image
   const removePendingImage = (url: string) => {
     setPendingImages(prev => prev.filter(img => img !== url))
   }
 
-  // Upload file to Supabase Storage (any file type)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
@@ -352,14 +400,13 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     setUploadingFile(true)
 
     for (const file of Array.from(files)) {
-      // Sanitize filename
       const sanitizedName = file.name
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/\s+/g, '_')
       const fileName = `comentarios/${clientId}/${Date.now()}-${sanitizedName}`
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('cliente-adjuntos')
         .upload(fileName, file)
 
@@ -369,7 +416,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
         continue
       }
 
-      // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('cliente-adjuntos')
         .getPublicUrl(fileName)
@@ -383,12 +429,10 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     }
   }
 
-  // Remove pending file
   const removePendingFile = (url: string) => {
     setPendingFiles(prev => prev.filter(f => f.url !== url))
   }
 
-  // Add comment
   const handleAddComment = async () => {
     if ((!newComment.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || !currentUser || sending) return
 
@@ -398,17 +442,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     const autorName = `${currentUser.nombre}${currentUser.apellido ? ` ${currentUser.apellido}` : ''}`
     const commentContent = newComment.trim()
     
-    // Debug: Log exact content being saved
-    console.log('[v0] DEBUG - Comment content before save:', {
-      raw: newComment,
-      trimmed: commentContent,
-      length: commentContent.length,
-      hasNewlines: commentContent.includes('\n'),
-      newlineCount: (commentContent.match(/\n/g) || []).length,
-      charCodes: commentContent.split('').map(c => c.charCodeAt(0))
-    })
-    
-    // Combine images and files
     const adjuntos = [
       ...pendingImages,
       ...pendingFiles.map(f => f.url)
@@ -430,17 +463,11 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       setError('Error al agregar comentario')
       console.error('[v0] Error adding comment:', insertError)
     } else if (data) {
-      console.log('[v0] DEBUG - Saved comment from DB:', {
-        contenido: data.contenido,
-        hasNewlines: data.contenido?.includes('\n'),
-        newlineCount: (data.contenido?.match(/\n/g) || []).length
-      })
       setComments(prev => [data, ...prev])
       setNewComment('')
       setPendingImages([])
       setPendingFiles([])
       
-      // Create notifications for mentioned collaborators
       const mentionedIds = extractMentionedColaboradores(commentContent)
       if (mentionedIds.length > 0) {
         const notifications = mentionedIds.map(colabId => ({
@@ -465,7 +492,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     setSending(false)
   }
 
-  // Delete comment
   const handleDeleteComment = async (commentId: string) => {
     const { error: deleteError } = await supabase
       .from('comentarios_clientes')
@@ -480,14 +506,12 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     }
   }
   
-  // Start editing comment
   const startEditComment = (comment: ComentarioCliente) => {
     setEditingCommentId(comment.id)
     setEditingContent(comment.contenido)
     setEditingImages(comment.imagenes || [])
   }
   
-  // Cancel editing
   const cancelEditComment = () => {
     setEditingCommentId(null)
     setEditingContent('')
@@ -496,15 +520,12 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     setEditColabSearchQuery('')
   }
   
-  // Insert collaborator mention while editing
   const insertEditColabMention = (colab: Colaborador) => {
-    setEditingContent(prev => `${prev}@${colab.nombre} `)
+    insertAtCursor(editTextareaRef, editingContent, setEditingContent, `@${colab.nombre} `)
     setShowEditColabPopover(false)
     setEditColabSearchQuery('')
-    editTextareaRef.current?.focus()
   }
   
-  // Filtered collaborators for the edit popover
   const filteredEditColabs = useMemo(() => {
     if (!editColabSearchQuery) return colaboradores.slice(0, 10)
     const query = editColabSearchQuery.toLowerCase()
@@ -512,8 +533,9 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       .filter(c => c.nombre.toLowerCase().includes(query))
       .slice(0, 10)
   }, [colaboradores, editColabSearchQuery])
+
+  useEffect(() => { setEditColabActiveIndex(0) }, [editColabSearchQuery, showEditColabPopover])
   
-  // Upload image while editing
   const handleEditImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
@@ -556,12 +578,10 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     }
   }
   
-  // Remove an image while editing
   const removeEditingImage = (url: string) => {
     setEditingImages(prev => prev.filter(img => img !== url))
   }
   
-  // Save edited comment
   const handleSaveEdit = async () => {
     if (!editingCommentId || (!editingContent.trim() && editingImages.length === 0) || !currentUser) return
     
@@ -597,7 +617,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
           : c
       ))
       
-      // Notify newly mentioned collaborators
       const mentionedIds = extractMentionedColaboradores(newContent)
       if (mentionedIds.length > 0) {
         const notifications = mentionedIds.map(colabId => ({
@@ -620,7 +639,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     }
   }
 
-  // Format date
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
     const now = new Date()
@@ -636,12 +654,10 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
   }
 
-  // Get initials from author name
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
   }
 
-  // Clear filters
   const clearFilters = () => {
     setSearchQuery('')
     setAuthorFilter('all')
@@ -650,13 +666,11 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
 
   const hasActiveFilters = searchQuery || authorFilter !== 'all' || dateFilter !== 'all'
   
-  // Apply markdown-style formatting to a textarea, operating on the current selection.
-  // `setValue` updates the corresponding state; `ref` points to the textarea element.
   const applyFormat = (
     ref: React.RefObject<HTMLTextAreaElement | null>,
     value: string,
     setValue: (v: string) => void,
-    type: 'bold' | 'italic' | 'ul' | 'ol'
+    type: 'bold' | 'italic' | 'ul' | 'ol' | 'code'
   ) => {
     const el = ref.current
     const start = el ? el.selectionStart : value.length
@@ -672,8 +686,20 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       const insert = `${marker}${text}${marker}`
       newValue = value.slice(0, start) + insert + value.slice(end)
       newCursor = start + insert.length
+    } else if (type === 'code') {
+      // Selección con salto de línea (o vacía) -> bloque de código con ```
+      // Selección de una sola línea -> código inline con backtick simple
+      if (selected.includes('\n') || !selected) {
+        const text = selected || 'código'
+        const insert = '```\n' + text + '\n```'
+        newValue = value.slice(0, start) + insert + value.slice(end)
+        newCursor = start + insert.length
+      } else {
+        const insert = `\`${selected}\``
+        newValue = value.slice(0, start) + insert + value.slice(end)
+        newCursor = start + insert.length
+      }
     } else {
-      // List: prefix each selected line (or the current line) with a marker
       const lineStart = value.lastIndexOf('\n', start - 1) + 1
       const block = value.slice(lineStart, end) || ''
       const blockLines = (block || 'Elemento').split('\n')
@@ -693,16 +719,12 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     }, 0)
   }
 
-  // Insert task mention
   const insertTaskMention = (task: TareaCliente) => {
-    const mention = `#${task.shortId}`
-    setNewComment(prev => prev + mention + ' ')
+    insertAtCursor(textareaRef, newComment, setNewComment, `#${task.shortId} `)
     setShowTaskPopover(false)
     setTaskSearchQuery('')
-    textareaRef.current?.focus()
   }
   
-  // Filter tasks for search
   const filteredTasks = useMemo(() => {
     if (!taskSearchQuery) return clientTasks.slice(0, 10)
     const query = taskSearchQuery.toLowerCase()
@@ -713,17 +735,15 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       )
       .slice(0, 10)
   }, [clientTasks, taskSearchQuery])
+
+  useEffect(() => { setTaskActiveIndex(0) }, [taskSearchQuery, showTaskPopover])
   
-  // Insert collaborator mention
   const insertColabMention = (colab: Colaborador) => {
-    const mention = `@${colab.nombre}`
-    setNewComment(prev => prev + mention + ' ')
+    insertAtCursor(textareaRef, newComment, setNewComment, `@${colab.nombre} `)
     setShowColabPopover(false)
     setColabSearchQuery('')
-    textareaRef.current?.focus()
   }
   
-  // Filter collaborators for search
   const filteredColabs = useMemo(() => {
     if (!colabSearchQuery) return colaboradores.slice(0, 10)
     const query = colabSearchQuery.toLowerCase()
@@ -731,15 +751,54 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       .filter(c => c.nombre.toLowerCase().includes(query))
       .slice(0, 10)
   }, [colaboradores, colabSearchQuery])
+
+  useEffect(() => { setColabActiveIndex(0) }, [colabSearchQuery, showColabPopover])
   
-  // Render comment content with formatting (bold/italic), lists, mentions and links
   const renderCommentContent = (content: string) => {
-    // Renders a single line of text: handles **bold**, *italic*, #task, @mention, URLs
+    // Separa primero los bloques de código ```...``` del resto del texto.
+    // Lo que queda adentro de un bloque de código se muestra tal cual, sin
+    // aplicar negrita/cursiva/menciones/links.
+    const fenceRegex = /```([\s\S]*?)```/g
+    const segments: { type: 'code' | 'text'; content: string }[] = []
+    let lastIndex = 0
+    let fenceMatch: RegExpExecArray | null
+    while ((fenceMatch = fenceRegex.exec(content)) !== null) {
+      if (fenceMatch.index > lastIndex) {
+        segments.push({ type: 'text', content: content.slice(lastIndex, fenceMatch.index) })
+      }
+      segments.push({ type: 'code', content: fenceMatch[1].replace(/^\n/, '').replace(/\n$/, '') })
+      lastIndex = fenceMatch.index + fenceMatch[0].length
+    }
+    if (lastIndex < content.length) {
+      segments.push({ type: 'text', content: content.slice(lastIndex) })
+    }
+    if (segments.length === 0) return content
+
+    return segments.map((segment, segmentIdx) => {
+      if (segment.type === 'code') {
+        return (
+          <pre
+            key={`codeblock-${segmentIdx}`}
+            className="my-1.5 p-2.5 rounded-md bg-muted/70 border border-border overflow-x-auto text-xs font-mono whitespace-pre"
+          >
+            <code>{segment.content}</code>
+          </pre>
+        )
+      }
+      return (
+        <span key={`textblock-${segmentIdx}`}>
+          {renderTextSegment(segment.content, `seg${segmentIdx}`)}
+        </span>
+      )
+    })
+  }
+
+  // Renderiza un segmento de texto plano (sin bloques de código): maneja
+  // párrafos, listas, y formato inline (negrita/cursiva/código/menciones/links)
+  const renderTextSegment = (content: string, keyPrefix: string) => {
     const renderInline = (text: string, keyPrefix: string): React.ReactNode[] => {
-      // First split out bold/italic segments, then process mentions/links within plain text
       const out: React.ReactNode[] = []
-      // Match **bold** or *italic*
-      const fmtRegex = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)/g
+      const fmtRegex = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(`([^`]+)`)/g
       let cursor = 0
       let fm: RegExpExecArray | null
       let segIdx = 0
@@ -770,7 +829,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
             )
           } else if (match[3]) {
             const mentionName = match[3].replace(/^@/, '').trim()
-            const colab = currentUser?.nombre === mentionName ? currentUser : undefined
+            const colab = colaboradores.find(c => c.nombre.toLowerCase() === mentionName.toLowerCase())
             out.push(
               <span
                 key={`${kp}-mention-${mIdx}`}
@@ -812,6 +871,12 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
           out.push(<strong key={`${keyPrefix}-b${segIdx}`}>{fm[2]}</strong>)
         } else if (fm[3]) {
           out.push(<em key={`${keyPrefix}-i${segIdx}`}>{fm[4]}</em>)
+        } else if (fm[5]) {
+          out.push(
+            <code key={`${keyPrefix}-c${segIdx}`} className="px-1 py-0.5 rounded bg-muted font-mono text-[0.85em]">
+              {fm[6]}
+            </code>
+          )
         }
         cursor = fm.index + fm[0].length
         segIdx++
@@ -822,7 +887,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       return out
     }
 
-    // Group lines into paragraphs and ordered/unordered lists
     const lines = content.split('\n')
     const blocks: React.ReactNode[] = []
     let listBuffer: { ordered: boolean; items: string[] } | null = null
@@ -834,7 +898,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       const ListTag = ordered ? 'ol' : 'ul'
       blocks.push(
         <ListTag
-          key={`list-${blockIdx++}`}
+          key={`${keyPrefix}-list-${blockIdx++}`}
           className={cn('my-1 pl-5 space-y-0.5', ordered ? 'list-decimal' : 'list-disc')}
         >
           {items.map((item, i) => (
@@ -859,12 +923,16 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       } else {
         flushList()
         if (line.trim() === '') {
-          // preserve blank line spacing only between content
+          blocks.push(
+            <span key={`${keyPrefix}-line-${blockIdx++}`} className="block h-4" aria-hidden="true">
+              &nbsp;
+            </span>
+          )
           return
         }
         blocks.push(
-          <span key={`line-${blockIdx++}`} className="block">
-            {renderInline(line, `line-${idx}`)}
+          <span key={`${keyPrefix}-line-${blockIdx++}`} className="block">
+            {renderInline(line, `${keyPrefix}-line-${idx}`)}
           </span>
         )
       }
@@ -916,7 +984,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
         </div>
 
         <TabsContent value="comments" className="mt-4 space-y-4">
-          {/* Filters */}
           {showFilters && (
             <div className="p-3 rounded-lg border bg-muted/30 space-y-3">
               <div className="flex items-center justify-between">
@@ -965,7 +1032,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
             </div>
           )}
 
-          {/* New comment input */}
           {currentUser && (
             <div className="flex gap-3">
               <Avatar className="h-8 w-8 shrink-0">
@@ -975,7 +1041,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0 space-y-2">
-                {/* Formatting toolbar */}
                 <div className="flex items-center gap-0.5 border-b pb-2">
                   <Button
                     type="button"
@@ -1003,6 +1068,17 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    onClick={() => applyFormat(textareaRef, newComment, setNewComment, 'code')}
+                    title="Código"
+                  >
+                    <Code className="h-3.5 w-3.5" />
+                  </Button>
+                  <div className="w-px h-4 bg-border mx-1" />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
                     onClick={() => applyFormat(textareaRef, newComment, setNewComment, 'ul')}
                     title="Lista con viñetas"
                   >
@@ -1019,27 +1095,124 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                     <ListOrdered className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-                <Textarea
-                  ref={textareaRef}
-                  placeholder="Escribe un comentario..."
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  className="min-h-[80px] w-full resize-none text-sm"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && e.metaKey) {
-                      handleAddComment()
-                    }
-                    // Open task popover on #
-                    if (e.key === '#' || (e.key === '3' && e.shiftKey)) {
-                      setTimeout(() => setShowTaskPopover(true), 50)
-                    }
-                    // Open collaborator popover on @
-                    if (e.key === '@' || (e.key === '2' && e.shiftKey)) {
-                      setTimeout(() => setShowColabPopover(true), 50)
-                    }
-                  }}
-                />
-                  {/* Pending images preview */}
+
+                <div className="relative">
+                  <Textarea
+                    ref={textareaRef}
+                    placeholder="Escribe un comentario... Usa @ para mencionar a alguien o # para una tarea"
+                    value={newComment}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setNewComment(value)
+                      const cursor = e.target.selectionStart ?? value.length
+                      const before = value.slice(0, cursor)
+                      const atMatch = /@([^\s@#]*)$/.exec(before)
+                      const hashMatch = /#([^\s@#]*)$/.exec(before)
+                      if (atMatch) {
+                        setColabSearchQuery(atMatch[1])
+                        setShowColabPopover(true)
+                        setShowTaskPopover(false)
+                      } else if (hashMatch) {
+                        setTaskSearchQuery(hashMatch[1])
+                        setShowTaskPopover(true)
+                        setShowColabPopover(false)
+                      } else {
+                        setShowColabPopover(false)
+                        setShowTaskPopover(false)
+                      }
+                    }}
+                    onBlur={() => {
+                      setTimeout(() => {
+                        setShowColabPopover(false)
+                        setShowTaskPopover(false)
+                      }, 150)
+                    }}
+                    className="min-h-[80px] w-full resize-none text-sm"
+                    onKeyDown={(e) => {
+                      if (showColabPopover) {
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault()
+                          setColabActiveIndex(i => (i + 1) % Math.max(filteredColabs.length, 1))
+                          return
+                        }
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault()
+                          setColabActiveIndex(i => (i - 1 + Math.max(filteredColabs.length, 1)) % Math.max(filteredColabs.length, 1))
+                          return
+                        }
+                        if ((e.key === 'Enter' || e.key === 'Tab') && filteredColabs.length > 0) {
+                          e.preventDefault()
+                          insertColabMention(filteredColabs[colabActiveIndex])
+                          return
+                        }
+                        if (e.key === 'Escape') {
+                          setShowColabPopover(false)
+                          return
+                        }
+                      }
+                      if (showTaskPopover) {
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault()
+                          setTaskActiveIndex(i => (i + 1) % Math.max(filteredTasks.length, 1))
+                          return
+                        }
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault()
+                          setTaskActiveIndex(i => (i - 1 + Math.max(filteredTasks.length, 1)) % Math.max(filteredTasks.length, 1))
+                          return
+                        }
+                        if ((e.key === 'Enter' || e.key === 'Tab') && filteredTasks.length > 0) {
+                          e.preventDefault()
+                          insertTaskMention(filteredTasks[taskActiveIndex])
+                          return
+                        }
+                        if (e.key === 'Escape') {
+                          setShowTaskPopover(false)
+                          return
+                        }
+                      }
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault()
+                        handleAddComment()
+                      }
+                    }}
+                  />
+                  {showColabPopover && (
+                    <MentionDropdown
+                      items={filteredColabs}
+                      activeIndex={colabActiveIndex}
+                      onSelect={insertColabMention}
+                      onHover={setColabActiveIndex}
+                      emptyLabel="No se encontraron colaboradores"
+                      renderItem={(colab) => (
+                        <>
+                          <Avatar className="h-5 w-5">
+                            <AvatarImage src={colab.avatar_url || undefined} />
+                            <AvatarFallback className="text-[10px]">{colab.nombre[0]}</AvatarFallback>
+                          </Avatar>
+                          <span>{colab.nombre}</span>
+                        </>
+                      )}
+                    />
+                  )}
+                  {showTaskPopover && (
+                    <MentionDropdown
+                      items={filteredTasks}
+                      activeIndex={taskActiveIndex}
+                      onSelect={insertTaskMention}
+                      onHover={setTaskActiveIndex}
+                      emptyLabel="No se encontraron tareas"
+                      renderItem={(task) => (
+                        <>
+                          <CheckSquare className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span className="text-xs font-mono text-primary shrink-0">#{task.shortId}</span>
+                          <span className="truncate">{task.titulo}</span>
+                        </>
+                      )}
+                    />
+                  )}
+                </div>
+
                   {pendingImages.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {pendingImages.map((url, idx) => (
@@ -1060,7 +1233,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                     </div>
                   )}
                   
-                  {/* Pending files preview */}
                   {pendingFiles.length > 0 && (
                     <div className="space-y-1.5">
                       {pendingFiles.map((file, idx) => (
@@ -1081,95 +1253,36 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                   )}
                 <div className="flex flex-wrap justify-between items-center gap-2">
                   <div className="flex items-center flex-wrap gap-1 min-w-0">
-                    <Popover open={showTaskPopover} onOpenChange={setShowTaskPopover}>
-                      <PopoverTrigger asChild>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
-                        >
-                          <Hash className="h-3 w-3" />
-                          Mencionar tarea
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-72 p-0" align="start">
-                        <Command>
-                          <CommandInput 
-                            placeholder="Buscar tarea..." 
-                            value={taskSearchQuery}
-                            onValueChange={setTaskSearchQuery}
-                            className="h-9"
-                          />
-                          <CommandList>
-                            <CommandEmpty>No se encontraron tareas</CommandEmpty>
-                            <CommandGroup heading="Tareas del cliente">
-                              {filteredTasks.map(task => (
-                                <CommandItem
-                                  key={task.id}
-                                  value={`${task.shortId} ${task.titulo}`}
-                                  onSelect={() => insertTaskMention(task)}
-                                  className="gap-2"
-                                >
-                                  <CheckSquare className="h-3.5 w-3.5 text-muted-foreground" />
-                                  <span className="text-xs font-mono text-primary">
-                                    #{task.shortId}
-                                  </span>
-                                  <span className="text-xs truncate flex-1">
-                                    {task.titulo}
-                                  </span>
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                    <Popover open={showColabPopover} onOpenChange={setShowColabPopover}>
-                      <PopoverTrigger asChild>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
-                        >
-                          <AtSign className="h-3 w-3" />
-                          <span className="hidden sm:inline">Mencionar</span>
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-64 p-0" align="start">
-                        <Command>
-                          <CommandInput 
-                            placeholder="Buscar colaborador..." 
-                            value={colabSearchQuery}
-                            onValueChange={setColabSearchQuery}
-                            className="h-9"
-                          />
-                          <CommandList>
-                            <CommandEmpty>No se encontraron colaboradores</CommandEmpty>
-                            <CommandGroup heading="Colaboradores">
-                              {filteredColabs.map(colab => (
-                                <CommandItem
-                                  key={colab.id}
-                                  value={colab.nombre}
-                                  onSelect={() => insertColabMention(colab)}
-                                  className="gap-2"
-                                >
-                                  <Avatar className="h-5 w-5">
-                                    <AvatarImage src={colab.avatar_url || undefined} />
-                                    <AvatarFallback className="text-[10px]">
-                                      {colab.nombre[0]}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <span className="text-xs">
-                                    {colab.nombre}
-                                  </span>
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                    {/* Image upload button */}
+                    <Button 
+                      type="button"
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        insertTrigger(textareaRef, newComment, setNewComment, '#')
+                        setTaskSearchQuery('')
+                        setShowTaskPopover(true)
+                        setShowColabPopover(false)
+                      }}
+                    >
+                      <Hash className="h-3 w-3" />
+                      Mencionar tarea
+                    </Button>
+                    <Button 
+                      type="button"
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        insertTrigger(textareaRef, newComment, setNewComment, '@')
+                        setColabSearchQuery('')
+                        setShowColabPopover(true)
+                        setShowTaskPopover(false)
+                      }}
+                    >
+                      <AtSign className="h-3 w-3" />
+                      <span className="hidden sm:inline">Mencionar</span>
+                    </Button>
                     <input
                       ref={imageInputRef}
                       type="file"
@@ -1192,7 +1305,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                       )}
                       <span className="hidden sm:inline">Imagen</span>
                     </Button>
-                    {/* File upload button */}
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -1215,7 +1327,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                       <span className="hidden sm:inline">Archivo</span>
                     </Button>
                     <span className="text-[10px] text-muted-foreground hidden xl:inline">
-                      Cmd + Enter para enviar
+                      Ctrl/Cmd + Enter para enviar
                     </span>
                   </div>
                   <Button
@@ -1236,26 +1348,22 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
             </div>
           )}
 
-          {/* Error message */}
           {error && (
             <p className="text-sm text-destructive">{error}</p>
           )}
 
-          {/* Loading state */}
           {loading && (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           )}
 
-          {/* Filtered results info */}
           {!loading && hasActiveFilters && (
             <p className="text-xs text-muted-foreground">
               Mostrando {filteredComments.length} de {comments.length} comentarios
             </p>
           )}
 
-          {/* Comments list */}
           {!loading && filteredComments.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-6">
               {hasActiveFilters 
@@ -1268,16 +1376,13 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
           {!loading && filteredComments.length > 0 && (
             <div className="space-y-3">
               {filteredComments.map((comment) => {
-                // Get avatar URL from joined colaborador relation (primary source)
                 let avatarUrl = comment.colaborador?.avatar_url
                 
-                // Fallback 1: If no relation, search colaboradores by full name match
                 if (!avatarUrl && colaboradores.length > 0) {
                   const colaborador = colaboradores.find(c => c.nombre?.toLowerCase() === comment.autor?.toLowerCase())
                   avatarUrl = colaborador?.avatar_url
                 }
                 
-                // Fallback 2: Search by first name if full name didn't match
                 if (!avatarUrl && colaboradores.length > 0) {
                   const authorFirstName = comment.autor?.split(' ')[0]?.toLowerCase()
                   const colaborador = colaboradores.find(c => c.nombre?.toLowerCase().startsWith(authorFirstName))
@@ -1333,7 +1438,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                       </div>
                       {editingCommentId === comment.id ? (
                         <div className="mt-2 space-y-2">
-                          {/* Formatting toolbar (edit) */}
                           <div className="flex items-center gap-0.5 border-b pb-2">
                             <Button
                               type="button"
@@ -1361,6 +1465,17 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              onClick={() => applyFormat(editTextareaRef, editingContent, setEditingContent, 'code')}
+                              title="Código"
+                            >
+                              <Code className="h-3.5 w-3.5" />
+                            </Button>
+                            <div className="w-px h-4 bg-border mx-1" />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
                               onClick={() => applyFormat(editTextareaRef, editingContent, setEditingContent, 'ul')}
                               title="Lista con viñetas"
                             >
@@ -1377,19 +1492,71 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                               <ListOrdered className="h-3.5 w-3.5" />
                             </Button>
                           </div>
-                          <Textarea
-                            ref={editTextareaRef}
-                            value={editingContent}
-                            onChange={(e) => setEditingContent(e.target.value)}
-                            className="min-h-[60px] text-sm"
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === '@' || (e.key === '2' && e.shiftKey)) {
-                                setTimeout(() => setShowEditColabPopover(true), 50)
-                              }
-                            }}
-                          />
-                          {/* Editing images preview */}
+                          <div className="relative">
+                            <Textarea
+                              ref={editTextareaRef}
+                              value={editingContent}
+                              onChange={(e) => {
+                                const value = e.target.value
+                                setEditingContent(value)
+                                const cursor = e.target.selectionStart ?? value.length
+                                const before = value.slice(0, cursor)
+                                const atMatch = /@([^\s@#]*)$/.exec(before)
+                                if (atMatch) {
+                                  setEditColabSearchQuery(atMatch[1])
+                                  setShowEditColabPopover(true)
+                                } else {
+                                  setShowEditColabPopover(false)
+                                }
+                              }}
+                              onBlur={() => {
+                                setTimeout(() => setShowEditColabPopover(false), 150)
+                              }}
+                              className="min-h-[60px] text-sm"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (showEditColabPopover) {
+                                  if (e.key === 'ArrowDown') {
+                                    e.preventDefault()
+                                    setEditColabActiveIndex(i => (i + 1) % Math.max(filteredEditColabs.length, 1))
+                                    return
+                                  }
+                                  if (e.key === 'ArrowUp') {
+                                    e.preventDefault()
+                                    setEditColabActiveIndex(i => (i - 1 + Math.max(filteredEditColabs.length, 1)) % Math.max(filteredEditColabs.length, 1))
+                                    return
+                                  }
+                                  if ((e.key === 'Enter' || e.key === 'Tab') && filteredEditColabs.length > 0) {
+                                    e.preventDefault()
+                                    insertEditColabMention(filteredEditColabs[editColabActiveIndex])
+                                    return
+                                  }
+                                  if (e.key === 'Escape') {
+                                    setShowEditColabPopover(false)
+                                    return
+                                  }
+                                }
+                              }}
+                            />
+                            {showEditColabPopover && (
+                              <MentionDropdown
+                                items={filteredEditColabs}
+                                activeIndex={editColabActiveIndex}
+                                onSelect={insertEditColabMention}
+                                onHover={setEditColabActiveIndex}
+                                emptyLabel="No se encontraron colaboradores"
+                                renderItem={(colab) => (
+                                  <>
+                                    <Avatar className="h-5 w-5">
+                                      <AvatarImage src={colab.avatar_url || undefined} />
+                                      <AvatarFallback className="text-[10px]">{colab.nombre[0]}</AvatarFallback>
+                                    </Avatar>
+                                    <span>{colab.nombre}</span>
+                                  </>
+                                )}
+                              />
+                            )}
+                          </div>
                           {editingImages.length > 0 && (
                             <div className="flex flex-wrap gap-2">
                               {editingImages.map((url, idx) => (
@@ -1411,51 +1578,20 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                           )}
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1">
-                              {/* Mention collaborator while editing */}
-                              <Popover open={showEditColabPopover} onOpenChange={setShowEditColabPopover}>
-                                <PopoverTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
-                                  >
-                                    <AtSign className="h-3 w-3" />
-                                    <span className="hidden sm:inline">Mencionar</span>
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-64 p-0" align="start">
-                                  <Command>
-                                    <CommandInput
-                                      placeholder="Buscar colaborador..."
-                                      value={editColabSearchQuery}
-                                      onValueChange={setEditColabSearchQuery}
-                                      className="h-9"
-                                    />
-                                    <CommandList>
-                                      <CommandEmpty>No se encontraron colaboradores</CommandEmpty>
-                                      <CommandGroup heading="Colaboradores">
-                                        {filteredEditColabs.map(colab => (
-                                          <CommandItem
-                                            key={colab.id}
-                                            value={colab.nombre}
-                                            onSelect={() => insertEditColabMention(colab)}
-                                            className="gap-2"
-                                          >
-                                            <Avatar className="h-5 w-5">
-                                              <AvatarImage src={colab.avatar_url || undefined} />
-                                              <AvatarFallback className="text-[10px]">
-                                                {colab.nombre[0]}
-                                              </AvatarFallback>
-                                            </Avatar>
-                                            <span className="text-xs">{colab.nombre}</span>
-                                          </CommandItem>
-                                        ))}
-                                      </CommandGroup>
-                                    </CommandList>
-                                  </Command>
-                                </PopoverContent>
-                              </Popover>
-                              {/* Attach image while editing */}
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                                onClick={() => {
+                                  insertTrigger(editTextareaRef, editingContent, setEditingContent, '@')
+                                  setEditColabSearchQuery('')
+                                  setShowEditColabPopover(true)
+                                }}
+                              >
+                                <AtSign className="h-3 w-3" />
+                                <span className="hidden sm:inline">Mencionar</span>
+                              </Button>
                               <input
                                 ref={editImageInputRef}
                                 type="file"
@@ -1503,12 +1639,10 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                       ) : (
                         <>
                           {comment.contenido && (
-                            <div className="text-sm mt-1 whitespace-pre-wrap">{renderCommentContent(comment.contenido)}</div>
+                            <div className="text-sm mt-1">{renderCommentContent(comment.contenido)}</div>
                           )}
-                          {/* Render images */}
                           {comment.imagenes && comment.imagenes.length > 0 && (
                             <div className="mt-2 space-y-2">
-                              {/* Render images */}
                               {comment.imagenes.filter(url => /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url)).length > 0 && (
                                 <div className="flex flex-wrap gap-2">
                                   {comment.imagenes
@@ -1530,7 +1664,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                                     ))}
                                 </div>
                               )}
-                              {/* Render file attachments */}
                               {comment.imagenes.filter(url => !/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url)).length > 0 && (
                                 <div className="space-y-1.5">
                                   {comment.imagenes
@@ -1569,9 +1702,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
         </TabsContent>
 
         <TabsContent value="ai" className="mt-4 space-y-4">
-          {/* AI Chat */}
           <div className="rounded-lg border bg-muted/20 overflow-hidden">
-            {/* Chat messages */}
             <div 
               ref={chatContainerRef}
               className="h-[350px] overflow-y-auto p-4 space-y-4"
@@ -1663,7 +1794,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
               )}
             </div>
 
-            {/* Chat input */}
             <div className="border-t p-3 flex gap-2">
               <Input
                 value={aiInput}
@@ -1688,7 +1818,6 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
             </div>
           </div>
 
-          {/* Clear chat button */}
           {messages.length > 0 && (
             <div className="flex justify-end">
               <Button
@@ -1707,17 +1836,11 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   )
 }
 
-// Simple markdown formatter
 function formatMarkdown(text: string): string {
   return text
-    // Bold
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    // Italic
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    // Code
     .replace(/`(.*?)`/g, '<code class="bg-muted px-1 rounded text-xs">$1</code>')
-    // Line breaks
     .replace(/\n/g, '<br />')
-    // Lists
     .replace(/^- (.*?)(<br \/>|$)/gm, '<li class="ml-4">$1</li>')
 }

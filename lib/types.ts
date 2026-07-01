@@ -22,6 +22,21 @@ export interface DateRange {
   end?: string
 }
 
+export interface MinutaCliente {
+  id: string
+  cliente_id: string
+  titulo: string
+  contenido: string | null
+  fecha: string // DATE as string
+  tipo: TipoMinuta
+  colaborador_id: string | null
+  adjuntos: { name: string; url: string }[] | null
+  created_at: string
+  updated_at: string
+  // Joined desde colaborador_id (no es una columna real, viene del select con join)
+  colaborador?: { id: string; nombre: string; apellido: string | null } | null
+}
+
 export interface DashboardFilters {
   platform: Platform
   clientIds: string[] // empty = all
