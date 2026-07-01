@@ -601,7 +601,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   // Detectar si el cliente tiene Consultoría y GoHighLevel
   const hasConsultoria = unidadesDeNegocio?.some(u => u.unidad_de_negocio?.nombre === 'Consultoría') ?? false
   const hasGHL = client.crm_type === 'ghl' && !!client.ghl_location_id && !!client.ghl_token
-  const showRevOpsButton = hasConsultoria && hasGHL
+  // Mostrar RevOps button en todos los clientes con Consultoría
+  const showRevOpsButton = hasConsultoria
   const [savingBusinessName, setSavingBusinessName] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingClient, setDeletingClient] = useState(false)
