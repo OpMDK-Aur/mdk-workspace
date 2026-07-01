@@ -29,11 +29,12 @@ export interface MinutaCliente {
   contenido: string | null
   fecha: string // DATE as string
   tipo: TipoMinuta
-  autor: string | null
   colaborador_id: string | null
-  adjuntos: { name: string; url: string }[] | null   // ← nuevo
-  creado_en: string
-  actualizado_en: string
+  adjuntos: { name: string; url: string }[] | null
+  created_at: string
+  updated_at: string
+  // Joined desde colaborador_id (no es una columna real, viene del select con join)
+  colaborador?: { id: string; nombre: string; apellido: string | null } | null
 }
 
 export interface DashboardFilters {
