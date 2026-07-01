@@ -601,6 +601,18 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   // Detectar si el cliente tiene Consultoría y GoHighLevel
   const hasConsultoria = unidadesDeNegocio?.some(u => u.unidad_de_negocio?.nombre === 'Consultoría') ?? false
   const hasGHL = client.crm_type === 'ghl' && !!client.ghl_location_id && !!client.ghl_token
+  
+  // Debug: Verificar qué unidades de negocio se están trayendo
+  if (client.nombre === 'Donadio') {
+    console.log('[v0] DEBUG - Donadio unidadesDeNegocio:', {
+      unidadesDeNegocio,
+      hasConsultoria,
+      hasGHL,
+      unidadesLength: unidadesDeNegocio?.length,
+      nombres: unidadesDeNegocio?.map(u => u.unidad_de_negocio?.nombre)
+    })
+  }
+  
   // Mostrar RevOps button en todos los clientes con Consultoría
   const showRevOpsButton = hasConsultoria
   const [savingBusinessName, setSavingBusinessName] = useState(false)
