@@ -7,7 +7,7 @@ Plataforma interna de operaciones para Madketing (MDK), agencia de marketing dig
 
 Stack técnico
 
-CapaTecnologíaFrameworkNext.js 15 (App Router) + React 19 + TypeScriptEstilosTailwind CSS v4 + shadcn/ui + Tabler IconsBase de datosSupabase (PostgreSQL + Auth + Storage)Hosting / CronVercel (vercel.json, @vercel/functions waitUntil)Generación de UIV0IAVercel AI SDK (ai, @ai-sdk/openai, @ai-sdk/react), modelos ClaudeEstado clienteZustand (persistencia en localStorage para el timer)OtrosSWR, Zod, react-hook-form, jsPDF, xlsx, googleapis
+Capa Tecnología Framework Next.js 15 (App Router) + React 19 + TypeScript EstilosTailwind CSS v4 + shadcn/ui + Tabler IconsBase de datosSupabase (PostgreSQL + Auth + Storage)Hosting / CronVercel (vercel.json, @vercel/functions waitUntil) Generación de UI V0 IA Vercel AI SDK (ai, @ai-sdk/openai, @ai-sdk/react), modelos Claude Estado cliente Zustand (persistencia en localStorage para el timer) Otros SWR, Zod, react-hook-form, jsPDF, xlsx, google apis
 
 
 Estructura del proyecto
