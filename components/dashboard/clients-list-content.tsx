@@ -934,7 +934,7 @@ const applyFilter = (filter: SavedFilter) => {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-48">
                   <DropdownMenuCheckboxItem checked={planFilters.includes('Esencial')} onCheckedChange={(checked) => setPlanFilters(prev => checked ? [...prev, 'Esencial'] : prev.filter(p => p !== 'Esencial'))}>Esencial</DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem checked={planFilters.includes('Estrategico')} onCheckedChange={(checked) => setPlanFilters(prev => checked ? [...prev, 'Estrategico'] : prev.filter(p => p !== 'Estrategico'))}>Estrategico</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={planFilters.includes('Estrategico')} onCheckedChange={(checked) => setPlanFilters(prev => checked ? [...prev, 'Estratégico'] : prev.filter(p => p !== 'Estratégico'))}>Estratégico</DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               
