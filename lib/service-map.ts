@@ -13,6 +13,23 @@ import type {
 // ── Utility Functions ─────────────────────────────────────────────────────────
 
 /**
+ * Extrae un mensaje legible de cualquier error, incluyendo los que devuelve
+ * Supabase (PostgrestError), que NO son instancias de la clase Error nativa
+ * y por lo tanto `error instanceof Error` siempre da false para ellos.
+ */
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object' && 'message' in error && typeof (error as any).message === 'string') {
+    return (error as any).message
+  }
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return 'Unknown error'
+  }
+}
+
+/**
  * Normalize plan string for comparison (removes accents, lowercase)
  * 'Esencial' -> 'esencial', 'Estratégico' -> 'estrategico'
  * Defaults to 'esencial' if plan is null/undefined
@@ -237,7 +254,7 @@ export async function generateMonthInstances(
     return { success: true, generated: insertedCount }
   } catch (error) {
     console.error('[service-map] Error generating instances:', error)
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { success: false, error: getErrorMessage(error) }
   }
 }
 
@@ -324,7 +341,7 @@ export async function createMissingTasks(
     return { success: true, created }
   } catch (error) {
     console.error('[service-map] Error in createMissingTasks:', error)
-    return { success: false, created: 0, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { success: false, created: 0, error: getErrorMessage(error) }
   }
 }
 
@@ -407,7 +424,7 @@ export async function completeInstance(
     return { success: true }
   } catch (error) {
     console.error('[service-map] Error completing instance:', error)
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { success: false, error: getErrorMessage(error) }
   }
 }
 
@@ -453,7 +470,7 @@ export async function getClientServiceMap(
     return { data: filteredData }
   } catch (error) {
     console.error('[service-map] Error fetching client service map:', error)
-    return { data: null, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { data: null, error: getErrorMessage(error) }
   }
 }
 
@@ -594,7 +611,7 @@ export async function getServiceMapKPIs(filters?: {
     return { data: result }
   } catch (error) {
     console.error('[service-map] Error fetching KPIs:', error)
-    return { data: null, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { data: null, error: getErrorMessage(error) }
   }
 }
 
@@ -628,7 +645,7 @@ export async function getInstanceByTaskId(
     return { data: data as MapaServicioInstancia }
   } catch (error) {
     console.error('[service-map] Error fetching instance by task:', error)
-    return { data: null, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { data: null, error: getErrorMessage(error) }
   }
 }
 
@@ -646,7 +663,7 @@ export async function getHitoById(hitoId: string): Promise<{ data: HitoCatalogo 
     return { data: data as HitoCatalogo }
   } catch (error) {
     console.error('[service-map] Error fetching hito:', error)
-    return { data: null, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { data: null, error: getErrorMessage(error) }
   }
 }
 
@@ -672,7 +689,7 @@ export async function getClientMinutas(
     return { data: data as MinutaCliente[] }
   } catch (error) {
     console.error('[service-map] Error fetching minutas:', error)
-    return { data: null, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { data: null, error: getErrorMessage(error) }
   }
 }
 
@@ -735,7 +752,7 @@ export async function createMinuta(minuta: {
     return { data: data as MinutaCliente }
   } catch (error) {
     console.error('[service-map] Error creating minuta:', error)
-    return { data: null, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { data: null, error: getErrorMessage(error) }
   }
 }
 
@@ -765,7 +782,7 @@ export async function updateMinuta(
     return { success: true }
   } catch (error) {
     console.error('[service-map] Error updating minuta:', error)
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { success: false, error: getErrorMessage(error) }
   }
 }
 
@@ -783,7 +800,7 @@ export async function deleteMinuta(minutaId: string): Promise<{ success: boolean
     return { success: true }
   } catch (error) {
     console.error('[service-map] Error deleting minuta:', error)
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { success: false, error: getErrorMessage(error) }
   }
 }
 
@@ -857,7 +874,7 @@ export async function cleanupServiceMapOnMDKRemoval(
     return { success: true, instancesMarked: instancias.length, tasksCancelled }
   } catch (error) {
     console.error('[service-map] Error in cleanupServiceMapOnMDKRemoval:', error)
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { success: false, error: getErrorMessage(error) }
   }
 }
 
@@ -946,7 +963,7 @@ export async function closeMonthServiceMap(
     }
   } catch (error) {
     console.error('[service-map] Error in closeMonthServiceMap:', error)
-    return { success: false, clientsClosed: 0, instancesClosed: 0, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { success: false, clientsClosed: 0, instancesClosed: 0, error: getErrorMessage(error) }
   }
 }
 
@@ -964,7 +981,7 @@ export async function getAllHitos(): Promise<{ data: HitoCatalogo[] | null; erro
     return { data: data as HitoCatalogo[] }
   } catch (error) {
     console.error('[service-map] Error fetching all hitos:', error)
-    return { data: null, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { data: null, error: getErrorMessage(error) }
   }
 }
   
@@ -1024,6 +1041,6 @@ export async function updateCatalogHito(
     return { success: true }
   } catch (error) {
     console.error('[service-map] Error updating catalog hito:', error)
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    return { success: false, error: getErrorMessage(error) }
   }
 }
