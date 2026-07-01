@@ -343,8 +343,10 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
                     ))}
                   </div>
                 )}
-                {minuta.autor && (
-                  <p className="text-[10px] text-muted-foreground mt-2">Por: {minuta.autor}</p>
+                {minuta.colaborador && (
+                  <p className="text-[10px] text-muted-foreground mt-2">
+                    Por: {[minuta.colaborador.nombre, minuta.colaborador.apellido].filter(Boolean).join(' ')}
+                  </p>
                 )}
               </div>
 
