@@ -22,6 +22,20 @@ export interface DateRange {
   end?: string
 }
 
+export interface MinutaCliente {
+  id: string
+  cliente_id: string
+  titulo: string
+  contenido: string | null
+  fecha: string // DATE as string
+  tipo: TipoMinuta
+  autor: string | null
+  colaborador_id: string | null
+  adjuntos: { name: string; url: string }[] | null   // ← nuevo
+  creado_en: string
+  actualizado_en: string
+}
+
 export interface DashboardFilters {
   platform: Platform
   clientIds: string[] // empty = all
