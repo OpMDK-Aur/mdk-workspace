@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign, Pencil, Check, ImagePlus, Bold, Italic, List, ListOrdered, Paperclip, Download, FileText } from 'lucide-react'
+import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign, Pencil, Check, ImagePlus, Bold, Italic, List, ListOrdered, Paperclip, Download, FileText, Code } from 'lucide-react'
 import Link from 'next/link'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
@@ -670,7 +670,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
     ref: React.RefObject<HTMLTextAreaElement | null>,
     value: string,
     setValue: (v: string) => void,
-    type: 'bold' | 'italic' | 'ul' | 'ol'
+    type: 'bold' | 'italic' | 'ul' | 'ol' | 'code'
   ) => {
     const el = ref.current
     const start = el ? el.selectionStart : value.length
@@ -686,6 +686,19 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       const insert = `${marker}${text}${marker}`
       newValue = value.slice(0, start) + insert + value.slice(end)
       newCursor = start + insert.length
+    } else if (type === 'code') {
+      // Selección con salto de línea (o vacía) -> bloque de código con ```
+      // Selección de una sola línea -> código inline con backtick simple
+      if (selected.includes('\n') || !selected) {
+        const text = selected || 'código'
+        const insert = '```\n' + text + '\n```'
+        newValue = value.slice(0, start) + insert + value.slice(end)
+        newCursor = start + insert.length
+      } else {
+        const insert = `\`${selected}\``
+        newValue = value.slice(0, start) + insert + value.slice(end)
+        newCursor = start + insert.length
+      }
     } else {
       const lineStart = value.lastIndexOf('\n', start - 1) + 1
       const block = value.slice(lineStart, end) || ''
@@ -742,9 +755,50 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   useEffect(() => { setColabActiveIndex(0) }, [colabSearchQuery, showColabPopover])
   
   const renderCommentContent = (content: string) => {
+    // Separa primero los bloques de código ```...``` del resto del texto.
+    // Lo que queda adentro de un bloque de código se muestra tal cual, sin
+    // aplicar negrita/cursiva/menciones/links.
+    const fenceRegex = /```([\s\S]*?)```/g
+    const segments: { type: 'code' | 'text'; content: string }[] = []
+    let lastIndex = 0
+    let fenceMatch: RegExpExecArray | null
+    while ((fenceMatch = fenceRegex.exec(content)) !== null) {
+      if (fenceMatch.index > lastIndex) {
+        segments.push({ type: 'text', content: content.slice(lastIndex, fenceMatch.index) })
+      }
+      segments.push({ type: 'code', content: fenceMatch[1].replace(/^\n/, '').replace(/\n$/, '') })
+      lastIndex = fenceMatch.index + fenceMatch[0].length
+    }
+    if (lastIndex < content.length) {
+      segments.push({ type: 'text', content: content.slice(lastIndex) })
+    }
+    if (segments.length === 0) return content
+
+    return segments.map((segment, segmentIdx) => {
+      if (segment.type === 'code') {
+        return (
+          <pre
+            key={`codeblock-${segmentIdx}`}
+            className="my-1.5 p-2.5 rounded-md bg-muted/70 border border-border overflow-x-auto text-xs font-mono whitespace-pre"
+          >
+            <code>{segment.content}</code>
+          </pre>
+        )
+      }
+      return (
+        <span key={`textblock-${segmentIdx}`}>
+          {renderTextSegment(segment.content, `seg${segmentIdx}`)}
+        </span>
+      )
+    })
+  }
+
+  // Renderiza un segmento de texto plano (sin bloques de código): maneja
+  // párrafos, listas, y formato inline (negrita/cursiva/código/menciones/links)
+  const renderTextSegment = (content: string, keyPrefix: string) => {
     const renderInline = (text: string, keyPrefix: string): React.ReactNode[] => {
       const out: React.ReactNode[] = []
-      const fmtRegex = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)/g
+      const fmtRegex = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(`([^`]+)`)/g
       let cursor = 0
       let fm: RegExpExecArray | null
       let segIdx = 0
@@ -817,6 +871,12 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
           out.push(<strong key={`${keyPrefix}-b${segIdx}`}>{fm[2]}</strong>)
         } else if (fm[3]) {
           out.push(<em key={`${keyPrefix}-i${segIdx}`}>{fm[4]}</em>)
+        } else if (fm[5]) {
+          out.push(
+            <code key={`${keyPrefix}-c${segIdx}`} className="px-1 py-0.5 rounded bg-muted font-mono text-[0.85em]">
+              {fm[6]}
+            </code>
+          )
         }
         cursor = fm.index + fm[0].length
         segIdx++
@@ -838,7 +898,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       const ListTag = ordered ? 'ol' : 'ul'
       blocks.push(
         <ListTag
-          key={`list-${blockIdx++}`}
+          key={`${keyPrefix}-list-${blockIdx++}`}
           className={cn('my-1 pl-5 space-y-0.5', ordered ? 'list-decimal' : 'list-disc')}
         >
           {items.map((item, i) => (
@@ -864,15 +924,15 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
         flushList()
         if (line.trim() === '') {
           blocks.push(
-            <span key={`line-${blockIdx++}`} className="block h-4" aria-hidden="true">
+            <span key={`${keyPrefix}-line-${blockIdx++}`} className="block h-4" aria-hidden="true">
               &nbsp;
             </span>
           )
           return
         }
         blocks.push(
-          <span key={`line-${blockIdx++}`} className="block">
-            {renderInline(line, `line-${idx}`)}
+          <span key={`${keyPrefix}-line-${blockIdx++}`} className="block">
+            {renderInline(line, `${keyPrefix}-line-${idx}`)}
           </span>
         )
       }
@@ -1008,6 +1068,17 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    onClick={() => applyFormat(textareaRef, newComment, setNewComment, 'code')}
+                    title="Código"
+                  >
+                    <Code className="h-3.5 w-3.5" />
+                  </Button>
+                  <div className="w-px h-4 bg-border mx-1" />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
                     onClick={() => applyFormat(textareaRef, newComment, setNewComment, 'ul')}
                     title="Lista con viñetas"
                   >
@@ -1100,7 +1171,8 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                           return
                         }
                       }
-                      if (e.key === 'Enter' && e.metaKey) {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault()
                         handleAddComment()
                       }
                     }}
@@ -1255,7 +1327,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                       <span className="hidden sm:inline">Archivo</span>
                     </Button>
                     <span className="text-[10px] text-muted-foreground hidden xl:inline">
-                      Cmd + Enter para enviar
+                      Ctrl/Cmd + Enter para enviar
                     </span>
                   </div>
                   <Button
@@ -1386,6 +1458,17 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                               title="Cursiva"
                             >
                               <Italic className="h-3.5 w-3.5" />
+                            </Button>
+                            <div className="w-px h-4 bg-border mx-1" />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              onClick={() => applyFormat(editTextareaRef, editingContent, setEditingContent, 'code')}
+                              title="Código"
+                            >
+                              <Code className="h-3.5 w-3.5" />
                             </Button>
                             <div className="w-px h-4 bg-border mx-1" />
                             <Button
