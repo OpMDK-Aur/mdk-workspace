@@ -35,6 +35,7 @@ const ALERT_TYPES = [
   'asignado_a_tarea',
   'persona_agregada',
   'fecha_cambiada',
+  'alerta',
   'cliente_agregado',
 ]
 
