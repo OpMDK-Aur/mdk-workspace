@@ -103,7 +103,10 @@ export function RevOpsDetailSheet({ cliente, open, onOpenChange }: RevOpsDetailS
                 {r.alertas.map((a, i) => (
                   <div key={i} className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
                     <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
-                    <p className="text-sm text-red-500">{a}</p>
+                    <div className="space-y-1">
+                      <p className="text-sm text-red-500">{a.mensaje}</p>
+                      <p className="text-xs text-muted-foreground">{a.calculo}</p>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -139,6 +142,11 @@ export function RevOpsDetailSheet({ cliente, open, onOpenChange }: RevOpsDetailS
                   <Stat label="Conversaciones evaluadas" value={r.conversaciones_calidad.muestreadas} />
                   <Stat label="Score promedio" value={r.conversaciones_calidad.promedio_score?.toFixed(1) ?? '—'} />
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Se cuentan solo conversaciones con diálogo real entre el bot/vendedor y el contacto. Se excluye la
+                  actividad automática del sistema de GHL (cambios de etapa, notas internas, avisos automáticos, etc.),
+                  que no son mensajes intercambiados con el contacto.
+                </p>
                 <div className="space-y-2">
                   {r.conversaciones_calidad.detalle.map((d) => (
                     <div key={d.conversacionId} className="border border-border rounded-lg p-3 space-y-1.5">
@@ -176,17 +184,24 @@ export function RevOpsDetailSheet({ cliente, open, onOpenChange }: RevOpsDetailS
               </TabsContent>
 
               <TabsContent value="oportunidades" className="space-y-3 mt-4">
+                <p className="text-xs text-muted-foreground">
+                  Calculado sobre oportunidades creadas entre {ejecucion?.periodo_desde} y {ejecucion?.periodo_hasta}.
+                  Si no coincide con lo que ves en GHL, revisá que tengas el mismo rango de fechas seleccionado ahí.
+                </p>
                 <div className="grid grid-cols-2 gap-3">
                   <Stat label="Abiertas" value={r.oportunidades.total_abiertas} />
                   <Stat label="Sin monto" value={`${r.oportunidades.sin_monto} (${pct(r.oportunidades.pct_sin_monto)})`} />
                   <Stat label="Sin responsable" value={`${r.oportunidades.sin_responsable} (${pct(r.oportunidades.pct_sin_responsable)})`} />
                   <Stat label="Sin actividad 30d+" value={`${r.oportunidades.sin_actividad_30d} (${pct(r.oportunidades.pct_sin_actividad_30d)})`} />
                   <Stat label="Creadas en el periodo" value={r.oportunidades.creadas_en_periodo} />
-                  <Stat label="Conversaciones en el periodo" value={r.oportunidades.conversaciones_en_periodo} />
+                  <Stat label="Conversaciones totales en GHL" value={r.oportunidades.conversaciones_en_periodo} />
                 </div>
               </TabsContent>
 
               <TabsContent value="embudo" className="space-y-3 mt-4">
+                <p className="text-xs text-muted-foreground">
+                  Calculado sobre oportunidades creadas entre {ejecucion?.periodo_desde} y {ejecucion?.periodo_hasta}.
+                </p>
                 <div className="grid grid-cols-2 gap-3">
                   <Stat label="Estancadas 30d+" value={r.embudo.estancadas_30} />
                   <Stat label="Estancadas 60d+" value={r.embudo.estancadas_60} />
@@ -213,6 +228,10 @@ export function RevOpsDetailSheet({ cliente, open, onOpenChange }: RevOpsDetailS
               </TabsContent>
 
               <TabsContent value="tiempos" className="space-y-3 mt-4">
+                <p className="text-xs text-muted-foreground">
+                  &quot;Conversaciones evaluadas&quot; cuenta solo las que tuvieron diálogo real (mensaje del contacto +
+                  respuesta), excluyendo actividad automática del sistema de GHL.
+                </p>
                 <div className="grid grid-cols-2 gap-3">
                   <Stat label="Conversaciones evaluadas" value={r.tiempos_respuesta.muestreadas} />
                   <Stat
