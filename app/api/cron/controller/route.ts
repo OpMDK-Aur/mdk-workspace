@@ -10,7 +10,7 @@ import {
 } from '@/lib/controller-cron'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300 // requiere plan Vercel Pro para superar los 10s del Hobby
+export const maxDuration = 60 // tope del plan Hobby (Pro permite hasta 300s)
 
 const COOLDOWN_DIAS = 7
 
