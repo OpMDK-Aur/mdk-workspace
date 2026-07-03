@@ -217,7 +217,7 @@ export function RevOpsBoard({ clientes: initial }: RevOpsBoardProps) {
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="px-4 py-3 text-sm text-muted-foreground">
+                  <TableCell className="px-4 py-3 text-sm text-muted-foreground" suppressHydrationWarning>
                     {ejecucion ? new Date(ejecucion.ejecutado_en).toLocaleString('es-AR') : 'Nunca'}
                   </TableCell>
                   <TableCell className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
