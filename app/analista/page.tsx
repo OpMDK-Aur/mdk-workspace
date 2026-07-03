@@ -681,17 +681,19 @@ export default function AnalistaPage() {
                   {cuentasDisponibles.map((cuenta) => (
                     <label
                       key={cuenta.id}
-                      className="flex items-center gap-2 px-2.5 py-1.5 text-sm cursor-pointer hover:bg-muted/50"
+                      className="flex items-start gap-2 px-2.5 py-1.5 text-sm cursor-pointer hover:bg-muted/50"
                     >
                       <input
                         type="checkbox"
                         checked={selectedCuentaIds.includes(cuenta.id_cuenta)}
                         onChange={() => toggleCuenta(cuenta.id_cuenta)}
-                        className="h-3.5 w-3.5 accent-[#7F77DD]"
+                        className="h-3.5 w-3.5 accent-[#7F77DD] mt-0.5 shrink-0"
                       />
-                      <span className="flex-1 truncate">{cuenta.nombre_cuenta || cuenta.id_cuenta}</span>
-                      <span className="text-[10px] uppercase text-muted-foreground shrink-0">
-                        {cuenta.plataforma}
+                      <span className="flex-1 leading-snug break-words">
+                        {cuenta.nombre_cuenta || 'Sin nombre'}{' '}
+                        <span className="text-muted-foreground text-xs">
+                          ({cuenta.id_cuenta}) ({cuenta.plataforma})
+                        </span>
                       </span>
                     </label>
                   ))}
