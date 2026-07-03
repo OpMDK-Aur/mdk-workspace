@@ -15,46 +15,53 @@ const ACCEPT = 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt'
 
 export function FaltantesBlock({ items, onSubmit }: FaltantesBlockProps) {
   const [values, setValues] = useState<Record<number, string>>({})
-  const [files, setFiles] = useState<File[]>([])
+  const [filesByItem, setFilesByItem] = useState<Record<number, File[]>>({})
   const [submitted, setSubmitted] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({})
 
   if (!items || items.length === 0) return null
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (index: number) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(e.target.files || [])
     if (selected.length === 0) return
-    setFiles((prev) => [...prev, ...selected])
-    if (fileInputRef.current) fileInputRef.current.value = ''
+    setFilesByItem((prev) => ({ ...prev, [index]: [...(prev[index] || []), ...selected] }))
+    e.target.value = ''
   }
 
-  const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index))
+  const removeFile = (itemIndex: number, fileIndex: number) => {
+    setFilesByItem((prev) => ({
+      ...prev,
+      [itemIndex]: (prev[itemIndex] || []).filter((_, i) => i !== fileIndex),
+    }))
   }
 
   const handleSubmit = () => {
-    const answered = items
-      .map((item, i) => ({ item, value: values[i]?.trim() }))
-      .filter((a) => a.value)
+    const lines: string[] = ['Acá está la información que pediste:']
+    const allFiles: File[] = []
 
-    if (answered.length === 0 && files.length === 0) return
+    items.forEach((item, i) => {
+      const text = values[i]?.trim()
+      const files = filesByItem[i] || []
+      if (files.length > 0) {
+        allFiles.push(...files)
+        const fileNote = `archivo${files.length > 1 ? 's' : ''} adjunto${files.length > 1 ? 's' : ''}: ${files.map((f) => f.name).join(', ')}`
+        lines.push(`- ${item}: ${text ? `${text} (${fileNote})` : `ver ${fileNote}`}`)
+      } else if (text) {
+        lines.push(`- ${item}: ${text}`)
+      }
+    })
 
-    const lines = [
-      'Acá está la información que pediste:',
-      ...answered.map((a) => `- ${a.item}: ${a.value}`),
-    ]
-    if (files.length > 0) {
-      lines.push(`- Archivos adjuntos: ${files.map((f) => f.name).join(', ')}`)
-    }
+    if (lines.length === 1) return // nada respondido
 
     setSubmitted(true)
-    onSubmit?.(lines.join('\n'), files)
+    onSubmit?.(lines.join('\n'), allFiles)
   }
 
-  const hasAnyAnswer = Object.values(values).some((v) => v?.trim()) || files.length > 0
+  const hasAnyAnswer =
+    Object.values(values).some((v) => v?.trim()) || Object.values(filesByItem).some((f) => f.length > 0)
 
   return (
-    <div className="not-prose my-3 rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+    <div className="not-prose my-3 rounded-lg border border-border bg-muted/20 p-4 space-y-4">
       <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
         <ListChecks className="h-4 w-4 text-[#7F77DD]" />
         Completá la información faltante
@@ -67,60 +74,65 @@ export function FaltantesBlock({ items, onSubmit }: FaltantesBlockProps) {
         </div>
       ) : (
         <>
-          <div className="space-y-3">
-            {items.map((item, i) => (
-              <div key={i} className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">{item}</label>
-                <Textarea
-                  value={values[i] || ''}
-                  onChange={(e) => setValues((prev) => ({ ...prev, [i]: e.target.value }))}
-                  placeholder="Escribí la respuesta acá (opcional si vas a adjuntar un archivo)"
-                  className="min-h-[36px] text-sm resize-none"
-                  rows={1}
-                />
-              </div>
-            ))}
+          <div className="space-y-4">
+            {items.map((item, i) => {
+              const itemFiles = filesByItem[i] || []
+              return (
+                <div key={i} className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">{item}</label>
+                  <Textarea
+                    value={values[i] || ''}
+                    onChange={(e) => setValues((prev) => ({ ...prev, [i]: e.target.value }))}
+                    placeholder="Escribí la respuesta, o adjuntá un archivo abajo (ej. un Excel con las ventas)"
+                    className="min-h-[36px] text-sm resize-none"
+                    rows={1}
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      ref={(el) => { fileInputRefs.current[i] = el }}
+                      type="file"
+                      accept={ACCEPT}
+                      multiple
+                      className="hidden"
+                      onChange={handleFileSelect(i)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRefs.current[i]?.click()}
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <Paperclip className="h-3 w-3" />
+                      Adjuntar archivo para este dato
+                    </button>
+                    {itemFiles.map((f, fi) => (
+                      <div key={fi} className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-0.5 text-xs">
+                        <span className="max-w-[140px] truncate">{f.name}</span>
+                        <button onClick={() => removeFile(i, fi)} aria-label="Quitar archivo">
+                          <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
           </div>
 
-          {files.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {files.map((f, i) => (
-                <div key={i} className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs">
-                  <span className="max-w-[160px] truncate">{f.name}</span>
-                  <button onClick={() => removeFile(i)} aria-label="Quitar archivo">
-                    <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center gap-2 pt-1">
-            <input ref={fileInputRef} type="file" accept={ACCEPT} multiple className="hidden" onChange={handleFileSelect} />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              className="gap-1.5"
-            >
-              <Paperclip className="h-3.5 w-3.5" />
-              Adjuntar archivo
-            </Button>
+          <div className="flex items-center justify-between gap-2 pt-1 border-t border-border">
+            <p className="text-[11px] text-muted-foreground pt-3">
+              Podés dejar en blanco lo que no tengas — respondemos después con lo que falte.
+            </p>
             <Button
               type="button"
               size="sm"
               disabled={!hasAnyAnswer}
               onClick={handleSubmit}
-              className="gap-1.5 bg-[#7F77DD] hover:bg-[#6B63C7] ml-auto"
+              className="gap-1.5 bg-[#7F77DD] hover:bg-[#6B63C7] mt-3 shrink-0"
             >
               <Send className="h-3.5 w-3.5" />
               Enviar información
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            Podés dejar en blanco lo que no tengas — respondemos después con lo que falte.
-          </p>
         </>
       )}
     </div>
