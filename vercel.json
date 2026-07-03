@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/nps-autofill",
       "schedule": "0 23 31 * *"
+    },
+    {
+      "path": "/api/cron/controller",
+      "schedule": "0 * * * *"
     }
   ]
 }
