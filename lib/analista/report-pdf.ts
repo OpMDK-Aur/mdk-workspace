@@ -130,7 +130,38 @@ function parseTableLines(lines: string[], start: number): { headers: string[]; r
 }
 
 // Convierte el markdown completo del informe en secciones (una por "## Título" o "0N TÍTULO")
-function parseSections(markdown: string): Section[] {
+// Compara una línea de texto contra los títulos oficiales de la plantilla,
+// ignorando mayúsculas/acentos/puntuación/numeración — porque el modelo no
+// siempre repite el título exactamente igual (mayúsculas, con o sin "##",
+// con o sin el número). Es mucho más confiable que adivinar por formato.
+function normalizeTitle(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/^[\s\d.\-–—)]+/, '') // saca numeración inicial ("01.", "1)", etc.)
+    .replace(/[^a-z0-9¿?]+/g, ' ')
+    .trim()
+}
+
+function matchIndexTitle(line: string, indexList: string[]): string | null {
+  const normLine = normalizeTitle(line)
+  if (!normLine || normLine.length > 90) return null
+  for (const title of indexList) {
+    const normTitle = normalizeTitle(title)
+    if (normTitle && (normLine === normTitle || normLine.startsWith(normTitle))) return title
+  }
+  // fallback más laxo solo para líneas cortas, para reducir falsos positivos
+  if (normLine.length <= 60) {
+    for (const title of indexList) {
+      const normTitle = normalizeTitle(title)
+      if (normTitle && normLine.includes(normTitle)) return title
+    }
+  }
+  return null
+}
+
+function parseSections(markdown: string, indexList: string[]): Section[] {
   // Saca bloques de chart y los reemplaza por placeholders para no perderlos
   const chartBlocks: { title: string; headers: string[]; rows: string[][] }[] = []
   const withoutCharts = markdown.replace(/```chart\n([\s\S]*?)```/g, (_, json) => {
@@ -209,14 +240,20 @@ function parseSections(markdown: string): Section[] {
       }
     }
 
-    // Encabezado de sección nueva: "## Título", "01 TÍTULO", "01. Título", etc.
+    // Encabezado de sección nueva: "## Título", "01 Título", "01. Título",
+    // negrita ("**01 Título**"), con o sin mayúsculas — lo validamos contra
+    // los títulos reales de la plantilla del plan (ver matchIndexTitle).
     const h2Match = trimmed.match(/^#{1,2}\s+(.*)$/)
-    const numberedMatch = trimmed.match(/^\d{1,2}[.\s]+([A-ZÁÉÍÓÚÑ¿][^\n]{3,80})$/)
-    if (h2Match || (numberedMatch && numberedMatch[1] === numberedMatch[1].toUpperCase())) {
+    const boldFullLine = trimmed.match(/^\*\*(.+?)\*\*:?\s*$/)
+    const candidateTitleText = h2Match ? h2Match[1] : boldFullLine ? boldFullLine[1] : trimmed
+    const matchedIndexTitle = matchIndexTitle(candidateTitleText, indexList)
+    const isExplicitHeading = !!h2Match
+
+    if (isExplicitHeading || matchedIndexTitle) {
       flushStats()
       flushCard()
       if (current) sections.push(current)
-      const title = cleanInline((h2Match ? h2Match[1] : numberedMatch![1]).replace(/^[\d.\s]+/, ''))
+      const title = matchedIndexTitle || cleanInline(candidateTitleText.replace(/^[\d.\s]+/, ''))
       current = { title, intro: [], statRow: [], cards: [] }
       i++
       continue
@@ -576,7 +613,15 @@ export async function generateReportPdf(input: ReportPdfInput): Promise<void> {
   }
 
   // ---------- Render de cada sección ----------
-  const sections = parseSections(markdown)
+  const sections = parseSections(markdown, indexList)
+
+  // Red de seguridad: si no se detectó ninguna sección (el modelo formateó
+  // los títulos de forma inesperada), no generamos un PDF de una sola hoja —
+  // metemos todo el contenido en una sección genérica para no perder nada.
+  if (sections.length === 0 && markdown.trim()) {
+    const fallback = parseSections(`## Informe\n${markdown}`, [])
+    if (fallback.length > 0) sections.push(...fallback)
+  }
 
   for (const section of sections) {
     const dark = DARK_SECTION_MATCH.test(section.title)
