@@ -129,8 +129,17 @@ export function RevOpsDetailSheet({ cliente, open, onOpenChange }: RevOpsDetailS
                   <Stat label="Tareas vencidas" value={r.tareas.tareas_vencidas} />
                   <Stat label="Tareas futuras" value={r.tareas.tareas_futuras} />
                   <Stat label="Tareas completadas" value={r.tareas.tareas_completadas} />
-                  <Stat label="% vencidas" value={pct(r.tareas.pct_vencidas)} />
+                  <Stat
+                    label="% vencidas"
+                    value={r.tareas.total_tareas === 0 ? 'N/A' : pct(r.tareas.pct_vencidas)}
+                  />
                 </div>
+                {r.tareas.total_tareas === 0 && r.tareas.oportunidades_en_muestra > 0 && (
+                  <p className="text-xs text-amber-500">
+                    &quot;% vencidas&quot; no aplica (N/A) porque no hay ninguna tarea cargada, ni vencida ni al día —
+                    no es que el seguimiento esté bien, es que no se está usando el módulo de tareas de GHL.
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Calculado sobre una muestra de las oportunidades abiertas más recientes, consultando las tareas del
                   contacto asociado en GHL.
