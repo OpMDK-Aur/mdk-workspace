@@ -35,30 +35,27 @@ export function MessageContent({ content, onOpenArtifact, onSubmitFaltantes }: M
     <div className="space-y-4">
       {contentWithoutArtifacts && (
         <Markdown
-          className="prose prose-sm dark:prose-invert max-w-none"
+          classNameMap={{
+            p: 'text-sm leading-relaxed',
+            a: 'text-blue-500 hover:underline',
+            code: 'bg-muted px-1.5 py-0.5 rounded text-xs font-mono',
+            pre: 'bg-muted p-3 rounded overflow-auto text-xs',
+            table: 'w-full text-xs border-collapse',
+            ul: 'list-disc list-inside space-y-1',
+            ol: 'list-decimal list-inside space-y-1',
+            li: 'text-sm',
+          }}
           components={{
-            p: ({ children }) => <p className="text-sm leading-relaxed">{children}</p>,
             a: ({ href, children }) => (
-              <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+              <a href={href} target="_blank" rel="noopener noreferrer">
                 {children}
               </a>
             ),
-            code: ({ inline, children }) =>
-              inline ? (
-                <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>
-              ) : (
-                <pre className="bg-muted p-3 rounded overflow-auto text-xs">
-                  <code>{children}</code>
-                </pre>
-              ),
             table: ({ children }) => (
               <div className="border rounded-lg overflow-x-auto">
-                <table className="w-full text-xs border-collapse">{children}</table>
+                <table>{children}</table>
               </div>
             ),
-            ul: ({ children }) => <ul className="list-disc list-inside space-y-1">{children}</ul>,
-            ol: ({ children }) => <ol className="list-decimal list-inside space-y-1">{children}</ol>,
-            li: ({ children }) => <li className="text-sm">{children}</li>,
           }}
         >
           {contentWithoutArtifacts}
