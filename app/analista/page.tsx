@@ -283,14 +283,17 @@ export default function AnalistaPage() {
     })
   }
 
-  const uploadAttachments = async (): Promise<Array<{ name: string; url: string; type: string }>> => {
-    if (attachments.length === 0) return []
+  const uploadAttachments = async (
+    explicitFiles?: Array<{ file: File }>
+  ): Promise<Array<{ name: string; url: string; type: string }>> => {
+    const source = explicitFiles ?? attachments
+    if (source.length === 0) return []
 
     setUploadingFiles(true)
     const uploadedFiles: Array<{ name: string; url: string; type: string }> = []
 
     try {
-      for (const attachment of attachments) {
+      for (const attachment of source) {
         const formData = new FormData()
         formData.append('file', attachment.file)
 
@@ -418,14 +421,17 @@ export default function AnalistaPage() {
     }
   }
 
-  const handleSendMessage = async (content: string) => {
-    if ((!content?.trim() && attachments.length === 0) || isLoading || uploadingFiles || !selectedClient) return
+  const handleSendMessage = async (content: string, extraFiles?: File[]) => {
+    const hasExtraFiles = !!extraFiles && extraFiles.length > 0
+    if ((!content?.trim() && attachments.length === 0 && !hasExtraFiles) || isLoading || uploadingFiles || !selectedClient) return
 
     // Set loading immediately so a second Enter during the upload can't trigger a duplicate send
     setIsLoading(true)
 
-    const hadAttachments = attachments.length > 0
-    const uploadedFiles = await uploadAttachments()
+    const hadAttachments = attachments.length > 0 || hasExtraFiles
+    const uploadedFiles = hasExtraFiles
+      ? await uploadAttachments(extraFiles!.map((file) => ({ file })))
+      : await uploadAttachments()
 
     // If the user attached files but none uploaded successfully, abort instead of sending an empty request
     if (hadAttachments && uploadedFiles.length === 0) {
@@ -767,7 +773,11 @@ export default function AnalistaPage() {
                         <div className="group max-w-[90%]">
                           <div className="rounded-2xl px-4 py-3 bg-muted">
                             {message.content ? (
-                              <MessageContent content={message.content} onOpenArtifact={setArtifact} />
+                              <MessageContent
+                                content={message.content}
+                                onOpenArtifact={setArtifact}
+                                onSubmitFaltantes={(text, files) => handleSendMessage(text, files)}
+                              />
                             ) : (
                               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                 <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#7F77DD]" />
