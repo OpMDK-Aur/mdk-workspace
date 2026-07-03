@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/controller",
-      "schedule": "0 * * * *"
+      "schedule": "0 11 * * *"
     }
   ]
 }
