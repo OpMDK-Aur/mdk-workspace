@@ -10,13 +10,18 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { clienteId } = await req.json()
+  const { clienteId, periodoDesde, periodoHasta } = await req.json()
   if (!clienteId) return NextResponse.json({ error: 'clienteId requerido' }, { status: 400 })
 
-  const result = await runRevOpsAnalysis(supabase, clienteId)
-
   const hoy = new Date()
-  const desde = new Date(hoy.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const desdeDefault = new Date(hoy.getTime() - 30 * 24 * 60 * 60 * 1000)
+
+  // Si el front no manda un rango explícito (para igualar el filtro de GHL),
+  // se usa el default de los últimos 30 días, igual que antes.
+  const desde = periodoDesde || desdeDefault.toISOString().split('T')[0]
+  const hasta = periodoHasta || hoy.toISOString().split('T')[0]
+
+  const result = await runRevOpsAnalysis(supabase, clienteId, { desde, hasta })
 
   const { data: ejecucion, error: insertError } = await supabase
     .from('revops_ejecuciones')
@@ -27,8 +32,8 @@ export async function POST(req: Request) {
       estado: result.estado,
       error_detalle: result.error_detalle ?? null,
       score_salud: result.score_salud,
-      periodo_desde: desde.toISOString().split('T')[0],
-      periodo_hasta: hoy.toISOString().split('T')[0],
+      periodo_desde: desde,
+      periodo_hasta: hasta,
       resumen: result.resumen ?? {},
     })
     .select('*')

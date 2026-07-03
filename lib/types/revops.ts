@@ -11,6 +11,8 @@ export interface RevOpsModuloTareas {
   tareas_sin_fecha: number
   pct_vencidas: number // 0-1
   alerta_colapso: boolean
+  alerta_sin_seguimiento: boolean
+  pct_sin_tarea: number // 0-1
 }
 
 export interface RevOpsConversacionAuditada {
@@ -70,6 +72,11 @@ export interface RevOpsModuloTiempos {
   handoffs_sin_tomar: number
 }
 
+export interface RevOpsAlerta {
+  mensaje: string
+  calculo: string
+}
+
 export interface RevOpsResumen {
   tareas: RevOpsModuloTareas
   conversaciones_calidad: RevOpsModuloConversaciones
@@ -77,7 +84,7 @@ export interface RevOpsResumen {
   oportunidades: RevOpsModuloOportunidades
   embudo: RevOpsModuloEmbudo
   tiempos_respuesta: RevOpsModuloTiempos
-  alertas: string[]
+  alertas: RevOpsAlerta[]
 }
 
 export interface RevOpsEjecucion {
