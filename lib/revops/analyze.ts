@@ -156,7 +156,11 @@ async function analizarTareas(creds: { locationId: string; token: string }, opor
 
 // ── Módulo 4: Control de oportunidades (campos completos) ──────────────────
 
-function analizarOportunidades(todas: GhlOpportunity[], totalConversacionesPeriodo: number) {
+function analizarOportunidades(
+  todas: GhlOpportunity[],
+  totalConversacionesPeriodo: number,
+  rango?: { desde: string; hasta: string }
+) {
   const abiertas = todas.filter((o) => o.status === 'open')
   const total = abiertas.length || 1 // evita división por cero, los % se reportan en 0 si total real es 0
 
@@ -164,8 +168,14 @@ function analizarOportunidades(todas: GhlOpportunity[], totalConversacionesPerio
   const sinResponsable = abiertas.filter((o) => !o.assignedTo).length
   const sinActividad30 = abiertas.filter((o) => daysSince(o.updatedAt) > 30).length
 
-  const cutoff = Date.now() - VENTANA_DIAS * 24 * 60 * 60 * 1000
-  const creadasEnPeriodo = todas.filter((o) => new Date(o.createdAt).getTime() >= cutoff).length
+  // Si hay un rango de fecha aplicado (para igualar el filtro de GHL), "creadas
+  // en el período" usa ese mismo rango. Si no, cae al default de VENTANA_DIAS.
+  const cutoff = rango ? new Date(`${rango.desde}T00:00:00`).getTime() : Date.now() - VENTANA_DIAS * 24 * 60 * 60 * 1000
+  const hastaMs = rango ? new Date(`${rango.hasta}T23:59:59.999`).getTime() : Date.now()
+  const creadasEnPeriodo = todas.filter((o) => {
+    const t = new Date(o.createdAt).getTime()
+    return t >= cutoff && t <= hastaMs
+  }).length
 
   return {
     total_abiertas: abiertas.length,
@@ -452,41 +462,67 @@ function calcularScoreSalud(resumen: RevOpsResumen): number {
   return Math.round(Math.max(0, Math.min(100, score)))
 }
 
-function construirAlertas(resumen: RevOpsResumen): string[] {
-  const alertas: string[] = []
+function construirAlertas(resumen: RevOpsResumen): { mensaje: string; calculo: string }[] {
+  const alertas: { mensaje: string; calculo: string }[] = []
   if (resumen.tareas.alerta_colapso) {
-    alertas.push('Colapso de seguimiento: 90%+ de las tareas están vencidas y no hay ninguna futura agendada.')
+    alertas.push({
+      mensaje: 'Colapso de seguimiento: 90%+ de las tareas están vencidas y no hay ninguna futura agendada.',
+      calculo: `Sobre una muestra de ${resumen.tareas.oportunidades_en_muestra} oportunidades abiertas (las más recientes), se encontraron ${resumen.tareas.total_tareas} tareas en total. ${resumen.tareas.tareas_vencidas} están vencidas (${Math.round(resumen.tareas.pct_vencidas * 100)}%) y ${resumen.tareas.tareas_futuras} son futuras. Se dispara cuando hay 5+ tareas, 90%+ vencidas y 0 futuras.`,
+    })
   }
   if (resumen.inbox.mas_2hs_sin_respuesta > 0) {
-    alertas.push(`${resumen.inbox.mas_2hs_sin_respuesta} conversaciones llevan más de ${SLA_HORAS_HANDOFF}hs hábiles sin respuesta humana.`)
+    alertas.push({
+      mensaje: `${resumen.inbox.mas_2hs_sin_respuesta} conversaciones llevan más de ${SLA_HORAS_HANDOFF}hs hábiles sin respuesta humana.`,
+      calculo: `De ${resumen.inbox.total_conversaciones_activas} conversaciones activas en el inbox, se cuentan las que tienen el último mensaje entrante (del contacto) sin una respuesta saliente posterior, y donde el tiempo transcurrido en horario hábil (lun-vie 9-18hs ART) supera ${SLA_HORAS_HANDOFF}hs.`,
+    })
   }
   if (resumen.tiempos_respuesta.handoffs_sin_tomar > 0) {
-    alertas.push(`${resumen.tiempos_respuesta.handoffs_sin_tomar} casos donde la IA prometió derivar y nadie tomó la conversación.`)
+    alertas.push({
+      mensaje: `${resumen.tiempos_respuesta.handoffs_sin_tomar} casos donde la IA prometió derivar y nadie tomó la conversación.`,
+      calculo: `Sobre las conversaciones con diálogo real muestreadas, se buscan mensajes salientes del bot que contengan frases de derivación (ej. "te derivo", "un asesor te contacta") y se verifica si hubo un mensaje saliente posterior con userId (un humano) en esa misma conversación. De ${resumen.tiempos_respuesta.handoffs_detectados} derivaciones detectadas, ${resumen.tiempos_respuesta.handoffs_sin_tomar} nunca tuvieron una toma humana registrada.`,
+    })
   }
   if (resumen.oportunidades.pct_sin_monto > 0.5) {
-    alertas.push('Más de la mitad de las oportunidades abiertas no tienen monto cargado.')
+    alertas.push({
+      mensaje: 'Más de la mitad de las oportunidades abiertas no tienen monto cargado.',
+      calculo: `${resumen.oportunidades.sin_monto} de ${resumen.oportunidades.total_abiertas} oportunidades abiertas (${Math.round(resumen.oportunidades.pct_sin_monto * 100)}%) tienen "monetaryValue" vacío o en 0 en GHL. Se dispara a partir del 50%.`,
+    })
   }
   if (resumen.embudo.etapas_iniciales_saturadas) {
-    alertas.push('Hay etapas iniciales del embudo saturadas de oportunidades sin calificar.')
+    alertas.push({
+      mensaje: 'Hay etapas iniciales del embudo saturadas de oportunidades sin calificar.',
+      calculo: 'Se marca como saturada una etapa cuando es de las dos primeras posiciones del pipeline (posición 0 o 1) y concentra una porción desproporcionada del total de oportunidades abiertas respecto al resto de las etapas.',
+    })
   }
   if (resumen.embudo.duplicados_probables > 0) {
-    alertas.push(`${resumen.embudo.duplicados_probables} oportunidades duplicadas probables sobre el mismo contacto.`)
+    alertas.push({
+      mensaje: `${resumen.embudo.duplicados_probables} oportunidades duplicadas probables sobre el mismo contacto.`,
+      calculo: 'Se agrupan las oportunidades abiertas por contactId; cuando un mismo contacto tiene más de una oportunidad abierta en el pipeline, se cuenta como duplicado probable (a partir de la 2da oportunidad del mismo contacto).',
+    })
   }
   if (resumen.embudo.inconsistencias_estado > 0) {
-    alertas.push(`${resumen.embudo.inconsistencias_estado} oportunidades en etapa de ganado/perdido pero marcadas como abiertas.`)
+    alertas.push({
+      mensaje: `${resumen.embudo.inconsistencias_estado} oportunidades en etapa de ganado/perdido pero marcadas como abiertas.`,
+      calculo: 'Se compara el nombre de la etapa (pipelineStageId → nombre de etapa) contra el status de la oportunidad: si el nombre de la etapa sugiere "ganado" o "perdido" pero el status en GHL sigue siendo "open", se marca como inconsistencia.',
+    })
   }
   if (resumen.embudo.etapas_sospechosas.length > 0) {
-    alertas.push(`Etapas con nombre sospechoso en el embudo: ${resumen.embudo.etapas_sospechosas.join(', ')}.`)
+    alertas.push({
+      mensaje: `Etapas con nombre sospechoso en el embudo: ${resumen.embudo.etapas_sospechosas.join(', ')}.`,
+      calculo: `Se revisan los nombres de todas las etapas de los pipelines buscando palabras clave como: ${ETAPAS_SOSPECHOSAS_KEYWORDS.join(', ')}. Cualquier etapa que contenga alguna de esas palabras en su nombre se lista acá.`,
+    })
   }
   const muestraDialogoReal = resumen.tiempos_respuesta.muestreadas
   if (muestraDialogoReal > 0 && muestraDialogoReal < 5) {
-    alertas.push(
-      `Solo se encontraron ${muestraDialogoReal} conversaciones con diálogo humano real al revisar hasta ${MAX_INTENTOS_CONVERSACIONES} conversaciones recientes: la enorme mayoría son solo actividad automática del CRM sin interacción real. Los promedios de tiempos de respuesta no son representativos con una muestra tan chica.`
-    )
+    alertas.push({
+      mensaje: `Solo se encontraron ${muestraDialogoReal} conversaciones con diálogo humano real al revisar hasta ${MAX_INTENTOS_CONVERSACIONES} conversaciones recientes: la enorme mayoría son solo actividad automática del CRM sin interacción real. Los promedios de tiempos de respuesta no son representativos con una muestra tan chica.`,
+      calculo: `Se revisaron hasta ${MAX_INTENTOS_CONVERSACIONES} conversaciones recientes de GHL. De cada una se descartan los mensajes de tipo actividad automática (TYPE_ACTIVITY_*, cambios de etapa, notas internas, etc.) y solo se cuentan como "diálogo real" las conversaciones que, tras ese filtro, tienen al menos un mensaje entrante y uno saliente. Solo ${muestraDialogoReal} calificaron.`,
+    })
   } else if (muestraDialogoReal === 0) {
-    alertas.push(
-      `No se encontró ninguna conversación con diálogo humano real entre las últimas ${MAX_INTENTOS_CONVERSACIONES} conversaciones revisadas: parecen ser solo registros automáticos del CRM sin interacción real con los leads.`
-    )
+    alertas.push({
+      mensaje: `No se encontró ninguna conversación con diálogo humano real entre las últimas ${MAX_INTENTOS_CONVERSACIONES} conversaciones revisadas: parecen ser solo registros automáticos del CRM sin interacción real con los leads.`,
+      calculo: `Se revisaron hasta ${MAX_INTENTOS_CONVERSACIONES} conversaciones recientes de GHL, descartando en cada una los mensajes de actividad automática del sistema (TYPE_ACTIVITY_*). Ninguna conversación tuvo intercambio real (mensaje entrante + saliente) después de ese filtro.`,
+    })
   }
   return alertas
 }
@@ -502,7 +538,8 @@ export interface RevOpsAnalysisResult {
 
 export async function runRevOpsAnalysis(
   supabase: SupabaseClient,
-  clienteId: string
+  clienteId: string,
+  rango?: { desde: string; hasta: string } // filtro de fecha (por createdAt) para que Oportunidades/Embudo coincidan con el rango que se esté mirando en GHL
 ): Promise<RevOpsAnalysisResult> {
   const { data: cliente, error } = await supabase
     .from('clientes')
@@ -536,6 +573,20 @@ export async function runRevOpsAnalysis(
       fetchGhlConversations(creds),
     ])
 
+    // Oportunidades y Embudo se calculan sobre el rango de fecha (por fecha de
+    // creación) que se le haya pasado, para poder igualar el filtro que el
+    // paid media tenga aplicado en la vista de GHL. Tareas/Conversaciones/Inbox
+    // no se filtran: operan siempre sobre las oportunidades abiertas actuales.
+    const opportunitiesParaEmbudo = rango
+      ? opportunities.filter((o) => {
+          const t = new Date(o.createdAt).getTime()
+          if (isNaN(t)) return false
+          const desdeMs = new Date(`${rango.desde}T00:00:00`).getTime()
+          const hastaMs = new Date(`${rango.hasta}T23:59:59.999`).getTime()
+          return t >= desdeMs && t <= hastaMs
+        })
+      : opportunities
+
     const abiertas = opportunities.filter((o) => o.status === 'open')
 
     const [tareas, { moduloConversaciones, moduloTiempos }, inbox] = await Promise.all([
@@ -544,8 +595,8 @@ export async function runRevOpsAnalysis(
       analizarInbox(creds, conversaciones),
     ])
 
-    const oportunidades = analizarOportunidades(opportunities, conversaciones.length)
-    const embudo = analizarEmbudo(opportunities, pipelines)
+    const oportunidades = analizarOportunidades(opportunitiesParaEmbudo, conversaciones.length, rango)
+    const embudo = analizarEmbudo(opportunitiesParaEmbudo, pipelines)
 
     const resumenSinAlertas: RevOpsResumen = {
       tareas,
