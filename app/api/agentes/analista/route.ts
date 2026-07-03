@@ -470,12 +470,25 @@ export async function POST(req: Request) {
     // Get client data with ad account IDs
     const { data: client } = await supabase
       .from('clientes')
-      .select('*, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids')
+      .select('*, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids, account_manager_ids')
       .eq('id', clientId)
       .single()
 
     if (!client) {
       return new Response('Client not found', { status: 404 })
+    }
+
+    // Ejecutivo/Responsable del informe = Account Manager asignado al cliente (AUTOMÁTICO, ya no hay que pedirlo)
+    let ejecutivoNombre = ''
+    if (client.account_manager_ids?.length > 0) {
+      const { data: accountManagers } = await supabase
+        .from('colaboradores')
+        .select('nombre, apellido')
+        .in('id', client.account_manager_ids)
+      ejecutivoNombre = (accountManagers || [])
+        .map((c) => `${c.nombre ?? ''} ${c.apellido ?? ''}`.trim())
+        .filter(Boolean)
+        .join(', ')
     }
 
     // Get client memoria for context
@@ -486,23 +499,26 @@ export async function POST(req: Request) {
       .order('created_at', { ascending: false })
       .limit(10)
 
-    // Get tasks completed for this client during the period
+    // Get ALL tasks touching this client, sin filtrar por estado — el informe
+    // necesita ver realizadas, resolviendo, pendientes y no realizadas para
+    // armar la sección "¿En qué estuvimos trabajando?" con datos reales.
     const { data: clientTareas } = await supabase
       .from('tareas')
-      .select('titulo, descripcion, estado, fecha_completada, created_at')
+      .select('titulo, descripcion, estado, fecha_completada, fecha_vencimiento, created_at')
       .or(`cliente_id.eq.${clientId},cliente_ids.cs.{${clientId}}`)
-      .in('estado', ['completada', 'resuelto'])
-      .order('fecha_completada', { ascending: false })
-      .limit(20)
+      .order('created_at', { ascending: false })
+      .limit(100)
 
-    // Filter by period
+    // Filter by period: una tarea "pertenece" al período si se completó, vence,
+    // o se creó dentro del rango (para no perder pendientes/no-realizadas que
+    // no tienen fecha_completada).
     const tareasDelPeriodo = clientTareas?.filter(t => {
-      const completedDate = t.fecha_completada || t.created_at
-      if (effectivePeriodo?.start && effectivePeriodo?.end && completedDate) {
-        const taskDate = completedDate.split('T')[0]
-        return taskDate >= effectivePeriodo.start && taskDate <= effectivePeriodo.end
-      }
-      return true
+      if (!effectivePeriodo?.start || !effectivePeriodo?.end) return true
+      const fechas = [t.fecha_completada, t.fecha_vencimiento, t.created_at].filter(Boolean) as string[]
+      return fechas.some((f) => {
+        const d = f.split('T')[0]
+        return d >= effectivePeriodo.start && d <= effectivePeriodo.end
+      })
     }) || []
 
     // Si el cliente usa GHL, traer la última ejecución de RevOps para poder
@@ -640,7 +656,7 @@ Usá estos datos como base real para la slide 07 (Gestión Comercial en CRM) en 
     // Build context
     const clienteMemoriaText = memoria?.map(m => `- ${m.contenido}`).join('\n') || 'Sin historial'
     const tareasText = tareasDelPeriodo.length > 0
-      ? tareasDelPeriodo.map(t => `- ${t.titulo}${t.descripcion ? `: ${t.descripcion.substring(0, 100)}` : ''}`).join('\n')
+      ? tareasDelPeriodo.map(t => `- [${t.estado}] ${t.titulo}${t.descripcion ? `: ${t.descripcion.substring(0, 150)}` : ''}`).join('\n')
       : 'Sin tareas registradas en este periodo'
 
     // Build metrics text
@@ -740,7 +756,7 @@ Reglas generales para AMBOS informes:
 - Si el usuario después te da esos datos, actualizá el informe completo (sacando el campo de la lista de pendientes) y volvé a preguntar si confirma, como indica el FLUJO DE REVISION Y CONFIRMACION.
 
 ▶ PLAN ESENCIAL — "INFORME DE RESULTADOS" (6 slides + portada):
-- Portada: Cliente (AUTOMÁTICO — nombre del cliente) · Período: mes/año (AUTOMÁTICO) · Responsable (MANUAL, nombre del PM/AM a cargo).
+- Portada: Cliente (AUTOMÁTICO — nombre del cliente) · Período: mes/año (AUTOMÁTICO) · Responsable (AUTOMÁTICO — Account Manager asignado al cliente en el sistema; si no hay ninguno asignado, ahí sí es MANUAL).
 - 01 RESUMEN DEL PERÍODO:
   - 🎯 Objetivo de la pauta (MANUAL — ej. "Generar leads calificados a un CPL ≤ $X").
   - 💡 Conclusión general, 2-3 líneas (AUTOMÁTICO en base a las métricas, mezclando con el objetivo si está).
@@ -752,9 +768,9 @@ Reglas generales para AMBOS informes:
 - 06 PLAN DEL MES SIGUIENTE: Qué se va a ajustar (MANUAL), Qué se va a testear (MANUAL), Requerimientos al cliente (MANUAL).
 
 ▶ PLAN ESTRATÉGICO — "INFORME ESTRATÉGICO DE RESULTADOS" (11 slides + portada):
-- Portada: Cliente (AUTOMÁTICO) · Período (AUTOMÁTICO) · Ejecutivo (MANUAL).
+- Portada: Cliente (AUTOMÁTICO) · Período (AUTOMÁTICO) · Ejecutivo (AUTOMÁTICO — Account Manager asignado al cliente; si no hay ninguno asignado, ahí sí es MANUAL).
 - 01 RESUMEN EJECUTIVO: 4 tarjetas — Leads, CPL, Ventas (MANUAL), Inversión (AUTOMÁTICO las otras tres menos Ventas). "CUMPLIMIENTO: ✅/⚠️/❌ — [X%] del objetivo alcanzado" (necesita objetivo, MANUAL si no está). Objetivo del período (MANUAL). Contexto del mes: mercado, estacionalidad, cambios internos del cliente (MANUAL). Conclusión general (AUTOMÁTICO combinando lo anterior).
-- 02 ¿EN QUÉ ESTUVIMOS TRABAJANDO ESTE MES?: 4 pilares con ícono — 🎯 Estrategia (foco del mes, hipótesis) (MANUAL), ⚙️ Operaciones (configuraciones, lanzamientos, ajustes técnicos) (MANUAL, cruzar con tareas), 🧪 Testing (tests creativos/audiencia/formato) (MANUAL/tareas), 📈 Optimización (mejoras basadas en datos: pujas, presupuesto, segmentación) (MANUAL/tareas).
+- 02 ¿EN QUÉ ESTUVIMOS TRABAJANDO ESTE MES?: 4 pilares con ícono — 🎯 Estrategia (foco del mes, hipótesis), ⚙️ Operaciones (configuraciones, lanzamientos, ajustes técnicos), 🧪 Testing (tests creativos/audiencia/formato), 📈 Optimización (mejoras basadas en datos: pujas, presupuesto, segmentación). TODOS (AUTOMÁTICO) — clasificá las tareas de "TAREAS DEL PERIODO" en estos 4 pilares según su contenido. Si algún pilar queda sin ninguna tarea que lo respalde, ahí sí marcalo MANUAL y preguntá.
 - 03 TESTING Y OPTIMIZACIÓN CREATIVA: Anuncio A / Anuncio B / Anuncio C con imagen de cada anuncio (MANUAL — pedí las capturas/imágenes si no las adjuntaron). Análisis: qué anuncio ganó, métricas comparativas CTR/CPL/volumen, top anuncios por campaña y por calidad de venta (MANUAL, salvo las métricas de CTR/CPL que sí pueden salir de AUTOMÁTICO si identificás el anuncio).
 - 04 PERFORMANCE DE CAMPAÑAS: dos tablas separadas, "META ADS" y "GOOGLE ADS", cada una: Campaña | Inversión | Leads | CPL | CPC | CTR, con fila TOTAL (AUTOMÁTICO, usar desglose por campaña y por plataforma).
 - 05 ACCIONES REALIZADAS: Cambios en campañas con contexto (MANUAL/tareas), Optimizaciones aplicadas (MANUAL/tareas), Tests ejecutados A vs B con resultado y datos (MANUAL/tareas).
@@ -776,14 +792,16 @@ CONTEXTO DEL CLIENTE (úsalo como referencia cuando sea relevante):
 - Plan: ${client.plan || 'No especificado'}
 - Plantilla de informe que aplica: ${planInforme}
 - Periodo seleccionado: ${periodoTexto}
+- Ejecutivo/Responsable (Account Manager asignado): ${ejecutivoNombre || 'No hay ningún Account Manager asignado a este cliente en el sistema — pedíselo al usuario.'}
 
 ${guiaInformes}
 
 HISTORIAL Y CONTEXTO DEL CLIENTE:
 ${clienteMemoriaText}
 
-TAREAS REALIZADAS EN EL PERIODO:
+TAREAS DEL PERIODO (todos los estados: realizada, resolviendo, pendiente, no_realizado):
 ${tareasText}
+Usá esta lista completa (no solo las realizadas) para construir la slide "02 ¿En qué estuvimos trabajando este mes?" del Plan Estratégico y la slide "03 Acciones Realizadas" de ambos planes: clasificá cada tarea en Estrategia / Operaciones / Testing / Optimización según su contenido, y si hay tareas "pendiente" o "no_realizado" relevantes, mencionalas como parte del contexto del mes (ej. en Riesgos y Alertas o en el Plan del Mes Siguiente) en vez de ignorarlas.
 
 ${revopsText ? `DATOS DE GESTION COMERCIAL EN CRM (desde RevOps):
 ${revopsText}
@@ -854,7 +872,14 @@ Para generar IMAGENES (banners, gráficos visuales, ilustraciones para reportes)
   {"prompt":"Descripcion detallada en ingles de la imagen a generar, estilo profesional para reporte de marketing","alt":"Texto alternativo descriptivo"}
   ` + "```" + `
   
-  Para generar un INFORME EN PDF descargable, usa un bloque de codigo con la palabra pdf. MUY IMPORTANTE: el PDF se construye AUTOMÁTICAMENTE a partir de TODO el texto y los gráficos (bloques chart) que escribas en este mismo mensaje. Por eso, antes del bloque pdf debes escribir el análisis completo con datos reales (resumen, métricas, desglose) y los gráficos correspondientes. El bloque pdf en sí solo necesita el nombre y el título. NUNCA digas "voy a generar el PDF y te lo envío en breve": basta con escribir el contenido y luego el bloque pdf.
+  Para pedir información faltante de forma interactiva (en vez de que el usuario tenga que escribir todo a mano), después de listar "🔲 INFORMACIÓN QUE NECESITO QUE ME CONFIRMES O COMPLETES" en texto, agregá SIEMPRE un bloque con la palabra faltantes que repita esos mismos ítems en formato JSON, para que la interfaz genere un formulario con un campo por dato y un botón para adjuntar archivos (acepta Excel, CSV, PDF e imágenes):
+
+` + "```" + `faltantes
+{"items":["Objetivo del período","Ventas cerradas en el período","Capturas de los anuncios testeados (Anuncio A/B/C)"]}
+` + "```" + `
+IMPORTANTE: el array "items" debe tener EXACTAMENTE los mismos textos que usaste en la lista de arriba, uno por campo pendiente. Si no falta ningún dato, no incluyas este bloque.
+
+Para generar un INFORME EN PDF descargable, usa un bloque de codigo con la palabra pdf. MUY IMPORTANTE: el PDF se construye AUTOMÁTICAMENTE a partir de TODO el texto y los gráficos (bloques chart) que escribas en este mismo mensaje. Por eso, antes del bloque pdf debes escribir el análisis completo con datos reales (resumen, métricas, desglose) y los gráficos correspondientes. El bloque pdf en sí solo necesita el nombre y el título. NUNCA digas "voy a generar el PDF y te lo envío en breve": basta con escribir el contenido y luego el bloque pdf.
   
   ` + "```" + `pdf
   {"name":"informe-junio-2026.pdf","title":"Informe de Cierre - ICS Salud","subtitle":"Periodo: Junio 2026"}
