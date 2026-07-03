@@ -186,7 +186,7 @@ export default function AnalistaPage() {
     // Pedido inicial real: el account manager necesita ver TODA la info del
     // período de entrada (no un saludo genérico) para poder confirmarla,
     // corregirla o completarla antes de generar el PDF.
-    const kickoffPrompt = `Traé el informe completo de performance del período (${dateRangeLabel}) con todos los datos reales de las plataformas conectadas. Todavía no generes el PDF: quiero revisarlo primero y confirmarte, corregirte o agregarte información antes.`
+    const kickoffPrompt = `Traé el informe completo de performance del período (${dateRangeLabel}). Antes de redactarlo, revisá qué información te falta según la plantilla del plan y preguntámela primero.`
 
     const kickoffMessage: ChatMessage = {
       id: crypto.randomUUID(),
