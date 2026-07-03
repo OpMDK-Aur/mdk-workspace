@@ -457,7 +457,7 @@ export default function AnalistaPage() {
     }
 
     setIsLoading(false) // reset before streamAssistantReply takes over the loading lifecycle
-    await streamAssistantReply(newMessages, convId)
+    return await streamAssistantReply(newMessages, convId)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -470,13 +470,11 @@ export default function AnalistaPage() {
     }
   }
 
-  const handleSaveAsReport = async () => {
-    if (chatMessages.length === 0 || !selectedClient) return
+  const handleSaveAsReport = async (overrideContent?: string) => {
+    if ((chatMessages.length === 0 && !overrideContent) || !selectedClient) return
 
-    const lastAssistantMessage = chatMessages.filter((m) => m.role === 'assistant').pop()
-    if (!lastAssistantMessage) return
-
-    const messageText = lastAssistantMessage.content
+    const messageText = overrideContent ?? chatMessages.filter((m) => m.role === 'assistant').pop()?.content
+    if (!messageText) return
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -913,7 +911,14 @@ export default function AnalistaPage() {
                       size="sm"
                       className="bg-[#7F77DD] hover:bg-[#6B63C7]"
                       disabled={isLoading || uploadingFiles}
-                      onClick={() => handleSendMessage('Confirmo la información del informe tal como está. Generá el PDF final.')}
+                      onClick={async () => {
+                        // El informe a exportar es el que YA está en pantalla (el
+                        // último borrador completo), no la respuesta corta que la
+                        // IA da al confirmar — esa es solo un acuse de recibo.
+                        const draftToExport = chatMessages.filter((m) => m.role === 'assistant').pop()?.content
+                        await handleSendMessage('Confirmo la información del informe tal como está.')
+                        if (draftToExport) await handleSaveAsReport(draftToExport)
+                      }}
                     >
                       <Check className="h-4 w-4" />
                       Confirmar y generar PDF
