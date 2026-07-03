@@ -505,6 +505,32 @@ export async function POST(req: Request) {
       return true
     }) || []
 
+    // Si el cliente usa GHL, traer la última ejecución de RevOps para poder
+    // completar la sección "Gestión Comercial en CRM" del informe Estratégico
+    // sin tener que pedirle esos datos de cero al account manager.
+    let revopsText = ''
+    if (client.crm_type === 'ghl' && client.ghl_location_id) {
+      const { data: revopsEjecucion } = await supabase
+        .from('revops_ejecuciones')
+        .select('ejecutado_en, estado, score_salud, resumen')
+        .eq('cliente_id', clientId)
+        .eq('estado', 'ok')
+        .order('ejecutado_en', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (revopsEjecucion?.resumen) {
+        const r = revopsEjecucion.resumen as any
+        revopsText = `Última auditoría RevOps del CRM (${new Date(revopsEjecucion.ejecutado_en).toLocaleDateString('es-AR')}, score de salud ${revopsEjecucion.score_salud ?? '—'}/100):
+- Tiempo de respuesta: promedio ${r?.tiempos_respuesta?.promedio_primera_respuesta_min != null ? `${Math.round(r.tiempos_respuesta.promedio_primera_respuesta_min)} min hábiles` : 'sin datos suficientes'} para la primera respuesta.
+- Registro y campos: ${r?.oportunidades?.pct_sin_monto != null ? `${Math.round(r.oportunidades.pct_sin_monto * 100)}% de las oportunidades abiertas sin monto cargado` : 'sin datos'}.
+- Tiempo por etapa / estancamiento: ${r?.embudo?.estancadas_30 ?? 0} oportunidades estancadas 30d+, ${r?.embudo?.estancadas_90 ?? 0} estancadas 90d+.
+- Calidad de respuesta: score promedio de conversaciones auditadas ${r?.conversaciones_calidad?.promedio_score != null ? `${r.conversaciones_calidad.promedio_score.toFixed(1)}/10` : 'sin datos'}.
+- Recontacto / handoffs: ${r?.tiempos_respuesta?.handoffs_sin_tomar ?? 0} casos donde se prometió derivar y nadie tomó la conversación.
+Usá estos datos como base real para la slide 07 (Gestión Comercial en CRM) en vez de pedírselos al usuario. Si necesitás más detalle, podés sugerir correr RevOps de nuevo antes de cerrar el informe.`
+      }
+    }
+
     // Get access tokens for direct API calls
     // Meta: from environment variable (same as /api/ads/meta)
     const metaAccessToken = process.env.META_ADS_ACCESS_TOKEN
@@ -697,40 +723,49 @@ ${metricsByAccount.map(m => {
 
     // Knowledge of MDK's official report structures (PPTX templates) so the
     // agent builds reports matching the right template for the client's plan.
+    // Transcripto literalmente de Informe_Esencial_MDK.pptx e Informe_Estrategico_MDK.pptx.
     const guiaInformes = `
 ESTRUCTURA OFICIAL DE LOS INFORMES DE CIERRE DE MES (MDK):
-Cuando el usuario pida un INFORME o un PDF de cierre de mes, NO inventes la estructura: usá la plantilla oficial que corresponda al plan del cliente. El plan detectado para este cliente es: "${planInforme}" (plan crudo: "${client.plan || 'sin definir'}").
+Cuando el usuario pida un INFORME o un PDF de cierre de mes, NO inventes la estructura ni los campos: usá EXACTAMENTE la plantilla oficial que corresponda al plan del cliente, con los mismos títulos, secciones y campos que se detallan abajo (son las plantillas .pptx reales de MDK). El plan detectado para este cliente es: "${planInforme}" (plan crudo: "${client.plan || 'sin definir'}").
+
+Cada campo abajo está marcado como:
+- (AUTOMÁTICO) → se completa con las métricas reales de la sección "METRICAS DE CUENTAS PUBLICITARIAS" / tareas / memoria del cliente ya incluidas en este prompt. Nunca lo dejes vacío si el dato está disponible ahí.
+- (MANUAL) → NO viene de ninguna API conectada a este chat (ventas cerradas, funnel comercial en CRM, capturas de anuncios, contexto de mercado/competencia, feedback comercial cualitativo, objetivos del mes, etc.). Si el usuario no te lo dio en la conversación, NO LO INVENTES.
 
 Reglas generales para AMBOS informes:
-- Completá cada sección con DATOS REALES del contexto (métricas, tareas, historial). Nunca uses frases genéricas.
+- Completá cada campo (AUTOMÁTICO) con datos reales y específicos del contexto. Nunca frases genéricas.
 - Los tests SIEMPRE deben incluir un resultado cuantitativo (ej. "+20% CTR").
-- Tono profesional, directo y orientado al negocio del cliente.
-- La sección de CRM/gestión comercial debe tener tono constructivo, basado en datos, nunca acusatoria.
-- SI ALGÚN DATO NO ESTÁ DISPONIBLE en el contexto (ej. ventas cerradas, funnel por zona, feedback comercial, capturas de anuncios, datos del CRM, contexto de mercado), NO lo dejes vacío ni lo inventes: PEDÍSELO EXPLÍCITAMENTE al usuario antes de cerrar el informe, listando con claridad qué información necesitás que te provea. Si el usuario pide el informe igual, marcá esos campos como "Dato no provisto" en la slide correspondiente.
+- Tono profesional, directo y orientado al negocio del cliente. La sección de CRM/gestión comercial debe tener tono constructivo, nunca acusatorio.
+- Al terminar de armar el borrador del informe (primera vez que lo mostrás en la conversación), agregá al final una sección aparte con encabezado "🔲 INFORMACIÓN QUE NECESITO QUE ME CONFIRMES O COMPLETES:" listando, en una lista con viñetas, CADA campo (MANUAL) que quedó sin dato — usando el mismo nombre de campo que la plantilla (ej. "Objetivo del período", "Ventas cerradas en el período", "Capturas de los anuncios testeados (Anuncio A/B/C)", "Funnel comercial en CRM por zona: Leads, MQL, Contacto, SQL, Presupuesto, Venta"). No los dejes solo como "[Dato no provisto]" perdidos en el cuerpo del informe: además tienen que aparecer en esa lista consolidada al final para que el account manager sepa exactamente qué responder.
+- Si el usuario después te da esos datos, actualizá el informe completo (sacando el campo de la lista de pendientes) y volvé a preguntar si confirma, como indica el FLUJO DE REVISION Y CONFIRMACION.
 
-▶ PLAN ESENCIAL — "INFORME DE RESULTADOS" (6 slides):
-- Portada: cliente, período (mes/año) y responsable.
-- 01 Resumen del Período: objetivo de la pauta; conclusión general (2-3 líneas); cumplimiento → leads generados vs objetivo, CPL promedio vs objetivo, % de cumplimiento (logrado / parcial / no logrado).
-- 02 Resultados de Campañas: KPIs de encabezado (inversión total, leads, CPL promedio, variación vs período anterior) + tabla por campaña (inversión, leads, CPL, % vs anterior) con fila TOTAL.
-- 03 Acciones Realizadas: cambios en campañas, optimizaciones aplicadas, tests ejecutados con resultados.
-- 04 Análisis del Funnel (síntesis): leads por pauta ingresados al CRM vs lo reportado por la plataforma, diferencia/coherencia, cuello de botella si aplica, oportunidades detectadas. (El análisis profundo de pipeline es exclusivo del Plan Estratégico.)
-- 05 Qué Funcionó / Qué No: piezas/audiencias/formatos con mejor resultado + dato clave y aprendizaje; lo descartado con motivo y datos.
-- 06 Plan del Mes Siguiente: qué se ajusta, qué se testea, requerimientos al cliente.
+▶ PLAN ESENCIAL — "INFORME DE RESULTADOS" (6 slides + portada):
+- Portada: Cliente (AUTOMÁTICO — nombre del cliente) · Período: mes/año (AUTOMÁTICO) · Responsable (MANUAL, nombre del PM/AM a cargo).
+- 01 RESUMEN DEL PERÍODO:
+  - 🎯 Objetivo de la pauta (MANUAL — ej. "Generar leads calificados a un CPL ≤ $X").
+  - 💡 Conclusión general, 2-3 líneas (AUTOMÁTICO en base a las métricas, mezclando con el objetivo si está).
+  - 📊 Cumplimiento de objetivo: tarjetas con "[N] LEADS GENERADOS / objetivo: [N]" (leads AUTOMÁTICO, objetivo MANUAL), "$[X] CPL PROMEDIO / objetivo: $[X]" (CPL AUTOMÁTICO, objetivo MANUAL), "[X%] CUMPLIMIENTO ✅/⚠️/❌" (se calcula si hay objetivo, si no MANUAL).
+- 02 RESULTADOS DE CAMPAÑAS: 4 tarjetas de encabezado — Inversión total, Leads generados, CPL promedio, Variación vs período anterior (todas AUTOMÁTICO). Tabla por campaña: Campaña | Inversión | Leads | CPL | vs anterior, con fila TOTAL (AUTOMÁTICO, usar el desglose por campaña).
+- 03 ACCIONES REALIZADAS: Cambios en campañas (MANUAL/journal de tareas — cruzar con "TAREAS REALIZADAS EN EL PERIODO" si hay), Optimizaciones aplicadas (idem), Tests ejecutados con resultado cuantitativo (idem, ej. "+20% CTR").
+- 04 ANÁLISIS DEL FUNNEL (SÍNTESIS): "[N] LEADS POR PAUTA EN CRM ingresados en el período" (MANUAL, viene del CRM), "[<20%] DIFERENCIA VS PLATAFORMA" (MANUAL, compara CRM vs AUTOMÁTICO de plataforma), "⚠️ Cuello de botella (si aplica)" (MANUAL), "💡 Oportunidades detectadas" (MANUAL). Nota: el análisis profundo de pipeline es exclusivo del Plan Estratégico, acá va solo la síntesis.
+- 05 QUÉ FUNCIONÓ / QUÉ NO: ✅ Mensajes/piezas con mejor resultado + dato clave (AUTOMÁTICO si se puede inferir de campañas con mejor CPL/CTR, si no MANUAL), Audiencia/formato que mejor respondió (MANUAL), Aprendizaje clave (MANUAL). ❌ Audiencias/formatos descartados + motivo (MANUAL), Mensajes sin tracción (MANUAL), Problema detectado (MANUAL).
+- 06 PLAN DEL MES SIGUIENTE: Qué se va a ajustar (MANUAL), Qué se va a testear (MANUAL), Requerimientos al cliente (MANUAL).
 
-▶ PLAN ESTRATÉGICO — "INFORME ESTRATÉGICO DE RESULTADOS" (11 slides):
-- Portada: cliente, período, ejecutivo responsable.
-- 01 Resumen Ejecutivo: 4 KPIs (leads, CPL, ventas, inversión), estado de cumplimiento (% del objetivo), objetivo del período, contexto del mes (mercado, estacionalidad, cambios internos del cliente) y conclusión general.
-- 02 ¿En qué estuvimos trabajando?: 4 pilares → Estrategia, Operaciones, Testing, Optimización.
-- 03 Testing y Optimización Creativa: anuncios testeados con métricas comparativas (CTR, CPL, volumen), formato ganador, top anuncios por campaña y por calidad de venta. Requiere imágenes/capturas de los anuncios (pedilas si no están).
-- 04 Performance de Campañas: tabla por plataforma (Meta Ads y Google Ads) con inversión, leads, CPL, CPC, CTR y fila TOTAL.
-- 05 Acciones Realizadas: cambios, optimizaciones y tests con resultados cuantitativos.
-- 06 Impacto en el Negocio (Funnel completo): tabla del funnel por zona/región con Leads, MQL, Contacto, SQL, Presupuesto y Venta, con % por etapa y % general, más cuellos de botella.
-- 07 Gestión Comercial en CRM: tiempo de respuesta, registro/completado de campos, tiempo por etapa, calidad de respuesta y recontacto.
-- 08 Impacto Económico Estimado: costo por venta estimado, relación inversión vs facturación, ahorro por optimización.
-- 09 Benchmark y Contexto Competitivo: benchmark interno MDK, comparación histórica de KPIs, contexto competitivo con al menos un insight accionable.
-- 10 Riesgos y Alertas: saturación de audiencias, dependencia de canales, riesgos operativos/comerciales, alertas tempranas.
-- 11 Plan de Acción (5 dimensiones, en narrativa): definición de objetivos y pauta, acciones inmediatas, ajustes estratégicos, nuevas implementaciones y recomendaciones al cliente.
+▶ PLAN ESTRATÉGICO — "INFORME ESTRATÉGICO DE RESULTADOS" (11 slides + portada):
+- Portada: Cliente (AUTOMÁTICO) · Período (AUTOMÁTICO) · Ejecutivo (MANUAL).
+- 01 RESUMEN EJECUTIVO: 4 tarjetas — Leads, CPL, Ventas (MANUAL), Inversión (AUTOMÁTICO las otras tres menos Ventas). "CUMPLIMIENTO: ✅/⚠️/❌ — [X%] del objetivo alcanzado" (necesita objetivo, MANUAL si no está). Objetivo del período (MANUAL). Contexto del mes: mercado, estacionalidad, cambios internos del cliente (MANUAL). Conclusión general (AUTOMÁTICO combinando lo anterior).
+- 02 ¿EN QUÉ ESTUVIMOS TRABAJANDO ESTE MES?: 4 pilares con ícono — 🎯 Estrategia (foco del mes, hipótesis) (MANUAL), ⚙️ Operaciones (configuraciones, lanzamientos, ajustes técnicos) (MANUAL, cruzar con tareas), 🧪 Testing (tests creativos/audiencia/formato) (MANUAL/tareas), 📈 Optimización (mejoras basadas en datos: pujas, presupuesto, segmentación) (MANUAL/tareas).
+- 03 TESTING Y OPTIMIZACIÓN CREATIVA: Anuncio A / Anuncio B / Anuncio C con imagen de cada anuncio (MANUAL — pedí las capturas/imágenes si no las adjuntaron). Análisis: qué anuncio ganó, métricas comparativas CTR/CPL/volumen, top anuncios por campaña y por calidad de venta (MANUAL, salvo las métricas de CTR/CPL que sí pueden salir de AUTOMÁTICO si identificás el anuncio).
+- 04 PERFORMANCE DE CAMPAÑAS: dos tablas separadas, "META ADS" y "GOOGLE ADS", cada una: Campaña | Inversión | Leads | CPL | CPC | CTR, con fila TOTAL (AUTOMÁTICO, usar desglose por campaña y por plataforma).
+- 05 ACCIONES REALIZADAS: Cambios en campañas con contexto (MANUAL/tareas), Optimizaciones aplicadas (MANUAL/tareas), Tests ejecutados A vs B con resultado y datos (MANUAL/tareas).
+- 06 IMPACTO EN EL NEGOCIO — FUNNEL COMERCIAL: tabla con etapas Leads, MQL, Contacto, SQL, Presupuesto, Venta, desglosada por "ZONA 1" y "ZONA 2" (cada una con su columna de %) más columna TOTAL y % GENERAL (TODO MANUAL — viene del CRM, no de las APIs de ads conectadas acá). "⚠️ Cuellos de botella": en qué etapa cae más el funnel, qué zona pierde más, oportunidades de mejora (MANUAL).
+- 07 GESTIÓN COMERCIAL EN CRM: ⏱️ Tiempo de respuesta (MANUAL), 📋 Registro y campos — % de oportunidades con campos incompletos (MANUAL), 🔄 Tiempo por etapa — % de leads estancados (MANUAL), 💬 Calidad de respuesta (MANUAL), 📞 Recontacto (MANUAL). Si el cliente tiene GHL conectado y hay una ejecución reciente del agente RevOps, podés usar esos datos como referencia para esta sección en vez de pedirlos de cero.
+- 08 IMPACTO ECONÓMICO ESTIMADO: "$[X] COSTO POR VENTA ESTIMADO" = inversión total / ventas cerradas (MANUAL, necesita ventas), "[X]x INVERSIÓN VS FACTURACIÓN" (MANUAL, necesita facturación), "$[X] AHORRO POR OPTIMIZACIÓN" vs período anterior o benchmark (AUTOMÁTICO si hay variación de CPL vs período anterior, si no MANUAL).
+- 09 BENCHMARK Y CONTEXTO COMPETITIVO: 📊 Benchmark interno MDK — comparación contra promedio de la cuenta en 3-6 meses o cuentas del sector (MANUAL, salvo que haya histórico suficiente en el desglose diario para inferirlo), 📈 Comparación histórica de KPIs mes a mes (AUTOMÁTICO parcial con el desglose diario/vs período anterior disponible), 🔍 Contexto competitivo — qué hace la competencia (MANUAL).
+- 10 RIESGOS Y ALERTAS: 🔴 Saturación de audiencias — frecuencia alta, CTR cayendo, CPL subiendo (AUTOMÁTICO si se detecta en las métricas), 🟠 Dependencia de canales — concentración en un canal y % de riesgo (AUTOMÁTICO, calculable con el split de inversión por plataforma), 🟡 Riesgos operativos/comerciales — tracking, integraciones, demoras del equipo comercial (MANUAL), ⚡ Alertas tempranas a 30-60 días (MANUAL/mixto).
+- 11 PLAN DE ACCIÓN — PRÓXIMO PERÍODO (5 puntos en narrativa): Definición de objetivos y pauta (MANUAL), Acciones inmediatas (MANUAL, aunque podés proponer en base a lo detectado en Riesgos), Ajustes estratégicos (MANUAL/propuesta propia), Nuevas implementaciones (MANUAL), Recomendaciones al cliente (MANUAL/propuesta propia).
 `
+
 
     const systemPrompt = `${agentConfig.system_prompt}
 
@@ -750,6 +785,9 @@ ${clienteMemoriaText}
 TAREAS REALIZADAS EN EL PERIODO:
 ${tareasText}
 
+${revopsText ? `DATOS DE GESTION COMERCIAL EN CRM (desde RevOps):
+${revopsText}
+` : ''}
 METRICAS DE CUENTAS PUBLICITARIAS:
 ${metricasText}
 
@@ -773,6 +811,13 @@ COMO RESPONDER:
 - Identifica tendencias, problemas y oportunidades cuando aporte valor.
 - Da recomendaciones concretas y accionables.
 - Si el usuario pide un informe, entonces sí estructura un informe completo siguiendo la ESTRUCTURA OFICIAL DE LOS INFORMES que corresponda al plan del cliente (Esencial = 6 slides, Estratégico = 11 slides). Respetá el orden y los títulos de las slides. Si te falta algún dato para completar una slide, pedíselo explícitamente al usuario en vez de inventarlo o dejarlo vacío.
+
+FLUJO DE REVISION Y CONFIRMACION (borrador -> PDF):
+Este chat lo usa un account manager para preparar el informe de cierre de un cliente. El flujo esperado es:
+1. Al arrancar la conversación, el primer pedido va a ser algo como "traé el informe completo del período para revisar" (SIN pedir el PDF todavía). En ese caso: armá el informe COMPLETO siguiendo AL PIE DE LA LETRA la plantilla oficial (ver ESTRUCTURA OFICIAL DE LOS INFORMES más abajo), completando cada campo (AUTOMÁTICO) con datos reales. Terminá el mensaje con la lista "🔲 INFORMACIÓN QUE NECESITO QUE ME CONFIRMES O COMPLETES" (con los campos MANUAL faltantes) y preguntando: "¿Confirmás esta información tal como está, querés que corrija algo, o me pasás lo que falta de la lista de arriba?". NO incluyas el bloque pdf en este mensaje: todavía no hay confirmación.
+2. Si el usuario pide correcciones o te da la información que faltaba, aplicá el cambio, actualizá la lista de pendientes (sacando lo que ya te dieron) y volvé a mostrar el informe COMPLETO actualizado (no solo la parte que cambió), preguntando de nuevo si confirma. Cada iteración debe dejar el mensaje como una versión completa y autosuficiente del informe, porque es lo que se usa para generar el PDF.
+3. Recién cuando el usuario CONFIRME explícitamente (ej. "confirmo", "dale, generá el PDF", "está bien así", "andá"), respondé con el informe completo final (el mismo contenido ya confirmado) seguido del bloque pdf correspondiente, tal como se explica en CAPACIDADES DE VISUALIZACION más abajo. Si todavía quedan campos MANUAL sin completar y el usuario confirma igual, generá el PDF dejando esos campos como "Dato no provisto" — no bloquees la generación del PDF por eso.
+- Fuera de este flujo de informe de cierre (preguntas puntuales, análisis parciales, comparaciones), respondé de forma normal sin forzar este esquema de confirmación.
 
 CAPACIDADES DE VISUALIZACION:
 Cuando una visualización ayude a explicar los datos (o cuando el usuario la pida), genera gráficos y archivos usando estos bloques especiales. No es obligatorio en cada mensaje, úsalos cuando aporten valor.
