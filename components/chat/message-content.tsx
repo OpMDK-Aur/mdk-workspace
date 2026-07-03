@@ -1,97 +1,224 @@
 'use client'
 
-import { useMemo } from 'react'
-import Markdown from 'react-markdown'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { Maximize2 } from 'lucide-react'
 import { ChartBlock } from './chart-block'
-import { ImageBlock } from './image-block'
 import { FileBlock } from './file-block'
+import { ImageBlock } from './image-block'
 import { PdfBlock } from './pdf-block'
 import { FaltantesBlock } from './faltantes-block'
 
 export type Artifact = {
-  type: 'chart' | 'image' | 'file' | 'pdf' | 'faltantes'
-  config: Record<string, unknown>
+  type: 'chart' | 'pdf' | 'image'
+  config: unknown
+  messageContent: string
 }
 
 interface MessageContentProps {
   content: string
   onOpenArtifact?: (artifact: Artifact) => void
-  onSubmitFaltantes?: (text: string, files?: File[]) => void
+  onSubmitFaltantes?: (text: string, files: File[]) => void
+}
+
+// Shared markdown components: styled tables, lists, code, etc.
+const markdownComponents = {
+  table: ({ children }: { children?: React.ReactNode }) => (
+    <div className="my-3 w-full overflow-x-auto rounded-lg border border-border">
+      <table className="w-full border-collapse text-sm">{children}</table>
+    </div>
+  ),
+  thead: ({ children }: { children?: React.ReactNode }) => (
+    <thead className="bg-muted/60">{children}</thead>
+  ),
+  th: ({ children }: { children?: React.ReactNode }) => (
+    <th className="border-b border-border px-3 py-2 text-left font-semibold text-foreground">
+      {children}
+    </th>
+  ),
+  td: ({ children }: { children?: React.ReactNode }) => (
+    <td className="border-b border-border/50 px-3 py-2 text-foreground/90">{children}</td>
+  ),
+  tr: ({ children }: { children?: React.ReactNode }) => (
+    <tr className="even:bg-muted/20">{children}</tr>
+  ),
+}
+
+// Red de seguridad: si el modelo escribió el checklist "🔲 INFORMACIÓN QUE
+// NECESITO..." en texto plano pero se olvidó del bloque ```faltantes, lo
+// extraemos igual de los bullets para poder mostrar el formulario interactivo.
+function extractFaltantesFallback(content: string): string[] {
+  const headingMatch = content.match(/🔲[^\n]*\n((?:[ \t]*[-*][^\n]*\n?)+)/)
+  if (!headingMatch) return []
+
+  return headingMatch[1]
+    .split('\n')
+    .map((line) => line.replace(/^[ \t]*[-*]\s*/, '').trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/\*\*/g, '')) // saca negrita markdown
+    .map((line) => line.split(':')[0].trim()) // se queda con el nombre del campo, no la descripción
+    .filter(Boolean)
+}
+
+function ArtifactCard({
+  label,
+  onOpen,
+  children,
+}: {
+  label: string
+  onOpen?: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="group relative my-2">
+      {onOpen && (
+        <button
+          onClick={onOpen}
+          className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-md border border-border bg-background/90 px-2 py-1 text-xs font-medium text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground group-hover:opacity-100"
+          aria-label={`Abrir ${label} en panel`}
+        >
+          <Maximize2 className="h-3 w-3" />
+          Ampliar
+        </button>
+      )}
+      {children}
+    </div>
+  )
 }
 
 export function MessageContent({ content, onOpenArtifact, onSubmitFaltantes }: MessageContentProps) {
-  const artifacts = useMemo(() => {
-    const artifactRegex = /\[ARTIFACT:(\d+):(chart|image|file|pdf|faltantes):(.*?)\]/gs
-    return Array.from(content.matchAll(artifactRegex)).map((match) => ({
-      id: match[1],
-      type: match[2] as Artifact['type'],
-      config: JSON.parse(match[3]),
-    }))
-  }, [content])
+  // Parse content for special blocks (```chart, ```file, ```image, ```pdf, ```faltantes)
+  const parts: Array<{ type: 'text' | 'chart' | 'file' | 'image' | 'pdf' | 'faltantes'; content: string }> = []
 
-  const contentWithoutArtifacts = content.replace(/\[ARTIFACT:\d+:(chart|image|file|pdf|faltantes):.*?\]/gs, '').trim()
+  const regex = /```(chart|file|image|pdf|faltantes)\n([\s\S]*?)```/g
+  let lastIndex = 0
+  let match
+
+  while ((match = regex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', content: content.slice(lastIndex, match.index) })
+    }
+    parts.push({ type: match[1] as 'chart' | 'file' | 'image' | 'pdf' | 'faltantes', content: match[2].trim() })
+    lastIndex = regex.lastIndex
+  }
+
+  if (lastIndex < content.length) {
+    parts.push({ type: 'text', content: content.slice(lastIndex) })
+  }
+
+  // Si el modelo no emitió el bloque ```faltantes explícito, lo completamos
+  // extrayéndolo del checklist en texto plano (ver extractFaltantesFallback).
+  const yaTieneFaltantes = parts.some((p) => p.type === 'faltantes')
+  if (!yaTieneFaltantes) {
+    const fallbackItems = extractFaltantesFallback(content)
+    if (fallbackItems.length > 0) {
+      parts.push({ type: 'faltantes', content: JSON.stringify({ items: fallbackItems }) })
+    }
+  }
+
+  if (parts.length === 0) {
+    return (
+      <div className="prose prose-sm dark:prose-invert max-w-none">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          {content}
+        </ReactMarkdown>
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-4">
-      {contentWithoutArtifacts && (
-        <Markdown
-          classNameMap={{
-            p: 'text-sm leading-relaxed',
-            a: 'text-blue-500 hover:underline',
-            code: 'bg-muted px-1.5 py-0.5 rounded text-xs font-mono',
-            pre: 'bg-muted p-3 rounded overflow-auto text-xs',
-            table: 'w-full text-xs border-collapse',
-            ul: 'list-disc list-inside space-y-1',
-            ol: 'list-decimal list-inside space-y-1',
-            li: 'text-sm',
-          }}
-          components={{
-            a: ({ href, children }) => (
-              <a href={href} target="_blank" rel="noopener noreferrer">
-                {children}
-              </a>
-            ),
-            table: ({ children }) => (
-              <div className="border rounded-lg overflow-x-auto">
-                <table>{children}</table>
-              </div>
-            ),
-          }}
-        >
-          {contentWithoutArtifacts}
-        </Markdown>
-      )}
+    <div className="prose prose-sm dark:prose-invert max-w-none">
+      {parts.map((part, index) => {
+        if (part.type === 'text') {
+          if (!part.content.trim()) return null
+          return (
+            <ReactMarkdown key={index} remarkPlugins={[remarkGfm]} components={markdownComponents}>
+              {part.content}
+            </ReactMarkdown>
+          )
+        }
 
-      {artifacts.map((artifact) => {
-        switch (artifact.type) {
-          case 'chart':
+        if (part.type === 'chart') {
+          try {
+            const config = JSON.parse(part.content)
             return (
-              <ChartBlock key={artifact.id} config={artifact.config} onClick={() => onOpenArtifact?.(artifact as Artifact)} />
+              <ArtifactCard
+                key={index}
+                label="gráfico"
+                onOpen={onOpenArtifact ? () => onOpenArtifact({ type: 'chart', config, messageContent: content }) : undefined}
+              >
+                <ChartBlock config={config} />
+              </ArtifactCard>
             )
-          case 'image':
+          } catch (e) {
+            console.error('Failed to parse chart config:', e)
+            return <pre key={index} className="text-red-500">Error parsing chart: {part.content}</pre>
+          }
+        }
+
+        if (part.type === 'file') {
+          try {
+            const config = JSON.parse(part.content)
+            return <FileBlock key={index} config={config} />
+          } catch (e) {
+            console.error('Failed to parse file config:', e)
+            return <pre key={index} className="text-red-500">Error parsing file: {part.content}</pre>
+          }
+        }
+
+        if (part.type === 'image') {
+          try {
+            const config = JSON.parse(part.content)
             return (
-              <ImageBlock key={artifact.id} config={artifact.config} onClick={() => onOpenArtifact?.(artifact as Artifact)} />
+              <ArtifactCard
+                key={index}
+                label="imagen"
+                onOpen={onOpenArtifact ? () => onOpenArtifact({ type: 'image', config, messageContent: content }) : undefined}
+              >
+                <ImageBlock config={config} />
+              </ArtifactCard>
             )
-          case 'file':
+          } catch (e) {
+            console.error('Failed to parse image config:', e)
+            return <pre key={index} className="text-red-500">Error parsing image: {part.content}</pre>
+          }
+        }
+
+        if (part.type === 'pdf') {
+          try {
+            const config = JSON.parse(part.content)
             return (
-              <FileBlock key={artifact.id} config={artifact.config} onClick={() => onOpenArtifact?.(artifact as Artifact)} />
+              <ArtifactCard
+                key={index}
+                label="PDF"
+                onOpen={onOpenArtifact ? () => onOpenArtifact({ type: 'pdf', config, messageContent: content }) : undefined}
+              >
+                <PdfBlock config={config} messageContent={content} />
+              </ArtifactCard>
             )
-          case 'pdf':
-            return (
-              <PdfBlock key={artifact.id} config={artifact.config} onClick={() => onOpenArtifact?.(artifact as Artifact)} />
-            )
-          case 'faltantes':
+          } catch (e) {
+            console.error('Failed to parse pdf config:', e)
+            return <pre key={index} className="text-red-500">Error parsing pdf: {part.content}</pre>
+          }
+        }
+
+        if (part.type === 'faltantes') {
+          try {
+            const config = JSON.parse(part.content)
             return (
               <FaltantesBlock
-                key={artifact.id}
-                config={artifact.config}
+                key={index}
+                items={Array.isArray(config.items) ? config.items : []}
                 onSubmit={onSubmitFaltantes}
-                onClick={() => onOpenArtifact?.(artifact as Artifact)}
               />
             )
-          default:
+          } catch (e) {
+            console.error('Failed to parse faltantes config:', e)
             return null
+          }
         }
+
+        return null
       })}
     </div>
   )
