@@ -183,16 +183,23 @@ export default function AnalistaPage() {
     setArtifact(null)
     setAttachments([])
 
-    const greeting: ChatMessage = {
+    // Pedido inicial real: el account manager necesita ver TODA la info del
+    // período de entrada (no un saludo genérico) para poder confirmarla,
+    // corregirla o completarla antes de generar el PDF.
+    const kickoffPrompt = `Traé el informe completo de performance del período (${dateRangeLabel}) con todos los datos reales de las plataformas conectadas. Todavía no generes el PDF: quiero revisarlo primero y confirmarte, corregirte o agregarte información antes.`
+
+    const kickoffMessage: ChatMessage = {
       id: crypto.randomUUID(),
-      role: 'assistant',
-      content: `Hola, soy tu analista para **${selectedClient.nombre_del_negocio}** (${dateRangeLabel}).\n\nPuedes pedirme lo que necesites: un análisis puntual, comparar métricas, generar un informe completo, crear gráficos, exportar datos a CSV o incluso generar imágenes para tus reportes. También puedes adjuntar capturas o archivos para que los analice.\n\n¿En qué te ayudo?`,
+      role: 'user',
+      content: kickoffPrompt,
     }
-    setChatMessages([greeting])
-    if (conv) {
-      saveMensaje({ conversacionId: conv.id, rol: 'assistant', contenido: greeting.content })
+    setChatMessages([kickoffMessage])
+    if (conv?.id) {
+      saveMensaje({ conversacionId: conv.id, rol: 'user', contenido: kickoffPrompt })
       refreshConversaciones()
     }
+
+    await streamAssistantReply([kickoffMessage], conv?.id ?? null)
   }
 
   // New empty conversation (keeps client/period selection)
@@ -308,40 +315,11 @@ export default function AnalistaPage() {
     return uploadedFiles
   }
 
-  const handleSendMessage = async (content: string) => {
-    if ((!content?.trim() && attachments.length === 0) || isLoading || uploadingFiles || !selectedClient) return
-
-    // Set loading immediately so a second Enter during the upload can't trigger a duplicate send
+  // Lógica de streaming compartida: la usan tanto el kickoff automático
+  // (handleStartAnalysis) como el envío manual de mensajes (handleSendMessage).
+  const streamAssistantReply = async (apiMessages: ChatMessage[], convId: string | null) => {
     setIsLoading(true)
-
-    const hadAttachments = attachments.length > 0
-    const uploadedFiles = await uploadAttachments()
-
-    // If the user attached files but none uploaded successfully, abort instead of sending an empty request
-    if (hadAttachments && uploadedFiles.length === 0) {
-      toast.error('No se pudieron subir los archivos. Intenta de nuevo.')
-      setIsLoading(false)
-      return
-    }
-
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content,
-      attachments: uploadedFiles.length > 0 ? uploadedFiles : undefined,
-    }
-    const newMessages = [...chatMessages, userMessage]
-    setChatMessages(newMessages)
-    setInputValue('')
-    setAttachments([])
-
-    const convId = currentConvId
-    if (convId) {
-      saveMensaje({ conversacionId: convId, rol: 'user', contenido: content })
-    }
-
     try {
-      // Extract month/year from dateStart for API compatibility
       const startDate = new Date(dateStart)
       const apiMonth = startDate.getMonth() + 1
       const apiYear = startDate.getFullYear()
@@ -350,20 +328,20 @@ export default function AnalistaPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: newMessages.map((m) => ({
+          messages: apiMessages.map((m) => ({
             role: m.role,
             content: m.attachments
               ? `${m.content}\n\n${m.attachments.map((a) => `[Archivo: ${a.name}]`).join('\n')}`
               : m.content,
           })),
-          clientId: selectedClient.id,
+          clientId: selectedClient?.id,
           month: apiMonth,
           year: apiYear,
           periodo: {
             start: dateStart,
             end: dateEnd,
           },
-          attachments: uploadedFiles,
+          attachments: apiMessages[apiMessages.length - 1]?.attachments ?? [],
         }),
       })
 
@@ -426,14 +404,54 @@ export default function AnalistaPage() {
       // Persist assistant message + auto-title
       if (convId && assistantContent) {
         saveMensaje({ conversacionId: convId, rol: 'assistant', contenido: assistantContent })
-        maybeGenerateTitle(convId, content, assistantContent)
+        const lastUserMsg = apiMessages[apiMessages.length - 1]?.content ?? ''
+        maybeGenerateTitle(convId, lastUserMsg, assistantContent)
       }
+
+      return assistantContent
     } catch (error) {
       console.error('[v0] Error sending message:', error)
       toast.error('Error al enviar mensaje')
+      return ''
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleSendMessage = async (content: string) => {
+    if ((!content?.trim() && attachments.length === 0) || isLoading || uploadingFiles || !selectedClient) return
+
+    // Set loading immediately so a second Enter during the upload can't trigger a duplicate send
+    setIsLoading(true)
+
+    const hadAttachments = attachments.length > 0
+    const uploadedFiles = await uploadAttachments()
+
+    // If the user attached files but none uploaded successfully, abort instead of sending an empty request
+    if (hadAttachments && uploadedFiles.length === 0) {
+      toast.error('No se pudieron subir los archivos. Intenta de nuevo.')
+      setIsLoading(false)
+      return
+    }
+
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content,
+      attachments: uploadedFiles.length > 0 ? uploadedFiles : undefined,
+    }
+    const newMessages = [...chatMessages, userMessage]
+    setChatMessages(newMessages)
+    setInputValue('')
+    setAttachments([])
+
+    const convId = currentConvId
+    if (convId) {
+      saveMensaje({ conversacionId: convId, rol: 'user', contenido: content })
+    }
+
+    setIsLoading(false) // reset before streamAssistantReply takes over the loading lifecycle
+    await streamAssistantReply(newMessages, convId)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -880,7 +898,16 @@ export default function AnalistaPage() {
                 </div>
 
                 {chatMessages.length > 0 && (
-                  <div className="mt-3 flex justify-center">
+                  <div className="mt-3 flex justify-center gap-2">
+                    <Button
+                      size="sm"
+                      className="bg-[#7F77DD] hover:bg-[#6B63C7]"
+                      disabled={isLoading || uploadingFiles}
+                      onClick={() => handleSendMessage('Confirmo la información del informe tal como está. Generá el PDF final.')}
+                    >
+                      <Check className="h-4 w-4" />
+                      Confirmar y generar PDF
+                    </Button>
                     <Button variant="outline" size="sm" onClick={handleSaveAsReport}>
                       <FileText className="h-4 w-4" />
                       Guardar y exportar informe
