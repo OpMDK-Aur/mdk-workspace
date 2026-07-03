@@ -139,6 +139,7 @@ async function analizarTareas(creds: { locationId: string; token: string }, opor
   }
 
   const pctVencidas = total > 0 ? vencidas / total : 0
+  const pctSinTarea = muestra.length > 0 ? sinTarea / muestra.length : 0
 
   return {
     oportunidades_en_muestra: muestra.length,
@@ -151,6 +152,11 @@ async function analizarTareas(creds: { locationId: string; token: string }, opor
     tareas_sin_fecha: sinFecha,
     pct_vencidas: pctVencidas,
     alerta_colapso: total >= 5 && pctVencidas >= 0.9 && futuras === 0,
+    // Caso distinto (y peor) al colapso: acá directamente no hay tareas
+    // cargadas, por lo que pct_vencidas da 0/0 = 0% y parece "todo bien"
+    // cuando en realidad no hay ningún seguimiento activo.
+    alerta_sin_seguimiento: muestra.length >= 5 && sinTarea === muestra.length,
+    pct_sin_tarea: pctSinTarea,
   }
 }
 
@@ -441,6 +447,10 @@ function calcularScoreSalud(resumen: RevOpsResumen): number {
 
   if (resumen.tareas.total_tareas > 0) {
     componentes.push({ valor: 100 - resumen.tareas.pct_vencidas * 100, peso: 20 })
+  } else if (resumen.tareas.oportunidades_en_muestra > 0) {
+    // Sin ninguna tarea cargada no es "neutro": es el peor caso posible de
+    // seguimiento, así que penaliza en vez de excluirse del score.
+    componentes.push({ valor: 100 - resumen.tareas.pct_sin_tarea * 100, peso: 20 })
   }
   if (resumen.conversaciones_calidad.promedio_score !== null) {
     componentes.push({ valor: resumen.conversaciones_calidad.promedio_score * 10, peso: 25 })
@@ -468,6 +478,12 @@ function construirAlertas(resumen: RevOpsResumen): { mensaje: string; calculo: s
     alertas.push({
       mensaje: 'Colapso de seguimiento: 90%+ de las tareas están vencidas y no hay ninguna futura agendada.',
       calculo: `Sobre una muestra de ${resumen.tareas.oportunidades_en_muestra} oportunidades abiertas (las más recientes), se encontraron ${resumen.tareas.total_tareas} tareas en total. ${resumen.tareas.tareas_vencidas} están vencidas (${Math.round(resumen.tareas.pct_vencidas * 100)}%) y ${resumen.tareas.tareas_futuras} son futuras. Se dispara cuando hay 5+ tareas, 90%+ vencidas y 0 futuras.`,
+    })
+  }
+  if (resumen.tareas.alerta_sin_seguimiento) {
+    alertas.push({
+      mensaje: `Ninguna de las ${resumen.tareas.oportunidades_en_muestra} oportunidades muestreadas tiene tareas cargadas en GHL: no hay seguimiento comercial activo.`,
+      calculo: `Sobre una muestra de ${resumen.tareas.oportunidades_en_muestra} oportunidades abiertas (las más recientes), se consultaron las tareas del contacto asociado en GHL para cada una. Las ${resumen.tareas.sin_tarea} no tienen ninguna tarea creada (ni vencida, ni futura, ni completada). El "% vencidas" da 0% porque no hay tareas para calcular sobre eso, pero eso no significa que el seguimiento esté al día — significa que no se está usando el módulo de tareas.`,
     })
   }
   if (resumen.inbox.mas_2hs_sin_respuesta > 0) {
