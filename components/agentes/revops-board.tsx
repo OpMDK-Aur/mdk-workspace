@@ -14,9 +14,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Loader2, PlayCircle, RefreshCw } from 'lucide-react'
+import { Loader2, PlayCircle, RefreshCw, CalendarRange } from 'lucide-react'
 import { toast } from 'sonner'
 import { RevOpsDetailSheet } from './revops-detail-sheet'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 interface RevOpsBoardProps {
   clientes: ClienteConRevOps[]
@@ -37,6 +39,14 @@ export function RevOpsBoard({ clientes: initial }: RevOpsBoardProps) {
   const [progresoTodos, setProgresoTodos] = useState<{ actual: number; total: number } | null>(null)
   const [detalleId, setDetalleId] = useState<string | null>(null)
 
+  // Rango de fechas aplicado a Oportunidades/Embudo. Poné acá el mismo rango
+  // que tengas seleccionado en GHL para que los números coincidan.
+  const fmt = (d: Date) => d.toISOString().split('T')[0]
+  const hoy = new Date()
+  const hace30 = new Date(hoy.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const [periodoDesde, setPeriodoDesde] = useState(fmt(hace30))
+  const [periodoHasta, setPeriodoHasta] = useState(fmt(hoy))
+
   // Derivado del estado en vivo: si "clientes" se actualiza con un análisis
   // nuevo mientras el panel está abierto, el panel se refresca solo.
   const detalleCliente = detalleId ? clientes.find((c) => c.id === detalleId) ?? null : null
@@ -45,7 +55,7 @@ export function RevOpsBoard({ clientes: initial }: RevOpsBoardProps) {
     const res = await fetch('/api/agentes/revops/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clienteId }),
+      body: JSON.stringify({ clienteId, periodoDesde, periodoHasta }),
     })
     const ejecucion = await res.json()
     if (!res.ok) throw new Error(ejecucion.error || 'Error al analizar')
@@ -103,20 +113,52 @@ export function RevOpsBoard({ clientes: initial }: RevOpsBoardProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end gap-3">
-        {progresoTodos && (
-          <span className="text-sm text-muted-foreground">
-            Analizando {progresoTodos.actual} de {progresoTodos.total}...
-          </span>
-        )}
-        <Button
-          onClick={handleAnalizarTodos}
-          disabled={loadingAll || elegibles.length === 0}
-          className="bg-[#7F77DD] hover:bg-[#6B63C7] gap-2"
-        >
-          {loadingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Analizar todos los clientes GHL ({elegibles.length})
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-end gap-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground pb-2">
+            <CalendarRange className="h-3.5 w-3.5" />
+            Rango (Oportunidades/Embudo) — igualalo al que tengas aplicado en GHL:
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="revops-desde" className="text-xs text-muted-foreground">Desde</Label>
+            <Input
+              id="revops-desde"
+              type="date"
+              value={periodoDesde}
+              max={periodoHasta}
+              onChange={(e) => setPeriodoDesde(e.target.value)}
+              className="h-8 w-36 text-xs"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="revops-hasta" className="text-xs text-muted-foreground">Hasta</Label>
+            <Input
+              id="revops-hasta"
+              type="date"
+              value={periodoHasta}
+              min={periodoDesde}
+              max={fmt(hoy)}
+              onChange={(e) => setPeriodoHasta(e.target.value)}
+              className="h-8 w-36 text-xs"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {progresoTodos && (
+            <span className="text-sm text-muted-foreground">
+              Analizando {progresoTodos.actual} de {progresoTodos.total}...
+            </span>
+          )}
+          <Button
+            onClick={handleAnalizarTodos}
+            disabled={loadingAll || elegibles.length === 0}
+            className="bg-[#7F77DD] hover:bg-[#6B63C7] gap-2"
+          >
+            {loadingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Analizar todos los clientes GHL ({elegibles.length})
+          </Button>
+        </div>
       </div>
 
       <div className="border border-border rounded-lg overflow-hidden">
