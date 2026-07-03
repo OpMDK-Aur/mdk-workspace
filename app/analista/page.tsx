@@ -102,6 +102,11 @@ export default function AnalistaPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
   const [clientOpen, setClientOpen] = useState(false)
+  const [cuentasDisponibles, setCuentasDisponibles] = useState<
+    Array<{ id: string; plataforma: string; id_cuenta: string; nombre_cuenta: string | null }>
+  >([])
+  const [selectedCuentaIds, setSelectedCuentaIds] = useState<string[]>([])
+  const [loadingCuentas, setLoadingCuentas] = useState(false)
   const [dateStart, setDateStart] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
   const [dateEnd, setDateEnd] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'))
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1))
@@ -156,6 +161,32 @@ export default function AnalistaPage() {
     (id: string | null) => clients.find((c) => c.id === id)?.nombre_del_negocio,
     [clients],
   )
+
+  const fetchCuentasCliente = async (clientId: string) => {
+    setLoadingCuentas(true)
+    setCuentasDisponibles([])
+    setSelectedCuentaIds([])
+    try {
+      const res = await fetch(`/api/agentes/analista/cuentas?clientId=${clientId}`)
+      if (!res.ok) throw new Error('Error al obtener cuentas')
+      const data = await res.json()
+      const cuentas = data.cuentas || []
+      setCuentasDisponibles(cuentas)
+      // Por defecto, todas seleccionadas (mismo comportamiento que antes de tener el selector)
+      setSelectedCuentaIds(cuentas.map((c: { id_cuenta: string }) => c.id_cuenta))
+    } catch (error) {
+      console.error('[v0] Error fetching cuentas publicitarias:', error)
+      toast.error('No se pudieron cargar las cuentas publicitarias del cliente')
+    } finally {
+      setLoadingCuentas(false)
+    }
+  }
+
+  const toggleCuenta = (idCuenta: string) => {
+    setSelectedCuentaIds((prev) =>
+      prev.includes(idCuenta) ? prev.filter((id) => id !== idCuenta) : [...prev, idCuenta]
+    )
+  }
 
   const handleStartAnalysis = async () => {
     if (!selectedClient) {
@@ -344,6 +375,7 @@ export default function AnalistaPage() {
             start: dateStart,
             end: dateEnd,
           },
+          cuentas: selectedCuentaIds,
           attachments: apiMessages[apiMessages.length - 1]?.attachments ?? [],
         }),
       })
@@ -613,6 +645,7 @@ export default function AnalistaPage() {
                         onSelect={() => {
                           setSelectedClient(client)
                           setClientOpen(false)
+                          fetchCuentasCliente(client.id)
                         }}
                       >
                         <Check
@@ -629,6 +662,48 @@ export default function AnalistaPage() {
               </Command>
             </PopoverContent>
           </Popover>
+
+          {/* Ad Account Multi-select */}
+          {selectedClient && (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Cuentas publicitarias</label>
+              {loadingCuentas ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground px-1 py-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Cargando cuentas...
+                </div>
+              ) : cuentasDisponibles.length === 0 ? (
+                <p className="text-xs text-muted-foreground px-1 py-2">
+                  Este cliente no tiene cuentas publicitarias configuradas.
+                </p>
+              ) : (
+                <div className="border rounded-md divide-y max-h-40 overflow-y-auto">
+                  {cuentasDisponibles.map((cuenta) => (
+                    <label
+                      key={cuenta.id}
+                      className="flex items-center gap-2 px-2.5 py-1.5 text-sm cursor-pointer hover:bg-muted/50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedCuentaIds.includes(cuenta.id_cuenta)}
+                        onChange={() => toggleCuenta(cuenta.id_cuenta)}
+                        className="h-3.5 w-3.5 accent-[#7F77DD]"
+                      />
+                      <span className="flex-1 truncate">{cuenta.nombre_cuenta || cuenta.id_cuenta}</span>
+                      <span className="text-[10px] uppercase text-muted-foreground shrink-0">
+                        {cuenta.plataforma}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {cuentasDisponibles.length > 0 && selectedCuentaIds.length === 0 && (
+                <p className="text-[11px] text-amber-500 px-1">
+                  Sin cuentas seleccionadas: el informe no va a traer datos de plataforma.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Date Range Inputs */}
           <div className="space-y-2">
