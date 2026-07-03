@@ -29,7 +29,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Plus, Pencil, Trash2, FileText, Calendar, Paperclip, X, Download } from 'lucide-react'
+import { Loader2, Plus, Pencil, Trash2, FileText, Calendar, Paperclip, X, Download, Bold, Italic, List, ListOrdered, Code } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { getClientMinutas, createMinuta, updateMinuta, deleteMinuta } from '@/lib/service-map'
@@ -89,6 +89,7 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
   const [formAdjuntos, setFormAdjuntos] = useState<Adjunto[]>([])
   const [uploadingFile, setUploadingFile] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const contenidoRef = useRef<HTMLTextAreaElement>(null)
 
   // Fetch minutas
   useEffect(() => {
@@ -175,6 +176,168 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
 
   const removeAdjunto = (url: string) => {
     setFormAdjuntos((prev) => prev.filter((a) => a.url !== url))
+  }
+
+  // Aplica formato tipo markdown al textarea de contenido, operando sobre la
+  // selección actual (mismo patrón que usa el editor de comentarios).
+  const applyFormat = (type: 'bold' | 'italic' | 'ul' | 'ol' | 'code') => {
+    const el = contenidoRef.current
+    const value = formContenido
+    const start = el ? el.selectionStart : value.length
+    const end = el ? el.selectionEnd : value.length
+    const selected = value.slice(start, end)
+
+    let newValue = value
+    let newCursor = end
+
+    if (type === 'bold' || type === 'italic') {
+      const marker = type === 'bold' ? '**' : '*'
+      const text = selected || (type === 'bold' ? 'texto' : 'cursiva')
+      const insert = `${marker}${text}${marker}`
+      newValue = value.slice(0, start) + insert + value.slice(end)
+      newCursor = start + insert.length
+    } else if (type === 'code') {
+      if (selected.includes('\n') || !selected) {
+        const text = selected || 'código'
+        const insert = '```\n' + text + '\n```'
+        newValue = value.slice(0, start) + insert + value.slice(end)
+        newCursor = start + insert.length
+      } else {
+        const insert = `\`${selected}\``
+        newValue = value.slice(0, start) + insert + value.slice(end)
+        newCursor = start + insert.length
+      }
+    } else {
+      const lineStart = value.lastIndexOf('\n', start - 1) + 1
+      const block = value.slice(lineStart, end) || ''
+      const blockLines = (block || 'Elemento').split('\n')
+      const formatted = blockLines
+        .map((ln, i) => (type === 'ul' ? `- ${ln}` : `${i + 1}. ${ln}`))
+        .join('\n')
+      newValue = value.slice(0, lineStart) + formatted + value.slice(end)
+      newCursor = lineStart + formatted.length
+    }
+
+    setFormContenido(newValue)
+    setTimeout(() => {
+      if (el) {
+        el.focus()
+        el.setSelectionRange(newCursor, newCursor)
+      }
+    }, 0)
+  }
+
+  // Renderiza el contenido de una minuta con el mismo formato que los
+  // comentarios: negrita, cursiva, código inline, bloques de código y listas.
+  const renderMinutaContent = (content: string) => {
+    const fenceRegex = /```([\s\S]*?)```/g
+    const segments: { type: 'code' | 'text'; content: string }[] = []
+    let lastIndex = 0
+    let fenceMatch: RegExpExecArray | null
+    while ((fenceMatch = fenceRegex.exec(content)) !== null) {
+      if (fenceMatch.index > lastIndex) {
+        segments.push({ type: 'text', content: content.slice(lastIndex, fenceMatch.index) })
+      }
+      segments.push({ type: 'code', content: fenceMatch[1].replace(/^\n/, '').replace(/\n$/, '') })
+      lastIndex = fenceMatch.index + fenceMatch[0].length
+    }
+    if (lastIndex < content.length) {
+      segments.push({ type: 'text', content: content.slice(lastIndex) })
+    }
+    if (segments.length === 0) return content
+
+    const renderInline = (text: string, keyPrefix: string): React.ReactNode[] => {
+      const out: React.ReactNode[] = []
+      const fmtRegex = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(`([^`]+)`)/g
+      let cursor = 0
+      let fm: RegExpExecArray | null
+      let segIdx = 0
+      while ((fm = fmtRegex.exec(text)) !== null) {
+        if (fm.index > cursor) out.push(text.slice(cursor, fm.index))
+        if (fm[1]) {
+          out.push(<strong key={`${keyPrefix}-b${segIdx}`}>{fm[2]}</strong>)
+        } else if (fm[3]) {
+          out.push(<em key={`${keyPrefix}-i${segIdx}`}>{fm[4]}</em>)
+        } else if (fm[5]) {
+          out.push(
+            <code key={`${keyPrefix}-c${segIdx}`} className="px-1 py-0.5 rounded bg-muted font-mono text-[0.85em]">
+              {fm[6]}
+            </code>
+          )
+        }
+        cursor = fm.index + fm[0].length
+        segIdx++
+      }
+      if (cursor < text.length) out.push(text.slice(cursor))
+      return out
+    }
+
+    return segments.map((segment, segmentIdx) => {
+      if (segment.type === 'code') {
+        return (
+          <pre
+            key={`codeblock-${segmentIdx}`}
+            className="my-1.5 p-2.5 rounded-md bg-muted/70 border border-border overflow-x-auto text-xs font-mono whitespace-pre"
+          >
+            <code>{segment.content}</code>
+          </pre>
+        )
+      }
+
+      const lines = segment.content.split('\n')
+      const blocks: React.ReactNode[] = []
+      let listBuffer: { ordered: boolean; items: string[] } | null = null
+      let blockIdx = 0
+
+      const flushList = () => {
+        if (!listBuffer) return
+        const { ordered, items } = listBuffer
+        const ListTag = ordered ? 'ol' : 'ul'
+        blocks.push(
+          <ListTag
+            key={`seg${segmentIdx}-list-${blockIdx++}`}
+            className={cn('my-1 pl-5 space-y-0.5', ordered ? 'list-decimal' : 'list-disc')}
+          >
+            {items.map((item, i) => (
+              <li key={i}>{renderInline(item, `seg${segmentIdx}-li-${blockIdx}-${i}`)}</li>
+            ))}
+          </ListTag>
+        )
+        listBuffer = null
+      }
+
+      lines.forEach((line, idx) => {
+        const ulMatch = line.match(/^\s*[-*]\s+(.*)$/)
+        const olMatch = line.match(/^\s*\d+\.\s+(.*)$/)
+        if (ulMatch) {
+          if (listBuffer && listBuffer.ordered) flushList()
+          if (!listBuffer) listBuffer = { ordered: false, items: [] }
+          listBuffer.items.push(ulMatch[1])
+        } else if (olMatch) {
+          if (listBuffer && !listBuffer.ordered) flushList()
+          if (!listBuffer) listBuffer = { ordered: true, items: [] }
+          listBuffer.items.push(olMatch[1])
+        } else {
+          flushList()
+          if (line.trim() === '') {
+            blocks.push(
+              <span key={`seg${segmentIdx}-line-${blockIdx++}`} className="block h-3" aria-hidden="true">
+                &nbsp;
+              </span>
+            )
+            return
+          }
+          blocks.push(
+            <span key={`seg${segmentIdx}-line-${blockIdx++}`} className="block">
+              {renderInline(line, `seg${segmentIdx}-line-${idx}`)}
+            </span>
+          )
+        }
+      })
+      flushList()
+
+      return <span key={`textblock-${segmentIdx}`}>{blocks}</span>
+    })
   }
 
   // Save minuta (create or update)
@@ -321,9 +484,9 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
                 </div>
                 <h4 className="text-sm font-medium">{minuta.titulo}</h4>
                 {minuta.contenido && (
-                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2 whitespace-pre-wrap">
-                    {minuta.contenido}
-                  </p>
+                  <div className="text-xs text-muted-foreground mt-1 line-clamp-3">
+                    {renderMinutaContent(minuta.contenido)}
+                  </div>
                 )}
                 {minuta.adjuntos && minuta.adjuntos.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
@@ -410,11 +573,67 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Contenido</label>
+              <div className="flex items-center gap-0.5 border rounded-t-md border-b-0 bg-muted/30 px-1 py-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={() => applyFormat('bold')}
+                  title="Negrita"
+                >
+                  <Bold className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={() => applyFormat('italic')}
+                  title="Cursiva"
+                >
+                  <Italic className="h-3.5 w-3.5" />
+                </Button>
+                <div className="w-px h-4 bg-border mx-1" />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={() => applyFormat('code')}
+                  title="Código"
+                >
+                  <Code className="h-3.5 w-3.5" />
+                </Button>
+                <div className="w-px h-4 bg-border mx-1" />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={() => applyFormat('ul')}
+                  title="Lista con viñetas"
+                >
+                  <List className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={() => applyFormat('ol')}
+                  title="Lista numerada"
+                >
+                  <ListOrdered className="h-3.5 w-3.5" />
+                </Button>
+              </div>
               <Textarea
+                ref={contenidoRef}
                 value={formContenido}
                 onChange={(e) => setFormContenido(e.target.value)}
-                placeholder="Notas y puntos discutidos..."
+                placeholder="Notas y puntos discutidos... Usa **negrita**, saltos de línea, listas y `código`"
                 rows={6}
+                className="rounded-t-none"
               />
             </div>
 

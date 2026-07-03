@@ -732,9 +732,14 @@ export async function createMinuta(minuta: {
     const resumen = minuta.contenido
       ? minuta.contenido.slice(0, 200) + (minuta.contenido.length > 200 ? '...' : '')
       : ''
+    const adjuntosLine =
+      minuta.adjuntos && minuta.adjuntos.length > 0
+        ? `📎 ${minuta.adjuntos.length} archivo${minuta.adjuntos.length > 1 ? 's' : ''} adjunto${minuta.adjuntos.length > 1 ? 's' : ''}`
+        : ''
     const comentarioContenido = [
       `📋 Nueva minuta: **${minuta.titulo}** (${TIPO_MINUTA_LABELS_INTERNAL[minuta.tipo]})`,
       resumen,
+      adjuntosLine,
     ]
       .filter(Boolean)
       .join('\n\n')

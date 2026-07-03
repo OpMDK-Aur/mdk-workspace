@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchMetaTotals, fetchGoogleTotals } from '@/lib/ads-data'
 
@@ -306,7 +307,7 @@ export async function POST(req: NextRequest) {
           resumenNotificacion += `Plataforma: ${alerta.plataforma || 'ambas'}`
         }
 
-        const { error: notifError } = await supabase
+        const { error: notifError } = await createAdminClient()
           .from('notificaciones')
           .insert(
             notifyUsers.map((colaboradorId) => ({
@@ -324,7 +325,8 @@ export async function POST(req: NextRequest) {
         if (!notifError) {
           resultado.acciones.push(`✓ ${notifyUsers.length} notificaciones enviadas`)
         } else {
-          resultado.acciones.push('✗ Error al enviar notificaciones')
+          console.error('Error creating notifications:', notifError)
+          resultado.acciones.push(`✗ Error al enviar notificaciones: ${notifError.message}`)
         }
       } catch (error) {
         console.error('Error creating notifications:', error)
