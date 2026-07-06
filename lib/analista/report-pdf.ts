@@ -57,16 +57,15 @@ export async function generateReportPdf(input: ReportPdfInput): Promise<Buffer> 
       doc.rect(0, 0, 612, 792).fill(NEAR_BLACK[0], NEAR_BLACK[1], NEAR_BLACK[2])
 
       doc.fillColor(ORANGE[0], ORANGE[1], ORANGE[2])
-      doc.font('Helvetica-Bold', 32)
+      doc.fontSize(32)
       doc.text('MDK', 60, 80)
 
       doc.fillColor(WHITE[0], WHITE[1], WHITE[2])
-      doc.font('Helvetica-Bold', 28)
+      doc.fontSize(28)
       doc.text(title, 60, 140, { width: 400 })
 
       doc.fillColor(ORANGE[0], ORANGE[1], ORANGE[2])
       doc.fontSize(14)
-      doc.font('Helvetica-Bold')
       doc.text('DE VENTAS Y OPERACIONES', 60, 200)
 
       // Cuadro con info
@@ -74,18 +73,14 @@ export async function generateReportPdf(input: ReportPdfInput): Promise<Buffer> 
 
       doc.fillColor(WHITE[0], WHITE[1], WHITE[2])
       doc.fontSize(11)
-      doc.font('Helvetica-Bold')
       doc.text('CLIENTE', 75, 300)
       doc.fontSize(10)
-      doc.font('Helvetica')
       doc.text(input.clientName, 75, 320, { width: 420 })
 
       doc.fontSize(11)
-      doc.font('Helvetica-Bold')
       doc.fillColor(WHITE[0], WHITE[1], WHITE[2])
       doc.text('PERÍODO', 75, 360)
       doc.fontSize(10)
-      doc.font('Helvetica')
       doc.text(input.periodLabel, 75, 380, { width: 420 })
 
       // Footer portada
@@ -97,7 +92,6 @@ export async function generateReportPdf(input: ReportPdfInput): Promise<Buffer> 
       doc.addPage()
 
       doc.fillColor(DARK_TEXT[0], DARK_TEXT[1], DARK_TEXT[2])
-      doc.font('Helvetica-Bold')
       doc.fontSize(16)
       doc.text('RESUMEN EJECUTIVO', 60, 80)
 
@@ -119,14 +113,12 @@ export async function generateReportPdf(input: ReportPdfInput): Promise<Buffer> 
         if (line.startsWith('#')) {
           // Encabezado
           doc.fontSize(12)
-          doc.font('Helvetica-Bold')
           doc.fillColor(ORANGE[0], ORANGE[1], ORANGE[2])
           doc.text(line.replace(/^#+\s*/, ''), 60, yPos)
           yPos += 25
         } else if (line.startsWith('- ') || line.startsWith('* ')) {
           // Viñeta
           doc.fontSize(10)
-          doc.font('Helvetica')
           doc.fillColor(DARK_TEXT[0], DARK_TEXT[1], DARK_TEXT[2])
           const text = line.replace(/^[-*]\s*/, '')
           doc.text('• ' + text, 75, yPos, { width: 460 })
@@ -134,7 +126,6 @@ export async function generateReportPdf(input: ReportPdfInput): Promise<Buffer> 
         } else if (line.trim()) {
           // Párrafo normal
           doc.fontSize(10)
-          doc.font('Helvetica')
           doc.fillColor(DARK_TEXT[0], DARK_TEXT[1], DARK_TEXT[2])
           doc.text(line, 60, yPos, { width: 495 })
           yPos += 20
