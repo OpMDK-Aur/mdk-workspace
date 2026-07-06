@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit'
+import { Writable } from 'stream'
 
 type RGB = [number, number, number]
 
@@ -26,22 +27,26 @@ export interface ReportPdfInput {
 export async function generateReportPdf(input: ReportPdfInput): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: 'A4', margin: 40 })
       const chunks: Buffer[] = []
 
-      // Capturar datos del PDF
-      doc.on('data', (chunk: Buffer) => {
-        chunks.push(chunk)
+      // Crear un stream writable que acumule los chunks
+      const bufferStream = new Writable({
+        write(chunk: Buffer, _encoding, callback) {
+          chunks.push(chunk)
+          callback()
+        },
       })
 
-      doc.on('end', () => {
-        const pdfBuffer = Buffer.concat(chunks)
-        console.log('[v0] PDF buffer created, size:', pdfBuffer.length)
-        resolve(pdfBuffer)
-      })
+      const doc = new PDFDocument({ size: 'A4', margin: 40 })
+      doc.pipe(bufferStream)
 
       doc.on('error', (err) => {
         console.error('[v0] PDF document error:', err)
+        reject(err)
+      })
+
+      bufferStream.on('error', (err) => {
+        console.error('[v0] Buffer stream error:', err)
         reject(err)
       })
 
@@ -140,6 +145,13 @@ export async function generateReportPdf(input: ReportPdfInput): Promise<Buffer> 
       doc.fontSize(8)
       doc.fillColor(GRAY[0], GRAY[1], GRAY[2])
       doc.text('Página 2 de 2', 60, 760)
+
+      // Esperar a que el stream termine
+      doc.on('end', () => {
+        const pdfBuffer = Buffer.concat(chunks)
+        console.log('[v0] PDF generated successfully, size:', pdfBuffer.length)
+        resolve(pdfBuffer)
+      })
 
       doc.end()
     } catch (error) {

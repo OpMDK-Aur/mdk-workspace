@@ -42,9 +42,11 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error('[v0] PDF generation error:', error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.error('[v0] PDF generation error:', errorMessage)
+    console.error('[v0] Error stack:', error instanceof Error ? error.stack : 'no stack')
     return NextResponse.json(
-      { error: 'Error al generar el PDF' },
+      { error: 'Error al generar el PDF', details: errorMessage },
       { status: 500 }
     )
   }
