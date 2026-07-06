@@ -134,7 +134,7 @@ export default function AnalistaPage() {
     async function fetchClients() {
       const { data } = await supabase
         .from('clientes')
-        .select('id, nombre_del_negocio')
+        .select('id, nombre_del_negocio, plan')
         .eq('activo', true)
         .order('nombre_del_negocio')
       if (data) setClients(data as Client[])
