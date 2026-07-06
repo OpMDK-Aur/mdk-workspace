@@ -1,0 +1,44 @@
+import { generateReportPdf } from '@/lib/analista/report-pdf'
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { clientName, plan, periodLabel, responsable, markdown, fileName } = body
+
+    if (!clientName || !markdown) {
+      return NextResponse.json(
+        { error: 'clientName y markdown son requeridos' },
+        { status: 400 }
+      )
+    }
+
+    // Generar PDF
+    const pdfBuffer = await generateReportPdf({
+      clientName,
+      plan,
+      periodLabel,
+      responsable,
+      markdown,
+      fileName,
+    })
+
+    // Retornar PDF con headers apropiados
+    const name = fileName || `Informe_${clientName.replace(/\s+/g, '_')}_${periodLabel}.pdf`
+
+    return new NextResponse(pdfBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${name}"`,
+        'Content-Length': pdfBuffer.length.toString(),
+      },
+    })
+  } catch (error) {
+    console.error('[v0] PDF generation error:', error)
+    return NextResponse.json(
+      { error: 'Error al generar el PDF' },
+      { status: 500 }
+    )
+  }
+}

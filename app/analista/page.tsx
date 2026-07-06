@@ -62,7 +62,7 @@ import {
   deleteConversacion,
   type AnalistaConversacion,
 } from '@/lib/analista/conversaciones'
-import { generateReportPdf } from '@/lib/analista/report-pdf'
+
 
 const MONTHS = [
   { value: '1', label: 'Enero' },
@@ -531,15 +531,35 @@ export default function AnalistaPage() {
 
       toast.success('Informe guardado como tarea')
 
-      // Exportar el PDF con la plantilla de marca MDK (Esencial / Estratégico)
+      // Generar PDF usando el endpoint unificado
       const periodLabel = dateRangeLabel
       try {
-        await generateReportPdf({
-          clientName: selectedClient.nombre_del_negocio,
-          plan: selectedClient.plan,
-          periodLabel,
-          markdown: messageText,
+        const pdfResponse = await fetch('/api/agentes/analista/download-pdf/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientName: selectedClient.nombre_del_negocio,
+            plan: selectedClient.plan,
+            periodLabel,
+            markdown: messageText,
+            fileName: `Informe_${selectedClient.nombre_del_negocio.replace(/\s+/g, '_')}_${periodLabel.replace(/\s+/g, '_')}.pdf`,
+          }),
         })
+
+        if (pdfResponse.ok) {
+          const blob = await pdfResponse.blob()
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `Informe_${selectedClient.nombre_del_negocio.replace(/\s+/g, '_')}_${periodLabel.replace(/\s+/g, '_')}.pdf`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+        } else {
+          console.error('[v0] PDF generation failed:', pdfResponse.status)
+          toast.error('La tarea se guardó, pero no se pudo generar el PDF')
+        }
       } catch (pdfError) {
         console.error('[v0] Error exporting report PDF:', pdfError)
         toast.error('La tarea se guardó, pero no se pudo generar el PDF')
@@ -1000,7 +1020,7 @@ export default function AnalistaPage() {
                       <Check className="h-4 w-4" />
                       Confirmar y generar PDF
                     </Button>
-                    <Button variant="outline" size="sm" onClick={handleSaveAsReport}>
+                    <Button variant="outline" size="sm" onClick={() => handleSaveAsReport()}>
                       <FileText className="h-4 w-4" />
                       Guardar y exportar informe
                     </Button>
