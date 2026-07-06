@@ -308,7 +308,14 @@ function parseSections(markdown: string, indexList: string[]): Section[] {
     }
 
     // Línea tipo "**Label:** valor" -> candidato a fila de KPIs
-    const statMatch = trimmed.match(/^\*\*([^*]+?):\*\*\s*(.+)$/) || trimmed.match(/^\*\*([^*]+?)\*\*:\s*(.+)$/)
+    const statMatchBold = trimmed.match(/^\*\*([^*]+?):\*\*\s*(.+)$/) || trimmed.match(/^\*\*([^*]+?)\*\*:\s*(.+)$/)
+    // Red de seguridad: si el modelo usó viñeta en vez de negrita para un KPI
+    // corto (ej. "• Leads: 1453"), lo tratamos igual como candidato a KPI,
+    // pero solo si el valor es corto y "numérico" — para no confundirlo con
+    // una viñeta descriptiva normal (ej. "Cambio 1: ajuste de presupuesto...").
+    const statMatchBullet = trimmed.match(/^[-*•]\s*([^:]{2,40}):\s*(.+)$/)
+    const looksNumeric = (v: string) => v.length <= 30 && !v.endsWith('.') && /\d/.test(v)
+    const statMatch = statMatchBold || (statMatchBullet && looksNumeric(statMatchBullet[2]) ? statMatchBullet : null)
     if (statMatch && !currentCard) {
       pendingStats.push({ label: cleanInline(statMatch[1]), value: cleanInline(statMatch[2]) })
       i++
