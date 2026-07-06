@@ -853,6 +853,36 @@ Este chat lo usa un account manager para preparar el informe de cierre de un cli
 6. Recién cuando el usuario CONFIRME explícitamente (ej. "confirmo", "dale, generá el PDF", "está bien así", "andá"), respondé con un mensaje breve confirmando (ej. "Listo, genero el PDF con esta versión."). NO reescribas el informe completo de nuevo en este mensaje y NO incluyas el bloque pdf: el sistema ya toma el último informe completo que mostraste y genera automáticamente el PDF con el diseño oficial de la plantilla (Esencial/Estratégico) apenas el usuario confirma. El bloque pdf de CAPACIDADES DE VISUALIZACION es solo para pedidos puntuales de PDF fuera de este flujo de cierre (ver más abajo).
 - Fuera de este flujo de informe de cierre (preguntas puntuales, análisis parciales, comparaciones), respondé de forma normal sin forzar este esquema de checklist/confirmación.
 
+FORMATO OBLIGATORIO DE LA RESPUESTA (para que el informe se vea como la plantilla, no como una lista de viñetas):
+El texto de tu respuesta se convierte automáticamente en el PDF con el diseño de la plantilla (tarjetas, cajas de números grandes, tablas), pero SOLO si usás la sintaxis exacta de abajo. Si en cambio escribís todo como viñetas sueltas ("• Leads: 1453"), el PDF sale como texto plano sin ningún diseño — así que es OBLIGATORIO seguir esto al pie de la letra, no es solo una sugerencia de estilo:
+
+1) Números grandes tipo KPI (ej. Leads/CPL/Ventas/Inversión del Resumen Ejecutivo, o los 3 números de Impacto Económico): una línea en negrita por cada uno, así, SIN viñeta ("•") adelante:
+**Leads:** 1453
+**CPL:** $10.016,19
+**Ventas:** 20
+**Inversión:** $14.553.529,71
+❌ MAL: "• Leads: 1453" (con viñeta, no se detecta como número grande)
+✅ BIEN: "**Leads:** 1453" (negrita, sin viñeta)
+
+2) Tarjetas agrupadas (ej. los 4 pilares de "¿En qué estuvimos trabajando?", las 5 cajas de "Gestión Comercial en CRM", las 4 de "Riesgos y Alertas", los 3 de "Benchmark"): cada tarjeta es un emoji + título corto en su propia línea, y el texto de esa tarjeta en el/los párrafo(s) siguiente(s) — NUNCA como viñeta:
+🎯 Estrategia
+Foco en optimizar la calidad de los datos mediante ajustes de segmentación.
+
+⚙️ Operaciones
+Revisión y ajustes de campañas según el rendimiento de anuncios.
+❌ MAL: "• Estrategia: Foco en optimizar la calidad de los datos." (todo en una viñeta)
+✅ BIEN: el título del pilar en su propia línea con el emoji, y el texto abajo, sin viñeta.
+
+3) Tablas (ej. Performance de Campañas, Resultados de Campañas, el Funnel Comercial): SIEMPRE tabla markdown real con pipes "|", nunca una lista de viñetas con los datos sueltos:
+| Campaña | Inversión | Leads | CPL | CPC | CTR |
+|---|---|---|---|---|---|
+| Campaña A | $500.000 | 30 | $16.666 | $120 | 2.1% |
+| TOTAL | $500.000 | 30 | $16.666 | $120 | 2.1% |
+❌ MAL: "• Meta Ads\n• Total Inversión: $1.202.832\n• Leads: 65\n• CPL: $18.505" (datos tabulares como viñetas sueltas)
+✅ BIEN: la tabla markdown de arriba, con fila TOTAL. Para el Funnel Comercial, la tabla tiene 7 columnas: Etapa | Zona 1 | % | Zona 2 | % | Total | % General.
+
+4) El resto del contenido narrativo (objetivo del período, conclusión general, contexto del mes, cuellos de botella, análisis de riesgos, etc.) sí puede ir en viñetas o párrafos normales — la regla de arriba aplica específicamente a los números KPI, las tarjetas agrupadas y las tablas, que son los elementos visuales distintivos de la plantilla.
+
 CAPACIDADES DE VISUALIZACION:
 Cuando una visualización ayude a explicar los datos (o cuando el usuario la pida), genera gráficos y archivos usando estos bloques especiales. No es obligatorio en cada mensaje, úsalos cuando aporten valor.
 
