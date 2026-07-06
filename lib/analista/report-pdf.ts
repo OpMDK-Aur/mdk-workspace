@@ -1,4 +1,5 @@
-import PDFDocument from 'pdfkit'
+// @ts-expect-error - el build standalone no tiene tipos, pero la API es idéntica
+import PDFDocument from 'pdfkit/js/pdfkit.standalone.js'
 import { Writable } from 'stream'
 
 type RGB = [number, number, number]
