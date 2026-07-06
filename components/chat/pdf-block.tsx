@@ -84,7 +84,6 @@ export function PdfBlock({ config, messageContent }: PdfBlockProps) {
     setLoading(true)
     try {
       // Descargar desde el endpoint unificado que usa el mismo generador que "Confirmar y generar PDF"
-      console.log('[v0] Starting PDF download request...')
       const response = await fetch('/api/agentes/analista/download-pdf/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -97,17 +96,11 @@ export function PdfBlock({ config, messageContent }: PdfBlockProps) {
         }),
       })
 
-      console.log('[v0] Response status:', response.status, response.statusText)
-
       if (!response.ok) {
-        const errorText = await response.text()
-        console.error('[v0] Error response:', errorText)
         throw new Error(`Error al descargar PDF: ${response.status}`)
       }
 
       const blob = await response.blob()
-      console.log('[v0] Blob received, size:', blob.size, 'type:', blob.type)
-
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -116,9 +109,8 @@ export function PdfBlock({ config, messageContent }: PdfBlockProps) {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-      console.log('[v0] PDF download completed')
     } catch (e) {
-      console.error('[v0] Error downloading PDF:', e)
+      console.error('[v0] PDF download error:', e)
     } finally {
       setLoading(false)
     }

@@ -14,7 +14,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Generar PDF
-    console.log('[v0] Generating PDF for:', clientName)
     const pdfBuffer = await generateReportPdf({
       clientName,
       plan,
@@ -23,8 +22,6 @@ export async function POST(request: NextRequest) {
       markdown,
       fileName,
     })
-
-    console.log('[v0] PDF generated, size:', pdfBuffer?.length)
 
     if (!pdfBuffer || pdfBuffer.length === 0) {
       return NextResponse.json(
