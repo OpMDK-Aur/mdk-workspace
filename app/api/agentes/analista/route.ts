@@ -693,10 +693,21 @@ ${metricsByAccount.map(m => {
   if (!m.daily || m.daily.length === 0) {
     return `• ${m.accountName} (${m.account}) - ${m.platform}: sin datos diarios disponibles`
   }
-  const rows = m.daily.map(d => 
+  const MAX_DIAS_DETALLE = 45
+  const diasOmitidos = Math.max(0, m.daily.length - MAX_DIAS_DETALLE)
+  const diasAMostrar = diasOmitidos > 0 ? m.daily.slice(diasOmitidos) : m.daily
+  const resumenOmitidos = diasOmitidos > 0
+    ? (() => {
+        const omitidos = m.daily.slice(0, diasOmitidos)
+        const totalSpend = omitidos.reduce((a, d) => a + d.spend, 0)
+        const totalLeads = omitidos.reduce((a, d) => a + d.leads, 0)
+        return `    [Resumen de los ${diasOmitidos} días anteriores, no desglosados uno por uno para no saturar el análisis: ${totalLeads} leads | $${totalSpend.toFixed(2)} inversión total]\n`
+      })()
+    : ''
+  const rows = diasAMostrar.map(d =>
     `    ${d.date}: ${d.leads} leads | $${d.spend.toFixed(2)} inversión | ${d.impressions.toLocaleString()} impresiones | ${d.clicks.toLocaleString()} clics`
   ).join('\n')
-  return `• ${m.accountName} (${m.account}) - ${m.platform}:\n${rows}`
+  return `• ${m.accountName} (${m.account}) - ${m.platform}:\n${resumenOmitidos}${rows}`
 }).join('\n')}
 
 DESGLOSE POR CAMPAÑA (datos reales por campaña):
@@ -1022,9 +1033,19 @@ Luego genera un informe de análisis completo para ${client.nombre_del_negocio} 
 
     return result.toUIMessageStreamResponse({
       onError: (error) => {
-        console.error('[v0] Analista stream error:', error)
-        if (error instanceof Error) return error.message
-        return 'Error procesando la solicitud (posible problema al leer la imagen adjunta).'
+        console.error('[v0] Analista stream error (raw):', error)
+        if (error instanceof Error) {
+          console.error('[v0] Analista stream error message:', error.message)
+          return error.message
+        }
+        if (typeof error === 'string') return error
+        try {
+          const serialized = JSON.stringify(error)
+          console.error('[v0] Analista stream error (serialized):', serialized)
+          return `Error del modelo: ${serialized.slice(0, 300)}`
+        } catch {
+          return `Error procesando la solicitud (tipo no serializable: ${Object.prototype.toString.call(error)}). Revisá los logs de Vercel para el detalle completo.`
+        }
       },
     })
   } catch (error) {
