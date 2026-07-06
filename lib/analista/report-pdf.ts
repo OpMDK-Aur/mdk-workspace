@@ -1,16 +1,6 @@
-// @ts-expect-error - el build standalone no tiene tipos, pero la API es idéntica
-import PDFDocument from 'pdfkit/js/pdfkit.standalone.js'
-import { Writable } from 'stream'
-
-type RGB = [number, number, number]
-
-// MDK Brand Colors
-const ORANGE: RGB = [255, 122, 0]
-const NEAR_BLACK: RGB = [20, 16, 12]
-const WHITE: RGB = [255, 255, 255]
-const DARK_TEXT: RGB = [30, 30, 30]
-const GRAY: RGB = [120, 120, 120]
-const LIGHT_GRAY: RGB = [242, 241, 239]
+import { PDFDocument as PDFLibDocument } from 'pdf-lib'
+import fs from 'fs'
+import path from 'path'
 
 export interface ReportPdfInput {
   clientName: string
@@ -22,134 +12,95 @@ export interface ReportPdfInput {
 }
 
 /**
- * Genera un PDF que replica EXACTAMENTE las plantillas MDK oficiales.
- * Solo rellena campos (X, N, []) sin alterar diseño ni tamaños.
+ * Carga la plantilla PDF correcta (Esencial o Estratégico) y agrega el contenido
+ * del agente analista sin alterar el diseño base de la plantilla.
  */
 export async function generateReportPdf(input: ReportPdfInput): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    try {
-      const chunks: Buffer[] = []
-
-      // Crear un stream writable que acumule los chunks
-      const bufferStream = new Writable({
-        write(chunk: Buffer, _encoding, callback) {
-          chunks.push(chunk)
-          callback()
-        },
-      })
-
-      const doc = new PDFDocument({ size: 'A4', margin: 40 })
-      doc.pipe(bufferStream)
-
-      doc.on('error', (err) => {
-        console.error('[v0] PDF document error:', err)
-        reject(err)
-      })
-
-      bufferStream.on('error', (err) => {
-        console.error('[v0] Buffer stream error:', err)
-        reject(err)
-      })
-
-      const isEstrategico = (input.plan || '').toLowerCase().includes('estrat')
-      const title = isEstrategico ? 'INFORME ESTRATÉGICO' : 'INFORME ESENCIAL'
-
-      // ===== PORTADA =====
-      doc.rect(0, 0, 612, 792).fill(NEAR_BLACK[0], NEAR_BLACK[1], NEAR_BLACK[2])
-
-      doc.fillColor(ORANGE[0], ORANGE[1], ORANGE[2])
-      doc.fontSize(32)
-      doc.text('MDK', 60, 80)
-
-      doc.fillColor(WHITE[0], WHITE[1], WHITE[2])
-      doc.fontSize(28)
-      doc.text(title, 60, 140, { width: 400 })
-
-      doc.fillColor(ORANGE[0], ORANGE[1], ORANGE[2])
-      doc.fontSize(14)
-      doc.text('DE VENTAS Y OPERACIONES', 60, 200)
-
-      // Cuadro con info
-      doc.rect(60, 280, 450, 120).stroke(ORANGE[0], ORANGE[1], ORANGE[2])
-
-      doc.fillColor(WHITE[0], WHITE[1], WHITE[2])
-      doc.fontSize(11)
-      doc.text('CLIENTE', 75, 300)
-      doc.fontSize(10)
-      doc.text(input.clientName, 75, 320, { width: 420 })
-
-      doc.fontSize(11)
-      doc.fillColor(WHITE[0], WHITE[1], WHITE[2])
-      doc.text('PERÍODO', 75, 360)
-      doc.fontSize(10)
-      doc.text(input.periodLabel, 75, 380, { width: 420 })
-
-      // Footer portada
-      doc.fontSize(9)
-      doc.fillColor(GRAY[0], GRAY[1], GRAY[2])
-      doc.text('MDK - www.madketing.io', 60, 740)
-
-      // ===== CONTENIDO DINAMICO =====
-      doc.addPage()
-
-      doc.fillColor(DARK_TEXT[0], DARK_TEXT[1], DARK_TEXT[2])
-      doc.fontSize(16)
-      doc.text('RESUMEN EJECUTIVO', 60, 80)
-
-      // Línea separadora
-      doc.moveTo(60, 110)
-      doc.lineTo(550, 110)
-      doc.stroke(ORANGE[0], ORANGE[1], ORANGE[2])
-
-      // Extraer contenido del markdown y mostrar
-      const lines = input.markdown.split('\n').filter((l) => l.trim())
-      let yPos = 140
-
-      for (const line of lines) {
-        if (yPos > 700) {
-          doc.addPage()
-          yPos = 60
-        }
-
-        if (line.startsWith('#')) {
-          // Encabezado
-          doc.fontSize(12)
-          doc.fillColor(ORANGE[0], ORANGE[1], ORANGE[2])
-          doc.text(line.replace(/^#+\s*/, ''), 60, yPos)
-          yPos += 25
-        } else if (line.startsWith('- ') || line.startsWith('* ')) {
-          // Viñeta
-          doc.fontSize(10)
-          doc.fillColor(DARK_TEXT[0], DARK_TEXT[1], DARK_TEXT[2])
-          const text = line.replace(/^[-*]\s*/, '')
-          doc.text('• ' + text, 75, yPos, { width: 460 })
-          yPos += 20
-        } else if (line.trim()) {
-          // Párrafo normal
-          doc.fontSize(10)
-          doc.fillColor(DARK_TEXT[0], DARK_TEXT[1], DARK_TEXT[2])
-          doc.text(line, 60, yPos, { width: 495 })
-          yPos += 20
-        }
+  try {
+    const isEstrategico = (input.plan || '').toLowerCase().includes('estrat')
+    const templateFileName = isEstrategico ? 'Informe_Estrategico_MDK.pdf' : 'Informe_Esencial_MDK.pdf'
+    
+    // Cargar plantilla PDF desde public/templates
+    const templatePath = path.join(process.cwd(), 'public', 'templates', templateFileName)
+    console.log('[v0] Loading template from:', templatePath)
+    
+    const templateBytes = fs.readFileSync(templatePath)
+    const pdfDoc = await PDFLibDocument.load(templateBytes)
+    
+    console.log('[v0] Template loaded successfully, pages:', pdfDoc.getPageCount())
+    
+    // Obtener la primera página para agregar texto
+    const pages = pdfDoc.getPages()
+    const firstPage = pages[0]
+    const { width, height } = firstPage.getSize()
+    
+    console.log('[v0] Page dimensions:', width, 'x', height)
+    
+    // Agregar información del cliente en la portada
+    // Nota: Las coordenadas deben ajustarse según donde estén los campos en la plantilla
+    // Para ahora, agregamos el contenido al final del documento
+    
+    // Agregar página nueva para el contenido del agente
+    const newPage = pdfDoc.addPage([width, height])
+    
+    // Extraer y formatear el contenido del markdown
+    const lines = input.markdown.split('\n').filter((l) => l.trim())
+    
+    let yPosition = height - 50 // Comenzar desde arriba con margen
+    const lineHeight = 15
+    const marginX = 40
+    const maxWidth = width - 80
+    
+    for (const line of lines) {
+      // Si llegamos al final de la página, agregar nueva página
+      if (yPosition < 50) {
+        const anotherPage = pdfDoc.addPage([width, height])
+        yPosition = height - 50
       }
-
-      // Footer
-      doc.fontSize(8)
-      doc.fillColor(GRAY[0], GRAY[1], GRAY[2])
-      doc.text('Página 2 de 2', 60, 760)
-
-      // Esperar a que el stream termine
-      doc.on('end', () => {
-        const pdfBuffer = Buffer.concat(chunks)
-        console.log('[v0] PDF generated successfully, size:', pdfBuffer.length)
-        resolve(pdfBuffer)
+      
+      // Formatear líneas según su tipo (encabezados, viñetas, etc.)
+      let displayText = line
+      let fontSize = 11
+      
+      if (line.startsWith('# ')) {
+        // Encabezado nivel 1
+        displayText = line.replace(/^# /, '')
+        fontSize = 16
+        yPosition -= 5 // Espacio extra antes de encabezado
+      } else if (line.startsWith('## ')) {
+        // Encabezado nivel 2
+        displayText = line.replace(/^## /, '')
+        fontSize = 14
+        yPosition -= 3
+      } else if (line.startsWith('- ') || line.startsWith('* ')) {
+        // Viñeta
+        displayText = '• ' + line.replace(/^[-*]\s*/, '')
+        fontSize = 11
+      } else {
+        fontSize = 11
+      }
+      
+      // Agregar texto a la página
+      newPage.drawText(displayText, {
+        x: marginX,
+        y: yPosition,
+        size: fontSize,
+        maxWidth: maxWidth,
+        lineHeight: lineHeight,
       })
-
-      doc.end()
-    } catch (error) {
-      console.error('[v0] PDF generation catch error:', error)
-      reject(error)
+      
+      yPosition -= lineHeight + (fontSize === 11 ? 2 : 8)
     }
-  })
+    
+    // Guardar y retornar el PDF modificado
+    const pdfBytes = await pdfDoc.save()
+    console.log('[v0] PDF generated successfully, size:', pdfBytes.length)
+    
+    return Buffer.from(pdfBytes)
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.error('[v0] PDF generation error:', errorMessage)
+    console.error('[v0] Error stack:', error instanceof Error ? error.stack : 'no stack')
+    throw error
+  }
 }
-
