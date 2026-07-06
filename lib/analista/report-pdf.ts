@@ -47,7 +47,7 @@ const ESENCIAL_INDEX = [
 
 const ESTRATEGICO_INDEX = [
   'Resumen Ejecutivo',
-  '¿En qué estuvimos trabajando?',
+  '¿En qué estuvimos trabajando este mes?',
   'Testing y Optimización Creativa',
   'Performance de Campañas',
   'Acciones Realizadas',
@@ -140,7 +140,7 @@ function normalizeTitle(s: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/^[\s\d.\-–—)]+/, '') // saca numeración inicial ("01.", "1)", etc.)
-    .replace(/[^a-z0-9¿?]+/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
     .trim()
 }
 
