@@ -7,6 +7,7 @@ import { ChartBlock } from './chart-block'
 import { FileBlock } from './file-block'
 import { ImageBlock } from './image-block'
 import { PdfBlock } from './pdf-block'
+import { FaltantesBlock } from './faltantes-block'
 
 export type Artifact = {
   type: 'chart' | 'pdf' | 'image'
@@ -17,6 +18,7 @@ export type Artifact = {
 interface MessageContentProps {
   content: string
   onOpenArtifact?: (artifact: Artifact) => void
+  onSubmitFaltantes?: (text: string, files: File[]) => void
 }
 
 // Shared markdown components: styled tables, lists, code, etc.
@@ -40,6 +42,22 @@ const markdownComponents = {
   tr: ({ children }: { children?: React.ReactNode }) => (
     <tr className="even:bg-muted/20">{children}</tr>
   ),
+}
+
+// Red de seguridad: si el modelo escribió el checklist "🔲 INFORMACIÓN QUE
+// NECESITO..." en texto plano pero se olvidó del bloque ```faltantes, lo
+// extraemos igual de los bullets para poder mostrar el formulario interactivo.
+function extractFaltantesFallback(content: string): string[] {
+  const headingMatch = content.match(/🔲[^\n]*\n((?:[ \t]*[-*][^\n]*\n?)+)/)
+  if (!headingMatch) return []
+
+  return headingMatch[1]
+    .split('\n')
+    .map((line) => line.replace(/^[ \t]*[-*]\s*/, '').trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/\*\*/g, '')) // saca negrita markdown
+    .map((line) => line.split(':')[0].trim()) // se queda con el nombre del campo, no la descripción
+    .filter(Boolean)
 }
 
 function ArtifactCard({
@@ -68,11 +86,11 @@ function ArtifactCard({
   )
 }
 
-export function MessageContent({ content, onOpenArtifact }: MessageContentProps) {
-  // Parse content for special blocks (```chart, ```file, ```image, ```pdf)
-  const parts: Array<{ type: 'text' | 'chart' | 'file' | 'image' | 'pdf'; content: string }> = []
+export function MessageContent({ content, onOpenArtifact, onSubmitFaltantes }: MessageContentProps) {
+  // Parse content for special blocks (```chart, ```file, ```image, ```pdf, ```faltantes)
+  const parts: Array<{ type: 'text' | 'chart' | 'file' | 'image' | 'pdf' | 'faltantes'; content: string }> = []
 
-  const regex = /```(chart|file|image|pdf)\n([\s\S]*?)```/g
+  const regex = /```(chart|file|image|pdf|faltantes)\n([\s\S]*?)```/g
   let lastIndex = 0
   let match
 
@@ -80,12 +98,22 @@ export function MessageContent({ content, onOpenArtifact }: MessageContentProps)
     if (match.index > lastIndex) {
       parts.push({ type: 'text', content: content.slice(lastIndex, match.index) })
     }
-    parts.push({ type: match[1] as 'chart' | 'file' | 'image' | 'pdf', content: match[2].trim() })
+    parts.push({ type: match[1] as 'chart' | 'file' | 'image' | 'pdf' | 'faltantes', content: match[2].trim() })
     lastIndex = regex.lastIndex
   }
 
   if (lastIndex < content.length) {
     parts.push({ type: 'text', content: content.slice(lastIndex) })
+  }
+
+  // Si el modelo no emitió el bloque ```faltantes explícito, lo completamos
+  // extrayéndolo del checklist en texto plano (ver extractFaltantesFallback).
+  const yaTieneFaltantes = parts.some((p) => p.type === 'faltantes')
+  if (!yaTieneFaltantes) {
+    const fallbackItems = extractFaltantesFallback(content)
+    if (fallbackItems.length > 0) {
+      parts.push({ type: 'faltantes', content: JSON.stringify({ items: fallbackItems }) })
+    }
   }
 
   if (parts.length === 0) {
@@ -171,6 +199,22 @@ export function MessageContent({ content, onOpenArtifact }: MessageContentProps)
           } catch (e) {
             console.error('Failed to parse pdf config:', e)
             return <pre key={index} className="text-red-500">Error parsing pdf: {part.content}</pre>
+          }
+        }
+
+        if (part.type === 'faltantes') {
+          try {
+            const config = JSON.parse(part.content)
+            return (
+              <FaltantesBlock
+                key={index}
+                items={Array.isArray(config.items) ? config.items : []}
+                onSubmit={onSubmitFaltantes}
+              />
+            )
+          } catch (e) {
+            console.error('Failed to parse faltantes config:', e)
+            return null
           }
         }
 

@@ -30,6 +30,12 @@ const nextConfig = {
       bodySizeLimit: '50mb',
     },
   },
+  // Asegura que los PDFs de plantilla se empaqueten dentro de la función
+  // serverless de download-pdf. Sin esto, fs.readFileSync() tira ENOENT
+  // en producción porque /public no se incluye automáticamente en el
+  // bundle de la función.
+  outputFileTracingIncludes: {
+    'app/api/agentes/analista/download-pdf/route': ['./public/templates/**/*.pdf'],
+  },
 }
-
 export default nextConfig

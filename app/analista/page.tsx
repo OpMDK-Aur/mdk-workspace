@@ -62,7 +62,7 @@ import {
   deleteConversacion,
   type AnalistaConversacion,
 } from '@/lib/analista/conversaciones'
-import { generateReportPdf } from '@/lib/analista/report-pdf'
+
 
 const MONTHS = [
   { value: '1', label: 'Enero' },
@@ -102,6 +102,11 @@ export default function AnalistaPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
   const [clientOpen, setClientOpen] = useState(false)
+  const [cuentasDisponibles, setCuentasDisponibles] = useState<
+    Array<{ id: string; plataforma: string; id_cuenta: string; nombre_cuenta: string | null }>
+  >([])
+  const [selectedCuentaIds, setSelectedCuentaIds] = useState<string[]>([])
+  const [loadingCuentas, setLoadingCuentas] = useState(false)
   const [dateStart, setDateStart] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
   const [dateEnd, setDateEnd] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'))
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1))
@@ -129,7 +134,7 @@ export default function AnalistaPage() {
     async function fetchClients() {
       const { data } = await supabase
         .from('clientes')
-        .select('id, nombre_del_negocio')
+        .select('id, nombre_del_negocio, plan')
         .eq('activo', true)
         .order('nombre_del_negocio')
       if (data) setClients(data as Client[])
@@ -157,6 +162,32 @@ export default function AnalistaPage() {
     [clients],
   )
 
+  const fetchCuentasCliente = async (clientId: string) => {
+    setLoadingCuentas(true)
+    setCuentasDisponibles([])
+    setSelectedCuentaIds([])
+    try {
+      const res = await fetch(`/api/agentes/analista/cuentas?clientId=${clientId}`)
+      if (!res.ok) throw new Error('Error al obtener cuentas')
+      const data = await res.json()
+      const cuentas = data.cuentas || []
+      setCuentasDisponibles(cuentas)
+      // Por defecto, todas seleccionadas (mismo comportamiento que antes de tener el selector)
+      setSelectedCuentaIds(cuentas.map((c: { id_cuenta: string }) => c.id_cuenta))
+    } catch (error) {
+      console.error('[v0] Error fetching cuentas publicitarias:', error)
+      toast.error('No se pudieron cargar las cuentas publicitarias del cliente')
+    } finally {
+      setLoadingCuentas(false)
+    }
+  }
+
+  const toggleCuenta = (idCuenta: string) => {
+    setSelectedCuentaIds((prev) =>
+      prev.includes(idCuenta) ? prev.filter((id) => id !== idCuenta) : [...prev, idCuenta]
+    )
+  }
+
   const handleStartAnalysis = async () => {
     if (!selectedClient) {
       toast.error('Selecciona un cliente primero')
@@ -183,16 +214,23 @@ export default function AnalistaPage() {
     setArtifact(null)
     setAttachments([])
 
-    const greeting: ChatMessage = {
+    // Pedido inicial real: el account manager necesita ver TODA la info del
+    // período de entrada (no un saludo genérico) para poder confirmarla,
+    // corregirla o completarla antes de generar el PDF.
+    const kickoffPrompt = `Traé el informe completo de performance del período (${dateRangeLabel}). Antes de redactarlo, revisá qué información te falta según la plantilla del plan y preguntámela primero.`
+
+    const kickoffMessage: ChatMessage = {
       id: crypto.randomUUID(),
-      role: 'assistant',
-      content: `Hola, soy tu analista para **${selectedClient.nombre_del_negocio}** (${dateRangeLabel}).\n\nPuedes pedirme lo que necesites: un análisis puntual, comparar métricas, generar un informe completo, crear gráficos, exportar datos a CSV o incluso generar imágenes para tus reportes. También puedes adjuntar capturas o archivos para que los analice.\n\n¿En qué te ayudo?`,
+      role: 'user',
+      content: kickoffPrompt,
     }
-    setChatMessages([greeting])
-    if (conv) {
-      saveMensaje({ conversacionId: conv.id, rol: 'assistant', contenido: greeting.content })
+    setChatMessages([kickoffMessage])
+    if (conv?.id) {
+      saveMensaje({ conversacionId: conv.id, rol: 'user', contenido: kickoffPrompt })
       refreshConversaciones()
     }
+
+    await streamAssistantReply([kickoffMessage], conv?.id ?? null)
   }
 
   // New empty conversation (keeps client/period selection)
@@ -276,14 +314,17 @@ export default function AnalistaPage() {
     })
   }
 
-  const uploadAttachments = async (): Promise<Array<{ name: string; url: string; type: string }>> => {
-    if (attachments.length === 0) return []
+  const uploadAttachments = async (
+    explicitFiles?: Array<{ file: File }>
+  ): Promise<Array<{ name: string; url: string; type: string }>> => {
+    const source = explicitFiles ?? attachments
+    if (source.length === 0) return []
 
     setUploadingFiles(true)
     const uploadedFiles: Array<{ name: string; url: string; type: string }> = []
 
     try {
-      for (const attachment of attachments) {
+      for (const attachment of source) {
         const formData = new FormData()
         formData.append('file', attachment.file)
 
@@ -308,40 +349,11 @@ export default function AnalistaPage() {
     return uploadedFiles
   }
 
-  const handleSendMessage = async (content: string) => {
-    if ((!content?.trim() && attachments.length === 0) || isLoading || uploadingFiles || !selectedClient) return
-
-    // Set loading immediately so a second Enter during the upload can't trigger a duplicate send
+  // Lógica de streaming compartida: la usan tanto el kickoff automático
+  // (handleStartAnalysis) como el envío manual de mensajes (handleSendMessage).
+  const streamAssistantReply = async (apiMessages: ChatMessage[], convId: string | null) => {
     setIsLoading(true)
-
-    const hadAttachments = attachments.length > 0
-    const uploadedFiles = await uploadAttachments()
-
-    // If the user attached files but none uploaded successfully, abort instead of sending an empty request
-    if (hadAttachments && uploadedFiles.length === 0) {
-      toast.error('No se pudieron subir los archivos. Intenta de nuevo.')
-      setIsLoading(false)
-      return
-    }
-
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content,
-      attachments: uploadedFiles.length > 0 ? uploadedFiles : undefined,
-    }
-    const newMessages = [...chatMessages, userMessage]
-    setChatMessages(newMessages)
-    setInputValue('')
-    setAttachments([])
-
-    const convId = currentConvId
-    if (convId) {
-      saveMensaje({ conversacionId: convId, rol: 'user', contenido: content })
-    }
-
     try {
-      // Extract month/year from dateStart for API compatibility
       const startDate = new Date(dateStart)
       const apiMonth = startDate.getMonth() + 1
       const apiYear = startDate.getFullYear()
@@ -350,20 +362,21 @@ export default function AnalistaPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: newMessages.map((m) => ({
+          messages: apiMessages.map((m) => ({
             role: m.role,
             content: m.attachments
               ? `${m.content}\n\n${m.attachments.map((a) => `[Archivo: ${a.name}]`).join('\n')}`
               : m.content,
           })),
-          clientId: selectedClient.id,
+          clientId: selectedClient?.id,
           month: apiMonth,
           year: apiYear,
           periodo: {
             start: dateStart,
             end: dateEnd,
           },
-          attachments: uploadedFiles,
+          cuentas: selectedCuentaIds,
+          attachments: apiMessages[apiMessages.length - 1]?.attachments ?? [],
         }),
       })
 
@@ -426,14 +439,57 @@ export default function AnalistaPage() {
       // Persist assistant message + auto-title
       if (convId && assistantContent) {
         saveMensaje({ conversacionId: convId, rol: 'assistant', contenido: assistantContent })
-        maybeGenerateTitle(convId, content, assistantContent)
+        const lastUserMsg = apiMessages[apiMessages.length - 1]?.content ?? ''
+        maybeGenerateTitle(convId, lastUserMsg, assistantContent)
       }
+
+      return assistantContent
     } catch (error) {
       console.error('[v0] Error sending message:', error)
       toast.error('Error al enviar mensaje')
+      return ''
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleSendMessage = async (content: string, extraFiles?: File[]) => {
+    const hasExtraFiles = !!extraFiles && extraFiles.length > 0
+    if ((!content?.trim() && attachments.length === 0 && !hasExtraFiles) || isLoading || uploadingFiles || !selectedClient) return
+
+    // Set loading immediately so a second Enter during the upload can't trigger a duplicate send
+    setIsLoading(true)
+
+    const hadAttachments = attachments.length > 0 || hasExtraFiles
+    const uploadedFiles = hasExtraFiles
+      ? await uploadAttachments(extraFiles!.map((file) => ({ file })))
+      : await uploadAttachments()
+
+    // If the user attached files but none uploaded successfully, abort instead of sending an empty request
+    if (hadAttachments && uploadedFiles.length === 0) {
+      toast.error('No se pudieron subir los archivos. Intenta de nuevo.')
+      setIsLoading(false)
+      return
+    }
+
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content,
+      attachments: uploadedFiles.length > 0 ? uploadedFiles : undefined,
+    }
+    const newMessages = [...chatMessages, userMessage]
+    setChatMessages(newMessages)
+    setInputValue('')
+    setAttachments([])
+
+    const convId = currentConvId
+    if (convId) {
+      saveMensaje({ conversacionId: convId, rol: 'user', contenido: content })
+    }
+
+    setIsLoading(false) // reset before streamAssistantReply takes over the loading lifecycle
+    return await streamAssistantReply(newMessages, convId)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -446,13 +502,11 @@ export default function AnalistaPage() {
     }
   }
 
-  const handleSaveAsReport = async () => {
-    if (chatMessages.length === 0 || !selectedClient) return
+  const handleSaveAsReport = async (overrideContent?: string) => {
+    if ((chatMessages.length === 0 && !overrideContent) || !selectedClient) return
 
-    const lastAssistantMessage = chatMessages.filter((m) => m.role === 'assistant').pop()
-    if (!lastAssistantMessage) return
-
-    const messageText = lastAssistantMessage.content
+    const messageText = overrideContent ?? chatMessages.filter((m) => m.role === 'assistant').pop()?.content
+    if (!messageText) return
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -477,15 +531,35 @@ export default function AnalistaPage() {
 
       toast.success('Informe guardado como tarea')
 
-      // Exportar el PDF con la plantilla de marca MDK (Esencial / Estratégico)
+      // Generar PDF usando el endpoint unificado
       const periodLabel = dateRangeLabel
       try {
-        await generateReportPdf({
-          clientName: selectedClient.nombre_del_negocio,
-          plan: selectedClient.plan,
-          periodLabel,
-          markdown: messageText,
+        const pdfResponse = await fetch('/api/agentes/analista/download-pdf/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientName: selectedClient.nombre_del_negocio,
+            plan: selectedClient.plan,
+            periodLabel,
+            markdown: messageText,
+            fileName: `Informe_${selectedClient.nombre_del_negocio.replace(/\s+/g, '_')}_${periodLabel.replace(/\s+/g, '_')}.pdf`,
+          }),
         })
+
+        if (pdfResponse.ok) {
+          const blob = await pdfResponse.blob()
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `Informe_${selectedClient.nombre_del_negocio.replace(/\s+/g, '_')}_${periodLabel.replace(/\s+/g, '_')}.pdf`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+        } else {
+          console.error('[v0] PDF generation failed:', pdfResponse.status)
+          toast.error('La tarea se guardó, pero no se pudo generar el PDF')
+        }
       } catch (pdfError) {
         console.error('[v0] Error exporting report PDF:', pdfError)
         toast.error('La tarea se guardó, pero no se pudo generar el PDF')
@@ -591,6 +665,7 @@ export default function AnalistaPage() {
                         onSelect={() => {
                           setSelectedClient(client)
                           setClientOpen(false)
+                          fetchCuentasCliente(client.id)
                         }}
                       >
                         <Check
@@ -607,6 +682,50 @@ export default function AnalistaPage() {
               </Command>
             </PopoverContent>
           </Popover>
+
+          {/* Ad Account Multi-select */}
+          {selectedClient && (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Cuentas publicitarias</label>
+              {loadingCuentas ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground px-1 py-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Cargando cuentas...
+                </div>
+              ) : cuentasDisponibles.length === 0 ? (
+                <p className="text-xs text-muted-foreground px-1 py-2">
+                  Este cliente no tiene cuentas publicitarias configuradas.
+                </p>
+              ) : (
+                <div className="border rounded-md divide-y max-h-40 overflow-y-auto">
+                  {cuentasDisponibles.map((cuenta) => (
+                    <label
+                      key={cuenta.id}
+                      className="flex items-start gap-2 px-2.5 py-1.5 text-sm cursor-pointer hover:bg-muted/50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedCuentaIds.includes(cuenta.id_cuenta)}
+                        onChange={() => toggleCuenta(cuenta.id_cuenta)}
+                        className="h-3.5 w-3.5 accent-[#7F77DD] mt-0.5 shrink-0"
+                      />
+                      <span className="flex-1 leading-snug break-words">
+                        {cuenta.nombre_cuenta || 'Sin nombre'}{' '}
+                        <span className="text-muted-foreground text-xs">
+                          ({cuenta.id_cuenta}) ({cuenta.plataforma})
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {cuentasDisponibles.length > 0 && selectedCuentaIds.length === 0 && (
+                <p className="text-[11px] text-amber-500 px-1">
+                  Sin cuentas seleccionadas: el informe no va a traer datos de plataforma.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Date Range Inputs */}
           <div className="space-y-2">
@@ -749,7 +868,11 @@ export default function AnalistaPage() {
                         <div className="group max-w-[90%]">
                           <div className="rounded-2xl px-4 py-3 bg-muted">
                             {message.content ? (
-                              <MessageContent content={message.content} onOpenArtifact={setArtifact} />
+                              <MessageContent
+                                content={message.content}
+                                onOpenArtifact={setArtifact}
+                                onSubmitFaltantes={(text, files) => handleSendMessage(text, files)}
+                              />
                             ) : (
                               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                 <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#7F77DD]" />
@@ -880,8 +1003,24 @@ export default function AnalistaPage() {
                 </div>
 
                 {chatMessages.length > 0 && (
-                  <div className="mt-3 flex justify-center">
-                    <Button variant="outline" size="sm" onClick={handleSaveAsReport}>
+                  <div className="mt-3 flex justify-center gap-2">
+                    <Button
+                      size="sm"
+                      className="bg-[#7F77DD] hover:bg-[#6B63C7]"
+                      disabled={isLoading || uploadingFiles}
+                      onClick={async () => {
+                        // El informe a exportar es el que YA está en pantalla (el
+                        // último borrador completo), no la respuesta corta que la
+                        // IA da al confirmar — esa es solo un acuse de recibo.
+                        const draftToExport = chatMessages.filter((m) => m.role === 'assistant').pop()?.content
+                        await handleSendMessage('Confirmo la información del informe tal como está.')
+                        if (draftToExport) await handleSaveAsReport(draftToExport)
+                      }}
+                    >
+                      <Check className="h-4 w-4" />
+                      Confirmar y generar PDF
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => handleSaveAsReport()}>
                       <FileText className="h-4 w-4" />
                       Guardar y exportar informe
                     </Button>
