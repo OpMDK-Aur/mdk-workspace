@@ -34,8 +34,11 @@ const nextConfig = {
   // serverless de download-pdf. Sin esto, fs.readFileSync() tira ENOENT
   // en producción porque /public no se incluye automáticamente en el
   // bundle de la función.
-outputFileTracingIncludes: {
-  'app/api/agentes/analista/download-pdf/route': ['./public/*.pdf'],
-},
+  outputFileTracingIncludes: {
+    'app/api/agentes/analista/download-pdf/route': [
+      './lib/analista/pdf-templates/**/*.html',
+      './lib/analista/pdf-assets/**/*',
+    ],
+  },
 }
 export default nextConfig
