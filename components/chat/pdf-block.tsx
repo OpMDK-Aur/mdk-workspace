@@ -22,55 +22,16 @@ interface PdfData {
   title?: string
   subtitle?: string
   sections?: PdfSection[]
+  // Nuevos campos: la IA los completa con los datos reales del cliente
+  clientName?: string
+  plan?: string
+  periodLabel?: string
+  responsable?: string
 }
 
 interface PdfBlockProps {
   config: PdfData
-  /** Full assistant message content, used to build the PDF body reliably */
   messageContent?: string
-}
-
-type Block =
-  | { kind: 'text'; value: string }
-  | { kind: 'chart'; value: Record<string, unknown> }
-
-// Strip basic markdown so the PDF text is clean
-function cleanMarkdown(text: string): string {
-  return text
-    .replace(/\*\*(.*?)\*\*/g, '$1')
-    .replace(/\*(.*?)\*/g, '$1')
-    .replace(/`(.*?)`/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/^\s*[-*]\s+/gm, '\u2022 ')
-    .trim()
-}
-
-// Parse the full message into ordered text + chart blocks (ignore file/image/pdf fences)
-function parseMessage(content: string): Block[] {
-  const blocks: Block[] = []
-  const regex = /```(chart|file|image|pdf)\n([\s\S]*?)```/g
-  let lastIndex = 0
-  let match: RegExpExecArray | null
-
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      const txt = content.slice(lastIndex, match.index).trim()
-      if (txt) blocks.push({ kind: 'text', value: txt })
-    }
-    if (match[1] === 'chart') {
-      try {
-        blocks.push({ kind: 'chart', value: JSON.parse(match[2].trim()) })
-      } catch {
-        // ignore malformed chart
-      }
-    }
-    lastIndex = regex.lastIndex
-  }
-  if (lastIndex < content.length) {
-    const txt = content.slice(lastIndex).trim()
-    if (txt) blocks.push({ kind: 'text', value: txt })
-  }
-  return blocks
 }
 
 export function PdfBlock({ config, messageContent }: PdfBlockProps) {
@@ -83,14 +44,18 @@ export function PdfBlock({ config, messageContent }: PdfBlockProps) {
   const handleDownload = async () => {
     setLoading(true)
     try {
-      // Descargar desde el endpoint unificado que usa el mismo generador que "Confirmar y generar PDF"
       const response = await fetch('/api/agentes/analista/download-pdf/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          clientName: config.name || 'Cliente',
-          plan: config.subtitle?.includes('Estratégico') ? 'estrategico' : 'esencial',
-          periodLabel: 'Período de análisis',
+          // Usamos los campos reales que ahora manda la IA en el bloque ```pdf.
+          // Si por algún motivo faltan (respuesta vieja sin estos campos),
+          // caemos a valores explícitos que avisan del problema en vez de
+          // adivinar mal como antes.
+          clientName: config.clientName || 'Cliente no especificado',
+          plan: config.plan || 'Esencial',
+          periodLabel: config.periodLabel || 'Período no especificado',
+          responsable: config.responsable || '',
           markdown: messageContent || '',
           fileName: fileName,
         }),
