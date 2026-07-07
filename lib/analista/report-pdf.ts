@@ -21,7 +21,7 @@ export async function generateReportPdf(input: ReportPdfInput): Promise<Buffer> 
     const templateFileName = isEstrategico ? 'Informe_Estrategico_MDK.pdf' : 'Informe_Esencial_MDK.pdf'
 
     // Cargar plantilla PDF desde public/templates
-    const templatePath = path.join(process.cwd(), 'public', 'templates', templateFileName)
+    const templatePath = path.join(process.cwd(), 'public', templateFileName)
     console.log('[v0] Loading template from:', templatePath)
 
     const templateBytes = fs.readFileSync(templatePath)
