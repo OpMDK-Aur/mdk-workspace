@@ -776,6 +776,68 @@ export default function ColaboradoresPage() {
     setEditedRows(new Set([...editedRows, newMetrica.id]))
   }
 
+  const handleDuplicateFromPreviousMonth = async () => {
+    // Calculate previous month
+    let previousMonth = selectedMonth - 1
+    let previousYear = selectedYear
+    if (previousMonth < 1) {
+      previousMonth = 12
+      previousYear = selectedYear - 1
+    }
+
+    setIsLoading(true)
+    try {
+      // Fetch metrics from previous month
+      const { data: previousMetrics, error } = await supabase
+        .from('metricas_colaborador')
+        .select(`
+          *,
+          colaborador:colaborador_id(id, nombre, apellido, email, rol_id, roles(id, nombre)),
+          cliente:cliente_id(id, nombre_del_negocio, fee_mdk, fee_aurelia, fee_consultoria)
+        `)
+        .eq('mes', previousMonth)
+        .eq('anio', previousYear)
+
+      if (error) throw error
+
+      if (!previousMetrics || previousMetrics.length === 0) {
+        toast.error(`No hay métricas para duplicar de ${previousMonth}/${previousYear}`)
+        setIsLoading(false)
+        return
+      }
+
+      // Create new metrics for current month based on previous month's data
+      const newMetricas = previousMetrics.map(m => ({
+        id: crypto.randomUUID(),
+        colaborador_id: m.colaborador_id,
+        cliente_id: m.cliente_id,
+        colaborador: m.colaborador as Colaborador,
+        cliente: m.cliente as Cliente,
+        fee_administrado: m.fee_administrado,
+        valor_hora: m.valor_hora,
+        horas_teoricas_cliente: m.horas_teoricas_cliente,
+        minimo_no_negociable_horas: m.minimo_no_negociable_horas,
+        horas_objetivo: m.horas_objetivo,
+        acumulado_mes_asignado: 0, // Reset accumulated hours for new month
+        porcentaje_asignacion: 0,
+        mes: selectedMonth,
+        anio: selectedYear,
+      }))
+
+      setMetricas(newMetricas)
+      // Mark all as edited so they can be saved
+      const newEditedRows = new Set(newMetricas.map(m => m.id))
+      setEditedRows(newEditedRows)
+      
+      toast.success(`${newMetricas.length} métricas duplicadas de ${previousMonth}/${previousYear}`)
+    } catch (err) {
+      console.error('[v0] Error duplicating metrics:', err)
+      toast.error('Error al duplicar métricas del mes anterior')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const handleUpdateField = (id: string, field: keyof MetricaColaborador, value: number) => {
     setMetricas(metricas.map(m => {
       if (m.id === id) {
@@ -1402,6 +1464,10 @@ export default function ColaboradoresPage() {
                   <Button variant="outline" size="sm" onClick={handleImportClick} disabled={isImporting}>
                     <Upload className="h-4 w-4 mr-1" />
                     {isImporting ? 'Importando...' : 'Importar CSV'}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleDuplicateFromPreviousMonth} disabled={isLoading}>
+                    <RefreshCw className="h-4 w-4 mr-1" />
+                    Duplicar mes anterior
                   </Button>
                   <Button variant="outline" size="sm" onClick={handleAddRow}>
                     <Plus className="h-4 w-4 mr-1" />
