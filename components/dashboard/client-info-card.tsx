@@ -275,8 +275,8 @@ export function ClientInfoCard({ client, unidadesDeNegocio = [], userRole, isAct
   return (
     <>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      {/* Servicios Contratados - Gestión completa de servicios */}
-      <ServiciosCliente clientId={client.id} />
+      {/* Servicios Contratados - Gestión completa de servicios - HIDDEN */}
+      {/* <ServiciosCliente clientId={client.id} /> */}
 
       {/* Informacion del Contacto */}
       <Card>

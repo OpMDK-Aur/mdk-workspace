@@ -96,6 +96,7 @@ interface MetricaColaborador {
   porcentaje_asignacion: number
   mes: number
   anio: number
+  created_at?: string
 }
 
 // Sortable column keys
@@ -107,6 +108,7 @@ type MetricasSortKey =
   | 'horas_teoricas_cliente'
   | 'minimo_no_negociable_horas'
   | 'horas_objetivo'
+  | 'created_at'
   | 'acumulado_mes_asignado'
 type RolesSortKey = 'colaborador' | 'rol' | 'puesto'
 
@@ -300,7 +302,7 @@ export default function ColaboradoresPage() {
         `)
         .eq('mes', selectedMonth)
         .eq('anio', selectedYear)
-        .order('created_at')
+        .order('created_at', { ascending: false })
 
       if (mets && mets.length > 0) {
         const processedMetricas = mets.map(m => {
@@ -1008,7 +1010,6 @@ export default function ColaboradoresPage() {
         if (!metrica) continue
 
         const payload = {
-          id: metrica.id,
           colaborador_id: metrica.colaborador_id,
           cliente_id: metrica.cliente_id,
           fee_administrado: metrica.fee_administrado,
@@ -1022,12 +1023,35 @@ export default function ColaboradoresPage() {
           anio: selectedYear,
         }
 
-        const { error } = await supabase
+        // Check if metric exists in database using the unique constraint
+        const { data: existing } = await supabase
           .from('metricas_colaborador')
-          .upsert(payload, { onConflict: 'colaborador_id,cliente_id,mes,anio' })
+          .select('id')
+          .eq('colaborador_id', metrica.colaborador_id)
+          .eq('cliente_id', metrica.cliente_id)
+          .eq('mes', selectedMonth)
+          .eq('anio', selectedYear)
+          .maybeSingle()
+
+        let error
+        if (existing) {
+          // Update existing metric
+          const { error: updateError } = await supabase
+            .from('metricas_colaborador')
+            .update(payload)
+            .eq('id', existing.id)
+          error = updateError
+        } else {
+          // Insert new metric
+          const { error: insertError } = await supabase
+            .from('metricas_colaborador')
+            .insert({ ...payload, id: metrica.id })
+          error = insertError
+        }
 
         if (error) {
           toast.error(`Error al guardar: ${error.message}`)
+          console.error('[v0] Save error:', error)
           setIsSaving(false)
           return
         }
@@ -1105,6 +1129,8 @@ export default function ColaboradoresPage() {
         return m.horas_objetivo || 0
       case 'acumulado_mes_asignado':
         return m.acumulado_mes_asignado || 0
+      case 'created_at':
+        return m.created_at ? new Date(m.created_at).getTime() : 0
     }
   }
 
@@ -1514,6 +1540,16 @@ export default function ColaboradoresPage() {
                             <SortIcon active={metricasSort?.key === 'cliente'} dir={metricasSort?.dir || 'asc'} />
                           </button>
                         </TableHead>
+                        <TableHead className="w-[140px]">
+                          <button
+                            type="button"
+                            onClick={() => toggleMetricasSort('created_at')}
+                            className="flex items-center gap-1 hover:text-foreground transition-colors"
+                          >
+                            Fecha Creación
+                            <SortIcon active={metricasSort?.key === 'created_at'} dir={metricasSort?.dir || 'desc'} />
+                          </button>
+                        </TableHead>
                         <TableHead className="text-right w-[140px]">
                           <button
                             type="button"
@@ -1625,6 +1661,9 @@ export default function ColaboradoresPage() {
                                   ))}
                                 </SelectContent>
                               </Select>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {m.created_at ? new Date(m.created_at).toLocaleDateString('es-AR', { year: '2-digit', month: '2-digit', day: '2-digit' }) : '-'}
                             </TableCell>
                             <TableCell className="text-right">
                               {editingFeeClientId === m.cliente_id ? (
