@@ -279,3 +279,11 @@
   background-size: 200% 100%;
   animation: shimmer 2s linear infinite;
 }
+
+/* ─── ACTIVITY PANEL STICKY ────────────────────────────────────────────────── */
+aside.sticky-activity {
+  position: fixed !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: auto !important;
+}

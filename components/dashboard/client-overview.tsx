@@ -12,7 +12,7 @@ import {
   DollarSign, Target, TrendingDown, MousePointerClick, Eye,
   Users, MessageSquare, Calendar, Clock,
   ArrowLeft, RefreshCw, CheckCircle2, Facebook, Globe, ChevronDown, Pencil, Check, X, Plus, Loader2,
-  AlertCircle, Trash2, BarChart3,
+  AlertCircle, Trash2, BarChart3, Pin, PinOff,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -657,6 +657,7 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [isActivo, setIsActivo] = useState(client.activo !== false) // null or true = activo
   const [updatingActivo, setUpdatingActivo] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
+  const [activityPinned, setActivityPinned] = useState(false)
   
   // Auto-collapse performance section when activity is open for better layout
   const showPerformanceSection = !showActivity
@@ -1918,7 +1919,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
       <aside
         className={cn(
           'fixed inset-y-0 right-0 z-50 w-full sm:w-[520px] lg:w-[640px] border-l border-border bg-card shadow-xl flex flex-col transition-transform duration-300 ease-in-out',
-          showActivity ? 'translate-x-0' : 'translate-x-full'
+          showActivity ? 'translate-x-0' : 'translate-x-full',
+          activityPinned && 'sticky-activity'
         )}
         aria-hidden={!showActivity}
       >
@@ -1928,15 +1930,29 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
               <MessageSquare className="h-4 w-4 text-primary" />
               Actividad
             </h2>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              onClick={() => setShowActivity(false)}
-              aria-label="Cerrar actividad"
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  'h-7 w-7 text-muted-foreground hover:text-foreground',
+                  activityPinned && 'text-amber-600 hover:text-amber-700'
+                )}
+                onClick={() => setActivityPinned(!activityPinned)}
+                aria-label={activityPinned ? 'Desfijar actividad' : 'Fijar actividad'}
+              >
+                {activityPinned ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                onClick={() => setShowActivity(false)}
+                aria-label="Cerrar actividad"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4">
             <ClientActivityTabs
