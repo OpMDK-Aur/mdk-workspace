@@ -417,7 +417,7 @@ function EditableMultiPersonChip({
   )
 }
 
-// ── Multi-account editor (for Meta/Google IDs) ────────────────────────────────
+// ���─ Multi-account editor (for Meta/Google IDs) ────────────────────────────────
 function EditableAccountsEditor({
   accounts,
   label,
@@ -657,7 +657,11 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [isActivo, setIsActivo] = useState(client.activo !== false) // null or true = activo
   const [updatingActivo, setUpdatingActivo] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
-  const [activityPinned, setActivityPinned] = useState(false)
+  const [activityPinned, setActivityPinned] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const stored = localStorage.getItem('activity-panel-pinned')
+    return stored === 'true'
+  })
   
   // Auto-collapse performance section when activity is open for better layout
   const showPerformanceSection = !showActivity
@@ -668,6 +672,11 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
   const [loadingNames, setLoadingNames] = useState(false)
 
   const supabase = createClient()
+
+  // Persist activity panel pinned state to localStorage
+  useEffect(() => {
+    localStorage.setItem('activity-panel-pinned', String(activityPinned))
+  }, [activityPinned])
 
   // Load human-readable account names once
   useEffect(() => {
