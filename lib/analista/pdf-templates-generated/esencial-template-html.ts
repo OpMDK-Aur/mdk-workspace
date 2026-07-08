@@ -1,4 +1,7 @@
-<!DOCTYPE html>
+// GENERADO AUTOMÁTICAMENTE a partir de la plantilla HTML — no editar a mano.
+// Embebido como string para no depender de fs.readFileSync + tracing en runtime.
+
+export const ESENCIAL_TEMPLATE_HTML = `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -95,7 +98,7 @@
       <span style="font-family:var(--neue);font-weight:500;font-size:var(--t-small);letter-spacing:.1em;text-transform:uppercase;color:rgba(20,20,20,.5);">Cumplimiento de objetivo</span>
       <div style="flex:1;display:grid;grid-template-rows:1fr 1fr 1fr;gap:16px;">
         <div style="background:var(--white);border-radius:16px;padding:22px 30px;display:flex;align-items:center;justify-content:space-between;"><div style="display:flex;flex-direction:column;gap:4px;"><span style="font-family:var(--neue);font-weight:500;font-size:var(--t-small);color:rgba(20,20,20,.55);text-transform:uppercase;letter-spacing:.04em;">Leads generados</span><span style="font-family:var(--neue);font-size:24px;color:rgba(20,20,20,.45);">objetivo: {{leadsObjetivo}}</span></div><span style="font-family:var(--mono);font-weight:800;font-size:56px;color:var(--orange);">{{leadsGenerados}}</span></div>
-        <div style="background:var(--white);border-radius:16px;padding:22px 30px;display:flex;align-items:center;justify-content:space-between;"><div style="display:flex;flex-direction:column;gap:4px;"><span style="font-family:var(--neue);font-weight:500;font-size:var(--t-small);color:rgba(20,20,20,.55);text-transform:uppercase;letter-spacing:.04em;">CPL promedio</span><span style="font-family:var(--neue);font-size:24px;color:rgba(20,20,20,.45);">objetivo: ${{cplObjetivo}}</span></div><span style="font-family:var(--mono);font-weight:800;font-size:56px;color:var(--orange);">${{cplPromedio}}</span></div>
+        <div style="background:var(--white);border-radius:16px;padding:22px 30px;display:flex;align-items:center;justify-content:space-between;"><div style="display:flex;flex-direction:column;gap:4px;"><span style="font-family:var(--neue);font-weight:500;font-size:var(--t-small);color:rgba(20,20,20,.55);text-transform:uppercase;letter-spacing:.04em;">CPL promedio</span><span style="font-family:var(--neue);font-size:24px;color:rgba(20,20,20,.45);">objetivo: \${{cplObjetivo}}</span></div><span style="font-family:var(--mono);font-weight:800;font-size:56px;color:var(--orange);">\${{cplPromedio}}</span></div>
         <div style="background:var(--ink);border-radius:16px;padding:22px 30px;display:flex;align-items:center;justify-content:space-between;"><div style="display:flex;flex-direction:column;gap:4px;"><span style="font-family:var(--neue);font-weight:500;font-size:var(--t-small);color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.04em;">Cumplimiento</span></div><span style="font-family:var(--mono);font-weight:800;font-size:56px;color:var(--peach);">{{cumplimientoPct}}</span></div>
       </div>
     </div>
@@ -108,9 +111,9 @@
   <div class="eyebrow-row"><div class="eyebrow"><span class="dot"></span><span class="label">02 · Resultados de campañas</span></div><span class="page-num">02</span></div>
   <h2 class="section-title">Resultados de campañas</h2>
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:26px;">
-    <div style="background:var(--paper);border-radius:14px;padding:24px 26px;display:flex;flex-direction:column;gap:6px;"><span style="font-family:var(--neue);font-size:24px;color:rgba(20,20,20,.5);text-transform:uppercase;letter-spacing:.04em;">Inversión total</span><span style="font-family:var(--mono);font-weight:800;font-size:46px;color:var(--orange);">${{inversionTotal}}</span><span style="font-family:var(--neue);font-size:24px;color:rgba(20,20,20,.45);">presupuesto del mes</span></div>
+    <div style="background:var(--paper);border-radius:14px;padding:24px 26px;display:flex;flex-direction:column;gap:6px;"><span style="font-family:var(--neue);font-size:24px;color:rgba(20,20,20,.5);text-transform:uppercase;letter-spacing:.04em;">Inversión total</span><span style="font-family:var(--mono);font-weight:800;font-size:46px;color:var(--orange);">\${{inversionTotal}}</span><span style="font-family:var(--neue);font-size:24px;color:rgba(20,20,20,.45);">presupuesto del mes</span></div>
     <div style="background:var(--paper);border-radius:14px;padding:24px 26px;display:flex;flex-direction:column;gap:6px;"><span style="font-family:var(--neue);font-size:24px;color:rgba(20,20,20,.5);text-transform:uppercase;letter-spacing:.04em;">Leads generados</span><span style="font-family:var(--mono);font-weight:800;font-size:46px;color:var(--orange);">{{leadsTotalPeriodo}}</span><span style="font-family:var(--neue);font-size:24px;color:rgba(20,20,20,.45);">total del período</span></div>
-    <div style="background:var(--paper);border-radius:14px;padding:24px 26px;display:flex;flex-direction:column;gap:6px;"><span style="font-family:var(--neue);font-size:24px;color:rgba(20,20,20,.5);text-transform:uppercase;letter-spacing:.04em;">CPL promedio</span><span style="font-family:var(--mono);font-weight:800;font-size:46px;color:var(--orange);">${{cplPromedioCampanas}}</span><span style="font-family:var(--neue);font-size:24px;color:rgba(20,20,20,.45);">costo por lead</span></div>
+    <div style="background:var(--paper);border-radius:14px;padding:24px 26px;display:flex;flex-direction:column;gap:6px;"><span style="font-family:var(--neue);font-size:24px;color:rgba(20,20,20,.5);text-transform:uppercase;letter-spacing:.04em;">CPL promedio</span><span style="font-family:var(--mono);font-weight:800;font-size:46px;color:var(--orange);">\${{cplPromedioCampanas}}</span><span style="font-family:var(--neue);font-size:24px;color:rgba(20,20,20,.45);">costo por lead</span></div>
     <div style="background:var(--ink);border-radius:14px;padding:24px 26px;display:flex;flex-direction:column;gap:6px;"><span style="font-family:var(--neue);font-size:24px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.04em;">Vs período ant.</span><span style="font-family:var(--mono);font-weight:800;font-size:46px;color:var(--peach);">{{vsPeriodoAnterior}}</span><span style="font-family:var(--neue);font-size:24px;color:rgba(255,255,255,.5);">evolución</span></div>
   </div>
   <div style="flex:1;margin-top:24px;border-radius:16px;overflow:hidden;border:1px solid rgba(20,20,20,.1);display:flex;flex-direction:column;">
@@ -125,17 +128,17 @@
       <!--REPEAT:campanas-->
       <div style="flex:1;display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;align-items:center;border-bottom:1px solid rgba(20,20,20,.08);">
         <span style="font-family:var(--neue);font-size:25px;padding:0 26px;">{{nombre}}</span>
-        <span style="font-family:var(--mono);font-weight:800;font-size:24px;padding:0 16px;text-align:right;">${{inversion}}</span>
+        <span style="font-family:var(--mono);font-weight:800;font-size:24px;padding:0 16px;text-align:right;">\${{inversion}}</span>
         <span style="font-family:var(--mono);font-weight:800;font-size:24px;padding:0 16px;text-align:right;">{{leads}}</span>
-        <span style="font-family:var(--mono);font-weight:800;font-size:24px;padding:0 16px;text-align:right;">${{cpl}}</span>
+        <span style="font-family:var(--mono);font-weight:800;font-size:24px;padding:0 16px;text-align:right;">\${{cpl}}</span>
         <span style="font-family:var(--mono);font-weight:800;font-size:24px;padding:0 26px 0 16px;text-align:right;">{{vsAnt}}</span>
       </div>
       <!--END:campanas-->
       <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;align-items:center;background:var(--paper);">
         <span style="font-family:var(--mono);font-weight:800;font-size:24px;padding:20px 26px;text-transform:uppercase;">Total</span>
-        <span style="font-family:var(--mono);font-weight:800;font-size:24px;padding:20px 16px;text-align:right;">${{totalInversion}}</span>
+        <span style="font-family:var(--mono);font-weight:800;font-size:24px;padding:20px 16px;text-align:right;">\${{totalInversion}}</span>
         <span style="font-family:var(--mono);font-weight:800;font-size:24px;padding:20px 16px;text-align:right;">{{totalLeads}}</span>
-        <span style="font-family:var(--mono);font-weight:800;font-size:24px;padding:20px 16px;text-align:right;color:var(--orange);">${{totalCpl}}</span>
+        <span style="font-family:var(--mono);font-weight:800;font-size:24px;padding:20px 16px;text-align:right;color:var(--orange);">\${{totalCpl}}</span>
         <span style="font-family:var(--mono);font-weight:800;font-size:24px;padding:20px 26px 20px 16px;text-align:right;">{{totalVsAnt}}</span>
       </div>
     </div>
@@ -232,3 +235,4 @@
 
 </body>
 </html>
+`

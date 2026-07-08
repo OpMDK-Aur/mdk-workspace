@@ -1,6 +1,14 @@
-import fs from 'fs'
-import path from 'path'
 import { fillTemplate, repeatBlock, findUnresolvedTokens, TemplateRow } from '../pdf-html/template-engine'
+import {
+  FONT_MONUMENT_BOLD,
+  FONT_MONUMENT_REGULAR,
+  FONT_NEUE_REGULAR,
+  FONT_NEUE_MEDIUM,
+  FONT_NEUE_BOLD,
+  LOGO_BASE64,
+} from './pdf-assets-generated/fonts-and-logo'
+import { ESENCIAL_TEMPLATE_HTML } from './pdf-templates-generated/esencial-template-html'
+import { ESTRATEGICO_TEMPLATE_HTML } from './pdf-templates-generated/estrategico-template-html'
 
 export interface ReportPdfInput {
   clientName: string
@@ -14,37 +22,24 @@ export interface ReportPdfInput {
 const NO_INFO = 'Dato no provisto'
 
 // ============================================================
-// RUTAS DE ASSETS (fuentes + logo)
+// ASSETS (fuentes + logo) — embebidos como constantes de módulo
 //
-// IMPORTANTE: estos archivos deben copiarse al proyecto en esta ubicación
-// exacta (ver instrucciones al final). En Vercel, además, hay que agregar
-// outputFileTracingIncludes en next.config para que la función serverless
-// los empaquete — el mismo problema que ya resolvimos antes con los PDFs
-// de plantilla.
+// NO usamos fs.readFileSync + outputFileTracingIncludes: en este proyecto
+// resultó poco confiable en Vercel (ENOENT persistente pese a estar bien
+// configurado, probablemente por la estructura de workspace del repo).
+// Al importar estas constantes como código TS normal, Next.js las incluye
+// en el bundle de la misma forma que cualquier otro import — sin depender
+// de ninguna heurística de tracing de archivos.
 // ============================================================
-const ASSETS_DIR = path.join(process.cwd(), 'lib', 'analista', 'pdf-assets')
-
-let cachedAssetTokens: TemplateRow | null = null
-
 function loadAssetTokens(): TemplateRow {
-  if (cachedAssetTokens) return cachedAssetTokens
-
-  const fontPath = (name: string) => path.join(ASSETS_DIR, 'fonts', name)
-  const toBase64Font = (filePath: string) => {
-    const buf = fs.readFileSync(filePath)
-    return `data:font/otf;base64,${buf.toString('base64')}`
+  return {
+    FONT_MONUMENT_BOLD,
+    FONT_MONUMENT_REGULAR,
+    FONT_NEUE_REGULAR,
+    FONT_NEUE_MEDIUM,
+    FONT_NEUE_BOLD,
+    LOGO_BASE64,
   }
-  const logoBuf = fs.readFileSync(path.join(ASSETS_DIR, 'logo-mdk.png'))
-
-  cachedAssetTokens = {
-    FONT_MONUMENT_BOLD: toBase64Font(fontPath('Monument-Bold.otf')),
-    FONT_MONUMENT_REGULAR: toBase64Font(fontPath('Monument-Regular.otf')),
-    FONT_NEUE_REGULAR: toBase64Font(fontPath('Neue-Regular.otf')),
-    FONT_NEUE_MEDIUM: toBase64Font(fontPath('Neue-Medium.otf')),
-    FONT_NEUE_BOLD: toBase64Font(fontPath('Neue-Bold.otf')),
-    LOGO_BASE64: `data:image/png;base64,${logoBuf.toString('base64')}`,
-  }
-  return cachedAssetTokens
 }
 
 // ============================================================
@@ -292,8 +287,7 @@ export function parseEstrategicoMarkdown(markdown: string, clientName: string, p
 // RENDER — arma el HTML final a partir de la plantilla + los datos
 // ============================================================
 export function renderEsencialHtml(data: EsencialData): string {
-  const templatePath = path.join(ASSETS_DIR, '..', 'pdf-templates', 'informe-esencial-template.html')
-  let html = fs.readFileSync(templatePath, 'utf-8')
+  let html = ESENCIAL_TEMPLATE_HTML
 
   html = fillTemplate(html, { ...loadAssetTokens() }, ['FONT_MONUMENT_BOLD', 'FONT_MONUMENT_REGULAR', 'FONT_NEUE_REGULAR', 'FONT_NEUE_MEDIUM', 'FONT_NEUE_BOLD', 'LOGO_BASE64'])
 
@@ -346,8 +340,7 @@ export function renderEsencialHtml(data: EsencialData): string {
 }
 
 export function renderEstrategicoHtml(data: EstrategicoData): string {
-  const templatePath = path.join(ASSETS_DIR, '..', 'pdf-templates', 'informe-estrategico-template.html')
-  let html = fs.readFileSync(templatePath, 'utf-8')
+  let html = ESTRATEGICO_TEMPLATE_HTML
 
   html = fillTemplate(html, { ...loadAssetTokens() }, ['FONT_MONUMENT_BOLD', 'FONT_MONUMENT_REGULAR', 'FONT_NEUE_REGULAR', 'FONT_NEUE_MEDIUM', 'FONT_NEUE_BOLD', 'LOGO_BASE64'])
 
