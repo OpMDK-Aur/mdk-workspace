@@ -36,12 +36,6 @@ const nextConfig = {
   // está directo en pdf-assets/, las fuentes están un nivel más adentro en
   // pdf-assets/fonts/ — "**/*" no siempre matchea archivos a "cero"
   // subcarpetas de profundidad, así que se listan por separado.
-  outputFileTracingIncludes: {
-    'app/api/agentes/analista/download-pdf/route': [
-      './lib/analista/pdf-templates/*.html',
-      './lib/analista/pdf-assets/*.png',
-      './lib/analista/pdf-assets/fonts/*.otf',
-    ],
-  },
+  
 }
 module.exports = nextConfig
