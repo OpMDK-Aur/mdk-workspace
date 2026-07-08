@@ -29,7 +29,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Plus, Pencil, Trash2, FileText, Calendar, Paperclip, X, Download, Bold, Italic, List, ListOrdered, Code, Pin, PinOff } from 'lucide-react'
+import { Loader2, Plus, Pencil, Trash2, FileText, Calendar, Paperclip, X, Download, Bold, Italic, List, ListOrdered, Code } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { getClientMinutas, createMinuta, updateMinuta, deleteMinuta } from '@/lib/service-map'
@@ -80,9 +80,6 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
   // Delete confirmation
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
-
-  // Pinned state
-  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set())
 
   // Form state
   const [formTitulo, setFormTitulo] = useState('')
@@ -431,29 +428,6 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
     return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })
   }
 
-  // Toggle pin minuta
-  const handleTogglePin = (minutaId: string) => {
-    setPinnedIds((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(minutaId)) {
-        newSet.delete(minutaId)
-      } else {
-        newSet.add(minutaId)
-      }
-      return newSet
-    })
-  }
-
-  // Sort minutas - pinned first, then by date descending
-  const sortedMinutas = [...minutas].sort((a, b) => {
-    const aIsPinned = pinnedIds.has(a.id)
-    const bIsPinned = pinnedIds.has(b.id)
-    if (aIsPinned !== bIsPinned) {
-      return aIsPinned ? -1 : 1
-    }
-    return new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
-  })
-
   const isImageFile = (name: string) => /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(name)
 
   if (loading) {
@@ -492,15 +466,10 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
 
       {/* Minutas list */}
       <div className="space-y-2">
-        {sortedMinutas.map((minuta) => (
+        {minutas.map((minuta) => (
           <div
             key={minuta.id}
-            className={cn(
-              'group p-3 rounded-lg border transition-colors',
-              pinnedIds.has(minuta.id)
-                ? 'bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900/30'
-                : 'bg-card hover:bg-muted/50'
-            )}
+            className="group p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
@@ -544,16 +513,7 @@ export function ClientMinutas({ clientId, currentUser }: ClientMinutasProps) {
                 )}
               </div>
 
-              <div className={cn('flex items-center gap-1', pinnedIds.has(minuta.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')} style={{ transition: 'opacity 0.2s' }}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn('h-7 w-7', pinnedIds.has(minuta.id) ? 'text-amber-600 hover:text-amber-700' : '')}
-                  onClick={() => handleTogglePin(minuta.id)}
-                  title={pinnedIds.has(minuta.id) ? 'Desfijar' : 'Fijar'}
-                >
-                  {pinnedIds.has(minuta.id) ? <Pin className="h-3.5 w-3.5" /> : <PinOff className="h-3.5 w-3.5" />}
-                </Button>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(minuta)}>
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
