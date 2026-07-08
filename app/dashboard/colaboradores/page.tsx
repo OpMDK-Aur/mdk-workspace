@@ -1008,7 +1008,6 @@ export default function ColaboradoresPage() {
         if (!metrica) continue
 
         const payload = {
-          id: metrica.id,
           colaborador_id: metrica.colaborador_id,
           cliente_id: metrica.cliente_id,
           fee_administrado: metrica.fee_administrado,
@@ -1022,12 +1021,35 @@ export default function ColaboradoresPage() {
           anio: selectedYear,
         }
 
-        const { error } = await supabase
+        // Check if metric exists in database using the unique constraint
+        const { data: existing } = await supabase
           .from('metricas_colaborador')
-          .upsert(payload, { onConflict: 'colaborador_id,cliente_id,mes,anio' })
+          .select('id')
+          .eq('colaborador_id', metrica.colaborador_id)
+          .eq('cliente_id', metrica.cliente_id)
+          .eq('mes', selectedMonth)
+          .eq('anio', selectedYear)
+          .maybeSingle()
+
+        let error
+        if (existing) {
+          // Update existing metric
+          const { error: updateError } = await supabase
+            .from('metricas_colaborador')
+            .update(payload)
+            .eq('id', existing.id)
+          error = updateError
+        } else {
+          // Insert new metric
+          const { error: insertError } = await supabase
+            .from('metricas_colaborador')
+            .insert({ ...payload, id: metrica.id })
+          error = insertError
+        }
 
         if (error) {
           toast.error(`Error al guardar: ${error.message}`)
+          console.error('[v0] Save error:', error)
           setIsSaving(false)
           return
         }
