@@ -9,8 +9,10 @@ import {
   fetchGhlContactTasks,
   fetchGhlConversations,
   fetchGhlConversationMessages,
+  fetchGhlUsers,
   type GhlOpportunity,
   type GhlPipeline,
+  type GhlUser,
 } from './ghl-client'
 import type { RevOpsResumen } from '@/lib/types'
 
@@ -255,6 +257,82 @@ function analizarEmbudo(todas: GhlOpportunity[], pipelines: GhlPipeline[]) {
     etapas_sospechosas: etapasSospechosas,
     inconsistencias_estado: inconsistencias,
   }
+}
+
+// ── NUEVO — Ventas y facturación (oportunidades en estado "Ganado") ────────
+//
+// GHL no expone una fecha de "cierre/ganado" separada de updatedAt, así que
+// se usa updatedAt como proxy de cuándo se marcó Ganado. Si el equipo edita
+// una oportunidad ganada por otro motivo (agregar una nota, corregir un
+// monto, etc.) después de haberla ganado, eso corre la fecha y puede desviar
+// el conteo del período — documentado en `supuesto_fecha` para que quede
+// trazable en el resumen, no oculto.
+
+function analizarVentasYFacturacion(todas: GhlOpportunity[], rango?: { desde: string; hasta: string }) {
+  const ganadas = todas.filter((o) => o.status === 'won')
+
+  const enPeriodo = rango
+    ? ganadas.filter((o) => {
+        const t = new Date(o.updatedAt).getTime()
+        if (isNaN(t)) return false
+        const desdeMs = new Date(`${rango.desde}T00:00:00`).getTime()
+        const hastaMs = new Date(`${rango.hasta}T23:59:59.999`).getTime()
+        return t >= desdeMs && t <= hastaMs
+      })
+    : ganadas
+
+  const facturacion = enPeriodo.reduce((sum, o) => sum + (o.monetaryValue || 0), 0)
+
+  return {
+    ventas: enPeriodo.length,
+    facturacion,
+    supuesto_fecha: 'updatedAt usado como proxy de fecha de venta (GHL no expone fecha de cierre separada)',
+  }
+}
+
+// ── NUEVO — Funnel comercial por vendedor ──────────────────────────────────
+
+function analizarFunnelPorVendedor(todas: GhlOpportunity[], pipelines: GhlPipeline[], usuarios: GhlUser[]) {
+  const stageMap = new Map<string, { name: string; position: number }>()
+  for (const p of pipelines) {
+    for (const s of p.stages) {
+      stageMap.set(s.id, { name: s.name, position: s.position })
+    }
+  }
+  const userMap = new Map(usuarios.map((u) => [u.id, u.name]))
+
+  const vendedoresSet = new Set<string>()
+  const etapasConPosicion = new Map<string, number>()
+  const matriz = new Map<string, Map<string, number>>() // etapa -> (vendedor -> cantidad)
+
+  for (const o of todas) {
+    const etapaInfo = stageMap.get(o.pipelineStageId)
+    const etapaNombre = etapaInfo?.name ?? 'Etapa desconocida'
+    const vendedorNombre = o.assignedTo ? userMap.get(o.assignedTo) ?? 'Sin asignar' : 'Sin asignar'
+
+    vendedoresSet.add(vendedorNombre)
+    etapasConPosicion.set(etapaNombre, etapaInfo?.position ?? 99)
+
+    if (!matriz.has(etapaNombre)) matriz.set(etapaNombre, new Map())
+    const fila = matriz.get(etapaNombre)!
+    fila.set(vendedorNombre, (fila.get(vendedorNombre) ?? 0) + 1)
+  }
+
+  const vendedores = Array.from(vendedoresSet).sort()
+  const etapasOrdenadas = Array.from(etapasConPosicion.entries())
+    .sort((a, b) => a[1] - b[1])
+    .map(([nombre]) => nombre)
+
+  const totalGeneral = todas.length || 1
+
+  const filas = etapasOrdenadas.map((etapa) => {
+    const fila = matriz.get(etapa) ?? new Map()
+    const porVendedor = vendedores.map((v) => fila.get(v) ?? 0)
+    const total = porVendedor.reduce((a, b) => a + b, 0)
+    return { etapa, porVendedor, total, pctGeneral: (total / totalGeneral) * 100 }
+  })
+
+  return { vendedores, filas, totalOportunidades: todas.length }
 }
 
 // ── Módulo 3: Inbox sin leer ────────────────────────────────────────────────
@@ -583,10 +661,11 @@ export async function runRevOpsAnalysis(
   const creds = { locationId: cliente.ghl_location_id as string, token: cliente.ghl_token as string }
 
   try {
-    const [opportunities, pipelines, conversaciones] = await Promise.all([
+    const [opportunities, pipelines, conversaciones, usuarios] = await Promise.all([
       fetchGhlOpportunities(creds),
       fetchGhlPipelines(creds),
       fetchGhlConversations(creds),
+      fetchGhlUsers(creds), // ← NUEVO: necesario para resolver assignedTo → nombre de vendedor
     ])
 
     // Oportunidades y Embudo se calculan sobre el rango de fecha (por fecha de
@@ -614,6 +693,16 @@ export async function runRevOpsAnalysis(
     const oportunidades = analizarOportunidades(opportunitiesParaEmbudo, conversaciones.length, rango)
     const embudo = analizarEmbudo(opportunitiesParaEmbudo, pipelines)
 
+    // ── NUEVO ──────────────────────────────────────────────────────────────
+    // Ventas/facturación: usa TODAS las oportunidades (no las filtradas por
+    // createdAt como Embudo), porque filtra por su propia fecha (updatedAt,
+    // proxy de fecha de venta) dentro de analizarVentasYFacturacion.
+    const ventas = analizarVentasYFacturacion(opportunities, rango)
+    // Funnel por vendedor: usa el mismo set ya filtrado por período que usa
+    // Embudo, para que sea consistente con el resto del análisis del período.
+    const funnelPorVendedor = analizarFunnelPorVendedor(opportunitiesParaEmbudo, pipelines, usuarios)
+    // ─────────────────────────────────────────────────────────────────────
+
     const resumenSinAlertas: RevOpsResumen = {
       tareas,
       conversaciones_calidad: moduloConversaciones,
@@ -621,6 +710,8 @@ export async function runRevOpsAnalysis(
       oportunidades,
       embudo,
       tiempos_respuesta: moduloTiempos,
+      ventas, // ← NUEVO
+      funnel_por_vendedor: funnelPorVendedor, // ← NUEVO
       alertas: [],
     }
 
