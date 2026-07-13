@@ -268,7 +268,7 @@ function analizarEmbudo(todas: GhlOpportunity[], pipelines: GhlPipeline[]) {
 // el conteo del período — documentado en `supuesto_fecha` para que quede
 // trazable en el resumen, no oculto.
 
-function analizarVentasYFacturacion(todas: GhlOpportunity[], rango?: { desde: string; hasta: string }) {
+export function analizarVentasYFacturacion(todas: GhlOpportunity[], rango?: { desde: string; hasta: string }) {
   const ganadas = todas.filter((o) => o.status === 'won')
 
   const enPeriodo = rango
@@ -292,7 +292,7 @@ function analizarVentasYFacturacion(todas: GhlOpportunity[], rango?: { desde: st
 
 // ── NUEVO — Funnel comercial por vendedor ──────────────────────────────────
 
-function analizarFunnelPorVendedor(todas: GhlOpportunity[], pipelines: GhlPipeline[], usuarios: GhlUser[]) {
+export function analizarFunnelPorVendedor(todas: GhlOpportunity[], pipelines: GhlPipeline[], usuarios: GhlUser[]) {
   const stageMap = new Map<string, { name: string; position: number }>()
   for (const p of pipelines) {
     for (const s of p.stages) {
