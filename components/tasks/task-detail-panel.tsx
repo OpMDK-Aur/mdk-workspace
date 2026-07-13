@@ -108,7 +108,7 @@ import {
   RotateCw,
   FlaskConical,
 } from 'lucide-react'
-import { format, formatDistanceToNow } from 'date-fns'
+import { format, formatDistanceToNow, parseISO } from 'date-fns'
 import { TaskFilesSection } from './task-files-section'
 import { es } from 'date-fns/locale'
 import { QuotationSection } from './quotation-section'
@@ -2276,8 +2276,8 @@ export function TaskDetailPanel() {
                       const filteredComments = (task.comments || []).filter(c => {
                         if (filterPersona && c.userId !== filterPersona) return false
                         if (filterConAdjuntos && (!c.attachments || c.attachments.length === 0)) return false
-                        if (filterFechaDesde && new Date(c.createdAt) < new Date(filterFechaDesde)) return false
-                        if (filterFechaHasta && new Date(c.createdAt) > new Date(filterFechaHasta + 'T23:59:59')) return false
+      if (filterFechaDesde && parseISO(c.createdAt) < parseISO(filterFechaDesde)) return false
+      if (filterFechaHasta && parseISO(c.createdAt) > parseISO(filterFechaHasta + 'T23:59:59')) return false
                         return true
                       })
                       const hasFilters = filterPersona || filterConAdjuntos || filterFechaDesde || filterFechaHasta

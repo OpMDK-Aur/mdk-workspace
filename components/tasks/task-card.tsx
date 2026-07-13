@@ -19,7 +19,7 @@ import {
   CalendarDays,
   AlertCircle
 } from 'lucide-react'
-import { format, isToday, isTomorrow, isPast, isBefore, addDays } from 'date-fns'
+import { format, isToday, isTomorrow, isPast, isBefore, addDays, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 
 // Icon mapping for task types
@@ -71,10 +71,10 @@ function getClientColor(clientId: string): string {
   return colors[index]
 }
 
-function formatDueDate(date: Date): { text: string; color: string; urgent: boolean } {
+function formatDueDate(date: Date | string): { text: string; color: string; urgent: boolean } {
   const now = new Date()
   now.setHours(0, 0, 0, 0)
-  const dueDate = new Date(date)
+  const dueDate = typeof date === 'string' ? parseISO(date) : new Date(date)
   dueDate.setHours(0, 0, 0, 0)
   
   if (isPast(dueDate) && !isToday(dueDate)) {

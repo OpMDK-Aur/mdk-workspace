@@ -3,6 +3,7 @@ import { generateObject } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { parseISO } from 'date-fns'
 import {
   fetchGhlOpportunities,
   fetchGhlPipelines,
@@ -89,7 +90,7 @@ function minutosHabilesEntre(fromMs: number, toMs: number): number {
 
 function daysSince(dateStr: string | null): number {
   if (!dateStr) return Infinity
-  const d = new Date(dateStr).getTime()
+  const d = parseISO(dateStr).getTime()
   if (isNaN(d)) return Infinity
   return (Date.now() - d) / (1000 * 60 * 60 * 24)
 }
@@ -97,7 +98,7 @@ function daysSince(dateStr: string | null): number {
 // Horas HÁBILES transcurridas desde dateStr hasta ahora (no horas de reloj corridas).
 function horasHabilesDesde(dateStr: string | null): number {
   if (!dateStr) return Infinity
-  const d = new Date(dateStr).getTime()
+  const d = parseISO(dateStr).getTime()
   if (isNaN(d)) return Infinity
   return minutosHabilesEntre(d, Date.now()) / 60
 }
@@ -106,7 +107,7 @@ function horasHabilesDesde(dateStr: string | null): number {
 
 async function analizarTareas(creds: { locationId: string; token: string }, oportunidadesAbiertas: GhlOpportunity[]) {
   const muestra = [...oportunidadesAbiertas]
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .sort((a, b) => parseISO(b.updatedAt).getTime() - parseISO(a.updatedAt).getTime())
     .slice(0, SAMPLE_OPORTUNIDADES_TAREAS)
     .filter((o) => !!o.contactId)
 
@@ -132,7 +133,7 @@ async function analizarTareas(creds: { locationId: string; token: string }, opor
         completadas++
       } else if (!t.dueDate) {
         sinFecha++
-      } else if (new Date(t.dueDate).getTime() < now) {
+      } else if (parseISO(t.dueDate).getTime() < now) {
         vencidas++
       } else {
         futuras++
@@ -181,7 +182,7 @@ function analizarOportunidades(
   const cutoff = rango ? new Date(`${rango.desde}T00:00:00`).getTime() : Date.now() - VENTANA_DIAS * 24 * 60 * 60 * 1000
   const hastaMs = rango ? new Date(`${rango.hasta}T23:59:59.999`).getTime() : Date.now()
   const creadasEnPeriodo = todas.filter((o) => {
-    const t = new Date(o.createdAt).getTime()
+    const t = parseISO(o.createdAt).getTime()
     return t >= cutoff && t <= hastaMs
   }).length
 
@@ -426,8 +427,8 @@ async function analizarConversacionesYTiempos(
 ) {
   const cutoff = Date.now() - VENTANA_DIAS * 24 * 60 * 60 * 1000
   const poolOrdenado = conversaciones
-    .filter((c) => c.lastMessageDate && new Date(c.lastMessageDate).getTime() >= cutoff)
-    .sort((a, b) => new Date(b.lastMessageDate ?? 0).getTime() - new Date(a.lastMessageDate ?? 0).getTime())
+    .filter((c) => c.lastMessageDate && parseISO(c.lastMessageDate).getTime() >= cutoff)
+    .sort((a, b) => (b.lastMessageDate ? parseISO(b.lastMessageDate).getTime() : 0) - (a.lastMessageDate ? parseISO(a.lastMessageDate).getTime() : 0))
 
   const detalleCalidad: Array<{
     conversacionId: string
@@ -467,10 +468,10 @@ async function analizarConversacionesYTiempos(
     let huboPrimeraRespuesta = false
     if (primerInbound) {
       const primeraOutbound = mensajes.find(
-        (m) => m.direction === 'outbound' && new Date(m.dateAdded).getTime() > new Date(primerInbound.dateAdded).getTime()
+        (m) => m.direction === 'outbound' && parseISO(m.dateAdded).getTime() > parseISO(primerInbound.dateAdded).getTime()
       )
       if (primeraOutbound) {
-        const diffMin = minutosHabilesEntre(new Date(primerInbound.dateAdded).getTime(), new Date(primeraOutbound.dateAdded).getTime())
+        const diffMin = minutosHabilesEntre(parseISO(primerInbound.dateAdded).getTime(), parseISO(primeraOutbound.dateAdded).getTime())
         primeraRespuestaMin.push(diffMin)
         huboPrimeraRespuesta = true
       }
@@ -486,10 +487,10 @@ async function analizarConversacionesYTiempos(
     if (derivacionMsg) {
       handoffsDetectados++
       const tomaHumana = mensajes.find(
-        (m) => m.direction === 'outbound' && !!m.userId && new Date(m.dateAdded).getTime() > new Date(derivacionMsg.dateAdded).getTime()
+        (m) => m.direction === 'outbound' && !!m.userId && parseISO(m.dateAdded).getTime() > parseISO(derivacionMsg.dateAdded).getTime()
       )
       if (tomaHumana) {
-        const diffMin = minutosHabilesEntre(new Date(derivacionMsg.dateAdded).getTime(), new Date(tomaHumana.dateAdded).getTime())
+        const diffMin = minutosHabilesEntre(parseISO(derivacionMsg.dateAdded).getTime(), parseISO(tomaHumana.dateAdded).getTime())
         handoffMin.push(diffMin)
       } else {
         handoffsSinTomar++
@@ -689,7 +690,7 @@ export async function runRevOpsAnalysis(
     // oportunidades abiertas actuales.
     const opportunitiesParaEmbudo = rango
       ? opportunities.filter((o) => {
-          const t = new Date(o.createdAt).getTime()
+          const t = parseISO(o.createdAt).getTime()
           if (isNaN(t)) return false
           const desdeMs = new Date(`${rango.desde}T00:00:00`).getTime()
           const hastaMs = new Date(`${rango.hasta}T23:59:59.999`).getTime()

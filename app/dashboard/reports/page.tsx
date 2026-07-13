@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import useSWR from 'swr'
-import { startOfMonth, endOfMonth, isWithinInterval, startOfDay, endOfDay, format } from 'date-fns'
+import { startOfMonth, endOfMonth, isWithinInterval, startOfDay, endOfDay, format, parseISO } from 'date-fns'
 import { HoursChart } from '@/components/reports/hours-chart'
 import { HoursControlPanel } from '@/components/reports/hours-control-panel'
 import {
@@ -122,7 +122,7 @@ export default function MisHorasPage() {
     const monthEnd = endOfMonth(new Date(selectedYear, selectedMonth - 1))
     
     return allEntries.filter((entry) => {
-      const entryDate = new Date(entry.iniciado_en)
+      const entryDate = parseISO(entry.iniciado_en)
       return isWithinInterval(entryDate, {
         start: monthStart,
         end: monthEnd,
@@ -148,7 +148,7 @@ export default function MisHorasPage() {
       const dayEnd = endOfDay(currentDate)
       
       const dayEntries = filteredEntries.filter((entry) => {
-        const entryDate = new Date(entry.iniciado_en)
+        const entryDate = parseISO(entry.iniciado_en)
         return isWithinInterval(entryDate, { start: dayStart, end: dayEnd })
       })
       
@@ -299,7 +299,7 @@ export default function MisHorasPage() {
                       filteredEntries.map((entry) => (
                         <TableRow key={entry.id}>
                           <TableCell className="whitespace-nowrap">
-                            {format(new Date(entry.iniciado_en), 'dd/MM/yyyy')}
+                            {format(parseISO(entry.iniciado_en), 'dd/MM/yyyy')}
                           </TableCell>
                           <TableCell>
                             {entry.cliente_id ? clientMap[entry.cliente_id] || 'Sin cliente' : 'Sin cliente'}

@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { parseISO } from 'date-fns'
 
 const CACHE_TTL_HOURS = 1
 
@@ -27,7 +28,7 @@ export async function getCachedAdsData(
     if (error || !data) return null
 
     // Check expiry
-    if (new Date(data.expires_at) < new Date()) {
+    if (parseISO(data.expires_at) < new Date()) {
       // Delete stale row async (don't await)
       supabase.from('ads_cache').delete().eq('cache_key', key)
       return null
