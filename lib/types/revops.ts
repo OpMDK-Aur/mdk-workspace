@@ -1,5 +1,4 @@
 // ── RevOps Agent Types ────────────────────────────────────────────────────
-
 export interface RevOpsModuloTareas {
   oportunidades_en_muestra: number
   con_tarea: number
@@ -14,7 +13,6 @@ export interface RevOpsModuloTareas {
   alerta_sin_seguimiento: boolean
   pct_sin_tarea: number // 0-1
 }
-
 export interface RevOpsConversacionAuditada {
   conversacionId: string
   contacto: string
@@ -26,13 +24,11 @@ export interface RevOpsConversacionAuditada {
   propone_proximo_paso: boolean
   resumen: string
 }
-
 export interface RevOpsModuloConversaciones {
   muestreadas: number
   promedio_score: number | null
   detalle: RevOpsConversacionAuditada[]
 }
-
 export interface RevOpsModuloInbox {
   total_conversaciones_activas: number
   total_sin_leer: number
@@ -40,7 +36,6 @@ export interface RevOpsModuloInbox {
   conversaciones_criticas: Array<{ conversacionId: string; contacto: string; horasSinResponder: number }>
   sla_configurado: boolean
 }
-
 export interface RevOpsModuloOportunidades {
   total_abiertas: number
   sin_monto: number
@@ -52,7 +47,6 @@ export interface RevOpsModuloOportunidades {
   creadas_en_periodo: number
   conversaciones_en_periodo: number
 }
-
 export interface RevOpsModuloEmbudo {
   por_etapa: Array<{ etapa: string; pipeline: string; cantidad: number; esEtapaInicial: boolean }>
   etapas_iniciales_saturadas: boolean
@@ -63,7 +57,6 @@ export interface RevOpsModuloEmbudo {
   etapas_sospechosas: string[]
   inconsistencias_estado: number
 }
-
 export interface RevOpsModuloTiempos {
   muestreadas: number
   promedio_primera_respuesta_min: number | null
@@ -71,10 +64,32 @@ export interface RevOpsModuloTiempos {
   handoffs_detectados: number
   handoffs_sin_tomar: number
 }
-
 export interface RevOpsAlerta {
   mensaje: string
   calculo: string
+}
+
+// ── NUEVO: Ventas y facturación (oportunidades en estado "Ganado") ────────
+export interface RevOpsModuloVentas {
+  ventas: number
+  facturacion: number
+  // Documenta el supuesto tomado porque GHL no expone una fecha de "cierre"
+  // separada de updatedAt — si en algún momento se agrega ese campo en GHL,
+  // hay que revisar este módulo.
+  supuesto_fecha: string
+}
+
+// ── NUEVO: Funnel comercial por vendedor ───────────────────────────────────
+export interface RevOpsFunnelFila {
+  etapa: string
+  porVendedor: number[] // mismo orden que RevOpsModuloFunnelPorVendedor.vendedores
+  total: number
+  pctGeneral: number // 0-100
+}
+export interface RevOpsModuloFunnelPorVendedor {
+  vendedores: string[]
+  filas: RevOpsFunnelFila[]
+  totalOportunidades: number
 }
 
 export interface RevOpsResumen {
@@ -84,9 +99,10 @@ export interface RevOpsResumen {
   oportunidades: RevOpsModuloOportunidades
   embudo: RevOpsModuloEmbudo
   tiempos_respuesta: RevOpsModuloTiempos
+  ventas: RevOpsModuloVentas // ← NUEVO
+  funnel_por_vendedor: RevOpsModuloFunnelPorVendedor // ← NUEVO
   alertas: RevOpsAlerta[]
 }
-
 export interface RevOpsEjecucion {
   id: string
   cliente_id: string
@@ -100,7 +116,6 @@ export interface RevOpsEjecucion {
   periodo_hasta: string | null
   resumen: RevOpsResumen
 }
-
 export interface ClienteConRevOps {
   id: string
   nombre_del_negocio: string
@@ -108,11 +123,9 @@ export interface ClienteConRevOps {
   ghl_location_id: string | null
   ultima_ejecucion: RevOpsEjecucion | null
 }
-
 export interface RevOpsBoardProps {
   clientes: ClienteConRevOps[]
 }
-
 export interface RevOpsDetailSheetProps {
   cliente: ClienteConRevOps | null
   open: boolean
