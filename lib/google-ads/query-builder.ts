@@ -26,6 +26,8 @@ export function buildDateFilter(
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
+  // Note: new Date(today) works correctly here because 'today' is already a Date object, not a string.
+  // The timezone bug only affects string dates like "2026-06-01", not Date object instances.
   const offset = (days: number) => { const d = new Date(today); d.setDate(today.getDate() - days); return d }
 
   switch (dateRange) {

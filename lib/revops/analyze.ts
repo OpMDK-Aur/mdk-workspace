@@ -3,14 +3,17 @@ import { generateObject } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { parseISO } from 'date-fns'
 import {
   fetchGhlOpportunities,
   fetchGhlPipelines,
   fetchGhlContactTasks,
   fetchGhlConversations,
   fetchGhlConversationMessages,
+  fetchGhlUsers,
   type GhlOpportunity,
   type GhlPipeline,
+  type GhlUser,
 } from './ghl-client'
 import type { RevOpsResumen } from '@/lib/types'
 
@@ -87,7 +90,7 @@ function minutosHabilesEntre(fromMs: number, toMs: number): number {
 
 function daysSince(dateStr: string | null): number {
   if (!dateStr) return Infinity
-  const d = new Date(dateStr).getTime()
+  const d = parseISO(dateStr).getTime()
   if (isNaN(d)) return Infinity
   return (Date.now() - d) / (1000 * 60 * 60 * 24)
 }
@@ -95,7 +98,7 @@ function daysSince(dateStr: string | null): number {
 // Horas HÁBILES transcurridas desde dateStr hasta ahora (no horas de reloj corridas).
 function horasHabilesDesde(dateStr: string | null): number {
   if (!dateStr) return Infinity
-  const d = new Date(dateStr).getTime()
+  const d = parseISO(dateStr).getTime()
   if (isNaN(d)) return Infinity
   return minutosHabilesEntre(d, Date.now()) / 60
 }
@@ -104,7 +107,7 @@ function horasHabilesDesde(dateStr: string | null): number {
 
 async function analizarTareas(creds: { locationId: string; token: string }, oportunidadesAbiertas: GhlOpportunity[]) {
   const muestra = [...oportunidadesAbiertas]
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .sort((a, b) => parseISO(b.updatedAt).getTime() - parseISO(a.updatedAt).getTime())
     .slice(0, SAMPLE_OPORTUNIDADES_TAREAS)
     .filter((o) => !!o.contactId)
 
@@ -130,7 +133,7 @@ async function analizarTareas(creds: { locationId: string; token: string }, opor
         completadas++
       } else if (!t.dueDate) {
         sinFecha++
-      } else if (new Date(t.dueDate).getTime() < now) {
+      } else if (parseISO(t.dueDate).getTime() < now) {
         vencidas++
       } else {
         futuras++
@@ -179,7 +182,7 @@ function analizarOportunidades(
   const cutoff = rango ? new Date(`${rango.desde}T00:00:00`).getTime() : Date.now() - VENTANA_DIAS * 24 * 60 * 60 * 1000
   const hastaMs = rango ? new Date(`${rango.hasta}T23:59:59.999`).getTime() : Date.now()
   const creadasEnPeriodo = todas.filter((o) => {
-    const t = new Date(o.createdAt).getTime()
+    const t = parseISO(o.createdAt).getTime()
     return t >= cutoff && t <= hastaMs
   }).length
 
@@ -255,6 +258,96 @@ function analizarEmbudo(todas: GhlOpportunity[], pipelines: GhlPipeline[]) {
     etapas_sospechosas: etapasSospechosas,
     inconsistencias_estado: inconsistencias,
   }
+}
+
+// ── Ventas y facturación (oportunidades en estado "Ganado") ────────────────
+//
+// IMPORTANTE — historia de este criterio: la primera versión filtraba por
+// updatedAt como proxy de "fecha de venta" (GHL no expone una fecha de cierre
+// separada). Eso fallaba en la práctica: una oportunidad ganada y luego nunca
+// vuelta a tocar en el CRM tiene un updatedAt que queda "congelado" en el
+// pasado, y por lo tanto NUNCA cae dentro de ningún período que se mida —
+// Ventas daba 0 aunque el Funnel Comercial (que filtra por createdAt) sí
+// mostrara oportunidades en la etapa "Ganado".
+//
+// Ahora Ventas usa el MISMO criterio de período que el Funnel Comercial
+// (createdAt dentro del rango, ya filtrado por quien llama a esta función)
+// — así los dos números siempre son consistentes entre sí, y no dependemos
+// de un campo de fecha de GHL que no es confiable para este propósito.
+export function analizarVentasYFacturacion(pipelines: GhlPipeline[], opportunitiesDelPeriodo: GhlOpportunity[]) {
+  const stageMap = new Map<string, string>() // stageId -> nombre de la etapa
+  for (const p of pipelines) {
+    for (const s of p.stages) {
+      stageMap.set(s.id, s.name)
+    }
+  }
+
+  // GHL no siempre actualiza el campo "status" a 'won' cuando una oportunidad
+  // se mueve a la etapa "Ganado" del pipeline (depende de cómo esté
+  // configurada esa etapa específica en GHL) — por eso NO confiamos solo en
+  // o.status === 'won'. Se considera "venta" a toda oportunidad cuyo status
+  // sea 'won' O cuya etapa actual tenga un nombre que sugiera "ganado"/"won"
+  // (mismo criterio que ya usa analizarEmbudo para detectar inconsistencias).
+  const esGanada = (o: GhlOpportunity) => {
+    if (o.status === 'won') return true
+    const nombreEtapa = (stageMap.get(o.pipelineStageId) || '').toLowerCase()
+    return /ganad|won/.test(nombreEtapa)
+  }
+
+  const ganadas = opportunitiesDelPeriodo.filter(esGanada)
+  const facturacion = ganadas.reduce((sum, o) => sum + (o.monetaryValue || 0), 0)
+
+  return {
+    ventas: ganadas.length,
+    facturacion,
+    supuesto_fecha:
+      'Se cuenta como "venta del período" toda oportunidad creada dentro del período que hoy está en estado Ganado (mismo criterio de fecha que usa el Funnel Comercial, por createdAt) — GHL no expone una fecha de cierre/venta confiable para filtrar por otro criterio. Se considera "Ganado" tanto status=won como oportunidades cuya etapa actual se llama "Ganado" — GHL no siempre sincroniza el status al mover de etapa.',
+  }
+}
+
+// ── Funnel comercial por vendedor ──────────────────────────────────────────
+
+export function analizarFunnelPorVendedor(todas: GhlOpportunity[], pipelines: GhlPipeline[], usuarios: GhlUser[]) {
+  const stageMap = new Map<string, { name: string; position: number }>()
+  for (const p of pipelines) {
+    for (const s of p.stages) {
+      stageMap.set(s.id, { name: s.name, position: s.position })
+    }
+  }
+  const userMap = new Map(usuarios.map((u) => [u.id, u.name]))
+
+  const vendedoresSet = new Set<string>()
+  const etapasConPosicion = new Map<string, number>()
+  const matriz = new Map<string, Map<string, number>>() // etapa -> (vendedor -> cantidad)
+
+  for (const o of todas) {
+    const etapaInfo = stageMap.get(o.pipelineStageId)
+    const etapaNombre = etapaInfo?.name ?? 'Etapa desconocida'
+    const vendedorNombre = o.assignedTo ? userMap.get(o.assignedTo) ?? 'Sin asignar' : 'Sin asignar'
+
+    vendedoresSet.add(vendedorNombre)
+    etapasConPosicion.set(etapaNombre, etapaInfo?.position ?? 99)
+
+    if (!matriz.has(etapaNombre)) matriz.set(etapaNombre, new Map())
+    const fila = matriz.get(etapaNombre)!
+    fila.set(vendedorNombre, (fila.get(vendedorNombre) ?? 0) + 1)
+  }
+
+  const vendedores = Array.from(vendedoresSet).sort()
+  const etapasOrdenadas = Array.from(etapasConPosicion.entries())
+    .sort((a, b) => a[1] - b[1])
+    .map(([nombre]) => nombre)
+
+  const totalGeneral = todas.length || 1
+
+  const filas = etapasOrdenadas.map((etapa) => {
+    const fila = matriz.get(etapa) ?? new Map()
+    const porVendedor = vendedores.map((v) => fila.get(v) ?? 0)
+    const total = porVendedor.reduce((a, b) => a + b, 0)
+    return { etapa, porVendedor, total, pctGeneral: (total / totalGeneral) * 100 }
+  })
+
+  return { vendedores, filas, totalOportunidades: todas.length }
 }
 
 // ── Módulo 3: Inbox sin leer ────────────────────────────────────────────────
@@ -334,8 +427,8 @@ async function analizarConversacionesYTiempos(
 ) {
   const cutoff = Date.now() - VENTANA_DIAS * 24 * 60 * 60 * 1000
   const poolOrdenado = conversaciones
-    .filter((c) => c.lastMessageDate && new Date(c.lastMessageDate).getTime() >= cutoff)
-    .sort((a, b) => new Date(b.lastMessageDate ?? 0).getTime() - new Date(a.lastMessageDate ?? 0).getTime())
+    .filter((c) => c.lastMessageDate && parseISO(c.lastMessageDate).getTime() >= cutoff)
+    .sort((a, b) => (b.lastMessageDate ? parseISO(b.lastMessageDate).getTime() : 0) - (a.lastMessageDate ? parseISO(a.lastMessageDate).getTime() : 0))
 
   const detalleCalidad: Array<{
     conversacionId: string
@@ -375,10 +468,10 @@ async function analizarConversacionesYTiempos(
     let huboPrimeraRespuesta = false
     if (primerInbound) {
       const primeraOutbound = mensajes.find(
-        (m) => m.direction === 'outbound' && new Date(m.dateAdded).getTime() > new Date(primerInbound.dateAdded).getTime()
+        (m) => m.direction === 'outbound' && parseISO(m.dateAdded).getTime() > parseISO(primerInbound.dateAdded).getTime()
       )
       if (primeraOutbound) {
-        const diffMin = minutosHabilesEntre(new Date(primerInbound.dateAdded).getTime(), new Date(primeraOutbound.dateAdded).getTime())
+        const diffMin = minutosHabilesEntre(parseISO(primerInbound.dateAdded).getTime(), parseISO(primeraOutbound.dateAdded).getTime())
         primeraRespuestaMin.push(diffMin)
         huboPrimeraRespuesta = true
       }
@@ -394,10 +487,10 @@ async function analizarConversacionesYTiempos(
     if (derivacionMsg) {
       handoffsDetectados++
       const tomaHumana = mensajes.find(
-        (m) => m.direction === 'outbound' && !!m.userId && new Date(m.dateAdded).getTime() > new Date(derivacionMsg.dateAdded).getTime()
+        (m) => m.direction === 'outbound' && !!m.userId && parseISO(m.dateAdded).getTime() > parseISO(derivacionMsg.dateAdded).getTime()
       )
       if (tomaHumana) {
-        const diffMin = minutosHabilesEntre(new Date(derivacionMsg.dateAdded).getTime(), new Date(tomaHumana.dateAdded).getTime())
+        const diffMin = minutosHabilesEntre(parseISO(derivacionMsg.dateAdded).getTime(), parseISO(tomaHumana.dateAdded).getTime())
         handoffMin.push(diffMin)
       } else {
         handoffsSinTomar++
@@ -583,19 +676,21 @@ export async function runRevOpsAnalysis(
   const creds = { locationId: cliente.ghl_location_id as string, token: cliente.ghl_token as string }
 
   try {
-    const [opportunities, pipelines, conversaciones] = await Promise.all([
+    const [opportunities, pipelines, conversaciones, usuarios] = await Promise.all([
       fetchGhlOpportunities(creds),
       fetchGhlPipelines(creds),
       fetchGhlConversations(creds),
+      fetchGhlUsers(creds), // ← necesario para resolver assignedTo → nombre de vendedor
     ])
 
-    // Oportunidades y Embudo se calculan sobre el rango de fecha (por fecha de
-    // creación) que se le haya pasado, para poder igualar el filtro que el
-    // paid media tenga aplicado en la vista de GHL. Tareas/Conversaciones/Inbox
-    // no se filtran: operan siempre sobre las oportunidades abiertas actuales.
+    // Oportunidades, Embudo, Ventas y Funnel por Vendedor se calculan sobre el
+    // rango de fecha (por fecha de creación) que se le haya pasado, para poder
+    // igualar el filtro que el paid media tenga aplicado en la vista de GHL.
+    // Tareas/Conversaciones/Inbox no se filtran: operan siempre sobre las
+    // oportunidades abiertas actuales.
     const opportunitiesParaEmbudo = rango
       ? opportunities.filter((o) => {
-          const t = new Date(o.createdAt).getTime()
+          const t = parseISO(o.createdAt).getTime()
           if (isNaN(t)) return false
           const desdeMs = new Date(`${rango.desde}T00:00:00`).getTime()
           const hastaMs = new Date(`${rango.hasta}T23:59:59.999`).getTime()
@@ -614,6 +709,11 @@ export async function runRevOpsAnalysis(
     const oportunidades = analizarOportunidades(opportunitiesParaEmbudo, conversaciones.length, rango)
     const embudo = analizarEmbudo(opportunitiesParaEmbudo, pipelines)
 
+    // Ventas usa el MISMO set ya filtrado por período (opportunitiesParaEmbudo)
+    // que usan Embudo y Funnel — así los tres módulos son consistentes entre sí.
+    const ventas = analizarVentasYFacturacion(pipelines, opportunitiesParaEmbudo)
+    const funnelPorVendedor = analizarFunnelPorVendedor(opportunitiesParaEmbudo, pipelines, usuarios)
+
     const resumenSinAlertas: RevOpsResumen = {
       tareas,
       conversaciones_calidad: moduloConversaciones,
@@ -621,6 +721,8 @@ export async function runRevOpsAnalysis(
       oportunidades,
       embudo,
       tiempos_respuesta: moduloTiempos,
+      ventas,
+      funnel_por_vendedor: funnelPorVendedor,
       alertas: [],
     }
 

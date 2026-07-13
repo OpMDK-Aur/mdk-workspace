@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import { parseISO } from 'date-fns'
 import { useTimerStore, type TimeEntry } from '@/lib/time-tracking/timer-store'
 import { createClient } from '@/lib/supabase/client'
 import type { Cliente, TipoDeTarea, Profile } from '@/lib/types'
@@ -129,8 +130,8 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
       let endDate: Date
       
       if (dateRange === 'custom') {
-        startDate = new Date(customStartDate)
-        endDate = new Date(customEndDate)
+        startDate = parseISO(customStartDate)
+        endDate = parseISO(customEndDate)
         endDate.setHours(23, 59, 59, 999)
       } else {
         // Month range
@@ -236,11 +237,11 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
     
     // Sort entries by iniciado_en descending
     const sorted = [...completedEntries].sort(
-      (a, b) => new Date(b.iniciado_en).getTime() - new Date(a.iniciado_en).getTime()
+      (a, b) => parseISO(b.iniciado_en).getTime() - parseISO(a.iniciado_en).getTime()
     )
 
     sorted.forEach((entry) => {
-      const dateKey = new Date(entry.iniciado_en).toDateString()
+      const dateKey = parseISO(entry.iniciado_en).toDateString()
       const existing = groups.get(dateKey)
       if (existing) {
         existing.entries.push(entry)
@@ -667,17 +668,16 @@ function EntryRow({
 
   const handleSaveDateTime = async (field: 'start' | 'end', value: string) => {
     if (!value) { setEditingField(null); return }
-    const newDate = new Date(value)
-    const updates: Partial<TimeEntry> = {}
-    if (field === 'start') {
-      updates.iniciado_en = newDate.toISOString()
-      if (entry.finalizado_en) {
-        const endMs = new Date(entry.finalizado_en).getTime()
-        updates.duracion_seg = Math.max(0, Math.floor((endMs - newDate.getTime()) / 1000))
-      }
-    } else {
-      updates.finalizado_en = newDate.toISOString()
-      const startMs = new Date(entry.iniciado_en).getTime()
+      const newDate = parseISO(value)
+      
+      // Check if within allowed range
+      if (startDate && endDate) {
+        const endMs = parseISO(entry.finalizado_en).getTime()
+        if (startMs < startDate.getTime() || endMs > endDate.getTime()) {
+          toast.error('Invalid date range')
+          return
+        }
+        const startMs = parseISO(entry.iniciado_en).getTime()
       updates.duracion_seg = Math.max(0, Math.floor((newDate.getTime() - startMs) / 1000))
     }
     await onUpdate(entry.id, updates)

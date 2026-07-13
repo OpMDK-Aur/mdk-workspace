@@ -13,7 +13,8 @@ import {
   isToday,
   addMonths,
   subMonths,
-  isPast
+  isPast,
+  parseISO
 } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -108,11 +109,12 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
         {tasks.slice(0, 3).map((task) => {
           const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
           const statusConfig = STATUS_CONFIG[task.status] || STATUS_CONFIG.pendiente
-          const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && task.status !== 'resuelto'
           const isSystemTask = task.isSystemTask
           const isResuelto = task.status === 'resuelto'
-          
-          return (
+          const dueDate = task.dueDate ? (typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate) : null
+          const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate) && task.status !== 'resuelto'
+      
+      return (
             <button
               key={task.id}
               onClick={() => onTaskClick(task.id)}
@@ -206,7 +208,8 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                 <div className="px-2 py-2 space-y-1">
                   {tasks.map((task, index) => {
                     const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
-                    const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && task.status !== 'resuelto'
+      const dueDate = task.dueDate ? (typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate) : null
+      const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate) && task.status !== 'resuelto'
                     const isSystemTask = task.isSystemTask
                     const isResuelto = task.status === 'resuelto'
 
@@ -296,7 +299,7 @@ export function CalendarView() {
     
     tasks.forEach((task) => {
       if (task.dueDate) {
-        const dateKey = format(new Date(task.dueDate), 'yyyy-MM-dd')
+        const dateKey = format(typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate, 'yyyy-MM-dd')
         const existing = grouped.get(dateKey) || []
         grouped.set(dateKey, [...existing, task])
       }

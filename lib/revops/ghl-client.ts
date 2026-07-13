@@ -251,3 +251,26 @@ export async function fetchGhlConversationMessages(creds: GhlCreds, conversation
     }))
     .sort((a: GhlMessage, b: GhlMessage) => new Date(a.dateAdded).getTime() - new Date(b.dateAdded).getTime())
 }
+
+// ── Usuarios (para resolver assignedTo → nombre de vendedor) ──────────────
+
+export interface GhlUser {
+  id: string
+  name: string
+}
+
+export async function fetchGhlUsers(creds: GhlCreds): Promise<GhlUser[]> {
+  const url = `${GHL_BASE}/users/?locationId=${creds.locationId}`
+  const res = await fetchWithRetry(url, {
+    method: 'GET',
+    headers: authHeaders(creds.token, VERSION_2021_07_28),
+    cache: 'no-store',
+  })
+  if (!res.ok) throw new Error(`GHL users HTTP ${res.status}`)
+  const json = await res.json()
+  const users = json.users ?? []
+  return users.map((u: any) => ({
+    id: u.id ?? '',
+    name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.name || u.email || 'Sin nombre',
+  }))
+}

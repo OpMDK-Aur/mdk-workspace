@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { parseISO } from 'date-fns'
 import { createClient, getAuthUser } from '@/lib/supabase/client'
 import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskComment, TaskFile, TaskQuotation } from '@/lib/types'
 
@@ -74,7 +75,7 @@ function mapComentarioToComment(comentario: ComentarioDB): TaskComment {
     userId: comentario.autor_id || 'system',
     userName: comentario.autor_nombre,
     userAvatar: comentario.colaboradores?.avatar_url || null,
-    createdAt: new Date(comentario.created_at),
+    createdAt: parseISO(comentario.created_at),
     attachments,
   }
 }
@@ -168,7 +169,7 @@ function mapTareaToTask(
     priority: mapPrioridadToPriority(tarea.prioridad),
     type: tarea.tipo_tarea_id || '', // UUID from tipo_de_tareas
     typeName: tarea.tipo_de_tareas?.nombre || '', // Display name
-    dueDate: tarea.fecha_vencimiento ? new Date(tarea.fecha_vencimiento) : null,
+    dueDate: tarea.fecha_vencimiento ? parseISO(tarea.fecha_vencimiento) : null,
       isActive: tarea.estado !== 'completada' && tarea.estado !== 'resuelto' && tarea.estado !== 'no_realizado',
     customFields: {},
     timeSessions: [],
@@ -199,8 +200,8 @@ function mapTareaToTask(
       }
       return undefined
     })(),
-    createdAt: new Date(tarea.created_at),
-    updatedAt: new Date(tarea.updated_at),
+    createdAt: parseISO(tarea.created_at),
+    updatedAt: parseISO(tarea.updated_at),
   }
 }
 
@@ -707,13 +708,13 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
       
     case 'greater_than':
       if (taskValue instanceof Date && typeof value === 'string') {
-        return taskValue > new Date(value)
+        return taskValue > parseISO(value)
       }
       return false
       
     case 'less_than':
       if (taskValue instanceof Date && typeof value === 'string') {
-        return taskValue < new Date(value)
+        return taskValue < parseISO(value)
       }
       return false
       
@@ -1332,8 +1333,8 @@ updateTask: async (taskId, updates) => {
     if (updates.dueDate !== undefined) {
       const prevDate = tareaAnterior.fecha_vencimiento
       const newDate = updates.dueDate ? (updates.dueDate instanceof Date ? updates.dueDate.toISOString() : String(updates.dueDate)) : null
-      const prevNorm = prevDate ? new Date(prevDate).toDateString() : null
-      const newNorm = newDate ? new Date(newDate).toDateString() : null
+      const prevNorm = prevDate ? parseISO(prevDate).toDateString() : null
+      const newNorm = newDate ? parseISO(newDate).toDateString() : null
       if (prevNorm !== newNorm) {
         // Notify all assignees + creator
         const assigneeIds = [...new Set(previousAssignedIds)]
@@ -1468,8 +1469,8 @@ updateTask: async (taskId, updates) => {
       
       // Add activity for due date change
       if (updates.dueDate !== undefined) {
-        const prevDate = t.dueDate ? new Date(t.dueDate).toLocaleDateString('es-ES') : null
-        const newDate = updates.dueDate ? new Date(updates.dueDate).toLocaleDateString('es-ES') : null
+        const prevDate = t.dueDate ? (t.dueDate instanceof Date ? t.dueDate : parseISO(String(t.dueDate))).toLocaleDateString('es-ES') : null
+        const newDate = updates.dueDate ? (updates.dueDate instanceof Date ? updates.dueDate : parseISO(String(updates.dueDate))).toLocaleDateString('es-ES') : null
         if (prevDate !== newDate) {
           const activity = {
             id: crypto.randomUUID(),

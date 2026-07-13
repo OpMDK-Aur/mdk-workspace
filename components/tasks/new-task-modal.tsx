@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { TaskStatus, TaskPriority, TaskType, TaskComment, TaskFile } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { parseISO } from 'date-fns'
 import { createClient, getAuthUser } from '@/lib/supabase/client'
 import {
   useTaskStore,
@@ -584,7 +585,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
   },
 ]
 
-// ── Chat Message Types ────────────────────────────────────────────────────────
+// ── Chat Message Types ────────────────────���───────────────────────────────────
 
 interface ChatMessage {
   id: string
@@ -1224,7 +1225,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
         type: 'diseno',
         priority: 'Media',
         assignee: assigneeStr,
-        dueDate: data.dueDate ? new Date(data.dueDate).toLocaleDateString('es-AR') : undefined,
+          dueDate: data.dueDate ? parseISO(data.dueDate).toLocaleDateString('es-AR') : undefined,
       },
     }, 300)
     
@@ -1467,7 +1468,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
         status: quickStatus as TaskStatus,
         priority: (quickPriority || 'media') as TaskPriority,
         type: quickType,
-        dueDate: quickDueDate ? new Date(quickDueDate + 'T12:00:00') : null,
+          dueDate: quickDueDate ? parseISO(quickDueDate + 'T12:00:00') : null,
         customFields: {},
         createdById: currentUser?.id || null,
         comments,
@@ -1676,7 +1677,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                   <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
                     <CalendarDays className="h-3.5 w-3.5" />
                     {quickDueDate
-                      ? new Date(quickDueDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+                      ? parseISO(quickDueDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
                       : 'Fecha limite'
                     }
                   </Button>
@@ -1904,7 +1905,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                     <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
                       <CalendarDays className="h-3.5 w-3.5" />
                       {reminderDate
-                        ? new Date(reminderDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+                        ? parseISO(reminderDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
                         : 'Fecha'
                       }
                     </Button>
