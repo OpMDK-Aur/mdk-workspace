@@ -3,6 +3,8 @@ import { openai } from '@ai-sdk/openai'
 import { streamText } from 'ai'
 import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
 import { parseAttachments } from '@/lib/parse-attachments'
+import { fetchGhlOpportunities, fetchGhlPipelines, fetchGhlUsers } from '@/lib/revops/ghl-client'
+import { analizarVentasYFacturacion, analizarFunnelPorVendedor } from '@/lib/revops/analyze'
 
 export const maxDuration = 120
 
