@@ -22,13 +22,6 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   FileText,
   ArrowLeft,
   Send,
@@ -85,14 +78,6 @@ const SUGGESTIONS = [
   'Recomendaciones de optimizacion',
 ]
 
-const CRM_OPTIONS = [
-  { value: 'ghl', label: 'GoHighLevel' },
-  { value: 'aurelia', label: 'Aurelia' },
-  { value: 'hubspot', label: 'HubSpot' },
-  { value: 'pipedrive', label: 'Pipedrive' },
-  { value: 'otro', label: 'Otro' },
-]
-
 type ChatMessage = {
   id: string
   role: 'user' | 'assistant'
@@ -109,7 +94,6 @@ export default function AnalistaPage() {
   // State
   const [clients, setClients] = useState<Client[]>([])
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
-  const [selectedCRM, setSelectedCRM] = useState<string>('')
   const [clientOpen, setClientOpen] = useState(false)
   const [cuentasDisponibles, setCuentasDisponibles] = useState<
     Array<{ id: string; plataforma: string; id_cuenta: string; nombre_cuenta: string | null }>
@@ -143,7 +127,7 @@ export default function AnalistaPage() {
     async function fetchClients() {
       const { data } = await supabase
         .from('clientes')
-        .select('id, nombre_del_negocio, plan')
+        .select('id, nombre_del_negocio, plan, crm_type, ghl_location_id')
         .eq('activo', true)
         .order('nombre_del_negocio')
       if (data) setClients(data as Client[])
@@ -673,7 +657,6 @@ export default function AnalistaPage() {
                         key={client.id}
                         onSelect={() => {
                           setSelectedClient(client)
-        setSelectedCRM(client.crm_type || '')
                           setClientOpen(false)
                           fetchCuentasCliente(client.id)
                         }}
@@ -733,6 +716,29 @@ export default function AnalistaPage() {
                 <p className="text-[11px] text-amber-500 px-1">
                   Sin cuentas seleccionadas: el informe no va a traer datos de plataforma.
                 </p>
+              )}
+            </div>
+          )}
+
+          {/* CRM configurado */}
+          {selectedClient && (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">CRM configurado</label>
+              {selectedClient.crm_type === 'ghl' && selectedClient.ghl_location_id ? (
+                <div className="flex items-center gap-2 px-2.5 py-2 rounded-md border bg-muted/30 text-sm">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                  <span className="flex-1">GoHighLevel</span>
+                  <span className="text-muted-foreground text-xs font-mono">
+                    {selectedClient.ghl_location_id.slice(0, 6)}…
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 px-2.5 py-2 rounded-md border border-amber-500/30 bg-amber-500/10 text-sm">
+                  <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1.5" />
+                  <span className="text-amber-600 dark:text-amber-400">
+                    Sin CRM conectado: Ventas y Funnel Comercial van a tener que pedirse manualmente.
+                  </span>
+                </div>
               )}
             </div>
           )}
@@ -858,20 +864,6 @@ export default function AnalistaPage() {
                   {MONTHS[parseInt(selectedMonth) - 1]?.label} {selectedYear}
                 </p>
               </div>
-              {selectedClient && (
-                <Select value={selectedCRM} onValueChange={setSelectedCRM}>
-                  <SelectTrigger className="w-[150px] h-8 text-xs">
-                    <SelectValue placeholder="CRM" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CRM_OPTIONS.map((crm) => (
-                      <SelectItem key={crm.value} value={crm.value}>
-                        {crm.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
               {isLoading && (
                 <Badge variant="secondary" className="animate-pulse">
                   En curso
@@ -1028,22 +1020,6 @@ export default function AnalistaPage() {
 
                 {chatMessages.length > 0 && (
                   <div className="mt-3 flex justify-center gap-2">
-                    <Button
-                      size="sm"
-                      className="bg-[#7F77DD] hover:bg-[#6B63C7]"
-                      disabled={isLoading || uploadingFiles}
-                      onClick={async () => {
-                        // El informe a exportar es el que YA está en pantalla (el
-                        // último borrador completo), no la respuesta corta que la
-                        // IA da al confirmar — esa es solo un acuse de recibo.
-                        const draftToExport = chatMessages.filter((m) => m.role === 'assistant').pop()?.content
-                        await handleSendMessage('Confirmo la información del informe tal como está.')
-                        if (draftToExport) await handleSaveAsReport(draftToExport)
-                      }}
-                    >
-                      <Check className="h-4 w-4" />
-                      Confirmar y generar PDF
-                    </Button>
                     <Button variant="outline" size="sm" onClick={() => handleSaveAsReport()}>
                       <FileText className="h-4 w-4" />
                       Guardar y exportar informe
