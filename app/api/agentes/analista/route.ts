@@ -617,6 +617,12 @@ export async function POST(req: Request) {
           fetchGhlUsers(creds),
         ])
 
+        // Ventas y Funnel usan el MISMO criterio de período: oportunidades
+        // creadas (createdAt) dentro del rango. Antes Ventas filtraba por
+        // updatedAt como proxy de "fecha de venta", pero eso fallaba en
+        // oportunidades ganadas y nunca vueltas a tocar (su updatedAt queda
+        // congelado en el pasado y nunca cae dentro de ningún período que se
+        // mida). Con el mismo criterio, Ventas y Funnel siempre coinciden.
         const opportunitiesDelPeriodo = effectivePeriodo
           ? opportunities.filter((o) => {
               const t = new Date(o.createdAt).getTime()
@@ -627,7 +633,7 @@ export async function POST(req: Request) {
             })
           : opportunities
 
-        const ventas = analizarVentasYFacturacion(opportunities, pipelines, effectivePeriodo)
+        const ventas = analizarVentasYFacturacion(pipelines, opportunitiesDelPeriodo)
         const funnel = analizarFunnelPorVendedor(opportunitiesDelPeriodo, pipelines, usuarios)
 
         const ventasTexto = `- Ventas del período (oportunidades en estado Ganado): ${ventas.ventas}

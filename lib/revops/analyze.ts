@@ -259,20 +259,21 @@ function analizarEmbudo(todas: GhlOpportunity[], pipelines: GhlPipeline[]) {
   }
 }
 
-// ── NUEVO — Ventas y facturación (oportunidades en estado "Ganado") ────────
+// ── Ventas y facturación (oportunidades en estado "Ganado") ────────────────
 //
-// GHL no expone una fecha de "cierre/ganado" separada de updatedAt, así que
-// se usa updatedAt como proxy de cuándo se marcó Ganado. Si el equipo edita
-// una oportunidad ganada por otro motivo (agregar una nota, corregir un
-// monto, etc.) después de haberla ganado, eso corre la fecha y puede desviar
-// el conteo del período — documentado en `supuesto_fecha` para que quede
-// trazable en el resumen, no oculto.
-
-export function analizarVentasYFacturacion(
-  todas: GhlOpportunity[],
-  pipelines: GhlPipeline[],
-  rango?: { desde: string; hasta: string }
-) {
+// IMPORTANTE — historia de este criterio: la primera versión filtraba por
+// updatedAt como proxy de "fecha de venta" (GHL no expone una fecha de cierre
+// separada). Eso fallaba en la práctica: una oportunidad ganada y luego nunca
+// vuelta a tocar en el CRM tiene un updatedAt que queda "congelado" en el
+// pasado, y por lo tanto NUNCA cae dentro de ningún período que se mida —
+// Ventas daba 0 aunque el Funnel Comercial (que filtra por createdAt) sí
+// mostrara oportunidades en la etapa "Ganado".
+//
+// Ahora Ventas usa el MISMO criterio de período que el Funnel Comercial
+// (createdAt dentro del rango, ya filtrado por quien llama a esta función)
+// — así los dos números siempre son consistentes entre sí, y no dependemos
+// de un campo de fecha de GHL que no es confiable para este propósito.
+export function analizarVentasYFacturacion(pipelines: GhlPipeline[], opportunitiesDelPeriodo: GhlOpportunity[]) {
   const stageMap = new Map<string, string>() // stageId -> nombre de la etapa
   for (const p of pipelines) {
     for (const s of p.stages) {
@@ -292,29 +293,18 @@ export function analizarVentasYFacturacion(
     return /ganad|won/.test(nombreEtapa)
   }
 
-  const ganadas = todas.filter(esGanada)
-
-  const enPeriodo = rango
-    ? ganadas.filter((o) => {
-        const t = new Date(o.updatedAt).getTime()
-        if (isNaN(t)) return false
-        const desdeMs = new Date(`${rango.desde}T00:00:00`).getTime()
-        const hastaMs = new Date(`${rango.hasta}T23:59:59.999`).getTime()
-        return t >= desdeMs && t <= hastaMs
-      })
-    : ganadas
-
-  const facturacion = enPeriodo.reduce((sum, o) => sum + (o.monetaryValue || 0), 0)
+  const ganadas = opportunitiesDelPeriodo.filter(esGanada)
+  const facturacion = ganadas.reduce((sum, o) => sum + (o.monetaryValue || 0), 0)
 
   return {
-    ventas: enPeriodo.length,
+    ventas: ganadas.length,
     facturacion,
     supuesto_fecha:
-      'updatedAt usado como proxy de fecha de venta (GHL no expone fecha de cierre separada). Se considera "venta" tanto status=won como oportunidades cuya etapa actual se llama "Ganado" — GHL no siempre sincroniza el status al mover de etapa.',
+      'Se cuenta como "venta del período" toda oportunidad creada dentro del período que hoy está en estado Ganado (mismo criterio de fecha que usa el Funnel Comercial, por createdAt) — GHL no expone una fecha de cierre/venta confiable para filtrar por otro criterio. Se considera "Ganado" tanto status=won como oportunidades cuya etapa actual se llama "Ganado" — GHL no siempre sincroniza el status al mover de etapa.',
   }
 }
 
-// ── NUEVO — Funnel comercial por vendedor ──────────────────────────────────
+// ── Funnel comercial por vendedor ──────────────────────────────────────────
 
 export function analizarFunnelPorVendedor(todas: GhlOpportunity[], pipelines: GhlPipeline[], usuarios: GhlUser[]) {
   const stageMap = new Map<string, { name: string; position: number }>()
@@ -689,13 +679,14 @@ export async function runRevOpsAnalysis(
       fetchGhlOpportunities(creds),
       fetchGhlPipelines(creds),
       fetchGhlConversations(creds),
-      fetchGhlUsers(creds), // ← NUEVO: necesario para resolver assignedTo → nombre de vendedor
+      fetchGhlUsers(creds), // ← necesario para resolver assignedTo → nombre de vendedor
     ])
 
-    // Oportunidades y Embudo se calculan sobre el rango de fecha (por fecha de
-    // creación) que se le haya pasado, para poder igualar el filtro que el
-    // paid media tenga aplicado en la vista de GHL. Tareas/Conversaciones/Inbox
-    // no se filtran: operan siempre sobre las oportunidades abiertas actuales.
+    // Oportunidades, Embudo, Ventas y Funnel por Vendedor se calculan sobre el
+    // rango de fecha (por fecha de creación) que se le haya pasado, para poder
+    // igualar el filtro que el paid media tenga aplicado en la vista de GHL.
+    // Tareas/Conversaciones/Inbox no se filtran: operan siempre sobre las
+    // oportunidades abiertas actuales.
     const opportunitiesParaEmbudo = rango
       ? opportunities.filter((o) => {
           const t = new Date(o.createdAt).getTime()
@@ -717,14 +708,10 @@ export async function runRevOpsAnalysis(
     const oportunidades = analizarOportunidades(opportunitiesParaEmbudo, conversaciones.length, rango)
     const embudo = analizarEmbudo(opportunitiesParaEmbudo, pipelines)
 
-    // ── NUEVO ──────────────────────────────────────────────────────────────
-    // Ventas/facturación: usa TODAS las oportunidades (no las filtradas por
-    // createdAt como Embudo), porque filtra por su propia fecha (updatedAt,
-    // proxy de fecha de venta) dentro de analizarVentasYFacturacion.
-const ventas = analizarVentasYFacturacion(opportunities, pipelines, rango)    // Funnel por vendedor: usa el mismo set ya filtrado por período que usa
-    // Embudo, para que sea consistente con el resto del análisis del período.
+    // Ventas usa el MISMO set ya filtrado por período (opportunitiesParaEmbudo)
+    // que usan Embudo y Funnel — así los tres módulos son consistentes entre sí.
+    const ventas = analizarVentasYFacturacion(pipelines, opportunitiesParaEmbudo)
     const funnelPorVendedor = analizarFunnelPorVendedor(opportunitiesParaEmbudo, pipelines, usuarios)
-    // ─────────────────────────────────────────────────────────────────────
 
     const resumenSinAlertas: RevOpsResumen = {
       tareas,
@@ -733,8 +720,8 @@ const ventas = analizarVentasYFacturacion(opportunities, pipelines, rango)    //
       oportunidades,
       embudo,
       tiempos_respuesta: moduloTiempos,
-      ventas, // ← NUEVO
-      funnel_por_vendedor: funnelPorVendedor, // ← NUEVO
+      ventas,
+      funnel_por_vendedor: funnelPorVendedor,
       alertas: [],
     }
 
