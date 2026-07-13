@@ -627,7 +627,7 @@ export async function POST(req: Request) {
             })
           : opportunities
 
-        const ventas = analizarVentasYFacturacion(opportunities, effectivePeriodo)
+        const ventas = analizarVentasYFacturacion(opportunities, pipelines, effectivePeriodo)
         const funnel = analizarFunnelPorVendedor(opportunitiesDelPeriodo, pipelines, usuarios)
 
         const ventasTexto = `- Ventas del período (oportunidades en estado Ganado): ${ventas.ventas}
