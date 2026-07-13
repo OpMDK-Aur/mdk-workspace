@@ -635,7 +635,7 @@ export default function AnalistaPage() {
         </div>
 
         {/* New Query Section */}
-        <div className="p-4 space-y-3 border-b">
+        <div className="p-4 space-y-3 border-b overflow-y-auto max-h-[55vh]">
           <h3 className="text-sm font-medium text-muted-foreground">Nueva consulta</h3>
 
           {/* Client Combobox */}
