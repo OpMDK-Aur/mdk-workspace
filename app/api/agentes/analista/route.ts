@@ -220,7 +220,8 @@ async function fetchMetaMetrics(
             impressions: cImpr,
             clicks: cClicks,
             ctr: cCtr,
-            actionsBreakdown: buildActionsBreakdown(row.actions, cCtr),
+            console.log('[v0][debug-actions]', row.campaign_name, JSON.stringify(row.actions))
+actionsBreakdown: buildActionsBreakdown(row.actions, cCtr),
           })
         }
       } else {
