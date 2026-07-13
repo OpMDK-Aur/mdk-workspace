@@ -109,8 +109,10 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
         {tasks.slice(0, 3).map((task) => {
           const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
           const statusConfig = STATUS_CONFIG[task.status] || STATUS_CONFIG.pendiente
-      const dueDate = task.dueDate ? (typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate) : null
-      const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate) && task.status !== 'resuelto'
+          const isSystemTask = task.isSystemTask
+          const isResuelto = task.status === 'resuelto'
+          const dueDate = task.dueDate ? (typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate) : null
+          const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate) && task.status !== 'resuelto'
       
       return (
             <button

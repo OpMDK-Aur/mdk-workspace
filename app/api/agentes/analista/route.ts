@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { openai } from '@ai-sdk/openai'
 import { streamText } from 'ai'
+import { parseISO } from 'date-fns'
 import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
 import { parseAttachments } from '@/lib/parse-attachments'
 import { fetchGhlOpportunities, fetchGhlPipelines, fetchGhlUsers } from '@/lib/revops/ghl-client'
@@ -623,9 +624,13 @@ export async function POST(req: Request) {
         // oportunidades ganadas y nunca vueltas a tocar (su updatedAt queda
         // congelado en el pasado y nunca cae dentro de ningún período que se
         // mida). Con el mismo criterio, Ventas y Funnel siempre coinciden.
+        //
+        // Se usa parseISO (no new Date directo) para createdAt: si GHL
+        // devolviera alguna vez una fecha sin hora ("YYYY-MM-DD"), new Date()
+        // la interpretaría en UTC y correría el día en Argentina (UTC-3).
         const opportunitiesDelPeriodo = effectivePeriodo
           ? opportunities.filter((o) => {
-              const t = new Date(o.createdAt).getTime()
+              const t = parseISO(o.createdAt).getTime()
               if (isNaN(t)) return false
               const desdeMs = new Date(`${effectivePeriodo.start}T00:00:00`).getTime()
               const hastaMs = new Date(`${effectivePeriodo.end}T23:59:59.999`).getTime()
@@ -871,8 +876,11 @@ ${metricsByAccount.map(m => {
 
     const periodoTexto = effectivePeriodo?.start && effectivePeriodo?.end 
       ? (() => {
-          const start = new Date(effectivePeriodo.start)
-          const end = new Date(effectivePeriodo.end)
+          // Se agrega la hora explícita (T00:00:00) al parsear: new Date()
+          // sobre un string "YYYY-MM-DD" sin hora se interpreta en UTC, lo
+          // que en Argentina (UTC-3) corre la fecha un día para atrás.
+          const start = parseISO(effectivePeriodo.start)
+          const end = parseISO(effectivePeriodo.end)
           const startDay = start.getDate()
           const startMonth = start.toLocaleString('es-ES', { month: 'long' })
           const endDay = end.getDate()
@@ -901,6 +909,8 @@ ESTRUCTURA DE LA INFORMACIÓN QUE DEBÉS ENTREGAR:
 Tu única salida es texto estructurado en el chat — NO generás ningún archivo ni PDF. El usuario copia este texto directamente a la plantilla de Claude Design. Por eso el formato debe ser limpio: los títulos de sección tal cual figuran abajo, un dato por línea, tablas markdown reales cuando corresponda, sin relleno narrativo innecesario.
 
 El plan detectado para este cliente es "${planInforme}" (plan crudo: "${client.plan || 'sin definir'}"). El nivel de profundidad depende del plan:
+
+REGLA DE PRIORIDAD MÁXIMA: la estructura de abajo (Esencial o Estratégico) se aplica en CADA mensaje según el plan real del cliente indicado arriba, sin importar qué estructura se usó en mensajes anteriores de esta misma conversación. Si en un turno anterior de este chat se armó un informe con la estructura equivocada (por ejemplo, Esencial para un cliente que en realidad es Estratégico), corregilo en el siguiente mensaje sin que haga falta que el usuario te lo pida — nunca repitas una estructura incorrecta solo porque ya se usó antes en la conversación.
 
 Cada campo está marcado como:
 - (AUTOMÁTICO) → sale de las métricas/tareas/memoria/RevOps ya incluidas en este prompt. Nunca lo dejes vacío si el dato está disponible ahí.
@@ -997,11 +1007,26 @@ COMO RESPONDER:
 - Si el usuario pide el informe completo, estructuralo siguiendo la guía de arriba según el plan del cliente. Preguntá SOLO los campos marcados (PREGUNTAR) que todavía no tengas, y hacelo una sola vez por campo en la conversación — no repitas la pregunta ni bloquees el resto del informe esperando esa respuesta si el usuario ya te dijo que no la tiene.
 - Los campos (OMITIR SI FALTA) nunca generan una pregunta: si no hay dato, esa sección o línea simplemente no aparece en el informe.
 
+VERIFICACIÓN ANTES DE RESPONDER (hacé esto siempre, en silencio, antes de enviar el mensaje):
+- Si el cliente tiene CRM conectado y el bloque VENTAS/FUNNEL COMERCIAL de este prompt tiene datos, y tu respuesta es un informe completo de Plan Estratégico, confirmá que Ventas, Funnel Comercial, Gestión en CRM e Impacto Económico estén efectivamente incluidos — si armaste el informe y falta alguna de estas secciones sin que el campo esté vacío en los datos, es un error tuyo: corregilo antes de responder, no lo envíes incompleto.
+- Si vas a insertar un nombre de campaña/cuenta en una tabla markdown, revisá que no contenga "|" sin escapar (ver regla de FORMATO DEL TEXTO).
+- Si un total no coincide con la suma de sus partes (ej. TOTAL de la tabla vs. la suma de las filas), recalculalo antes de mostrarlo.
+- Si una métrica es anómala (CTR > 100%, CPL en $0, ROAS negativo), mencionalo como algo a revisar en vez de mostrarlo sin comentario.
+- Nunca omitas una sección completa en silencio si los datos para esa sección SÍ están disponibles en este prompt — omitir sin dato disponible es un error, no una decisión de formato.
+
 FORMATO DEL TEXTO (para que se pueda copiar y pegar limpio a Claude Design):
 - Números KPI (Leads/CPL/Ventas/Inversión, etc.): una línea en negrita por cada uno, sin viñeta — ej. "**Leads:** 1453".
 - Tablas (campañas, funnel): SIEMPRE tabla markdown real con pipes "|", nunca datos sueltos en viñetas.
+- Los nombres de campaña o de cuenta publicitaria pueden contener el carácter "|" (ej. "MDK | NTI // Cuenta de respaldo"). Como las tablas markdown usan "|" como separador de columna, ANTES de insertar un nombre en una celda de tabla, reemplazá cualquier "|" que contenga por "/" (ej. "MDK / NTI // Cuenta de respaldo"). Si no hacés esto, la fila se corre y la tabla queda rota — ya pasó antes.
 - El resto del contenido narrativo (objetivo, conclusión, acciones) puede ir en viñetas o párrafos normales.
 - Destacá números importantes en **negrita**. Sé claro y conciso.
+
+FORMATO DE NÚMEROS (Argentina):
+- Moneda: $1.234.567,89 — punto para miles, coma para decimales. NUNCA formato inglés ($1,234,567.89).
+- Porcentajes: 12,5% — 1 decimal, coma.
+- Números enteros grandes (leads, impresiones): 1.234.567 — punto para miles.
+- Ratios (CPC, CPL, CPM): 2 decimales con coma. Ej: $85,40.
+- ROAS: 2 decimales con "x". Ej: 3,42x.
 
 CAPACIDADES DE VISUALIZACION:
 Cuando una visualización ayude a explicar los datos (o cuando el usuario la pida), genera gráficos y archivos usando estos bloques especiales. No es obligatorio en cada mensaje, úsalos cuando aporten valor.
@@ -1067,6 +1092,10 @@ ANALISIS DE IMAGENES, DOCUMENTOS Y DATOS DEL USUARIO:
   * ASUME que son correctos y no cuestiones su veracidad
   * Si faltan datos, PREGUNTA: "Entiendo, pero ¿qué tal el CPL? ¿Y cuántas impresiones tuviste?"
 - IMPORTANTE: Si el usuario te pide análisis pero no ve datos en tu respuesta, avísale que necesita recargar la página o reenviar el archivo/datos.
+
+FUERA DE ALCANCE:
+Si te piden algo que no es análisis/reporte de datos de pauta o CRM (ej. editar una campaña, mandar un mail, gestionar accesos), respondé:
+"Mi especialidad es analizar los datos de performance y CRM del cliente. Para [lo que pidieron], te recomiendo hacerlo directamente en la plataforma correspondiente o pedírselo al equipo indicado. ¿Hay algo sobre las métricas o el CRM de este cliente en lo que pueda ayudarte?"
 
 FORMATO:
 - Usa markdown para estructura.
