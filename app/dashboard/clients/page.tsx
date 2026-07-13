@@ -66,10 +66,18 @@ export default async function ClientsPage() {
         .not('ended_at', 'is', null)
     : { data: [] }
 
-  // Get latest NPS scores for each client
+  // Get latest NPS scores for each client - only current month
+  const now = new Date()
+  const currentMonth = now.getMonth() + 1
+  const currentYear = now.getFullYear()
+  const monthStart = new Date(currentYear, now.getMonth(), 1).toISOString().split('T')[0]
+  const monthEnd = new Date(currentYear, now.getMonth() + 1, 0).toISOString().split('T')[0]
+  
   const { data: npsData } = await supabase
     .from('cliente_nps_historial')
     .select('cliente_id, score, comentario, created_at')
+    .gte('created_at', `${monthStart}T00:00:00`)
+    .lte('created_at', `${monthEnd}T23:59:59`)
     .order('created_at', { ascending: false })
   
   // Build maps
