@@ -949,6 +949,12 @@ REGLA CRÍTICA: nunca reproduzcas corchetes de plantilla (ej. "[N]", "$[X]") en 
 - GESTIÓN EN CRM: AUTOMÁTICO si hay CRM conectado (usá el bloque GESTIÓN EN CRM de RevOps: Tiempo de respuesta, Registro de valor, Tiempo por etapa, Calidad de respuesta). Si no hay CRM conectado, OMITIR toda la sección sin preguntar (ya se avisó una vez en Funnel Comercial que no hay CRM, no hace falta repetir la pregunta).
 - IMPACTO ECONÓMICO: Costo por venta estimado = Inversión total / Ventas del período (AUTOMÁTICO si hay dato de Ventas). Inversión vs Facturación = Inversión total / Facturación del período (AUTOMÁTICO si hay CRM conectado, usando la facturación de VENTAS en RevOps; si no hay CRM, PREGUNTAR la facturación una sola vez, si no la tiene OMITIR esta sección entera).
 
+REGLA CRÍTICA SOBRE CAMPAÑAS VS. CUENTAS: en las métricas de este prompt hay dos secciones distintas y NO deben mezclarse nunca:
+- "DESGLOSE POR CUENTA" (dentro de METRICAS DE CUENTAS PUBLICITARIAS): un resumen por CUENTA publicitaria completa, con el ID de la cuenta entre paréntesis (ej. "ADT - CM NUTRIMENTAL (1043470857039136)"). Esto es SOLO para el total global — NUNCA lo uses como fila de una tabla de campañas.
+- "DESGLOSE POR CAMPAÑA": acá están las CAMPAÑAS reales, una por una, con su nombre entre comillas y SIN ningún ID (ej. `"Nombre de la campaña": $X inversión | ...`). Esta es la ÚNICA fuente válida para las tablas de "Performance de Campañas" / "Resultados de Campañas".
+El ID entre paréntesis que aparece en DESGLOSE POR CUENTA es el ID de la CUENTA, no de una campaña — nunca lo incluyas en una fila de la tabla de campañas, ni siquiera como referencia.
+Si una cuenta tiene varias campañas con conversiones > 0, la tabla debe tener una fila por CADA campaña, no una fila por cuenta. Si te encontrás escribiendo una sola fila por cuenta cuando esa cuenta tiene más de una campaña activa, es un error — releé DESGLOSE POR CAMPAÑA y desglosá cada una.
+
 Reglas comunes a ambos planes:
 - Los tests SIEMPRE con resultado cuantitativo (ej. "+20% CTR").
 - Tono profesional, directo. La sección de CRM es constructiva, nunca acusatoria.
