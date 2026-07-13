@@ -594,13 +594,64 @@ export async function POST(req: Request) {
       return d >= effectivePeriodo.start && d <= effectivePeriodo.end
     })
 
-    // Si el cliente usa GHL, traer la última ejecución de RevOps: de ahí salen
-    // Ventas, Funnel Comercial por Vendedor, y Gestión en CRM — ya NO hay que
-    // pedirle estos datos al usuario cuando esto está disponible.
+    // Si el cliente usa GHL, orquestamos en vivo lo que sea rápido de calcular
+    // (Ventas y Funnel Comercial no necesitan IA ni muestreos costosos), y
+    // usamos la última auditoría completa de RevOps para lo que sí es lento
+    // (Gestión en CRM: tiempos de respuesta y calidad de conversaciones,
+    // que dependen de auditorías por IA — correrlas en cada mensaje del chat
+    // arriesgaría timeouts).
     let revopsText = ''
     let tieneCRMConectado = false
-    if (client.crm_type === 'ghl' && client.ghl_location_id) {
+    if (client.crm_type === 'ghl' && client.ghl_location_id && client.ghl_token) {
       tieneCRMConectado = true
+      const creds = { locationId: client.ghl_location_id as string, token: client.ghl_token as string }
+
+      // ---------- Ventas y Funnel Comercial: EN VIVO, siempre frescos ----------
+      let ventasYFunnelText = ''
+      try {
+        const [opportunities, pipelines, usuarios] = await Promise.all([
+          fetchGhlOpportunities(creds),
+          fetchGhlPipelines(creds),
+          fetchGhlUsers(creds),
+        ])
+
+        const opportunitiesDelPeriodo = effectivePeriodo
+          ? opportunities.filter((o) => {
+              const t = new Date(o.createdAt).getTime()
+              if (isNaN(t)) return false
+              const desdeMs = new Date(`${effectivePeriodo.start}T00:00:00`).getTime()
+              const hastaMs = new Date(`${effectivePeriodo.end}T23:59:59.999`).getTime()
+              return t >= desdeMs && t <= hastaMs
+            })
+          : opportunities
+
+        const ventas = analizarVentasYFacturacion(opportunities, effectivePeriodo)
+        const funnel = analizarFunnelPorVendedor(opportunitiesDelPeriodo, pipelines, usuarios)
+
+        const ventasTexto = `- Ventas del período (oportunidades en estado Ganado): ${ventas.ventas}
+- Facturación del período (suma de monto de esas oportunidades): $${ventas.facturacion.toLocaleString('es-AR')}
+- Nota de método: ${ventas.supuesto_fecha}`
+
+        let funnelTexto = '- Funnel por vendedor: sin oportunidades en el período.'
+        if (funnel.filas.length > 0) {
+          const header = `Etapa | ${funnel.vendedores.join(' | ')} | Total | % General`
+          const filas = funnel.filas
+            .map((fila) => `${fila.etapa} | ${fila.porVendedor.join(' | ')} | ${fila.total} | ${fila.pctGeneral.toFixed(0)}%`)
+            .join('\n')
+          funnelTexto = `- Funnel por vendedor (${funnel.totalOportunidades} oportunidades en el período):\n${header}\n${filas}`
+        }
+
+        ventasYFunnelText = `VENTAS (calculado en vivo desde GHL en este mismo momento):
+${ventasTexto}
+
+FUNNEL COMERCIAL (calculado en vivo desde GHL en este mismo momento):
+${funnelTexto}`
+      } catch (e) {
+        console.error('[v0] Error al orquestar Ventas/Funnel en vivo desde GHL:', e)
+        ventasYFunnelText = 'VENTAS y FUNNEL COMERCIAL: no se pudieron calcular en vivo en este momento (error de conexión con GHL). Preguntale al usuario si tiene los números a mano en vez de inventarlos.'
+      }
+
+      // ---------- Gestión en CRM: última auditoría completa de RevOps (no en vivo) ----------
       const { data: revopsEjecucion } = await supabase
         .from('revops_ejecuciones')
         .select('ejecutado_en, estado, score_salud, resumen')
@@ -610,41 +661,19 @@ export async function POST(req: Request) {
         .limit(1)
         .maybeSingle()
 
+      let gestionCrmText = 'GESTIÓN EN CRM: todavía no hay ninguna auditoría de RevOps corrida para este cliente. Si el usuario pregunta por tiempos de respuesta o calidad de conversaciones, avisale que conviene correr RevOps al menos una vez.'
       if (revopsEjecucion?.resumen) {
         const r = revopsEjecucion.resumen as any
-
-        const ventasTexto = r?.ventas
-          ? `- Ventas del período (oportunidades en estado Ganado): ${r.ventas.ventas}
-- Facturación del período (suma de monto de esas oportunidades): $${Number(r.ventas.facturacion || 0).toLocaleString('es-AR')}
-- Nota de método: ${r.ventas.supuesto_fecha}`
-          : '- Ventas: sin datos de RevOps disponibles para este módulo.'
-
-        let funnelTexto = '- Funnel por vendedor: sin datos de RevOps disponibles para este módulo.'
-        if (r?.funnel_por_vendedor?.filas?.length > 0) {
-          const f = r.funnel_por_vendedor
-          const header = `Etapa | ${f.vendedores.join(' | ')} | Total | % General`
-          const filas = f.filas
-            .map((fila: any) => `${fila.etapa} | ${fila.porVendedor.join(' | ')} | ${fila.total} | ${fila.pctGeneral.toFixed(0)}%`)
-            .join('\n')
-          funnelTexto = `- Funnel por vendedor (${f.totalOportunidades} oportunidades en el período):\n${header}\n${filas}`
-        }
-
-        revopsText = `Última auditoría RevOps del CRM (${new Date(revopsEjecucion.ejecutado_en).toLocaleDateString('es-AR')}, score de salud ${revopsEjecucion.score_salud ?? '—'}/100):
-
-VENTAS:
-${ventasTexto}
-
-FUNNEL COMERCIAL:
-${funnelTexto}
-
-GESTIÓN EN CRM:
-- Tiempo de respuesta: promedio ${r?.tiempos_respuesta?.promedio_primera_respuesta_min != null ? `${Math.round(r.tiempos_respuesta.promedio_primera_respuesta_min)} min hábiles (lun-vie, horario laboral configurado en RevOps)` : 'sin datos suficientes'} para la primera respuesta.
+        const fechaAuditoria = new Date(revopsEjecucion.ejecutado_en).toLocaleDateString('es-AR')
+        gestionCrmText = `GESTIÓN EN CRM (según última auditoría RevOps del ${fechaAuditoria}, score de salud ${revopsEjecucion.score_salud ?? '—'}/100 — esto NO es en vivo, es la última vez que corrió RevOps):
+- Tiempo de respuesta: promedio ${r?.tiempos_respuesta?.promedio_primera_respuesta_min != null ? `${Math.round(r.tiempos_respuesta.promedio_primera_respuesta_min)} min hábiles` : 'sin datos suficientes'} para la primera respuesta.
 - Registro de valor: ${r?.oportunidades?.pct_sin_monto != null ? `${Math.round(r.oportunidades.pct_sin_monto * 100)}% de las oportunidades abiertas sin monto cargado` : 'sin datos'}.
 - Tiempo por etapa: ${r?.embudo?.estancadas_30 ?? 0} oportunidades estancadas 30d+, ${r?.embudo?.estancadas_90 ?? 0} estancadas 90d+.
 - Calidad de respuesta: score promedio de conversaciones auditadas ${r?.conversaciones_calidad?.promedio_score != null ? `${r.conversaciones_calidad.promedio_score.toFixed(1)}/10` : 'sin datos'}.
-
-Usá estos datos como base real para Ventas, Funnel Comercial y Gestión en CRM del informe — NUNCA se los pidas al usuario si estos datos están disponibles acá. Si algún campo puntual dice "sin datos", ahí sí podés preguntarlo.`
+Si esta fecha es muy vieja respecto al período que se está analizando, avisale al usuario en UNA línea que conviene correr RevOps de nuevo para actualizar este dato puntual, pero usalo igual como referencia — no lo omitas ni lo preguntes de nuevo.`
       }
+
+      revopsText = `${ventasYFunnelText}\n\n${gestionCrmText}\n\nUsá Ventas y Funnel Comercial (en vivo, siempre confiables) y Gestión en CRM (última auditoría, puede tener fecha vieja) como AUTOMÁTICO — NUNCA se los pidas al usuario si estos datos están disponibles acá arriba.`
     }
 
     // Get access tokens for direct API calls
