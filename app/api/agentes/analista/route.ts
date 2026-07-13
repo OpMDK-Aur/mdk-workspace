@@ -10,7 +10,11 @@ const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
 const GOOGLE_ADS_API_VERSION = 'v23'
 
 type DailyPoint = { date: string; spend: number; leads: number; impressions: number; clicks: number }
-type CampaignPoint = { name: string; spend: number; leads: number; cpl: number; impressions: number; clicks: number; ctr: number }
+type ActionBreakdownItem = { label: string; count: number; ctr: number }
+type CampaignPoint = {
+  name: string; spend: number; leads: number; cpl: number; impressions: number; clicks: number; ctr: number
+  actionsBreakdown?: ActionBreakdownItem[]
+}
 type AccountMetrics = {
   accountName?: string
   spend: number; leads: number; cpl: number; impressions: number; clicks: number; ctr: number
@@ -98,6 +102,62 @@ function getResultValue(actions: MetaAction[] | undefined, objective?: string): 
   return 0
 }
 
+// --------------------------------------------------------------------------------
+// Desglose de conversiones por tipo de acción, dentro de una campaña.
+// Ej: una campaña puede generar "Leads" y "Conversaciones iniciadas" a la vez.
+// El CTR es el mismo para todas las sub-filas: Meta no expone un CTR distinto
+// por tipo de acción dentro de una campaña (clics/impresiones es una métrica
+// de campaña completa, no por tipo de conversión) — se repite el CTR general
+// de la campaña a propósito, no es un error.
+// --------------------------------------------------------------------------------
+const ACTION_TYPE_LABELS: Record<string, string> = {
+  lead: 'Leads',
+  'onsite_conversion.lead_grouped': 'Leads',
+  'offsite_conversion.fb_pixel_lead': 'Leads (Pixel)',
+  'onsite_conversion.messaging_conversation_started_7d': 'Conversaciones iniciadas',
+  'onsite_conversion.total_messaging_connection': 'Conversaciones iniciadas',
+  messaging_conversation_started_7d: 'Conversaciones iniciadas',
+  omni_purchase: 'Compras',
+  purchase: 'Compras',
+  'offsite_conversion.fb_pixel_purchase': 'Compras (Pixel)',
+  link_click: 'Clics en el enlace',
+  landing_page_view: 'Vistas de landing page',
+}
+
+// Grupos de action_types que representan el MISMO evento real (para no
+// duplicar conteo si Meta reporta el mismo resultado bajo dos nombres).
+const DEDUPE_GROUPS: string[][] = [
+  ['lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead'],
+  [
+    'onsite_conversion.messaging_conversation_started_7d',
+    'onsite_conversion.total_messaging_connection',
+    'messaging_conversation_started_7d',
+  ],
+  ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'],
+  ['link_click'],
+  ['landing_page_view'],
+]
+
+function buildActionsBreakdown(actions: MetaAction[] | undefined, campaignCtr: number): ActionBreakdownItem[] {
+  if (!actions || actions.length === 0) return []
+
+  const valueByGroup: { label: string; count: number }[] = []
+  for (const group of DEDUPE_GROUPS) {
+    const values = group
+      .map((type) => actions.find((a) => a.action_type === type))
+      .filter(Boolean)
+      .map((a) => parseInt(a!.value, 10) || 0)
+    const best = values.length > 0 ? Math.max(...values) : 0
+    if (best > 0) {
+      valueByGroup.push({ label: ACTION_TYPE_LABELS[group[0]] || group[0], count: best })
+    }
+  }
+
+  return valueByGroup
+    .sort((a, b) => b.count - a.count)
+    .map((item) => ({ label: item.label, count: item.count, ctr: campaignCtr }))
+}
+
 // Helper to fetch Meta metrics directly from Graph API
 async function fetchMetaMetrics(
   accountId: string,
@@ -147,6 +207,7 @@ async function fetchMetaMetrics(
           const cClicks = parseInt(row.clicks || '0', 10)
           const cSpend = parseFloat(row.spend || '0')
           const cLeads = getResultValue(row.actions, row.objective)
+          const cCtr = cImpr > 0 ? (cClicks / cImpr) * 100 : 0
           if (row.campaign_id) campaignObjectiveById.set(row.campaign_id, row.objective || '')
           campaigns.push({
             name: row.campaign_name || 'Sin nombre',
@@ -155,7 +216,8 @@ async function fetchMetaMetrics(
             cpl: cLeads > 0 ? cSpend / cLeads : 0,
             impressions: cImpr,
             clicks: cClicks,
-            ctr: cImpr > 0 ? (cClicks / cImpr) * 100 : 0,
+            ctr: cCtr,
+            actionsBreakdown: buildActionsBreakdown(row.actions, cCtr),
           })
         }
       } else {
@@ -404,6 +466,8 @@ async function fetchGoogleMetrics(
             impressions: e.impressions,
             clicks: e.clicks,
             ctr: e.impressions > 0 ? (e.clicks / e.impressions) * 100 : 0,
+            // Google Ads no reporta un desglose de action_types como Meta;
+            // el concepto de "conversiones" ya es un número único acá.
           })
         }
       } else {
@@ -501,7 +565,7 @@ export async function POST(req: Request) {
 
     // Get ALL tasks touching this client, sin filtrar por estado — el informe
     // necesita ver realizadas, resolviendo, pendientes y no realizadas para
-    // armar la sección "¿En qué estuvimos trabajando?" con datos reales.
+    // armar la sección "En qué trabajamos" con datos reales.
     const { data: clientTareas } = await supabase
       .from('tareas')
       .select('titulo, descripcion, estado, fecha_completada, fecha_vencimiento, created_at')
@@ -521,11 +585,22 @@ export async function POST(req: Request) {
       })
     }) || []
 
-    // Si el cliente usa GHL, traer la última ejecución de RevOps para poder
-    // completar la sección "Gestión Comercial en CRM" del informe Estratégico
-    // sin tener que pedirle esos datos de cero al account manager.
+    // Comentarios de la tarjeta del cliente (cliente_memoria) que caen DENTRO
+    // del período analizado — para la sección "Estrategia" de "En qué trabajamos".
+    // No se usa toda la memoria histórica, solo lo que cae en el rango.
+    const memoriaDelPeriodo = (memoria || []).filter((m) => {
+      if (!effectivePeriodo?.start || !effectivePeriodo?.end || !m.created_at) return true
+      const d = String(m.created_at).split('T')[0]
+      return d >= effectivePeriodo.start && d <= effectivePeriodo.end
+    })
+
+    // Si el cliente usa GHL, traer la última ejecución de RevOps: de ahí salen
+    // Ventas, Funnel Comercial por Vendedor, y Gestión en CRM — ya NO hay que
+    // pedirle estos datos al usuario cuando esto está disponible.
     let revopsText = ''
+    let tieneCRMConectado = false
     if (client.crm_type === 'ghl' && client.ghl_location_id) {
+      tieneCRMConectado = true
       const { data: revopsEjecucion } = await supabase
         .from('revops_ejecuciones')
         .select('ejecutado_en, estado, score_salud, resumen')
@@ -537,13 +612,38 @@ export async function POST(req: Request) {
 
       if (revopsEjecucion?.resumen) {
         const r = revopsEjecucion.resumen as any
+
+        const ventasTexto = r?.ventas
+          ? `- Ventas del período (oportunidades en estado Ganado): ${r.ventas.ventas}
+- Facturación del período (suma de monto de esas oportunidades): $${Number(r.ventas.facturacion || 0).toLocaleString('es-AR')}
+- Nota de método: ${r.ventas.supuesto_fecha}`
+          : '- Ventas: sin datos de RevOps disponibles para este módulo.'
+
+        let funnelTexto = '- Funnel por vendedor: sin datos de RevOps disponibles para este módulo.'
+        if (r?.funnel_por_vendedor?.filas?.length > 0) {
+          const f = r.funnel_por_vendedor
+          const header = `Etapa | ${f.vendedores.join(' | ')} | Total | % General`
+          const filas = f.filas
+            .map((fila: any) => `${fila.etapa} | ${fila.porVendedor.join(' | ')} | ${fila.total} | ${fila.pctGeneral.toFixed(0)}%`)
+            .join('\n')
+          funnelTexto = `- Funnel por vendedor (${f.totalOportunidades} oportunidades en el período):\n${header}\n${filas}`
+        }
+
         revopsText = `Última auditoría RevOps del CRM (${new Date(revopsEjecucion.ejecutado_en).toLocaleDateString('es-AR')}, score de salud ${revopsEjecucion.score_salud ?? '—'}/100):
-- Tiempo de respuesta: promedio ${r?.tiempos_respuesta?.promedio_primera_respuesta_min != null ? `${Math.round(r.tiempos_respuesta.promedio_primera_respuesta_min)} min hábiles` : 'sin datos suficientes'} para la primera respuesta.
-- Registro y campos: ${r?.oportunidades?.pct_sin_monto != null ? `${Math.round(r.oportunidades.pct_sin_monto * 100)}% de las oportunidades abiertas sin monto cargado` : 'sin datos'}.
-- Tiempo por etapa / estancamiento: ${r?.embudo?.estancadas_30 ?? 0} oportunidades estancadas 30d+, ${r?.embudo?.estancadas_90 ?? 0} estancadas 90d+.
+
+VENTAS:
+${ventasTexto}
+
+FUNNEL COMERCIAL:
+${funnelTexto}
+
+GESTIÓN EN CRM:
+- Tiempo de respuesta: promedio ${r?.tiempos_respuesta?.promedio_primera_respuesta_min != null ? `${Math.round(r.tiempos_respuesta.promedio_primera_respuesta_min)} min hábiles (lun-vie, horario laboral configurado en RevOps)` : 'sin datos suficientes'} para la primera respuesta.
+- Registro de valor: ${r?.oportunidades?.pct_sin_monto != null ? `${Math.round(r.oportunidades.pct_sin_monto * 100)}% de las oportunidades abiertas sin monto cargado` : 'sin datos'}.
+- Tiempo por etapa: ${r?.embudo?.estancadas_30 ?? 0} oportunidades estancadas 30d+, ${r?.embudo?.estancadas_90 ?? 0} estancadas 90d+.
 - Calidad de respuesta: score promedio de conversaciones auditadas ${r?.conversaciones_calidad?.promedio_score != null ? `${r.conversaciones_calidad.promedio_score.toFixed(1)}/10` : 'sin datos'}.
-- Recontacto / handoffs: ${r?.tiempos_respuesta?.handoffs_sin_tomar ?? 0} casos donde se prometió derivar y nadie tomó la conversación.
-Usá estos datos como base real para la slide 07 (Gestión Comercial en CRM) en vez de pedírselos al usuario. Si necesitás más detalle, podés sugerir correr RevOps de nuevo antes de cerrar el informe.`
+
+Usá estos datos como base real para Ventas, Funnel Comercial y Gestión en CRM del informe — NUNCA se los pidas al usuario si estos datos están disponibles acá. Si algún campo puntual dice "sin datos", ahí sí podés preguntarlo.`
       }
     }
 
@@ -654,7 +754,9 @@ Usá estos datos como base real para la slide 07 (Gestión Comercial en CRM) en 
     console.log('[v0] Google errors:', googleErrors.length > 0 ? googleErrors : 'none')
 
     // Build context
-    const clienteMemoriaText = memoria?.map(m => `- ${m.contenido}`).join('\n') || 'Sin historial'
+    const clienteMemoriaText = memoriaDelPeriodo.length > 0
+      ? memoriaDelPeriodo.map(m => `- ${m.contenido}`).join('\n')
+      : 'Sin comentarios en la tarjeta del cliente dentro de este período específico.'
     const tareasText = tareasDelPeriodo.length > 0
       ? tareasDelPeriodo.map(t => `- [${t.estado}] ${t.titulo}${t.descripcion ? `: ${t.descripcion.substring(0, 150)}` : ''}`).join('\n')
       : 'Sin tareas registradas en este periodo'
@@ -710,16 +812,22 @@ ${metricsByAccount.map(m => {
   return `• ${m.accountName} (${m.account}) - ${m.platform}:\n${resumenOmitidos}${rows}`
 }).join('\n')}
 
-DESGLOSE POR CAMPAÑA (datos reales por campaña):
+DESGLOSE POR CAMPAÑA (SOLO campañas con conversiones > 0 — las de 0 NO se listan, con desglose por tipo de acción cuando aplica):
 ${metricsByAccount.map(m => {
-  if (!m.campaigns || m.campaigns.length === 0) {
-    return `• ${m.accountName} (${m.account}) - ${m.platform}: sin datos de campañas disponibles`
+  const campanasConConversiones = (m.campaigns || []).filter(c => c.leads > 0)
+  if (campanasConConversiones.length === 0) {
+    return `• ${m.accountName} (${m.account}) - ${m.platform}: ninguna campaña con conversiones > 0 en el período`
   }
-  const rows = m.campaigns
+  const rows = campanasConConversiones
     .sort((a, b) => b.spend - a.spend)
-    .map(c => 
-      `    "${c.name}": ${c.leads} leads | $${c.spend.toFixed(2)} inversión | CPL $${c.cpl.toFixed(2)} | ${c.impressions.toLocaleString()} impresiones | ${c.clicks.toLocaleString()} clics | CTR ${c.ctr.toFixed(2)}%`
-    ).join('\n')
+    .map(c => {
+      const main = `    "${c.name}": $${c.spend.toFixed(2)} inversión | ${c.leads} conversiones | CPL $${c.cpl.toFixed(2)} | CTR ${c.ctr.toFixed(2)}%`
+      const breakdown = (c.actionsBreakdown || [])
+        .filter((b) => c.actionsBreakdown!.length > 1) // si hay un solo tipo de acción, no aporta desglosar
+        .map(b => `        ↳ ${b.label}: ${b.count} conversiones | CTR ${b.ctr.toFixed(2)}% (mismo CTR de la campaña — Meta no lo separa por tipo de acción)`)
+        .join('\n')
+      return breakdown ? `${main}\n${breakdown}` : main
+    }).join('\n')
   return `• ${m.accountName} (${m.account}) - ${m.platform}:\n${rows}`
 }).join('\n')}`
     }
@@ -748,75 +856,83 @@ ${metricsByAccount.map(m => {
     const esEsencial = planNormalizado.includes('esencial')
     const planInforme = esEstrategico ? 'Estratégico' : esEsencial ? 'Esencial' : 'No determinado'
 
-    // Knowledge of MDK's official report structures (PPTX templates) so the
-    // agent builds reports matching the right template for the client's plan.
-    // Transcripto literalmente de Informe_Esencial_MDK.pptx e Informe_Estrategico_MDK.pptx.
+    // Guía de contenido que el agente debe entregar. YA NO se genera un PDF/archivo:
+    // la salida es texto en el chat, listo para copiar y pegar en la plantilla de
+    // Claude Design. El nivel de profundidad sigue dependiendo del plan del cliente.
     const guiaInformes = `
-ESTRUCTURA OFICIAL DE LOS INFORMES DE CIERRE DE MES (MDK):
-Cuando el usuario pida un INFORME o un PDF de cierre de mes, NO inventes la estructura ni los campos: usá EXACTAMENTE la plantilla oficial que corresponda al plan del cliente, con los mismos títulos, secciones y campos que se detallan abajo (son las plantillas .pptx reales de MDK). El plan detectado para este cliente es: "${planInforme}" (plan crudo: "${client.plan || 'sin definir'}").
+ESTRUCTURA DE LA INFORMACIÓN QUE DEBÉS ENTREGAR:
+Tu única salida es texto estructurado en el chat — NO generás ningún archivo ni PDF. El usuario copia este texto directamente a la plantilla de Claude Design. Por eso el formato debe ser limpio: los títulos de sección tal cual figuran abajo, un dato por línea, tablas markdown reales cuando corresponda, sin relleno narrativo innecesario.
 
-Cada campo abajo está marcado como:
-- (AUTOMÁTICO) → se completa con las métricas reales de la sección "METRICAS DE CUENTAS PUBLICITARIAS" / tareas / memoria del cliente ya incluidas en este prompt. Nunca lo dejes vacío si el dato está disponible ahí.
-- (MANUAL) → NO viene de ninguna API conectada a este chat (ventas cerradas, funnel comercial en CRM, capturas de anuncios, contexto de mercado/competencia, feedback comercial cualitativo, objetivos del mes, etc.). Si el usuario no te lo dio en la conversación, NO LO INVENTES.
+El plan detectado para este cliente es "${planInforme}" (plan crudo: "${client.plan || 'sin definir'}"). El nivel de profundidad depende del plan:
 
-Reglas generales para AMBOS informes:
-- REGLA CRÍTICA — NUNCA copies la notación de la plantilla tal cual: los corchetes que ves más abajo (ej. "[N]", "$[X]", "[X%]", "[Nombre]", "[Ej: ...]") son SOLO una descripción de qué tipo de dato va en cada campo de la plantilla real — NO son texto para reproducir en tu respuesta. Cosas como el nombre del cliente o el período NUNCA deberían aparecer como "[Nombre]" o "[Mes/Año]" en tu respuesta: ya los tenés en el contexto (CONTEXTO DEL CLIENTE, más abajo), completalos siempre. Antes de enviar tu mensaje, revisalo vos mismo: si encontrás algún corchete de este estilo que no reemplazaste por un dato real, tenés dos opciones — (a) si el dato está disponible en el contexto (AUTOMÁTICO, o te lo dio el usuario), reemplazalo; (b) si no lo tenés (MANUAL), NO lo escribas en el cuerpo del informe con el corchete puesto — sacá esa slide/campo del cuerpo y agregalo a la lista de pendientes, según el FLUJO DE REVISION. Entregar un informe con placeholders de la plantilla sin completar es el error más grave que podés cometer acá.
-- Completá cada campo (AUTOMÁTICO) con datos reales y específicos del contexto. Nunca frases genéricas.
-- Los tests SIEMPRE deben incluir un resultado cuantitativo (ej. "+20% CTR").
-- Tono profesional, directo y orientado al negocio del cliente. La sección de CRM/gestión comercial debe tener tono constructivo, nunca acusatorio.
-- Cuando falte información (MANUAL) y todavía no redactaste el informe (paso 1 del FLUJO DE REVISION), la lista "🔲 INFORMACIÓN QUE NECESITO QUE ME CONFIRMES O COMPLETES:" es TODO el mensaje — no la acompañes de un borrador con "[Dato no provisto]" repetido. Usá el mismo nombre de campo que la plantilla (ej. "Objetivo del período", "Ventas cerradas en el período", "Capturas de los anuncios testeados (Anuncio A/B/C)", "Funnel comercial en CRM por zona: Leads, MQL, Contacto, SQL, Presupuesto, Venta").
-- Si en cambio ya armaste el informe completo (porque no faltaba nada, o porque el usuario pidió seguir igual) y todavía quedó algún campo puntual sin dato, marcalo como "[Dato no provisto]" en esa slide y listalo también al final bajo el mismo encabezado "🔲 INFORMACIÓN QUE NECESITO QUE ME CONFIRMES O COMPLETES:" para que quede claro qué puede seguir completando. "[Dato no provisto]" es la ÚNICA notación de corchetes que podés usar vos mismo en el cuerpo del informe — cualquier otro corchete de la plantilla original (ej. "[N]", "[X]") no debe aparecer nunca en tu respuesta.
-- Si el usuario después te da esos datos, actualizá el informe completo (sacando el campo de la lista de pendientes) y volvé a preguntar si confirma, como indica el FLUJO DE REVISION Y CONFIRMACION.
+Cada campo está marcado como:
+- (AUTOMÁTICO) → sale de las métricas/tareas/memoria/RevOps ya incluidas en este prompt. Nunca lo dejes vacío si el dato está disponible ahí.
+- (PREGUNTAR) → no viene de ninguna fuente conectada a este chat. Preguntalo directo y una sola vez; si el usuario no lo tiene, avanzá sin ese dato en vez de insistir.
+- (OMITIR SI FALTA) → si no hay dato disponible, no lo preguntes ni lo menciones — simplemente no aparece en el informe. Nunca genera una pregunta al usuario.
 
-▶ PLAN ESENCIAL — "INFORME DE RESULTADOS" (6 slides + portada):
-- Portada: Cliente (AUTOMÁTICO — nombre del cliente) · Período: mes/año (AUTOMÁTICO) · Responsable (AUTOMÁTICO — Account Manager asignado al cliente en el sistema; si no hay ninguno asignado, ahí sí es MANUAL).
-- 01 RESUMEN DEL PERÍODO:
-  - 🎯 Objetivo de la pauta (MANUAL — ej. "Generar leads calificados a un CPL ≤ $X").
-  - 💡 Conclusión general, 2-3 líneas (AUTOMÁTICO en base a las métricas, mezclando con el objetivo si está).
-  - 📊 Cumplimiento de objetivo: tarjetas con "[N] LEADS GENERADOS / objetivo: [N]" (leads AUTOMÁTICO, objetivo MANUAL), "$[X] CPL PROMEDIO / objetivo: $[X]" (CPL AUTOMÁTICO, objetivo MANUAL), "[X%] CUMPLIMIENTO ✅/⚠️/❌" (se calcula si hay objetivo, si no MANUAL).
-- 02 RESULTADOS DE CAMPAÑAS: 4 tarjetas de encabezado — Inversión total, Leads generados, CPL promedio, Variación vs período anterior (todas AUTOMÁTICO). Tabla por campaña: Campaña | Inversión | Leads | CPL | vs anterior, con fila TOTAL (AUTOMÁTICO, usar el desglose por campaña). Si el cliente tiene más de una cuenta publicitaria activa (ver DESGLOSE POR CUENTA en las métricas), agregá una fila o nota aclarando qué cuenta aportó qué, para no mezclar todo en un solo número sin distinción.
-- 03 ACCIONES REALIZADAS: Cambios en campañas (MANUAL/journal de tareas — cruzar con "TAREAS REALIZADAS EN EL PERIODO" si hay), Optimizaciones aplicadas (idem), Tests ejecutados con resultado cuantitativo (idem, ej. "+20% CTR").
-- 04 ANÁLISIS DEL FUNNEL (SÍNTESIS): "[N] LEADS POR PAUTA EN CRM ingresados en el período" (MANUAL, viene del CRM), "[<20%] DIFERENCIA VS PLATAFORMA" (MANUAL, compara CRM vs AUTOMÁTICO de plataforma), "⚠️ Cuello de botella (si aplica)" (MANUAL), "💡 Oportunidades detectadas" (MANUAL). Nota: el análisis profundo de pipeline es exclusivo del Plan Estratégico, acá va solo la síntesis.
-- 05 QUÉ FUNCIONÓ / QUÉ NO: ✅ Mensajes/piezas con mejor resultado + dato clave (AUTOMÁTICO si se puede inferir de campañas con mejor CPL/CTR, si no MANUAL), Audiencia/formato que mejor respondió (MANUAL), Aprendizaje clave (MANUAL). ❌ Audiencias/formatos descartados + motivo (MANUAL), Mensajes sin tracción (MANUAL), Problema detectado (MANUAL).
-- 06 PLAN DEL MES SIGUIENTE: Qué se va a ajustar (MANUAL), Qué se va a testear (MANUAL), Requerimientos al cliente (MANUAL).
+REGLA CRÍTICA: nunca reproduzcas corchetes de plantilla (ej. "[N]", "$[X]") en tu respuesta — siempre el dato real o, si es (OMITIR SI FALTA), directamente ausente.
 
-▶ PLAN ESTRATÉGICO — "INFORME ESTRATÉGICO DE RESULTADOS" (11 slides + portada):
-- Portada: Cliente (AUTOMÁTICO) · Período (AUTOMÁTICO) · Ejecutivo (AUTOMÁTICO — Account Manager asignado al cliente; si no hay ninguno asignado, ahí sí es MANUAL).
-- 01 RESUMEN EJECUTIVO: 4 tarjetas — Leads, CPL, Ventas (MANUAL), Inversión (AUTOMÁTICO las otras tres menos Ventas). "CUMPLIMIENTO: ✅/⚠️/❌ — [X%] del objetivo alcanzado" (necesita objetivo, MANUAL si no está). Objetivo del período (MANUAL). Contexto del mes: mercado, estacionalidad, cambios internos del cliente (MANUAL). Conclusión general (AUTOMÁTICO combinando lo anterior).
-- 02 ¿EN QUÉ ESTUVIMOS TRABAJANDO ESTE MES?: 4 pilares con ícono — 🎯 Estrategia (foco del mes, hipótesis), ⚙️ Operaciones (configuraciones, lanzamientos, ajustes técnicos), 🧪 Testing (tests creativos/audiencia/formato), 📈 Optimización (mejoras basadas en datos: pujas, presupuesto, segmentación). TODOS (AUTOMÁTICO) — clasificá las tareas de "TAREAS DEL PERIODO" en estos 4 pilares según su contenido. Si algún pilar queda sin ninguna tarea que lo respalde, ahí sí marcalo MANUAL y preguntá.
-- 03 TESTING Y OPTIMIZACIÓN CREATIVA: Anuncio A / Anuncio B / Anuncio C con imagen de cada anuncio (MANUAL — pedí las capturas/imágenes si no las adjuntaron). Análisis: qué anuncio ganó, métricas comparativas CTR/CPL/volumen, top anuncios por campaña y por calidad de venta (MANUAL, salvo las métricas de CTR/CPL que sí pueden salir de AUTOMÁTICO si identificás el anuncio).
-- 04 PERFORMANCE DE CAMPAÑAS: dos tablas separadas, "META ADS" y "GOOGLE ADS", cada una: Campaña | Inversión | Leads | CPL | CPC | CTR, con fila TOTAL (AUTOMÁTICO, usar desglose por campaña y por plataforma). Si el cliente tiene MÁS DE UNA cuenta publicitaria activa en la misma plataforma (ver DESGLOSE POR CUENTA en las métricas), agregá una tabla adicional por cuenta (una tabla por cada cuenta, con el nombre de la cuenta como título) además de la tabla consolidada por plataforma — así se puede ver el rendimiento de cada cuenta por separado, no solo el total mezclado.
-- 05 ACCIONES REALIZADAS: Cambios en campañas con contexto (MANUAL/tareas), Optimizaciones aplicadas (MANUAL/tareas), Tests ejecutados A vs B con resultado y datos (MANUAL/tareas).
-- 06 IMPACTO EN EL NEGOCIO — FUNNEL COMERCIAL: tabla con etapas Leads, MQL, Contacto, SQL, Presupuesto, Venta, desglosada por "ZONA 1" y "ZONA 2" (cada una con su columna de %) más columna TOTAL y % GENERAL (TODO MANUAL — viene del CRM, no de las APIs de ads conectadas acá). "⚠️ Cuellos de botella": en qué etapa cae más el funnel, qué zona pierde más, oportunidades de mejora (MANUAL).
-- 07 GESTIÓN COMERCIAL EN CRM: ⏱️ Tiempo de respuesta (MANUAL), 📋 Registro y campos — % de oportunidades con campos incompletos (MANUAL), 🔄 Tiempo por etapa — % de leads estancados (MANUAL), 💬 Calidad de respuesta (MANUAL), 📞 Recontacto (MANUAL). Si el cliente tiene GHL conectado y hay una ejecución reciente del agente RevOps, podés usar esos datos como referencia para esta sección en vez de pedirlos de cero.
-- 08 IMPACTO ECONÓMICO ESTIMADO: "$[X] COSTO POR VENTA ESTIMADO" = inversión total / ventas cerradas (MANUAL, necesita ventas), "[X]x INVERSIÓN VS FACTURACIÓN" (MANUAL, necesita facturación), "$[X] AHORRO POR OPTIMIZACIÓN" vs período anterior o benchmark (AUTOMÁTICO si hay variación de CPL vs período anterior, si no MANUAL).
-- 09 BENCHMARK Y CONTEXTO COMPETITIVO: 📊 Benchmark interno MDK — comparación contra promedio de la cuenta en 3-6 meses o cuentas del sector (MANUAL, salvo que haya histórico suficiente en el desglose diario para inferirlo), 📈 Comparación histórica de KPIs mes a mes (AUTOMÁTICO parcial con el desglose diario/vs período anterior disponible), 🔍 Contexto competitivo — qué hace la competencia (MANUAL).
-- 10 RIESGOS Y ALERTAS: 🔴 Saturación de audiencias — frecuencia alta, CTR cayendo, CPL subiendo (AUTOMÁTICO si se detecta en las métricas), 🟠 Dependencia de canales — concentración en un canal y % de riesgo (AUTOMÁTICO, calculable con el split de inversión por plataforma), 🟡 Riesgos operativos/comerciales — tracking, integraciones, demoras del equipo comercial (MANUAL), ⚡ Alertas tempranas a 30-60 días (MANUAL/mixto).
-- 11 PLAN DE ACCIÓN — PRÓXIMO PERÍODO (5 puntos en narrativa): Definición de objetivos y pauta (MANUAL), Acciones inmediatas (MANUAL, aunque podés proponer en base a lo detectado en Riesgos), Ajustes estratégicos (MANUAL/propuesta propia), Nuevas implementaciones (MANUAL), Recomendaciones al cliente (MANUAL/propuesta propia).
+▶ PLAN ESENCIAL:
+- Portada: Cliente (AUTOMÁTICO) · Período (AUTOMÁTICO) · Responsable = Account Manager asignado (AUTOMÁTICO; si no hay ninguno asignado, PREGUNTAR).
+- RESUMEN DEL PERÍODO:
+  - Objetivo de la pauta (PREGUNTAR la primera vez en la conversación — ejemplo a incluir en la pregunta: "Ej: generar leads a un CPL ≤ $X, o cerrar X ventas en el mes").
+  - Conclusión general, 2-3 líneas (AUTOMÁTICO, combinando métricas + objetivo si está).
+  - Leads generados (AUTOMÁTICO) con su objetivo (mismo dato de arriba). CPL promedio (AUTOMÁTICO) con su objetivo. Cumplimiento del objetivo (AUTOMÁTICO si hay objetivo cargado, si no OMITIR SIN preguntarlo de nuevo).
+- RESULTADOS DE CAMPAÑAS: Inversión total, Leads, CPL promedio, Variación vs período anterior (todo AUTOMÁTICO). Tabla por campaña — Campaña | Inversión | Conversiones | CPL | CTR, SOLO campañas con conversiones > 0, con fila TOTAL, y desglose por tipo de acción cuando una campaña tenga más de un tipo (ver DESGLOSE POR CAMPAÑA en las métricas).
+- ACCIONES REALIZADAS: Cambios en campañas, Optimizaciones aplicadas, Tests ejecutados con resultado cuantitativo — todo AUTOMÁTICO cruzando con TAREAS DEL PERIODO.
+- ANÁLISIS DEL FUNNEL (SÍNTESIS): si el cliente tiene CRM conectado (ver más abajo), usá los datos de RevOps disponibles (leads en CRM, oportunidades del período) — AUTOMÁTICO. Si no tiene CRM conectado, PREGUNTAR una sola vez si quiere pasar el dato manualmente; si no lo tiene a mano, OMITIR esta sección entera sin insistir.
+- QUÉ FUNCIONÓ / QUÉ NO: mensajes/audiencias con mejor y peor resultado (AUTOMÁTICO si se infiere de las campañas con mejor/peor CPL o CTR; si no hay señal clara, OMITIR SIN preguntarlo).
+- PLAN DEL MES SIGUIENTE: qué se va a ajustar, qué se va a testear, requerimientos al cliente — PREGUNTAR una sola vez, avanzar sin esto si no hay respuesta.
+
+▶ PLAN ESTRATÉGICO:
+- Portada: Cliente (AUTOMÁTICO) · Período (AUTOMÁTICO) · Ejecutivo = Account Manager asignado (AUTOMÁTICO; si no hay ninguno, PREGUNTAR).
+- RESUMEN EJECUTIVO:
+  - Leads, CPL, Inversión (AUTOMÁTICO, de plataformas).
+  - Ventas (AUTOMÁTICO si hay CRM conectado — ver VENTAS en los datos de RevOps más abajo. Si NO hay CRM conectado, PREGUNTAR: "¿Cuántas ventas [oportunidades Ganado] hubo en el período?"; si no la tiene, OMITIR el dato de Ventas y todo lo que dependa de él — Impacto Económico incluido — en vez de insistir).
+  - Objetivo del período (PREGUNTAR la primera vez — ejemplo a incluir en la pregunta: "Ej: 50 leads diarios, o 60 ventas en el mes").
+  - Contexto del mes (OMITIR SI FALTA — nunca lo preguntes explícitamente. Completalo solo si hay algo relevante en tareas/comentarios del período; si no hay nada, no aparece en el informe y no se menciona que falta).
+  - Conclusión general (AUTOMÁTICO, combinando lo anterior).
+  - Cumplimiento (AUTOMÁTICO si hay objetivo cargado, si no OMITIR SIN preguntar de nuevo).
+- EN QUÉ TRABAJAMOS (solo 2 pilares, no 4):
+  - Estrategia (AUTOMÁTICO — SOLO de los comentarios de la tarjeta del cliente que caen DENTRO del período, ver HISTORIAL Y CONTEXTO DEL CLIENTE más abajo, ya viene filtrado al período. Si no hay ningún comentario en el período, decilo en una línea, no lo inventes).
+  - Operaciones (AUTOMÁTICO — SOLO de TAREAS DEL PERIODO, ya viene filtrado. Resumí qué se hizo, no repitas la lista cruda).
+- PERFORMANCE DE CAMPAÑAS: Inversión total, Leads, CPL promedio, Ventas (mismo dato del Resumen Ejecutivo) — AUTOMÁTICO. Tabla — Campaña | Inversión | Conversiones | CPL | CTR, SOLO campañas con conversiones > 0 (nunca listes las de 0), con desglose por tipo de acción cuando una campaña tenga más de un tipo (ver DESGLOSE POR CAMPAÑA). Si hay más de una cuenta activa en la misma plataforma, separá por cuenta.
+- ACCIONES REALIZADAS: Cambios, Optimizaciones, Tests con resultado cuantitativo — AUTOMÁTICO cruzando con TAREAS DEL PERIODO.
+- FUNNEL COMERCIAL: AUTOMÁTICO si hay CRM conectado (usá el bloque FUNNEL COMERCIAL de los datos de RevOps: tabla Etapa | [una columna por vendedor] | Total | % General). Si NO hay CRM conectado, PREGUNTAR una sola vez: "¿Podés pasarme el funnel del período por vendedor (Leads, Contactado, Presupuesto, Ganado)?"; si no lo tiene, OMITIR toda la sección sin insistir. NUNCA inventes números de funnel.
+- GESTIÓN EN CRM: AUTOMÁTICO si hay CRM conectado (usá el bloque GESTIÓN EN CRM de RevOps: Tiempo de respuesta, Registro de valor, Tiempo por etapa, Calidad de respuesta). Si no hay CRM conectado, OMITIR toda la sección sin preguntar (ya se avisó una vez en Funnel Comercial que no hay CRM, no hace falta repetir la pregunta).
+- IMPACTO ECONÓMICO: Costo por venta estimado = Inversión total / Ventas del período (AUTOMÁTICO si hay dato de Ventas). Inversión vs Facturación = Inversión total / Facturación del período (AUTOMÁTICO si hay CRM conectado, usando la facturación de VENTAS en RevOps; si no hay CRM, PREGUNTAR la facturación una sola vez, si no la tiene OMITIR esta sección entera).
+
+Reglas comunes a ambos planes:
+- Los tests SIEMPRE con resultado cuantitativo (ej. "+20% CTR").
+- Tono profesional, directo. La sección de CRM es constructiva, nunca acusatoria.
+- Nunca preguntes dos veces por el mismo dato en la misma conversación. Si ya preguntaste y el usuario no respondió o dijo que no lo tiene, avanzá sin ese dato (OMITIR), no vuelvas a insistir más adelante.
+- Nunca pidas capturas de anuncios ni imágenes de creativos — esa sección ya no forma parte del informe.
 `
-
 
     const systemPrompt = `${agentConfig.system_prompt}
 
 Eres un analista de performance digital experto y conversacional. Trabajas como un asistente de chat libre: respondes exactamente lo que el usuario te pide, ya sea una pregunta puntual, un análisis parcial, una comparación o un informe completo. NO generes siempre un informe completo a menos que el usuario lo pida explícitamente.
 
+Tu salida es SIEMPRE texto en el chat — nunca generás un archivo ni un PDF. El usuario copia tu respuesta directamente a una plantilla de Claude Design ya armada.
+
 CONTEXTO DEL CLIENTE (úsalo como referencia cuando sea relevante):
 - Cliente: ${client.nombre_del_negocio}
 - Plan: ${client.plan || 'No especificado'}
-- Plantilla de informe que aplica: ${planInforme}
+- Estructura de informe que aplica: ${planInforme}
 - Periodo seleccionado: ${periodoTexto}
 - Ejecutivo/Responsable (Account Manager asignado): ${ejecutivoNombre || 'No hay ningún Account Manager asignado a este cliente en el sistema — pedíselo al usuario.'}
+- CRM conectado: ${tieneCRMConectado ? 'Sí, GoHighLevel' : 'No — Ventas, Funnel Comercial y Gestión en CRM van a tener que pedirse manualmente, y si el usuario no los tiene, esas secciones se omiten (ver guía de abajo).'}
 
 ${guiaInformes}
 
-HISTORIAL Y CONTEXTO DEL CLIENTE:
+HISTORIAL Y CONTEXTO DEL CLIENTE (comentarios de la tarjeta del cliente DENTRO del período analizado):
 ${clienteMemoriaText}
 
 TAREAS DEL PERIODO (todos los estados: realizada, resolviendo, pendiente, no_realizado):
 ${tareasText}
-Usá esta lista completa (no solo las realizadas) para construir la slide "02 ¿En qué estuvimos trabajando este mes?" del Plan Estratégico y la slide "03 Acciones Realizadas" de ambos planes: clasificá cada tarea en Estrategia / Operaciones / Testing / Optimización según su contenido, y si hay tareas "pendiente" o "no_realizado" relevantes, mencionalas como parte del contexto del mes (ej. en Riesgos y Alertas o en el Plan del Mes Siguiente) en vez de ignorarlas.
+Usá esta lista completa (no solo las realizadas) para construir "Operaciones" en "En qué trabajamos" y "Acciones Realizadas": clasificá según corresponda, y si hay tareas "pendiente" o "no_realizado" relevantes, mencionalas como contexto en vez de ignorarlas.
 
-${revopsText ? `DATOS DE GESTION COMERCIAL EN CRM (desde RevOps):
+${revopsText ? `DATOS DE CRM (desde RevOps) — Ventas, Funnel Comercial, Gestión en CRM:
 ${revopsText}
 ` : ''}
 METRICAS DE CUENTAS PUBLICITARIAS:
@@ -841,47 +957,14 @@ COMO RESPONDER:
 - Usa las métricas y el contexto de arriba para fundamentar tus respuestas.
 - Identifica tendencias, problemas y oportunidades cuando aporte valor.
 - Da recomendaciones concretas y accionables.
-- Si el usuario pide un informe, entonces sí estructura un informe completo siguiendo la ESTRUCTURA OFICIAL DE LOS INFORMES que corresponda al plan del cliente (Esencial = 6 slides, Estratégico = 11 slides). Respetá el orden y los títulos de las slides. Si te falta algún dato para completar una slide, pedíselo explícitamente al usuario en vez de inventarlo o dejarlo vacío.
+- Si el usuario pide el informe completo, estructuralo siguiendo la guía de arriba según el plan del cliente. Preguntá SOLO los campos marcados (PREGUNTAR) que todavía no tengas, y hacelo una sola vez por campo en la conversación — no repitas la pregunta ni bloquees el resto del informe esperando esa respuesta si el usuario ya te dijo que no la tiene.
+- Los campos (OMITIR SI FALTA) nunca generan una pregunta: si no hay dato, esa sección o línea simplemente no aparece en el informe.
 
-FLUJO DE REVISION Y CONFIRMACION (checklist -> borrador -> PDF):
-Este chat lo usa un account manager para preparar el informe de cierre de un cliente. El flujo esperado es:
-1. Al arrancar la conversación (primer pedido del tipo "traé el informe completo del período para revisar"), NO redactes el informe todavía. Primero revisá, campo por campo, la plantilla oficial que corresponda al plan del cliente (ver ESTRUCTURA OFICIAL DE LOS INFORMES más abajo) contra los datos reales que tenés en este prompt (métricas, tareas, memoria, RevOps). Si hay AL MENOS UN campo (MANUAL) sin dato, respondé SOLO con: una frase breve indicando que antes de armar el informe necesitás esta información, la lista "🔲 INFORMACIÓN QUE NECESITO QUE ME CONFIRMES O COMPLETES" con cada campo faltante (mismo nombre que la plantilla), y el bloque faltantes correspondiente (ver más abajo). NO redactes ninguna slide del informe todavía, ni siquiera con placeholders — el objetivo es no hacerle leer un informe lleno de "[Dato no provisto]".
-2. Si NO falta ningún campo (MANUAL) — es decir, tenés todo lo que la plantilla pide —, ahí sí armá el informe completo directamente en este primer mensaje, sin bloque pdf todavía, y cerrá preguntando si confirma o quiere corregir algo.
-3. Cuando el usuario responda al checklist (con texto, archivos adjuntos, o ambos), incorporá esa información. Si TODAVÍA falta algo, repetí el paso 1 (checklist actualizado, sin redactar el informe). Si ya está todo completo, pasá al paso 2 y armá el informe completo por primera vez.
-4. Si el usuario te dice explícitamente que sigas igual sin esos datos (ej. "no tengo eso, seguí igual", "dejalo así", "generá con lo que hay"), ahí sí armá el informe completo dejando esos campos puntuales como "Dato no provisto", y cerrá preguntando si confirma.
-5. Una vez que ya mostraste el informe completo (paso 2 o 4) y el usuario pide correcciones o agrega algo más, aplicá el cambio y volvé a mostrar el informe COMPLETO actualizado, preguntando de nuevo si confirma. Cada iteración debe dejar el mensaje como una versión completa y autosuficiente del informe, porque es lo que se usa para generar el PDF.
-6. Recién cuando el usuario CONFIRME explícitamente (ej. "confirmo", "dale, generá el PDF", "está bien así", "andá"), respondé con un mensaje breve confirmando (ej. "Listo, genero el PDF con esta versión."). NO reescribas el informe completo de nuevo en este mensaje y NO incluyas el bloque pdf: el sistema ya toma el último informe completo que mostraste y genera automáticamente el PDF con el diseño oficial de la plantilla (Esencial/Estratégico) apenas el usuario confirma. El bloque pdf de CAPACIDADES DE VISUALIZACION es solo para pedidos puntuales de PDF fuera de este flujo de cierre (ver más abajo).
-- Fuera de este flujo de informe de cierre (preguntas puntuales, análisis parciales, comparaciones), respondé de forma normal sin forzar este esquema de checklist/confirmación.
-
-FORMATO OBLIGATORIO DE LA RESPUESTA (para que el informe se vea como la plantilla, no como una lista de viñetas):
-El texto de tu respuesta se convierte automáticamente en el PDF con el diseño de la plantilla (tarjetas, cajas de números grandes, tablas), pero SOLO si usás la sintaxis exacta de abajo. Si en cambio escribís todo como viñetas sueltas ("• Leads: 1453"), el PDF sale como texto plano sin ningún diseño — así que es OBLIGATORIO seguir esto al pie de la letra, no es solo una sugerencia de estilo:
-
-1) Números grandes tipo KPI (ej. Leads/CPL/Ventas/Inversión del Resumen Ejecutivo, o los 3 números de Impacto Económico): una línea en negrita por cada uno, así, SIN viñeta ("•") adelante:
-**Leads:** 1453
-**CPL:** $10.016,19
-**Ventas:** 20
-**Inversión:** $14.553.529,71
-❌ MAL: "• Leads: 1453" (con viñeta, no se detecta como número grande)
-✅ BIEN: "**Leads:** 1453" (negrita, sin viñeta)
-
-2) Tarjetas agrupadas (ej. los 4 pilares de "¿En qué estuvimos trabajando?", las 5 cajas de "Gestión Comercial en CRM", las 4 de "Riesgos y Alertas", los 3 de "Benchmark"): cada tarjeta es un emoji + título corto en su propia línea, y el texto de esa tarjeta en el/los párrafo(s) siguiente(s) — NUNCA como viñeta:
-🎯 Estrategia
-Foco en optimizar la calidad de los datos mediante ajustes de segmentación.
-
-⚙️ Operaciones
-Revisión y ajustes de campañas según el rendimiento de anuncios.
-❌ MAL: "• Estrategia: Foco en optimizar la calidad de los datos." (todo en una viñeta)
-✅ BIEN: el título del pilar en su propia línea con el emoji, y el texto abajo, sin viñeta.
-
-3) Tablas (ej. Performance de Campañas, Resultados de Campañas, el Funnel Comercial): SIEMPRE tabla markdown real con pipes "|", nunca una lista de viñetas con los datos sueltos:
-| Campaña | Inversión | Leads | CPL | CPC | CTR |
-|---|---|---|---|---|---|
-| Campaña A | $500.000 | 30 | $16.666 | $120 | 2.1% |
-| TOTAL | $500.000 | 30 | $16.666 | $120 | 2.1% |
-❌ MAL: "• Meta Ads\n• Total Inversión: $1.202.832\n• Leads: 65\n• CPL: $18.505" (datos tabulares como viñetas sueltas)
-✅ BIEN: la tabla markdown de arriba, con fila TOTAL. Para el Funnel Comercial, la tabla tiene 7 columnas: Etapa | Zona 1 | % | Zona 2 | % | Total | % General.
-
-4) El resto del contenido narrativo (objetivo del período, conclusión general, contexto del mes, cuellos de botella, análisis de riesgos, etc.) sí puede ir en viñetas o párrafos normales — la regla de arriba aplica específicamente a los números KPI, las tarjetas agrupadas y las tablas, que son los elementos visuales distintivos de la plantilla.
+FORMATO DEL TEXTO (para que se pueda copiar y pegar limpio a Claude Design):
+- Números KPI (Leads/CPL/Ventas/Inversión, etc.): una línea en negrita por cada uno, sin viñeta — ej. "**Leads:** 1453".
+- Tablas (campañas, funnel): SIEMPRE tabla markdown real con pipes "|", nunca datos sueltos en viñetas.
+- El resto del contenido narrativo (objetivo, conclusión, acciones) puede ir en viñetas o párrafos normales.
+- Destacá números importantes en **negrita**. Sé claro y conciso.
 
 CAPACIDADES DE VISUALIZACION:
 Cuando una visualización ayude a explicar los datos (o cuando el usuario la pida), genera gráficos y archivos usando estos bloques especiales. No es obligatorio en cada mensaje, úsalos cuando aporten valor.
@@ -906,39 +989,23 @@ Ejemplo: barras HORIZONTALES comparando inversión y leads por cuenta, con los v
 ` + "```" + `
 IMPORTANTE: si el usuario pide barras "horizontales", usa SIEMPRE "layout":"horizontal". Si pide ver la inversión y los leads juntos, usa "series" con ambas métricas. Si pide ver los valores/cifras en el gráfico, usa "showValues":true.
 
-Para generar ARCHIVOS descargables (CSV de datos, reportes), usa un bloque de codigo con la palabra file:
+Para generar ARCHIVOS descargables (CSV de datos), usa un bloque de codigo con la palabra file:
 
 ` + "```" + `file
 {"name":"metricas-mayo-2026.csv","type":"text/csv","content":"Plataforma,Inversion,Leads,CPL\\nMeta Ads,1500,45,33.33\\nGoogle Ads,2300,62,37.10"}
 ` + "```" + `
 
-Para generar IMAGENES (banners, gráficos visuales, ilustraciones para reportes), usa un bloque de codigo con la palabra image y describe lo que quieres generar:
+Para generar IMAGENES (banners, gráficos visuales, ilustraciones), usa un bloque de codigo con la palabra image y describe lo que quieres generar:
   
   ` + "```" + `image
   {"prompt":"Descripcion detallada en ingles de la imagen a generar, estilo profesional para reporte de marketing","alt":"Texto alternativo descriptivo"}
   ` + "```" + `
-  
-  Para pedir información faltante de forma interactiva (en vez de que el usuario tenga que escribir todo a mano), después de listar "🔲 INFORMACIÓN QUE NECESITO QUE ME CONFIRMES O COMPLETES" en texto, agregá SIEMPRE un bloque con la palabra faltantes que repita esos mismos ítems en formato JSON, para que la interfaz genere un formulario con un campo por dato y un botón para adjuntar archivos (acepta Excel, CSV, PDF e imágenes):
-
-` + "```" + `faltantes
-{"items":["Objetivo del período","Ventas cerradas en el período","Capturas de los anuncios testeados (Anuncio A/B/C)"]}
-` + "```" + `
-IMPORTANTE: el array "items" debe tener EXACTAMENTE los mismos textos que usaste en la lista de arriba, uno por campo pendiente. Si no falta ningún dato, no incluyas este bloque.
-
-Para generar un INFORME EN PDF descargable, usa un bloque de codigo con la palabra pdf. MUY IMPORTANTE: el PDF se construye AUTOMÁTICAMENTE a partir de TODO el texto y los gráficos (bloques chart) que escribas en este mismo mensaje. Por eso, antes del bloque pdf debes escribir el análisis completo con datos reales (resumen, métricas, desglose) y los gráficos correspondientes. El bloque pdf en sí solo necesita el nombre y el título. NUNCA digas "voy a generar el PDF y te lo envío en breve": basta con escribir el contenido y luego el bloque pdf.
-  
-  ` + "```" + `pdf
-  {"name":"informe-junio-2026.pdf","title":"Informe de Cierre - ICS Salud","subtitle":"Periodo: Junio 2026"}
-  ` + "```" + `
-  
-  Opcionalmente puedes añadir "sections" (array) con secciones extra: cada sección admite "heading", "text", "bullets" (array) y/o "table" ({headers:[], rows:[[]]}). Pero no es obligatorio, ya que el PDF toma el contenido del mensaje. Lo esencial es que el mensaje contenga el análisis y los gráficos ANTES del bloque pdf.
 
 REGLAS DE VISUALIZACION:
 - Usa gráficos cuando compares números entre plataformas, periodos o categorías.
 - No necesitas especificar colores: las gráficas usan automáticamente la paleta del sistema. Especifica siempre el campo "format" correcto ("currency", "percent" o "number") para que los valores se muestren bien.
 - Usa "pie" para distribución/proporción, "bar" para comparar categorías, "line"/"area" para tendencias en el tiempo.
-  - Ofrece un CSV descargable cuando el usuario pida exportar datos o cuando generes un informe completo.
-  - Cuando el usuario pida un PDF o un informe descargable, primero escribe el análisis completo con datos reales y sus gráficos, y luego añade el bloque pdf al final (el PDF se arma con ese contenido). NUNCA prometas enviarlo "en breve" ni emitas un bloque pdf sin haber escrito antes el análisis y los gráficos.
+- Ofrece un CSV descargable cuando el usuario pida exportar datos.
 
 ANALISIS DE IMAGENES, DOCUMENTOS Y DATOS DEL USUARIO:
 - Si el usuario adjunta imágenes (capturas de dashboards, reportes, planillas), analízalas detalladamente y extrae los datos.
@@ -1038,8 +1105,7 @@ Luego genera un informe de análisis completo para ${client.nombre_del_negocio} 
 - Comparativa entre los leads reportados en el archivo vs los leads de la plataforma
 - Cálculo de variación (diferencia entre CRM y plataforma)
 - Gráficos de visualización
-- CSV descargable
-- Informe en PDF (bloque pdf) con los datos${documentsContext}`
+- CSV descargable${documentsContext}`
         }]
 
     // Use GPT-4o for vision (images) or when documents are present (better at data analysis)
