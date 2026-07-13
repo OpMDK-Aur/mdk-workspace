@@ -85,6 +85,14 @@ const SUGGESTIONS = [
   'Recomendaciones de optimizacion',
 ]
 
+const CRM_OPTIONS = [
+  { value: 'ghl', label: 'GoHighLevel' },
+  { value: 'aurelia', label: 'Aurelia' },
+  { value: 'hubspot', label: 'HubSpot' },
+  { value: 'pipedrive', label: 'Pipedrive' },
+  { value: 'otro', label: 'Otro' },
+]
+
 type ChatMessage = {
   id: string
   role: 'user' | 'assistant'
@@ -101,6 +109,7 @@ export default function AnalistaPage() {
   // State
   const [clients, setClients] = useState<Client[]>([])
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
+  const [selectedCRM, setSelectedCRM] = useState<string>('')
   const [clientOpen, setClientOpen] = useState(false)
   const [cuentasDisponibles, setCuentasDisponibles] = useState<
     Array<{ id: string; plataforma: string; id_cuenta: string; nombre_cuenta: string | null }>
@@ -664,6 +673,7 @@ export default function AnalistaPage() {
                         key={client.id}
                         onSelect={() => {
                           setSelectedClient(client)
+        setSelectedCRM(client.crm_type || '')
                           setClientOpen(false)
                           fetchCuentasCliente(client.id)
                         }}
@@ -842,14 +852,28 @@ export default function AnalistaPage() {
               <div className="p-1.5 rounded-md bg-[#EEEDFE] shrink-0">
                 <FileText className="h-4 w-4 text-[#7F77DD]" />
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <h2 className="font-semibold leading-tight truncate">{selectedClient?.nombre_del_negocio}</h2>
                 <p className="text-xs text-muted-foreground">
                   {MONTHS[parseInt(selectedMonth) - 1]?.label} {selectedYear}
                 </p>
               </div>
+              {selectedClient && (
+                <Select value={selectedCRM} onValueChange={setSelectedCRM}>
+                  <SelectTrigger className="w-[150px] h-8 text-xs">
+                    <SelectValue placeholder="CRM" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CRM_OPTIONS.map((crm) => (
+                      <SelectItem key={crm.value} value={crm.value}>
+                        {crm.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               {isLoading && (
-                <Badge variant="secondary" className="animate-pulse ml-auto">
+                <Badge variant="secondary" className="animate-pulse">
                   En curso
                 </Badge>
               )}
