@@ -1018,14 +1018,7 @@ export default function AnalistaPage() {
                   </div>
                 </div>
 
-                {chatMessages.length > 0 && (
-                  <div className="mt-3 flex justify-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleSaveAsReport()}>
-                      <FileText className="h-4 w-4" />
-                      Guardar y exportar informe
-                    </Button>
-                  </div>
-                )}
+
               </div>
             </div>
           </>
