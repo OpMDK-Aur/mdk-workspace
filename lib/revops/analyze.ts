@@ -268,8 +268,31 @@ function analizarEmbudo(todas: GhlOpportunity[], pipelines: GhlPipeline[]) {
 // el conteo del período — documentado en `supuesto_fecha` para que quede
 // trazable en el resumen, no oculto.
 
-export function analizarVentasYFacturacion(todas: GhlOpportunity[], rango?: { desde: string; hasta: string }) {
-  const ganadas = todas.filter((o) => o.status === 'won')
+export function analizarVentasYFacturacion(
+  todas: GhlOpportunity[],
+  pipelines: GhlPipeline[],
+  rango?: { desde: string; hasta: string }
+) {
+  const stageMap = new Map<string, string>() // stageId -> nombre de la etapa
+  for (const p of pipelines) {
+    for (const s of p.stages) {
+      stageMap.set(s.id, s.name)
+    }
+  }
+
+  // GHL no siempre actualiza el campo "status" a 'won' cuando una oportunidad
+  // se mueve a la etapa "Ganado" del pipeline (depende de cómo esté
+  // configurada esa etapa específica en GHL) — por eso NO confiamos solo en
+  // o.status === 'won'. Se considera "venta" a toda oportunidad cuyo status
+  // sea 'won' O cuya etapa actual tenga un nombre que sugiera "ganado"/"won"
+  // (mismo criterio que ya usa analizarEmbudo para detectar inconsistencias).
+  const esGanada = (o: GhlOpportunity) => {
+    if (o.status === 'won') return true
+    const nombreEtapa = (stageMap.get(o.pipelineStageId) || '').toLowerCase()
+    return /ganad|won/.test(nombreEtapa)
+  }
+
+  const ganadas = todas.filter(esGanada)
 
   const enPeriodo = rango
     ? ganadas.filter((o) => {
@@ -286,7 +309,8 @@ export function analizarVentasYFacturacion(todas: GhlOpportunity[], rango?: { de
   return {
     ventas: enPeriodo.length,
     facturacion,
-    supuesto_fecha: 'updatedAt usado como proxy de fecha de venta (GHL no expone fecha de cierre separada)',
+    supuesto_fecha:
+      'updatedAt usado como proxy de fecha de venta (GHL no expone fecha de cierre separada). Se considera "venta" tanto status=won como oportunidades cuya etapa actual se llama "Ganado" — GHL no siempre sincroniza el status al mover de etapa.',
   }
 }
 
@@ -697,8 +721,7 @@ export async function runRevOpsAnalysis(
     // Ventas/facturación: usa TODAS las oportunidades (no las filtradas por
     // createdAt como Embudo), porque filtra por su propia fecha (updatedAt,
     // proxy de fecha de venta) dentro de analizarVentasYFacturacion.
-    const ventas = analizarVentasYFacturacion(opportunities, rango)
-    // Funnel por vendedor: usa el mismo set ya filtrado por período que usa
+const ventas = analizarVentasYFacturacion(opportunities, pipelines, rango)    // Funnel por vendedor: usa el mismo set ya filtrado por período que usa
     // Embudo, para que sea consistente con el resto del análisis del período.
     const funnelPorVendedor = analizarFunnelPorVendedor(opportunitiesParaEmbudo, pipelines, usuarios)
     // ─────────────────────────────────────────────────────────────────────
