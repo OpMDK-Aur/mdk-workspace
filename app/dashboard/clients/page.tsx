@@ -67,11 +67,8 @@ export default async function ClientsPage() {
     : { data: [] }
 
   // Get latest NPS scores for each client - only current month
-  const now = new Date()
-  const currentMonth = now.getMonth() + 1
-  const currentYear = now.getFullYear()
-  const monthStart = new Date(currentYear, now.getMonth(), 1).toISOString().split('T')[0]
-  const monthEnd = new Date(currentYear, now.getMonth() + 1, 0).toISOString().split('T')[0]
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]
   
   const { data: npsData } = await supabase
     .from('cliente_nps_historial')
