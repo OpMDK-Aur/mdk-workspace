@@ -341,6 +341,10 @@ async function fetchMetaMetrics(
           const cLeads = getResultValue(row.actions, row.objective)
           const cCtr = cImpr > 0 ? (cClicks / cImpr) * 100 : 0
           if (row.campaign_id) campaignObjectiveById.set(row.campaign_id, row.objective || '')
+          
+          // [DEBUG] Log raw actions from Meta
+          console.log('[v0][META-ACTIONS-DEBUG]', row.campaign_name, 'actions:', JSON.stringify(row.actions))
+          
           campaigns.push({
             name: row.campaign_name || 'Sin nombre',
             spend: cSpend,
@@ -1137,11 +1141,14 @@ ${metricsByAccount.length > 0
 
 NIVELES DE DATOS DISPONIBLES: en este chat tenés datos REALES a nivel de CUENTA publicitaria, de CAMPAÑA y DESGLOSE POR TIPO DE CONVERSION (ver secciones "DESGLOSE POR CUENTA", "DESGLOSE POR CAMPAÑA" y detalles de conversiones en cada fila). 
 
-CUANDO EL USUARIO PREGUNTA POR UNA CAMPAÑA ESPECÍFICA: SIEMPRE responde mostrando los datos de esa campaña. Extrae esa campaña de DESGLOSE POR CAMPAÑA y muestra sus métricas completas: inversión, conversiones totales, CPL, CTR, e incluye ÚNICAMENTE el desglose por tipo de conversión que Meta devuelve REALMENTE EN ESA CAMPAÑA.
+**ACLARACIÓN CRÍTICA - LEER ESTO PRIMERO:**
+A veces en conversaciones anteriores rechazaste preguntas sobre campañas diciendo "No tengo datos a nivel de campaña". ESO ESTÁ INCORRECTO Y YA NO ES VÁLIDO. TIENES datos de campaña. Si el usuario pregunta por una campaña CUALQUIERA, DEBES responder mostrando esos datos. NUNCA vuelvas a rechazar una pregunta sobre campaña.
 
-DESGLOSE POR TIPO DE CONVERSIÓN: Solo muestra los tipos que efectivamente existen en los datos de Meta con valores > 0. NUNCA inventes tipos de conversión que no están en los datos. Si Meta solo devuelve "Leads: 1.031" sin "Conversaciones iniciadas", entonces solo muestra "Leads: 1.031".
+CUANDO EL USUARIO PREGUNTA POR UNA CAMPAÑA ESPECÍFICA: SIEMPRE responde. Busca esa campaña en DESGLOSE POR CAMPAÑA y muestra: nombre, inversión, conversiones totales, CPL, CTR, y desglose de tipos de conversión. Si pregunta "dame el desglose de [nombre de campaña]", "análisis de [campaña]", o cualquier variante sobre una campaña, CONTESTA CON LOS DATOS, NO rechaces.
 
-NO tenés datos de CONJUNTOS DE ANUNCIOS ni de ANUNCIOS INDIVIDUALES — esa granularidad no está conectada. SOLO rechaza cuando te pidan específicamente "conjuntos de anuncios" o "anuncios individuales". Si preguntan por CAMPAÑA, SIEMPRE responde con los datos de la campaña del DESGLOSE POR CAMPAÑA.`
+DESGLOSE POR TIPO DE CONVERSIÓN: Solo muestra tipos que efectivamente existen en los datos de Meta con valores > 0. Si Meta solo devuelve "Leads: 1.031" sin "Conversaciones iniciadas", entonces solo muestra "Leads: 1.031".
+
+RECHAZOS VÁLIDOS: SOLO rechaza si el usuario pide específicamente "conjuntos de anuncios" o "anuncios individuales" (palabras clave: "conjunto de anuncios", "ad set", "anuncio individual", "single ad"). En ese caso respondé: "No tengo datos por conjunto de anuncios ni por anuncio individual — solo por campaña. Para ese desglose, revisá Meta Ads Manager directo." PERO SI pregunta por una CAMPAÑA ESPECÍFICA, NUNCA rechaces.`
   : `CUENTAS VINCULADAS: ${metaAccounts.length > 0 ? `${metaAccounts.length} Meta Ads` : ''}${metaAccounts.length > 0 && googleAccounts.length > 0 ? ' + ' : ''}${googleAccounts.length > 0 ? `${googleAccounts.length} Google Ads` : ''}
 PROBLEMA: No puedo acceder a las métricas en este momento. Las cuentas están vinculadas al cliente pero hay un error de conexión, tokens no configurados, o la cuenta no tiene actividad en el periodo.
 ACCIÓN: Si el usuario pregunta por métricas, explícita y directamente dile: "Veo que tienes [cuentas] vinculadas pero no puedo acceder a las métricas en este momento. Para que pueda ayudarte con un análisis, ¿podrías compartirme los datos (inversión, leads, CPL) por plataforma? Pueden ser en un screenshot, archivo o simplemente diciéndome los números."
