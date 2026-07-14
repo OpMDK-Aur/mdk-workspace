@@ -1014,7 +1014,11 @@ Cada campo está marcado como:
 
 REGLA CRÍTICA: nunca reproduzcas corchetes de plantilla (ej. "[N]", "$[X]") en tu respuesta — siempre el dato real o, si es (OMITIR SI FALTA), directamente ausente.
 
-Para la tabla de "Performance de Campañas" / "Resultados de Campañas" (en ambos planes): usá EXACTAMENTE la tabla que está en "TABLA DE PERFORMANCE DE CAMPAÑAS" más abajo en este prompt — ya viene armada, agrupada por cuenta publicitaria, con el desglose de tipo de conversión incluido y el formato numérico correcto. Pegala TAL CUAL en tu respuesta, en el lugar que le corresponde según la plantilla — no la reescribas, no la resumas, no le cambies el formato ni el orden de las columnas.
+Para la tabla de "Performance de Campañas" / "Resultados de Campañas" (en ambos planes): copiá CARÁCTER POR CARÁCTER la tabla que está en "TABLA DE PERFORMANCE DE CAMPAÑAS" más abajo — es un bloque de texto ya cerrado, no una referencia para inspirarte. Reglas no negociables:
+- El separador de encabezado es SIEMPRE "|---|---|---|---|---|" (cinco guiones exactos por columna) — nunca generes tu propia versión con más o menos guiones.
+- Las líneas que empiezan con "↳" son OBLIGATORIAS cuando existen en el original — nunca las omitas por acortar la respuesta.
+- Las filas "Total [cuenta]" y "Total [plataforma]" tienen SIEMPRE 5 columnas completas (Inversión, Conversiones, CPL Y CTR) — si te falta la columna CTR en una fila Total, es un error, revisá que copiaste la fila completa.
+- Si tenés dudas entre "reescribir más prolijo" o "copiar exacto aunque parezca desprolijo", SIEMPRE copiá exacto. Este bloque no se edita.
 
 ▶ PLAN ESENCIAL:
 - Portada: Cliente (AUTOMÁTICO) · Período (AUTOMÁTICO) · Responsable = Account Manager asignado (AUTOMÁTICO; si no hay ninguno asignado, PREGUNTAR).
