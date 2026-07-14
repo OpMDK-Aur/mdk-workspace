@@ -28,6 +28,25 @@ type AccountMetrics = {
 type MetaAction = { action_type: string; value: string }
 
 // --------------------------------------------------------------------------------
+// Helpers de formato numérico argentino (punto para miles, coma para decimales)
+// y de escape de "|" en nombres, para armar la tabla de campañas ya lista para
+// copiar — en vez de pedirle al modelo que reconstruya el formato de memoria,
+// que resultó poco confiable después de varias rondas de prueba.
+// --------------------------------------------------------------------------------
+function formatCurrencyAR(n: number): string {
+  return `$${n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+function formatIntAR(n: number): string {
+  return n.toLocaleString('es-AR')
+}
+function formatPercentAR(n: number): string {
+  return `${n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
+}
+function escapePipe(name: string): string {
+  return name.replace(/\|/g, '/')
+}
+
+// --------------------------------------------------------------------------------
 // Mapeo de "Resultado" segun el objetivo de la campaña.
 // Meta Ads Manager no usa siempre el mismo action_type para la columna "Resultados":
 // depende de para qué está optimizada cada campaña (leads de formulario, conversaciones
@@ -162,6 +181,76 @@ function buildActionsBreakdown(actions: MetaAction[] | undefined, campaignCtr: n
     .map((item) => ({ label: item.label, count: item.count, ctr: campaignCtr }))
 }
 
+// --------------------------------------------------------------------------------
+// Arma la tabla de "Performance de Campañas" completa, agrupada por cuenta
+// publicitaria, YA en markdown y con el formato numérico argentino correcto —
+// en vez de dejar que el modelo la reconstruya a partir de datos sueltos (que
+// resultó poco confiable: confundía cuenta con campaña, no escapaba "|", no
+// mostraba el desglose de conversión, usaba formato de números en inglés).
+// --------------------------------------------------------------------------------
+function buildCampaignsTableMarkdown(
+  metricsByAccount: Array<{ accountName: string; platform: string; campaigns: CampaignPoint[] }>
+): string {
+  const bloques: string[] = []
+  const totalesPorPlataforma = new Map<string, { spend: number; leads: number; impressions: number; clicks: number }>()
+
+  for (const m of metricsByAccount) {
+    const campanas = (m.campaigns || []).filter((c) => c.leads > 0)
+    if (campanas.length === 0) continue
+
+    const nombreCuenta = escapePipe(m.accountName)
+    const filas = campanas
+      .map((c) => {
+        const nombreCampana = escapePipe(c.name)
+        let fila = `| "${nombreCampana}" | ${formatCurrencyAR(c.spend)} | ${formatIntAR(c.leads)} | ${formatCurrencyAR(c.cpl)} | ${formatPercentAR(c.ctr)} |`
+        if (c.actionsBreakdown && c.actionsBreakdown.length > 1) {
+          const detalle = c.actionsBreakdown.map((b) => `${b.label}: ${formatIntAR(b.count)}`).join(', ')
+          fila += `\n| ↳ *Desglose por tipo de conversión: ${detalle}* | | | | |`
+        }
+        return fila
+      })
+      .join('\n')
+
+    const totalCuenta = campanas.reduce(
+      (acc, c) => ({
+        spend: acc.spend + c.spend,
+        leads: acc.leads + c.leads,
+        impressions: acc.impressions + c.impressions,
+        clicks: acc.clicks + c.clicks,
+      }),
+      { spend: 0, leads: 0, impressions: 0, clicks: 0 }
+    )
+    const cplCuenta = totalCuenta.leads > 0 ? totalCuenta.spend / totalCuenta.leads : 0
+    const ctrCuenta = totalCuenta.impressions > 0 ? (totalCuenta.clicks / totalCuenta.impressions) * 100 : 0
+
+    const prevPlataforma = totalesPorPlataforma.get(m.platform) || { spend: 0, leads: 0, impressions: 0, clicks: 0 }
+    totalesPorPlataforma.set(m.platform, {
+      spend: prevPlataforma.spend + totalCuenta.spend,
+      leads: prevPlataforma.leads + totalCuenta.leads,
+      impressions: prevPlataforma.impressions + totalCuenta.impressions,
+      clicks: prevPlataforma.clicks + totalCuenta.clicks,
+    })
+
+    bloques.push(
+      `**${m.platform} | ${nombreCuenta}**\n\n` +
+        `| Campaña | Inversión | Conversiones | CPL | CTR |\n` +
+        `|---|---|---|---|---|\n` +
+        `${filas}\n` +
+        `| **Total ${nombreCuenta}** | **${formatCurrencyAR(totalCuenta.spend)}** | **${formatIntAR(totalCuenta.leads)}** | **${formatCurrencyAR(cplCuenta)}** | **${formatPercentAR(ctrCuenta)}** |`
+    )
+  }
+
+  const lineasTotalPlataforma = Array.from(totalesPorPlataforma.entries()).map(([plataforma, t]) => {
+    const cpl = t.leads > 0 ? t.spend / t.leads : 0
+    const ctr = t.impressions > 0 ? (t.clicks / t.impressions) * 100 : 0
+    return `**Total ${plataforma}: ${formatCurrencyAR(t.spend)} | ${formatIntAR(t.leads)} conversiones | CPL ${formatCurrencyAR(cpl)} | CTR ${formatPercentAR(ctr)}**`
+  })
+
+  if (bloques.length === 0) return 'No hay campañas con conversiones > 0 en el período.'
+
+  return `${bloques.join('\n\n')}\n\n${lineasTotalPlataforma.join('\n')}`
+}
+
 // Helper to fetch Meta metrics directly from Graph API
 async function fetchMetaMetrics(
   accountId: string,
@@ -213,8 +302,6 @@ async function fetchMetaMetrics(
           const cLeads = getResultValue(row.actions, row.objective)
           const cCtr = cImpr > 0 ? (cClicks / cImpr) * 100 : 0
           if (row.campaign_id) campaignObjectiveById.set(row.campaign_id, row.objective || '')
-          const breakdown = buildActionsBreakdown(row.actions, cCtr)
-          console.log('[v0][debug-breakdown]', row.campaign_name, JSON.stringify(breakdown))
           campaigns.push({
             name: row.campaign_name || 'Sin nombre',
             spend: cSpend,
@@ -223,7 +310,7 @@ async function fetchMetaMetrics(
             impressions: cImpr,
             clicks: cClicks,
             ctr: cCtr,
-            actionsBreakdown: breakdown,
+            actionsBreakdown: buildActionsBreakdown(row.actions, cCtr),
           })
         }
       } else {
@@ -806,6 +893,12 @@ Si esta fecha es muy vieja respecto al período que se está analizando, avisale
       ? tareasDelPeriodo.map(t => `- [${t.estado}] ${t.titulo}${t.descripcion ? `: ${t.descripcion.substring(0, 150)}` : ''}`).join('\n')
       : 'Sin tareas registradas en este periodo'
 
+    // Tabla de campañas YA ARMADA en markdown (agrupada por cuenta, con
+    // desglose de conversión, formato numérico argentino, y "|" escapado en
+    // los nombres) — se le pasa al modelo lista para copiar tal cual, en vez
+    // de pedirle que la reconstruya (resultó poco confiable en la práctica).
+    const campaignsTableMarkdown = buildCampaignsTableMarkdown(metricsByAccount)
+
     // Build metrics text
     let metricasText = 'Sin metricas disponibles'
     if (metricsByAccount.length > 0) {
@@ -895,8 +988,6 @@ ${metricsByAccount.map(m => {
         })()
       : 'últimos 30 días'
 
-    console.log('[v0][debug-periodo]', { effectivePeriodo, periodoTexto })
-
     // Detect which report template applies based on the client's plan
     const planNormalizado = (client.plan || '').toLowerCase()
     const esEstrategico = planNormalizado.includes('estrat')
@@ -923,17 +1014,19 @@ Cada campo está marcado como:
 
 REGLA CRÍTICA: nunca reproduzcas corchetes de plantilla (ej. "[N]", "$[X]") en tu respuesta — siempre el dato real o, si es (OMITIR SI FALTA), directamente ausente.
 
+Para la tabla de "Performance de Campañas" / "Resultados de Campañas" (en ambos planes): copiá CARÁCTER POR CARÁCTER la tabla que está en "TABLA DE PERFORMANCE DE CAMPAÑAS" más abajo — es un bloque de texto ya cerrado, no una referencia para inspirarte. Reglas no negociables:
+- El separador de encabezado es SIEMPRE "|---|---|---|---|---|" (cinco guiones exactos por columna) — nunca generes tu propia versión con más o menos guiones.
+- Las líneas que empiezan con "↳" son OBLIGATORIAS cuando existen en el original — nunca las omitas por acortar la respuesta.
+- Las filas "Total [cuenta]" y "Total [plataforma]" tienen SIEMPRE 5 columnas completas (Inversión, Conversiones, CPL Y CTR) — si te falta la columna CTR en una fila Total, es un error, revisá que copiaste la fila completa.
+- Si tenés dudas entre "reescribir más prolijo" o "copiar exacto aunque parezca desprolijo", SIEMPRE copiá exacto. Este bloque no se edita.
+
 ▶ PLAN ESENCIAL:
 - Portada: Cliente (AUTOMÁTICO) · Período (AUTOMÁTICO) · Responsable = Account Manager asignado (AUTOMÁTICO; si no hay ninguno asignado, PREGUNTAR).
 - RESUMEN DEL PERÍODO:
   - Objetivo de la pauta (PREGUNTAR la primera vez en la conversación — ejemplo a incluir en la pregunta: "Ej: generar leads a un CPL ≤ $X, o cerrar X ventas en el mes").
   - Conclusión general, 2-3 líneas (AUTOMÁTICO, combinando métricas + objetivo si está).
   - Leads generados (AUTOMÁTICO) con su objetivo (mismo dato de arriba). CPL promedio (AUTOMÁTICO) con su objetivo. Cumplimiento del objetivo (AUTOMÁTICO si hay objetivo cargado, si no OMITIR SIN preguntarlo de nuevo).
-- RESULTADOS DE CAMPAÑAS: Inversión total, Leads, CPL promedio, Variación vs período anterior (todo AUTOMÁTICO). Para cada cuenta publicitaria (ver DESGLOSE POR CAMPAÑA en las métricas), mostrá:
-1. Un encabezado de grupo con el formato "**[Plataforma] | [Nombre de la cuenta]**" (ej. "**Meta Ads | ADT - CM NUTRIMENTAL**") — SIN ningún ID entre paréntesis.
-2. Debajo, una tabla con las CAMPAÑAS REALES de esa cuenta (los nombres entre comillas en DESGLOSE POR CAMPAÑA, NUNCA el nombre de la cuenta): Campaña | Inversión | Conversiones | CPL | CTR, SOLO campañas con conversiones > 0, con desglose por tipo de acción cuando una campaña tenga más de un tipo. Si esa cuenta tiene 3 campañas con conversiones, la tabla tiene 3 filas de campaña — nunca colapses todas las campañas de una cuenta en una sola fila.
-3. Una fila "Total [Nombre de la cuenta]" al final de esa tabla, sumando sus propias campañas.
-Repetí 1-3 para cada cuenta. Al final de todas las cuentas de la misma plataforma, agregá una fila o línea "Total [Plataforma]" con la suma de todas las cuentas de esa plataforma.
+- RESULTADOS DE CAMPAÑAS: Inversión total, Leads, CPL promedio, Variación vs período anterior (todo AUTOMÁTICO). Después, la tabla de campañas (ver arriba: usar la de "TABLA DE PERFORMANCE DE CAMPAÑAS" tal cual).
 - ACCIONES REALIZADAS: Cambios en campañas, Optimizaciones aplicadas, Tests ejecutados con resultado cuantitativo — todo AUTOMÁTICO cruzando con TAREAS DEL PERIODO.
 - ANÁLISIS DEL FUNNEL (SÍNTESIS): si el cliente tiene CRM conectado (ver más abajo), usá los datos de RevOps disponibles (leads en CRM, oportunidades del período) — AUTOMÁTICO. Si no tiene CRM conectado, PREGUNTAR una sola vez si quiere pasar el dato manualmente; si no lo tiene a mano, OMITIR esta sección entera sin insistir.
 - QUÉ FUNCIONÓ / QUÉ NO: mensajes/audiencias con mejor y peor resultado (AUTOMÁTICO si se infiere de las campañas con mejor/peor CPL o CTR; si no hay señal clara, OMITIR SIN preguntarlo).
@@ -951,27 +1044,11 @@ Repetí 1-3 para cada cuenta. Al final de todas las cuentas de la misma platafor
 - EN QUÉ TRABAJAMOS (solo 2 pilares, no 4):
   - Estrategia (AUTOMÁTICO — SOLO de los comentarios de la tarjeta del cliente que caen DENTRO del período, ver HISTORIAL Y CONTEXTO DEL CLIENTE más abajo, ya viene filtrado al período. Si no hay ningún comentario en el período, decilo en una línea, no lo inventes).
   - Operaciones (AUTOMÁTICO — SOLO de TAREAS DEL PERIODO, ya viene filtrado. Resumí qué se hizo, no repitas la lista cruda).
-- PERFORMANCE DE CAMPAÑAS: Inversión total, Leads, CPL promedio, Ventas (mismo dato del Resumen Ejecutivo) — AUTOMÁTICO. Para cada cuenta publicitaria (ver DESGLOSE POR CAMPAÑA en las métricas), mostrá:
-1. Un encabezado de grupo con el formato "**[Plataforma] | [Nombre de la cuenta]**" (ej. "**Meta Ads | ADT - CM NUTRIMENTAL**") — SIN ningún ID entre paréntesis.
-2. Debajo, una tabla con las CAMPAÑAS REALES de esa cuenta (los nombres entre comillas en DESGLOSE POR CAMPAÑA, NUNCA el nombre de la cuenta): Campaña | Inversión | Conversiones | CPL | CTR, SOLO campañas con conversiones > 0. Si una campaña tiene más de un tipo de acción en su desglose (ver las líneas "↳" debajo de esa campaña en DESGLOSE POR CAMPAÑA), agregá esas mismas líneas de desglose debajo de la fila de esa campaña en tu tabla — no las omitas, son parte obligatoria de la fila cuando existen.
-3. Una fila "Total [Nombre de la cuenta]" al final de esa tabla, sumando sus propias campañas.
-Repetí 1-3 para cada cuenta. Si esa cuenta tiene 3 campañas con conversiones, la tabla tiene 3 filas de campaña — nunca colapses todas las campañas de una cuenta en una sola fila. Al final de todas las cuentas de la misma plataforma, agregá una línea "Total [Plataforma]" con la suma de todas las cuentas de esa plataforma.
+- PERFORMANCE DE CAMPAÑAS: Inversión total, Leads, CPL promedio, Ventas (mismo dato del Resumen Ejecutivo) — AUTOMÁTICO. Después, la tabla de campañas (ver arriba: usar la de "TABLA DE PERFORMANCE DE CAMPAÑAS" tal cual).
 - ACCIONES REALIZADAS: Cambios, Optimizaciones, Tests con resultado cuantitativo — AUTOMÁTICO cruzando con TAREAS DEL PERIODO.
 - FUNNEL COMERCIAL: AUTOMÁTICO si hay CRM conectado (usá el bloque FUNNEL COMERCIAL de los datos de RevOps: tabla Etapa | [una columna por vendedor] | Total | % General). Si NO hay CRM conectado, PREGUNTAR una sola vez: "¿Podés pasarme el funnel del período por vendedor (Leads, Contactado, Presupuesto, Ganado)?"; si no lo tiene, OMITIR toda la sección sin insistir. NUNCA inventes números de funnel.
 - GESTIÓN EN CRM: AUTOMÁTICO si hay CRM conectado (usá el bloque GESTIÓN EN CRM de RevOps: Tiempo de respuesta, Registro de valor, Tiempo por etapa, Calidad de respuesta). Si no hay CRM conectado, OMITIR toda la sección sin preguntar (ya se avisó una vez en Funnel Comercial que no hay CRM, no hace falta repetir la pregunta).
 - IMPACTO ECONÓMICO: Costo por venta estimado = Inversión total / Ventas del período (AUTOMÁTICO si hay dato de Ventas). Inversión vs Facturación = Inversión total / Facturación del período (AUTOMÁTICO si hay CRM conectado, usando la facturación de VENTAS en RevOps; si no hay CRM, PREGUNTAR la facturación una sola vez, si no la tiene OMITIR esta sección entera).
-
-Formato del desglose por tipo de conversión: la primera vez que aparezca un desglose en el informe, agregá una aclaración breve entre paréntesis la primera vez que se usa, ej.:
-"mck_cpotenciales_nacional_advantage_testV2" | $944.031,81 | 49 | $19.265,96 | 1,16%
-    ↳ Desglose por tipo de conversión: Leads: 49
-Si una campaña tiene 2+ tipos, separalos con coma en la misma línea de desglose en vez de una línea por tipo, para que quede compacto:
-    ↳ Desglose por tipo de conversión: Leads: 1.045, Conversaciones iniciadas: 38
-
-REGLA CRÍTICA SOBRE CAMPAÑAS VS. CUENTAS: en las métricas de este prompt hay dos secciones distintas y NO deben mezclarse nunca:
-- "DESGLOSE POR CUENTA" (dentro de METRICAS DE CUENTAS PUBLICITARIAS): un resumen por CUENTA publicitaria completa, con el ID de la cuenta entre paréntesis (ej. "ADT - CM NUTRIMENTAL (1043470857039136)"). Esto es SOLO para el total global — NUNCA lo uses como fila de una tabla de campañas.
-- "DESGLOSE POR CAMPAÑA": acá están las CAMPAÑAS reales, una por una, con su nombre entre comillas y SIN ningún ID (ej. "Nombre de la campaña": $X inversión | ...). Esta es la ÚNICA fuente válida para las tablas de "Performance de Campañas" / "Resultados de Campañas".
-El ID entre paréntesis que aparece en DESGLOSE POR CUENTA es el ID de la CUENTA, no de una campaña — nunca lo incluyas en una fila de la tabla de campañas, ni siquiera como referencia.
-Si una cuenta tiene varias campañas con conversiones > 0, la tabla debe tener una fila por CADA campaña, no una fila por cuenta. Si te encontrás escribiendo una sola fila por cuenta cuando esa cuenta tiene más de una campaña activa, es un error — releé DESGLOSE POR CAMPAÑA y desglosá cada una.
 
 Reglas comunes a ambos planes:
 - Los tests SIEMPRE con resultado cuantitativo (ej. "+20% CTR").
@@ -993,6 +1070,10 @@ CONTEXTO DEL CLIENTE (úsalo como referencia cuando sea relevante):
 - Periodo seleccionado: ${periodoTexto}
 - Ejecutivo/Responsable (Account Manager asignado): ${ejecutivoNombre || 'No hay ningún Account Manager asignado a este cliente en el sistema — pedíselo al usuario.'}
 - CRM conectado: ${tieneCRMConectado ? 'Sí, GoHighLevel' : 'No — Ventas, Funnel Comercial y Gestión en CRM van a tener que pedirse manualmente, y si el usuario no los tiene, esas secciones se omiten (ver guía de abajo).'}
+
+TABLA DE PERFORMANCE DE CAMPAÑAS (YA ARMADA — copiala TAL CUAL en la sección "Performance de Campañas" / "Resultados de Campañas" de tu respuesta, con el formato markdown exacto que ves acá abajo, sin reconstruirla ni reformatearla vos mismo):
+
+${campaignsTableMarkdown}
 
 ${guiaInformes}
 
@@ -1032,16 +1113,14 @@ COMO RESPONDER:
 - Los campos (OMITIR SI FALTA) nunca generan una pregunta: si no hay dato, esa sección o línea simplemente no aparece en el informe.
 
 VERIFICACIÓN ANTES DE RESPONDER (hacé esto siempre, en silencio, antes de enviar el mensaje):
+- Confirmá que la tabla de campañas que pegaste es EXACTAMENTE la de "TABLA DE PERFORMANCE DE CAMPAÑAS" — si la reescribiste, reformateaste, o le cambiaste algo, es un error: volvé a copiarla tal cual.
 - Si el cliente tiene CRM conectado y el bloque VENTAS/FUNNEL COMERCIAL de este prompt tiene datos, y tu respuesta es un informe completo de Plan Estratégico, confirmá que Ventas, Funnel Comercial, Gestión en CRM e Impacto Económico estén efectivamente incluidos — si armaste el informe y falta alguna de estas secciones sin que el campo esté vacío en los datos, es un error tuyo: corregilo antes de responder, no lo envíes incompleto.
-- Si vas a insertar un nombre de campaña/cuenta en una tabla markdown, revisá que no contenga "|" sin escapar (ver regla de FORMATO DEL TEXTO).
 - Si un total no coincide con la suma de sus partes (ej. TOTAL de la tabla vs. la suma de las filas), recalculalo antes de mostrarlo.
 - Si una métrica es anómala (CTR > 100%, CPL en $0, ROAS negativo), mencionalo como algo a revisar en vez de mostrarlo sin comentario.
 - Nunca omitas una sección completa en silencio si los datos para esa sección SÍ están disponibles en este prompt — omitir sin dato disponible es un error, no una decisión de formato.
 
 FORMATO DEL TEXTO (para que se pueda copiar y pegar limpio a Claude Design):
-- Números KPI (Leads/CPL/Ventas/Inversión, etc.): una línea en negrita por cada uno, sin viñeta — ej. "**Leads:** 1453".
-- Tablas (campañas, funnel): SIEMPRE tabla markdown real con pipes "|", nunca datos sueltos en viñetas.
-- Los nombres de campaña o de cuenta publicitaria pueden contener el carácter "|" (ej. "MDK | NTI // Cuenta de respaldo"). Como las tablas markdown usan "|" como separador de columna, ANTES de insertar un nombre en una celda de tabla, reemplazá cualquier "|" que contenga por "/" (ej. "MDK / NTI // Cuenta de respaldo"). Si no hacés esto, la fila se corre y la tabla queda rota — ya pasó antes.
+- Números KPI (Leads/CPL/Ventas/Inversión, etc.): una línea en negrita por cada uno, sin viñeta — ej. "**Leads:** 1.453".
 - El resto del contenido narrativo (objetivo, conclusión, acciones) puede ir en viñetas o párrafos normales.
 - Destacá números importantes en **negrita**. Sé claro y conciso.
 
