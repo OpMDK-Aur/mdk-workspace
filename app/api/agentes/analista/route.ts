@@ -161,11 +161,32 @@ const DEDUPE_GROUPS: string[][] = [
   ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'],
 ]
 
-function buildActionsBreakdown(actions: MetaAction[] | undefined, campaignCtr: number): ActionBreakdownItem[] {
+// El desglose SOLO tiene sentido cuando el objetivo de la campaña admite más
+// de un tipo de resultado válido simultáneamente (esto es raro — la gran
+// mayoría de las campañas de Meta reportan un ÚNICO tipo de "Resultado",
+// coherente con su objetivo, y todo lo demás es engagement incidental que
+// Meta mismo no cuenta como conversión). Antes mezclábamos cualquier
+// action_type de cualquier grupo, lo que agregaba ruido (ej. "conversaciones
+// iniciadas" en una campaña optimizada 100% para leads, que Meta nunca
+// reporta como resultado de esa campaña).
+function buildActionsBreakdown(actions: MetaAction[] | undefined, campaignCtr: number, objective?: string): ActionBreakdownItem[] {
   if (!actions || actions.length === 0) return []
 
+  // Grupos "candidatos": si el objetivo mapea a una familia específica
+  // (ver RESULT_ACTION_TYPES_BY_OBJECTIVE), el desglose se limita a ESA
+  // familia — nunca mezcla con otras ajenas al objetivo real.
+  let gruposCandidatos = DEDUPE_GROUPS
+  if (objective) {
+    const key = objective.toUpperCase()
+    const familiaDelObjetivo = RESULT_ACTION_TYPES_BY_OBJECTIVE[key]
+    if (familiaDelObjetivo) {
+      const grupoCoincidente = DEDUPE_GROUPS.find((g) => g[0] === familiaDelObjetivo[0])
+      gruposCandidatos = grupoCoincidente ? [grupoCoincidente] : DEDUPE_GROUPS
+    }
+  }
+
   const valueByGroup: { label: string; count: number }[] = []
-  for (const group of DEDUPE_GROUPS) {
+  for (const group of gruposCandidatos) {
     const values = group
       .map((type) => actions.find((a) => a.action_type === type))
       .filter(Boolean)
@@ -310,7 +331,7 @@ async function fetchMetaMetrics(
             impressions: cImpr,
             clicks: cClicks,
             ctr: cCtr,
-            actionsBreakdown: buildActionsBreakdown(row.actions, cCtr),
+            actionsBreakdown: buildActionsBreakdown(row.actions, cCtr, row.objective),
           })
         }
       } else {
