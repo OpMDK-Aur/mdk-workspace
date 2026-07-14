@@ -341,6 +341,10 @@ async function fetchMetaMetrics(
           const cLeads = getResultValue(row.actions, row.objective)
           const cCtr = cImpr > 0 ? (cClicks / cImpr) * 100 : 0
           if (row.campaign_id) campaignObjectiveById.set(row.campaign_id, row.objective || '')
+          
+          // [DEBUG] Log raw actions from Meta
+          console.log('[v0][META-ACTIONS-DEBUG]', row.campaign_name, 'actions:', JSON.stringify(row.actions))
+          
           campaigns.push({
             name: row.campaign_name || 'Sin nombre',
             spend: cSpend,
