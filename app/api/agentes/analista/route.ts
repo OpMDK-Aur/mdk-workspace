@@ -1035,11 +1035,9 @@ Cada campo está marcado como:
 
 REGLA CRÍTICA: nunca reproduzcas corchetes de plantilla (ej. "[N]", "$[X]") en tu respuesta — siempre el dato real o, si es (OMITIR SI FALTA), directamente ausente.
 
-Para la tabla de "Performance de Campañas" / "Resultados de Campañas" (en ambos planes): copiá CARÁCTER POR CARÁCTER la tabla que está en "TABLA DE PERFORMANCE DE CAMPAÑAS" más abajo — es un bloque de texto ya cerrado, no una referencia para inspirarte. Reglas no negociables:
-- El separador de encabezado es SIEMPRE "|---|---|---|---|---|" (cinco guiones exactos por columna) — nunca generes tu propia versión con más o menos guiones.
-- Las líneas que empiezan con "↳" son OBLIGATORIAS cuando existen en el original — nunca las omitas por acortar la respuesta.
-- Las filas "Total [cuenta]" y "Total [plataforma]" tienen SIEMPRE 5 columnas completas (Inversión, Conversiones, CPL Y CTR) — si te falta la columna CTR en una fila Total, es un error, revisá que copiaste la fila completa.
-- Si tenés dudas entre "reescribir más prolijo" o "copiar exacto aunque parezca desprolijo", SIEMPRE copiá exacto. Este bloque no se edita.
+Para la tabla de "Performance de Campañas" / "Resultados de Campañas" (en ambos planes): en el lugar exacto donde iría la tabla, escribí ÚNICAMENTE este marcador, en su propia línea, sin nada más alrededor ni comillas ni backticks:
+[[TABLA_CAMPANAS]]
+No intentes armar la tabla vos mismo, no la describas, no agregues texto explicativo sobre ella — solo el marcador solo. El sistema la reemplaza automáticamente por la tabla real antes de que el usuario la vea.
 
 ▶ PLAN ESENCIAL:
 - Portada: Cliente (AUTOMÁTICO) · Período (AUTOMÁTICO) · Responsable = Account Manager asignado (AUTOMÁTICO; si no hay ninguno asignado, PREGUNTAR).
@@ -1092,10 +1090,6 @@ CONTEXTO DEL CLIENTE (úsalo como referencia cuando sea relevante):
 - Ejecutivo/Responsable (Account Manager asignado): ${ejecutivoNombre || 'No hay ningún Account Manager asignado a este cliente en el sistema — pedíselo al usuario.'}
 - CRM conectado: ${tieneCRMConectado ? 'Sí, GoHighLevel' : 'No — Ventas, Funnel Comercial y Gestión en CRM van a tener que pedirse manualmente, y si el usuario no los tiene, esas secciones se omiten (ver guía de abajo).'}
 
-TABLA DE PERFORMANCE DE CAMPAÑAS (YA ARMADA — copiala TAL CUAL en la sección "Performance de Campañas" / "Resultados de Campañas" de tu respuesta, con el formato markdown exacto que ves acá abajo, sin reconstruirla ni reformatearla vos mismo):
-
-${campaignsTableMarkdown}
-
 ${guiaInformes}
 
 HISTORIAL Y CONTEXTO DEL CLIENTE (comentarios de la tarjeta del cliente DENTRO del período analizado):
@@ -1134,7 +1128,7 @@ COMO RESPONDER:
 - Los campos (OMITIR SI FALTA) nunca generan una pregunta: si no hay dato, esa sección o línea simplemente no aparece en el informe.
 
 VERIFICACIÓN ANTES DE RESPONDER (hacé esto siempre, en silencio, antes de enviar el mensaje):
-- Confirmá que la tabla de campañas que pegaste es EXACTAMENTE la de "TABLA DE PERFORMANCE DE CAMPAÑAS" — si la reescribiste, reformateaste, o le cambiaste algo, es un error: volvé a copiarla tal cual.
+- Confirmá que escribiste el marcador [[TABLA_CAMPANAS]] solo, en su propia línea, en el lugar de la tabla de campañas — nunca reconstruyas la tabla vos mismo.
 - Si el cliente tiene CRM conectado y el bloque VENTAS/FUNNEL COMERCIAL de este prompt tiene datos, y tu respuesta es un informe completo de Plan Estratégico, confirmá que Ventas, Funnel Comercial, Gestión en CRM e Impacto Económico estén efectivamente incluidos — si armaste el informe y falta alguna de estas secciones sin que el campo esté vacío en los datos, es un error tuyo: corregilo antes de responder, no lo envíes incompleto.
 - Si un total no coincide con la suma de sus partes (ej. TOTAL de la tabla vs. la suma de las filas), recalculalo antes de mostrarlo.
 - Si una métrica es anómala (CTR > 100%, CPL en $0, ROAS negativo), mencionalo como algo a revisar en vez de mostrarlo sin comentario.
@@ -1302,7 +1296,7 @@ Luego genera un informe de análisis completo para ${client.nombre_del_negocio} 
     // Fall back to gpt-4o-mini only if neither images nor documents are present
     const modelId = hasImages || hasDocuments ? 'gpt-4o' : 'gpt-4o-mini'
 
-    const result = streamText({
+const result = streamText({
       model: openai(modelId),
       system: systemPrompt,
       messages: processedMessages,
@@ -1318,21 +1312,45 @@ Luego genera un informe de análisis completo para ${client.nombre_del_negocio} 
       estado: 'ok',
     }).then(() => {})
 
-    return result.toUIMessageStreamResponse({
-      onError: (error) => {
-        console.error('[v0] Analista stream error (raw):', error)
-        if (error instanceof Error) {
-          console.error('[v0] Analista stream error message:', error.message)
-          return error.message
+    // ------------------------------------------------------------------
+    // Streaming manual (en vez de result.toUIMessageStreamResponse):
+    // necesitamos mandar la tabla de campañas real (armada en código, ver
+    // buildCampaignsTableMarkdown) como un evento SEPARADO del texto del
+    // modelo — el modelo solo escribe el marcador [[TABLA_CAMPANAS]], y el
+    // frontend lo reemplaza por esta tabla real antes de mostrarla. Esto
+    // garantiza que la tabla nunca se corrompe, sin depender de que el
+    // modelo la "copie" bien (que resultó poco confiable en la práctica).
+    // ------------------------------------------------------------------
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (obj: unknown) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`))
         }
-        if (typeof error === 'string') return error
         try {
-          const serialized = JSON.stringify(error)
-          console.error('[v0] Analista stream error (serialized):', serialized)
-          return `Error del modelo: ${serialized.slice(0, 300)}`
-        } catch {
-          return `Error procesando la solicitud (tipo no serializable: ${Object.prototype.toString.call(error)}). Revisá los logs de Vercel para el detalle completo.`
+          // Primero, la tabla real — el frontend la guarda para el reemplazo.
+          send({ type: 'campaigns-table', table: campaignsTableMarkdown })
+
+          for await (const delta of result.textStream) {
+            send({ type: 'text-delta', delta })
+          }
+
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        } catch (err) {
+          console.error('[v0] Analista stream error (raw):', err)
+          const errorText = err instanceof Error ? err.message : 'Error desconocido al generar la respuesta'
+          send({ type: 'error', errorText })
+        } finally {
+          controller.close()
         }
+      },
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
       },
     })
   } catch (error) {
