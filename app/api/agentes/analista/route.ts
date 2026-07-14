@@ -115,27 +115,30 @@ function pickActionValue(actions: MetaAction[] | undefined, types: string[]): nu
   return 0
 }
 
-// Calcula el "Resultado" de una fila de insights (cuenta o campaña) respetando
-// el objetivo de la campaña cuando está disponible, y si no, probando los grupos
-// de acciones más comunes hasta encontrar uno con datos.
+// Calcula el "Resultado" de una fila de insights (cuenta o campaña) sumando TODAS
+// las conversiones relevantes de TODOS los tipos. Esto coincide exactamente con lo
+// que Meta Ads Manager muestra en la columna "Conversiones" (que suma todos los tipos).
+// Si hay múltiples tipos del mismo grupo (ej. diferentes action_types para mensajes),
+// suma solo el primero de cada grupo para evitar duplicados (Meta los devuelve en
+// paralelo para la misma métrica).
 function getResultValue(actions: MetaAction[] | undefined, objective?: string): number {
   if (!actions || actions.length === 0) return 0
 
-  if (objective) {
-    const key = objective.toUpperCase()
-    const types = RESULT_ACTION_TYPES_BY_OBJECTIVE[key]
-    if (types) {
-      const value = pickActionValue(actions, types)
-      if (value > 0) return value
+  let total = 0
+  const usedTypes = new Set<string>()
+
+  // Suma TODOS los DEDUPE_GROUPS (para evitar contar 2 veces la misma conversión)
+  for (const group of DEDUPE_GROUPS) {
+    const value = pickActionValue(actions, group)
+    if (value > 0) {
+      total += value
+      for (const type of group) {
+        usedTypes.add(type)
+      }
     }
   }
 
-  for (const group of FALLBACK_ACTION_GROUPS) {
-    const value = pickActionValue(actions, group)
-    if (value > 0) return value
-  }
-
-  return 0
+  return total
 }
 
 // --------------------------------------------------------------------------------
@@ -186,28 +189,27 @@ const DEDUPE_GROUPS: string[][] = [
 function buildActionsBreakdown(actions: MetaAction[] | undefined, campaignCtr: number, objective?: string): ActionBreakdownItem[] {
   if (!actions || actions.length === 0) return []
 
-  // Grupos "candidatos": si el objetivo mapea a una familia específica
-  // (ver RESULT_ACTION_TYPES_BY_OBJECTIVE), el desglose se limita a ESA
-  // familia — nunca mezcla con otras ajenas al objetivo real.
-  let gruposCandidatos = DEDUPE_GROUPS
-  if (objective) {
-    const key = objective.toUpperCase()
-    const familiaDelObjetivo = RESULT_ACTION_TYPES_BY_OBJECTIVE[key]
-    if (familiaDelObjetivo) {
-      const grupoCoincidente = DEDUPE_GROUPS.find((g) => g[0] === familiaDelObjetivo[0])
-      gruposCandidatos = grupoCoincidente ? [grupoCoincidente] : DEDUPE_GROUPS
-    }
-  }
-
+  // Desglose de TODOS los tipos de conversiones que Meta devuelve EFECTIVAMENTE en la campaña.
+  // NO inventes tipos que no existen en los datos reales.
+  // Solo muestra tipos donde action_type existe EN actions Y value > 0.
   const valueByGroup: { label: string; count: number }[] = []
-  for (const group of gruposCandidatos) {
-    const values = group
-      .map((type) => actions.find((a) => a.action_type === type))
-      .filter(Boolean)
-      .map((a) => parseInt(a!.value, 10) || 0)
-    const best = values.length > 0 ? Math.max(...values) : 0
-    if (best > 0) {
-      valueByGroup.push({ label: ACTION_TYPE_LABELS[group[0]] || group[0], count: best })
+  
+  for (const group of DEDUPE_GROUPS) {
+    // Busca el PRIMER action_type del grupo que EFECTIVAMENTE esté en los datos de Meta
+    const match = group.find((type) => {
+      const action = actions.find((a) => a.action_type === type)
+      return action && parseInt(action.value, 10) > 0
+    })
+    
+    if (match) {
+      const action = actions.find((a) => a.action_type === match)
+      if (action) {
+        const count = parseInt(action.value, 10) || 0
+        if (count > 0) {
+          const label = ACTION_TYPE_LABELS[match] || match
+          valueByGroup.push({ label, count })
+        }
+      }
     }
   }
 
@@ -1133,7 +1135,13 @@ IMPORTANTE SOBRE LAS METRICAS:
 ${metricsByAccount.length > 0
   ? `Las métricas anteriores son DATOS REALES obtenidos directamente desde las APIs de Meta Ads y/o Google Ads para el periodo seleccionado. NO son estimaciones. Trátalas como cifras oficiales y exactas. NUNCA digas que son estimativas, aproximadas o simuladas. Tienes ACCESO al DESGLOSE DIARIO por cuenta (sección "DESGLOSE DIARIO POR CUENTA") y al DESGLOSE POR CAMPAÑA (sección "DESGLOSE POR CAMPAÑA"). Úsalos cuando el usuario pida datos, gráficos o tendencias por día o por campaña. NUNCA digas que no tienes los datos desglosados por día o por campaña si esas secciones contienen filas. Si el usuario pide un rango específico de días (ej. del 1 al 5), filtra el desglose diario a esas fechas y construye el gráfico con un punto por día. Si pide datos por campaña, usa la sección de desglose por campaña.
 
-NIVELES DE DATOS DISPONIBLES: en este chat SOLO tenés datos reales a nivel de CUENTA publicitaria y de CAMPAÑA (ver DESGLOSE POR CUENTA y DESGLOSE POR CAMPAÑA). NO tenés datos de conjuntos de anuncios ni de anuncios individuales — esa granularidad no está conectada a este chat todavía. Si el usuario te pide un desglose por conjunto de anuncios o por anuncio (en cualquier momento de la conversación, no solo la primera vez), NUNCA inventes nombres ("Grupo 1", "Anuncio A", etc.) ni números, ni siquiera como ejemplo o placeholder. Respondé directamente: "No tengo datos a nivel de conjunto de anuncios ni de anuncio en este chat — solo cuenta y campaña. Para ver ese desglose, revisá directamente en Meta Ads Manager con el desglose por 'Anuncios' o 'Conjuntos de anuncios'."`
+NIVELES DE DATOS DISPONIBLES: en este chat tenés datos REALES a nivel de CUENTA publicitaria, de CAMPAÑA y DESGLOSE POR TIPO DE CONVERSION (ver secciones "DESGLOSE POR CUENTA", "DESGLOSE POR CAMPAÑA" y detalles de conversiones en cada fila). 
+
+CUANDO EL USUARIO PREGUNTA POR UNA CAMPAÑA ESPECÍFICA: SIEMPRE responde mostrando los datos de esa campaña. Extrae esa campaña de DESGLOSE POR CAMPAÑA y muestra sus métricas completas: inversión, conversiones totales, CPL, CTR, e incluye ÚNICAMENTE el desglose por tipo de conversión que Meta devuelve REALMENTE EN ESA CAMPAÑA.
+
+DESGLOSE POR TIPO DE CONVERSIÓN: Solo muestra los tipos que efectivamente existen en los datos de Meta con valores > 0. NUNCA inventes tipos de conversión que no están en los datos. Si Meta solo devuelve "Leads: 1.031" sin "Conversaciones iniciadas", entonces solo muestra "Leads: 1.031".
+
+NO tenés datos de CONJUNTOS DE ANUNCIOS ni de ANUNCIOS INDIVIDUALES — esa granularidad no está conectada. SOLO rechaza cuando te pidan específicamente "conjuntos de anuncios" o "anuncios individuales". Si preguntan por CAMPAÑA, SIEMPRE responde con los datos de la campaña del DESGLOSE POR CAMPAÑA.`
   : `CUENTAS VINCULADAS: ${metaAccounts.length > 0 ? `${metaAccounts.length} Meta Ads` : ''}${metaAccounts.length > 0 && googleAccounts.length > 0 ? ' + ' : ''}${googleAccounts.length > 0 ? `${googleAccounts.length} Google Ads` : ''}
 PROBLEMA: No puedo acceder a las métricas en este momento. Las cuentas están vinculadas al cliente pero hay un error de conexión, tokens no configurados, o la cuenta no tiene actividad en el periodo.
 ACCIÓN: Si el usuario pregunta por métricas, explícita y directamente dile: "Veo que tienes [cuentas] vinculadas pero no puedo acceder a las métricas en este momento. Para que pueda ayudarte con un análisis, ¿podrías compartirme los datos (inversión, leads, CPL) por plataforma? Pueden ser en un screenshot, archivo o simplemente diciéndome los números."
@@ -1149,6 +1157,8 @@ COMO RESPONDER:
 
 VERIFICACIÓN ANTES DE RESPONDER (hacé esto siempre, en silencio, antes de enviar el mensaje):
 - Confirmá que escribiste el marcador [[TABLA_CAMPANAS]] solo, en su propia línea, en el lugar de la tabla de campañas — nunca reconstruyas la tabla vos mismo.
+- PRECISION EN NUMEROS: Todos los números que muestre (leads, inversión, CPL, etc.) deben ser EXACTAMENTE los que aparecen en las secciones "DESGLOSE POR CUENTA" y "DESGLOSE POR CAMPAÑA" del prompt. NO redondees, NO aproximes, NO interpoles. Si el prompt dice "1.031 conversiones", muestrá "1.031", no "1.030" ni "~1.000".
+- DESGLOSE DE CONVERSIONES: Si el usuario pregunta por conversiones o leads de una campaña específica, busca en "Desglose por tipo de conversión" y especifica TODOS los tipos (ej: "Leads: 897, Conversaciones WhatsApp: 134, Compras: 45") — nunca muestre solo el total sin desglose.
 - Si el cliente tiene CRM conectado y el bloque VENTAS/FUNNEL COMERCIAL de este prompt tiene datos, y tu respuesta es un informe completo de Plan Estratégico, confirmá que Ventas, Funnel Comercial, Gestión en CRM e Impacto Económico estén efectivamente incluidos — si armaste el informe y falta alguna de estas secciones sin que el campo esté vacío en los datos, es un error tuyo: corregilo antes de responder, no lo envíes incompleto.
 - Si un total no coincide con la suma de sus partes (ej. TOTAL de la tabla vs. la suma de las filas), recalculalo antes de mostrarlo.
 - Si una métrica es anómala (CTR > 100%, CPL en $0, ROAS negativo), mencionalo como algo a revisar en vez de mostrarlo sin comentario.
