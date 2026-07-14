@@ -40,7 +40,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
-import { format, startOfMonth, endOfMonth } from 'date-fns'
+import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { toast } from 'sonner'
 import { MessageContent, type Artifact } from '@/components/chat/message-content'
@@ -188,11 +188,11 @@ export default function AnalistaPage() {
     }
 
     // Extract month/year from dateStart for backward compatibility
-    const startDate = new Date(dateStart)
+    const startDate = parseISO(dateStart)
     const calcMonth = startDate.getMonth() + 1
     const calcYear = startDate.getFullYear()
 
-    const dateRangeLabel = `${format(new Date(dateStart), 'd MMM', { locale: es })} - ${format(new Date(dateEnd), 'd MMM yyyy', { locale: es })}`
+    const dateRangeLabel = `${format(parseISO(dateStart), 'd MMM', { locale: es })} - ${format(parseISO(dateEnd), 'd MMM yyyy', { locale: es })}`
 
     const conv = await createConversacion({
       clienteId: selectedClient.id,
@@ -347,9 +347,9 @@ export default function AnalistaPage() {
   const streamAssistantReply = async (apiMessages: ChatMessage[], convId: string | null) => {
     setIsLoading(true)
     try {
-      const startDate = new Date(dateStart)
-      const apiMonth = startDate.getMonth() + 1
-      const apiYear = startDate.getFullYear()
+    const startDate = parseISO(dateStart)
+    const apiMonth = startDate.getMonth() + 1
+    const apiYear = startDate.getFullYear()
 
       const response = await fetch('/api/agentes/analista', {
         method: 'POST',
@@ -511,8 +511,7 @@ export default function AnalistaPage() {
         .limit(1)
         .single()
 
-      const dateRangeLabel = `${format(new Date(dateStart), 'd MMM', { locale: es })} - ${format(new Date(dateEnd), 'd MMM yyyy', { locale: es })}`
-
+        const dateRangeLabel = `${format(parseISO(dateStart), 'd MMM', { locale: es })} - ${format(parseISO(dateEnd), 'd MMM yyyy', { locale: es })}`
       await supabase.from('tareas').insert({
         titulo: `Informe ${selectedClient.nombre_del_negocio} - ${dateRangeLabel}`,
         descripcion: messageText,
