@@ -959,6 +959,12 @@ Repetí 1-3 para cada cuenta. Si esa cuenta tiene 3 campañas con conversiones, 
 - GESTIÓN EN CRM: AUTOMÁTICO si hay CRM conectado (usá el bloque GESTIÓN EN CRM de RevOps: Tiempo de respuesta, Registro de valor, Tiempo por etapa, Calidad de respuesta). Si no hay CRM conectado, OMITIR toda la sección sin preguntar (ya se avisó una vez en Funnel Comercial que no hay CRM, no hace falta repetir la pregunta).
 - IMPACTO ECONÓMICO: Costo por venta estimado = Inversión total / Ventas del período (AUTOMÁTICO si hay dato de Ventas). Inversión vs Facturación = Inversión total / Facturación del período (AUTOMÁTICO si hay CRM conectado, usando la facturación de VENTAS en RevOps; si no hay CRM, PREGUNTAR la facturación una sola vez, si no la tiene OMITIR esta sección entera).
 
+Formato del desglose por tipo de conversión: la primera vez que aparezca un desglose en el informe, agregá una aclaración breve entre paréntesis la primera vez que se usa, ej.:
+"mck_cpotenciales_nacional_advantage_testV2" | $944.031,81 | 49 | $19.265,96 | 1,16%
+    ↳ Desglose por tipo de conversión: Leads: 49
+Si una campaña tiene 2+ tipos, separalos con coma en la misma línea de desglose en vez de una línea por tipo, para que quede compacto:
+    ↳ Desglose por tipo de conversión: Leads: 1.045, Conversaciones iniciadas: 38
+
 REGLA CRÍTICA SOBRE CAMPAÑAS VS. CUENTAS: en las métricas de este prompt hay dos secciones distintas y NO deben mezclarse nunca:
 - "DESGLOSE POR CUENTA" (dentro de METRICAS DE CUENTAS PUBLICITARIAS): un resumen por CUENTA publicitaria completa, con el ID de la cuenta entre paréntesis (ej. "ADT - CM NUTRIMENTAL (1043470857039136)"). Esto es SOLO para el total global — NUNCA lo uses como fila de una tabla de campañas.
 - "DESGLOSE POR CAMPAÑA": acá están las CAMPAÑAS reales, una por una, con su nombre entre comillas y SIN ningún ID (ej. "Nombre de la campaña": $X inversión | ...). Esta es la ÚNICA fuente válida para las tablas de "Performance de Campañas" / "Resultados de Campañas".
