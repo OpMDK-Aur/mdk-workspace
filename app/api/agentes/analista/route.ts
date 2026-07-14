@@ -214,14 +214,14 @@ async function fetchMetaMetrics(
           const cCtr = cImpr > 0 ? (cClicks / cImpr) * 100 : 0
           if (row.campaign_id) campaignObjectiveById.set(row.campaign_id, row.objective || '')
           campaigns.push({
-            name: row.campaign_name || 'Sin nombre',
-            spend: cSpend,
-            leads: cLeads,
-            cpl: cLeads > 0 ? cSpend / cLeads : 0,
-            impressions: cImpr,
-            licks: cClicks,
-            ctr: cCtr,
-            actionsBreakdown: buildActionsBreakdown(row.actions, cCtr),
+          name: row.campaign_name || 'Sin nombre',
+          spend: cSpend,
+          leads: cLeads,
+          cpl: cLeads > 0 ? cSpend / cLeads : 0,
+          impressions: cImpr,
+          clicks: cClicks,
+          ctr: cCtr,
+          actionsBreakdown: buildActionsBreakdown(row.actions, cCtr),
 })
         }
       } else {
@@ -950,7 +950,11 @@ Repetí 1-3 para cada cuenta. Al final de todas las cuentas de la misma platafor
 - EN QUÉ TRABAJAMOS (solo 2 pilares, no 4):
   - Estrategia (AUTOMÁTICO — SOLO de los comentarios de la tarjeta del cliente que caen DENTRO del período, ver HISTORIAL Y CONTEXTO DEL CLIENTE más abajo, ya viene filtrado al período. Si no hay ningún comentario en el período, decilo en una línea, no lo inventes).
   - Operaciones (AUTOMÁTICO — SOLO de TAREAS DEL PERIODO, ya viene filtrado. Resumí qué se hizo, no repitas la lista cruda).
-- PERFORMANCE DE CAMPAÑAS: Inversión total, Leads, CPL promedio, Ventas (mismo dato del Resumen Ejecutivo) — AUTOMÁTICO. Tabla — Campaña | Inversión | Conversiones | CPL | CTR, SOLO campañas con conversiones > 0 (nunca listes las de 0), con desglose por tipo de acción cuando una campaña tenga más de un tipo (ver DESGLOSE POR CAMPAÑA). Si hay más de una cuenta activa en la misma plataforma, separá por cuenta.
+- PERFORMANCE DE CAMPAÑAS: Inversión total, Leads, CPL promedio, Ventas (mismo dato del Resumen Ejecutivo) — AUTOMÁTICO. Para cada cuenta publicitaria (ver DESGLOSE POR CAMPAÑA en las métricas), mostrá:
+1. Un encabezado de grupo con el formato "**[Plataforma] | [Nombre de la cuenta]**" (ej. "**Meta Ads | ADT - CM NUTRIMENTAL**") — SIN ningún ID entre paréntesis.
+2. Debajo, una tabla con las CAMPAÑAS REALES de esa cuenta (los nombres entre comillas en DESGLOSE POR CAMPAÑA, NUNCA el nombre de la cuenta): Campaña | Inversión | Conversiones | CPL | CTR, SOLO campañas con conversiones > 0. Si una campaña tiene más de un tipo de acción en su desglose (ver las líneas "↳" debajo de esa campaña en DESGLOSE POR CAMPAÑA), agregá esas mismas líneas de desglose debajo de la fila de esa campaña en tu tabla — no las omitas, son parte obligatoria de la fila cuando existen.
+3. Una fila "Total [Nombre de la cuenta]" al final de esa tabla, sumando sus propias campañas.
+Repetí 1-3 para cada cuenta. Si esa cuenta tiene 3 campañas con conversiones, la tabla tiene 3 filas de campaña — nunca colapses todas las campañas de una cuenta en una sola fila. Al final de todas las cuentas de la misma plataforma, agregá una línea "Total [Plataforma]" con la suma de todas las cuentas de esa plataforma.
 - ACCIONES REALIZADAS: Cambios, Optimizaciones, Tests con resultado cuantitativo — AUTOMÁTICO cruzando con TAREAS DEL PERIODO.
 - FUNNEL COMERCIAL: AUTOMÁTICO si hay CRM conectado (usá el bloque FUNNEL COMERCIAL de los datos de RevOps: tabla Etapa | [una columna por vendedor] | Total | % General). Si NO hay CRM conectado, PREGUNTAR una sola vez: "¿Podés pasarme el funnel del período por vendedor (Leads, Contactado, Presupuesto, Ganado)?"; si no lo tiene, OMITIR toda la sección sin insistir. NUNCA inventes números de funnel.
 - GESTIÓN EN CRM: AUTOMÁTICO si hay CRM conectado (usá el bloque GESTIÓN EN CRM de RevOps: Tiempo de respuesta, Registro de valor, Tiempo por etapa, Calidad de respuesta). Si no hay CRM conectado, OMITIR toda la sección sin preguntar (ya se avisó una vez en Funnel Comercial que no hay CRM, no hace falta repetir la pregunta).
