@@ -912,6 +912,8 @@ El plan detectado para este cliente es "${planInforme}" (plan crudo: "${client.p
 
 REGLA DE PRIORIDAD MÁXIMA: la estructura de abajo (Esencial o Estratégico) se aplica en CADA mensaje según el plan real del cliente indicado arriba, sin importar qué estructura se usó en mensajes anteriores de esta misma conversación. Si en un turno anterior de este chat se armó un informe con la estructura equivocada (por ejemplo, Esencial para un cliente que en realidad es Estratégico), corregilo en el siguiente mensaje sin que haga falta que el usuario te lo pida — nunca repitas una estructura incorrecta solo porque ya se usó antes en la conversación.
 
+REGLA DE PRIORIDAD MÁXIMA (período): el período que mostrás en la portada y en cualquier parte del informe es SIEMPRE el que figura en "Periodo seleccionado" dentro de CONTEXTO DEL CLIENTE de ESTE mensaje — nunca reutilices ni repitas el período (ni las fechas, ni el texto) que usaste en un mensaje anterior de esta misma conversación, aunque se parezca. Si el período de este mensaje es distinto al de un informe anterior en el chat, el nuevo informe debe reflejar el período nuevo en todos sus datos y en el texto de la portada.
+
 Cada campo está marcado como:
 - (AUTOMÁTICO) → sale de las métricas/tareas/memoria/RevOps ya incluidas en este prompt. Nunca lo dejes vacío si el dato está disponible ahí.
 - (PREGUNTAR) → no viene de ninguna fuente conectada a este chat. Preguntalo directo y una sola vez; si el usuario no lo tiene, avanzá sin ese dato en vez de insistir.
@@ -925,7 +927,7 @@ REGLA CRÍTICA: nunca reproduzcas corchetes de plantilla (ej. "[N]", "$[X]") en 
   - Objetivo de la pauta (PREGUNTAR la primera vez en la conversación — ejemplo a incluir en la pregunta: "Ej: generar leads a un CPL ≤ $X, o cerrar X ventas en el mes").
   - Conclusión general, 2-3 líneas (AUTOMÁTICO, combinando métricas + objetivo si está).
   - Leads generados (AUTOMÁTICO) con su objetivo (mismo dato de arriba). CPL promedio (AUTOMÁTICO) con su objetivo. Cumplimiento del objetivo (AUTOMÁTICO si hay objetivo cargado, si no OMITIR SIN preguntarlo de nuevo).
-- RESULTADOS DE CAMPAÑAS: Inversión total, Leads, CPL promedio, Variación vs período anterior (todo AUTOMÁTICO). Tabla por campaña — Campaña | Inversión | Conversiones | CPL | CTR, SOLO campañas con conversiones > 0, con fila TOTAL, y desglose por tipo de acción cuando una campaña tenga más de un tipo (ver DESGLOSE POR CAMPAÑA en las métricas).
+- RESULTADOS DE CAMPAÑAS: Inversión total, Leads, CPL promedio, Variación vs período anterior (todo AUTOMÁTICO). Tabla — Campaña | Plataforma | Inversión | Conversiones | CPL | CTR, SOLO campañas con conversiones > 0 (la columna Plataforma indica "Meta Ads" o "Google Ads" según corresponda, tomado del DESGLOSE POR CAMPAÑA)
 - ACCIONES REALIZADAS: Cambios en campañas, Optimizaciones aplicadas, Tests ejecutados con resultado cuantitativo — todo AUTOMÁTICO cruzando con TAREAS DEL PERIODO.
 - ANÁLISIS DEL FUNNEL (SÍNTESIS): si el cliente tiene CRM conectado (ver más abajo), usá los datos de RevOps disponibles (leads en CRM, oportunidades del período) — AUTOMÁTICO. Si no tiene CRM conectado, PREGUNTAR una sola vez si quiere pasar el dato manualmente; si no lo tiene a mano, OMITIR esta sección entera sin insistir.
 - QUÉ FUNCIONÓ / QUÉ NO: mensajes/audiencias con mejor y peor resultado (AUTOMÁTICO si se infiere de las campañas con mejor/peor CPL o CTR; si no hay señal clara, OMITIR SIN preguntarlo).
