@@ -127,8 +127,11 @@ const ACTION_TYPE_LABELS: Record<string, string> = {
   landing_page_view: 'Vistas de landing page',
 }
 
-// Grupos de action_types que representan el MISMO evento real (para no
-// duplicar conteo si Meta reporta el mismo resultado bajo dos nombres).
+// Solo tipos de CONVERSIÓN real (leads, conversaciones, compras). link_click y
+// landing_page_view se sacaron de acá a propósito: son métricas de tráfico,
+// no un "tipo de conversión", y mezclarlas en el desglose de conversiones
+// confundía el dato (una campaña de leads mostraba "488 conversiones" de
+// clics junto a "49 conversiones" de leads reales, como si fueran comparables).
 const DEDUPE_GROUPS: string[][] = [
   ['lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead'],
   [
@@ -137,8 +140,6 @@ const DEDUPE_GROUPS: string[][] = [
     'messaging_conversation_started_7d',
   ],
   ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'],
-  ['link_click'],
-  ['landing_page_view'],
 ]
 
 function buildActionsBreakdown(actions: MetaAction[] | undefined, campaignCtr: number): ActionBreakdownItem[] {
@@ -212,7 +213,6 @@ async function fetchMetaMetrics(
           const cLeads = getResultValue(row.actions, row.objective)
           const cCtr = cImpr > 0 ? (cClicks / cImpr) * 100 : 0
           if (row.campaign_id) campaignObjectiveById.set(row.campaign_id, row.objective || '')
-          console.log('[v0][debug-actions]', row.campaign_name, JSON.stringify(row.actions))
           campaigns.push({
             name: row.campaign_name || 'Sin nombre',
             spend: cSpend,
