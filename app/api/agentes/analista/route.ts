@@ -877,9 +877,6 @@ ${metricsByAccount.map(m => {
 
     const periodoTexto = effectivePeriodo?.start && effectivePeriodo?.end 
       ? (() => {
-          // Se agrega la hora explícita (T00:00:00) al parsear: new Date()
-          // sobre un string "YYYY-MM-DD" sin hora se interpreta en UTC, lo
-          // que en Argentina (UTC-3) corre la fecha un día para atrás.
           const start = parseISO(effectivePeriodo.start)
           const end = parseISO(effectivePeriodo.end)
           const startDay = start.getDate()
@@ -895,6 +892,8 @@ ${metricsByAccount.map(m => {
           }
         })()
       : 'últimos 30 días'
+
+    console.log('[v0][debug-periodo]', { effectivePeriodo, periodoTexto })
 
     // Detect which report template applies based on the client's plan
     const planNormalizado = (client.plan || '').toLowerCase()
