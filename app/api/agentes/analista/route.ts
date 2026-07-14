@@ -213,16 +213,18 @@ async function fetchMetaMetrics(
           const cLeads = getResultValue(row.actions, row.objective)
           const cCtr = cImpr > 0 ? (cClicks / cImpr) * 100 : 0
           if (row.campaign_id) campaignObjectiveById.set(row.campaign_id, row.objective || '')
+          const breakdown = buildActionsBreakdown(row.actions, cCtr)
+          console.log('[v0][debug-breakdown]', row.campaign_name, JSON.stringify(breakdown))
           campaigns.push({
-          name: row.campaign_name || 'Sin nombre',
-          spend: cSpend,
-          leads: cLeads,
-          cpl: cLeads > 0 ? cSpend / cLeads : 0,
-          impressions: cImpr,
-          clicks: cClicks,
-          ctr: cCtr,
-          actionsBreakdown: buildActionsBreakdown(row.actions, cCtr),
-})
+            name: row.campaign_name || 'Sin nombre',
+            spend: cSpend,
+            leads: cLeads,
+            cpl: cLeads > 0 ? cSpend / cLeads : 0,
+            impressions: cImpr,
+            clicks: cClicks,
+            ctr: cCtr,
+            actionsBreakdown: breakdown,
+          })
         }
       } else {
         console.error('[v0] Meta campaign insights error:', campResp.status)
