@@ -115,27 +115,30 @@ function pickActionValue(actions: MetaAction[] | undefined, types: string[]): nu
   return 0
 }
 
-// Calcula el "Resultado" de una fila de insights (cuenta o campaña) respetando
-// el objetivo de la campaña cuando está disponible, y si no, probando los grupos
-// de acciones más comunes hasta encontrar uno con datos.
+// Calcula el "Resultado" de una fila de insights (cuenta o campaña) sumando TODAS
+// las conversiones relevantes de TODOS los tipos. Esto coincide exactamente con lo
+// que Meta Ads Manager muestra en la columna "Conversiones" (que suma todos los tipos).
+// Si hay múltiples tipos del mismo grupo (ej. diferentes action_types para mensajes),
+// suma solo el primero de cada grupo para evitar duplicados (Meta los devuelve en
+// paralelo para la misma métrica).
 function getResultValue(actions: MetaAction[] | undefined, objective?: string): number {
   if (!actions || actions.length === 0) return 0
 
-  if (objective) {
-    const key = objective.toUpperCase()
-    const types = RESULT_ACTION_TYPES_BY_OBJECTIVE[key]
-    if (types) {
-      const value = pickActionValue(actions, types)
-      if (value > 0) return value
+  let total = 0
+  const usedTypes = new Set<string>()
+
+  // Suma TODOS los DEDUPE_GROUPS (para evitar contar 2 veces la misma conversión)
+  for (const group of DEDUPE_GROUPS) {
+    const value = pickActionValue(actions, group)
+    if (value > 0) {
+      total += value
+      for (const type of group) {
+        usedTypes.add(type)
+      }
     }
   }
 
-  for (const group of FALLBACK_ACTION_GROUPS) {
-    const value = pickActionValue(actions, group)
-    if (value > 0) return value
-  }
-
-  return 0
+  return total
 }
 
 // --------------------------------------------------------------------------------
@@ -186,28 +189,24 @@ const DEDUPE_GROUPS: string[][] = [
 function buildActionsBreakdown(actions: MetaAction[] | undefined, campaignCtr: number, objective?: string): ActionBreakdownItem[] {
   if (!actions || actions.length === 0) return []
 
-  // Grupos "candidatos": si el objetivo mapea a una familia específica
-  // (ver RESULT_ACTION_TYPES_BY_OBJECTIVE), el desglose se limita a ESA
-  // familia — nunca mezcla con otras ajenas al objetivo real.
-  let gruposCandidatos = DEDUPE_GROUPS
-  if (objective) {
-    const key = objective.toUpperCase()
-    const familiaDelObjetivo = RESULT_ACTION_TYPES_BY_OBJECTIVE[key]
-    if (familiaDelObjetivo) {
-      const grupoCoincidente = DEDUPE_GROUPS.find((g) => g[0] === familiaDelObjetivo[0])
-      gruposCandidatos = grupoCoincidente ? [grupoCoincidente] : DEDUPE_GROUPS
-    }
-  }
-
+  // Desglose de TODOS los tipos de conversiones que Meta devuelve en la campaña,
+  // sin limitar al objetivo. Meta Ads Manager muestra todas las conversiones,
+  // así que el agente debe también mostrar todas.
   const valueByGroup: { label: string; count: number }[] = []
-  for (const group of gruposCandidatos) {
-    const values = group
-      .map((type) => actions.find((a) => a.action_type === type))
-      .filter(Boolean)
-      .map((a) => parseInt(a!.value, 10) || 0)
-    const best = values.length > 0 ? Math.max(...values) : 0
-    if (best > 0) {
-      valueByGroup.push({ label: ACTION_TYPE_LABELS[group[0]] || group[0], count: best })
+  
+  for (const group of DEDUPE_GROUPS) {
+    // Toma el PRIMER action_type del grupo que tenga datos (para evitar duplicados
+    // dentro del mismo grupo), pero incluye TODOS los grupos que tengan datos.
+    const match = group.find((type) => actions.some((a) => a.action_type === type))
+    if (match) {
+      const action = actions.find((a) => a.action_type === match)
+      if (action) {
+        const count = parseInt(action.value, 10) || 0
+        if (count > 0) {
+          const label = ACTION_TYPE_LABELS[match] || match
+          valueByGroup.push({ label, count })
+        }
+      }
     }
   }
 
