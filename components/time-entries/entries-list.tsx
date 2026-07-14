@@ -668,18 +668,36 @@ function EntryRow({
 
   const handleSaveDateTime = async (field: 'start' | 'end', value: string) => {
     if (!value) { setEditingField(null); return }
-      const newDate = parseISO(value)
-      
-      // Check if within allowed range
-      if (startDate && endDate) {
+    
+    const newDate = parseISO(value)
+    const updates: any = {}
+    
+    if (field === 'start') {
+      updates.iniciado_en = value
+      // Recalculate duration if end date exists
+      if (entry.finalizado_en) {
         const endMs = parseISO(entry.finalizado_en).getTime()
-        if (startMs < startDate.getTime() || endMs > endDate.getTime()) {
-          toast.error('Invalid date range')
-          return
-        }
+        updates.duracion_seg = Math.max(0, Math.floor((endMs - newDate.getTime()) / 1000))
+      }
+    } else {
+      updates.finalizado_en = value
+      // Recalculate duration if start date exists
+      if (entry.iniciado_en) {
         const startMs = parseISO(entry.iniciado_en).getTime()
-      updates.duracion_seg = Math.max(0, Math.floor((newDate.getTime() - startMs) / 1000))
+        updates.duracion_seg = Math.max(0, Math.floor((newDate.getTime() - startMs) / 1000))
+      }
     }
+    
+    // Check if within allowed range
+    if (startDate && endDate) {
+      const startMs = field === 'start' ? newDate.getTime() : parseISO(entry.iniciado_en).getTime()
+      const endMs = field === 'end' ? newDate.getTime() : parseISO(entry.finalizado_en).getTime()
+      if (startMs < startDate.getTime() || endMs > endDate.getTime()) {
+        toast.error('Invalid date range')
+        return
+      }
+    }
+    
     await onUpdate(entry.id, updates)
     setEditingField(null)
   }
