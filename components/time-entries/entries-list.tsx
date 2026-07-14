@@ -688,16 +688,6 @@ function EntryRow({
       }
     }
     
-    // Check if within allowed range
-    if (startDate && endDate) {
-      const startMs = field === 'start' ? newDate.getTime() : parseISO(entry.iniciado_en).getTime()
-      const endMs = field === 'end' ? newDate.getTime() : parseISO(entry.finalizado_en).getTime()
-      if (startMs < startDate.getTime() || endMs > endDate.getTime()) {
-        toast.error('Invalid date range')
-        return
-      }
-    }
-    
     await onUpdate(entry.id, updates)
     setEditingField(null)
   }
