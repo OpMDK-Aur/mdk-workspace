@@ -378,46 +378,63 @@ export default function AnalistaPage() {
       const reader = response.body?.getReader()
       if (!reader) throw new Error('No reader')
 
-      const decoder = new TextDecoder()
-      let assistantContent = ''
-      let buffer = ''
-      let streamError = ''
-      const assistantId = crypto.randomUUID()
+const decoder = new TextDecoder()
+let assistantContent = '' // texto crudo del modelo, puede contener el marcador [[TABLA_CAMPANAS]]
+let campaignsTable = '' // tabla real armada en el backend, llega por un evento aparte
+let buffer = ''
+let streamError = ''
+const assistantId = crypto.randomUUID()
 
-      setChatMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }])
+// Reemplaza el marcador por la tabla real (si ya llegó); si el marcador
+// todavía no apareció en el texto acumulado, no hace nada (es un no-op seguro
+// llamarlo en cada actualización mientras el texto se sigue streameando).
+const renderContent = (raw: string) =>
+  campaignsTable ? raw.replace('[[TABLA_CAMPANAS]]', campaignsTable) : raw
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+setChatMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }])
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+while (true) {
+  const { done, value } = await reader.read()
+  if (done) break
 
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed.startsWith('data:')) continue
+  buffer += decoder.decode(value, { stream: true })
+  const lines = buffer.split('\n')
+  buffer = lines.pop() || ''
 
-          const data = trimmed.slice(5).trim()
-          if (data === '[DONE]') continue
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data:')) continue
 
-          try {
-            const json = JSON.parse(data)
-            if (json.type === 'text-delta' && typeof json.delta === 'string') {
-              assistantContent += json.delta
-              setChatMessages((prev) =>
-                prev.map((m) => (m.id === assistantId ? { ...m, content: assistantContent } : m)),
-              )
-            } else if (json.type === 'error') {
-              console.error('[v0] Stream error:', json.errorText || json.error)
-              streamError = json.errorText || 'El modelo no pudo procesar la solicitud.'
-            }
-          } catch {
-            // Skip invalid JSON
-          }
-        }
+    const data = trimmed.slice(5).trim()
+    if (data === '[DONE]') continue
+
+    try {
+      const json = JSON.parse(data)
+      if (json.type === 'campaigns-table' && typeof json.table === 'string') {
+        campaignsTable = json.table
+        // Si el marcador ya llegó en el texto antes que la tabla, re-renderizamos ahora que la tenemos.
+        setChatMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, content: renderContent(assistantContent) } : m)),
+        )
+      } else if (json.type === 'text-delta' && typeof json.delta === 'string') {
+        assistantContent += json.delta
+        setChatMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, content: renderContent(assistantContent) } : m)),
+        )
+      } else if (json.type === 'error') {
+        console.error('[v0] Stream error:', json.errorText || json.error)
+        streamError = json.errorText || 'El modelo no pudo procesar la solicitud.'
       }
+    } catch {
+      // Skip invalid JSON
+    }
+  }
+}
 
+// A partir de acá, "assistantContent" se reemplaza por su versión ya renderizada
+// (con la tabla real en vez del marcador) para el resto de la función —
+// tanto para el mensaje de fallback como para lo que se persiste en Supabase.
+assistantContent = renderContent(assistantContent)
       // If the model returned nothing (e.g. it failed to read an image), show a clear message
       if (!assistantContent) {
         const fallback = streamError
