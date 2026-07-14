@@ -12,6 +12,20 @@ export const maxDuration = 120
 const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
 const GOOGLE_ADS_API_VERSION = 'v23'
 
+// Ventana de atribución configurada en las cuentas de Meta de este cliente
+// (7 días tras clic, 1 día tras visualización — confirmado en Ads Manager,
+// Configuración de la cuenta → Configuración de atribución). Sin este
+// parámetro explícito, la API de Insights puede usar una ventana distinta
+// a la configurada en la cuenta, lo que infla o desinfla los resultados
+// unos pocos leads respecto a lo que se ve en pantalla — es exactamente lo
+// que detectamos (la API devolvía 1.045 leads para una campaña que en Ads
+// Manager, con esta ventana, muestra 1.031).
+// NOTA: este valor es fijo para todas las cuentas de Meta que pasen por acá.
+// Si en el futuro se conecta un cliente con una cuenta que tenga configurada
+// una ventana de atribución distinta, este valor dejaría de coincidir para
+// esa cuenta puntual — revisar acá primero si se repite el mismo síntoma.
+const META_ATTRIBUTION_WINDOWS = 'action_attribution_windows=7d_click,1d_view'
+
 type DailyPoint = { date: string; spend: number; leads: number; impressions: number; clicks: number }
 type ActionBreakdownItem = { label: string; count: number; ctr: number }
 type CampaignPoint = {
@@ -308,11 +322,13 @@ async function fetchMetaMetrics(
     // 1) Campaign-level breakdown PRIMERO (incluye "objective" para poder elegir
     //    el action_type correcto por campaña). Los totales de cuenta y el desglose
     //    diario se derivan de acá para que todo sea consistente entre sí.
+    //    Se incluye META_ATTRIBUTION_WINDOWS para que los resultados coincidan
+    //    con lo que se ve en Ads Manager (ver comentario junto a la constante).
     // --------------------------------------------------------------------------
     const campaigns: CampaignPoint[] = []
     const campaignObjectiveById = new Map<string, string>()
     try {
-      const campUrl = `https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}/insights?access_token=${accessToken}&fields=campaign_id,campaign_name,objective,${fields}&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=200`
+      const campUrl = `https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}/insights?access_token=${accessToken}&fields=campaign_id,campaign_name,objective,${fields}&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=200&${META_ATTRIBUTION_WINDOWS}`
       const campResp = await fetch(campUrl)
       if (campResp.ok) {
         const campData = await campResp.json()
@@ -345,8 +361,9 @@ async function fetchMetaMetrics(
     // 2) Desglose diario a nivel cuenta. Acá no tenemos el objetivo por fila (es
     //    a nivel cuenta, mezcla campañas), así que usamos el fallback "best effort"
     //    sumando los grupos de acciones más comunes (leads + mensajes + ventas).
+    //    También con META_ATTRIBUTION_WINDOWS para ser consistentes con (1).
     // --------------------------------------------------------------------------
-    const url = `https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}/insights?access_token=${accessToken}&fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=account&time_increment=1`
+    const url = `https://graph.facebook.com/${META_API_VERSION}/act_${accountId.replace('act_', '')}/insights?access_token=${accessToken}&fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=account&time_increment=1&${META_ATTRIBUTION_WINDOWS}`
 
     const response = await fetch(url)
     if (!response.ok) {
@@ -916,8 +933,9 @@ Si esta fecha es muy vieja respecto al período que se está analizando, avisale
 
     // Tabla de campañas YA ARMADA en markdown (agrupada por cuenta, con
     // desglose de conversión, formato numérico argentino, y "|" escapado en
-    // los nombres) — se le pasa al modelo lista para copiar tal cual, en vez
-    // de pedirle que la reconstruya (resultó poco confiable en la práctica).
+    // los nombres) — el modelo NUNCA la ve ni la reconstruye: solo escribe
+    // el marcador [[TABLA_CAMPANAS]] y esta tabla se manda por un evento
+    // aparte del stream de texto, para que el frontend la inserte tal cual.
     const campaignsTableMarkdown = buildCampaignsTableMarkdown(metricsByAccount)
 
     // Build metrics text
@@ -1045,7 +1063,7 @@ No intentes armar la tabla vos mismo, no la describas, no agregues texto explica
   - Objetivo de la pauta (PREGUNTAR la primera vez en la conversación — ejemplo a incluir en la pregunta: "Ej: generar leads a un CPL ≤ $X, o cerrar X ventas en el mes").
   - Conclusión general, 2-3 líneas (AUTOMÁTICO, combinando métricas + objetivo si está).
   - Leads generados (AUTOMÁTICO) con su objetivo (mismo dato de arriba). CPL promedio (AUTOMÁTICO) con su objetivo. Cumplimiento del objetivo (AUTOMÁTICO si hay objetivo cargado, si no OMITIR SIN preguntarlo de nuevo).
-- RESULTADOS DE CAMPAÑAS: Inversión total, Leads, CPL promedio, Variación vs período anterior (todo AUTOMÁTICO). Después, la tabla de campañas (ver arriba: usar la de "TABLA DE PERFORMANCE DE CAMPAÑAS" tal cual).
+- RESULTADOS DE CAMPAÑAS: Inversión total, Leads, CPL promedio, Variación vs período anterior (todo AUTOMÁTICO). Después, la tabla de campañas (ver arriba: usar el marcador [[TABLA_CAMPANAS]]).
 - ACCIONES REALIZADAS: Cambios en campañas, Optimizaciones aplicadas, Tests ejecutados con resultado cuantitativo — todo AUTOMÁTICO cruzando con TAREAS DEL PERIODO.
 - ANÁLISIS DEL FUNNEL (SÍNTESIS): si el cliente tiene CRM conectado (ver más abajo), usá los datos de RevOps disponibles (leads en CRM, oportunidades del período) — AUTOMÁTICO. Si no tiene CRM conectado, PREGUNTAR una sola vez si quiere pasar el dato manualmente; si no lo tiene a mano, OMITIR esta sección entera sin insistir.
 - QUÉ FUNCIONÓ / QUÉ NO: mensajes/audiencias con mejor y peor resultado (AUTOMÁTICO si se infiere de las campañas con mejor/peor CPL o CTR; si no hay señal clara, OMITIR SIN preguntarlo).
@@ -1063,7 +1081,7 @@ No intentes armar la tabla vos mismo, no la describas, no agregues texto explica
 - EN QUÉ TRABAJAMOS (solo 2 pilares, no 4):
   - Estrategia (AUTOMÁTICO — SOLO de los comentarios de la tarjeta del cliente que caen DENTRO del período, ver HISTORIAL Y CONTEXTO DEL CLIENTE más abajo, ya viene filtrado al período. Si no hay ningún comentario en el período, decilo en una línea, no lo inventes).
   - Operaciones (AUTOMÁTICO — SOLO de TAREAS DEL PERIODO, ya viene filtrado. Resumí qué se hizo, no repitas la lista cruda).
-- PERFORMANCE DE CAMPAÑAS: Inversión total, Leads, CPL promedio, Ventas (mismo dato del Resumen Ejecutivo) — AUTOMÁTICO. Después, la tabla de campañas (ver arriba: usar la de "TABLA DE PERFORMANCE DE CAMPAÑAS" tal cual).
+- PERFORMANCE DE CAMPAÑAS: Inversión total, Leads, CPL promedio, Ventas (mismo dato del Resumen Ejecutivo) — AUTOMÁTICO. Después, la tabla de campañas (ver arriba: usar el marcador [[TABLA_CAMPANAS]]).
 - ACCIONES REALIZADAS: Cambios, Optimizaciones, Tests con resultado cuantitativo — AUTOMÁTICO cruzando con TAREAS DEL PERIODO.
 - FUNNEL COMERCIAL: AUTOMÁTICO si hay CRM conectado (usá el bloque FUNNEL COMERCIAL de los datos de RevOps: tabla Etapa | [una columna por vendedor] | Total | % General). Si NO hay CRM conectado, PREGUNTAR una sola vez: "¿Podés pasarme el funnel del período por vendedor (Leads, Contactado, Presupuesto, Ganado)?"; si no lo tiene, OMITIR toda la sección sin insistir. NUNCA inventes números de funnel.
 - GESTIÓN EN CRM: AUTOMÁTICO si hay CRM conectado (usá el bloque GESTIÓN EN CRM de RevOps: Tiempo de respuesta, Registro de valor, Tiempo por etapa, Calidad de respuesta). Si no hay CRM conectado, OMITIR toda la sección sin preguntar (ya se avisó una vez en Funnel Comercial que no hay CRM, no hace falta repetir la pregunta).
@@ -1113,7 +1131,9 @@ Si el usuario pregunta por métricas y hay alertas, explícitamente informa qué
 
 IMPORTANTE SOBRE LAS METRICAS:
 ${metricsByAccount.length > 0
-  ? 'Las métricas anteriores son DATOS REALES obtenidos directamente desde las APIs de Meta Ads y/o Google Ads para el periodo seleccionado. NO son estimaciones. Trátalas como cifras oficiales y exactas. NUNCA digas que son estimativas, aproximadas o simuladas. Tienes ACCESO al DESGLOSE DIARIO por cuenta (sección "DESGLOSE DIARIO POR CUENTA") y al DESGLOSE POR CAMPAÑA (sección "DESGLOSE POR CAMPAÑA"). Úsalos cuando el usuario pida datos, gráficos o tendencias por día o por campaña. NUNCA digas que no tienes los datos desglosados por día o por campaña si esas secciones contienen filas. Si el usuario pide un rango específico de días (ej. del 1 al 5), filtra el desglose diario a esas fechas y construye el gráfico con un punto por día. Si pide datos por campaña, usa la sección de desglose por campaña.'
+  ? `Las métricas anteriores son DATOS REALES obtenidos directamente desde las APIs de Meta Ads y/o Google Ads para el periodo seleccionado. NO son estimaciones. Trátalas como cifras oficiales y exactas. NUNCA digas que son estimativas, aproximadas o simuladas. Tienes ACCESO al DESGLOSE DIARIO por cuenta (sección "DESGLOSE DIARIO POR CUENTA") y al DESGLOSE POR CAMPAÑA (sección "DESGLOSE POR CAMPAÑA"). Úsalos cuando el usuario pida datos, gráficos o tendencias por día o por campaña. NUNCA digas que no tienes los datos desglosados por día o por campaña si esas secciones contienen filas. Si el usuario pide un rango específico de días (ej. del 1 al 5), filtra el desglose diario a esas fechas y construye el gráfico con un punto por día. Si pide datos por campaña, usa la sección de desglose por campaña.
+
+NIVELES DE DATOS DISPONIBLES: en este chat SOLO tenés datos reales a nivel de CUENTA publicitaria y de CAMPAÑA (ver DESGLOSE POR CUENTA y DESGLOSE POR CAMPAÑA). NO tenés datos de conjuntos de anuncios ni de anuncios individuales — esa granularidad no está conectada a este chat todavía. Si el usuario te pide un desglose por conjunto de anuncios o por anuncio (en cualquier momento de la conversación, no solo la primera vez), NUNCA inventes nombres ("Grupo 1", "Anuncio A", etc.) ni números, ni siquiera como ejemplo o placeholder. Respondé directamente: "No tengo datos a nivel de conjunto de anuncios ni de anuncio en este chat — solo cuenta y campaña. Para ver ese desglose, revisá directamente en Meta Ads Manager con el desglose por 'Anuncios' o 'Conjuntos de anuncios'."`
   : `CUENTAS VINCULADAS: ${metaAccounts.length > 0 ? `${metaAccounts.length} Meta Ads` : ''}${metaAccounts.length > 0 && googleAccounts.length > 0 ? ' + ' : ''}${googleAccounts.length > 0 ? `${googleAccounts.length} Google Ads` : ''}
 PROBLEMA: No puedo acceder a las métricas en este momento. Las cuentas están vinculadas al cliente pero hay un error de conexión, tokens no configurados, o la cuenta no tiene actividad en el periodo.
 ACCIÓN: Si el usuario pregunta por métricas, explícita y directamente dile: "Veo que tienes [cuentas] vinculadas pero no puedo acceder a las métricas en este momento. Para que pueda ayudarte con un análisis, ¿podrías compartirme los datos (inversión, leads, CPL) por plataforma? Pueden ser en un screenshot, archivo o simplemente diciéndome los números."
@@ -1296,7 +1316,7 @@ Luego genera un informe de análisis completo para ${client.nombre_del_negocio} 
     // Fall back to gpt-4o-mini only if neither images nor documents are present
     const modelId = hasImages || hasDocuments ? 'gpt-4o' : 'gpt-4o-mini'
 
-const result = streamText({
+    const result = streamText({
       model: openai(modelId),
       system: systemPrompt,
       messages: processedMessages,
