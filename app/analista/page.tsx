@@ -511,8 +511,7 @@ export default function AnalistaPage() {
         .limit(1)
         .single()
 
-      const dateRangeLabel = `${format(new Date(dateStart), 'd MMM', { locale: es })} - ${format(new Date(dateEnd), 'd MMM yyyy', { locale: es })}`
-
+        const dateRangeLabel = `${format(parseISO(dateStart), 'd MMM', { locale: es })} - ${format(parseISO(dateEnd), 'd MMM yyyy', { locale: es })}`
       await supabase.from('tareas').insert({
         titulo: `Informe ${selectedClient.nombre_del_negocio} - ${dateRangeLabel}`,
         descripcion: messageText,
