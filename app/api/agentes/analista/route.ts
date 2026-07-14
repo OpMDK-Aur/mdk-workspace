@@ -189,15 +189,18 @@ const DEDUPE_GROUPS: string[][] = [
 function buildActionsBreakdown(actions: MetaAction[] | undefined, campaignCtr: number, objective?: string): ActionBreakdownItem[] {
   if (!actions || actions.length === 0) return []
 
-  // Desglose de TODOS los tipos de conversiones que Meta devuelve en la campaña,
-  // sin limitar al objetivo. Meta Ads Manager muestra todas las conversiones,
-  // así que el agente debe también mostrar todas.
+  // Desglose de TODOS los tipos de conversiones que Meta devuelve EFECTIVAMENTE en la campaña.
+  // NO inventes tipos que no existen en los datos reales.
+  // Solo muestra tipos donde action_type existe EN actions Y value > 0.
   const valueByGroup: { label: string; count: number }[] = []
   
   for (const group of DEDUPE_GROUPS) {
-    // Toma el PRIMER action_type del grupo que tenga datos (para evitar duplicados
-    // dentro del mismo grupo), pero incluye TODOS los grupos que tengan datos.
-    const match = group.find((type) => actions.some((a) => a.action_type === type))
+    // Busca el PRIMER action_type del grupo que EFECTIVAMENTE esté en los datos de Meta
+    const match = group.find((type) => {
+      const action = actions.find((a) => a.action_type === type)
+      return action && parseInt(action.value, 10) > 0
+    })
+    
     if (match) {
       const action = actions.find((a) => a.action_type === match)
       if (action) {
@@ -1134,11 +1137,11 @@ ${metricsByAccount.length > 0
 
 NIVELES DE DATOS DISPONIBLES: en este chat tenés datos REALES a nivel de CUENTA publicitaria, de CAMPAÑA y DESGLOSE POR TIPO DE CONVERSION (ver secciones "DESGLOSE POR CUENTA", "DESGLOSE POR CAMPAÑA" y detalles de conversiones en cada fila). 
 
-CUANDO EL USUARIO PREGUNTA POR UNA CAMPAÑA ESPECÍFICA: Extrae esa campaña de DESGLOSE POR CAMPAÑA y muestra sus métricas completas: inversión, conversiones totales, CPL, CTR, e IMPORTANTE: incluye el desglose por tipo de conversión (ej: "Leads: 1.031, Conversaciones WhatsApp: 214") que viene en la columna "Desglose por tipo de conversión" de cada fila.
+CUANDO EL USUARIO PREGUNTA POR UNA CAMPAÑA ESPECÍFICA: SIEMPRE responde mostrando los datos de esa campaña. Extrae esa campaña de DESGLOSE POR CAMPAÑA y muestra sus métricas completas: inversión, conversiones totales, CPL, CTR, e incluye ÚNICAMENTE el desglose por tipo de conversión que Meta devuelve REALMENTE EN ESA CAMPAÑA.
 
-DESGLOSE POR TIPO DE CONVERSIÓN: Cada campaña tiene detallado QUÉ tipos de conversiones contabiliza. Úsalo SIEMPRE que un usuario pregunte por "conversiones" o "leads" — especifica el desglose (ej: "Leads de Formulario: 897, Conversaciones: 134") en lugar de solo dar el total.
+DESGLOSE POR TIPO DE CONVERSIÓN: Solo muestra los tipos que efectivamente existen en los datos de Meta con valores > 0. NUNCA inventes tipos de conversión que no están en los datos. Si Meta solo devuelve "Leads: 1.031" sin "Conversaciones iniciadas", entonces solo muestra "Leads: 1.031".
 
-NO tenés datos de CONJUNTOS DE ANUNCIOS ni de ANUNCIOS INDIVIDUALES — esa granularidad no está conectada. Si el usuario pide desglose por conjunto de anuncios o anuncio (no por campaña), respondé: "No tengo datos a nivel de conjunto de anuncios ni de anuncio — solo por campaña. Para ese desglose, revisá directamente en Meta Ads Manager con el desglose por 'Anuncios' o 'Conjuntos de anuncios'."`
+NO tenés datos de CONJUNTOS DE ANUNCIOS ni de ANUNCIOS INDIVIDUALES — esa granularidad no está conectada. SOLO rechaza cuando te pidan específicamente "conjuntos de anuncios" o "anuncios individuales". Si preguntan por CAMPAÑA, SIEMPRE responde con los datos de la campaña del DESGLOSE POR CAMPAÑA.`
   : `CUENTAS VINCULADAS: ${metaAccounts.length > 0 ? `${metaAccounts.length} Meta Ads` : ''}${metaAccounts.length > 0 && googleAccounts.length > 0 ? ' + ' : ''}${googleAccounts.length > 0 ? `${googleAccounts.length} Google Ads` : ''}
 PROBLEMA: No puedo acceder a las métricas en este momento. Las cuentas están vinculadas al cliente pero hay un error de conexión, tokens no configurados, o la cuenta no tiene actividad en el periodo.
 ACCIÓN: Si el usuario pregunta por métricas, explícita y directamente dile: "Veo que tienes [cuentas] vinculadas pero no puedo acceder a las métricas en este momento. Para que pueda ayudarte con un análisis, ¿podrías compartirme los datos (inversión, leads, CPL) por plataforma? Pueden ser en un screenshot, archivo o simplemente diciéndome los números."
