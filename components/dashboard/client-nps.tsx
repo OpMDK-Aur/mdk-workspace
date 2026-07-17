@@ -425,7 +425,7 @@ export function ClientNPS({ clientId, currentUserId, projectManagerId, accountMa
                   value={form.comentario}
                   onChange={(e) => setForm(prev => ({ ...prev, comentario: e.target.value }))}
                   placeholder="Opcional"
-                  className="mt-1"
+                  className="mt-1 max-h-48 resize-none"
                   rows={3}
                 />
               </div>
