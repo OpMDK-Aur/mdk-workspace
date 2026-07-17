@@ -1668,7 +1668,12 @@ const applyFilter = (filter: SavedFilter) => {
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  onClick={() => sendNpsWebhook(client)}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    sendNpsWebhook(client)
+                                  }}
                                   disabled={sendingNpsWebhook[client.id]}
                                   className="h-7 w-7 p-0"
                                   title="Enviar NPS al webhook"
