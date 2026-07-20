@@ -1611,6 +1611,7 @@ export function TaskDetailPanel() {
   const [activeTab, setActiveTab] = useState('detalles')
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [tempTitle, setTempTitle] = useState('')
+  const [typeSearch, setTypeSearch] = useState('')
   
   // Dynamic data from Supabase
   const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
@@ -1862,18 +1863,37 @@ export function TaskDetailPanel() {
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-56 p-2" align="start">
-                          <div className="max-h-64 overflow-y-auto space-y-1">
-                            {tiposTarea.map(t => (
-                              <button
-                                key={t.id}
-                                onClick={() => updateTask(task.id, { type: t.id as TaskType, typeName: t.nombre })}
-                                className="w-full text-left rounded px-2 py-1.5 hover:bg-accent transition-colors flex items-center gap-2 text-sm"
-                              >
-                                <span className="h-2 w-2 rounded-full bg-primary" />
-                                {t.nombre}
-                                {task.type === t.id && <Check className="h-4 w-4 ml-auto text-primary" />}
-                              </button>
-                            ))}
+                          <div className="space-y-2">
+                            <input
+                              type="text"
+                              placeholder="Buscar tipo..."
+                              value={typeSearch}
+                              onChange={(e) => setTypeSearch(e.target.value)}
+                              className="w-full px-2 py-1.5 text-xs border border-input rounded bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                            />
+                            <div className="max-h-64 overflow-y-auto space-y-1">
+                              {tiposTarea
+                                .filter(t => t.nombre.toLowerCase().includes(typeSearch.toLowerCase()))
+                                .map(t => (
+                                  <button
+                                    key={t.id}
+                                    onClick={() => {
+                                      updateTask(task.id, { type: t.id as TaskType, typeName: t.nombre })
+                                      setTypeSearch('')
+                                    }}
+                                    className="w-full text-left rounded px-2 py-1.5 hover:bg-accent transition-colors flex items-center gap-2 text-sm"
+                                  >
+                                    <span className="h-2 w-2 rounded-full bg-primary" />
+                                    {t.nombre}
+                                    {task.type === t.id && <Check className="h-4 w-4 ml-auto text-primary" />}
+                                  </button>
+                                ))}
+                              {tiposTarea.filter(t => t.nombre.toLowerCase().includes(typeSearch.toLowerCase())).length === 0 && (
+                                <div className="py-4 text-center text-xs text-muted-foreground">
+                                  No se encontraron tipos
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </PopoverContent>
                       </Popover>
