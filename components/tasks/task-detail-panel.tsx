@@ -48,6 +48,8 @@ import { HitoCompletionModal } from './hito-completion-modal'
 import { RedactorModal } from '@/components/agentes/redactor-modal'
 import { TesterModal } from '@/components/agentes/tester-modal'
 import { AnalistaModal } from '@/components/agentes/analista-modal'
+import { RichTextEditor } from './rich-text-editor'
+import { FormattingToolbar } from './formatting-toolbar'
 import {
   Select,
   SelectContent,
@@ -1203,22 +1205,14 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
                   </span>
                 </div>
                 {editingCommentId === c.id ? (
-                  <div className="space-y-2">
-                    <textarea
+                  <div className="space-y-2 w-full">
+                    <RichTextEditor
                       value={editingContent}
-                      onChange={(e) => setEditingContent(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault()
-                          handleEditComment(c.id)
-                        }
-                        if (e.key === 'Escape') {
-                          setEditingCommentId(null)
-                          setEditingContent('')
-                        }
-                      }}
-                      className="w-full min-h-[60px] p-2.5 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-                      autoFocus
+                      onChange={setEditingContent}
+                      placeholder="Editar comentario..."
+                      showToolbar={true}
+                      rows={3}
+                      className="w-full"
                     />
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => handleEditComment(c.id)}>Guardar</Button>
@@ -1260,6 +1254,41 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
           </Avatar>
           <span className={cn("font-medium", compact ? "text-xs" : "text-sm")}>{currentUser?.nombre || 'Nuevo comentario'}</span>
         </div>
+        <FormattingToolbar 
+          onFormat={(format) => {
+            if (editorRef.current) {
+              editorRef.current.focus()
+              document.execCommand('styleWithCSS', false, 'true')
+              
+              switch (format) {
+                case 'bold':
+                  document.execCommand('bold', false)
+                  break
+                case 'italic':
+                  document.execCommand('italic', false)
+                  break
+                case 'code':
+                  const codeHTML = '<span style="background-color: rgba(0,0,0,0.1); padding: 0.2em 0.4em; border-radius: 3px; font-family: monospace; font-size: 0.9em;">código</span>'
+                  document.execCommand('insertHTML', false, codeHTML)
+                  break
+                case 'link': {
+                  const url = prompt('Ingresa la URL:')
+                  if (url) {
+                    document.execCommand('createLink', false, url)
+                  }
+                  break
+                }
+                case 'list':
+                  document.execCommand('insertUnorderedList', false)
+                  break
+                case 'ordered':
+                  document.execCommand('insertOrderedList', false)
+                  break
+              }
+              editorRef.current.focus()
+            }
+          }}
+        />
         <div className="relative">
           <div
             ref={editorRef}
@@ -2131,29 +2160,21 @@ export function TaskDetailPanel() {
 
                   {/* Description area */}
                   <div className="py-5 border-y flex-shrink-0">
-                    <div
-                      ref={descriptionRef}
-                      contentEditable
-                      suppressContentEditableWarning
-                      onBlur={() => {
-                        if (descriptionRef.current) {
-                          const html = descriptionRef.current.innerHTML
-                          if (html !== task.description) {
-                            updateTask(task.id, { description: html || null })
-                          }
+                    <RichTextEditor
+                      value={task.description || ''}
+                      onChange={(html) => {
+                        if (html !== task.description) {
+                          updateTask(task.id, { description: html || null })
                         }
                       }}
-                      onInput={() => {
-                        // No-op for now, save on blur
-                      }}
-                      className={cn(
-                        "min-h-[100px] text-sm outline-none",
+                      placeholder="Añade una descripción..."
+                      showToolbar={true}
+                      rows={5}
+                      className="w-full"
+                      editorClassName={cn(
                         "prose prose-sm prose-invert max-w-none",
-                        "[&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5",
-                        "empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/40 empty:before:pointer-events-none"
+                        "[&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5"
                       )}
-                      data-placeholder="Añade una descripcion o escribe con / para comandos..."
-                      dangerouslySetInnerHTML={{ __html: task.description || '' }}
                     />
                   </div>
 
