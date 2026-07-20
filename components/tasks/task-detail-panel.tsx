@@ -48,6 +48,7 @@ import { HitoCompletionModal } from './hito-completion-modal'
 import { RedactorModal } from '@/components/agentes/redactor-modal'
 import { TesterModal } from '@/components/agentes/tester-modal'
 import { AnalistaModal } from '@/components/agentes/analista-modal'
+import { CommentFormattingToolbar } from './comment-formatting-toolbar'
 import {
   Select,
   SelectContent,
@@ -1204,6 +1205,38 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
                 </div>
                 {editingCommentId === c.id ? (
                   <div className="space-y-2">
+                    <CommentFormattingToolbar
+                      compact={compact}
+                      onFormat={(format) => {
+                        // Para textarea, insertamos etiquetas HTML alrededor del texto seleccionado
+                        const tags: Record<string, [string, string]> = {
+                          bold: ['<strong>', '</strong>'],
+                          italic: ['<em>', '</em>'],
+                          underline: ['<u>', '</u>'],
+                          strikethrough: ['<s>', '</s>'],
+                          code: ['<code>', '</code>'],
+                          list: ['<ul><li>', '</li></ul>'],
+                          ordered: ['<ol><li>', '</li></ol>'],
+                        }
+                        
+                        const [open, close] = tags[format] || ['', '']
+                        const textareas = document.querySelectorAll('textarea')
+                        const textarea = Array.from(textareas).find(ta => (ta as HTMLTextAreaElement).value === editingContent) as HTMLTextAreaElement
+                        
+                        if (textarea) {
+                          const start = textarea.selectionStart
+                          const end = textarea.selectionEnd
+                          const selectedText = editingContent.substring(start, end) || 'texto'
+                          const newContent = editingContent.substring(0, start) + open + selectedText + close + editingContent.substring(end)
+                          setEditingContent(newContent)
+                          
+                          setTimeout(() => {
+                            textarea.focus()
+                            textarea.setSelectionRange(start + open.length, start + open.length + selectedText.length)
+                          }, 0)
+                        }
+                      }}
+                    />
                     <textarea
                       value={editingContent}
                       onChange={(e) => setEditingContent(e.target.value)}
@@ -1260,6 +1293,52 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
           </Avatar>
           <span className={cn("font-medium", compact ? "text-xs" : "text-sm")}>{currentUser?.nombre || 'Nuevo comentario'}</span>
         </div>
+        <CommentFormattingToolbar
+          compact={compact}
+          onFormat={(format) => {
+            if (editorRef.current) {
+              editorRef.current.focus()
+              document.execCommand('styleWithCSS', false, 'true')
+              
+              switch (format) {
+                case 'bold':
+                  document.execCommand('bold', false)
+                  break
+                case 'italic':
+                  document.execCommand('italic', false)
+                  break
+                case 'underline':
+                  document.execCommand('underline', false)
+                  break
+                case 'strikethrough': {
+                  const sel = window.getSelection()
+                  if (sel && sel.rangeCount > 0) {
+                    const range = sel.getRangeAt(0)
+                    const span = document.createElement('s')
+                    range.surroundContents(span)
+                  }
+                  break
+                }
+                case 'code': {
+                  const sel = window.getSelection()
+                  if (sel && sel.rangeCount > 0) {
+                    const range = sel.getRangeAt(0)
+                    const code = document.createElement('code')
+                    range.surroundContents(code)
+                  }
+                  break
+                }
+                case 'list':
+                  document.execCommand('insertUnorderedList', false)
+                  break
+                case 'ordered':
+                  document.execCommand('insertOrderedList', false)
+                  break
+              }
+              editorRef.current.focus()
+            }
+          }}
+        />
         <div className="relative">
           <div
             ref={editorRef}
