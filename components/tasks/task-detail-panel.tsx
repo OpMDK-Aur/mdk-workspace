@@ -1611,7 +1611,6 @@ export function TaskDetailPanel() {
   const [activeTab, setActiveTab] = useState('detalles')
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [tempTitle, setTempTitle] = useState('')
-  const [typeSearchFilter, setTypeSearchFilter] = useState('')
   
   // Dynamic data from Supabase
   const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
@@ -1862,43 +1861,19 @@ export function TaskDetailPanel() {
                             {tiposTarea.find(t => t.id === task.type)?.nombre || 'Tarea'}
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-64 p-3" align="start" side="bottom" sideOffset={8}>
-                          <div className="space-y-2">
-                            <input
-                              type="text"
-                              placeholder="Buscar tipo de tarea..."
-                              value={typeSearchFilter}
-                              onChange={(e) => setTypeSearchFilter(e.target.value)}
-                              className="w-full px-3 py-2 text-sm border border-input rounded-md bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                            />
-                            <div className="max-h-64 overflow-y-auto border rounded-md border-border/50">
-                              {tiposTarea
-                                .filter(t => t.nombre.toLowerCase().includes(typeSearchFilter.toLowerCase()))
-                                .length === 0 ? (
-                                <div className="py-6 text-center text-sm text-muted-foreground">
-                                  No se encontraron tipos
-                                </div>
-                              ) : (
-                                <div className="divide-y divide-border/50">
-                                  {tiposTarea
-                                    .filter(t => t.nombre.toLowerCase().includes(typeSearchFilter.toLowerCase()))
-                                    .map(t => (
-                                      <button
-                                        key={t.id}
-                                        onClick={() => {
-                                          updateTask(task.id, { type: t.id as TaskType, typeName: t.nombre })
-                                          setTypeSearchFilter('')
-                                        }}
-                                        className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors flex items-center gap-2.5 text-sm"
-                                      >
-                                        <span className="h-2 w-2 rounded-full bg-primary" />
-                                        {t.nombre}
-                                        {task.type === t.id && <Check className="h-4 w-4 ml-auto text-primary" />}
-                                      </button>
-                                    ))}
-                                </div>
-                              )}
-                            </div>
+                        <PopoverContent className="w-56 p-2" align="start">
+                          <div className="max-h-64 overflow-y-auto space-y-1">
+                            {tiposTarea.map(t => (
+                              <button
+                                key={t.id}
+                                onClick={() => updateTask(task.id, { type: t.id as TaskType, typeName: t.nombre })}
+                                className="w-full text-left rounded px-2 py-1.5 hover:bg-accent transition-colors flex items-center gap-2 text-sm"
+                              >
+                                <span className="h-2 w-2 rounded-full bg-primary" />
+                                {t.nombre}
+                                {task.type === t.id && <Check className="h-4 w-4 ml-auto text-primary" />}
+                              </button>
+                            ))}
                           </div>
                         </PopoverContent>
                       </Popover>
