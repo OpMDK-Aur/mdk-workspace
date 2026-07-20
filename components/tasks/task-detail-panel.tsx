@@ -1864,7 +1864,7 @@ export function TaskDetailPanel() {
                         <PopoverContent className="w-64 p-0" align="start">
                           <Command>
                             <CommandInput placeholder="Buscar tipo de tarea..." className="h-9" />
-                            <CommandList className="max-h-[300px]">
+                            <CommandList className="max-h-[300px] overflow-y-auto">
                               <CommandEmpty>No se encontraron tipos</CommandEmpty>
                               <CommandGroup>
                                 {tiposTarea.map(t => (
