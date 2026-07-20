@@ -123,7 +123,7 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                 'bg-white dark:bg-card border border-gray-200 dark:border-border',
                 'hover:border-primary/50 hover:shadow-sm',
                 isOverdue && !isSystemTask && 'ring-1 ring-red-400/60',
-                isResuelto && 'border-green-500/60 bg-green-500/5'
+                isResuelto && 'border-green-500/60 bg-green-500/5 opacity-50'
               )}
             >
               <div className="flex items-start gap-1">
@@ -222,7 +222,7 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                           'bg-card/40 border border-border/40 hover:border-primary/50 hover:bg-card/60',
                           'hover:shadow-sm hover:translate-x-0.5',
                           isOverdue && !isSystemTask && 'border-red-400/50 bg-red-400/10',
-                          isResuelto && 'border-green-500/60 bg-green-500/5'
+                          isResuelto && 'border-green-500/60 bg-green-500/5 opacity-50'
                         )}
                       >
                         <div className="flex items-start gap-1.5 mb-1.5">
@@ -449,7 +449,10 @@ export function CalendarView() {
                     <button
                       key={task.id}
                       onClick={() => setSelectedTask(task.id)}
-                      className="w-full text-left rounded-lg border border-gray-200 dark:border-border bg-white dark:bg-card p-3 transition-colors hover:border-primary/50 hover:shadow-sm"
+                      className={cn(
+                        'w-full text-left rounded-lg border border-gray-200 dark:border-border bg-white dark:bg-card p-3 transition-colors hover:border-primary/50 hover:shadow-sm',
+                        task.status === 'resuelto' && 'opacity-50'
+                      )}
                     >
                       <p className="text-sm font-medium text-gray-900 dark:text-foreground truncate">{task.title}</p>
                       <p className="text-xs text-gray-500 dark:text-muted-foreground truncate mt-0.5">

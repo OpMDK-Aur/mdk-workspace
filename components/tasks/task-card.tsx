@@ -147,7 +147,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         'hover:border-primary/40 hover:shadow-md hover:shadow-primary/5',
         'active:scale-[0.98]',
         'w-full min-w-0 overflow-hidden',
-        isResuelto && 'border-green-500/60 bg-green-500/5'
+        isResuelto && 'border-green-500/60 bg-green-500/5 opacity-50'
       )}
     >
       {/* Client badge + avatar row */}
