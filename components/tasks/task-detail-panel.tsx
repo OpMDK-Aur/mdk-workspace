@@ -1861,21 +1861,34 @@ export function TaskDetailPanel() {
                             {tiposTarea.find(t => t.id === task.type)?.nombre || 'Tarea'}
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-56 p-1.5" align="start">
-                          <div className="px-2 py-1.5 text-xs text-muted-foreground font-medium">Tipo de tarea</div>
-                          {tiposTarea.map(t => (
-                            <Button
-                              key={t.id}
-                              variant="ghost"
-                              size="sm"
-                              className="w-full justify-start text-sm h-9 gap-2.5"
-                              onClick={() => updateTask(task.id, { type: t.id as TaskType, typeName: t.nombre })}
-                            >
-                              <span className="h-2 w-2 rounded-full bg-primary" />
-                              {t.nombre}
-                              {task.type === t.id && <Check className="h-3.5 w-3.5 ml-auto text-primary" />}
-                            </Button>
-                          ))}
+                        <PopoverContent className="w-64 p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Buscar tipo de tarea..." className="h-9" />
+                            <CommandList className="max-h-[300px]">
+                              <CommandEmpty>No se encontraron tipos</CommandEmpty>
+                              <CommandGroup>
+                                {tiposTarea.map(t => (
+                                  <CommandItem
+                                    key={t.id}
+                                    value={t.nombre}
+                                    onSelect={() => {
+                                      updateTask(task.id, { type: t.id as TaskType, typeName: t.nombre })
+                                    }}
+                                    className="cursor-pointer"
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        task.type === t.id ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                    <span className="h-2 w-2 rounded-full bg-primary mr-2" />
+                                    {t.nombre}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
                         </PopoverContent>
                       </Popover>
                     </div>
