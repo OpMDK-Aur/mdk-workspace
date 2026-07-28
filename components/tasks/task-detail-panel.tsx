@@ -1362,7 +1362,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
             size="sm"
             className={cn("gap-2 px-4 ml-auto", compact && "h-7 px-2 gap-1 text-xs")}
             onClick={handleSubmit}
-            disabled={isSubmitting || ((!editorRef.current?.innerHTML.trim() || editorRef.current?.innerHTML.trim() === '<br>') && pendingAttachments.length === 0)}
+            disabled={isSubmitting || ((!editorRef.current?.textContent?.trim() || editorRef.current?.innerHTML.trim() === '<br>') && pendingAttachments.length === 0)}
           >
             <Send className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} />
             {isSubmitting ? (compact ? 'Env...' : 'Enviando...') : 'Enviar'}
