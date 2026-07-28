@@ -14,11 +14,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign, Pencil, Check, ImagePlus, Bold, Italic, List, ListOrdered, Paperclip, Download, FileText, Code } from 'lucide-react'
+import { Loader2, Send, Trash2, MessageSquare, Sparkles, Search, Filter, X, Calendar, Hash, CheckSquare, AtSign, Pencil, Check, ImagePlus, Bold, Italic, List, ListOrdered, Paperclip, Download, FileText, Code, ZoomIn } from 'lucide-react'
 import Link from 'next/link'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { cn, linkifyText } from '@/lib/utils'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
 
 function getMessageText(parts: Array<{ type: string; text?: string }> | undefined): string {
   if (!parts || !Array.isArray(parts)) return ''
@@ -202,6 +203,8 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   const [pendingFiles, setPendingFiles] = useState<{ name: string; url: string }[]>([])
   const [uploadingFile, setUploadingFile] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
 
   const supabase = createClient()
   const chatContainerRef = useRef<HTMLDivElement>(null)
@@ -1333,7 +1336,7 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                   <Button
                     size="sm"
                     onClick={handleAddComment}
-                    disabled={(!newComment.trim() && pendingImages.length === 0) || sending}
+                    disabled={(!newComment.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || sending}
                     className="gap-1.5 shrink-0 ml-auto"
                   >
                     {sending ? (
@@ -1648,19 +1651,20 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
                                   {comment.imagenes
                                     .filter(url => /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url))
                                     .map((imgUrl, idx) => (
-                                      <a 
-                                        key={idx} 
-                                        href={imgUrl} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="block"
+                                      <div 
+                                        key={idx}
+                                        className="relative group/img-comment cursor-pointer"
+                                        onClick={() => setSelectedImage(imgUrl)}
                                       >
                                         <img 
                                           src={imgUrl} 
                                           alt={`Imagen ${idx + 1}`}
-                                          className="max-h-48 max-w-xs rounded-md border hover:opacity-90 transition-opacity cursor-pointer"
+                                          className="max-h-48 max-w-xs rounded-md border hover:opacity-90 transition-opacity"
                                         />
-                                      </a>
+                                        <div className="absolute inset-0 rounded-md bg-black/0 group-hover/img-comment:bg-black/20 flex items-center justify-center transition-colors opacity-0 group-hover/img-comment:opacity-100">
+                                          <ZoomIn className="h-6 w-6 text-white" />
+                                        </div>
+                                      </div>
                                     ))}
                                 </div>
                               )}
@@ -1832,6 +1836,27 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Image Lightbox */}
+      <Dialog open={!!selectedImage} onOpenChange={(open) => !open && setSelectedImage(null)}>
+        <DialogContent className="max-w-2xl p-0 border-0 bg-black/95 max-h-[90vh] flex items-center justify-center">
+          {selectedImage && (
+            <div className="relative w-full h-full flex items-center justify-center">
+              <img 
+                src={selectedImage} 
+                alt="Imagen ampliada"
+                className="max-w-full max-h-[85vh] object-contain rounded-lg"
+              />
+              <button
+                onClick={() => setSelectedImage(null)}
+                className="absolute top-2 right-2 h-8 w-8 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center transition-colors"
+              >
+                <X className="h-4 w-4 text-white" />
+              </button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
