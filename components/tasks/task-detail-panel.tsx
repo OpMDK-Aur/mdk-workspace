@@ -405,6 +405,18 @@ function RichTextEditor({
     }
   }, [content])
 
+  // Sync edit editor content when editing changes
+  useEffect(() => {
+    if (editingCommentId && editEditorRef.current) {
+      // Find the comment being edited
+      const comment = comments.find(c => c.id === editingCommentId)
+      if (comment && editingContent === comment.content) {
+        editEditorRef.current.innerHTML = comment.content
+        editEditorRef.current.focus()
+      }
+    }
+  }, [editingCommentId, comments])
+
   const execCommand = (command: string, value?: string) => {
     document.execCommand(command, false, value)
     editorRef.current?.focus()
@@ -886,6 +898,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
   const [editingContent, setEditingContent] = useState('')
   const [commentContent, setCommentContent] = useState('')
   const editorRef = useRef<HTMLDivElement>(null)
+  const editEditorRef = useRef<HTMLDivElement>(null)
   const commentFileInputRef = useRef<HTMLInputElement>(null)
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
@@ -1210,15 +1223,11 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
                 {editingCommentId === c.id ? (
                   <div className="space-y-2">
                     <div
-                      ref={(el) => {
-                        if (el && editingCommentId === c.id && !el.innerHTML) {
-                          el.innerHTML = c.content
-                        }
-                      }}
+                      ref={editEditorRef}
                       contentEditable
                       suppressContentEditableWarning
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
+                        if (e.key === 'Enter' && !e.shiftKey && e.ctrlKey) {
                           e.preventDefault()
                           handleEditComment(c.id)
                         }
@@ -1230,7 +1239,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
                       onInput={(e) => {
                         setEditingContent((e.target as HTMLDivElement).innerHTML)
                       }}
-                      className="w-full min-h-[60px] p-2.5 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary outline-none break-words whitespace-pre-wrap"
+                      className="w-full min-h-[60px] p-2.5 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary outline-none break-words whitespace-pre-wrap"
                       autoFocus
                     />
                     <div className="flex gap-2">
