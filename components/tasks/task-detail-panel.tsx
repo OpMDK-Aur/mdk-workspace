@@ -1209,9 +1209,14 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
                 </div>
                 {editingCommentId === c.id ? (
                   <div className="space-y-2">
-                    <textarea
-                      value={editingContent}
-                      onChange={(e) => setEditingContent(e.target.value)}
+                    <div
+                      ref={(el) => {
+                        if (el && editingCommentId === c.id && !el.innerHTML) {
+                          el.innerHTML = c.content
+                        }
+                      }}
+                      contentEditable
+                      suppressContentEditableWarning
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault()
@@ -1222,7 +1227,10 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
                           setEditingContent('')
                         }
                       }}
-                      className="w-full min-h-[60px] p-2.5 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                      onInput={(e) => {
+                        setEditingContent((e.target as HTMLDivElement).innerHTML)
+                      }}
+                      className="w-full min-h-[60px] p-2.5 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary outline-none break-words whitespace-pre-wrap"
                       autoFocus
                     />
                     <div className="flex gap-2">
@@ -1239,7 +1247,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
                 )}
               </div>
               <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content.replace(/<[^>]*>/g, '')) }} title="Editar">
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content) }} title="Editar">
                   <Pencil className="h-3 w-3" />
                 </Button>
                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => deleteComment(task.id, c.id)} title="Eliminar">
@@ -1399,7 +1407,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
   )
 }
 
-// ── Custom Fields Component ──���───────────────────�������─────����──────────────────────
+// ── Custom Fields Component ──���───────────────────��������─────����──────────────────────
 
 function CustomFields({ task }: { task: Task }) {
   const { addCustomField, removeCustomField, updateTask } = useTaskStore()
