@@ -417,6 +417,17 @@ function RichTextEditor({
     }
   }, [editingCommentId, comments])
 
+  // Handle delete comment
+  const handleDeleteComment = async (commentId: string) => {
+    try {
+      await deleteComment(task.id, commentId)
+      toast.success('Comentario eliminado')
+    } catch (error) {
+      console.error('[v0] Error deleting comment:', error)
+      toast.error('Error al eliminar el comentario')
+    }
+  }
+
   const execCommand = (command: string, value?: string) => {
     document.execCommand(command, false, value)
     editorRef.current?.focus()
@@ -1259,7 +1270,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content) }} title="Editar">
                   <Pencil className="h-3 w-3" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => deleteComment(task.id, c.id)} title="Eliminar">
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDeleteComment(c.id)} title="Eliminar">
                   <X className="h-3 w-3" />
                 </Button>
               </div>
@@ -1419,7 +1430,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
 // ── Custom Fields Component ──���───────────────────��������─────����──────────────────────
 
 function CustomFields({ task }: { task: Task }) {
-  const { addCustomField, removeCustomField, updateTask } = useTaskStore()
+  const { addCustomField, removeCustomField, updateTask, deleteComment } = useTaskStore()
   const [isAdding, setIsAdding] = useState(false)
   const [newFieldName, setNewFieldName] = useState('')
   const [newFieldType, setNewFieldType] = useState<TaskCustomField['type']>('text')
