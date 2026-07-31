@@ -1482,6 +1482,14 @@ function CustomFields({ task }: { task: Task }) {
     handleUpdateFieldValue(key, newValues.join(','))
   }
 
+  const handleDeleteComment = async (commentId: string) => {
+    try {
+      await deleteComment(task.id, commentId)
+    } catch (error) {
+      console.error('[v0] Error deleting comment:', error)
+    }
+  }
+
   const renderFieldInput = (key: string, field: TaskCustomField) => {
     switch (field.type) {
       case 'boolean':
@@ -2382,7 +2390,7 @@ export function TaskDetailPanel() {
                                         </span>
                                         <Button
                                           variant="ghost" size="icon" className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100"
-                                          onClick={() => deleteComment(task.id, c.id)}
+                                          onClick={() => handleDeleteComment(c.id)}
                                         >
                                           <X className="h-2.5 w-2.5" />
                                         </Button>
