@@ -2333,6 +2333,7 @@ export function TaskDetailPanel() {
                   {/* Activity feed - filtered */}
                   <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
                     {(() => {
+                      const deleteCommentFn = handleDeleteComment
                       const filteredComments = (task.comments || []).filter(c => {
                         if (filterPersona && c.userId !== filterPersona) return false
                         if (filterConAdjuntos && (!c.attachments || c.attachments.length === 0)) return false
@@ -2390,7 +2391,7 @@ export function TaskDetailPanel() {
                                         </span>
                                         <Button
                                           variant="ghost" size="icon" className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100"
-                                          onClick={() => handleDeleteComment(c.id)}
+                                          onClick={() => deleteCommentFn(c.id)}
                                         >
                                           <X className="h-2.5 w-2.5" />
                                         </Button>
