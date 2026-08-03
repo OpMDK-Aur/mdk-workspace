@@ -410,7 +410,7 @@ function RichTextEditor({
     if (editingCommentId && editEditorRef.current) {
       // Find the comment being edited
       const comment = comments.find(c => c.id === editingCommentId)
-      if (comment && editingContent === comment.content) {
+      if (comment) {
         editEditorRef.current.innerHTML = comment.content
         editEditorRef.current.focus()
       }
