@@ -1257,11 +1257,11 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
                   />
                 )}
               </div>
-              <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content) }} title="Editar">
+              <div className="flex gap-0.5 shrink-0">
+                <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content) }} title="Editar">
                   <Pencil className="h-3 w-3" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDeleteComment(c.id)} title="Eliminar">
+                <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={() => onDeleteComment(c.id)} title="Eliminar">
                   <X className="h-3 w-3" />
                 </Button>
               </div>
