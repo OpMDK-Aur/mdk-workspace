@@ -417,16 +417,7 @@ function RichTextEditor({
     }
   }, [editingCommentId, comments])
 
-  // Handle delete comment
-  const handleDeleteComment = async (commentId: string) => {
-    try {
-      await deleteComment(task.id, commentId)
-      toast.success('Comentario eliminado')
-    } catch (error) {
-      console.error('[v0] Error deleting comment:', error)
-      toast.error('Error al eliminar el comentario')
-    }
-  }
+
 
   const execCommand = (command: string, value?: string) => {
     document.execCommand(command, false, value)
@@ -1482,13 +1473,7 @@ function CustomFields({ task }: { task: Task }) {
     handleUpdateFieldValue(key, newValues.join(','))
   }
 
-  const handleDeleteComment = async (commentId: string) => {
-    try {
-      await deleteComment(task.id, commentId)
-    } catch (error) {
-      console.error('[v0] Error deleting comment:', error)
-    }
-  }
+
 
   const renderFieldInput = (key: string, field: TaskCustomField) => {
     switch (field.type) {
@@ -1646,7 +1631,7 @@ function CustomFields({ task }: { task: Task }) {
 
 export function TaskDetailPanel() {
   const router = useRouter()
-  const { selectedTaskId, setSelectedTask, tasks, updateTask, deleteTask, toggleTaskActive } = useTaskStore()
+  const { selectedTaskId, setSelectedTask, tasks, updateTask, deleteTask, toggleTaskActive, deleteComment } = useTaskStore()
   const task = tasks.find((t) => t.id === selectedTaskId)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [activeTab, setActiveTab] = useState('detalles')
@@ -1683,6 +1668,17 @@ export function TaskDetailPanel() {
   // Description editing state
   const descriptionRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Handle delete comment
+  const handleDeleteComment = useCallback(async (commentId: string) => {
+    try {
+      if (task) {
+        await deleteComment(task.id, commentId)
+      }
+    } catch (error) {
+      console.error('[v0] Error deleting comment:', error)
+    }
+  }, [task, deleteComment])
 
   // Load current user ID
   useEffect(() => {
