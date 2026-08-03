@@ -901,7 +901,7 @@ function CommentItem({ comment: c, taskId }: { comment: TaskComment; taskId: str
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-function CommentsSection({ task, compact = false }: { task: Task; compact?: boolean }) {
+function CommentsSection({ task, compact = false, onDeleteComment }: { task: Task; compact?: boolean; onDeleteComment: (commentId: string) => Promise<void> }) {
   const { addComment, updateComment, deleteComment } = useTaskStore()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; avatar_url: string | null } | null>(null)
@@ -1270,7 +1270,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content) }} title="Editar">
                   <Pencil className="h-3 w-3" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDeleteComment(c.id)} title="Eliminar">
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDeleteComment(c.id)} title="Eliminar">
                   <X className="h-3 w-3" />
                 </Button>
               </div>
@@ -2456,7 +2456,7 @@ export function TaskDetailPanel() {
 
                   {/* Comment input at bottom - using CommentsSection component */}
                   <div className="border-t shrink-0">
-                    <CommentsSection task={task} compact={true} />
+                    <CommentsSection task={task} compact={true} onDeleteComment={handleDeleteComment} />
                   </div>
                 </div>
               </div>
