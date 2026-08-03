@@ -2332,8 +2332,8 @@ export function TaskDetailPanel() {
 
                   {/* Activity feed - filtered */}
                   <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
-                    {(() => {
-                      const deleteCommentFn = handleDeleteComment
+                    {((_handleDeleteComment: typeof handleDeleteComment) => {
+                      const deleteCommentFn = _handleDeleteComment
                       const filteredComments = (task.comments || []).filter(c => {
                         if (filterPersona && c.userId !== filterPersona) return false
                         if (filterConAdjuntos && (!c.attachments || c.attachments.length === 0)) return false
@@ -2451,7 +2451,7 @@ export function TaskDetailPanel() {
                           )}
                         </>
                       )
-                    })()}
+                    })(handleDeleteComment)}
                   </div>
 
                   {/* Comment input at bottom - using CommentsSection component */}
