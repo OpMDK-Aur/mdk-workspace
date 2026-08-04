@@ -405,6 +405,20 @@ function RichTextEditor({
     }
   }, [content])
 
+  // Sync edit editor content when editing changes
+  useEffect(() => {
+    if (editingCommentId && editEditorRef.current) {
+      // Find the comment being edited
+      const comment = comments.find(c => c.id === editingCommentId)
+      if (comment) {
+        editEditorRef.current.innerHTML = comment.content
+        editEditorRef.current.focus()
+      }
+    }
+  }, [editingCommentId, comments])
+
+
+
   const execCommand = (command: string, value?: string) => {
     document.execCommand(command, false, value)
     editorRef.current?.focus()
@@ -878,13 +892,15 @@ function CommentItem({ comment: c, taskId }: { comment: TaskComment; taskId: str
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-function CommentsSection({ task, compact = false }: { task: Task; compact?: boolean }) {
+function CommentsSection({ task, compact = false, onDeleteComment }: { task: Task; compact?: boolean; onDeleteComment: (commentId: string) => Promise<void> }) {
   const { addComment, updateComment, deleteComment } = useTaskStore()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; avatar_url: string | null } | null>(null)
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
+  const [commentContent, setCommentContent] = useState('')
   const editorRef = useRef<HTMLDivElement>(null)
+  const editEditorRef = useRef<HTMLDivElement>(null)
   const commentFileInputRef = useRef<HTMLInputElement>(null)
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
@@ -981,6 +997,9 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
   // Handle input for mentions
   const handleInput = () => {
     if (!editorRef.current) return
+    
+    // Update comment content state
+    setCommentContent(editorRef.current.innerHTML)
     
     const selection = window.getSelection()
     if (!selection || selection.rangeCount === 0) return
@@ -1141,6 +1160,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
     try {
       await addComment(task.id, content, userId, userName, currentUser?.avatar_url, mentionedIds, pendingAttachments)
       editorRef.current.innerHTML = ''
+      setCommentContent('')
       setPendingAttachments([])
       toast.success('Comentario agregado')
     } catch (err) {
@@ -1204,11 +1224,12 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
                 </div>
                 {editingCommentId === c.id ? (
                   <div className="space-y-2">
-                    <textarea
-                      value={editingContent}
-                      onChange={(e) => setEditingContent(e.target.value)}
+                    <div
+                      ref={editEditorRef}
+                      contentEditable
+                      suppressContentEditableWarning
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
+                        if (e.key === 'Enter' && !e.shiftKey && e.ctrlKey) {
                           e.preventDefault()
                           handleEditComment(c.id)
                         }
@@ -1217,7 +1238,10 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
                           setEditingContent('')
                         }
                       }}
-                      className="w-full min-h-[60px] p-2.5 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                      onInput={(e) => {
+                        setEditingContent((e.target as HTMLDivElement).innerHTML)
+                      }}
+                      className="w-full min-h-[60px] p-2.5 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary outline-none break-words whitespace-pre-wrap"
                       autoFocus
                     />
                     <div className="flex gap-2">
@@ -1233,11 +1257,11 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
                   />
                 )}
               </div>
-              <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content.replace(/<[^>]*>/g, '')) }} title="Editar">
+              <div className="flex gap-0.5 shrink-0">
+                <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content) }} title="Editar">
                   <Pencil className="h-3 w-3" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => deleteComment(task.id, c.id)} title="Eliminar">
+                <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={() => onDeleteComment(c.id)} title="Eliminar">
                   <X className="h-3 w-3" />
                 </Button>
               </div>
@@ -1362,7 +1386,7 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
             size="sm"
             className={cn("gap-2 px-4 ml-auto", compact && "h-7 px-2 gap-1 text-xs")}
             onClick={handleSubmit}
-            disabled={isSubmitting || ((!editorRef.current?.innerHTML.trim() || editorRef.current?.innerHTML.trim() === '<br>') && pendingAttachments.length === 0)}
+            disabled={isSubmitting || ((!commentContent.trim() || commentContent.trim() === '<br>') && pendingAttachments.length === 0)}
           >
             <Send className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} />
             {isSubmitting ? (compact ? 'Env...' : 'Enviando...') : 'Enviar'}
@@ -1394,10 +1418,10 @@ function CommentsSection({ task, compact = false }: { task: Task; compact?: bool
   )
 }
 
-// ── Custom Fields Component ──���───────────────────�������─────����──────────────────────
+// ── Custom Fields Component ──���───────────────────��������─────����──────────────────────
 
 function CustomFields({ task }: { task: Task }) {
-  const { addCustomField, removeCustomField, updateTask } = useTaskStore()
+  const { addCustomField, removeCustomField, updateTask, deleteComment } = useTaskStore()
   const [isAdding, setIsAdding] = useState(false)
   const [newFieldName, setNewFieldName] = useState('')
   const [newFieldType, setNewFieldType] = useState<TaskCustomField['type']>('text')
@@ -1448,6 +1472,8 @@ function CustomFields({ task }: { task: Task }) {
     }
     handleUpdateFieldValue(key, newValues.join(','))
   }
+
+
 
   const renderFieldInput = (key: string, field: TaskCustomField) => {
     switch (field.type) {
@@ -1605,7 +1631,7 @@ function CustomFields({ task }: { task: Task }) {
 
 export function TaskDetailPanel() {
   const router = useRouter()
-  const { selectedTaskId, setSelectedTask, tasks, updateTask, deleteTask, toggleTaskActive } = useTaskStore()
+  const { selectedTaskId, setSelectedTask, tasks, updateTask, deleteTask, toggleTaskActive, deleteComment } = useTaskStore()
   const task = tasks.find((t) => t.id === selectedTaskId)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [activeTab, setActiveTab] = useState('detalles')
@@ -1642,6 +1668,17 @@ export function TaskDetailPanel() {
   // Description editing state
   const descriptionRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Handle delete comment
+  const handleDeleteComment = useCallback(async (commentId: string) => {
+    try {
+      if (task) {
+        await deleteComment(task.id, commentId)
+      }
+    } catch (error) {
+      console.error('[v0] Error deleting comment:', error)
+    }
+  }, [task, deleteComment])
 
   // Load current user ID
   useEffect(() => {
@@ -2291,7 +2328,8 @@ export function TaskDetailPanel() {
 
                   {/* Activity feed - filtered */}
                   <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
-                    {(() => {
+                    {((_handleDeleteComment: typeof handleDeleteComment) => {
+                      const deleteCommentFn = _handleDeleteComment
                       const filteredComments = (task.comments || []).filter(c => {
                         if (filterPersona && c.userId !== filterPersona) return false
                         if (filterConAdjuntos && (!c.attachments || c.attachments.length === 0)) return false
@@ -2349,7 +2387,7 @@ export function TaskDetailPanel() {
                                         </span>
                                         <Button
                                           variant="ghost" size="icon" className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100"
-                                          onClick={() => deleteComment(task.id, c.id)}
+                                          onClick={() => deleteCommentFn(c.id)}
                                         >
                                           <X className="h-2.5 w-2.5" />
                                         </Button>
@@ -2409,12 +2447,12 @@ export function TaskDetailPanel() {
                           )}
                         </>
                       )
-                    })()}
+                    })(handleDeleteComment)}
                   </div>
 
                   {/* Comment input at bottom - using CommentsSection component */}
                   <div className="border-t shrink-0">
-                    <CommentsSection task={task} compact={true} />
+                    <CommentsSection task={task} compact={true} onDeleteComment={handleDeleteComment} />
                   </div>
                 </div>
               </div>
