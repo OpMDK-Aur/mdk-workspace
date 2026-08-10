@@ -1093,11 +1093,19 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
 
   // Handle edit comment
   const handleEditComment = async (commentId: string) => {
-    if (!editingContent.trim()) return
-    await updateComment(task.id, commentId, editingContent)
+  if (!editingContent.trim()) return
+  // Guard against saving edits to another user's comment.
+  const targetComment = (task.comments || []).find(c => c.id === commentId)
+  if (!targetComment || targetComment.userId !== currentUser?.id) {
+    toast.error('No podés editar comentarios de otros usuarios')
     setEditingCommentId(null)
     setEditingContent('')
-    toast.success('Comentario actualizado')
+    return
+  }
+  await updateComment(task.id, commentId, editingContent)
+  setEditingCommentId(null)
+  setEditingContent('')
+  toast.success('Comentario actualizado')
   }
 
   const handleSubmit = async () => {
@@ -1220,14 +1228,16 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
                   />
                 )}
               </div>
-              <div className="flex gap-0.5 shrink-0">
-                <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content) }} title="Editar">
-                  <Pencil className="h-3 w-3" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={() => onDeleteComment(c.id)} title="Eliminar">
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
+              {c.userId === currentUser?.id && (
+                <div className="flex gap-0.5 shrink-0">
+                  <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={() => { setEditingCommentId(c.id); setEditingContent(c.content) }} title="Editar">
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={() => onDeleteComment(c.id)} title="Eliminar">
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -1638,12 +1648,18 @@ export function TaskDetailPanel() {
   const handleDeleteComment = useCallback(async (commentId: string) => {
     try {
       if (task) {
+        // Guard against deleting another user's comment even if triggered programmatically.
+        const targetComment = (task.comments || []).find(c => c.id === commentId)
+        if (!targetComment || targetComment.userId !== currentUserId) {
+          toast.error('No podés eliminar comentarios de otros usuarios')
+          return
+        }
         await deleteComment(task.id, commentId)
       }
     } catch (error) {
       console.error('[v0] Error deleting comment:', error)
     }
-  }, [task, deleteComment])
+  }, [task, deleteComment, currentUserId])
 
   const startEditingActivityComment = useCallback((commentId: string, content: string, authorId: string) => {
     // Guard against editing another user's comment even if triggered programmatically.
@@ -2396,13 +2412,15 @@ export function TaskDetailPanel() {
                                             <Pencil className="h-3 w-3" />
                                           </Button>
                                         )}
-                                        <Button
-                                          variant="ghost" size="icon" className={cn('h-6 w-6', editingActivityCommentId !== c.id && 'ml-0')}
-                                          onClick={() => deleteCommentFn(c.id)}
-                                          title="Eliminar"
-                                        >
-                                          <X className="h-3 w-3" />
-                                        </Button>
+                                        {c.userId === currentUserId && (
+                                          <Button
+                                            variant="ghost" size="icon" className={cn('h-6 w-6', editingActivityCommentId !== c.id && 'ml-0')}
+                                            onClick={() => deleteCommentFn(c.id)}
+                                            title="Eliminar"
+                                          >
+                                            <X className="h-3 w-3" />
+                                          </Button>
+                                        )}
                                       </div>
                                       {editingActivityCommentId === c.id ? (
                                         <div className="space-y-2">
