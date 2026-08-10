@@ -842,19 +842,21 @@ function CommentItem({ comment: c, taskId }: { comment: TaskComment; taskId: str
             </span>
             {!isEditing && (
               <Button
-                variant="ghost" size="icon" className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100"
+                variant="ghost" size="icon" className="ml-auto size-7 shrink-0 text-muted-foreground hover:text-foreground"
                 onClick={startEditing}
                 aria-label="Editar comentario"
+                title="Editar comentario"
               >
-                <Pencil className="h-2.5 w-2.5" />
+                <Pencil className="size-3.5" />
               </Button>
             )}
             <Button
-              variant="ghost" size="icon" className={cn('h-4 w-4', !isEditing && 'opacity-0 group-hover:opacity-100')}
+              variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
               onClick={() => deleteComment(taskId, c.id)}
               aria-label="Eliminar comentario"
+              title="Eliminar comentario"
             >
-              <X className="h-2.5 w-2.5" />
+              <X className="size-3.5" />
             </Button>
           </div>
           {isEditing ? (

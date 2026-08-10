@@ -1896,12 +1896,12 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
       .update({ contenido: content })
       .eq('id', commentId)
 
-    if (error) {
-      console.error('Error updating comment:', error)
-      return
-    }
-
-    set((state) => ({
+  if (error) {
+    console.error('[v0] Error updating comment:', error)
+    throw error
+  }
+  
+  set((state) => ({
       tasks: state.tasks.map((t) =>
         t.id === taskId
           ? { 
