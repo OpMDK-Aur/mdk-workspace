@@ -618,15 +618,21 @@ export default function ColaboradoresPage() {
         return
       }
 
-      // Map header positions (tolerant to column order)
+      // Map header positions (tolerant to column order and naming variants)
       const header = parseCsvLine(lines[0]).map(h => normalize(h))
-      const idx = (name: string) => header.findIndex(h => h === normalize(name))
+      const idx = (...names: string[]) => {
+        for (const name of names) {
+          const i = header.findIndex(h => h === normalize(name))
+          if (i >= 0) return i
+        }
+        return -1
+      }
       const iColab = idx('Colaborador')
       const iCliente = idx('cliente')
-      const iValor = idx('valor_hora')
-      const iTeoricas = idx('horas_teoricas_cliente')
-      const iMinimas = idx('horas_minimas')
-      const iMaximas = idx('horas_maximas')
+      const iValor = idx('valor_hora', 'valor hora')
+      const iTeoricas = idx('horas_teoricas_cliente', 'H Teoricas', 'horas teoricas', 'h teoricas')
+      const iMinimas = idx('horas_minimas', 'minimo', 'minimas', 'minimo no negociable')
+      const iMaximas = idx('horas_maximas', 'Objetivo', 'maximas', 'objetivo')
 
       if (iColab < 0 || iCliente < 0) {
         toast.error('El CSV debe tener columnas "Colaborador" y "cliente"')
@@ -661,14 +667,15 @@ export default function ColaboradoresPage() {
         const colabName = cols[iColab] || ''
         const clienteName = cols[iCliente] || ''
         const teoricasStr = iTeoricas >= 0 ? cols[iTeoricas] || '' : ''
+        const minimasStr = iMinimas >= 0 ? cols[iMinimas] || '' : ''
         const maximasStr = iMaximas >= 0 ? cols[iMaximas] || '' : ''
 
-        // Skip rows without colaborador or without hours data
-        if (!colabName.trim()) {
+        // Skip rows without colaborador, without cliente, or without any hours data
+        if (!colabName.trim() || !clienteName.trim()) {
           skippedIncomplete++
           continue
         }
-        if (!teoricasStr.trim() || !maximasStr.trim()) {
+        if (!teoricasStr.trim() && !minimasStr.trim() && !maximasStr.trim()) {
           skippedIncomplete++
           continue
         }
@@ -690,7 +697,7 @@ export default function ColaboradoresPage() {
           cliente,
           valorHora: iValor >= 0 ? parseCurrency(cols[iValor] || '') : 0,
           teoricas: parseTimeToHours(teoricasStr),
-          minimas: iMinimas >= 0 ? parseTimeToHours(cols[iMinimas] || '') : 0,
+          minimas: parseTimeToHours(minimasStr),
           maximas: parseTimeToHours(maximasStr),
         })
       }
