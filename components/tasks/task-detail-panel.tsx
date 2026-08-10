@@ -405,19 +405,6 @@ function RichTextEditor({
     }
   }, [content])
 
-  // Sync edit editor content when editing changes
-  useEffect(() => {
-    if (editingCommentId && editEditorRef.current) {
-      // Find the comment being edited
-      const comment = comments.find(c => c.id === editingCommentId)
-      if (comment) {
-        editEditorRef.current.innerHTML = comment.content
-        editEditorRef.current.focus()
-      }
-    }
-  }, [editingCommentId, comments])
-
-
 
   const execCommand = (command: string, value?: string) => {
     document.execCommand(command, false, value)
@@ -800,7 +787,37 @@ function TimeTracker({ task }: { task: Task }) {
 
 // ─── CommentItem: renders a single comment with lightbox + attachments ───────
 function CommentItem({ comment: c, taskId }: { comment: TaskComment; taskId: string }) {
-  const { deleteComment } = useTaskStore()
+  const { updateComment, deleteComment } = useTaskStore()
+  const [isEditing, setIsEditing] = useState(false)
+  const [editContent, setEditContent] = useState(c.content)
+  const [isSaving, setIsSaving] = useState(false)
+  const editRef = useRef<HTMLDivElement>(null)
+
+  const startEditing = () => {
+    setEditContent(c.content)
+    setIsEditing(true)
+  }
+
+  const cancelEditing = () => {
+    setIsEditing(false)
+    setEditContent(c.content)
+  }
+
+  const saveEditing = async () => {
+    const content = editRef.current?.innerHTML.trim() || editContent.trim()
+    if (!content || content === '<br>' || isSaving) return
+
+    setIsSaving(true)
+    try {
+      await updateComment(taskId, c.id, content)
+      setIsEditing(false)
+      toast.success('Comentario actualizado')
+    } catch {
+      toast.error('No se pudo actualizar el comentario')
+    } finally {
+      setIsSaving(false)
+    }
+  }
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
 
   const handleImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -823,19 +840,60 @@ function CommentItem({ comment: c, taskId }: { comment: TaskComment; taskId: str
             <span className="text-[11px] text-muted-foreground">
               {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
             </span>
+            {!isEditing && (
+              <Button
+                variant="ghost" size="icon" className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100"
+                onClick={startEditing}
+                aria-label="Editar comentario"
+              >
+                <Pencil className="h-2.5 w-2.5" />
+              </Button>
+            )}
             <Button
-              variant="ghost" size="icon" className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100"
+              variant="ghost" size="icon" className={cn('h-4 w-4', !isEditing && 'opacity-0 group-hover:opacity-100')}
               onClick={() => deleteComment(taskId, c.id)}
+              aria-label="Eliminar comentario"
             >
               <X className="h-2.5 w-2.5" />
             </Button>
           </div>
-          {/* Content with clickable images */}
-          <div
-            className="text-[11px] text-foreground/80 break-words [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity"
-            dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
-            onClick={handleImageClick}
-          />
+          {isEditing ? (
+            <div className="flex flex-col gap-2">
+              <div
+                ref={editRef}
+                contentEditable
+                suppressContentEditableWarning
+                role="textbox"
+                aria-label="Editar comentario"
+                className="min-h-20 rounded-md border border-input bg-background px-2 py-1.5 text-[11px] text-foreground outline-none focus:ring-1 focus:ring-ring"
+                dangerouslySetInnerHTML={{ __html: editContent }}
+                onInput={(e) => setEditContent(e.currentTarget.innerHTML)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') cancelEditing()
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault()
+                    void saveEditing()
+                  }
+                }}
+              />
+              <div className="flex items-center gap-2">
+                <Button size="sm" className="h-7 text-xs" onClick={() => void saveEditing()} disabled={isSaving}>
+                  {isSaving ? <Loader2 className="mr-1 size-3 animate-spin" /> : null}
+                  Guardar
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={cancelEditing} disabled={isSaving}>
+                  Cancelar
+                </Button>
+                <span className="text-[10px] text-muted-foreground">Ctrl/Cmd + Enter para guardar</span>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="text-[11px] text-foreground/80 break-words [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity"
+              dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
+              onClick={handleImageClick}
+            />
+          )}
           {/* Attachments */}
           {c.attachments && c.attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
