@@ -474,12 +474,14 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       const mentionedIds = extractMentionedColaboradores(commentContent)
       if (mentionedIds.length > 0) {
         const notifications = mentionedIds.map(colabId => ({
-          usuario_id: colabId,
+          colaborador_id: colabId,
           tipo: 'mencion',
           titulo: `${autorName} te mencionó en un comentario`,
-          contenido: commentContent.slice(0, 100) + (commentContent.length > 100 ? '...' : ''),
+          descripcion: commentContent.slice(0, 100) + (commentContent.length > 100 ? '...' : ''),
+          referencia_id: data.id,
+          referencia_tipo: 'comentario_cliente',
+          cliente_id: clientId,
           leida: false,
-          enlace: `/dashboard/clients/${clientId}`,
         }))
         
         const { error: notifError } = await supabase
@@ -623,12 +625,14 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
       const mentionedIds = extractMentionedColaboradores(newContent)
       if (mentionedIds.length > 0) {
         const notifications = mentionedIds.map(colabId => ({
-          usuario_id: colabId,
+          colaborador_id: colabId,
           tipo: 'mencion',
           titulo: `${editorName} te mencionó en un comentario`,
-          contenido: newContent.slice(0, 100) + (newContent.length > 100 ? '...' : ''),
+          descripcion: newContent.slice(0, 100) + (newContent.length > 100 ? '...' : ''),
+          referencia_id: editingCommentId,
+          referencia_tipo: 'comentario_cliente',
+          cliente_id: clientId,
           leida: false,
-          enlace: `/dashboard/clients/${clientId}`,
         }))
         const { error: notifError } = await supabase
           .from('notificaciones')

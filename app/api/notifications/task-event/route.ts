@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
 // Event types that trigger notifications
-export type TaskEventType = 'tarea_resuelta' | 'tarea_resolviendo' | 'asignado_a_tarea' | 'persona_agregada' | 'fecha_cambiada' | 'cliente_agregado'
+export type TaskEventType = 'tarea_resuelta' | 'tarea_resolviendo' | 'asignado_a_tarea' | 'persona_agregada' | 'cliente_agregado'
 
 export async function POST(request: Request) {
   try {
@@ -15,7 +15,6 @@ export async function POST(request: Request) {
       // Recipients (colaborador ids to notify)
       colaboradorIds,
       // Extra context per event
-      newDate,
       clienteName,
       clienteId,
     }: {
@@ -24,7 +23,6 @@ export async function POST(request: Request) {
       taskTitle: string
       actorName: string
       colaboradorIds: string[]
-      newDate?: string
       clienteName?: string
       clienteId?: string
     } = await request.json()
@@ -57,12 +55,6 @@ export async function POST(request: Request) {
       case 'persona_agregada':
         titulo = `Nueva persona en tarea: ${taskTitle}`
         descripcion = `Agregada por ${actorName}`
-        break
-      case 'fecha_cambiada':
-        titulo = `Fecha de fin cambiada: ${taskTitle}`
-        descripcion = newDate
-          ? `Nueva fecha: ${new Date(newDate).toLocaleDateString('es-AR')} · Por ${actorName}`
-          : `Modificada por ${actorName}`
         break
       case 'cliente_agregado':
         titulo = `Nuevo cliente en tarea: ${taskTitle}`

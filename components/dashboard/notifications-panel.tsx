@@ -36,7 +36,7 @@ import {
 
 interface Notificacion {
   id: string
-  tipo: 'reunion' | 'tarea_vence' | 'tarea_hoy' | 'comentario' | 'cpl_alerta' | 'impresiones_cero' | 'mencion' | 'tarea_resuelta' | 'tarea_resolviendo' | 'asignado_a_tarea' | 'persona_agregada' | 'fecha_cambiada' | 'cliente_agregado'
+  tipo: 'reunion' | 'tarea_vence' | 'tarea_hoy' | 'comentario' | 'cpl_alerta' | 'impresiones_cero' | 'mencion' | 'tarea_resuelta' | 'tarea_resolviendo' | 'asignado_a_tarea' | 'persona_agregada' | 'cliente_agregado'
   titulo: string
   descripcion: string | null
   referencia_id: string | null
@@ -239,13 +239,20 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
   }
 
   function handleNotificationClick(notif: Notificacion) {
-    marcarLeida(notif.id)
-    
-    // Navigate to task if it's a task-related notification
-    if (notif.referencia_tipo === 'tarea' && notif.referencia_id) {
-      onClose()
-      router.push(`/dashboard/tasks?task=${notif.referencia_id}`)
-    }
+  marcarLeida(notif.id)
+  
+  // Navigate to task if it's a task-related notification
+  if (notif.referencia_tipo === 'tarea' && notif.referencia_id) {
+  onClose()
+  router.push(`/dashboard/tasks?task=${notif.referencia_id}`)
+  return
+  }
+
+  // Navigate to the client card if it's a mention on a client comment
+  if (notif.referencia_tipo === 'comentario_cliente' && notif.cliente_id) {
+  onClose()
+  router.push(`/dashboard/clients/${notif.cliente_id}`)
+  }
   }
 
   const filteredNotificaciones = filter === 'no_leidas' 
