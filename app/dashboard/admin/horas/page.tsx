@@ -20,6 +20,7 @@ import { MultiSelect } from '@/components/ui/multi-select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Download, Users, Loader2, Building2, List } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/lib/types'
@@ -118,6 +119,7 @@ export default function ControlHorasPage() {
   const [planFilter, setPlanFilter] = useState<ClientPlan | 'all'>('all')
   const [selectedDepartamentos, setSelectedDepartamentos] = useState<string[]>([])
   const [statusColaborador, setStatusColaborador] = useState<'activos' | 'inactivos' | 'todos'>('activos')
+  const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([])
 
   // Fetch data with SWR
   const { data, isLoading, error } = useSWR('control-horas-data', fetchControlHorasData)
@@ -357,6 +359,16 @@ export default function ControlHorasPage() {
     client.id,
     client.nombre_del_negocio || client.business_name || 'Sin nombre',
   ])), [clients])
+
+  const selectedEntries = useMemo(
+    () => detailEntries.filter((entry) => selectedEntryIds.includes(entry.id)),
+    [detailEntries, selectedEntryIds],
+  )
+  const selectedDurationSeconds = selectedEntries.reduce(
+    (total, entry) => total + (entry.duracion_seg || 0),
+    0,
+  )
+  const allEntriesSelected = detailEntries.length > 0 && selectedEntries.length === detailEntries.length
 
   // Clients grouped by the active unidad tab, with the breakdown of involved collaborators.
   // filteredEntries already respects month / colaborador / cliente / departamento filters.
@@ -679,10 +691,16 @@ export default function ControlHorasPage() {
               <div>
                 <CardTitle className="text-base">Desglose de entradas</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Registros filtrados del período seleccionado, ordenados del más reciente al más antiguo.
+                  Seleccioná una o varias entradas para totalizar el tiempo consumido.
                 </p>
               </div>
-              <Badge variant="secondary">{detailEntries.length} entradas</Badge>
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Total seleccionado</p>
+                  <p className="text-lg font-semibold text-foreground">{formatEntryDuration(selectedDurationSeconds)}</p>
+                </div>
+                <Badge variant="secondary">{selectedEntries.length} seleccionadas</Badge>
+              </div>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -700,6 +718,15 @@ export default function ControlHorasPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox
+                          aria-label="Seleccionar todas las entradas visibles"
+                          checked={allEntriesSelected}
+                          onCheckedChange={(checked) => {
+                            setSelectedEntryIds(checked ? detailEntries.map((entry) => entry.id) : [])
+                          }}
+                        />
+                      </TableHead>
                       <TableHead>Fecha</TableHead>
                       <TableHead>Colaborador</TableHead>
                       <TableHead>Cliente</TableHead>
@@ -712,7 +739,18 @@ export default function ControlHorasPage() {
                   </TableHeader>
                   <TableBody>
                     {detailEntries.map((entry) => (
-                      <TableRow key={entry.id}>
+                      <TableRow key={entry.id} data-state={selectedEntryIds.includes(entry.id) ? 'selected' : undefined}>
+                        <TableCell>
+                          <Checkbox
+                            aria-label={`Seleccionar entrada del ${format(new Date(entry.iniciado_en), 'dd/MM/yyyy')}`}
+                            checked={selectedEntryIds.includes(entry.id)}
+                            onCheckedChange={(checked) => {
+                              setSelectedEntryIds((current) => checked
+                                ? [...current, entry.id]
+                                : current.filter((id) => id !== entry.id))
+                            }}
+                          />
+                        </TableCell>
                         <TableCell className="font-medium">
                           {format(new Date(entry.iniciado_en), 'dd/MM/yyyy')}
                         </TableCell>
