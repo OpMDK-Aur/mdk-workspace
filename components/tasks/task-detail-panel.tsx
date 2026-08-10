@@ -796,10 +796,12 @@ const COMMENT_RICH_TEXT_CLASSES = "[&_strong]:font-semibold [&_b]:font-semibold 
 function CommentFormatToolbar({
   editorRef,
   onChange,
-}: {
+  onAttachClick,
+  }: {
   editorRef: React.RefObject<HTMLDivElement | null>
   onChange: () => void
-}) {
+  onAttachClick?: () => void
+  }) {
   const applyFormat = (command: string) => (e: React.MouseEvent) => {
     e.preventDefault()
     if (!editorRef.current) return
@@ -825,12 +827,25 @@ function CommentFormatToolbar({
       <button type="button" className={buttonClass} onMouseDown={applyFormat('insertUnorderedList')} title="Lista con viñetas">
         <List className="h-3.5 w-3.5" />
       </button>
-      <button type="button" className={buttonClass} onMouseDown={applyFormat('insertOrderedList')} title="Lista numerada">
-        <ListOrdered className="h-3.5 w-3.5" />
-      </button>
-    </div>
+  <button type="button" className={buttonClass} onMouseDown={applyFormat('insertOrderedList')} title="Lista numerada">
+  <ListOrdered className="h-3.5 w-3.5" />
+  </button>
+  {onAttachClick && (
+  <>
+  <div className="w-px h-4 bg-border mx-1" />
+  <button
+    type="button"
+    className={buttonClass}
+    onMouseDown={(e) => { e.preventDefault(); onAttachClick() }}
+    title="Adjuntar archivo"
+  >
+    <Paperclip className="h-3.5 w-3.5" />
+  </button>
+  </>
+  )}
+  </div>
   )
-}
+  }
 
 function CommentsSection({ task, compact = false, onDeleteComment }: { task: Task; compact?: boolean; onDeleteComment: (commentId: string) => Promise<void> }) {
   const { addComment, updateComment, deleteComment } = useTaskStore()
@@ -1232,7 +1247,11 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
           </Avatar>
           <span className={cn("font-medium", compact ? "text-xs" : "text-sm")}>{currentUser?.nombre || 'Nuevo comentario'}</span>
         </div>
-        <CommentFormatToolbar editorRef={editorRef} onChange={() => setCommentContent(editorRef.current?.innerHTML || '')} />
+        <CommentFormatToolbar
+          editorRef={editorRef}
+          onChange={() => setCommentContent(editorRef.current?.innerHTML || '')}
+          onAttachClick={() => commentFileInputRef.current?.click()}
+        />
         <div className="relative">
           <div
             ref={editorRef}
@@ -1281,17 +1300,7 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
         </div>
         
         <div className="flex items-center justify-between gap-2">
-          {/* Attach file button */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className={cn("h-7 w-7 text-muted-foreground hover:text-foreground shrink-0", compact && "h-6 w-6")}
-            onClick={() => commentFileInputRef.current?.click()}
-            title="Adjuntar archivo"
-          >
-            <Paperclip className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} />
-          </Button>
+          {/* Attach file input (trigger button lives in the format toolbar above) */}
           <input
             ref={commentFileInputRef}
             type="file"
