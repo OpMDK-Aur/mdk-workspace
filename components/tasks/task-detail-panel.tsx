@@ -1603,7 +1603,18 @@ export function TaskDetailPanel() {
   const { selectedTaskId, setSelectedTask, tasks, updateTask, deleteTask, toggleTaskActive, deleteComment, updateComment } = useTaskStore()
   const task = tasks.find((t) => t.id === selectedTaskId)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isActivityExpanded, setIsActivityExpanded] = useState(false)
   const [activeTab, setActiveTab] = useState('detalles')
+
+  // Expanding the Activity panel also fullscreens the whole sheet so the
+  // comments feed gets the maximum available viewport width.
+  const toggleActivityExpanded = () => {
+    setIsActivityExpanded((prev) => {
+      const next = !prev
+      if (next) setIsFullscreen(true)
+      return next
+    })
+  }
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [tempTitle, setTempTitle] = useState('')
   const [typeSearch, setTypeSearch] = useState('')
@@ -1800,6 +1811,7 @@ export function TaskDetailPanel() {
 
   const handleClose = () => {
     setIsFullscreen(false)
+    setIsActivityExpanded(false)
     setSelectedTask(null)
   }
 
@@ -1903,8 +1915,11 @@ export function TaskDetailPanel() {
           <div className="flex-1 overflow-hidden">
             <TabsContent value="detalles" className="mt-0 h-full">
               <div className="h-full flex flex-row px-6 pb-6 gap-0">
-                {/* LEFT / MAIN COLUMN - 50% */}
-                <div className="w-1/2 overflow-y-auto flex flex-col min-w-0 pr-6">
+                {/* LEFT / MAIN COLUMN - 50% (hidden while Activity is expanded to full screen) */}
+                <div className={cn(
+                  "overflow-y-auto flex flex-col min-w-0 pr-6",
+                  isActivityExpanded ? "hidden" : "w-1/2"
+                )}>
 
                   {/* Title area */}
                   <div className="pt-0 pb-4">
@@ -2242,14 +2257,26 @@ export function TaskDetailPanel() {
                   </div>
                 </div>
 
-                {/* RIGHT COLUMN - Activity 50% */}
-                <div className="w-1/2 border-l flex flex-col overflow-hidden">
+                {/* RIGHT COLUMN - Activity (50%, or full width when expanded) */}
+                <div className={cn(
+                  "flex flex-col overflow-hidden",
+                  isActivityExpanded ? "w-full" : "w-1/2 border-l"
+                )}>
                   {/* Activity header with filters */}
                   <div className="px-5 py-4 border-b flex items-center justify-between shrink-0">
                     <span className="text-sm font-semibold">Activity</span>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="icon" className="h-6 w-6">
                         <Search className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={toggleActivityExpanded}
+                        title={isActivityExpanded ? "Restaurar tamaño" : "Ver en pantalla completa"}
+                      >
+                        {isActivityExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
                       </Button>
                       <Popover>
                         <PopoverTrigger asChild>
