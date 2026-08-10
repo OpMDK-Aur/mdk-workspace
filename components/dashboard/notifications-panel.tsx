@@ -195,18 +195,47 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
     setLoading(true)
     
     const supabase = createClient()
-    // Only delete tarea_vence notifications, preserve task assignment notifications
-    await supabase
+    // Delete every notification for this user (respecting the active filter),
+    // then regenerate the automatic ones (overdue/today tasks).
+    let query = supabase
       .from('notificaciones')
       .delete()
       .eq('colaborador_id', currentUserId)
-      .eq('tipo', 'tarea_vence')
-    
+
+    if (filter === 'no_leidas') {
+      query = query.eq('leida', false)
+    }
+
+    await query
+
+    setNotificaciones((prev) =>
+      filter === 'no_leidas' ? prev.filter((n) => n.leida) : []
+    )
+
     // Generate fresh notifications
     await fetch('/api/notifications/generate', { method: 'POST' })
-    
+
     // Reload
     loadNotificaciones(currentUserId)
+  }
+
+  async function eliminarNotificacion(id: string) {
+    if (!currentUserId) return
+    // Optimistically remove from the UI so the click feels instant.
+    setNotificaciones((prev) => prev.filter((n) => n.id !== id))
+
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('notificaciones')
+      .delete()
+      .eq('id', id)
+      .eq('colaborador_id', currentUserId)
+
+    if (error) {
+      console.error('[v0] Error deleting notification:', error)
+      // Restore the notification if the delete failed
+      loadNotificaciones(currentUserId)
+    }
   }
 
   function handleNotificationClick(notif: Notificacion) {
@@ -276,7 +305,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
             size="icon" 
             className="h-7 w-7"
             onClick={limpiarYRegenerar}
-            title="Limpiar y regenerar"
+            title="Borrar todas"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -334,7 +363,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
                     <div
                       key={notif.id}
                       className={cn(
-                        "w-full px-3 py-2 hover:bg-muted/50 cursor-pointer transition-colors overflow-hidden",
+                        "group w-full px-3 py-2 hover:bg-muted/50 cursor-pointer transition-colors overflow-hidden",
                         !notif.leida && "bg-muted/30"
                       )}
                       onClick={() => handleNotificationClick(notif)}
@@ -378,6 +407,17 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
                             )}
                           </div>
                         </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            eliminarNotificacion(notif.id)
+                          }}
+                          className="shrink-0 p-1 rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-muted hover:text-foreground transition-opacity"
+                          title="Eliminar notificación"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
                   )
