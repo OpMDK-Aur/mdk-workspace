@@ -18,7 +18,9 @@ import {
 } from '@/components/ui/select'
 import { MultiSelect } from '@/components/ui/multi-select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Download, Users, Loader2, Building2 } from 'lucide-react'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+import { Download, Users, Loader2, Building2, List } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/lib/types'
 import type { ClientPlan } from '@/lib/types'
@@ -68,6 +70,18 @@ function stringToColor(str: string): string {
     hash = str.charCodeAt(i) + ((hash << 5) - hash)
   }
   return colors[Math.abs(hash) % colors.length]
+}
+
+function formatEntryDuration(seconds: number | null) {
+  const totalMinutes = Math.max(0, Math.round((seconds || 0) / 60))
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return `${hours}h ${String(minutes).padStart(2, '0')}m`
+}
+
+function formatEntryTime(value: string | null) {
+  if (!value) return '—'
+  return format(new Date(value), 'dd/MM/yyyy HH:mm')
 }
 
 // Fetcher for SWR
@@ -322,6 +336,27 @@ export default function ControlHorasPage() {
   }, [filteredEntries, clients])
 
   const currentSummary = unidadSummary[unidadTab]
+
+  const detailEntries = useMemo(() => {
+    const clientPrimaryUnidad: Record<string, string | undefined> = {}
+    clients.forEach((client) => {
+      clientPrimaryUnidad[client.id] = (client.unidades_negocio as string[] | undefined)?.[0]
+    })
+
+    return filteredEntries
+      .filter((entry) => unidadTab === 'all' || (entry.cliente_id && clientPrimaryUnidad[entry.cliente_id] === unidadTab))
+      .sort((a, b) => new Date(b.iniciado_en).getTime() - new Date(a.iniciado_en).getTime())
+  }, [clients, filteredEntries, unidadTab])
+
+  const collaboratorById = useMemo(() => new Map(users.map((user) => [
+    user.id,
+    `${user.nombre}${user.apellido ? ` ${user.apellido}` : ''}`,
+  ])), [users])
+
+  const clientById = useMemo(() => new Map(clients.map((client) => [
+    client.id,
+    client.nombre_del_negocio || client.business_name || 'Sin nombre',
+  ])), [clients])
 
   // Clients grouped by the active unidad tab, with the breakdown of involved collaborators.
   // filteredEntries already respects month / colaborador / cliente / departamento filters.
@@ -620,6 +655,10 @@ export default function ControlHorasPage() {
         <TabsList className="mb-4">
           <TabsTrigger value="hours-control">Colaboradores</TabsTrigger>
           <TabsTrigger value="clients-by-unit">Clientes</TabsTrigger>
+          <TabsTrigger value="time-entries" className="gap-2">
+            <List data-icon="inline-start" />
+            Entradas de tiempo ({detailEntries.length})
+          </TabsTrigger>
         </TabsList>
 
         {/* Hours Control Panel - The main view with progress bars */}
@@ -632,6 +671,71 @@ export default function ControlHorasPage() {
             departamentos={selectedDepartamentos}
             statusColaborador={statusColaborador}
           />
+        </TabsContent>
+
+        <TabsContent value="time-entries">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-base">Desglose de entradas</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Registros filtrados del período seleccionado, ordenados del más reciente al más antiguo.
+                </p>
+              </div>
+              <Badge variant="secondary">{detailEntries.length} entradas</Badge>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : detailEntries.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+                  <List className="size-10 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    No hay entradas de tiempo para los filtros seleccionados.
+                  </p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Colaborador</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Tarea</TableHead>
+                      <TableHead>Inicio</TableHead>
+                      <TableHead>Fin</TableHead>
+                      <TableHead>Duración</TableHead>
+                      <TableHead>Estado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {detailEntries.map((entry) => (
+                      <TableRow key={entry.id}>
+                        <TableCell className="font-medium">
+                          {format(new Date(entry.iniciado_en), 'dd/MM/yyyy')}
+                        </TableCell>
+                        <TableCell>{entry.colaborador_id ? collaboratorById.get(entry.colaborador_id) || 'Desconocido' : 'Sin asignar'}</TableCell>
+                        <TableCell>{entry.cliente_id ? clientById.get(entry.cliente_id) || 'Sin nombre' : 'Sin cliente'}</TableCell>
+                        <TableCell className="max-w-[240px] truncate" title={entry.descripcion || undefined}>
+                          {entry.descripcion || 'Sin descripción'}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{formatEntryTime(entry.iniciado_en)}</TableCell>
+                        <TableCell className="text-muted-foreground">{formatEntryTime(entry.finalizado_en)}</TableCell>
+                        <TableCell className="font-medium">{formatEntryDuration(entry.duracion_seg)}</TableCell>
+                        <TableCell>
+                          <Badge variant={entry.facturable ? 'default' : 'outline'}>
+                            {entry.facturable ? 'Facturable' : 'No facturable'}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Clients grouped by the active unidad de negocio tab */}
