@@ -1524,7 +1524,7 @@ function CustomFields({ task }: { task: Task }) {
 
 export function TaskDetailPanel() {
   const router = useRouter()
-  const { selectedTaskId, setSelectedTask, tasks, updateTask, deleteTask, toggleTaskActive, deleteComment } = useTaskStore()
+  const { selectedTaskId, setSelectedTask, tasks, updateTask, deleteTask, toggleTaskActive, deleteComment, updateComment } = useTaskStore()
   const task = tasks.find((t) => t.id === selectedTaskId)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [activeTab, setActiveTab] = useState('detalles')
@@ -1562,6 +1562,12 @@ export function TaskDetailPanel() {
   const descriptionRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Activity comment edit state
+  const [editingActivityCommentId, setEditingActivityCommentId] = useState<string | null>(null)
+  const [editingActivityContent, setEditingActivityContent] = useState('')
+  const editingActivityEditorRef = useRef<HTMLDivElement>(null)
+  const [isSavingActivityComment, setIsSavingActivityComment] = useState(false)
+
   // Handle delete comment
   const handleDeleteComment = useCallback(async (commentId: string) => {
     try {
@@ -1572,6 +1578,33 @@ export function TaskDetailPanel() {
       console.error('[v0] Error deleting comment:', error)
     }
   }, [task, deleteComment])
+
+  const startEditingActivityComment = useCallback((commentId: string, content: string) => {
+    setEditingActivityCommentId(commentId)
+    setEditingActivityContent(content)
+  }, [])
+
+  const cancelEditingActivityComment = useCallback(() => {
+    setEditingActivityCommentId(null)
+    setEditingActivityContent('')
+  }, [])
+
+  const saveEditingActivityComment = useCallback(async (commentId: string) => {
+    const content = editingActivityEditorRef.current?.innerHTML.trim() || editingActivityContent.trim()
+    if (!content || content === '<br>' || isSavingActivityComment || !task) return
+    setIsSavingActivityComment(true)
+    try {
+      await updateComment(task.id, commentId, content)
+      setEditingActivityCommentId(null)
+      setEditingActivityContent('')
+      toast.success('Comentario actualizado')
+    } catch (error) {
+      console.error('[v0] Error updating comment:', error)
+      toast.error('No se pudo actualizar el comentario')
+    } finally {
+      setIsSavingActivityComment(false)
+    }
+  }, [task, updateComment, editingActivityContent, isSavingActivityComment])
 
   // Load current user ID
   useEffect(() => {
@@ -2278,17 +2311,59 @@ export function TaskDetailPanel() {
                                         <span className="text-[11px] text-muted-foreground">
                                           {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
                                         </span>
+                                        {editingActivityCommentId !== c.id && (
+                                          <Button
+                                            variant="ghost" size="icon" className="h-6 w-6 ml-auto"
+                                            onClick={() => startEditingActivityComment(c.id, c.content)}
+                                            title="Editar"
+                                          >
+                                            <Pencil className="h-3 w-3" />
+                                          </Button>
+                                        )}
                                         <Button
-                                          variant="ghost" size="icon" className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100"
+                                          variant="ghost" size="icon" className={cn('h-6 w-6', editingActivityCommentId !== c.id && 'ml-0')}
                                           onClick={() => deleteCommentFn(c.id)}
+                                          title="Eliminar"
                                         >
-                                          <X className="h-2.5 w-2.5" />
+                                          <X className="h-3 w-3" />
                                         </Button>
                                       </div>
-                                      <div
-                                        className="text-[11px] text-foreground/80 break-words [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity"
-                                        dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
-                                      />
+                                      {editingActivityCommentId === c.id ? (
+                                        <div className="space-y-2">
+                                          <div
+                                            ref={editingActivityEditorRef}
+                                            contentEditable
+                                            suppressContentEditableWarning
+                                            role="textbox"
+                                            aria-label="Editar comentario"
+                                            dangerouslySetInnerHTML={{ __html: editingActivityContent }}
+                                            onInput={(e) => setEditingActivityContent((e.target as HTMLDivElement).innerHTML)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                                                e.preventDefault()
+                                                void saveEditingActivityComment(c.id)
+                                              }
+                                              if (e.key === 'Escape') cancelEditingActivityComment()
+                                            }}
+                                            className="w-full min-h-[50px] p-2 text-[11px] rounded-md border border-input bg-background outline-none focus:ring-1 focus:ring-ring break-words whitespace-pre-wrap"
+                                            autoFocus
+                                          />
+                                          <div className="flex items-center gap-2">
+                                            <Button size="sm" className="h-6 text-[11px] px-2" onClick={() => void saveEditingActivityComment(c.id)} disabled={isSavingActivityComment}>
+                                              {isSavingActivityComment ? <Loader2 className="mr-1 size-3 animate-spin" /> : null}
+                                              Guardar
+                                            </Button>
+                                            <Button size="sm" variant="ghost" className="h-6 text-[11px] px-2" onClick={cancelEditingActivityComment} disabled={isSavingActivityComment}>
+                                              Cancelar
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div
+                                          className="text-[11px] text-foreground/80 break-words [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity"
+                                          dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
+                                        />
+                                      )}
                                       {/* Attachments */}
                                       {c.attachments && c.attachments.length > 0 && (
                                         <div className="flex flex-wrap gap-1.5 mt-2">
