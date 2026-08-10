@@ -92,6 +92,7 @@ import {
   Bold,
   Italic,
   Underline,
+  Strikethrough,
   List,
   ListOrdered,
   Code,
@@ -785,6 +786,52 @@ function TimeTracker({ task }: { task: Task }) {
 
 // ── Comments Section (with rich text editor) ──────────────────────────────────
 
+// Shared formatting classes so bold/italic/strikethrough/lists render the same
+// while editing (contentEditable) and when displayed as saved HTML.
+const COMMENT_RICH_TEXT_CLASSES = "[&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_i]:italic [&_s]:line-through [&_strike]:line-through [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1 [&_li]:my-0.5"
+
+// Toolbar with Bold / Italic / Strikethrough / Bullet list / Numbered list controls
+// for a contentEditable comment editor. Uses document.execCommand so formatting
+// stays inline within the same rich-text HTML already used for mentions/images.
+function CommentFormatToolbar({
+  editorRef,
+  onChange,
+}: {
+  editorRef: React.RefObject<HTMLDivElement | null>
+  onChange: () => void
+}) {
+  const applyFormat = (command: string) => (e: React.MouseEvent) => {
+    e.preventDefault()
+    if (!editorRef.current) return
+    editorRef.current.focus()
+    document.execCommand(command)
+    onChange()
+  }
+
+  const buttonClass = "h-6 w-6 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+
+  return (
+    <div className="flex items-center gap-0.5 pb-1.5 mb-1.5 border-b border-border/60">
+      <button type="button" className={buttonClass} onMouseDown={applyFormat('bold')} title="Negrita (Ctrl+B)">
+        <Bold className="h-3.5 w-3.5" />
+      </button>
+      <button type="button" className={buttonClass} onMouseDown={applyFormat('italic')} title="Cursiva (Ctrl+I)">
+        <Italic className="h-3.5 w-3.5" />
+      </button>
+      <button type="button" className={buttonClass} onMouseDown={applyFormat('strikeThrough')} title="Tachado">
+        <Strikethrough className="h-3.5 w-3.5" />
+      </button>
+      <div className="w-px h-4 bg-border mx-1" />
+      <button type="button" className={buttonClass} onMouseDown={applyFormat('insertUnorderedList')} title="Lista con viñetas">
+        <List className="h-3.5 w-3.5" />
+      </button>
+      <button type="button" className={buttonClass} onMouseDown={applyFormat('insertOrderedList')} title="Lista numerada">
+        <ListOrdered className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  )
+}
+
 function CommentsSection({ task, compact = false, onDeleteComment }: { task: Task; compact?: boolean; onDeleteComment: (commentId: string) => Promise<void> }) {
   const { addComment, updateComment, deleteComment } = useTaskStore()
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -1016,6 +1063,14 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
     }
     
     if (e.key === 'Enter' && !e.shiftKey) {
+      // Inside a bullet/numbered list, let the browser add a new list item
+      // instead of submitting the comment.
+      const selection = window.getSelection()
+      const anchorNode = selection?.anchorNode
+      const anchorEl = anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement
+      if (anchorEl?.closest('li')) {
+        return
+      }
       e.preventDefault()
       handleSubmit()
     }
@@ -1177,6 +1232,7 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
           </Avatar>
           <span className={cn("font-medium", compact ? "text-xs" : "text-sm")}>{currentUser?.nombre || 'Nuevo comentario'}</span>
         </div>
+        <CommentFormatToolbar editorRef={editorRef} onChange={() => setCommentContent(editorRef.current?.innerHTML || '')} />
         <div className="relative">
           <div
             ref={editorRef}
@@ -1187,7 +1243,8 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
             data-placeholder={compact ? "Escribe..." : "Escribe un comentario... usa @ para mencionar (podes pegar imagenes con Ctrl+V)"}
               className={cn(
               "w-full p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary overflow-y-auto empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/50 [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1 [&_.mention]:bg-primary/20 [&_.mention]:text-primary [&_.mention]:px-1 [&_.mention]:rounded",
-              compact ? "min-h-[50px] max-h-[120px] text-xs" : "min-h-[88px] max-h-[250px]"
+              COMMENT_RICH_TEXT_CLASSES,
+              compact ? "min-h-[50px] max-h-[120px] text-sm" : "min-h-[88px] max-h-[250px]"
             )}
           />
           
@@ -1520,7 +1577,7 @@ function CustomFields({ task }: { task: Task }) {
   )
 }
 
-// ── Main Panel ────────────────────────────────────────────────────────────────
+// ── Main Panel ──────────────────���─────────────────────────────────────────────
 
 export function TaskDetailPanel() {
   const router = useRouter()
@@ -2300,15 +2357,15 @@ export function TaskDetailPanel() {
                               <div className={cn(!hasFilters && "pt-2 border-t mt-2")}>
                                 {!hasFilters && <p className="text-xs font-semibold mb-3">Comentarios ({(task.comments || []).length})</p>}
                                 {filteredComments.map((c) => (
-                                  <div key={c.id} className="group flex items-start gap-3 text-xs mb-3">
-                                    <Avatar className="h-5 w-5 mt-0.5 shrink-0">
+                                  <div key={c.id} className="group flex items-start gap-3 text-sm mb-4">
+                                    <Avatar className="h-6 w-6 mt-0.5 shrink-0">
                                       <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
-                                      <AvatarFallback className="text-[8px]">{getInitials(c.userName)}</AvatarFallback>
+                                      <AvatarFallback className="text-[10px]">{getInitials(c.userName)}</AvatarFallback>
                                     </Avatar>
                                     <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-1.5 mb-0.5">
-                                        <span className="text-xs font-medium text-foreground">{c.userName}</span>
-                                        <span className="text-[11px] text-muted-foreground">
+                                      <div className="flex items-center gap-1.5 mb-1">
+                                        <span className="text-sm font-medium text-foreground">{c.userName}</span>
+                                        <span className="text-xs text-muted-foreground">
                                           {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
                                         </span>
                                         {editingActivityCommentId !== c.id && (
@@ -2330,6 +2387,10 @@ export function TaskDetailPanel() {
                                       </div>
                                       {editingActivityCommentId === c.id ? (
                                         <div className="space-y-2">
+                                          <CommentFormatToolbar
+                                            editorRef={editingActivityEditorRef}
+                                            onChange={() => setEditingActivityContent(editingActivityEditorRef.current?.innerHTML || '')}
+                                          />
                                           <div
                                             ref={editingActivityEditorRef}
                                             contentEditable
@@ -2345,22 +2406,29 @@ export function TaskDetailPanel() {
                                               }
                                               if (e.key === 'Escape') cancelEditingActivityComment()
                                             }}
-                                            className="w-full min-h-[50px] p-2 text-[11px] rounded-md border border-input bg-background outline-none focus:ring-1 focus:ring-ring break-words whitespace-pre-wrap"
+                                            className={cn(
+                                              "w-full min-h-[50px] p-2 text-sm rounded-md border border-input bg-background outline-none focus:ring-1 focus:ring-ring break-words whitespace-pre-wrap",
+                                              COMMENT_RICH_TEXT_CLASSES
+                                            )}
                                             autoFocus
                                           />
                                           <div className="flex items-center gap-2">
-                                            <Button size="sm" className="h-6 text-[11px] px-2" onClick={() => void saveEditingActivityComment(c.id)} disabled={isSavingActivityComment}>
+                                            <Button size="sm" className="h-6 text-xs px-2" onClick={() => void saveEditingActivityComment(c.id)} disabled={isSavingActivityComment}>
                                               {isSavingActivityComment ? <Loader2 className="mr-1 size-3 animate-spin" /> : null}
                                               Guardar
                                             </Button>
-                                            <Button size="sm" variant="ghost" className="h-6 text-[11px] px-2" onClick={cancelEditingActivityComment} disabled={isSavingActivityComment}>
+                                            <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={cancelEditingActivityComment} disabled={isSavingActivityComment}>
                                               Cancelar
                                             </Button>
+                                            <span className="text-[10px] text-muted-foreground">Ctrl/Cmd + Enter para guardar</span>
                                           </div>
                                         </div>
                                       ) : (
                                         <div
-                                          className="text-[11px] text-foreground/80 break-words [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity"
+                                          className={cn(
+                                            "text-sm text-foreground/80 break-words whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity",
+                                            COMMENT_RICH_TEXT_CLASSES
+                                          )}
                                           dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
                                         />
                                       )}
