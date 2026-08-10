@@ -1636,10 +1636,12 @@ export function TaskDetailPanel() {
     }
   }, [task, deleteComment])
 
-  const startEditingActivityComment = useCallback((commentId: string, content: string) => {
+  const startEditingActivityComment = useCallback((commentId: string, content: string, authorId: string) => {
+    // Guard against editing another user's comment even if triggered programmatically.
+    if (authorId !== currentUserId) return
     setEditingActivityCommentId(commentId)
     setEditingActivityContent(content)
-  }, [])
+  }, [currentUserId])
 
   const cancelEditingActivityComment = useCallback(() => {
     setEditingActivityCommentId(null)
@@ -1649,6 +1651,14 @@ export function TaskDetailPanel() {
   const saveEditingActivityComment = useCallback(async (commentId: string) => {
     const content = editingActivityEditorRef.current?.innerHTML.trim() || editingActivityContent.trim()
     if (!content || content === '<br>' || isSavingActivityComment || !task) return
+    // Guard against saving edits to another user's comment.
+    const targetComment = (task.comments || []).find(c => c.id === commentId)
+    if (!targetComment || targetComment.userId !== currentUserId) {
+      toast.error('No podés editar comentarios de otros usuarios')
+      setEditingActivityCommentId(null)
+      setEditingActivityContent('')
+      return
+    }
     setIsSavingActivityComment(true)
     try {
       await updateComment(task.id, commentId, content)
@@ -1661,7 +1671,7 @@ export function TaskDetailPanel() {
     } finally {
       setIsSavingActivityComment(false)
     }
-  }, [task, updateComment, editingActivityContent, isSavingActivityComment])
+  }, [task, updateComment, editingActivityContent, isSavingActivityComment, currentUserId])
 
   // Load current user ID
   useEffect(() => {
@@ -2368,10 +2378,10 @@ export function TaskDetailPanel() {
                                         <span className="text-xs text-muted-foreground">
                                           {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
                                         </span>
-                                        {editingActivityCommentId !== c.id && (
+                                        {c.userId === currentUserId && editingActivityCommentId !== c.id && (
                                           <Button
                                             variant="ghost" size="icon" className="h-6 w-6 ml-auto"
-                                            onClick={() => startEditingActivityComment(c.id, c.content)}
+                                            onClick={() => startEditingActivityComment(c.id, c.content, c.userId)}
                                             title="Editar"
                                           >
                                             <Pencil className="h-3 w-3" />
