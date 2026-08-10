@@ -1905,16 +1905,21 @@ export function TaskDetailPanel() {
           )}
         </SheetHeader>
 
-        {/* Tabs */}
+        {/* Tabs (hidden while Activity is expanded so the comments feed gets the whole body) */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="mx-6 mt-6 mb-0 shrink-0 bg-muted/50 p-1 h-auto">
-            <TabsTrigger value="detalles" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Detalles</TabsTrigger>
-            <TabsTrigger value="cotizacion" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Cotizacion</TabsTrigger>
-          </TabsList>
+          {!isActivityExpanded && (
+            <TabsList className="mx-6 mt-6 mb-0 shrink-0 bg-muted/50 p-1 h-auto">
+              <TabsTrigger value="detalles" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Detalles</TabsTrigger>
+              <TabsTrigger value="cotizacion" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Cotizacion</TabsTrigger>
+            </TabsList>
+          )}
 
           <div className="flex-1 overflow-hidden">
             <TabsContent value="detalles" className="mt-0 h-full">
-              <div className="h-full flex flex-row px-6 pb-6 gap-0">
+              <div className={cn(
+                "h-full flex flex-row gap-0",
+                isActivityExpanded ? "px-0 pb-0 pt-0" : "px-6 pb-6"
+              )}>
                 {/* LEFT / MAIN COLUMN - 50% (hidden while Activity is expanded to full screen) */}
                 <div className={cn(
                   "overflow-y-auto flex flex-col min-w-0 pr-6",
