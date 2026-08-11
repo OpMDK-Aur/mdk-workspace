@@ -1329,39 +1329,6 @@ updateTask: async (taskId, updates) => {
       }
     }
 
-    // 2. Detect due date change — notify all current assignees + creator
-    if (updates.dueDate !== undefined) {
-      const prevDate = tareaAnterior.fecha_vencimiento
-      const newDate = updates.dueDate ? (updates.dueDate instanceof Date ? updates.dueDate.toISOString() : String(updates.dueDate)) : null
-      const prevNorm = prevDate ? parseISO(prevDate).toDateString() : null
-      const newNorm = newDate ? parseISO(newDate).toDateString() : null
-      if (prevNorm !== newNorm) {
-        // Notify all assignees + creator
-        const assigneeIds = [...new Set(previousAssignedIds)]
-        const creatorId = tareaAnterior.creado_por
-        const toNotify = [...new Set([...assigneeIds, ...(creatorId ? [creatorId] : [])])]
-        if (toNotify.length > 0) {
-          try {
-            const response = await fetch('/api/notifications/task-event', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                eventType: 'fecha_cambiada',
-                taskId,
-                taskTitle,
-                actorName,
-                colaboradorIds: toNotify,
-                newDate: newDate || undefined,
-                clienteId: tareaAnterior.cliente_id || null,
-              }),
-            })
-          } catch (err) {
-            console.error('[v0] Error sending due date notification:', err)
-          }
-        }
-      }
-    }
-
     // 3. Detect newly added clients — notify all current assignees + creator
     if (updates.clientIds !== undefined) {
       const prevClientIds: string[] = tareaAnterior.cliente_ids || (tareaAnterior.cliente_id ? [tareaAnterior.cliente_id] : [])
