@@ -335,18 +335,33 @@ export function ClientComments({ clientId, currentUser }: ClientCommentsProps) {
   }, [comments, searchQuery, authorFilter, dateFilter])
 
   const extractMentionedColaboradores = (content: string): string[] => {
-    const mentionRegex = /@([\w\sáéíóúñÁÉÍÓÚÑ]+?)(?=\s|$|[.,;:!?])/g
+    // Find every "@" in the text, then try to match the longest possible
+    // colaborador name starting there. This is necessary because names can
+    // have multiple words (e.g. "Jimena Gómez") and a generic word-based
+    // regex can't know where the name ends and the rest of the sentence
+    // begins — it would previously cut off after the first space and only
+    // capture "Jimena", silently failing to match "Jimena Gómez" and
+    // dropping the mention notification with no error.
     const mentionedIds: string[] = []
-    let match
-    
-    while ((match = mentionRegex.exec(content)) !== null) {
-      const mentionName = match[1].trim()
-      const colab = colaboradores.find(c => c.nombre.toLowerCase() === mentionName.toLowerCase())
-      if (colab && colab.id !== currentUser?.id) {
-        mentionedIds.push(colab.id)
+    const sortedColaboradores = [...colaboradores].sort(
+      (a, b) => b.nombre.length - a.nombre.length
+    )
+
+    const atIndexes: number[] = []
+    for (let i = 0; i < content.length; i++) {
+      if (content[i] === '@') atIndexes.push(i)
+    }
+
+    for (const atIndex of atIndexes) {
+      const rest = content.slice(atIndex + 1)
+      const match = sortedColaboradores.find(
+        (c) => rest.toLowerCase().startsWith(c.nombre.toLowerCase())
+      )
+      if (match && match.id !== currentUser?.id) {
+        mentionedIds.push(match.id)
       }
     }
-    
+
     return [...new Set(mentionedIds)]
   }
 

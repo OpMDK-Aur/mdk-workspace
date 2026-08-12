@@ -193,10 +193,13 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
   async function limpiarYRegenerar() {
     if (!currentUserId) return
     setLoading(true)
-    
+
     const supabase = createClient()
-    // Delete every notification for this user (respecting the active filter),
-    // then regenerate the automatic ones (overdue/today tasks).
+    // Delete every notification for this user (respecting the active filter).
+    // NOTE: we intentionally do NOT call /api/notifications/generate afterwards.
+    // That endpoint recreates automatic notifications for overdue/today tasks,
+    // which made this button look broken (it deleted, then instantly repopulated
+    // the same "tarea_vence"/"tarea_hoy" notifications).
     let query = supabase
       .from('notificaciones')
       .delete()
@@ -206,17 +209,17 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
       query = query.eq('leida', false)
     }
 
-    await query
+    const { error } = await query
+
+    if (error) {
+      console.error('[v0] Error clearing notifications:', error)
+    }
 
     setNotificaciones((prev) =>
       filter === 'no_leidas' ? prev.filter((n) => n.leida) : []
     )
 
-    // Generate fresh notifications
-    await fetch('/api/notifications/generate', { method: 'POST' })
-
-    // Reload
-    loadNotificaciones(currentUserId)
+    setLoading(false)
   }
 
   async function eliminarNotificacion(id: string) {
