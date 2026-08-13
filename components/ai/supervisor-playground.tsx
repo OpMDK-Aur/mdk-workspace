@@ -19,13 +19,15 @@ function messageText(message: UIMessage) {
 export function SupervisorPlayground() {
   const [input, setInput] = useState('')
   const { messages, sendMessage, status, error } = useChat({
-    transport: new DefaultChatTransport({ api: '/api/ai/chat' }),
+    transport: new DefaultChatTransport({
+      api: '/api/ai/chat',
+      body: { context: {} },
+    }),
   })
   const isBusy = status === 'submitted' || status === 'streaming'
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (event.nativeEvent instanceof SubmitEvent && event.nativeEvent.submitter) return
     const query = input.trim()
     if (!query || isBusy) return
     setInput('')
@@ -68,7 +70,11 @@ export function SupervisorPlayground() {
                 </div>
               ))}
               {isBusy && <p className="text-xs text-muted-foreground">El Supervisor está procesando…</p>}
-              {error && <p className="text-sm text-destructive">No se pudo procesar la consulta. Revisá la sesión y la configuración del Gateway.</p>}
+              {error && (
+                <p className="text-sm text-destructive" role="alert">
+                  {error.message || 'No se pudo procesar la conversación del Supervisor.'}
+                </p>
+              )}
             </div>
 
             <form className="flex gap-2" onSubmit={handleSubmit}>

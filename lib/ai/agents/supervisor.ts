@@ -19,6 +19,7 @@ export async function streamSupervisorResponse(
 ) {
   const config = await agentConfigRepository.getSupervisor(context.userId)
   const definitions = getToolDefinitions(config.enabledTools)
+  console.log('[v0] Supervisor model selected:', config.model)
   const tools = Object.fromEntries(
     definitions.map((definition) => [
       definition.key,

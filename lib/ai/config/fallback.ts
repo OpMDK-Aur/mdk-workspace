@@ -79,7 +79,7 @@ export function isFallbackModel(model: string): boolean {
 }
 
 export const chatRequestSchema = z.object({
-  query: z.string().trim().min(1).max(4000),
+  messages: z.array(z.unknown()).min(1).max(50),
   context: z
     .object({
       clientId: z.string().uuid().optional(),
