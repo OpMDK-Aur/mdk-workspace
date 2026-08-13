@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { useTheme } from 'next-themes'
+import type { CSSProperties } from 'react'
 import type { User } from '@supabase/supabase-js'
 import type { Profile } from '@/lib/types'
 import { Sidebar } from './sidebar'
@@ -16,6 +17,12 @@ interface DashboardShellProps {
 
 export function DashboardShell({ user, profile, children }: DashboardShellProps) {
   const { setTheme } = useTheme()
+  const accentHue = profile?.accent_hue ?? 55
+  const accentStyles = {
+    '--primary': `oklch(0.7 0.18 ${accentHue})`,
+    '--accent': `oklch(0.7 0.18 ${accentHue})`,
+    '--ring': `oklch(0.7 0.18 ${accentHue})`,
+  } as CSSProperties
 
   // Sync saved theme and accent color from DB on mount
   useEffect(() => {
@@ -32,7 +39,7 @@ export function DashboardShell({ user, profile, children }: DashboardShellProps)
   }, [profile?.theme, profile?.accent_hue])
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-screen bg-background overflow-hidden" style={accentStyles}>
       <Sidebar
         user={user}
         profile={profile}
