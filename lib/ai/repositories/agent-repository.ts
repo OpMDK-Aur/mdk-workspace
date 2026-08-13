@@ -49,7 +49,10 @@ function toAgentConfig(row: AgentRow, tools: AgentToolRow[]): AgentConfig {
   }
 }
 
-function toSupervisorConfig(agent: AgentConfig): SupervisorConfig {
+function toSupervisorConfig(
+  agent: AgentConfig,
+  metadata: Pick<SupervisorConfig, 'configSource' | 'fallbackUsed' | 'fallbackReason'> = {},
+): SupervisorConfig {
   return {
     id: agent.id,
     name: agent.name,
@@ -60,6 +63,7 @@ function toSupervisorConfig(agent: AgentConfig): SupervisorConfig {
     enabledTools: agent.enabledTools,
     createdAt: agent.createdAt,
     updatedAt: agent.updatedAt,
+    ...metadata,
   }
 }
 
@@ -95,16 +99,37 @@ export class SupabaseAgentConfigRepository implements AgentConfigRepository {
     try {
       const agent = await this.loadAgent('supervisor')
       if (!agent) throw new Error('Active Supabase supervisor configuration was not found')
-      console.log('[v0] Agent config source: supabase', { userId, slug: 'supervisor', enabledTools: agent.enabledTools })
-      return toSupervisorConfig(agent)
+      console.log('[v0] Agent config loaded', {
+        source: SUPABASE_CONFIG_SOURCE,
+        agent_slug: agent.slug,
+        agent_id: agent.id,
+        model: agent.model,
+        updated_at: agent.updatedAt.toISOString(),
+        enabled_tools_count: agent.enabledTools.length,
+        fallback_used: false,
+      })
+      return toSupervisorConfig(agent, { configSource: 'supabase', fallbackUsed: false })
     } catch (error) {
+      const fallbackReason = error instanceof Error ? error.message : 'Unknown Supabase error'
+      const fallback = getFallbackSupervisor()
       console.warn('[v0] Agent config fallback used', {
+        source: FALLBACK_CONFIG_SOURCE,
         userId,
-        slug: 'supervisor',
-        reason: error instanceof Error ? error.message : 'Unknown Supabase error',
+        agent_slug: 'supervisor',
+        agent_id: fallback.id,
+        model: fallback.model,
+        updated_at: fallback.updatedAt.toISOString(),
+        enabled_tools_count: fallback.enabledTools.length,
+        fallback_used: true,
+        fallback_reason: fallbackReason,
       })
       this.source = FALLBACK_CONFIG_SOURCE
-      return getFallbackSupervisor()
+      return {
+        ...fallback,
+        configSource: 'fallback',
+        fallbackUsed: true,
+        fallbackReason,
+      }
     }
   }
 

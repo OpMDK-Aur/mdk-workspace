@@ -60,4 +60,7 @@ export interface SupervisorConfig {
   enabledTools: string[]
   createdAt: Date
   updatedAt: Date
+  configSource?: 'supabase' | 'fallback'
+  fallbackUsed?: boolean
+  fallbackReason?: string
 }
