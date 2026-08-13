@@ -22,7 +22,7 @@ export function DashboardShell({ user, profile, children }: DashboardShellProps)
     if (profile?.theme) {
       setTheme(profile.theme)
     }
-    if (profile?.accent_hue) {
+    if (profile?.accent_hue != null) {
       const hue = profile.accent_hue
       document.documentElement.style.setProperty('--primary', `oklch(0.7 0.18 ${hue})`)
       document.documentElement.style.setProperty('--accent', `oklch(0.7 0.18 ${hue})`)
