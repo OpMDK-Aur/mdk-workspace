@@ -24,6 +24,7 @@ import {
 import {
   FileText,
   ArrowLeft,
+  RefreshCw,
   Send,
   Check,
   ChevronsUpDown,
@@ -154,6 +155,14 @@ export default function AnalistaPage() {
     (id: string | null) => clients.find((c) => c.id === id)?.nombre_del_negocio,
     [clients],
   )
+
+  const syncAllAdvertisingAccounts = async () => {
+    const response = await fetch('/api/admin/advertising-accounts/sync', { method: 'POST' })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || 'No se pudo sincronizar')
+    toast.success(`Sincronización completa: ${data.created} creadas, ${data.updated} actualizadas.`)
+    if (selectedClient) await fetchCuentasCliente(selectedClient.id)
+  }
 
   const fetchCuentasCliente = async (clientId: string) => {
     setLoadingCuentas(true)
@@ -695,7 +704,13 @@ assistantContent = renderContent(assistantContent)
           {/* Ad Account Multi-select */}
           {selectedClient && (
             <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Cuentas publicitarias</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs font-medium text-muted-foreground">Cuentas publicitarias</label>
+                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={() => syncAllAdvertisingAccounts().catch((error) => toast.error(error instanceof Error ? error.message : 'No se pudo sincronizar'))}>
+                  <RefreshCw className="mr-1.5 h-3 w-3" />
+                  Sincronizar todas
+                </Button>
+              </div>
               {loadingCuentas ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground px-1 py-2">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
