@@ -21,12 +21,20 @@ import {
 } from '@/components/ui/select'
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuCheckboxItem,
+  DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
-import { Play, DollarSign, Clock, Loader2, ChevronLeft, ChevronRight, ChevronDown, Users } from 'lucide-react'
+import { Play, DollarSign, Clock, Loader2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Users, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 
 // Generate a color from client id for visual distinction
@@ -607,6 +615,9 @@ function EntryRow({
   onDelete 
 }: EntryRowProps) {
   const [editingField, setEditingField] = useState<'description' | 'client' | 'type' | 'start' | 'end' | 'colaborador' | null>(null)
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [tempDescription, setTempDescription] = useState(entry.descripcion)
   const [tempClienteId, setTempClienteId] = useState(entry.cliente_id)
   const [tempTipoTareaId, setTempTipoTareaId] = useState(entry.tipo_tarea_id)
@@ -631,6 +642,38 @@ function EntryRow({
     const hours = date.getHours().toString().padStart(2, '0')
     const mins = date.getMinutes().toString().padStart(2, '0')
     return `${day}/${month} ${hours}:${mins}`
+  }
+
+  const openEditDialog = () => {
+    setTempDescription(entry.descripcion)
+    setTempClienteId(entry.cliente_id)
+    setTempTipoTareaId(entry.tipo_tarea_id)
+    setTempStart(formatDateTimeForInput(entry.iniciado_en))
+    setTempEnd(formatDateTimeForInput(entry.finalizado_en))
+    setIsEditDialogOpen(true)
+  }
+
+  const handleSaveAll = async () => {
+    setIsSaving(true)
+    try {
+      const iniciado_en = tempStart ? parseISO(tempStart).toISOString() : entry.iniciado_en
+      const finalizado_en = tempEnd ? parseISO(tempEnd).toISOString() : entry.finalizado_en
+      const updates: Partial<TimeEntry> = {
+        descripcion: tempDescription,
+        cliente_id: tempClienteId,
+        tipo_tarea_id: tempTipoTareaId || null,
+        iniciado_en,
+        finalizado_en,
+      }
+      if (iniciado_en && finalizado_en) {
+        updates.duracion_seg = Math.max(0, Math.floor((new Date(finalizado_en).getTime() - new Date(iniciado_en).getTime()) / 1000))
+      }
+      await onUpdate(entry.id, updates)
+      setIsEditDialogOpen(false)
+      toast.success('Entrada actualizada')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleStartEditDescription = () => {
@@ -713,7 +756,8 @@ function EntryRow({
   }
 
   return (
-    <div className="group flex items-center gap-3 p-3 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors">
+    <div className="space-y-0">
+      <div className="group flex items-center gap-3 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors p-3">
       {/* Colaborador Badge (Admin mode only) */}
       {showColaborador && (
         <div className="min-w-[120px]">
@@ -886,19 +930,53 @@ function EntryRow({
       </div>
 
       {/* Action Buttons */}
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+      <div className="flex items-center gap-1 shrink-0">
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={openEditDialog} title="Editar entrada">
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsExpanded((value) => !value)} title={isExpanded ? 'Contraer detalles' : 'Ver detalles'} aria-expanded={isExpanded}>
+          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </Button>
         {!showColaborador && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
-            onClick={onContinue}
-            title="Continuar timer"
-          >
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10" onClick={onContinue} title="Continuar timer">
             <Play className="h-3.5 w-3.5 fill-current" />
           </Button>
         )}
       </div>
+      </div>
+
+      {isExpanded && (
+        <div className="grid grid-cols-2 gap-3 rounded-b-lg border border-t-0 border-border bg-muted/20 px-4 py-3 text-xs text-muted-foreground sm:grid-cols-4">
+          <div><span className="block text-[11px] uppercase tracking-wide">Inicio</span><span className="font-medium text-foreground">{getDateTimeDisplay(entry.iniciado_en)}</span></div>
+          <div><span className="block text-[11px] uppercase tracking-wide">Fin</span><span className="font-medium text-foreground">{getDateTimeDisplay(entry.finalizado_en)}</span></div>
+          <div><span className="block text-[11px] uppercase tracking-wide">Duración</span><span className="font-mono font-medium text-foreground">{formatDurationPrecise(entry.duracion_seg, entry.iniciado_en, entry.finalizado_en)}</span></div>
+          <div><span className="block text-[11px] uppercase tracking-wide">Facturable</span><span className="font-medium text-foreground">{entry.facturable ? 'Sí' : 'No'}</span></div>
+        </div>
+      )}
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar entrada de tiempo</DialogTitle>
+            <DialogDescription>Modificá los datos de esta entrada. La duración se recalcula automáticamente.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-5 py-4">
+            <div className="grid gap-2">
+              <label htmlFor={`description-${entry.id}`} className="text-sm font-medium">Descripción</label>
+              <Input id={`description-${entry.id}`} value={tempDescription} onChange={(event) => setTempDescription(event.target.value)} />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2"><label className="text-sm font-medium">Cliente</label><Select value={tempClienteId || 'none'} onValueChange={(value) => setTempClienteId(value === 'none' ? null : value)}><SelectTrigger><SelectValue placeholder="Sin cliente" /></SelectTrigger><SelectContent><SelectItem value="none">Sin cliente</SelectItem>{clientes.map((item) => <SelectItem key={item.id} value={item.id}>{item.nombre_del_negocio}</SelectItem>)}</SelectContent></Select></div>
+              <div className="grid gap-2"><label className="text-sm font-medium">Tipo de tarea</label><Select value={tempTipoTareaId || 'none'} onValueChange={(value) => setTempTipoTareaId(value === 'none' ? null : value)}><SelectTrigger><SelectValue placeholder="Sin tipo" /></SelectTrigger><SelectContent><SelectItem value="none">Sin tipo</SelectItem>{tiposTarea.map((item) => <SelectItem key={item.id} value={item.id}>{item.nombre}</SelectItem>)}</SelectContent></Select></div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2"><label htmlFor={`start-${entry.id}`} className="text-sm font-medium">Inicio</label><Input id={`start-${entry.id}`} type="datetime-local" value={tempStart} onChange={(event) => setTempStart(event.target.value)} className="h-11" /></div>
+              <div className="grid gap-2"><label htmlFor={`end-${entry.id}`} className="text-sm font-medium">Fin</label><Input id={`end-${entry.id}`} type="datetime-local" value={tempEnd} onChange={(event) => setTempEnd(event.target.value)} className="h-11" /></div>
+            </div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button><Button onClick={handleSaveAll} disabled={isSaving}>{isSaving ? 'Guardando…' : 'Guardar cambios'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
