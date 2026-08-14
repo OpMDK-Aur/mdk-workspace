@@ -18,17 +18,20 @@ export default function TimePage() {
       const { data: { user } } = await supabase.auth.getUser()
       
       if (user) {
-        setUserId(user.id)
-        // Check role from colaboradores table with roles join (match by email, as the
-        // rest of the app does — the colaboradores id is not always the auth user id)
+        // entradas_de_tiempo.colaborador_id references colaboradores.id, not auth.users.id.
+        // Resolve the collaborator by email before filtering the active tracking preview.
         const { data: colaborador } = await supabase
           .from('colaboradores')
-          .select('rol_id, roles(nombre)')
+          .select('id, rol_id, roles(nombre)')
           .eq('email', user.email)
           .single()
-        
-        const roleName = (colaborador?.roles as { nombre: string } | null)?.nombre || ''
-        setIsAdmin(ADMIN_ROLES.includes(roleName.toLowerCase()))
+
+        setUserId(colaborador?.id ?? undefined)
+        const roleRelation = colaborador?.roles as { nombre: string } | { nombre: string }[] | null
+        const roleName = Array.isArray(roleRelation)
+          ? roleRelation[0]?.nombre || ''
+          : roleRelation?.nombre || ''
+        setIsAdmin(ADMIN_ROLES.includes(roleName.trim().toLowerCase()))
       }
       setLoading(false)
     }

@@ -83,6 +83,7 @@ export const chatRequestSchema = z.object({
   context: z
     .object({
       clientId: z.string().uuid().optional(),
+      conversationId: z.string().uuid().optional(),
       accountId: z.string().max(200).optional(),
       metaAccountId: z.string().max(200).optional(),
       googleCustomerId: z.string().max(200).optional(),

@@ -21,12 +21,20 @@ import {
 } from '@/components/ui/select'
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuCheckboxItem,
+  DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
-import { Play, DollarSign, Clock, Loader2, ChevronLeft, ChevronRight, ChevronDown, Users } from 'lucide-react'
+import { Play, DollarSign, Clock, Loader2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Users, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 
 // Generate a color from client id for visual distinction
@@ -81,7 +89,22 @@ interface EntriesListProps {
 }
 
 export function EntriesList({ isMaster = false, currentUserId }: EntriesListProps) {
-  const { entries: storeEntries, continueEntry, deleteEntry, updateEntry, isLoading: storeLoading, loadEntries, isRunning, startedAt, getElapsedSeconds } = useTimerStore()
+  const {
+    entries: storeEntries,
+    continueEntry,
+    deleteEntry,
+    updateEntry,
+    isLoading: storeLoading,
+    loadEntries,
+    isRunning,
+    startedAt,
+    currentEntryId,
+    description: timerDescription,
+    clientId: timerClientId,
+    tipoTareaId: timerTipoTareaId,
+    billable: timerBillable,
+    getElapsedSeconds,
+  } = useTimerStore()
   
   // Admin mode state
   const [adminEntries, setAdminEntries] = useState<TimeEntry[]>([])
@@ -244,12 +267,34 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
     return colaboradores.find((c) => c.id === colaboradorId)
   }
 
-  // Separate running entry from completed entries
+  // Keep the active timer visible immediately, even before the Supabase cache refreshes.
+  const previewEntry = useMemo<TimeEntry | undefined>(() => {
+    if (!isRunning || !startedAt) return undefined
+    return {
+      id: currentEntryId ?? 'active-timer-preview',
+      colaborador_id: currentUserId ?? null,
+      cliente_id: timerClientId,
+      tipo_tarea_id: timerTipoTareaId,
+      descripcion: timerDescription || 'Sin descripción',
+      iniciado_en: startedAt,
+      finalizado_en: null,
+      duracion_seg: runningElapsed,
+      facturable: timerBillable,
+    }
+  }, [currentUserId, currentEntryId, isMaster, isRunning, runningElapsed, startedAt, timerClientId, timerDescription, timerTipoTareaId, timerBillable])
+
+  // Separate running entry from completed entries. Prefer the persisted row when available,
+  // otherwise render the local preview so the user sees the marking immediately.
   const { runningEntry, completedEntries } = useMemo(() => {
-    const running = entries.find((e) => e.finalizado_en === null)
+    // Admin puede ver todas las entradas históricas, pero la marcación "En progreso"
+    // debe pertenecer siempre al usuario actual.
+    const persistedRunning = entries.find(
+      (e) => e.finalizado_en === null && e.colaborador_id === currentUserId
+    )
+    const running = persistedRunning ?? previewEntry
     const completed = entries.filter((e) => e.finalizado_en !== null)
     return { runningEntry: running, completedEntries: completed }
-  }, [entries])
+  }, [currentUserId, entries, previewEntry])
 
   // Group completed entries by day
   const groupedEntries = useMemo(() => {
@@ -455,7 +500,7 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
         </div>
       )}
 
-      {entries.length === 0 ? (
+      {entries.length === 0 && !runningEntry ? (
         <div className="flex flex-col items-center justify-center py-16 px-4">
           <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
             <Clock className="h-8 w-8 text-muted-foreground" />
@@ -471,8 +516,8 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
         </div>
       ) : (
         <>
-          {/* Running Entry - Always at top with pulsing indicator (only for regular users) */}
-          {!isMaster && runningEntry && (
+          {/* Running Entry - Always at top with pulsing indicator */}
+          {runningEntry && (
             <div className="mb-6">
               <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
                 <div className="relative flex h-3 w-3">
@@ -607,6 +652,9 @@ function EntryRow({
   onDelete 
 }: EntryRowProps) {
   const [editingField, setEditingField] = useState<'description' | 'client' | 'type' | 'start' | 'end' | 'colaborador' | null>(null)
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [tempDescription, setTempDescription] = useState(entry.descripcion)
   const [tempClienteId, setTempClienteId] = useState(entry.cliente_id)
   const [tempTipoTareaId, setTempTipoTareaId] = useState(entry.tipo_tarea_id)
@@ -633,6 +681,38 @@ function EntryRow({
     return `${day}/${month} ${hours}:${mins}`
   }
 
+  const openEditDialog = () => {
+    setTempDescription(entry.descripcion)
+    setTempClienteId(entry.cliente_id)
+    setTempTipoTareaId(entry.tipo_tarea_id)
+    setTempStart(formatDateTimeForInput(entry.iniciado_en))
+    setTempEnd(formatDateTimeForInput(entry.finalizado_en))
+    setIsEditDialogOpen(true)
+  }
+
+  const handleSaveAll = async () => {
+    setIsSaving(true)
+    try {
+      const iniciado_en = tempStart ? parseISO(tempStart).toISOString() : entry.iniciado_en
+      const finalizado_en = tempEnd ? parseISO(tempEnd).toISOString() : entry.finalizado_en
+      const updates: Partial<TimeEntry> = {
+        descripcion: tempDescription,
+        cliente_id: tempClienteId,
+        tipo_tarea_id: tempTipoTareaId || null,
+        iniciado_en,
+        finalizado_en,
+      }
+      if (iniciado_en && finalizado_en) {
+        updates.duracion_seg = Math.max(0, Math.floor((new Date(finalizado_en).getTime() - new Date(iniciado_en).getTime()) / 1000))
+      }
+      await onUpdate(entry.id, updates)
+      setIsEditDialogOpen(false)
+      toast.success('Entrada actualizada')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   const handleStartEditDescription = () => {
     setTempDescription(entry.descripcion)
     setEditingField('description')
@@ -646,16 +726,6 @@ function EntryRow({
   const handleStartEditType = () => {
     setTempTipoTareaId(entry.tipo_tarea_id)
     setEditingField('type')
-  }
-
-  const handleStartEditStart = () => {
-    setTempStart(formatDateTimeForInput(entry.iniciado_en))
-    setEditingField('start')
-  }
-
-  const handleStartEditEnd = () => {
-    setTempEnd(formatDateTimeForInput(entry.finalizado_en))
-    setEditingField('end')
   }
 
   const handleSaveDescription = async () => {
@@ -686,34 +756,9 @@ function EntryRow({
     setEditingField(null)
   }
 
-  const handleSaveDateTime = async (field: 'start' | 'end', value: string) => {
-    if (!value) { setEditingField(null); return }
-    
-    const newDate = parseISO(value)
-    const updates: any = {}
-    
-    if (field === 'start') {
-      updates.iniciado_en = value
-      // Recalculate duration if end date exists
-      if (entry.finalizado_en) {
-        const endMs = parseISO(entry.finalizado_en).getTime()
-        updates.duracion_seg = Math.max(0, Math.floor((endMs - newDate.getTime()) / 1000))
-      }
-    } else {
-      updates.finalizado_en = value
-      // Recalculate duration if start date exists
-      if (entry.iniciado_en) {
-        const startMs = parseISO(entry.iniciado_en).getTime()
-        updates.duracion_seg = Math.max(0, Math.floor((newDate.getTime() - startMs) / 1000))
-      }
-    }
-    
-    await onUpdate(entry.id, updates)
-    setEditingField(null)
-  }
-
   return (
-    <div className="group flex items-center gap-3 p-3 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors">
+    <div className="space-y-0">
+      <div className="group flex items-center gap-3 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors p-3">
       {/* Colaborador Badge (Admin mode only) */}
       {showColaborador && (
         <div className="min-w-[120px]">
@@ -829,45 +874,11 @@ function EntryRow({
         )}
       </div>
 
-      {/* DateTime Range - Editable (fecha + hora) */}
-      <div className="flex items-center gap-1 text-sm shrink-0">
-        {editingField === 'start' ? (
-          <Input
-            type="datetime-local"
-            value={tempStart}
-            onChange={(e) => setTempStart(e.target.value)}
-            onBlur={() => handleSaveDateTime('start', tempStart)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSaveDateTime('start', tempStart)}
-            className="h-7 w-36 text-xs"
-            autoFocus
-          />
-        ) : (
-          <span 
-            className="cursor-pointer hover:text-primary px-1 rounded hover:bg-muted text-xs"
-            onClick={handleStartEditStart}
-          >
-            {getDateTimeDisplay(entry.iniciado_en)}
-          </span>
-        )}
+      {/* DateTime Range - Se edita únicamente desde el modal */}
+      <div className="flex items-center gap-1 text-sm shrink-0" aria-label="Rango de tiempo. Usá Editar para modificarlo.">
+        <span className="px-1 text-xs text-muted-foreground">{getDateTimeDisplay(entry.iniciado_en)}</span>
         <span className="text-muted-foreground">-</span>
-        {editingField === 'end' ? (
-          <Input
-            type="datetime-local"
-            value={tempEnd}
-            onChange={(e) => setTempEnd(e.target.value)}
-            onBlur={() => handleSaveDateTime('end', tempEnd)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSaveDateTime('end', tempEnd)}
-            className="h-7 w-36 text-xs"
-            autoFocus
-          />
-        ) : (
-          <span 
-            className="cursor-pointer hover:text-primary px-1 rounded hover:bg-muted text-xs"
-            onClick={handleStartEditEnd}
-          >
-            {getDateTimeDisplay(entry.finalizado_en)}
-          </span>
-        )}
+        <span className="px-1 text-xs text-muted-foreground">{getDateTimeDisplay(entry.finalizado_en)}</span>
       </div>
 
       {/* Duration */}
@@ -886,19 +897,53 @@ function EntryRow({
       </div>
 
       {/* Action Buttons */}
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+      <div className="flex items-center gap-1 shrink-0">
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={openEditDialog} title="Editar entrada">
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsExpanded((value) => !value)} title={isExpanded ? 'Contraer detalles' : 'Ver detalles'} aria-expanded={isExpanded}>
+          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </Button>
         {!showColaborador && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
-            onClick={onContinue}
-            title="Continuar timer"
-          >
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10" onClick={onContinue} title="Continuar timer">
             <Play className="h-3.5 w-3.5 fill-current" />
           </Button>
         )}
       </div>
+      </div>
+
+      {isExpanded && (
+        <div className="grid grid-cols-2 gap-3 rounded-b-lg border border-t-0 border-border bg-muted/20 px-4 py-3 text-xs text-muted-foreground sm:grid-cols-4">
+          <div><span className="block text-[11px] uppercase tracking-wide">Inicio</span><span className="font-medium text-foreground">{getDateTimeDisplay(entry.iniciado_en)}</span></div>
+          <div><span className="block text-[11px] uppercase tracking-wide">Fin</span><span className="font-medium text-foreground">{getDateTimeDisplay(entry.finalizado_en)}</span></div>
+          <div><span className="block text-[11px] uppercase tracking-wide">Duración</span><span className="font-mono font-medium text-foreground">{formatDurationPrecise(entry.duracion_seg, entry.iniciado_en, entry.finalizado_en)}</span></div>
+          <div><span className="block text-[11px] uppercase tracking-wide">Facturable</span><span className="font-medium text-foreground">{entry.facturable ? 'Sí' : 'No'}</span></div>
+        </div>
+      )}
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar entrada de tiempo</DialogTitle>
+            <DialogDescription>Modificá los datos de esta entrada. La duración se recalcula automáticamente.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-5 py-4">
+            <div className="grid gap-2">
+              <label htmlFor={`description-${entry.id}`} className="text-sm font-medium">Descripción</label>
+              <Input id={`description-${entry.id}`} value={tempDescription} onChange={(event) => setTempDescription(event.target.value)} />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2"><label className="text-sm font-medium">Cliente</label><Select value={tempClienteId || 'none'} onValueChange={(value) => setTempClienteId(value === 'none' ? null : value)}><SelectTrigger><SelectValue placeholder="Sin cliente" /></SelectTrigger><SelectContent><SelectItem value="none">Sin cliente</SelectItem>{clientes.map((item) => <SelectItem key={item.id} value={item.id}>{item.nombre_del_negocio}</SelectItem>)}</SelectContent></Select></div>
+              <div className="grid gap-2"><label className="text-sm font-medium">Tipo de tarea</label><Select value={tempTipoTareaId || 'none'} onValueChange={(value) => setTempTipoTareaId(value === 'none' ? null : value)}><SelectTrigger><SelectValue placeholder="Sin tipo" /></SelectTrigger><SelectContent><SelectItem value="none">Sin tipo</SelectItem>{tiposTarea.map((item) => <SelectItem key={item.id} value={item.id}>{item.nombre}</SelectItem>)}</SelectContent></Select></div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2"><label htmlFor={`start-${entry.id}`} className="text-sm font-medium">Inicio</label><Input id={`start-${entry.id}`} type="datetime-local" value={tempStart} onChange={(event) => setTempStart(event.target.value)} className="h-11" /></div>
+              <div className="grid gap-2"><label htmlFor={`end-${entry.id}`} className="text-sm font-medium">Fin</label><Input id={`end-${entry.id}`} type="datetime-local" value={tempEnd} onChange={(event) => setTempEnd(event.target.value)} className="h-11" /></div>
+            </div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button><Button onClick={handleSaveAll} disabled={isSaving}>{isSaving ? 'Guardando…' : 'Guardar cambios'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
