@@ -264,9 +264,9 @@ export function ActiveTimerBar() {
       )}
 
       {/* Fila principal: timer */}
-      <div className="flex items-center gap-3 px-4 py-3">
+      <div className="flex items-center gap-2 px-4 py-3 overflow-x-auto">
         {/* Descripción */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-[120px]">
           <Input
             placeholder="¿En qué estás trabajando?"
             value={description}
@@ -281,7 +281,7 @@ export function ActiveTimerBar() {
           onValueChange={async (val) => await setTipoTareaId(val || null)}
           disabled={isLoadingTipos}
         >
-          <SelectTrigger className="w-[200px] shrink-0">
+          <SelectTrigger className="w-[130px] sm:w-[180px] shrink-0">
             <SelectValue placeholder={isLoadingTipos ? 'Cargando...' : 'Tipo de tarea'}>
               {selectedTipo && (
                 <div className="flex items-center gap-2">
@@ -319,7 +319,7 @@ export function ActiveTimerBar() {
           onValueChange={async (val) => await setClientId(val || null)}
           disabled={isLoadingClients}
         >
-          <SelectTrigger className="w-[200px] shrink-0">
+          <SelectTrigger className="w-[130px] sm:w-[180px] shrink-0">
             <SelectValue placeholder={isLoadingClients ? 'Cargando...' : 'Cliente'}>
               {selectedClient && (
                 <div className="flex items-center gap-2">
