@@ -89,7 +89,22 @@ interface EntriesListProps {
 }
 
 export function EntriesList({ isMaster = false, currentUserId }: EntriesListProps) {
-  const { entries: storeEntries, continueEntry, deleteEntry, updateEntry, isLoading: storeLoading, loadEntries, isRunning, startedAt, getElapsedSeconds } = useTimerStore()
+  const {
+    entries: storeEntries,
+    continueEntry,
+    deleteEntry,
+    updateEntry,
+    isLoading: storeLoading,
+    loadEntries,
+    isRunning,
+    startedAt,
+    currentEntryId,
+    description: timerDescription,
+    clientId: timerClientId,
+    tipoTareaId: timerTipoTareaId,
+    billable: timerBillable,
+    getElapsedSeconds,
+  } = useTimerStore()
   
   // Admin mode state
   const [adminEntries, setAdminEntries] = useState<TimeEntry[]>([])
@@ -252,12 +267,30 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
     return colaboradores.find((c) => c.id === colaboradorId)
   }
 
-  // Separate running entry from completed entries
+  // Keep the active timer visible immediately, even before the Supabase cache refreshes.
+  const previewEntry = useMemo<TimeEntry | undefined>(() => {
+    if (isMaster || !isRunning || !startedAt) return undefined
+    return {
+      id: currentEntryId ?? 'active-timer-preview',
+      colaborador_id: currentUserId ?? null,
+      cliente_id: timerClientId,
+      tipo_tarea_id: timerTipoTareaId,
+      descripcion: timerDescription || 'Sin descripción',
+      iniciado_en: startedAt,
+      finalizado_en: null,
+      duracion_seg: runningElapsed,
+      facturable: timerBillable,
+    }
+  }, [currentUserId, currentEntryId, isMaster, isRunning, runningElapsed, startedAt, timerClientId, timerDescription, timerTipoTareaId, timerBillable])
+
+  // Separate running entry from completed entries. Prefer the persisted row when available,
+  // otherwise render the local preview so the user sees the marking immediately.
   const { runningEntry, completedEntries } = useMemo(() => {
-    const running = entries.find((e) => e.finalizado_en === null)
+    const persistedRunning = entries.find((e) => e.finalizado_en === null)
+    const running = persistedRunning ?? previewEntry
     const completed = entries.filter((e) => e.finalizado_en !== null)
     return { runningEntry: running, completedEntries: completed }
-  }, [entries])
+  }, [entries, previewEntry])
 
   // Group completed entries by day
   const groupedEntries = useMemo(() => {
@@ -463,7 +496,7 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
         </div>
       )}
 
-      {entries.length === 0 ? (
+      {entries.length === 0 && !runningEntry ? (
         <div className="flex flex-col items-center justify-center py-16 px-4">
           <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
             <Clock className="h-8 w-8 text-muted-foreground" />
