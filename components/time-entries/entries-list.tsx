@@ -269,7 +269,7 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
 
   // Keep the active timer visible immediately, even before the Supabase cache refreshes.
   const previewEntry = useMemo<TimeEntry | undefined>(() => {
-    if (isMaster || !isRunning || !startedAt) return undefined
+    if (!isRunning || !startedAt) return undefined
     return {
       id: currentEntryId ?? 'active-timer-preview',
       colaborador_id: currentUserId ?? null,
@@ -512,8 +512,8 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
         </div>
       ) : (
         <>
-          {/* Running Entry - Always at top with pulsing indicator (only for regular users) */}
-          {!isMaster && runningEntry && (
+          {/* Running Entry - Always at top with pulsing indicator */}
+          {runningEntry && (
             <div className="mb-6">
               <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
                 <div className="relative flex h-3 w-3">
