@@ -691,16 +691,6 @@ function EntryRow({
     setEditingField('type')
   }
 
-  const handleStartEditStart = () => {
-    setTempStart(formatDateTimeForInput(entry.iniciado_en))
-    setEditingField('start')
-  }
-
-  const handleStartEditEnd = () => {
-    setTempEnd(formatDateTimeForInput(entry.finalizado_en))
-    setEditingField('end')
-  }
-
   const handleSaveDescription = async () => {
     if (tempDescription !== entry.descripcion) {
       await onUpdate(entry.id, { descripcion: tempDescription })
@@ -726,32 +716,6 @@ function EntryRow({
     if (newColaboradorId !== entry.colaborador_id) {
       await onUpdate(entry.id, { colaborador_id: newColaboradorId })
     }
-    setEditingField(null)
-  }
-
-  const handleSaveDateTime = async (field: 'start' | 'end', value: string) => {
-    if (!value) { setEditingField(null); return }
-    
-    const newDate = parseISO(value)
-    const updates: any = {}
-    
-    if (field === 'start') {
-      updates.iniciado_en = value
-      // Recalculate duration if end date exists
-      if (entry.finalizado_en) {
-        const endMs = parseISO(entry.finalizado_en).getTime()
-        updates.duracion_seg = Math.max(0, Math.floor((endMs - newDate.getTime()) / 1000))
-      }
-    } else {
-      updates.finalizado_en = value
-      // Recalculate duration if start date exists
-      if (entry.iniciado_en) {
-        const startMs = parseISO(entry.iniciado_en).getTime()
-        updates.duracion_seg = Math.max(0, Math.floor((newDate.getTime() - startMs) / 1000))
-      }
-    }
-    
-    await onUpdate(entry.id, updates)
     setEditingField(null)
   }
 
@@ -873,45 +837,11 @@ function EntryRow({
         )}
       </div>
 
-      {/* DateTime Range - Editable (fecha + hora) */}
-      <div className="flex items-center gap-1 text-sm shrink-0">
-        {editingField === 'start' ? (
-          <Input
-            type="datetime-local"
-            value={tempStart}
-            onChange={(e) => setTempStart(e.target.value)}
-            onBlur={() => handleSaveDateTime('start', tempStart)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSaveDateTime('start', tempStart)}
-            className="h-7 w-36 text-xs"
-            autoFocus
-          />
-        ) : (
-          <span 
-            className="cursor-pointer hover:text-primary px-1 rounded hover:bg-muted text-xs"
-            onClick={handleStartEditStart}
-          >
-            {getDateTimeDisplay(entry.iniciado_en)}
-          </span>
-        )}
+      {/* DateTime Range - Se edita únicamente desde el modal */}
+      <div className="flex items-center gap-1 text-sm shrink-0" aria-label="Rango de tiempo. Usá Editar para modificarlo.">
+        <span className="px-1 text-xs text-muted-foreground">{getDateTimeDisplay(entry.iniciado_en)}</span>
         <span className="text-muted-foreground">-</span>
-        {editingField === 'end' ? (
-          <Input
-            type="datetime-local"
-            value={tempEnd}
-            onChange={(e) => setTempEnd(e.target.value)}
-            onBlur={() => handleSaveDateTime('end', tempEnd)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSaveDateTime('end', tempEnd)}
-            className="h-7 w-36 text-xs"
-            autoFocus
-          />
-        ) : (
-          <span 
-            className="cursor-pointer hover:text-primary px-1 rounded hover:bg-muted text-xs"
-            onClick={handleStartEditEnd}
-          >
-            {getDateTimeDisplay(entry.finalizado_en)}
-          </span>
-        )}
+        <span className="px-1 text-xs text-muted-foreground">{getDateTimeDisplay(entry.finalizado_en)}</span>
       </div>
 
       {/* Duration */}
