@@ -161,7 +161,9 @@ export default function AnalistaPage() {
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || 'No se pudo sincronizar')
     toast.success(`Sincronización completa: ${data.created} creadas, ${data.updated} actualizadas.`)
-    if (selectedClient) await fetchCuentasCliente(selectedClient.id)
+    if (selectedClient) {
+      await fetchCuentasCliente(selectedClient.id)
+    }
   }
 
   const fetchCuentasCliente = async (clientId: string) => {
@@ -661,7 +663,13 @@ assistantContent = renderContent(assistantContent)
 
         {/* New Query Section */}
         <div className="p-4 space-y-3 border-b overflow-y-auto max-h-[55vh]">
-          <h3 className="text-sm font-medium text-muted-foreground">Nueva consulta</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-medium text-muted-foreground">Nueva consulta</h3>
+            <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => syncAllAdvertisingAccounts().catch((error) => toast.error(error instanceof Error ? error.message : 'No se pudo sincronizar'))}>
+              <RefreshCw className="mr-1.5 h-3 w-3" />
+              Sincronizar todas
+            </Button>
+          </div>
 
           {/* Client Combobox */}
           <Popover open={clientOpen} onOpenChange={setClientOpen}>
@@ -704,13 +712,7 @@ assistantContent = renderContent(assistantContent)
           {/* Ad Account Multi-select */}
           {selectedClient && (
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <label className="text-xs font-medium text-muted-foreground">Cuentas publicitarias</label>
-                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={() => syncAllAdvertisingAccounts().catch((error) => toast.error(error instanceof Error ? error.message : 'No se pudo sincronizar'))}>
-                  <RefreshCw className="mr-1.5 h-3 w-3" />
-                  Sincronizar todas
-                </Button>
-              </div>
+              <label className="text-xs font-medium text-muted-foreground">Cuentas publicitarias</label>
               {loadingCuentas ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground px-1 py-2">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
