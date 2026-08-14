@@ -1,5 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai'
-import { streamText, tool } from 'ai'
+import { stepCountIs, streamText, tool } from 'ai'
 import { agentConfigRepository } from '../repositories/agent-repository'
 import { getToolDefinitions } from '../tools'
 import type { ExecutionContext } from '../types'
@@ -50,6 +50,7 @@ export async function streamSupervisorResponse(
     ].join('\n\n'),
     prompt: query,
     tools,
+    stopWhen: stepCountIs(5),
     temperature: 0.2,
     maxOutputTokens: 1200,
   })
