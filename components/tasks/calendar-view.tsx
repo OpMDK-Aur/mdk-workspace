@@ -11,6 +11,8 @@ import {
   isSameMonth, 
   isSameDay, 
   isToday,
+  startOfDay,
+  endOfDay,
   addMonths,
   subMonths,
   isPast,
@@ -293,24 +295,36 @@ export function CalendarView() {
     setNewTaskModalOpen(true)
   }
   
-  // Group tasks by due date
+  // Show a task on every calendar day from its start date through its due date.
+  // Tasks without a start date remain anchored to their due date.
   const tasksByDate = useMemo(() => {
     const grouped = new Map<string, Task[]>()
-    
+
     tasks.forEach((task) => {
-      if (task.dueDate) {
-        const dateKey = format(typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate, 'yyyy-MM-dd')
+      const dueDate = task.dueDate
+        ? (typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate)
+        : null
+      if (!dueDate) return
+
+      const startDate = task.startDate
+        ? (typeof task.startDate === 'string' ? parseISO(task.startDate) : task.startDate)
+        : dueDate
+      const rangeStart = startOfDay(startDate <= dueDate ? startDate : dueDate)
+      const rangeEnd = endOfDay(startDate <= dueDate ? dueDate : startDate)
+
+      eachDayOfInterval({ start: rangeStart, end: rangeEnd }).forEach((date) => {
+        const dateKey = format(date, 'yyyy-MM-dd')
         const existing = grouped.get(dateKey) || []
         grouped.set(dateKey, [...existing, task])
-      }
+      })
     })
-    
+
     return grouped
   }, [tasks])
-  
-  // Get tasks without due date
+
+  // Get tasks without any calendar date
   const tasksWithoutDate = useMemo(() => {
-    return tasks.filter((task) => !task.dueDate)
+    return tasks.filter((task) => !task.startDate && !task.dueDate)
   }, [tasks])
   
   // Generate calendar days
