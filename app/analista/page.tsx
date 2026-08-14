@@ -24,7 +24,6 @@ import {
 import {
   FileText,
   ArrowLeft,
-  RefreshCw,
   Send,
   Check,
   ChevronsUpDown,
@@ -155,16 +154,6 @@ export default function AnalistaPage() {
     (id: string | null) => clients.find((c) => c.id === id)?.nombre_del_negocio,
     [clients],
   )
-
-  const syncAllAdvertisingAccounts = async () => {
-    const response = await fetch('/api/admin/advertising-accounts/sync', { method: 'POST' })
-    const data = await response.json()
-    if (!response.ok) throw new Error(data.error || 'No se pudo sincronizar')
-    toast.success(`Sincronización completa: ${data.created} creadas, ${data.updated} actualizadas.`)
-    if (selectedClient) {
-      await fetchCuentasCliente(selectedClient.id)
-    }
-  }
 
   const fetchCuentasCliente = async (clientId: string) => {
     setLoadingCuentas(true)
@@ -663,13 +652,7 @@ assistantContent = renderContent(assistantContent)
 
         {/* New Query Section */}
         <div className="p-4 space-y-3 border-b overflow-y-auto max-h-[55vh]">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-medium text-muted-foreground">Nueva consulta</h3>
-            <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => syncAllAdvertisingAccounts().catch((error) => toast.error(error instanceof Error ? error.message : 'No se pudo sincronizar'))}>
-              <RefreshCw className="mr-1.5 h-3 w-3" />
-              Sincronizar todas
-            </Button>
-          </div>
+          <h3 className="text-sm font-medium text-muted-foreground">Nueva consulta</h3>
 
           {/* Client Combobox */}
           <Popover open={clientOpen} onOpenChange={setClientOpen}>

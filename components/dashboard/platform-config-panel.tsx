@@ -453,6 +453,24 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [saved, setSaved] = useState<Record<string, boolean>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [autoSaving, setAutoSaving] = useState(false)
+  const [syncingAll, setSyncingAll] = useState(false)
+  const [syncSummary, setSyncSummary] = useState<string | null>(null)
+
+  async function syncAllAdvertisingAccounts() {
+    setSyncingAll(true)
+    setSyncSummary(null)
+    try {
+      const response = await fetch('/api/admin/advertising-accounts/sync', { method: 'POST' })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'No se pudo sincronizar')
+      setSyncSummary(`${data.created} creadas, ${data.updated} actualizadas, ${data.failed} fallidas`)
+      await Promise.all([fetchMetaAccounts(), fetchGoogleAccounts()])
+    } catch (error) {
+      setSyncSummary(error instanceof Error ? error.message : 'No se pudo sincronizar')
+    } finally {
+      setSyncingAll(false)
+    }
+  }
 
   // Filters
   const [filterClientName, setFilterClientName] = useState('__all__')
@@ -642,6 +660,18 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-col gap-3 rounded-lg border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-medium">Sincronización global</p>
+          <p className="text-xs text-muted-foreground">Actualiza las cuentas publicitarias de todos los clientes.</p>
+          {syncSummary && <p className="mt-1 text-xs text-muted-foreground">Resultado: {syncSummary}</p>}
+        </div>
+        <Button type="button" variant="outline" onClick={syncAllAdvertisingAccounts} disabled={syncingAll}>
+          {syncingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+          {syncingAll ? 'Sincronizando…' : 'Sincronizar todas'}
+        </Button>
+      </div>
+
       {/* Filters */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
         <div className="space-y-1">
