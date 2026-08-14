@@ -584,6 +584,7 @@ export interface Task {
   priority: TaskPriority
   type: TaskType // UUID from tipo_de_tareas or legacy string
   typeName?: string // Display name from tipo_de_tareas
+  startDate?: Date | null
   dueDate: Date | null
   isActive: boolean // Toggle to resume task independently of status
   isSystemTask?: boolean // System/recurring task with special styling

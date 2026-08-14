@@ -2107,18 +2107,20 @@ export function TaskDetailPanel() {
                       <div className="flex items-center gap-1.5">
                         <Popover>
                           <PopoverTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 gap-2 text-sm px-2.5 text-muted-foreground hover:text-foreground rounded-md">
-                              <CalendarIcon className="h-3.5 w-3.5" />
-                              Inicio
-                            </Button>
+                              <Button variant="ghost" size="sm" className="h-8 gap-2 text-sm px-2.5 text-muted-foreground hover:text-foreground rounded-md">
+                                <CalendarIcon className="h-3.5 w-3.5" />
+                                {task.startDate
+                                  ? format(task.startDate, 'dd MMM yyyy', { locale: es })
+                                  : 'Fecha de inicio'}
+                              </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={undefined}
-                              onSelect={() => {}}
-                              initialFocus
-                            />
+                              <Calendar
+                                mode="single"
+                                selected={task.startDate ?? undefined}
+                                onSelect={(date) => updateTask(task.id, { startDate: date ?? null })}
+                                initialFocus
+                              />
                           </PopoverContent>
                         </Popover>
                         <span className="text-muted-foreground/30 text-sm font-light">—</span>

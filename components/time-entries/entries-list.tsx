@@ -891,7 +891,7 @@ function EntryRow({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
+            className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
             onClick={onContinue}
             title="Continuar timer"
           >
