@@ -27,6 +27,7 @@ interface TareaDB {
   creado_por: string | null
   estado: string
   prioridad: string
+  fecha_de_inicio: string | null
   fecha_vencimiento: string | null
   fecha_completada: string | null
   hito_poe: string | null
@@ -169,6 +170,7 @@ function mapTareaToTask(
     priority: mapPrioridadToPriority(tarea.prioridad),
     type: tarea.tipo_tarea_id || '', // UUID from tipo_de_tareas
     typeName: tarea.tipo_de_tareas?.nombre || '', // Display name
+    startDate: tarea.fecha_de_inicio ? parseISO(tarea.fecha_de_inicio) : null,
     dueDate: tarea.fecha_vencimiento ? parseISO(tarea.fecha_vencimiento) : null,
       isActive: tarea.estado !== 'completada' && tarea.estado !== 'resuelto' && tarea.estado !== 'no_realizado',
     customFields: {},
@@ -1232,6 +1234,7 @@ updateTask: async (taskId, updates) => {
   if (updates.status !== undefined) dbUpdates.estado = updates.status
   if (updates.priority !== undefined) dbUpdates.prioridad = updates.priority
   if (updates.type !== undefined) dbUpdates.tipo_tarea_id = updates.type || null
+  if (updates.startDate !== undefined) dbUpdates.fecha_de_inicio = updates.startDate
   if (updates.dueDate !== undefined) dbUpdates.fecha_vencimiento = updates.dueDate
   if (updates.clientIds !== undefined) {
     dbUpdates.cliente_ids = updates.clientIds.length > 0 ? updates.clientIds : null
@@ -1593,6 +1596,7 @@ addTask: async (taskData) => {
     asignados_a: assigneeIds.length > 0 ? assigneeIds : null,
     estado: taskData.status || 'pendiente',
     prioridad: taskData.priority || 'media',
+    fecha_de_inicio: taskData.startDate ? taskData.startDate.toISOString() : null,
     fecha_vencimiento: dueDate,
     hito_poe: taskData.hitoPoe || null,
     creado_por: resolvedCreatedById,
