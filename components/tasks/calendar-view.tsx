@@ -49,181 +49,283 @@ function getInitials(name: string): string {
     .slice(0, 2)
 }
 
-interface DayTasksProps {
+interface TaskBar {
+  task: Task
+  startCol: number
+  endCol: number
+}
+
+function getTaskRange(task: Task): { start: Date; end: Date } | null {
+  const dueDateRaw = task.dueDate
+  if (!dueDateRaw) return null
+  const dueDate = typeof dueDateRaw === 'string' ? parseISO(dueDateRaw) : dueDateRaw
+  const startDateRaw = task.startDate
+    ? (typeof task.startDate === 'string' ? parseISO(task.startDate) : task.startDate)
+    : dueDate
+  const start = startOfDay(startDateRaw <= dueDate ? startDateRaw : dueDate)
+  const end = endOfDay(startDateRaw <= dueDate ? dueDate : startDateRaw)
+  return { start, end }
+}
+
+// Compute one continuous bar per task for the days of this week it covers,
+// clamped to the week's own start/end so the bar breaks and resumes on the next row.
+function computeWeekBars(weekDates: Date[], tasks: Task[]): TaskBar[] {
+  const weekStart = startOfDay(weekDates[0])
+  const weekEnd = endOfDay(weekDates[weekDates.length - 1])
+  const bars: TaskBar[] = []
+
+  tasks.forEach((task) => {
+    const range = getTaskRange(task)
+    if (!range) return
+    if (range.end < weekStart || range.start > weekEnd) return
+
+    const clampedStart = range.start < weekStart ? weekStart : range.start
+    const clampedEnd = range.end > weekEnd ? weekEnd : range.end
+
+    const startCol = weekDates.findIndex((d) => isSameDay(d, clampedStart))
+    const endCol = weekDates.findIndex((d) => isSameDay(d, clampedEnd))
+    if (startCol === -1 || endCol === -1) return
+
+    bars.push({ task, startCol, endCol })
+  })
+
+  return bars
+}
+
+// Greedily pack bars into lanes so overlapping date ranges stack into separate rows.
+function assignLanes(bars: TaskBar[]): TaskBar[][] {
+  const lanes: TaskBar[][] = []
+  const sorted = [...bars].sort(
+    (a, b) => a.startCol - b.startCol || (b.endCol - b.startCol) - (a.endCol - a.startCol),
+  )
+
+  sorted.forEach((bar) => {
+    const lane = lanes.find((existingLane) =>
+      existingLane.every((placed) => bar.startCol > placed.endCol || bar.endCol < placed.startCol),
+    )
+    if (lane) {
+      lane.push(bar)
+    } else {
+      lanes.push([bar])
+    }
+  })
+
+  return lanes
+}
+
+interface DayNumberCellProps {
   date: Date
-  tasks: Task[]
   isCurrentMonth: boolean
+  onAddTask: (date: Date) => void
+}
+
+function DayNumberCell({ date, isCurrentMonth, onAddTask }: DayNumberCellProps) {
+  const today = isToday(date)
+  const pastDay = isPast(date) && !today
+
+  return (
+    <div
+      className={cn(
+        'group/day flex items-center justify-between border-r border-b px-1.5 py-1 last:border-r-0',
+        !isCurrentMonth && 'bg-muted/30',
+        today && 'bg-primary/5',
+        pastDay && isCurrentMonth && 'bg-muted/10',
+      )}
+    >
+      <span
+        className={cn(
+          'flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium',
+          today && 'bg-blue-600 text-white font-bold',
+          !today && !isCurrentMonth && 'text-muted-foreground/50',
+          !today && pastDay && isCurrentMonth && 'text-muted-foreground',
+          !today && isCurrentMonth && !pastDay && 'text-foreground',
+        )}
+      >
+        {format(date, 'd')}
+      </span>
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onAddTask(date)
+        }}
+        className={cn(
+          'flex h-5 w-5 items-center justify-center rounded opacity-0 transition-colors hover:bg-primary/20 group-hover/day:opacity-100',
+          !isCurrentMonth && 'text-muted-foreground/50',
+        )}
+        title="Crear tarea"
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  )
+}
+
+interface TaskBarCardProps {
+  task: Task
+  startCol: number
+  endCol: number
+  onTaskClick: (taskId: string) => void
+}
+
+function TaskBarCard({ task, startCol, endCol, onTaskClick }: TaskBarCardProps) {
+  const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
+  const isSystemTask = task.isSystemTask
+  const isResuelto = task.status === 'resuelto'
+  const dueDate = task.dueDate ? (typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate) : null
+  const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate) && task.status !== 'resuelto'
+
+  return (
+    <button
+      onClick={() => onTaskClick(task.id)}
+      style={{ gridColumn: `${startCol + 1} / ${endCol + 2}` }}
+      className={cn(
+        'rounded-xl border border-gray-200 px-2.5 py-2 text-left shadow-sm transition-all',
+        'bg-white dark:border-border dark:bg-card',
+        'hover:border-primary/50 hover:shadow-md',
+        isOverdue && !isSystemTask && 'ring-1 ring-red-400/60',
+        isResuelto && 'border-green-500/60 bg-green-500/5 opacity-60',
+      )}
+    >
+      <div className="flex items-start gap-1.5">
+        {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />}
+        {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />}
+        <span className="flex-1 text-[11px] font-semibold text-gray-900 dark:text-foreground break-words line-clamp-1">
+          {task.title}
+        </span>
+      </div>
+      <div className="mt-1.5 flex items-center justify-between">
+        {isSystemTask ? (
+          <Badge
+            variant="outline"
+            className="h-3.5 px-1 text-[9px] border-0 bg-teal-100 dark:bg-teal-900/40 text-teal-800 dark:text-teal-300 font-medium"
+          >
+            Semanal
+          </Badge>
+        ) : (
+          <Badge
+            variant="outline"
+            className={cn('h-3.5 px-1 text-[9px] border-0 font-medium', priorityConfig.bgColor, priorityConfig.color)}
+          >
+            {priorityConfig.label}
+          </Badge>
+        )}
+        <div className="flex -space-x-1">
+          {task.assignees && task.assignees.length > 0 ? (
+            <>
+              {task.assignees.slice(0, 2).map((a, i) => (
+                <Avatar key={a.id} className="h-4 w-4 border border-card" style={{ zIndex: 2 - i }}>
+                  {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
+                  <AvatarFallback className="text-[6px]">{getInitials(a.nombre)}</AvatarFallback>
+                </Avatar>
+              ))}
+              {task.assignees.length > 2 && (
+                <div className="h-4 w-4 rounded-full bg-muted border border-card flex items-center justify-center text-[6px] font-medium" style={{ zIndex: 0 }}>
+                  +{task.assignees.length - 2}
+                </div>
+              )}
+            </>
+          ) : (task.assigneeAvatar || task.assigneeName) ? (
+            <Avatar className="h-4 w-4 shrink-0">
+              {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
+              <AvatarFallback className="text-[7px]">{getInitials(task.assigneeName)}</AvatarFallback>
+            </Avatar>
+          ) : null}
+        </div>
+      </div>
+    </button>
+  )
+}
+
+const MAX_VISIBLE_LANES = 3
+
+interface WeekRowProps {
+  weekDates: Date[]
+  tasks: Task[]
+  currentMonth: Date
   onTaskClick: (taskId: string) => void
   onAddTask: (date: Date) => void
 }
 
-function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTasksProps) {
-  const today = isToday(date)
-  const pastDay = isPast(date) && !today
-  
+function WeekRow({ weekDates, tasks, currentMonth, onTaskClick, onAddTask }: WeekRowProps) {
+  const bars = useMemo(() => computeWeekBars(weekDates, tasks), [weekDates, tasks])
+  const lanes = useMemo(() => assignLanes(bars), [bars])
+  const visibleLanes = lanes.slice(0, MAX_VISIBLE_LANES)
+  const overflowTasks = useMemo(() => {
+    const seen = new Set<string>()
+    const result: Task[] = []
+    lanes.slice(MAX_VISIBLE_LANES).forEach((lane) => {
+      lane.forEach((bar) => {
+        if (!seen.has(bar.task.id)) {
+          seen.add(bar.task.id)
+          result.push(bar.task)
+        }
+      })
+    })
+    return result
+  }, [lanes])
+
   return (
-    <div 
-      className={cn(
-        'min-h-[120px] border-r border-b p-1.5 transition-colors w-full',
-        !isCurrentMonth && 'bg-muted/30',
-        today && 'bg-primary/5 ring-1 ring-inset ring-primary/20',
-        pastDay && isCurrentMonth && 'bg-muted/20'
-      )}
-    >
-      {/* Day header */}
-      <div className="flex items-center justify-between mb-1 group/day">
-        <span 
-          className={cn(
-            'text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full',
-            today && 'bg-blue-600 text-white font-bold',
-            !today && !isCurrentMonth && 'text-muted-foreground/50',
-            !today && pastDay && isCurrentMonth && 'text-muted-foreground',
-            !today && isCurrentMonth && !pastDay && 'text-foreground'
-          )}
-        >
-          {format(date, 'd')}
-        </span>
-        <div className="flex items-center gap-1">
-          {tasks.length > 0 && (
-            <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-              {tasks.length}
-            </Badge>
-          )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onAddTask(date)
-            }}
-            className={cn(
-              'h-5 w-5 flex items-center justify-center rounded hover:bg-primary/20 transition-colors',
-              'opacity-0 group-hover/day:opacity-100',
-              !isCurrentMonth && 'text-muted-foreground/50'
-            )}
-            title="Crear tarea"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
-        </div>
+    <div className="border-b">
+      <div className="grid grid-cols-7" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+        {weekDates.map((date) => (
+          <DayNumberCell
+            key={date.toISOString()}
+            date={date}
+            isCurrentMonth={isSameMonth(date, currentMonth)}
+            onAddTask={onAddTask}
+          />
+        ))}
       </div>
-      
-      {/* Tasks */}
-      <div className="space-y-1">
-        {tasks.slice(0, 3).map((task) => {
-          const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
-          const statusConfig = STATUS_CONFIG[task.status] || STATUS_CONFIG.pendiente
-          const isSystemTask = task.isSystemTask
-          const isResuelto = task.status === 'resuelto'
-          const dueDate = task.dueDate ? (typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate) : null
-          const startDate = task.startDate ? (typeof task.startDate === 'string' ? parseISO(task.startDate) : task.startDate) : dueDate
-          const hasRange = Boolean(startDate && dueDate && !isSameDay(startDate, dueDate))
-          const isRangeStart = Boolean(startDate && isSameDay(date, startDate))
-          const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate) && task.status !== 'resuelto'
-      
-      return (
-            <button
-              key={task.id}
-              onClick={() => onTaskClick(task.id)}
-              aria-label={hasRange && !isRangeStart ? `${task.title}, tarea en curso` : task.title}
-              className={cn(
-                'relative z-10 w-full text-left px-1.5 py-1 text-xs transition-colors',
-                hasRange
-                  ? 'min-h-[76px] -mx-2 -my-1 w-[calc(100%+1rem)] rounded-none border-y border-primary/40 bg-card/95'
-                  : 'rounded',
-                hasRange && !isRangeStart && 'border-l-0 border-y-0 hover:border-y-0',
-                hasRange && isRangeStart && 'rounded-l border-l',
-                hasRange && dueDate && isSameDay(date, dueDate) && 'rounded-r border-r',
-                !hasRange && 'bg-white dark:bg-card border border-gray-200 dark:border-border',
-                hasRange ? 'hover:border-primary/60 hover:shadow-sm' : 'hover:border-primary/50 hover:shadow-sm',
-                isOverdue && !isSystemTask && 'ring-1 ring-red-400/60',
-                isResuelto && 'border-green-500/60 bg-green-500/5 opacity-50'
-              )}
-            >
-              {(!hasRange || isRangeStart) && <>
-                <div className="flex items-start gap-1 pt-1">
-                  {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />}
-                  {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />}
-                  <span className="flex-1 text-[11px] font-medium text-gray-900 dark:text-foreground break-words line-clamp-2">
-                    {task.title}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between mt-0.5">
-                {isSystemTask ? (
-                  <Badge
-                    variant="outline"
-                    className="h-3.5 px-1 text-[9px] border-0 bg-teal-100 dark:bg-teal-900/40 text-teal-800 dark:text-teal-300 font-medium"
-                  >
-                    Semanal
-                  </Badge>
-                ) : (
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'h-3.5 px-1 text-[9px] border-0 font-medium',
-                      priorityConfig.bgColor,
-                      priorityConfig.color
-                    )}
-                  >
-                    {priorityConfig.label}
-                  </Badge>
-                )}
-                {/* Assignees stack */}
-                <div className="flex -space-x-1">
-                  {task.assignees && task.assignees.length > 0 ? (
-                    <>
-                      {task.assignees.slice(0, 2).map((a, i) => (
-                        <Avatar key={a.id} className="h-4 w-4 border border-card" style={{ zIndex: 2 - i }}>
-                          {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
-                          <AvatarFallback className="text-[6px]">{getInitials(a.nombre)}</AvatarFallback>
-                        </Avatar>
-                      ))}
-                      {task.assignees.length > 2 && (
-                        <div className="h-4 w-4 rounded-full bg-muted border border-card flex items-center justify-center text-[6px] font-medium" style={{ zIndex: 0 }}>
-                          +{task.assignees.length - 2}
-                        </div>
-                      )}
-                    </>
-                  ) : (task.assigneeAvatar || task.assigneeName) ? (
-                    <Avatar className="h-4 w-4 shrink-0">
-                      {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
-                      <AvatarFallback className="text-[7px]">{getInitials(task.assigneeName)}</AvatarFallback>
-                    </Avatar>
-                  ) : null}
-                </div>
-                </div>
-              </>}
-            </button>
-          )
-        })}
-        {tasks.length > 3 && (
+
+      <div className="flex flex-col gap-1 px-1.5 py-1.5 min-h-[16px]">
+        {visibleLanes.map((lane, laneIdx) => (
+          <div
+            key={laneIdx}
+            className="grid grid-cols-7 gap-1"
+            style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}
+          >
+            {lane.map((bar) => (
+              <TaskBarCard
+                key={bar.task.id}
+                task={bar.task}
+                startCol={bar.startCol}
+                endCol={bar.endCol}
+                onTaskClick={onTaskClick}
+              />
+            ))}
+          </div>
+        ))}
+
+        {overflowTasks.length > 0 && (
           <Popover>
             <PopoverTrigger asChild>
-              <button className="w-full text-[11px] text-primary hover:text-primary/80 font-medium text-center py-0.5 hover:bg-primary/10 rounded transition-colors">
-                +{tasks.length - 3} más
+              <button className="w-full text-[11px] text-primary hover:text-primary/80 font-medium text-center py-1 hover:bg-primary/10 rounded transition-colors">
+                +{overflowTasks.length} más
               </button>
             </PopoverTrigger>
             <PopoverContent
               className="w-72 p-0 shadow-lg border"
-              align="end"
-              side="top"
+              align="center"
+              side="bottom"
               sideOffset={8}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="sticky top-0 bg-gradient-to-r from-background to-background/95 px-4 py-3 border-b backdrop-blur-sm z-10">
                 <div className="flex items-center justify-between">
                   <span className="text-base font-semibold text-foreground capitalize">
-                    {format(date, "EEEE d 'de' MMMM", { locale: es })}
+                    {format(weekDates[0], 'd MMM', { locale: es })} - {format(weekDates[6], "d MMM", { locale: es })}
                   </span>
                   <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">
-                    {tasks.length} tareas
+                    {overflowTasks.length} tareas
                   </span>
                 </div>
               </div>
               <ScrollArea className="h-80 w-full">
                 <div className="px-2 py-2 space-y-1">
-                  {tasks.map((task, index) => {
+                  {overflowTasks.map((task) => {
                     const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
-      const dueDate = task.dueDate ? (typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate) : null
-      const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate) && task.status !== 'resuelto'
+                    const dueDate = task.dueDate ? (typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate) : null
+                    const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate) && task.status !== 'resuelto'
                     const isSystemTask = task.isSystemTask
                     const isResuelto = task.status === 'resuelto'
 
@@ -236,7 +338,7 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                           'bg-card/40 border border-border/40 hover:border-primary/50 hover:bg-card/60',
                           'hover:shadow-sm hover:translate-x-0.5',
                           isOverdue && !isSystemTask && 'border-red-400/50 bg-red-400/10',
-                          isResuelto && 'border-green-500/60 bg-green-500/5 opacity-50'
+                          isResuelto && 'border-green-500/60 bg-green-500/5 opacity-50',
                         )}
                       >
                         <div className="flex items-start gap-1.5 mb-1.5">
@@ -246,28 +348,6 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                             <span className="flex-1 text-xs font-medium text-foreground break-words line-clamp-3">
                               {task.title}
                             </span>
-                          </div>
-                          <div className="flex items-center gap-0.5 shrink-0">
-                            {task.assignees && task.assignees.length > 0 ? (
-                              <div className="flex -space-x-1">
-                                {task.assignees.slice(0, 2).map((a, i) => (
-                                  <Avatar key={a.id} className="h-4 w-4 border border-card" style={{ zIndex: 2 - i }}>
-                                    {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
-                                    <AvatarFallback className="text-[6px]">{getInitials(a.nombre)}</AvatarFallback>
-                                  </Avatar>
-                                ))}
-                                {task.assignees.length > 2 && (
-                                  <div className="h-4 w-4 rounded-full bg-muted border border-card flex items-center justify-center text-[6px] font-medium" style={{ zIndex: 0 }}>
-                                    +{task.assignees.length - 2}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (task.assigneeAvatar || task.assigneeName) ? (
-                              <Avatar className="h-4 w-4 shrink-0">
-                                {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
-                                <AvatarFallback className="text-[6px]">{getInitials(task.assigneeName)}</AvatarFallback>
-                              </Avatar>
-                            ) : null}
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -307,33 +387,6 @@ export function CalendarView() {
     setNewTaskModalOpen(true)
   }
   
-  // Show a task on every calendar day from its start date through its due date.
-  // Tasks without a start date remain anchored to their due date.
-  const tasksByDate = useMemo(() => {
-    const grouped = new Map<string, Task[]>()
-
-    tasks.forEach((task) => {
-      const dueDate = task.dueDate
-        ? (typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate)
-        : null
-      if (!dueDate) return
-
-      const startDate = task.startDate
-        ? (typeof task.startDate === 'string' ? parseISO(task.startDate) : task.startDate)
-        : dueDate
-      const rangeStart = startOfDay(startDate <= dueDate ? startDate : dueDate)
-      const rangeEnd = endOfDay(startDate <= dueDate ? dueDate : startDate)
-
-      eachDayOfInterval({ start: rangeStart, end: rangeEnd }).forEach((date) => {
-        const dateKey = format(date, 'yyyy-MM-dd')
-        const existing = grouped.get(dateKey) || []
-        grouped.set(dateKey, [...existing, task])
-      })
-    })
-
-    return grouped
-  }, [tasks])
-
   // Get tasks without any calendar date
   const tasksWithoutDate = useMemo(() => {
     return tasks.filter((task) => !task.startDate && !task.dueDate)
@@ -348,6 +401,16 @@ export function CalendarView() {
     
     return eachDayOfInterval({ start: calendarStart, end: calendarEnd })
   }, [currentMonth])
+
+  // Group days into week rows so multi-day tasks can render as one continuous
+  // bar per week, breaking and resuming across the week boundary.
+  const weeks = useMemo(() => {
+    const result: Date[][] = []
+    for (let i = 0; i < calendarDays.length; i += 7) {
+      result.push(calendarDays.slice(i, i + 7))
+    }
+    return result
+  }, [calendarDays])
   
   const weekDays = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
   
@@ -408,23 +471,16 @@ export function CalendarView() {
         
         {/* Calendar grid */}
         <div className="flex-1 overflow-auto">
-          <div className="grid grid-cols-7" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
-            {calendarDays.map((date) => {
-              const dateKey = format(date, 'yyyy-MM-dd')
-              const dayTasks = tasksByDate.get(dateKey) || []
-              
-              return (
-                <DayTasks
-                  key={dateKey}
-                  date={date}
-                  tasks={dayTasks}
-                  isCurrentMonth={isSameMonth(date, currentMonth)}
-                  onTaskClick={setSelectedTask}
-                  onAddTask={handleAddTask}
-                />
-              )
-            })}
-          </div>
+          {weeks.map((weekDates) => (
+            <WeekRow
+              key={weekDates[0].toISOString()}
+              weekDates={weekDates}
+              tasks={tasks}
+              currentMonth={currentMonth}
+              onTaskClick={setSelectedTask}
+              onAddTask={handleAddTask}
+            />
+          ))}
         </div>
       </div>
       
