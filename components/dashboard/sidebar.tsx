@@ -55,7 +55,6 @@ import {
   AppWindow,
   Database,
   Webhook,
-  Bot,
 } from 'lucide-react'
 import { UserSettingsDialog } from './user-settings-dialog'
 import { NotificationsPanel } from './notifications-panel'
@@ -100,7 +99,6 @@ const primaryItems: NavItem[] = [
   { id: 'clients', name: 'Clientes', href: '/dashboard/clients', icon: Building2 },
   { id: 'performance', name: 'Performance', href: '/dashboard/performance', icon: LineChart },
   { id: 'agentes', name: 'Agentes', href: '/dashboard/agentes', icon: Cpu, badge: 'nuevo', badgeUntil: '2026-06-20' },
-  { id: 'multiagente', name: 'Multiagente', href: '/dashboard/multiagente', icon: Bot, badge: 'nuevo', badgeUntil: '2026-09-30' },
   { id: 'novedades', name: 'Novedades', href: '/dashboard/novedades', icon: Megaphone, badge: 'nuevo', badgeUntil: '2026-07-31' },
 ]
 
