@@ -264,9 +264,9 @@ export function ActiveTimerBar() {
       )}
 
       {/* Fila principal: timer */}
-      <div className="flex items-center gap-2 px-4 py-3 overflow-x-auto">
+      <div className="flex items-center gap-2 px-4 py-3">
         {/* Descripción */}
-        <div className="flex-1 min-w-[120px]">
+        <div className="flex-1 min-w-0">
           <Input
             placeholder="¿En qué estás trabajando?"
             value={description}
@@ -281,7 +281,7 @@ export function ActiveTimerBar() {
           onValueChange={async (val) => await setTipoTareaId(val || null)}
           disabled={isLoadingTipos}
         >
-          <SelectTrigger className="w-[130px] sm:w-[180px] shrink-0">
+          <SelectTrigger className="w-[110px] sm:w-[180px] shrink min-w-0">
             <SelectValue placeholder={isLoadingTipos ? 'Cargando...' : 'Tipo de tarea'}>
               {selectedTipo && (
                 <div className="flex items-center gap-2">
@@ -319,7 +319,7 @@ export function ActiveTimerBar() {
           onValueChange={async (val) => await setClientId(val || null)}
           disabled={isLoadingClients}
         >
-          <SelectTrigger className="w-[130px] sm:w-[180px] shrink-0">
+          <SelectTrigger className="w-[110px] sm:w-[180px] shrink min-w-0">
             <SelectValue placeholder={isLoadingClients ? 'Cargando...' : 'Cliente'}>
               {selectedClient && (
                 <div className="flex items-center gap-2">
@@ -351,46 +351,50 @@ export function ActiveTimerBar() {
           </SelectContent>
         </Select>
 
-        {/* Facturable */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleBillable}
-          className={cn(
-            'shrink-0',
-            billable
-              ? 'text-primary hover:text-primary'
-              : 'text-muted-foreground hover:text-muted-foreground'
-          )}
-          title={billable ? 'Facturable' : 'No facturable'}
-        >
-          <DollarSign className="h-4 w-4" />
-        </Button>
+        {/* Controles fijos: siempre visibles, nunca se achican ni se cortan */}
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
+          {/* Facturable */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleBillable}
+            className={cn(
+              'shrink-0',
+              billable
+                ? 'text-primary hover:text-primary'
+                : 'text-muted-foreground hover:text-muted-foreground'
+            )}
+            title={billable ? 'Facturable' : 'No facturable'}
+          >
+            <DollarSign className="h-4 w-4" />
+          </Button>
 
-        {/* Timer display */}
-        <div className="font-mono text-xl font-semibold tabular-nums w-24 text-right shrink-0">
-          {isRunning ? formatDuration(elapsedSeconds) : '00:00:00'}
+          {/* Timer display */}
+          <div className="font-mono text-xl font-semibold tabular-nums w-24 text-right shrink-0">
+            {isRunning ? formatDuration(elapsedSeconds) : '00:00:00'}
+          </div>
+
+          {/* Start/Stop */}
+          <Button
+            onClick={isRunning ? handleStop : handleStart}
+            size="icon"
+            disabled={isStarting || isStopping}
+            className={cn(
+              'shrink-0 h-10 w-10 rounded-full border-0 text-white',
+              isRunning
+                ? 'bg-red-600 hover:bg-red-700'
+                : 'bg-emerald-600 hover:bg-emerald-700'
+            )}
+          >
+            {isStarting || isStopping ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : isRunning ? (
+              <Square className="h-4 w-4 fill-current" />
+            ) : (
+              <Play className="h-4 w-4 fill-current ml-0.5" />
+            )}
+          </Button>
         </div>
-
-        {/* Start/Stop */}
-        <Button
-          onClick={isRunning ? handleStop : handleStart}
-          variant={isRunning ? 'destructive' : 'default'}
-          size="icon"
-          disabled={isStarting || isStopping}
-          className={cn(
-            'shrink-0 h-10 w-10 rounded-full',
-            !isRunning && 'bg-status-verde hover:bg-status-verde/90 text-white'
-          )}
-        >
-          {isStarting || isStopping ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : isRunning ? (
-            <Square className="h-4 w-4 fill-current" />
-          ) : (
-            <Play className="h-4 w-4 fill-current ml-0.5" />
-          )}
-        </Button>
       </div>
     </div>
   )
