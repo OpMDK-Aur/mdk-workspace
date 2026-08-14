@@ -27,9 +27,11 @@ export default function TimePage() {
           .single()
 
         setUserId(colaborador?.id ?? undefined)
-        const roleRelation = colaborador?.roles as { nombre: string }[] | null
-        const roleName = roleRelation?.[0]?.nombre || ''
-        setIsAdmin(ADMIN_ROLES.includes(roleName.toLowerCase()))
+        const roleRelation = colaborador?.roles as { nombre: string } | { nombre: string }[] | null
+        const roleName = Array.isArray(roleRelation)
+          ? roleRelation[0]?.nombre || ''
+          : roleRelation?.nombre || ''
+        setIsAdmin(ADMIN_ROLES.includes(roleName.trim().toLowerCase()))
       }
       setLoading(false)
     }
