@@ -19,6 +19,16 @@ export async function streamSupervisorResponse(
 ) {
   const config = await agentConfigRepository.getSupervisor(context.userId)
   const definitions = getToolDefinitions(config.enabledTools)
+  console.log('[v0] Supervisor execution config', {
+    source: config.configSource ?? agentConfigRepository.getSource(),
+    agent_slug: 'supervisor',
+    agent_id: config.id,
+    model: config.model,
+    updated_at: config.updatedAt.toISOString(),
+    enabled_tools_count: definitions.length,
+    fallback_used: config.fallbackUsed ?? false,
+    ...(config.fallbackReason ? { fallback_reason: config.fallbackReason } : {}),
+  })
   console.log('[v0] Supervisor model selected:', config.model)
   const tools = Object.fromEntries(
     definitions.map((definition) => [

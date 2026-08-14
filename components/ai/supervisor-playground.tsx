@@ -16,12 +16,12 @@ function messageText(message: UIMessage) {
     .join('')
 }
 
-export function SupervisorPlayground() {
+export function SupervisorPlayground({ clientId }: { clientId: string | null }) {
   const [input, setInput] = useState('')
   const { messages, sendMessage, status, error } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/ai/chat',
-      body: { context: {} },
+      body: { context: clientId ? { clientId } : {} },
     }),
   })
   const isBusy = status === 'submitted' || status === 'streaming'

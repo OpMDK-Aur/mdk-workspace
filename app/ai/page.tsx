@@ -7,7 +7,8 @@ export const metadata = {
   description: 'Interfaz aislada para validar el Supervisor Agent.',
 }
 
-export default async function AIPage() {
+export default async function AIPage({ searchParams }: { searchParams: Promise<{ client_id?: string }> }) {
+  const { client_id: clientId } = await searchParams
   const supabase = await createClient()
   const {
     data: { user },
@@ -15,5 +16,5 @@ export default async function AIPage() {
 
   if (!user) redirect('/auth/login?next=/ai')
 
-  return <SupervisorPlayground />
+  return <SupervisorPlayground clientId={clientId ?? null} />
 }
