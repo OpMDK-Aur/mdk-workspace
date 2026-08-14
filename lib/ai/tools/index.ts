@@ -31,7 +31,7 @@ const getAccountContext: ToolDefinition = {
 
     const { data: accounts, error: accountsError } = await supabase
       .from('cuentas_publicitarias')
-      .select('plataforma, id_cuenta, moneda, zona_horaria')
+      .select('plataforma, id_cuenta, nombre_cuenta, moneda, zona_horaria')
       .eq('cliente_id', context.clientId)
       .eq('activo', true)
 
@@ -43,6 +43,7 @@ const getAccountContext: ToolDefinition = {
     const safeAccounts = (accounts ?? []).map((account) => ({
       plataforma: account.plataforma,
       id_cuenta: account.id_cuenta,
+      ...(account.nombre_cuenta ? { nombre_cuenta: account.nombre_cuenta } : {}),
       ...(account.moneda ? { moneda: account.moneda } : {}),
       ...(account.zona_horaria ? { zona_horaria: account.zona_horaria } : {}),
     }))
