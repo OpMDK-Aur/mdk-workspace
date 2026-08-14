@@ -26,7 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { Play, Trash2, DollarSign, Clock, Loader2, ChevronLeft, ChevronRight, ChevronDown, Users } from 'lucide-react'
+import { Play, DollarSign, Clock, Loader2, ChevronLeft, ChevronRight, ChevronDown, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
 // Generate a color from client id for visual distinction
@@ -896,15 +896,6 @@ function EntryRow({
             <Play className="h-3.5 w-3.5 fill-current" />
           </Button>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-destructive hover:text-destructive"
-          onClick={onDelete}
-          title="Eliminar entrada"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
       </div>
     </div>
   )
