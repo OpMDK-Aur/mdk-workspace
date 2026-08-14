@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { createUIMessageStream, createUIMessageStreamResponse } from 'ai'
+import type { ActivityEvent } from '@/lib/ai/types'
 import { createClient } from '@/lib/supabase/server'
 import { chatRequestSchema } from '@/lib/ai/config/fallback'
 import { streamSupervisorResponse } from '@/lib/ai/agents/supervisor'
@@ -68,15 +70,28 @@ export async function POST(request: Request) {
       messageCount: parsed.data.messages.length,
       conversationId: conversation?.id ?? null,
     })
-    const result = await streamSupervisorResponse(query, {
-      userId: user.id,
-      userEmail: user.email,
-      ...context,
-    })
-    console.log('[v0] AI Gateway call initiated')
-
-    const response = result.toUIMessageStreamResponse({
-      messageMetadata: () => (conversation ? { conversationId: conversation.id } : undefined),
+    let writeActivity: ((event: ActivityEvent) => void) | undefined
+    const resultStream = createUIMessageStream({
+      execute: async ({ writer }) => {
+        writeActivity = (event) => writer.write({ type: 'data-activity', id: 'activity-status', data: event, transient: true })
+        const result = await streamSupervisorResponse(query, {
+          userId: user.id,
+          userEmail: user.email,
+          ...context,
+          emitActivity: (event) => writeActivity?.({
+            ...event,
+            eventId: crypto.randomUUID(),
+            timestamp: new Date().toISOString(),
+          }),
+        })
+        writeActivity?.({ eventId: crypto.randomUUID(), agentSlug: 'supervisor', status: 'running', label: 'Preparando respuesta...', timestamp: new Date().toISOString() })
+        writer.merge(result.toUIMessageStream())
+      },
+      onError: (error) => {
+        const message = error instanceof Error ? error.message : 'No se pudo completar la respuesta del Supervisor.'
+        writeActivity?.({ eventId: crypto.randomUUID(), agentSlug: 'supervisor', status: 'error', label: message, timestamp: new Date().toISOString() })
+        return message
+      },
       onFinish: async ({ messages }) => {
         if (!conversation) return
         const assistantMessage = messages.at(-1)
@@ -89,11 +104,10 @@ export async function POST(request: Request) {
           content: assistantText,
         })
       },
-      onError: (error) => {
-        console.error('[v0] UI message stream error:', error instanceof Error ? error.message : 'Unknown error')
-        return 'No se pudo completar la respuesta del Supervisor.'
-      },
     })
+    console.log('[v0] AI Gateway call initiated')
+
+    const response = createUIMessageStreamResponse({ stream: resultStream })
     console.log('[v0] UI message streaming started')
     return response
   } catch (error) {

@@ -4,7 +4,8 @@ import { FormEvent, useEffect, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
-import { Bot, Send, User } from 'lucide-react'
+import { Bot, Check, Loader2, Send, User, X } from 'lucide-react'
+import type { ActivityEvent } from '@/lib/ai/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -15,6 +16,19 @@ function messageText(message: UIMessage) {
     .map((part) => part.text)
     .join('')
 }
+
+function MultiagentActivityStatus({ activity }: { activity: ActivityEvent | null }) {
+  if (!activity) return null
+  const Icon = activity.status === 'running' ? Loader2 : activity.status === 'completed' ? Check : X
+  return (
+    <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground" aria-live="polite">
+      <Icon className={`size-3.5 ${activity.status === 'running' ? 'animate-spin text-primary' : activity.status === 'error' ? 'text-destructive' : 'text-emerald-500'}`} aria-hidden="true" />
+      <span>{activity.label}</span>
+    </div>
+  )
+}
+
+
 
 interface SupervisorChatProps {
   clientId: string | null
@@ -116,6 +130,7 @@ function SupervisorChatSession({
   initialMessages = [],
 }: SupervisorChatProps & { conversationId: string | null; initialMessages?: PersistedMessage[] }) {
   const [input, setInput] = useState('')
+  const [currentActivity, setCurrentActivity] = useState<ActivityEvent | null>(null)
   const persistedMessages: UIMessage[] = initialMessages.map((message) => ({
     id: message.id,
     role: message.role,
@@ -131,8 +146,15 @@ function SupervisorChatSession({
           : {},
       },
     }),
+    onData: (dataPart) => {
+      if (dataPart.type === 'data-activity') {
+        setCurrentActivity(dataPart.data as ActivityEvent)
+      }
+    },
   })
   const isBusy = status === 'submitted' || status === 'streaming'
+  const lastMessage = messages.at(-1)
+  const hasStreamingText = isBusy && lastMessage?.role === 'assistant' && messageText(lastMessage).length > 0
   const isInputDisabled = disabled || isBusy
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -183,7 +205,7 @@ function SupervisorChatSession({
               </div>
             ))
           )}
-          {!disabled && isBusy && <p className="text-xs text-muted-foreground">El Supervisor está procesando…</p>}
+          {!disabled && isBusy && !hasStreamingText && <MultiagentActivityStatus activity={currentActivity ?? { eventId: 'fallback', agentSlug: 'supervisor', status: 'running', label: 'Procesando consulta…', timestamp: new Date().toISOString() }} />}
           {!disabled && error && (
             <p className="text-sm text-destructive" role="alert">
               {error.message || 'No se pudo procesar la conversación del Supervisor.'}
