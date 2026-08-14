@@ -51,7 +51,6 @@ export async function saveConversationMessage(
 ) {
   const { error } = await supabase.from('ai_messages').insert({
     conversation_id: input.conversationId,
-    user_id: input.userId,
     role: input.role,
     content: input.content,
   })
@@ -74,7 +73,6 @@ export async function listConversationMessages(
     .from('ai_messages')
     .select('id, role, content, created_at')
     .eq('conversation_id', conversationId)
-    .eq('user_id', userId)
     .order('created_at', { ascending: true })
 
   if (error) throw error

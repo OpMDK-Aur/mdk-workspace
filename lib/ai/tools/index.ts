@@ -9,6 +9,9 @@ const getAccountContext: ToolDefinition = {
   description: 'Obtiene el cliente activo y sus cuentas publicitarias activas desde Supabase.',
   inputSchema: noInput,
   async execute(_input, context: ExecutionContext) {
+    const emit = context.emitActivity
+    const clientLabel = context.metadata?.clientName
+    emit?.({ agentSlug: 'supervisor', toolKey: 'get_account_context', status: 'running', label: `Cargando contexto${clientLabel ? ` de ${clientLabel}` : ''}...` })
     if (!context.clientId) {
       console.warn('[v0] get_account_context skipped: missing client_id')
       return { available: false, message: 'No hay un cliente activo seleccionado.' }
@@ -52,6 +55,7 @@ const getAccountContext: ToolDefinition = {
       active_accounts_count: safeAccounts.length,
       platforms: safeAccounts.map((account) => account.plataforma),
     })
+    emit?.({ agentSlug: 'supervisor', toolKey: 'get_account_context', status: 'completed', label: `${safeAccounts.length} cuentas publicitarias encontradas` })
 
     return {
       available: true,

@@ -16,6 +16,18 @@ export interface AgentConfig {
 }
 
 // ===== Execution Context =====
+export type ActivityStatus = 'running' | 'completed' | 'error'
+
+export interface ActivityEvent {
+  eventId: string
+  runId?: string | null
+  toolKey?: string
+  agentSlug?: string
+  status: ActivityStatus
+  label: string
+  timestamp: string
+}
+
 export interface ExecutionContext {
   userId: string
   userEmail?: string
@@ -24,6 +36,7 @@ export interface ExecutionContext {
   metaAccountId?: string
   googleCustomerId?: string
   metadata?: Record<string, unknown>
+  emitActivity?: (event: Omit<ActivityEvent, 'eventId' | 'timestamp'>) => void
 }
 
 // ===== Tool Definition =====
