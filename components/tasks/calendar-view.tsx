@@ -114,28 +114,36 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
           const isSystemTask = task.isSystemTask
           const isResuelto = task.status === 'resuelto'
           const dueDate = task.dueDate ? (typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate) : null
+          const startDate = task.startDate ? (typeof task.startDate === 'string' ? parseISO(task.startDate) : task.startDate) : dueDate
+          const hasRange = Boolean(startDate && dueDate && !isSameDay(startDate, dueDate))
+          const isRangeStart = Boolean(startDate && isSameDay(date, startDate))
           const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate) && task.status !== 'resuelto'
       
       return (
             <button
               key={task.id}
               onClick={() => onTaskClick(task.id)}
+              aria-label={hasRange && !isRangeStart ? `${task.title}, tarea en curso` : task.title}
               className={cn(
-                'w-full text-left rounded px-1.5 py-1 text-xs transition-colors',
-                'bg-white dark:bg-card border border-gray-200 dark:border-border',
+                'w-full text-left px-1.5 py-1 text-xs transition-colors',
+                hasRange ? 'rounded-none border-y border-primary/40 -mx-1.5 w-[calc(100%+0.75rem)] bg-primary/15' : 'rounded',
+                hasRange && isRangeStart && 'rounded-l border-l',
+                hasRange && dueDate && isSameDay(date, dueDate) && 'rounded-r border-r',
+                !hasRange && 'bg-white dark:bg-card border border-gray-200 dark:border-border',
                 'hover:border-primary/50 hover:shadow-sm',
                 isOverdue && !isSystemTask && 'ring-1 ring-red-400/60',
                 isResuelto && 'border-green-500/60 bg-green-500/5 opacity-50'
               )}
             >
-              <div className="flex items-start gap-1">
-                {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />}
-                {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />}
-                <span className="flex-1 text-[11px] font-medium text-gray-900 dark:text-foreground break-words line-clamp-2">
-                  {task.title}
-                </span>
-              </div>
-              <div className="flex items-center justify-between mt-0.5">
+              {(!hasRange || isRangeStart) && <>
+                <div className="flex items-start gap-1">
+                  {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />}
+                  {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />}
+                  <span className="flex-1 text-[11px] font-medium text-gray-900 dark:text-foreground break-words line-clamp-2">
+                    {task.title}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mt-0.5">
                 {isSystemTask ? (
                   <Badge
                     variant="outline"
@@ -178,7 +186,8 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
                     </Avatar>
                   ) : null}
                 </div>
-              </div>
+                </div>
+              </>}
             </button>
           )
         })}
