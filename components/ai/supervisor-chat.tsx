@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
@@ -26,19 +26,110 @@ interface SupervisorChatProps {
   emptyStateMessage?: string
 }
 
-export function SupervisorChat({
+type PersistedMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
+export function SupervisorChat(props: SupervisorChatProps) {
+  const { clientId, disabled = false } = props
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [history, setHistory] = useState<PersistedMessage[]>([])
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+
+  useEffect(() => {
+    if (!clientId || disabled) {
+      setConversationId(null)
+      setHistory([])
+      return
+    }
+
+    let cancelled = false
+    setIsLoadingHistory(true)
+    fetch('/api/ai/conversations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ clientId }),
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('No se pudo cargar la conversación.')
+        return response.json() as Promise<{ conversation: { id: string }; messages: PersistedMessage[] }>
+      })
+      .then((data) => {
+        if (cancelled) return
+        setConversationId(data.conversation.id)
+        setHistory(data.messages)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setConversationId(null)
+          setHistory([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingHistory(false)
+      })
+
+    return () => { cancelled = true }
+  }, [clientId, disabled])
+
+  if (isLoadingHistory && clientId && !disabled) {
+    return <SupervisorChatShell {...props} loading />
+  }
+
+  return (
+    <SupervisorChatSession
+      key={conversationId ?? `new-${clientId ?? 'none'}`}
+      {...props}
+      conversationId={conversationId}
+      initialMessages={history}
+    />
+  )
+}
+
+function SupervisorChatShell({ ...props }: SupervisorChatProps & { loading?: boolean }) {
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader>
+        <CardTitle>{props.title ?? 'Conversación de prueba'}</CardTitle>
+        <CardDescription>{props.description ?? 'El Supervisor decide qué contexto y herramientas necesita cada consulta.'}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex min-h-[360px] items-center justify-center rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground" aria-live="polite">
+          Cargando conversación…
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function SupervisorChatSession({
   clientId,
   disabled = false,
   disabledMessage = 'Seleccioná un cliente para comenzar el análisis.',
   title = 'Conversación de prueba',
   description = 'El Supervisor decide qué contexto y herramientas necesita cada consulta.',
   emptyStateMessage = 'Probá con una pregunta sobre cuentas, Meta Ads, Google Ads o insights previos.',
-}: SupervisorChatProps) {
+  conversationId,
+  initialMessages = [],
+}: SupervisorChatProps & { conversationId: string | null; initialMessages?: PersistedMessage[] }) {
   const [input, setInput] = useState('')
+  const persistedMessages: UIMessage[] = initialMessages.map((message) => ({
+    id: message.id,
+    role: message.role,
+    parts: [{ type: 'text', text: message.content }],
+  }))
   const { messages, sendMessage, status, error } = useChat({
+    messages: persistedMessages,
     transport: new DefaultChatTransport({
       api: '/api/ai/chat',
-      body: { context: clientId ? { clientId } : {} },
+      body: {
+        context: clientId
+          ? { clientId, ...(conversationId ? { conversationId } : {}) }
+          : {},
+      },
     }),
   })
   const isBusy = status === 'submitted' || status === 'streaming'
