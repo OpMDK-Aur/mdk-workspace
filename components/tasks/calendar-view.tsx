@@ -126,10 +126,10 @@ function DayNumberCell({ date, isCurrentMonth, onAddTask }: DayNumberCellProps) 
   return (
     <div
       className={cn(
-        'group/day flex items-center justify-between border-r border-b px-1.5 py-1 last:border-r-0',
-        !isCurrentMonth && 'bg-muted/30',
-        today && 'bg-primary/5',
-        pastDay && isCurrentMonth && 'bg-muted/10',
+        'group/day flex items-center justify-between border-r border-b px-1.5 py-1 last:border-r-0 bg-muted/40',
+        !isCurrentMonth && 'bg-muted/60',
+        today && 'bg-primary/15',
+        pastDay && isCurrentMonth && 'bg-muted/50',
       )}
     >
       <span
