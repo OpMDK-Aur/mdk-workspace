@@ -277,7 +277,15 @@ function WeekRow({ weekDates, tasks, currentMonth, onTaskClick, onAddTask }: Wee
         ))}
       </div>
 
-      <div className="flex flex-col gap-1 px-1.5 py-1.5 min-h-[16px]">
+      <div className="relative min-h-[16px]">
+        {/* Day separator lines behind the task bars */}
+        <div className="absolute inset-0 grid grid-cols-7" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+          {weekDates.map((date) => (
+            <div key={date.toISOString()} className="border-r last:border-r-0" />
+          ))}
+        </div>
+
+        <div className="relative flex flex-col gap-1 px-1.5 py-1.5">
         {visibleLanes.map((lane, laneIdx) => (
           <div
             key={laneIdx}
@@ -369,6 +377,7 @@ function WeekRow({ weekDates, tasks, currentMonth, onTaskClick, onAddTask }: Wee
             </PopoverContent>
           </Popover>
         )}
+        </div>
       </div>
     </div>
   )
