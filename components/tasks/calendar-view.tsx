@@ -127,12 +127,13 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
               className={cn(
                 'relative z-10 w-full text-left px-1.5 py-1 text-xs transition-colors',
                 hasRange
-                  ? 'min-h-[76px] -mx-1.5 w-[calc(100%+0.75rem)] rounded-none border-y border-primary/40 bg-card'
+                  ? 'min-h-[76px] -mx-2 -my-1 w-[calc(100%+1rem)] rounded-none border-y border-primary/40 bg-card/95'
                   : 'rounded',
+                hasRange && !isRangeStart && 'border-l-0 border-y-0 hover:border-y-0',
                 hasRange && isRangeStart && 'rounded-l border-l',
                 hasRange && dueDate && isSameDay(date, dueDate) && 'rounded-r border-r',
                 !hasRange && 'bg-white dark:bg-card border border-gray-200 dark:border-border',
-                'hover:border-primary/50 hover:shadow-sm',
+                hasRange ? 'hover:border-primary/60 hover:shadow-sm' : 'hover:border-primary/50 hover:shadow-sm',
                 isOverdue && !isSystemTask && 'ring-1 ring-red-400/60',
                 isResuelto && 'border-green-500/60 bg-green-500/5 opacity-50'
               )}
