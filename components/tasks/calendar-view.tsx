@@ -125,8 +125,10 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
               onClick={() => onTaskClick(task.id)}
               aria-label={hasRange && !isRangeStart ? `${task.title}, tarea en curso` : task.title}
               className={cn(
-                'w-full text-left px-1.5 py-1 text-xs transition-colors',
-                hasRange ? 'rounded-none border-y border-primary/40 -mx-1.5 w-[calc(100%+0.75rem)] bg-primary/15' : 'rounded',
+                'relative z-10 w-full text-left px-1.5 py-1 text-xs transition-colors',
+                hasRange
+                  ? 'min-h-[76px] -mx-1.5 w-[calc(100%+0.75rem)] rounded-none border-y border-primary/40 bg-card'
+                  : 'rounded',
                 hasRange && isRangeStart && 'rounded-l border-l',
                 hasRange && dueDate && isSameDay(date, dueDate) && 'rounded-r border-r',
                 !hasRange && 'bg-white dark:bg-card border border-gray-200 dark:border-border',
@@ -136,7 +138,7 @@ function DayTasks({ date, tasks, isCurrentMonth, onTaskClick, onAddTask }: DayTa
               )}
             >
               {(!hasRange || isRangeStart) && <>
-                <div className="flex items-start gap-1">
+                <div className="flex items-start gap-1 pt-1">
                   {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />}
                   {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />}
                   <span className="flex-1 text-[11px] font-medium text-gray-900 dark:text-foreground break-words line-clamp-2">
