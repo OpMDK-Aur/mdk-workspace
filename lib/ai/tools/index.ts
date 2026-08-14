@@ -1,17 +1,65 @@
 import { z } from 'zod'
+import { createClient } from '@/lib/supabase/server'
 import type { ExecutionContext, ToolDefinition } from '../types'
 
 const noInput = z.object({})
 
 const getAccountContext: ToolDefinition = {
   key: 'get_account_context',
-  description: 'Obtiene el contexto de la cuenta activa cuando el backend lo implemente.',
+  description: 'Obtiene el cliente activo y sus cuentas publicitarias activas desde Supabase.',
   inputSchema: noInput,
   async execute(_input, context: ExecutionContext) {
+    if (!context.clientId) {
+      console.warn('[v0] get_account_context skipped: missing client_id')
+      return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    }
+
+    const supabase = await createClient()
+    const { data: client, error: clientError } = await supabase
+      .from('clientes')
+      .select('id, nombre_del_negocio')
+      .eq('id', context.clientId)
+      .single()
+
+    if (clientError || !client) {
+      console.error('[v0] get_account_context client lookup failed:', clientError?.message ?? 'Client not found')
+      return { available: false, client_id: context.clientId, message: 'No se encontró el cliente seleccionado.' }
+    }
+
+    const { data: accounts, error: accountsError } = await supabase
+      .from('cuentas_publicitarias')
+      .select('plataforma, id_cuenta, moneda, zona_horaria')
+      .eq('cliente_id', context.clientId)
+      .eq('activo', true)
+
+    if (accountsError) {
+      console.error('[v0] get_account_context accounts lookup failed:', accountsError.message)
+      return { available: false, client_id: context.clientId, message: 'No se pudieron consultar las cuentas publicitarias.' }
+    }
+
+    const safeAccounts = (accounts ?? []).map((account) => ({
+      plataforma: account.plataforma,
+      id_cuenta: account.id_cuenta,
+      ...(account.moneda ? { moneda: account.moneda } : {}),
+      ...(account.zona_horaria ? { zona_horaria: account.zona_horaria } : {}),
+    }))
+
+    const google = safeAccounts.find((account) => account.plataforma?.toLowerCase() === 'google')
+    const meta = safeAccounts.find((account) => account.plataforma?.toLowerCase() === 'meta')
+
+    console.log('[v0] get_account_context executed', {
+      client_id: client.id,
+      active_accounts_count: safeAccounts.length,
+      platforms: safeAccounts.map((account) => account.plataforma),
+    })
+
     return {
-      available: false,
-      accountId: context.accountId ?? null,
-      message: 'La consulta de cuenta quedará habilitada cuando se confirme el repositorio de Supabase.',
+      available: true,
+      client_id: client.id,
+      nombre_del_negocio: client.nombre_del_negocio,
+      cuentas_publicitarias: safeAccounts,
+      ...(google?.id_cuenta ? { google_ads_customer_id: google.id_cuenta } : {}),
+      ...(meta?.id_cuenta ? { meta_ads_account_id: meta.id_cuenta } : {}),
     }
   },
 }
