@@ -58,12 +58,14 @@ function formatDurationPrecise(
   const totalMilliseconds = Number.isFinite(timestampDuration) && timestampDuration >= 0
     ? timestampDuration
     : Math.max(0, Math.round((seconds ?? 0) * 1000))
-  const minutes = Math.floor(totalMilliseconds / 60000)
-  const remainingMilliseconds = totalMilliseconds % 60000
-  const remainingSeconds = Math.floor(remainingMilliseconds / 1000)
+  const hours = Math.floor(totalMilliseconds / 3600000)
+  const remainingAfterHours = totalMilliseconds % 3600000
+  const minutes = Math.floor(remainingAfterHours / 60000)
+  const remainingMilliseconds = remainingAfterHours % 60000
+  const secondsPart = Math.floor(remainingMilliseconds / 1000)
   const milliseconds = remainingMilliseconds % 1000
 
-  return `${minutes}m ${remainingSeconds}s ${milliseconds.toString().padStart(3, '0')}ms`
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secondsPart.toString().padStart(2, '0')}:${milliseconds.toString().padStart(3, '0')}`
 }
 
 interface GroupedEntries {
