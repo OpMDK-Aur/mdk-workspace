@@ -286,11 +286,15 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
   // Separate running entry from completed entries. Prefer the persisted row when available,
   // otherwise render the local preview so the user sees the marking immediately.
   const { runningEntry, completedEntries } = useMemo(() => {
-    const persistedRunning = entries.find((e) => e.finalizado_en === null)
+    // Admin puede ver todas las entradas históricas, pero la marcación "En progreso"
+    // debe pertenecer siempre al usuario actual.
+    const persistedRunning = entries.find(
+      (e) => e.finalizado_en === null && e.colaborador_id === currentUserId
+    )
     const running = persistedRunning ?? previewEntry
     const completed = entries.filter((e) => e.finalizado_en !== null)
     return { runningEntry: running, completedEntries: completed }
-  }, [entries, previewEntry])
+  }, [currentUserId, entries, previewEntry])
 
   // Group completed entries by day
   const groupedEntries = useMemo(() => {
