@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
 import { NextRequest, NextResponse } from 'next/server'
+import { updateAdvertisingAccountName } from '@/lib/ai/repositories/advertising-account-repository'
 
 const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
 const GOOGLE_ADS_API_VERSION = 'v23'
@@ -15,7 +16,7 @@ function parseIds(single: unknown, plural: unknown): string[] {
   return []
 }
 
-async function getMetaAccountName(id: string, accessToken: string): Promise<string> {
+async function getMetaAccountName(id: string, accessToken: string): Promise<string | null> {
   try {
     const cleanId = id.replace('act_', '')
     const res = await fetch(`https://graph.facebook.com/${META_API_VERSION}/act_${cleanId}?fields=name&access_token=${accessToken}`)
@@ -24,7 +25,7 @@ async function getMetaAccountName(id: string, accessToken: string): Promise<stri
   } catch {
     // ignore, cae al fallback
   }
-  return id
+  return null
 }
 
 async function getGoogleAccountName(
@@ -32,7 +33,7 @@ async function getGoogleAccountName(
   accessToken: string,
   developerToken: string,
   loginCustomerId: string
-): Promise<string> {
+): Promise<string | null> {
   try {
     const cleanId = customerId.replace(/-/g, '')
     const res = await fetch(`https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanId}/googleAds:search`, {
@@ -52,7 +53,7 @@ async function getGoogleAccountName(
   } catch {
     // ignore, cae al fallback
   }
-  return customerId
+  return null
 }
 
 export async function GET(req: NextRequest) {
@@ -80,7 +81,11 @@ export async function GET(req: NextRequest) {
   const metaAccessToken = process.env.META_ADS_ACCESS_TOKEN
   if (metaIds.length > 0 && metaAccessToken) {
     const nombres = await Promise.all(metaIds.map((id) => getMetaAccountName(id, metaAccessToken)))
-    metaIds.forEach((id, i) => cuentas.push({ id: `meta-${id}`, plataforma: 'meta', id_cuenta: id, nombre_cuenta: nombres[i] }))
+    await Promise.all(metaIds.map(async (id, i) => {
+      const name = nombres[i]
+      if (name) await updateAdvertisingAccountName(supabase, { clienteId: clientId, plataforma: 'meta', idCuenta: id, nombreCuenta: name })
+    }))
+    metaIds.forEach((id, i) => cuentas.push({ id: `meta-${id}`, plataforma: 'meta', id_cuenta: id, nombre_cuenta: nombres[i] ?? id }))
   } else {
     metaIds.forEach((id) => cuentas.push({ id: `meta-${id}`, plataforma: 'meta', id_cuenta: id, nombre_cuenta: id }))
   }
@@ -93,7 +98,11 @@ export async function GET(req: NextRequest) {
       const nombres = await Promise.all(
         googleIds.map((id) => getGoogleAccountName(id, accessToken, developerToken, loginCustomerId))
       )
-      googleIds.forEach((id, i) => cuentas.push({ id: `google-${id}`, plataforma: 'google', id_cuenta: id, nombre_cuenta: nombres[i] }))
+      await Promise.all(googleIds.map(async (id, i) => {
+        const name = nombres[i]
+        if (name) await updateAdvertisingAccountName(supabase, { clienteId: clientId, plataforma: 'google', idCuenta: id, nombreCuenta: name })
+      }))
+      googleIds.forEach((id, i) => cuentas.push({ id: `google-${id}`, plataforma: 'google', id_cuenta: id, nombre_cuenta: nombres[i] ?? id }))
     } else {
       googleIds.forEach((id) => cuentas.push({ id: `google-${id}`, plataforma: 'google', id_cuenta: id, nombre_cuenta: id }))
     }
