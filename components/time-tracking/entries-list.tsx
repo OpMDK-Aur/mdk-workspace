@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase/client'
 import type { Cliente, TipoDeTarea } from '@/lib/types'
 import {
   formatDuration,
-  formatDurationShort,
   formatTimeRange,
   getDayLabel,
 } from '@/lib/time-tracking/mock-data'
@@ -44,6 +43,25 @@ function getClientColor(id: string): string {
 
 function calculateTotalSeconds(entries: TimeEntry[]): number {
   return entries.reduce((acc, e) => acc + (e.duracion_seg || 0), 0)
+}
+
+function formatDurationPrecise(
+  seconds: number | null | undefined,
+  startedAt?: string | null,
+  endedAt?: string | null,
+): string {
+  const timestampDuration = startedAt && endedAt
+    ? new Date(endedAt).getTime() - new Date(startedAt).getTime()
+    : NaN
+  const totalMilliseconds = Number.isFinite(timestampDuration) && timestampDuration >= 0
+    ? timestampDuration
+    : Math.max(0, Math.round((seconds ?? 0) * 1000))
+  const minutes = Math.floor(totalMilliseconds / 60000)
+  const remainingMilliseconds = totalMilliseconds % 60000
+  const remainingSeconds = Math.floor(remainingMilliseconds / 1000)
+  const milliseconds = remainingMilliseconds % 1000
+
+  return `${minutes}m ${remainingSeconds}s ${milliseconds.toString().padStart(3, '0')}ms`
 }
 
 interface GroupedEntries {
@@ -221,7 +239,9 @@ export function EntriesList() {
         <div key={group.date}>
           <div className="flex items-center justify-between mb-3 pb-2 border-b border-border">
             <h3 className="font-medium text-foreground">{group.label}</h3>
-            <span className="text-sm text-muted-foreground">{formatDurationShort(group.total)}</span>
+            <span className="font-mono text-sm text-muted-foreground tabular-nums">
+              {formatDurationPrecise(group.total)}
+            </span>
           </div>
           <div className="space-y-2">
             {group.entries.map((entry) => (
@@ -394,8 +414,8 @@ function EntryRow({ entry, cliente, tipoTarea, onContinue, onEdit, onDelete }: E
       <div className="text-sm text-muted-foreground shrink-0">
         {formatTimeRange(entry.iniciado_en, entry.finalizado_en)}
       </div>
-      <div className="font-mono text-sm font-medium tabular-nums w-16 text-right shrink-0">
-        {formatDurationShort(entry.duracion_seg)}
+      <div className="font-mono text-xs font-medium tabular-nums whitespace-nowrap text-right shrink-0">
+        {formatDurationPrecise(entry.duracion_seg, entry.iniciado_en, entry.finalizado_en)}
       </div>
       <DollarSign className={cn('h-4 w-4 shrink-0', entry.facturable ? 'text-primary' : 'text-muted-foreground/40')} />
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
