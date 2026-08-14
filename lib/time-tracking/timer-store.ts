@@ -88,8 +88,8 @@ export const useTimerStore = create<TimerState>()(
           .single()
 
         if (error) {
-          console.error('Error creating time entry:', error)
-          return
+          console.error('[v0] Error creating time entry:', error)
+          throw new Error(error.message || 'No se pudo iniciar el timer.')
         }
 
         set({
@@ -157,8 +157,9 @@ export const useTimerStore = create<TimerState>()(
             .eq('id', entryIdToUpdate)
 
           if (error) {
-            console.error('Error stopping time entry:', error)
-            // Still clear local state even if DB update fails
+            console.error('[v0] Error stopping time entry:', error)
+            // Do not clear the timer when persistence fails: the user must be able to retry.
+            throw new Error(error.message || 'No se pudo guardar la entrada de tiempo.')
           }
 
           set((s) => ({
