@@ -7,7 +7,6 @@ import { createClient } from '@/lib/supabase/client'
 import type { Cliente, TipoDeTarea, Profile } from '@/lib/types'
 import {
   formatDuration,
-  formatDurationShort,
   getDayLabel,
 } from '@/lib/time-tracking/mock-data'
 import { Button } from '@/components/ui/button'
@@ -27,7 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { Play, Trash2, DollarSign, Clock, Loader2, ChevronLeft, ChevronRight, ChevronDown, Users } from 'lucide-react'
+import { Play, DollarSign, Clock, Loader2, ChevronLeft, ChevronRight, ChevronDown, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
 // Generate a color from client id for visual distinction
@@ -46,6 +45,27 @@ function getClientColor(id: string): string {
 // Calculate total seconds for entries
 function calculateTotalSeconds(entries: TimeEntry[]): number {
   return entries.reduce((acc, e) => acc + (e.duracion_seg || 0), 0)
+}
+
+function formatDurationPrecise(
+  seconds: number | null | undefined,
+  startedAt?: string | null,
+  endedAt?: string | null,
+): string {
+  const timestampDuration = startedAt && endedAt
+    ? new Date(endedAt).getTime() - new Date(startedAt).getTime()
+    : NaN
+  const totalMilliseconds = Number.isFinite(timestampDuration) && timestampDuration >= 0
+    ? timestampDuration
+    : Math.max(0, Math.round((seconds ?? 0) * 1000))
+  const hours = Math.floor(totalMilliseconds / 3600000)
+  const remainingAfterHours = totalMilliseconds % 3600000
+  const minutes = Math.floor(remainingAfterHours / 60000)
+  const remainingMilliseconds = remainingAfterHours % 60000
+  const secondsPart = Math.floor(remainingMilliseconds / 1000)
+  const milliseconds = remainingMilliseconds % 1000
+
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secondsPart.toString().padStart(2, '0')}:${milliseconds.toString().padStart(3, '0')}`
 }
 
 interface GroupedEntries {
@@ -429,7 +449,7 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
             {/* Total Stats */}
             <div className="ml-auto flex items-center gap-4 text-sm text-muted-foreground">
               <span>{entries.length} entradas</span>
-              <span className="font-medium text-foreground">{formatDurationShort(totalMonthSeconds)} total</span>
+              <span className="font-mono font-medium text-foreground tabular-nums">{formatDurationPrecise(totalMonthSeconds)} total</span>
             </div>
           </div>
         </div>
@@ -476,8 +496,8 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
               {/* Day Header */}
               <div className="flex items-center justify-between mb-3 pb-2 border-b border-border">
                 <h3 className="font-medium text-foreground">{group.label}</h3>
-                <span className="text-sm text-muted-foreground">
-                  {formatDurationShort(group.total)}
+                <span className="font-mono text-sm text-muted-foreground tabular-nums whitespace-nowrap">
+                  {formatDurationPrecise(group.total)}
                 </span>
               </div>
 
@@ -851,9 +871,9 @@ function EntryRow({
       </div>
 
       {/* Duration */}
-      <div className="font-mono text-sm font-medium tabular-nums w-16 text-right shrink-0">
-        {formatDurationShort(entry.duracion_seg)}
-      </div>
+<div className="font-mono text-xs font-medium tabular-nums whitespace-nowrap text-right shrink-0">
+              {formatDurationPrecise(entry.duracion_seg, entry.iniciado_en, entry.finalizado_en)}
+            </div>
 
       {/* Billable Icon */}
       <div className="shrink-0">
@@ -878,15 +898,6 @@ function EntryRow({
             <Play className="h-3.5 w-3.5 fill-current" />
           </Button>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-destructive hover:text-destructive"
-          onClick={onDelete}
-          title="Eliminar entrada"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
       </div>
     </div>
   )
