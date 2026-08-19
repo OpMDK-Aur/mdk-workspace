@@ -305,7 +305,7 @@ function WeekRow({ weekDates, tasks, currentMonth, onTaskClick, onAddTask }: Wee
         ))}
       </div>
 
-      <div className="relative min-h-[36px]">
+      <div className="relative min-h-[20px]">
         {/* Day separator lines behind the task bars */}
         <div className="absolute inset-0 grid grid-cols-7" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
           {weekDates.map((date) => (
@@ -313,7 +313,7 @@ function WeekRow({ weekDates, tasks, currentMonth, onTaskClick, onAddTask }: Wee
           ))}
         </div>
 
-        <div className="relative flex flex-col gap-1 px-1.5 pt-1.5 pb-10">
+        <div className="relative flex flex-col gap-1 px-1.5 pt-1.5 pb-5">
         {visibleLanes.map((lane, laneIdx) => (
           <div
             key={laneIdx}
@@ -340,7 +340,7 @@ function WeekRow({ weekDates, tasks, currentMonth, onTaskClick, onAddTask }: Wee
             <Popover key={dayKey}>
               <PopoverTrigger asChild>
                 <button
-                  className="absolute bottom-2 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10 hover:text-primary/80 rounded"
+                  className="absolute bottom-0 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10 hover:text-primary/80 rounded"
                   style={{ left: `${(dayIndex / 7) * 100}%`, width: `${100 / 7}%` }}
                   onClick={(event) => event.stopPropagation()}
                 >
