@@ -60,7 +60,14 @@ function toSupervisorConfig(
     model: agent.model,
     isActive: agent.isActive,
     delegateAgents: ['meta-ads', 'google-ads', 'performance-analyst'],
-    enabledTools: agent.enabledTools,
+    // Las métricas deben estar disponibles aunque la configuración creada en
+    // Supabase todavía no tenga filas en ai_agent_tools.
+    enabledTools: Array.from(new Set([
+      ...agent.enabledTools,
+      'get_account_context',
+      'get_google_metrics',
+      'get_meta_metrics',
+    ])),
     createdAt: agent.createdAt,
     updatedAt: agent.updatedAt,
     ...metadata,
