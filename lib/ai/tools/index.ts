@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import type { ExecutionContext, ToolDefinition } from '../types'
+import { getGoogleAccountMetrics, defaultGoogleDateRange, normalizeCustomerId } from '@/lib/google-ads/service'
 
 const noInput = z.object({})
 
@@ -31,7 +32,7 @@ const getAccountContext: ToolDefinition = {
 
     const { data: accounts, error: accountsError } = await supabase
       .from('cuentas_publicitarias')
-      .select('plataforma, id_cuenta, moneda, zona_horaria')
+      .select('plataforma, id_cuenta, nombre_cuenta, moneda, zona_horaria')
       .eq('cliente_id', context.clientId)
       .eq('activo', true)
 
@@ -43,6 +44,7 @@ const getAccountContext: ToolDefinition = {
     const safeAccounts = (accounts ?? []).map((account) => ({
       plataforma: account.plataforma,
       id_cuenta: account.id_cuenta,
+      ...(account.nombre_cuenta ? { nombre_cuenta: account.nombre_cuenta } : {}),
       ...(account.moneda ? { moneda: account.moneda } : {}),
       ...(account.zona_horaria ? { zona_horaria: account.zona_horaria } : {}),
     }))
@@ -84,15 +86,33 @@ const getMetaMetrics: ToolDefinition = {
 
 const getGoogleMetrics: ToolDefinition = {
   key: 'get_google_metrics',
-  description: 'Consulta métricas de Google Ads con contexto de cuenta server-side.',
-  inputSchema: z.object({ period: z.string().max(80).optional() }),
-  async execute(input: { period?: string }, context: ExecutionContext) {
-    return {
-      available: false,
-      period: input.period ?? 'últimos 30 días',
-      googleCustomerId: context.googleCustomerId ?? null,
-      message: 'La integración de métricas de Google Ads está reservada para la siguiente etapa.',
+  description: 'Consulta métricas reales de Google Ads de las cuentas activas del cliente seleccionado.',
+  inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional(), accountId: z.string().optional() }),
+  async execute(input: { dateFrom?: string; dateTo?: string; accountId?: string }, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    if ((input.dateFrom && !input.dateTo) || (!input.dateFrom && input.dateTo)) return { available: false, message: 'Debes indicar dateFrom y dateTo juntos.' }
+    const { dateFrom, dateTo } = input.dateFrom && input.dateTo ? input : defaultGoogleDateRange()
+    const supabase = await createClient()
+    const { data: accounts, error } = await supabase.from('cuentas_publicitarias').select('id_cuenta, nombre_cuenta, moneda, zona_horaria').eq('cliente_id', context.clientId).eq('plataforma', 'google').eq('activo', true)
+    if (error) return { available: false, message: 'No se pudieron consultar las cuentas activas de Google Ads.' }
+    const availableAccounts = accounts ?? []
+    const selected = input.accountId ? availableAccounts.filter((account) => normalizeCustomerId(account.id_cuenta) === normalizeCustomerId(input.accountId!)) : availableAccounts
+    if (input.accountId && selected.length === 0) return { available: false, message: 'La cuenta solicitada no pertenece al cliente seleccionado.' }
+    if (!selected.length) return { available: false, message: 'El cliente no tiene cuentas activas de Google Ads.' }
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_metrics', status: 'running', label: 'Consultando Google Ads...' })
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_metrics', status: 'running', label: `Consultando ${selected.length} cuenta${selected.length === 1 ? '' : 's'} de Google Ads...` })
+    const results: Array<{ account: typeof selected[number]; metrics?: Awaited<ReturnType<typeof getGoogleAccountMetrics>>; error?: string }> = []
+    for (let index = 0; index < selected.length; index += 3) {
+      const batch = selected.slice(index, index + 3)
+      const batchResults = await Promise.all(batch.map(async (account) => {
+        try { return { account, metrics: await getGoogleAccountMetrics({ customerId: account.id_cuenta, accountName: account.nombre_cuenta, dateFrom: dateFrom!, dateTo: dateTo! }) } }
+        catch (cause) { return { account, error: cause instanceof Error ? cause.message : 'No se pudo consultar esta cuenta.' } }
+      }))
+      results.push(...batchResults)
     }
+    const successful = results.filter((result) => result.metrics)
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_metrics', status: 'completed', label: successful.length === selected.length ? 'Métricas de Google Ads recibidas' : `Se consultaron ${successful.length} de ${selected.length} cuentas de Google Ads` })
+    return { available: true, partial: successful.length !== selected.length, date_range: { start: dateFrom, end: dateTo }, accounts: successful.map((result) => result.metrics), errors: results.filter((result) => result.error).map((result) => ({ account_id: result.account.id_cuenta, account_name: result.account.nombre_cuenta, message: result.error })) }
   },
 }
 
