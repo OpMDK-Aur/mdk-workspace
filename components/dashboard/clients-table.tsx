@@ -41,13 +41,13 @@ const clientRoasData: Record<string, number> = {
 function getSemaforoBadge(semaforo: SemaforoStatus | undefined) {
   switch (semaforo) {
     case 'verde':
-      return { label: 'Optimo', className: 'bg-status-verde/10 text-status-verde border-status-verde/20', color: '#22c55e' }
+      return { label: 'Optimo', className: '!bg-status-verde/10 !text-status-verde !border-status-verde/20', color: '#22c55e' }
     case 'amarillo':
-      return { label: 'Atencion', className: 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/20', color: '#eab308' }
+      return { label: 'Atencion', className: '!bg-status-amarillo/10 !text-status-amarillo !border-status-amarillo/20', color: '#eab308' }
     case 'naranja':
-      return { label: 'En riesgo', className: 'bg-status-naranja/10 text-status-naranja border-status-naranja/20', color: '#f97316' }
+      return { label: 'En riesgo', className: '!bg-status-naranja/10 !text-status-naranja !border-status-naranja/20', color: '#f97316' }
     case 'rojo':
-      return { label: 'Critico', className: 'bg-status-rojo/10 text-status-rojo border-status-rojo/20', color: '#ef4444' }
+      return { label: 'Critico', className: '!bg-status-rojo/10 !text-status-rojo !border-status-rojo/20', color: '#ef4444' }
     default:
       return { label: '-', className: 'bg-muted text-muted-foreground', color: '#9ca3af' }
   }
