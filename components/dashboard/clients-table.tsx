@@ -53,6 +53,13 @@ function getSemaforoBadge(semaforo: SemaforoStatus | undefined) {
   }
 }
 
+function getUnidadSemaforo(client: Client, unidad: string): SemaforoStatus | undefined {
+  const statuses = client.semaforo_unidades ?? {}
+  const normalize = (value: string) => value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const matchingKey = Object.keys(statuses).find((key) => normalize(key) === normalize(unidad))
+  return matchingKey ? statuses[matchingKey as string] : client.unidades_negocio?.length === 1 ? client.status ?? undefined : undefined
+}
+
 export function ClientsTable({ clients }: ClientsTableProps) {
   const displayClients = clients
     .filter(c => c.fee_mdk && c.fee_mdk > 500000)
@@ -96,7 +103,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                     <div className="flex flex-wrap gap-1">
                       {clientUnidades.length > 0 ? (
                         clientUnidades.map(unidad => {
-                          const semaforo = client.semaforo_unidades?.[unidad]
+                          const semaforo = getUnidadSemaforo(client, unidad)
                           const semaforoBadge = getSemaforoBadge(semaforo)
                           return (
                             <Badge 

@@ -119,6 +119,14 @@ function getSemaforoBadge(semaforo: SemaforoStatus | undefined) {
   }
 }
 
+function getUnidadSemaforo(client: Client, unidad: string): SemaforoStatus | undefined {
+  const statuses = client.semaforo_unidades ?? {}
+  const normalize = (value: string) => value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const normalizedUnidad = normalize(unidad)
+  const matchingKey = Object.keys(statuses).find((key) => normalize(key) === normalizedUnidad)
+  return matchingKey ? statuses[matchingKey] : client.unidades_negocio?.length === 1 ? client.status ?? undefined : undefined
+}
+
 export function ClientsListContent({ clients, profiles, currentProfile, assignmentMap, hoursMap, npsMap = {} }: ClientsListContentProps) {
   const supabase = createClient()
   const router = useRouter()
@@ -1303,7 +1311,7 @@ const applyFilter = (filter: SavedFilter) => {
                           <div className="flex flex-wrap gap-1">
                             {clientUnidades.length > 0 ? (
                               clientUnidades.map(unidad => {
-                                const sem = getSemaforoBadge(client.semaforo_unidades?.[unidad])
+                                const sem = getSemaforoBadge(getUnidadSemaforo(client, unidad))
                                 return (
                                   <Badge 
                                     key={unidad} 
@@ -1559,7 +1567,7 @@ const applyFilter = (filter: SavedFilter) => {
                             <div className="flex flex-wrap gap-1">
                               {clientUnidades.length > 0 ? (
                                 clientUnidades.map(unidad => {
-                                  const sem = getSemaforoBadge(client.semaforo_unidades?.[unidad])
+                                  const sem = getSemaforoBadge(getUnidadSemaforo(client, unidad))
                                   return (
                                     <Badge 
                                       key={unidad} 
