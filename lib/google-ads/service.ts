@@ -47,14 +47,6 @@ async function fetchRows(customerId: string, query: string) {
       cache: 'no-store',
     })
     const payload = await response.json().catch(() => null)
-    console.log('[v0] Google Ads request diagnostic', {
-      customer_id: customerId,
-      endpoint: `customers/${customerId}/googleAds:search`,
-      http_status: response.status,
-      has_results: Array.isArray(payload?.results),
-      results_length: Array.isArray(payload?.results) ? payload.results.length : 0,
-      raw_response_shape: payload && typeof payload === 'object' ? Object.keys(payload) : [],
-    })
     if (!response.ok) {
       const message = typeof payload?.error?.message === 'string' ? payload.error.message : 'Google Ads no pudo responder.'
       const authFailure = response.status === 401 || payload?.error?.status === 'UNAUTHENTICATED'
@@ -80,30 +72,68 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
   assertDate(input.dateFrom)
   assertDate(input.dateTo)
   const dateFilter = `segments.date BETWEEN '${input.dateFrom}' AND '${input.dateTo}'`
-  // Igual que el dashboard: incluir campañas pausadas/finalizadas que tuvieron gasto en el período.
-  const query = `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, campaign_budget.amount_micros, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.average_cpc, metrics.ctr, metrics.conversions, segments.date FROM campaign WHERE ${dateFilter} ORDER BY metrics.cost_micros DESC`
+  const enabledFilter = `campaign.status = 'ENABLED'`
+  const query = `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, campaign_budget.amount_micros, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.average_cpc, metrics.ctr, metrics.conversions, segments.date FROM campaign WHERE ${dateFilter} AND ${enabledFilter} ORDER BY metrics.cost_micros DESC`
   let rows: any[]
   try {
     rows = await fetchRows(customerId, query)
   } catch {
-    rows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, segments.date FROM campaign WHERE ${dateFilter} ORDER BY metrics.cost_micros DESC`)
+    rows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, segments.date FROM campaign WHERE ${dateFilter} AND ${enabledFilter} ORDER BY metrics.cost_micros DESC`)
   }
-  const campaigns = rows.map((row) => {
+
+  const campaignMap = new Map<string, {
+    id: string
+    name: string
+    status: string
+    advertising_channel_type: string
+    budget: number
+    impressions: number
+    clicks: number
+    spend: number
+    leads: number
+  }>()
+
+  for (const row of rows) {
     const metrics = row.metrics ?? {}
     const campaign = row.campaign ?? {}
     const budget = row.campaignBudget ?? row.campaign_budget ?? {}
-    const segments = row.segments ?? {}
-    const costMicros = metrics.costMicros ?? metrics.cost_micros ?? 0
-    const cost = Number(costMicros) / 1_000_000
+    const cost = Number(metrics.costMicros ?? metrics.cost_micros ?? 0) / 1_000_000
     const clicks = Number(metrics.clicks ?? 0)
     const impressions = Number(metrics.impressions ?? 0)
     const leads = Number(metrics.conversions ?? 0)
-    const channelType = campaign.advertisingChannelType ?? campaign.advertising_channel_type
-    return { id: String(campaign.id ?? ''), name: campaign.name ?? 'Sin nombre', status: campaign.status, advertising_channel_type: channelType, channel_label: CHANNEL_TYPE_LABELS[channelType] ?? channelType, budget: Number(budget.amountMicros ?? budget.amount_micros ?? 0) / 1_000_000, impressions, clicks, spend: cost, leads, ctr: impressions ? (clicks / impressions) * 100 : 0, cpc: clicks ? cost / clicks : 0, cpl: leads ? cost / leads : 0, date: segments.date }
-  })
-  // La misma fuente que usa el dashboard: sumar todas las filas de campaña,
-  // incluyendo campañas pausadas que todavía tuvieron gasto en el período.
-  const totals = campaigns.reduce((acc, campaign: any) => ({
+    const id = String(campaign.id ?? '')
+    if (!id) continue
+    const current = campaignMap.get(id)
+    if (current) {
+      current.impressions += impressions
+      current.clicks += clicks
+      current.spend += cost
+      current.leads += leads
+      if (!current.budget) current.budget = Number(budget.amountMicros ?? budget.amount_micros ?? 0) / 1_000_000
+    } else {
+      campaignMap.set(id, {
+        id,
+        name: campaign.name ?? 'Sin nombre',
+        status: campaign.status ?? 'UNKNOWN',
+        advertising_channel_type: campaign.advertisingChannelType ?? campaign.advertising_channel_type ?? 'UNKNOWN',
+        budget: Number(budget.amountMicros ?? budget.amount_micros ?? 0) / 1_000_000,
+        impressions,
+        clicks,
+        spend: cost,
+        leads,
+      })
+    }
+  }
+
+  const campaigns = [...campaignMap.values()].map((campaign) => ({
+    ...campaign,
+    channel_label: CHANNEL_TYPE_LABELS[campaign.advertising_channel_type] ?? campaign.advertising_channel_type,
+    ctr: campaign.impressions ? (campaign.clicks / campaign.impressions) * 100 : 0,
+    cpc: campaign.clicks ? campaign.spend / campaign.clicks : 0,
+    cpl: campaign.leads ? campaign.spend / campaign.leads : 0,
+  })).sort((a, b) => b.spend - a.spend)
+
+  const totals = campaigns.reduce((acc, campaign) => ({
     impressions: acc.impressions + campaign.impressions,
     clicks: acc.clicks + campaign.clicks,
     spend: acc.spend + campaign.spend,
@@ -113,7 +143,6 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
   totals.ctr = totals.impressions ? (totals.clicks / totals.impressions) * 100 : 0
   totals.cpc = totals.clicks ? totals.spend / totals.clicks : 0
   totals.cpl = totals.leads ? totals.spend / totals.leads : 0
-  console.log('[v0] Google Ads parsed metrics', { customer_id: customerId, date_from: input.dateFrom, date_to: input.dateTo, parsed_campaigns_length: campaigns.length, totals: { impressions: totals.impressions, clicks: totals.clicks, spend: totals.spend, conversions: totals.leads } })
   return { account_id: customerId, account_name: input.accountName ?? null, date_range: { start: input.dateFrom, end: input.dateTo }, totals, campaigns }
 }
 
