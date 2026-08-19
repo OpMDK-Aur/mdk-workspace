@@ -387,13 +387,15 @@ function getInitials(name: string | undefined | null): string {
 
 // ── Rich Text Editor ──────────────────────────────────────────────────────────
 
-function RichTextEditor({ 
-  content, 
+function RichTextEditor({
+  content,
   onChange,
+  onBlur,
   placeholder = 'Escribe aqui...'
-}: { 
+}: {
   content: string
   onChange: (html: string) => void
+  onBlur?: (html: string) => void
   placeholder?: string
 }) {
   const editorRef = useRef<HTMLDivElement>(null)
@@ -641,6 +643,9 @@ function RichTextEditor({
         ref={editorRef}
         contentEditable
         onInput={handleInput}
+        onBlur={() => {
+          if (editorRef.current) onBlur?.(editorRef.current.innerHTML)
+        }}
         onPaste={handlePaste}
         onClick={checkTableContext}
         onKeyUp={checkTableContext}
@@ -2208,29 +2213,18 @@ export function TaskDetailPanel() {
 
                   {/* Description area */}
                   <div className="py-5 border-y flex-shrink-0">
+                    <RichTextEditor
+                      content={task.description || ''}
+                      onChange={() => undefined}
+                      onBlur={(html) => {
+                        if (html !== task.description) updateTask(task.id, { description: html || null })
+                      }}
+                      placeholder="Añade una descripción..."
+                    />
                     <div
                       ref={descriptionRef}
-                      contentEditable
-                      suppressContentEditableWarning
-                      onBlur={() => {
-                        if (descriptionRef.current) {
-                          const html = descriptionRef.current.innerHTML
-                          if (html !== task.description) {
-                            updateTask(task.id, { description: html || null })
-                          }
-                        }
-                      }}
-                      onInput={() => {
-                        // No-op for now, save on blur
-                      }}
-                      className={cn(
-                        "min-h-[100px] text-sm outline-none",
-                        "prose prose-sm prose-invert max-w-none",
-                        "[&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5",
-                        "empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/40 empty:before:pointer-events-none"
-                      )}
-                      data-placeholder="Añade una descripcion o escribe con / para comandos..."
-                      dangerouslySetInnerHTML={{ __html: task.description || '' }}
+                      className="hidden"
+                      aria-hidden="true"
                     />
                   </div>
 
