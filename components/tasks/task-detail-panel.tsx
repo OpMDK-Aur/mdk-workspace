@@ -1610,6 +1610,7 @@ export function TaskDetailPanel() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isActivityExpanded, setIsActivityExpanded] = useState(false)
   const [activeTab, setActiveTab] = useState('detalles')
+  const [isEditingDescription, setIsEditingDescription] = useState(false)
 
   // Expanding the Activity panel also fullscreens the whole sheet so the
   // comments feed gets the maximum available viewport width.
@@ -2213,19 +2214,34 @@ export function TaskDetailPanel() {
 
                   {/* Description area */}
                   <div className="py-5 border-y flex-shrink-0">
-                    <RichTextEditor
-                      content={task.description || ''}
-                      onChange={() => undefined}
-                      onBlur={(html) => {
-                        if (html !== task.description) updateTask(task.id, { description: html || null })
-                      }}
-                      placeholder="Añade una descripción..."
-                    />
-                    <div
-                      ref={descriptionRef}
-                      className="hidden"
-                      aria-hidden="true"
-                    />
+                    {isEditingDescription ? (
+                      <RichTextEditor
+                        content={task.description || ''}
+                        onChange={() => undefined}
+                        onBlur={(html) => {
+                          if (html !== task.description) updateTask(task.id, { description: html || null })
+                          setIsEditingDescription(false)
+                        }}
+                        placeholder="Añade una descripción..."
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className="w-full text-left rounded-md px-3 py-3 hover:bg-accent/40 transition-colors"
+                        onClick={() => setIsEditingDescription(true)}
+                        aria-label="Editar descripción"
+                      >
+                        {task.description ? (
+                          <div
+                            className="prose prose-sm prose-invert max-w-none [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_i]:italic [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5"
+                            dangerouslySetInnerHTML={{ __html: task.description }}
+                          />
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Añade una descripción...</span>
+                        )}
+                      </button>
+                    )}
+                    <div ref={descriptionRef} className="hidden" aria-hidden="true" />
                   </div>
 
                   {/* Files */}
