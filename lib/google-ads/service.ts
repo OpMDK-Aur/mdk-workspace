@@ -72,13 +72,14 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
   assertDate(input.dateFrom)
   assertDate(input.dateTo)
   const dateFilter = `segments.date BETWEEN '${input.dateFrom}' AND '${input.dateTo}'`
-  const enabledFilter = `campaign.status = 'ENABLED'`
-  const query = `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, campaign_budget.amount_micros, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.average_cpc, metrics.ctr, metrics.conversions, segments.date FROM campaign WHERE ${dateFilter} AND ${enabledFilter} ORDER BY metrics.cost_micros DESC`
+  // Incluir campañas pausadas/finalizadas que tuvieron actividad dentro del período.
+  // Filtrar solo ENABLED devuelve cero cuando la cuenta tiene campañas históricas pausadas.
+  const query = `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, campaign_budget.amount_micros, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.average_cpc, metrics.ctr, metrics.conversions, segments.date FROM campaign WHERE ${dateFilter} ORDER BY metrics.cost_micros DESC`
   let rows: any[]
   try {
     rows = await fetchRows(customerId, query)
   } catch {
-    rows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, segments.date FROM campaign WHERE ${dateFilter} AND ${enabledFilter} ORDER BY metrics.cost_micros DESC`)
+    rows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, segments.date FROM campaign WHERE ${dateFilter} ORDER BY metrics.cost_micros DESC`)
   }
 
   const campaignMap = new Map<string, {
