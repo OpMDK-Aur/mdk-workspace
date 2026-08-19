@@ -270,27 +270,40 @@ interface WeekRowProps {
 
 function WeekRow({ weekDates, tasks, currentMonth, onTaskClick, onAddTask }: WeekRowProps) {
   const bars = useMemo(() => computeWeekBars(weekDates, tasks), [weekDates, tasks])
-  const lanes = useMemo(() => assignLanes(bars), [bars])
-  const visibleLanes = lanes.slice(0, MAX_VISIBLE_LANES)
+
+  // Multi-day tasks need to span shared rows across columns. Single-day tasks
+  // stack independently per day so one day's tasks never force blank space
+  // into other days that don't have as many tasks.
+  const { multiDayBars, singleDayBars } = useMemo(() => {
+    const multi: TaskBar[] = []
+    const single: TaskBar[] = []
+    bars.forEach((bar) => (bar.endCol > bar.startCol ? multi.push(bar) : single.push(bar)))
+    return { multiDayBars: multi, singleDayBars: single }
+  }, [bars])
+
+  const multiDayLanes = useMemo(() => assignLanes(multiDayBars), [multiDayBars])
+  const singleDayLimit = Math.max(1, MAX_VISIBLE_LANES - multiDayLanes.length)
+
+  const singleDayTasksByDay = useMemo(() => {
+    const map = new Map<number, Task[]>()
+    weekDates.forEach((_, dayIndex) => {
+      map.set(
+        dayIndex,
+        sortCalendarTasks(singleDayBars.filter((bar) => bar.startCol === dayIndex).map((bar) => bar.task)),
+      )
+    })
+    return map
+  }, [singleDayBars, weekDates])
+
   const overflowByDay = useMemo(() => {
     const result = new Map<string, Task[]>()
     weekDates.forEach((date, dayIndex) => {
-      const visibleTaskIds = new Set(
-        visibleLanes.flatMap((lane) => lane.filter((bar) => bar.startCol <= dayIndex && bar.endCol >= dayIndex).map((bar) => bar.task.id)),
-      )
-      const dayTasks = sortCalendarTasks(
-        bars
-          .filter((bar) => bar.startCol <= dayIndex && bar.endCol >= dayIndex && !visibleTaskIds.has(bar.task.id))
-          .map((bar) => bar.task),
-      ).filter((task, index, all) => all.findIndex((candidate) => candidate.id === task.id) === index)
-      if (dayTasks.length > 0) result.set(format(date, 'yyyy-MM-dd'), dayTasks)
+      const dayTasks = singleDayTasksByDay.get(dayIndex) ?? []
+      const overflowTasks = dayTasks.slice(singleDayLimit)
+      if (overflowTasks.length > 0) result.set(format(date, 'yyyy-MM-dd'), overflowTasks)
     })
     return result
-  }, [bars, visibleLanes, weekDates])
-  const overflowCountByDay = useMemo(
-    () => new Map([...overflowByDay.entries()].map(([key, dayTasks]) => [key, dayTasks.length])),
-    [overflowByDay],
-  )
+  }, [singleDayTasksByDay, singleDayLimit, weekDates])
 
   return (
     <div className="border-b">
@@ -313,8 +326,8 @@ function WeekRow({ weekDates, tasks, currentMonth, onTaskClick, onAddTask }: Wee
           ))}
         </div>
 
-        <div className="relative flex flex-col gap-0 px-1.5 pt-1 pb-4">
-        {visibleLanes.map((lane, laneIdx) => (
+        <div className="relative flex flex-col gap-1 px-1.5 py-1">
+        {multiDayLanes.map((lane, laneIdx) => (
           <div
             key={laneIdx}
             className="grid grid-cols-7 gap-1"
@@ -332,31 +345,39 @@ function WeekRow({ weekDates, tasks, currentMonth, onTaskClick, onAddTask }: Wee
           </div>
         ))}
 
+        {/* Single-day tasks stack independently per day so an empty day never
+            inherits blank space from a busier day in the same week. */}
+        <div className="grid grid-cols-7 gap-1" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
         {weekDates.map((date, dayIndex) => {
           const dayKey = format(date, 'yyyy-MM-dd')
+          const dayTasks = singleDayTasksByDay.get(dayIndex) ?? []
+          const visibleTasks = dayTasks.slice(0, singleDayLimit)
           const overflowTasks = overflowByDay.get(dayKey) ?? []
-          if (overflowTasks.length === 0) return null
           return (
-            <Popover key={dayKey}>
-              <PopoverTrigger asChild>
-                <button
-                  className="absolute bottom-0 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10 hover:text-primary/80 rounded"
-                  style={{ left: `${(dayIndex / 7) * 100}%`, width: `${100 / 7}%` }}
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  +{overflowTasks.length} más
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-72 p-0 shadow-lg border" align="center" side="bottom" sideOffset={8} onClick={(event) => event.stopPropagation()}>
-                <div className="sticky top-0 bg-background/95 px-4 py-3 border-b backdrop-blur-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-base font-semibold text-foreground capitalize">{format(date, 'd MMMM', { locale: es })}</span>
-                    <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">{overflowTasks.length} tareas</span>
-                  </div>
-                </div>
-                <ScrollArea className="h-80 w-full">
-                  <div className="flex flex-col gap-1 px-2 py-2">
-                  {overflowTasks.map((task) => {
+            <div key={dayKey} className="flex flex-col gap-1">
+              {visibleTasks.map((task) => (
+                <TaskBarCard key={task.id} task={task} startCol={0} endCol={0} onTaskClick={onTaskClick} />
+              ))}
+              {overflowTasks.length > 0 && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      className="w-full py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10 hover:text-primary/80 rounded"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      +{overflowTasks.length} más
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-72 p-0 shadow-lg border" align="center" side="bottom" sideOffset={8} onClick={(event) => event.stopPropagation()}>
+                    <div className="sticky top-0 bg-background/95 px-4 py-3 border-b backdrop-blur-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-base font-semibold text-foreground capitalize">{format(date, 'd MMMM', { locale: es })}</span>
+                        <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">{overflowTasks.length} tareas</span>
+                      </div>
+                    </div>
+                    <ScrollArea className="h-80 w-full">
+                      <div className="flex flex-col gap-1 px-2 py-2">
+                      {overflowTasks.map((task) => {
                     const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
                     const dueDate = task.dueDate ? (typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate) : null
                     const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate) && task.status !== 'resuelto'
@@ -398,12 +419,15 @@ function WeekRow({ weekDates, tasks, currentMonth, onTaskClick, onAddTask }: Wee
                       </button>
                     )
                   })}
-                  </div>
-                </ScrollArea>
-              </PopoverContent>
-            </Popover>
+                      </div>
+                    </ScrollArea>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
           )
         })}
+        </div>
         </div>
       </div>
     </div>
