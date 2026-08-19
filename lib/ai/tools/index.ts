@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import type { ExecutionContext, ToolDefinition } from '../types'
 import { getGoogleAccountMetrics, defaultGoogleDateRange, normalizeCustomerId } from '@/lib/google-ads/service'
+import { defaultMetaDateRange, getMetaAccountMetrics, getMetaErrorDetails, normalizeMetaAccountId } from '@/lib/meta-ads/service'
 
 const noInput = z.object({})
 
@@ -72,14 +73,68 @@ const getAccountContext: ToolDefinition = {
 
 const getMetaMetrics: ToolDefinition = {
   key: 'get_meta_metrics',
-  description: 'Consulta métricas de Meta Ads con contexto de cuenta server-side.',
-  inputSchema: z.object({ period: z.string().max(80).optional() }),
-  async execute(input: { period?: string }, context: ExecutionContext) {
+  description: 'Consulta métricas reales de Meta Ads de las cuentas activas del cliente seleccionado.',
+  inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional(), accountId: z.string().optional() }),
+  async execute(input: { dateFrom?: string; dateTo?: string; accountId?: string }, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    if ((input.dateFrom && !input.dateTo) || (!input.dateFrom && input.dateTo)) return { available: false, message: 'Debes indicar dateFrom y dateTo juntos.' }
+
+    const { dateFrom, dateTo } = input.dateFrom && input.dateTo ? input : defaultMetaDateRange()
+    const supabase = await createClient()
+    const { data: accounts, error } = await supabase
+      .from('cuentas_publicitarias')
+      .select('id_cuenta, nombre_cuenta, moneda, zona_horaria')
+      .eq('cliente_id', context.clientId)
+      .eq('plataforma', 'meta')
+      .eq('activo', true)
+    if (error) return { available: false, message: 'No se pudieron consultar las cuentas activas de Meta Ads.' }
+
+    const availableAccounts = accounts ?? []
+    const selected = input.accountId
+      ? availableAccounts.filter((account) => normalizeMetaAccountId(account.id_cuenta) === normalizeMetaAccountId(input.accountId!))
+      : availableAccounts
+    if (input.accountId && selected.length === 0) return { available: false, message: 'La cuenta solicitada no pertenece al cliente seleccionado.' }
+    if (!selected.length) return { available: false, message: 'El cliente no tiene cuentas activas de Meta Ads.' }
+
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_meta_metrics', status: 'running', label: 'Consultando Meta Ads...' })
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_meta_metrics', status: 'running', label: `Consultando ${selected.length} cuenta${selected.length === 1 ? '' : 's'} de Meta Ads...` })
+
+    const results: Array<{ account: typeof selected[number]; metrics?: Awaited<ReturnType<typeof getMetaAccountMetrics>>; error?: ReturnType<typeof getMetaErrorDetails> }> = []
+    for (let index = 0; index < selected.length; index += 3) {
+      const batch = selected.slice(index, index + 3)
+      const batchResults = await Promise.all(batch.map(async (account) => {
+        try {
+          return { account, metrics: await getMetaAccountMetrics({ accountId: account.id_cuenta, accountName: account.nombre_cuenta, moneda: account.moneda, zonaHoraria: account.zona_horaria, dateFrom: dateFrom!, dateTo: dateTo!, onlyActiveCampaigns: false }) }
+        } catch (cause) {
+          return { account, error: getMetaErrorDetails(cause) }
+        }
+      }))
+      results.push(...batchResults)
+    }
+
+    const successful = results.filter((result) => result.metrics)
+    const errors = results.filter((result) => result.error).map((result) => ({ account_id: result.account.id_cuenta, account_name: result.account.nombre_cuenta, ...result.error }))
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_meta_metrics', status: 'completed', label: successful.length === selected.length ? 'Métricas de Meta Ads recibidas' : `Se consultaron ${successful.length} de ${selected.length} cuentas de Meta Ads` })
+
+    const totalsByCurrency: Record<string, { spend: number; accounts: number }> = {}
+    for (const result of successful) {
+      const currency = result.metrics!.moneda || 'UNKNOWN'
+      const current = totalsByCurrency[currency] ?? { spend: 0, accounts: 0 }
+      current.spend += result.metrics!.totals.spend
+      current.accounts += 1
+      totalsByCurrency[currency] = current
+    }
     return {
-      available: false,
-      period: input.period ?? 'últimos 30 días',
-      metaAccountId: context.metaAccountId ?? null,
-      message: 'La integración de métricas de Meta Ads está reservada para la siguiente etapa.',
+      available: true,
+      platform: 'meta',
+      date_range: { start: dateFrom, end: dateTo },
+      requested_accounts: selected.length,
+      successful_accounts: successful.length,
+      failed_accounts: errors.length,
+      partial: errors.length > 0,
+      accounts: successful.map((result) => result.metrics),
+      totals_by_currency: totalsByCurrency,
+      errors,
     }
   },
 }
