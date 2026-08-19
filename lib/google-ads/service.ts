@@ -2,7 +2,6 @@ import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginC
 import { CHANNEL_TYPE_LABELS } from './config'
 
 const API_VERSION = 'v23'
-const PAGE_SIZE = 1000
 
 export interface GoogleAccountMetricsInput {
   customerId: string
@@ -43,7 +42,10 @@ async function fetchRows(customerId: string, query: string) {
     const response = await fetch(`https://googleads.googleapis.com/${API_VERSION}/customers/${customerId}/googleAds:search`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}`, ...(developerToken ? { 'developer-token': developerToken } : {}), ...(loginCustomerId ? { 'login-customer-id': loginCustomerId } : {}), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, pageSize: PAGE_SIZE, ...(pageToken ? { pageToken } : {}) }),
+      // El endpoint googleAds:search NO admite pageSize: devuelve 400
+      // PAGE_SIZE_NOT_SUPPORTED. El tamaño de página es fijo (10000 filas)
+      // y la paginación se controla únicamente con pageToken.
+      body: JSON.stringify({ query, ...(pageToken ? { pageToken } : {}) }),
       cache: 'no-store',
     })
     const payload = await response.json().catch(() => null)
