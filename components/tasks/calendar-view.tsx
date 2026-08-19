@@ -179,7 +179,7 @@ function TaskBarCard({ task, startCol, endCol, onTaskClick }: TaskBarCardProps) 
       onClick={() => onTaskClick(task.id)}
       style={{ gridColumn: `${startCol + 1} / ${endCol + 2}` }}
       className={cn(
-        'rounded-xl border border-gray-200 px-2.5 py-2 text-left shadow-sm transition-all',
+        'rounded-xl border border-gray-200 px-2 py-1.5 text-left shadow-sm transition-all',
         'bg-white dark:border-border dark:bg-card',
         'hover:border-primary/50 hover:shadow-md',
         isOverdue && !isSystemTask && 'ring-1 ring-red-400/60',
@@ -193,7 +193,7 @@ function TaskBarCard({ task, startCol, endCol, onTaskClick }: TaskBarCardProps) 
           {task.title}
         </span>
       </div>
-      <div className="mt-1.5 flex items-center justify-between">
+      <div className="mt-1 flex items-center justify-between">
         {isSystemTask ? (
           <Badge
             variant="outline"
@@ -313,7 +313,7 @@ function WeekRow({ weekDates, tasks, currentMonth, onTaskClick, onAddTask }: Wee
           ))}
         </div>
 
-        <div className="relative flex flex-col gap-1 px-1.5 pt-1.5 pb-5">
+        <div className="relative flex flex-col gap-0 px-1.5 pt-1 pb-4">
         {visibleLanes.map((lane, laneIdx) => (
           <div
             key={laneIdx}
