@@ -1,4 +1,4 @@
-import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
+import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId, refreshGoogleAdsAccessToken } from '@/lib/google-tokens'
 import { CHANNEL_TYPE_LABELS } from './config'
 
 const API_VERSION = 'v23'
@@ -28,12 +28,15 @@ function assertDate(value: string) {
 }
 
 async function fetchRows(customerId: string, query: string) {
-  const [{ accessToken, error: tokenError }, developerToken, loginCustomerId] = await Promise.all([
+  const [{ accessToken: initialToken, error: tokenError }, developerToken, loginCustomerId] = await Promise.all([
     getGoogleAdsAccessToken(),
     getGoogleAdsDeveloperToken(),
     getGoogleAdsLoginCustomerId(),
   ])
-  if (!accessToken) throw new Error(tokenError || 'No se pudo obtener el access token de Google Ads.')
+  if (!initialToken) throw new Error(tokenError || 'No se pudo obtener el access token de Google Ads.')
+
+  let accessToken = initialToken
+  let retriedWithRefresh = false
   const rows: any[] = []
   let pageToken: string | undefined
   do {
@@ -44,7 +47,19 @@ async function fetchRows(customerId: string, query: string) {
       cache: 'no-store',
     })
     const payload = await response.json().catch(() => null)
-    if (!response.ok) throw new Error(typeof payload?.error?.message === 'string' ? payload.error.message : 'Google Ads no pudo responder.')
+    if (!response.ok) {
+      const message = typeof payload?.error?.message === 'string' ? payload.error.message : 'Google Ads no pudo responder.'
+      const authFailure = response.status === 401 || payload?.error?.status === 'UNAUTHENTICATED'
+      if (authFailure && !retriedWithRefresh) {
+        const refreshedToken = await refreshGoogleAdsAccessToken()
+        if (refreshedToken) {
+          accessToken = refreshedToken
+          retriedWithRefresh = true
+          continue
+        }
+      }
+      throw new Error(message)
+    }
     rows.push(...(payload?.results ?? []))
     pageToken = payload?.nextPageToken
   } while (pageToken)
