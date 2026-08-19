@@ -220,20 +220,48 @@ const runPerformanceAnalystTool: ToolDefinition = {
       return { available: false, code: 'INVALID_ANALYSIS_ENTITY', message: 'No hay un cliente activo para validar el análisis.' }
     }
     const snapshots = structuredClone(state.paidMediaSnapshots)
-    const invalid = snapshots.some((snapshot) =>
-      snapshot.client_id !== context.clientId ||
-      !['google', 'meta'].includes(snapshot.platform) ||
-      !/^\\d{4}-\\d{2}-\\d{2}$/.test(snapshot.period.from) ||
-      !/^\\d{4}-\\d{2}-\\d{2}$/.test(snapshot.period.to) ||
-      snapshot.period.from > snapshot.period.to,
-    )
-    if (invalid) {
-      return { available: false, code: 'INVALID_ANALYSIS_ENTITY', message: 'Los datos de análisis no pertenecen al cliente o tienen una entidad inválida.' }
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/
+    const snapshotClientIds = [...new Set(snapshots.map((snapshot) => snapshot.client_id))]
+    const platforms = [...new Set(snapshots.map((snapshot) => snapshot.platform))]
+    const periods = [...new Set(snapshots.map((snapshot) => `${snapshot.period.from}:${snapshot.period.to}`))]
+    const validation = {
+      context_client_id_present: Boolean(context.clientId),
+      snapshot_count: snapshots.length,
+      snapshot_client_ids_unique: snapshotClientIds.length,
+      client_matches: snapshots.every((snapshot) => snapshot.client_id === context.clientId),
+      platforms,
+      platform_valid: snapshots.every((snapshot) => snapshot.platform === 'google' || snapshot.platform === 'meta'),
+      periods_unique: periods.length,
+      account_ids: snapshots.filter((snapshot) => Boolean(snapshot.account_id)).length,
+      account_ids_present: snapshots.every((snapshot) => Boolean(snapshot.account_id)),
+      period_from_present: snapshots.every((snapshot) => Boolean(snapshot.period?.from)),
+      period_to_present: snapshots.every((snapshot) => Boolean(snapshot.period?.to)),
+      period_format_valid: snapshots.every((snapshot) => datePattern.test(snapshot.period.from) && datePattern.test(snapshot.period.to)),
+      period_order_valid: snapshots.every((snapshot) => snapshot.period.from <= snapshot.period.to),
+    }
+    console.log('[v0] analysis entity validation', { ...validation, valid: validation.context_client_id_present && validation.client_matches && validation.platform_valid && validation.account_ids_present && validation.period_from_present && validation.period_to_present && validation.period_format_valid && validation.period_order_valid && validation.periods_unique === 1 })
+    const valid = validation.context_client_id_present && validation.client_matches && validation.platform_valid && validation.account_ids_present && validation.period_from_present && validation.period_to_present && validation.period_format_valid && validation.period_order_valid && validation.periods_unique === 1
+    if (!valid) {
+      return { available: false, code: validation.periods_unique > 1 ? 'INCOMPATIBLE_ANALYSIS_PERIODS' : 'INVALID_ANALYSIS_ENTITY', message: validation.periods_unique > 1 ? 'No se pueden mezclar períodos distintos en un mismo análisis.' : 'Los datos de análisis no pertenecen al cliente o tienen una entidad inválida.' }
     }
 
     context.emitActivity?.({ agentSlug: 'performance-analyst', toolKey: 'run_performance_analyst', status: 'running', label: 'Analizando performance...' })
     try {
       const output = await runPerformanceAnalyst({ context, snapshots, model: `openai/gpt-5.5` })
+      const expectedAccountIds = new Set(snapshots.map((snapshot) => snapshot.account_id))
+      const outputAccountIds = new Set(output.entidad.account_ids)
+      const expectedPeriod = snapshots[0].period
+      const expectedPlatform = platforms.length === 1 ? platforms[0] : 'mixed'
+      const entityMatches = output.entidad.client_id === context.clientId &&
+        output.entidad.platform === expectedPlatform &&
+        output.entidad.account_ids.every((accountId) => expectedAccountIds.has(accountId)) &&
+        outputAccountIds.size === expectedAccountIds.size &&
+        output.entidad.period.from === expectedPeriod.from &&
+        output.entidad.period.to === expectedPeriod.to
+      if (!entityMatches) {
+        console.log('[v0] performance analyst output entity validation', { client_matches: output.entidad.client_id === context.clientId, platform_matches: output.entidad.platform === expectedPlatform, account_ids_subset: [...outputAccountIds].every((accountId) => expectedAccountIds.has(accountId)), account_ids_complete: outputAccountIds.size === expectedAccountIds.size, period_matches: output.entidad.period.from === expectedPeriod.from && output.entidad.period.to === expectedPeriod.to })
+        return { available: false, code: 'SPECIALIST_OUTPUT_INVALID', message: 'La entidad devuelta por Performance Analyst no coincide con los datos analizados.' }
+      }
       context.emitActivity?.({ agentSlug: 'performance-analyst', toolKey: 'run_performance_analyst', status: 'completed', label: 'Analista de Performance completó el análisis' })
       return output
     } catch (cause) {
