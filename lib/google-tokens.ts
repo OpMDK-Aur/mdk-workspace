@@ -91,8 +91,14 @@ async function refreshAndUpdateToken(
  * 1. First tries to read from plataformas_tokens table
  * 2. Falls back to environment variables if not found
  */
+export async function refreshGoogleAdsAccessToken(): Promise<string | null> {
+  const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN
+  if (!refreshToken) return null
+  return refreshAndUpdateToken('google_ads', refreshToken)
+}
+
 export async function getGoogleAdsAccessToken(): Promise<TokenResult> {
-  // Google Ads usa exclusivamente el access token configurado en el entorno.
+  // Google Ads usa el access token configurado en el entorno.
   // No leer `access_token` desde plataformas_tokens para esta integración.
   const accessToken = process.env.GOOGLE_ADS_ACCESS_TOKEN
   if (accessToken) {
