@@ -92,7 +92,20 @@ async function refreshAndUpdateToken(
  * 2. Falls back to environment variables if not found
  */
 export async function getGoogleAdsAccessToken(): Promise<TokenResult> {
-  // Try database first
+  // Google Ads usa exclusivamente el access token configurado en el entorno.
+  // No leer `access_token` desde plataformas_tokens para esta integración.
+  const accessToken = process.env.GOOGLE_ADS_ACCESS_TOKEN
+  if (accessToken) {
+    return { accessToken }
+  }
+
+  return {
+    accessToken: null,
+    error: 'No se encontró GOOGLE_ADS_ACCESS_TOKEN en las variables de entorno.'
+  }
+
+  /*
+  // Database/refresh-token flow kept disabled intentionally for Google Ads.
   const dbToken = await getTokenFromDb('google_ads')
   
   if (dbToken?.refresh_token) {
@@ -146,10 +159,11 @@ export async function getGoogleAdsAccessToken(): Promise<TokenResult> {
     return { accessToken }
   }
 
-  return { 
-    accessToken: null, 
-    error: 'No se encontraron credenciales de Google Ads. Conecta tu cuenta desde Plataformas.' 
+  return {
+    accessToken: null,
+    error: 'No se encontraron credenciales de Google Ads. Conecta tu cuenta desde Plataformas.'
   }
+  */
 }
 
 /**
