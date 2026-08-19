@@ -107,13 +107,13 @@ function formatCurrency(value: number | null): string {
 function getSemaforoBadge(semaforo: SemaforoStatus | undefined) {
   switch (semaforo) {
     case 'verde':
-      return { label: 'Optimo', className: '!bg-status-verde/10 !text-status-verde !border-status-verde/25', dotClass: 'bg-status-verde' }
+      return { label: 'Optimo', className: 'bg-status-verde/10 text-status-verde border-status-verde/25', dotClass: 'bg-status-verde' }
     case 'amarillo':
-      return { label: 'Atencion', className: '!bg-status-amarillo/10 !text-status-amarillo !border-status-amarillo/25', dotClass: 'bg-status-amarillo' }
+      return { label: 'Atencion', className: 'bg-status-amarillo/10 text-status-amarillo border-status-amarillo/25', dotClass: 'bg-status-amarillo' }
     case 'naranja':
-      return { label: 'En riesgo', className: '!bg-status-naranja/10 !text-status-naranja !border-status-naranja/25', dotClass: 'bg-status-naranja' }
+      return { label: 'En riesgo', className: 'bg-status-naranja/10 text-status-naranja border-status-naranja/25', dotClass: 'bg-status-naranja' }
     case 'rojo':
-      return { label: 'Critico', className: '!bg-status-rojo/10 !text-status-rojo !border-status-rojo/25', dotClass: 'bg-status-rojo' }
+      return { label: 'Critico', className: 'bg-status-rojo/10 text-status-rojo border-status-rojo/25', dotClass: 'bg-status-rojo' }
     default:
       return { label: 'Sin datos', className: 'text-muted-foreground', dotClass: 'bg-muted-foreground/40' }
   }
