@@ -47,6 +47,14 @@ async function fetchRows(customerId: string, query: string) {
       cache: 'no-store',
     })
     const payload = await response.json().catch(() => null)
+    console.log('[v0] Google Ads request diagnostic', {
+      customer_id: customerId,
+      endpoint: `customers/${customerId}/googleAds:search`,
+      http_status: response.status,
+      has_results: Array.isArray(payload?.results),
+      results_length: Array.isArray(payload?.results) ? payload.results.length : 0,
+      raw_response_shape: payload && typeof payload === 'object' ? Object.keys(payload) : [],
+    })
     if (!response.ok) {
       const message = typeof payload?.error?.message === 'string' ? payload.error.message : 'Google Ads no pudo responder.'
       const authFailure = response.status === 401 || payload?.error?.status === 'UNAUTHENTICATED'
@@ -82,11 +90,16 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
   }
   const campaigns = rows.map((row) => {
     const metrics = row.metrics ?? {}
-    const cost = Number(metrics.costMicros ?? 0) / 1_000_000
+    const campaign = row.campaign ?? {}
+    const budget = row.campaignBudget ?? row.campaign_budget ?? {}
+    const segments = row.segments ?? {}
+    const costMicros = metrics.costMicros ?? metrics.cost_micros ?? 0
+    const cost = Number(costMicros) / 1_000_000
     const clicks = Number(metrics.clicks ?? 0)
     const impressions = Number(metrics.impressions ?? 0)
     const leads = Number(metrics.conversions ?? 0)
-    return { id: String(row.campaign?.id ?? ''), name: row.campaign?.name ?? 'Sin nombre', status: row.campaign?.status, advertising_channel_type: row.campaign?.advertisingChannelType, channel_label: CHANNEL_TYPE_LABELS[row.campaign?.advertisingChannelType] ?? row.campaign?.advertisingChannelType, budget: Number(row.campaignBudget?.amountMicros ?? 0) / 1_000_000, impressions, clicks, spend: cost, leads, ctr: impressions ? (clicks / impressions) * 100 : 0, cpc: clicks ? cost / clicks : 0, cpl: leads ? cost / leads : 0, date: row.segments?.date }
+    const channelType = campaign.advertisingChannelType ?? campaign.advertising_channel_type
+    return { id: String(campaign.id ?? ''), name: campaign.name ?? 'Sin nombre', status: campaign.status, advertising_channel_type: channelType, channel_label: CHANNEL_TYPE_LABELS[channelType] ?? channelType, budget: Number(budget.amountMicros ?? budget.amount_micros ?? 0) / 1_000_000, impressions, clicks, spend: cost, leads, ctr: impressions ? (clicks / impressions) * 100 : 0, cpc: clicks ? cost / clicks : 0, cpl: leads ? cost / leads : 0, date: segments.date }
   })
   // La misma fuente que usa el dashboard: sumar todas las filas de campaña,
   // incluyendo campañas pausadas que todavía tuvieron gasto en el período.
@@ -100,7 +113,7 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
   totals.ctr = totals.impressions ? (totals.clicks / totals.impressions) * 100 : 0
   totals.cpc = totals.clicks ? totals.spend / totals.clicks : 0
   totals.cpl = totals.leads ? totals.spend / totals.leads : 0
-  console.log('[v0] Google Ads metrics received', { customerId, dateFrom: input.dateFrom, dateTo: input.dateTo, campaignRows: rows.length, spend: totals.spend, clicks: totals.clicks, impressions: totals.impressions })
+  console.log('[v0] Google Ads parsed metrics', { customer_id: customerId, date_from: input.dateFrom, date_to: input.dateTo, parsed_campaigns_length: campaigns.length, totals: { impressions: totals.impressions, clicks: totals.clicks, spend: totals.spend, conversions: totals.leads } })
   return { account_id: customerId, account_name: input.accountName ?? null, date_range: { start: input.dateFrom, end: input.dateTo }, totals, campaigns }
 }
 
