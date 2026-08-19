@@ -28,11 +28,12 @@ function assertDate(value: string) {
 }
 
 async function fetchRows(customerId: string, query: string) {
-  const [accessToken, developerToken, loginCustomerId] = await Promise.all([
+  const [{ accessToken, error: tokenError }, developerToken, loginCustomerId] = await Promise.all([
     getGoogleAdsAccessToken(),
     getGoogleAdsDeveloperToken(),
     getGoogleAdsLoginCustomerId(),
   ])
+  if (!accessToken) throw new Error(tokenError || 'No se pudo obtener el access token de Google Ads.')
   const rows: any[] = []
   let pageToken: string | undefined
   do {
