@@ -100,6 +100,9 @@ export async function POST(request: Request) {
       historyMessageCount: history.length,
       conversationId: conversation?.id ?? null,
     })
+    // AnalysisRunState es efímero y vive únicamente durante este request.
+    // No es memoria conversacional y nunca se persiste en Supabase.
+    const analysisRunState = { paidMediaSnapshots: [] as import('@/lib/ai/contracts/performance-analyst').PaidMediaSnapshot[] }
     let writeActivity: ((event: ActivityEvent) => void) | undefined
     const resultStream = createUIMessageStream({
       execute: async ({ writer }) => {
@@ -108,6 +111,7 @@ export async function POST(request: Request) {
           userId: user.id,
           userEmail: user.email,
           ...context,
+          analysisRunState,
           emitActivity: (event) => writeActivity?.({
             ...event,
             eventId: crypto.randomUUID(),

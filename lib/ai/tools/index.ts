@@ -3,8 +3,38 @@ import { createClient } from '@/lib/supabase/server'
 import type { ExecutionContext, ToolDefinition } from '../types'
 import { getGoogleAccountMetrics, defaultGoogleDateRange, normalizeCustomerId } from '@/lib/google-ads/service'
 import { defaultMetaDateRange, getMetaAccountMetrics, getMetaErrorDetails, normalizeMetaAccountId } from '@/lib/meta-ads/service'
+import { upsertPaidMediaSnapshot } from '@/lib/ai/contracts/performance-analyst'
+import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 
 const noInput = z.object({})
+
+function addGoogleSnapshot(context: ExecutionContext, account: { id_cuenta: string; nombre_cuenta: string | null; moneda: string | null }, metrics: Awaited<ReturnType<typeof getGoogleAccountMetrics>>) {
+  if (!context.analysisRunState || !context.clientId) return
+  upsertPaidMediaSnapshot(context.analysisRunState, {
+    client_id: context.clientId,
+    platform: 'google',
+    account_id: metrics.account_id,
+    account_name: metrics.account_name ?? account.nombre_cuenta,
+    currency: account.moneda,
+    period: { from: metrics.date_range.start, to: metrics.date_range.end },
+    metrics: metrics.totals,
+    campaigns: metrics.campaigns,
+  })
+}
+
+function addMetaSnapshot(context: ExecutionContext, account: { id_cuenta: string; nombre_cuenta: string | null; moneda: string | null }, metrics: Awaited<ReturnType<typeof getMetaAccountMetrics>>) {
+  if (!context.analysisRunState || !context.clientId) return
+  upsertPaidMediaSnapshot(context.analysisRunState, {
+    client_id: context.clientId,
+    platform: 'meta',
+    account_id: metrics.account_id,
+    account_name: metrics.account_name ?? account.nombre_cuenta,
+    currency: metrics.moneda ?? account.moneda,
+    period: { from: metrics.date_range.start, to: metrics.date_range.end },
+    metrics: { ...metrics.totals, results_by_type: metrics.results_by_type },
+    campaigns: metrics.campaigns.map((campaign) => ({ ...campaign })),
+  })
+}
 
 const getAccountContext: ToolDefinition = {
   key: 'get_account_context',
@@ -104,7 +134,9 @@ const getMetaMetrics: ToolDefinition = {
       const batch = selected.slice(index, index + 3)
       const batchResults = await Promise.all(batch.map(async (account) => {
         try {
-          return { account, metrics: await getMetaAccountMetrics({ accountId: account.id_cuenta, accountName: account.nombre_cuenta, moneda: account.moneda, zonaHoraria: account.zona_horaria, dateFrom: dateFrom!, dateTo: dateTo!, onlyActiveCampaigns: false }) }
+          const metrics = await getMetaAccountMetrics({ accountId: account.id_cuenta, accountName: account.nombre_cuenta, moneda: account.moneda, zonaHoraria: account.zona_horaria, dateFrom: dateFrom!, dateTo: dateTo!, onlyActiveCampaigns: false })
+          addMetaSnapshot(context, account, metrics)
+          return { account, metrics }
         } catch (cause) {
           return { account, error: getMetaErrorDetails(cause) }
         }
@@ -160,7 +192,11 @@ const getGoogleMetrics: ToolDefinition = {
     for (let index = 0; index < selected.length; index += 3) {
       const batch = selected.slice(index, index + 3)
       const batchResults = await Promise.all(batch.map(async (account) => {
-        try { return { account, metrics: await getGoogleAccountMetrics({ customerId: account.id_cuenta, accountName: account.nombre_cuenta, dateFrom: dateFrom!, dateTo: dateTo! }) } }
+        try {
+          const metrics = await getGoogleAccountMetrics({ customerId: account.id_cuenta, accountName: account.nombre_cuenta, dateFrom: dateFrom!, dateTo: dateTo! })
+          addGoogleSnapshot(context, account, metrics)
+          return { account, metrics }
+        }
         catch (cause) { return { account, error: cause instanceof Error ? cause.message : 'No se pudo consultar esta cuenta.' } }
       }))
       results.push(...batchResults)
@@ -168,6 +204,43 @@ const getGoogleMetrics: ToolDefinition = {
     const successful = results.filter((result) => result.metrics)
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_metrics', status: 'completed', label: successful.length === selected.length ? 'Métricas de Google Ads recibidas' : `Se consultaron ${successful.length} de ${selected.length} cuentas de Google Ads` })
     return { available: true, partial: successful.length !== selected.length, date_range: { start: dateFrom, end: dateTo }, accounts: successful.map((result) => result.metrics), errors: results.filter((result) => result.error).map((result) => ({ account_id: result.account.id_cuenta, account_name: result.account.nombre_cuenta, message: result.error })) }
+  },
+}
+
+const runPerformanceAnalystTool: ToolDefinition = {
+  key: 'run_performance_analyst',
+  description: 'Analiza los snapshots de Google Ads y Meta Ads recolectados durante este request.',
+  inputSchema: noInput,
+  async execute(_input, context: ExecutionContext) {
+    const state = context.analysisRunState
+    if (!state?.paidMediaSnapshots.length) {
+      return { available: false, code: 'NO_DATA_AVAILABLE_FOR_ANALYSIS', message: 'Primero deben consultarse métricas de Google Ads o Meta Ads.' }
+    }
+    if (!context.clientId) {
+      return { available: false, code: 'INVALID_ANALYSIS_ENTITY', message: 'No hay un cliente activo para validar el análisis.' }
+    }
+    const snapshots = structuredClone(state.paidMediaSnapshots)
+    const invalid = snapshots.some((snapshot) =>
+      snapshot.client_id !== context.clientId ||
+      !['google', 'meta'].includes(snapshot.platform) ||
+      !/^\\d{4}-\\d{2}-\\d{2}$/.test(snapshot.period.from) ||
+      !/^\\d{4}-\\d{2}-\\d{2}$/.test(snapshot.period.to) ||
+      snapshot.period.from > snapshot.period.to,
+    )
+    if (invalid) {
+      return { available: false, code: 'INVALID_ANALYSIS_ENTITY', message: 'Los datos de análisis no pertenecen al cliente o tienen una entidad inválida.' }
+    }
+
+    context.emitActivity?.({ agentSlug: 'performance-analyst', toolKey: 'run_performance_analyst', status: 'running', label: 'Analizando performance...' })
+    try {
+      const output = await runPerformanceAnalyst({ context, snapshots, model: `openai/gpt-5.5` })
+      context.emitActivity?.({ agentSlug: 'performance-analyst', toolKey: 'run_performance_analyst', status: 'completed', label: 'Analista de Performance completó el análisis' })
+      return output
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'No se pudo validar la salida del Performance Analyst.'
+      context.emitActivity?.({ agentSlug: 'performance-analyst', toolKey: 'run_performance_analyst', status: 'error', label: message })
+      return { available: false, code: 'SPECIALIST_OUTPUT_INVALID', message }
+    }
   },
 }
 
@@ -189,6 +262,7 @@ const allTools: ToolDefinition[] = [
   getAccountContext,
   getMetaMetrics,
   getGoogleMetrics,
+  runPerformanceAnalystTool,
   getPreviousInsights,
 ]
 
