@@ -77,7 +77,7 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
   try {
     rows = await fetchRows(customerId, query)
   } catch {
-    rows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, segments.date FROM campaign WHERE ${dateFilter} AND campaign.status = 'ENABLED' ORDER BY metrics.cost_micros DESC`)
+    rows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, segments.date FROM campaign WHERE ${dateFilter} ORDER BY metrics.cost_micros DESC`)
   }
   const campaigns = rows.map((row) => {
     const metrics = row.metrics ?? {}
@@ -87,10 +87,23 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
     const leads = Number(metrics.conversions ?? 0)
     return { id: String(row.campaign?.id ?? ''), name: row.campaign?.name ?? 'Sin nombre', status: row.campaign?.status, advertising_channel_type: row.campaign?.advertisingChannelType, channel_label: CHANNEL_TYPE_LABELS[row.campaign?.advertisingChannelType] ?? row.campaign?.advertisingChannelType, budget: Number(row.campaignBudget?.amountMicros ?? 0) / 1_000_000, impressions, clicks, spend: cost, leads, ctr: impressions ? (clicks / impressions) * 100 : 0, cpc: clicks ? cost / clicks : 0, cpl: leads ? cost / leads : 0, date: row.segments?.date }
   })
-  const totals = campaigns.reduce((acc, campaign: any) => ({ impressions: acc.impressions + campaign.impressions, clicks: acc.clicks + campaign.clicks, spend: acc.spend + campaign.spend, leads: acc.leads + campaign.leads, ctr: 0, cpc: 0, cpl: 0 }), { impressions: 0, clicks: 0, spend: 0, leads: 0, ctr: 0, cpc: 0, cpl: 0 })
+  // Los totales de cuenta no deben depender de campañas ENABLED ni de filas segmentadas por día.
+  // El dashboard obtiene el gasto desde `customer`, que es la fuente agregada de Google Ads.
+  const accountRows = await fetchRows(customerId, `SELECT metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions FROM customer WHERE ${dateFilter}`)
+  const totals = accountRows.reduce((acc, row: any) => {
+    const metrics = row.metrics ?? {}
+    return {
+      impressions: acc.impressions + Number(metrics.impressions ?? 0),
+      clicks: acc.clicks + Number(metrics.clicks ?? 0),
+      spend: acc.spend + Number(metrics.costMicros ?? 0) / 1_000_000,
+      leads: acc.leads + Number(metrics.conversions ?? 0),
+      ctr: 0, cpc: 0, cpl: 0,
+    }
+  }, { impressions: 0, clicks: 0, spend: 0, leads: 0, ctr: 0, cpc: 0, cpl: 0 })
   totals.ctr = totals.impressions ? (totals.clicks / totals.impressions) * 100 : 0
   totals.cpc = totals.clicks ? totals.spend / totals.clicks : 0
   totals.cpl = totals.leads ? totals.spend / totals.leads : 0
+  console.log('[v0] Google Ads metrics received', { customerId, dateFrom: input.dateFrom, dateTo: input.dateTo, campaignRows: rows.length, accountRows: accountRows.length, spend: totals.spend, clicks: totals.clicks, impressions: totals.impressions })
   return { account_id: customerId, account_name: input.accountName ?? null, date_range: { start: input.dateFrom, end: input.dateTo }, totals, campaigns }
 }
 
