@@ -139,24 +139,26 @@ export async function getGoogleChangeHistory(input: GoogleAccountMetricsInput): 
   assertDate(input.dateFrom)
   assertDate(input.dateTo)
   try {
-    const rows = await fetchRows(customerId, `SELECT change_event.change_date_time, change_event.change_type, change_event.change_resource_type, change_event.change_resource_name, change_event.user_email, campaign.id, campaign.name, ad_group.id FROM change_event WHERE change_event.change_date_time >= '${input.dateFrom} 00:00:00' AND change_event.change_date_time <= '${input.dateTo} 23:59:59' ORDER BY change_event.change_date_time DESC LIMIT 200`)
+    // change_event solo admite sus propios campos; joins con campaign/ad_group y
+    // change_type provocan INVALID_ARGUMENT en Google Ads GAQL.
+    const rows = await fetchRows(customerId, `SELECT change_event.change_date_time, change_event.change_resource_type, change_event.change_resource_name, change_event.user_email, change_event.resource_change_operation FROM change_event WHERE change_event.change_date_time >= '${input.dateFrom} 00:00:00' AND change_event.change_date_time <= '${input.dateTo} 23:59:59' ORDER BY change_event.change_date_time DESC LIMIT 200`)
     const events = rows.map((row) => {
       const change = row.changeEvent ?? row.change_event ?? {}
-      const campaign = row.campaign ?? {}
-      const adGroup = row.adGroup ?? row.ad_group ?? {}
       const dateTime = String(change.changeDateTime ?? change.change_date_time ?? '')
-      const changeType = String(change.changeType ?? change.change_type ?? 'UNKNOWN')
+      const changeType = String(change.resourceChangeOperation ?? change.resource_change_operation ?? 'UNKNOWN')
       const resourceType = String(change.changeResourceType ?? change.change_resource_type ?? 'UNKNOWN')
+      const resourceName = change.changeResourceName ?? change.change_resource_name ?? null
+      const userEmail = change.userEmail ?? change.user_email ?? null
       return {
         date_time: dateTime,
         change_type: changeType,
         resource_type: resourceType,
-        resource_name: change.changeResourceName ?? change.change_resource_name ?? null,
-        user_email: change.userEmail ?? change.user_email ?? null,
-        campaign_id: campaign.id ? String(campaign.id) : null,
-        campaign_name: campaign.name ? String(campaign.name) : null,
-        ad_group_id: adGroup.id ? String(adGroup.id) : null,
-        summary: `${changeType} en ${resourceType}${campaign.name ? ` — ${campaign.name}` : ''}`,
+        resource_name: resourceName,
+        user_email: userEmail,
+        campaign_id: null,
+        campaign_name: null,
+        ad_group_id: null,
+        summary: `${changeType} en ${resourceType}${resourceName ? ` — ${resourceName}` : ''}`,
       }
     }).filter((event) => event.date_time)
     return { events, available: true, error: null }
