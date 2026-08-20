@@ -13,8 +13,10 @@ function getGatewayModel(model: string) {
   return gateway.chat(model)
 }
 
+export type SupervisorModelMessage = { role: 'user' | 'assistant'; content: string }
+
 export async function streamSupervisorResponse(
-  query: string,
+  messages: SupervisorModelMessage[],
   context: ExecutionContext,
 ) {
   const config = await agentConfigRepository.getSupervisor(context.userId)
@@ -47,8 +49,19 @@ export async function streamSupervisorResponse(
       config.systemPrompt,
       'No expongas secretos, tokens, claves ni credenciales. El contexto de ejecución ya fue provisto por el backend.',
       `Herramientas disponibles: ${definitions.map((definition) => definition.key).join(', ') || 'ninguna'}.`,
+      // Reglas de memoria conversacional: los "messages" ya incluyen el
+      // historial reciente de esta conversación (más antiguo primero) más
+      // la consulta actual al final. Un follow-up corto ("¿Impresiones?",
+      // "¿Y conversiones?") debe interpretarse en el contexto del turno
+      // anterior (mismo cliente, plataforma, cuentas y período), salvo que
+      // el usuario indique explícitamente lo contrario. No volver a
+      // preguntar datos (período, plataforma, cuenta) que ya surgen del
+      // historial. Igualmente, para responder con números actuales siempre
+      // hay que volver a ejecutar la tool correspondiente: el historial da
+      // contexto para armar la tool call, no reemplaza la consulta de datos.
+      'Los "messages" incluyen el historial reciente de esta conversación seguido de la consulta actual. Si la consulta actual es un follow-up (ej. "¿Impresiones?", "¿Y conversiones?", "¿Cuál rindió mejor?"), interpretalo con el mismo cliente, plataforma, cuentas y período del turno anterior salvo que el usuario diga lo contrario, y no vuelvas a preguntar esos datos si ya están en el historial. Para responder igual siempre volvés a ejecutar la herramienta correspondiente con ese contexto heredado: el historial ayuda a construir la tool call, no sustituye la consulta de datos actuales.',
     ].join('\n\n'),
-    prompt: query,
+    messages,
     tools,
     stopWhen: stepCountIs(5),
     temperature: 0.2,

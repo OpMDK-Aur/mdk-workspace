@@ -68,7 +68,27 @@ export async function listConversationMessages(
   supabase: SupabaseClient,
   userId: string,
   conversationId: string,
+  options?: { limit?: number },
 ) {
+  // La verificación de que `conversationId` le pertenece a `userId` (y al
+  // client_id correspondiente) ya se hizo en getOrCreateConversation antes
+  // de llegar acá — este helper confía en ese chequeo previo.
+  if (options?.limit) {
+    // Para no cargar conversaciones enteras en memoria (ventana de
+    // contexto V1), traemos las últimas `limit` filas en orden
+    // descendente y las revertimos para conservar el orden cronológico
+    // ascendente (más antiguo primero) que espera tanto el modelo como la UI.
+    const { data, error } = await supabase
+      .from('ai_messages')
+      .select('id, role, content, created_at')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .limit(options.limit)
+
+    if (error) throw error
+    return (data ?? []).reverse()
+  }
+
   const { data, error } = await supabase
     .from('ai_messages')
     .select('id, role, content, created_at')

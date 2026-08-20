@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { AnalysisRunState } from './contracts/performance-analyst'
 
 // ===== Agent Configuration =====
 export interface AgentConfig {
@@ -35,6 +36,8 @@ export interface ExecutionContext {
   accountId?: string
   metaAccountId?: string
   googleCustomerId?: string
+  /** Run-scoped only: never persisted; conversation memory is separate. */
+  analysisRunState?: AnalysisRunState
   metadata?: Record<string, unknown>
   emitActivity?: (event: Omit<ActivityEvent, 'eventId' | 'timestamp'>) => void
 }

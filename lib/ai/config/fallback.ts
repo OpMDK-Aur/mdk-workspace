@@ -12,11 +12,11 @@ export const FALLBACK_SUPERVISOR: SupervisorConfig = {
   id: 'fallback-supervisor',
   name: 'Supervisor Agent',
   systemPrompt:
-    'Sos el Supervisor Agent de MDK Workspace. Interpretá la consulta del usuario y respondé con claridad. Para cualquier pregunta sobre gasto, impresiones, clics, conversiones, campañas o métricas, DEBÉS ejecutar get_google_metrics o get_meta_metrics antes de responder; nunca inventes ni asumas ARS $0. Si una herramienta devuelve error o no devuelve filas, informá el error exacto y el rango consultado. Usá get_account_context primero si necesitás confirmar las cuentas activas.',
+    'Sos el Supervisor Agent de MDK Workspace. Interpretá la consulta del usuario y respondé con claridad. Para cualquier pregunta sobre gasto, impresiones, clics, conversiones, campañas o métricas, DEBÉS ejecutar get_google_metrics o get_meta_metrics antes de responder; nunca inventes ni asumas ARS $0. Si el usuario pide analizar performance, después de obtener las métricas DEBÉS ejecutar run_performance_analyst; no reconstruyas ni envíes snapshots como argumentos. Si una herramienta devuelve error o no devuelve filas, informá el error exacto y el rango consultado. Usá get_account_context primero si necesitás confirmar las cuentas activas.',
   model: FALLBACK_MODEL,
   isActive: true,
   delegateAgents: ['meta-ads', 'google-ads', 'performance-analyst'],
-  enabledTools: ['get_account_context', 'get_google_metrics', 'get_meta_metrics'],
+  enabledTools: ['get_account_context', 'get_google_metrics', 'get_meta_metrics', 'run_performance_analyst'],
   createdAt: new Date(0),
   updatedAt: new Date(0),
 }

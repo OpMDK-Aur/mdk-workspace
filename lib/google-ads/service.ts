@@ -2,7 +2,6 @@ import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginC
 import { CHANNEL_TYPE_LABELS } from './config'
 
 const API_VERSION = 'v23'
-const PAGE_SIZE = 1000
 
 export interface GoogleAccountMetricsInput {
   customerId: string
@@ -27,23 +26,58 @@ function assertDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Las fechas de Google Ads deben usar formato YYYY-MM-DD.')
 }
 
+// El GOOGLE_ADS_ACCESS_TOKEN estático de las variables de entorno vive ~1h
+// y en la práctica llega casi siempre vencido, por lo que cada cuenta
+// consultada dispara su propio refresh (hasta 8+ refresh calls simultáneos
+// para un mismo cliente). Compartimos en memoria el token ya refrescado
+// dentro del mismo proceso para evitar refrescos redundantes concurrentes.
+let sharedRefreshedToken: { token: string; expiresAt: number } | null = null
+let inFlightRefresh: Promise<string | null> | null = null
+
+async function getSharedRefreshedToken(): Promise<string | null> {
+  if (sharedRefreshedToken && sharedRefreshedToken.expiresAt > Date.now()) {
+    return sharedRefreshedToken.token
+  }
+  if (!inFlightRefresh) {
+    inFlightRefresh = refreshGoogleAdsAccessToken().finally(() => {
+      inFlightRefresh = null
+    })
+  }
+  const token = await inFlightRefresh
+  if (token) {
+    // Margen conservador de 5 minutos por debajo de la expiración real (~1h).
+    sharedRefreshedToken = { token, expiresAt: Date.now() + 50 * 60 * 1000 }
+  }
+  return token
+}
+
 async function fetchRows(customerId: string, query: string) {
-  const [{ accessToken: initialToken, error: tokenError }, developerToken, loginCustomerId] = await Promise.all([
-    getGoogleAdsAccessToken(),
+  const [developerToken, loginCustomerId] = await Promise.all([
     getGoogleAdsDeveloperToken(),
     getGoogleAdsLoginCustomerId(),
   ])
-  if (!initialToken) throw new Error(tokenError || 'No se pudo obtener el access token de Google Ads.')
+  const refreshedToken = await getSharedRefreshedToken()
+  const tokenResult = refreshedToken ? { accessToken: refreshedToken } : await getGoogleAdsAccessToken()
+  const initialToken = tokenResult.accessToken
+  if (!initialToken) throw new Error(tokenResult.error || 'No se pudo obtener el access token de Google Ads.')
 
-  let accessToken = initialToken
+  let accessToken = refreshedToken || sharedRefreshedToken?.token || initialToken
   let retriedWithRefresh = false
   const rows: any[] = []
   let pageToken: string | undefined
-  do {
+  // IMPORTANTE: usar while(true) + break, NO do-while con `continue`.
+  // En un do-while, `continue` salta a evaluar `while (pageToken)`, y como
+  // pageToken todavía es undefined en el primer intento, el loop terminaba
+  // sin reintentar tras refrescar el token, devolviendo `rows = []` en
+  // silencio (sin lanzar error) en cada 401 por token expirado.
+  while (true) {
     const response = await fetch(`https://googleads.googleapis.com/${API_VERSION}/customers/${customerId}/googleAds:search`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}`, ...(developerToken ? { 'developer-token': developerToken } : {}), ...(loginCustomerId ? { 'login-customer-id': loginCustomerId } : {}), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, pageSize: PAGE_SIZE, ...(pageToken ? { pageToken } : {}) }),
+      // El endpoint googleAds:search NO admite pageSize: devuelve 400
+      // PAGE_SIZE_NOT_SUPPORTED. El tamaño de página es fijo (10000 filas)
+      // y la paginación se controla únicamente con pageToken.
+      body: JSON.stringify({ query, ...(pageToken ? { pageToken } : {}) }),
       cache: 'no-store',
     })
     const payload = await response.json().catch(() => null)
@@ -51,7 +85,7 @@ async function fetchRows(customerId: string, query: string) {
       const message = typeof payload?.error?.message === 'string' ? payload.error.message : 'Google Ads no pudo responder.'
       const authFailure = response.status === 401 || payload?.error?.status === 'UNAUTHENTICATED'
       if (authFailure && !retriedWithRefresh) {
-        const refreshedToken = await refreshGoogleAdsAccessToken()
+        const refreshedToken = await getSharedRefreshedToken()
         if (refreshedToken) {
           accessToken = refreshedToken
           retriedWithRefresh = true
@@ -62,7 +96,8 @@ async function fetchRows(customerId: string, query: string) {
     }
     rows.push(...(payload?.results ?? []))
     pageToken = payload?.nextPageToken
-  } while (pageToken)
+    if (!pageToken) break
+  }
   return rows
 }
 

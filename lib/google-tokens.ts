@@ -16,6 +16,11 @@ interface TokenData {
   token_expiry: string | null
 }
 
+function normalizeGoogleAccessToken(value: string | undefined | null) {
+  const token = value?.trim().replace(/^Bearer\s+/i, '')
+  return token || null
+}
+
 /**
  * Get token data from plataformas_tokens table
  */
@@ -98,16 +103,23 @@ export async function refreshGoogleAdsAccessToken(): Promise<string | null> {
 }
 
 export async function getGoogleAdsAccessToken(): Promise<TokenResult> {
-  // Google Ads usa el access token configurado en el entorno.
-  // No leer `access_token` desde plataformas_tokens para esta integración.
-  const accessToken = process.env.GOOGLE_ADS_ACCESS_TOKEN
-  if (accessToken) {
-    return { accessToken }
+  // Preferimos renovar con OAuth porque GOOGLE_ADS_ACCESS_TOKEN expira aproximadamente en una hora.
+  // El access token estático queda como fallback para instalaciones sin refresh token.
+  const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN?.trim()
+  const clientId = process.env.GOOGLE_CLIENT_ID?.trim()
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim()
+
+  if (refreshToken && clientId && clientSecret) {
+    const refreshedToken = await refreshAndUpdateToken('google_ads', refreshToken)
+    if (refreshedToken) return { accessToken: refreshedToken }
   }
+
+  const accessToken = normalizeGoogleAccessToken(process.env.GOOGLE_ADS_ACCESS_TOKEN)
+  if (accessToken) return { accessToken }
 
   return {
     accessToken: null,
-    error: 'No se encontró GOOGLE_ADS_ACCESS_TOKEN en las variables de entorno.'
+    error: 'No se pudo obtener un access token válido de Google Ads. Verifica GOOGLE_ADS_REFRESH_TOKEN, GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET.'
   }
 
   /*

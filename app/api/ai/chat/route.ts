@@ -3,10 +3,17 @@ import { createUIMessageStream, createUIMessageStreamResponse } from 'ai'
 import type { ActivityEvent } from '@/lib/ai/types'
 import { createClient } from '@/lib/supabase/server'
 import { chatRequestSchema } from '@/lib/ai/config/fallback'
-import { streamSupervisorResponse } from '@/lib/ai/agents/supervisor'
-import { getOrCreateConversation, saveConversationMessage } from '@/lib/ai/conversations'
+import { streamSupervisorResponse, type SupervisorModelMessage } from '@/lib/ai/agents/supervisor'
+import { getOrCreateConversation, listConversationMessages, saveConversationMessage } from '@/lib/ai/conversations'
 
 export const maxDuration = 60
+
+// Ventana de memoria conversacional V1: cantidad máxima de mensajes
+// persistidos (user + assistant) que se recuperan de ai_messages para
+// darle contexto al Supervisor en cada turno. Evita cargar conversaciones
+// completas indefinidamente; una estrategia de resumen (ai_conversations.summary)
+// puede reemplazar esto más adelante para conversaciones largas.
+const CONVERSATION_HISTORY_WINDOW = 20
 
 function getMessageText(message: unknown) {
   if (!message || typeof message !== 'object') return ''
@@ -52,9 +59,22 @@ export async function POST(request: Request) {
     }
 
     const context = parsed.data.context
+    // getOrCreateConversation valida server-side que la conversación (si se
+    // pasó un conversationId) pertenezca a este user_id + client_id antes de
+    // devolverla. Si no coincide (otro usuario u otro cliente), la búsqueda
+    // no encuentra filas y se crea una conversación nueva — nunca se expone
+    // el historial de una conversación ajena.
     const conversation = context.clientId
       ? await getOrCreateConversation(supabase, user.id, context.clientId, context.conversationId)
       : null
+
+    // IMPORTANTE: recuperamos el historial ANTES de persistir el mensaje del
+    // usuario actual, para no duplicarlo. `history` queda con los últimos
+    // CONVERSATION_HISTORY_WINDOW mensajes previos (user/assistant), en
+    // orden cronológico ascendente (más antiguo primero).
+    const history = conversation
+      ? await listConversationMessages(supabase, user.id, conversation.id, { limit: CONVERSATION_HISTORY_WINDOW })
+      : []
 
     if (conversation) {
       await saveConversationMessage(supabase, {
@@ -65,19 +85,33 @@ export async function POST(request: Request) {
       })
     }
 
+    // Mensajes que ve el modelo: historial persistido + la consulta actual
+    // al final. Las filas de ai_messages ya tienen el formato { role, content }
+    // esperado por streamText (no son UIMessage con "parts", así que no
+    // necesitan convertToModelMessages).
+    const modelMessages: SupervisorModelMessage[] = [
+      ...history.map((message) => ({ role: message.role, content: message.content })),
+      { role: 'user' as const, content: query },
+    ]
+
     console.log('[v0] Supervisor starting:', {
       userId: user.id,
       messageCount: parsed.data.messages.length,
+      historyMessageCount: history.length,
       conversationId: conversation?.id ?? null,
     })
+    // AnalysisRunState es efímero y vive únicamente durante este request.
+    // No es memoria conversacional y nunca se persiste en Supabase.
+    const analysisRunState = { paidMediaSnapshots: [] as import('@/lib/ai/contracts/performance-analyst').PaidMediaSnapshot[] }
     let writeActivity: ((event: ActivityEvent) => void) | undefined
     const resultStream = createUIMessageStream({
       execute: async ({ writer }) => {
         writeActivity = (event) => writer.write({ type: 'data-activity', id: 'activity-status', data: event, transient: true })
-        const result = await streamSupervisorResponse(query, {
+        const result = await streamSupervisorResponse(modelMessages, {
           userId: user.id,
           userEmail: user.email,
           ...context,
+          analysisRunState,
           emitActivity: (event) => writeActivity?.({
             ...event,
             eventId: crypto.randomUUID(),
