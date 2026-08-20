@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { ExecutionContext, ToolDefinition } from '../types'
 import { getGoogleAccountMetrics, defaultGoogleDateRange, normalizeCustomerId } from '@/lib/google-ads/service'
 import { defaultMetaDateRange, getMetaAccountMetrics, getMetaErrorDetails, normalizeMetaAccountId } from '@/lib/meta-ads/service'
-import { upsertPaidMediaSnapshot } from '@/lib/ai/contracts/performance-analyst'
+import { buildCampaignComparisons, compareMetric, upsertPaidMediaSnapshot } from '@/lib/ai/contracts/performance-analyst'
 import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 
 const noInput = z.object({})
@@ -219,49 +219,46 @@ const runPerformanceAnalystTool: ToolDefinition = {
   inputSchema: noInput,
   async execute(_input, context: ExecutionContext) {
     const state = context.analysisRunState
-    if (!state?.paidMediaSnapshots.length) {
+    if (!state?.currentSnapshots.length) {
       return { available: false, code: 'NO_DATA_AVAILABLE_FOR_ANALYSIS', message: 'Primero deben consultarse métricas de Google Ads o Meta Ads.' }
     }
     if (!context.clientId) {
       return { available: false, code: 'INVALID_ANALYSIS_ENTITY', message: 'No hay un cliente activo para validar el análisis.' }
     }
-    const allSnapshots = structuredClone(state.paidMediaSnapshots)
-    const latestPeriod = [...new Set(allSnapshots.map((snapshot) => `${snapshot.period.from}:${snapshot.period.to}`))].sort().at(-1)
-    const snapshots = latestPeriod
-      ? allSnapshots.filter((snapshot) => `${snapshot.period.from}:${snapshot.period.to}` === latestPeriod)
-      : allSnapshots
+    const currentSnapshots = structuredClone(state.currentSnapshots)
+    const comparisonSnapshots = structuredClone(state.comparisonSnapshots)
+    const snapshots = [...currentSnapshots, ...comparisonSnapshots]
     const datePattern = /^\d{4}-\d{2}-\d{2}$/
-    const snapshotClientIds = [...new Set(snapshots.map((snapshot) => snapshot.client_id))]
     const platforms = [...new Set(snapshots.map((snapshot) => snapshot.platform))]
-    const periods = [...new Set(snapshots.map((snapshot) => `${snapshot.period.from}:${snapshot.period.to}`))]
     const validation = {
-      context_client_id_present: Boolean(context.clientId),
       snapshot_count: snapshots.length,
-      snapshot_client_ids_unique: snapshotClientIds.length,
+      current_count: currentSnapshots.length,
+      comparison_count: comparisonSnapshots.length,
       client_matches: snapshots.every((snapshot) => snapshot.client_id === context.clientId),
-      platforms,
       platform_valid: snapshots.every((snapshot) => snapshot.platform === 'google' || snapshot.platform === 'meta'),
-      periods_unique: periods.length,
-      account_ids: snapshots.filter((snapshot) => Boolean(snapshot.account_id)).length,
-      account_ids_present: snapshots.every((snapshot) => Boolean(snapshot.account_id)),
-      period_from_present: snapshots.every((snapshot) => Boolean(snapshot.period?.from)),
-      period_to_present: snapshots.every((snapshot) => Boolean(snapshot.period?.to)),
-      period_format_valid: snapshots.every((snapshot) => datePattern.test(snapshot.period.from) && datePattern.test(snapshot.period.to)),
-      period_order_valid: snapshots.every((snapshot) => snapshot.period.from <= snapshot.period.to),
+      periods_valid: snapshots.every((snapshot) => datePattern.test(snapshot.period.from) && datePattern.test(snapshot.period.to) && snapshot.period.from <= snapshot.period.to),
+      currencies_by_account: [...new Set(snapshots.filter((snapshot) => snapshot.currency).map((snapshot) => `${snapshot.account_id}:${snapshot.currency}`))].length === new Set(snapshots.map((snapshot) => snapshot.account_id)).size,
+      periods_non_overlapping: !state.comparisonDefinition || state.comparisonDefinition.current.to < state.comparisonDefinition.comparison.from || state.comparisonDefinition.comparison.to < state.comparisonDefinition.current.from,
     }
-    console.log('[v0] analysis entity validation', { ...validation, valid: validation.context_client_id_present && validation.client_matches && validation.platform_valid && validation.account_ids_present && validation.period_from_present && validation.period_to_present && validation.period_format_valid && validation.period_order_valid && validation.periods_unique === 1 })
-    const valid = validation.context_client_id_present && validation.client_matches && validation.platform_valid && validation.account_ids_present && validation.period_from_present && validation.period_to_present && validation.period_format_valid && validation.period_order_valid && validation.periods_unique === 1
+    const comparable = state.comparisonDefinition && comparisonSnapshots.length > 0
+    const metricComparisons = comparable ? currentSnapshots.map((current) => {
+      const previous = comparisonSnapshots.find((snapshot) => snapshot.platform === current.platform && snapshot.account_id === current.account_id)
+      return { platform: current.platform, account_id: current.account_id, metrics: previous ? Object.fromEntries(Object.keys(current.metrics).map((key) => [key, compareMetric(current.metrics[key], previous.metrics[key])]).filter(([, value]) => value)) : null }
+    }) : []
+    const campaignComparisons = comparable ? buildCampaignComparisons(currentSnapshots, comparisonSnapshots) : []
+    const valid = validation.client_matches && validation.platform_valid && validation.periods_valid && validation.currencies_by_account && validation.periods_non_overlapping
+    console.log('[v0] analysis comparison validation', { ...validation, valid, comparable })
     if (!valid) {
-      return { available: false, code: validation.periods_unique > 1 ? 'INCOMPATIBLE_ANALYSIS_PERIODS' : 'INVALID_ANALYSIS_ENTITY', message: validation.periods_unique > 1 ? 'No se pueden mezclar períodos distintos en un mismo análisis.' : 'Los datos de análisis no pertenecen al cliente o tienen una entidad inválida.' }
+      return { available: false, code: 'INVALID_ANALYSIS_ENTITY', message: 'Los datos de análisis no son comparables o tienen una entidad inválida.' }
     }
 
     context.emitActivity?.({ agentSlug: 'performance-analyst', toolKey: 'run_performance_analyst', status: 'running', label: 'Analizando performance...' })
     try {
-      const output = await runPerformanceAnalyst({ context, snapshots, model: 'openai/gpt-4.1-mini-fast' })
-      const expectedAccountIds = new Set(snapshots.map((snapshot) => snapshot.account_id))
+      const output = await runPerformanceAnalyst({ context, snapshots: currentSnapshots, comparisonSnapshots, model: 'openai/gpt-4.1-mini-fast' })
+      const expectedAccountIds = new Set(currentSnapshots.map((snapshot) => snapshot.account_id))
       const outputAccountIds = new Set(output.entidad.account_ids)
-      const expectedPeriod = snapshots[0].period
-      const expectedPlatform = platforms.length === 1 ? platforms[0] : 'mixed'
+      const expectedPeriod = currentSnapshots[0].period
+      const expectedPlatform = [...new Set(currentSnapshots.map((snapshot) => snapshot.platform))].length === 1 ? currentSnapshots[0].platform : 'mixed'
       const entityMatches = output.entidad.client_id === context.clientId &&
         output.entidad.platform === expectedPlatform &&
         output.entidad.account_ids.every((accountId) => expectedAccountIds.has(accountId)) &&

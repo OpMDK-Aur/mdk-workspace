@@ -18,6 +18,30 @@ const SUPERVISOR_TIMEOUT_MS = 52_000
 // puede reemplazar esto más adelante para conversaciones largas.
 const CONVERSATION_HISTORY_WINDOW = 20
 
+function isoDate(date: Date) {
+  return date.toISOString().slice(0, 10)
+}
+
+function getComparisonDefinition(query: string) {
+  const asksForComparison = /\b(compar[áa]|vs\.?|contra|aument[oó]|subi[oó]|baj[oó]|cay[oó]|mejor[oó]|empeor[oó]|creci[oó]|deterior|cambi[oó]|por qu[eé] aument|por qu[eé] baj)/i.test(query)
+  const daysMatch = query.match(/(?:últimos?|ultimos?)\s+(\d+)\s+d[ií]as/i)
+  if (!asksForComparison || !daysMatch) return undefined
+  const days = Number(daysMatch[1])
+  if (!Number.isInteger(days) || days < 1 || days > 365) return undefined
+  const currentTo = new Date()
+  const currentFrom = new Date(currentTo)
+  currentFrom.setUTCDate(currentFrom.getUTCDate() - days + 1)
+  const comparisonTo = new Date(currentFrom)
+  comparisonTo.setUTCDate(comparisonTo.getUTCDate() - 1)
+  const comparisonFrom = new Date(comparisonTo)
+  comparisonFrom.setUTCDate(comparisonFrom.getUTCDate() - days + 1)
+  return {
+    type: 'previous_period' as const,
+    current: { from: isoDate(currentFrom), to: isoDate(currentTo) },
+    comparison: { from: isoDate(comparisonFrom), to: isoDate(comparisonTo) },
+  }
+}
+
 function getMessageText(message: unknown) {
   if (!message || typeof message !== 'object') return ''
   const parts = 'parts' in message && Array.isArray(message.parts) ? message.parts : []
@@ -105,7 +129,11 @@ export async function POST(request: Request) {
     })
     // AnalysisRunState es efímero y vive únicamente durante este request.
     // No es memoria conversacional y nunca se persiste en Supabase.
-    const analysisRunState = { paidMediaSnapshots: [] as import('@/lib/ai/contracts/performance-analyst').PaidMediaSnapshot[] }
+    const analysisRunState: import('@/lib/ai/contracts/performance-analyst').AnalysisRunState = {
+      currentSnapshots: [],
+      comparisonSnapshots: [],
+      comparisonDefinition: getComparisonDefinition(query),
+    }
     let writeActivity: ((event: ActivityEvent) => void) | undefined
     const resultStream = createUIMessageStream({
       execute: async ({ writer }) => {
