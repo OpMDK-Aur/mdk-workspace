@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import type { ExecutionContext, ToolDefinition } from '../types'
-import { getGoogleAccountMetrics, defaultGoogleDateRange, normalizeCustomerId } from '@/lib/google-ads/service'
+import { getGoogleAccountMetrics, defaultGoogleDateRange, normalizeCustomerId, splitCustomerIds } from '@/lib/google-ads/service'
 import { defaultMetaDateRange, getMetaAccountMetrics, getMetaErrorDetails, normalizeMetaAccountId } from '@/lib/meta-ads/service'
 import { buildCampaignComparisons, compareMetric, upsertPaidMediaSnapshot } from '@/lib/ai/contracts/performance-analyst'
 import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
@@ -78,13 +78,17 @@ const getAccountContext: ToolDefinition = {
       return { available: false, client_id: context.clientId, message: 'No se pudieron consultar las cuentas publicitarias.' }
     }
 
-    const safeAccounts = (accounts ?? []).map((account) => ({
-      plataforma: account.plataforma,
-      id_cuenta: account.id_cuenta,
-      ...(account.nombre_cuenta ? { nombre_cuenta: account.nombre_cuenta } : {}),
-      ...(account.moneda ? { moneda: account.moneda } : {}),
-      ...(account.zona_horaria ? { zona_horaria: account.zona_horaria } : {}),
-    }))
+    const safeAccounts = (accounts ?? []).flatMap((account) => String(account.id_cuenta ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .map((id) => ({
+        plataforma: account.plataforma,
+        id_cuenta: id,
+        ...(account.nombre_cuenta ? { nombre_cuenta: account.nombre_cuenta } : {}),
+        ...(account.moneda ? { moneda: account.moneda } : {}),
+        ...(account.zona_horaria ? { zona_horaria: account.zona_horaria } : {}),
+      })))
 
     const google = safeAccounts.find((account) => account.plataforma?.toLowerCase() === 'google')
     const meta = safeAccounts.find((account) => account.plataforma?.toLowerCase() === 'meta')
@@ -125,9 +129,9 @@ const getMetaMetrics: ToolDefinition = {
       .eq('activo', true)
     if (error) return { available: false, message: 'No se pudieron consultar las cuentas activas de Meta Ads.' }
 
-    const availableAccounts = accounts ?? []
+    const availableAccounts = (accounts ?? []).flatMap((account) => splitCustomerIds(account.id_cuenta).map((id_cuenta) => ({ ...account, id_cuenta })))
     const selected = input.accountId
-      ? availableAccounts.filter((account) => normalizeMetaAccountId(account.id_cuenta) === normalizeMetaAccountId(input.accountId!))
+? availableAccounts.filter((account) => normalizeMetaAccountId(account.id_cuenta) === normalizeMetaAccountId(input.accountId!))
       : availableAccounts
     if (input.accountId && selected.length === 0) return { available: false, message: 'La cuenta solicitada no pertenece al cliente seleccionado.' }
     if (!selected.length) return { available: false, message: 'El cliente no tiene cuentas activas de Meta Ads.' }

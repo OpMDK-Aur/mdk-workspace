@@ -33,6 +33,13 @@ export function normalizeCustomerId(value: string) {
   return value.replace(/-/g, '').trim()
 }
 
+export function splitCustomerIds(value: string | null | undefined) {
+  return String(value ?? '')
+    .split(',')
+    .map((id) => normalizeCustomerId(id))
+    .filter(Boolean)
+}
+
 function assertDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Las fechas de Google Ads deben usar formato YYYY-MM-DD.')
 }
