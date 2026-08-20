@@ -54,6 +54,10 @@ function buildPrompt(context: ExecutionContext, currentSnapshots: PaidMediaSnaps
       'Apareá campañas por id: solo current = new, solo comparison = not_active_current. No interpretes automáticamente una campaña nueva como buena o mala.',
       'Si result_type cambia entre períodos, marca incompatibilidad y no compares el costo como si fuera el mismo KPI. En Google results es conversions agregado de plataforma.',
       'Si no existe comparisonSnapshots para una pregunta de variación, declara que falta comparativo y no afirmes que una métrica aumentó o bajó.',
+      'Usa change_history como evidencia observada de cambios de presupuesto, estado, campañas, anuncios, grupos, assets o segmentación. Mostrá fecha/hora, usuario, entidad, tipo de cambio y summary cuando existan.',
+      'No confundas un cambio observado con causalidad: solo proponé una relación causal como hipótesis si coincide temporalmente con la variación y señalá la incertidumbre.',
+      'Compará change_history del período actual contra el comparativo cuando ambos existan. Si change_history_available es false, declaralo explícitamente sin bloquear el análisis de métricas.',
+      'Si el historial está disponible pero vacío, indicá que no se observaron cambios en el período consultado; no inventes valores anterior/nuevo.',
     ],
   })
 }
