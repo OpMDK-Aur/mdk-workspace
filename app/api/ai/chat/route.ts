@@ -8,12 +8,39 @@ import { getOrCreateConversation, listConversationMessages, saveConversationMess
 
 export const maxDuration = 60
 
+// El stream debe fallar antes del límite de Vercel para que el cliente reciba un error visible.
+const SUPERVISOR_TIMEOUT_MS = 52_000
+
 // Ventana de memoria conversacional V1: cantidad máxima de mensajes
 // persistidos (user + assistant) que se recuperan de ai_messages para
 // darle contexto al Supervisor en cada turno. Evita cargar conversaciones
 // completas indefinidamente; una estrategia de resumen (ai_conversations.summary)
 // puede reemplazar esto más adelante para conversaciones largas.
 const CONVERSATION_HISTORY_WINDOW = 20
+
+function isoDate(date: Date) {
+  return date.toISOString().slice(0, 10)
+}
+
+function getComparisonDefinition(query: string) {
+  const asksForComparison = /\b(compar[áa]|vs\.?|contra|aument[oó]|subi[oó]|baj[oó]|cay[oó]|mejor[oó]|empeor[oó]|creci[oó]|deterior|cambi[oó]|por qu[eé] aument|por qu[eé] baj)/i.test(query)
+  const daysMatch = query.match(/(?:últimos?|ultimos?)\s+(\d+)\s+d[ií]as/i)
+  if (!asksForComparison || !daysMatch) return undefined
+  const days = Number(daysMatch[1])
+  if (!Number.isInteger(days) || days < 1 || days > 365) return undefined
+  const currentTo = new Date()
+  const currentFrom = new Date(currentTo)
+  currentFrom.setUTCDate(currentFrom.getUTCDate() - days + 1)
+  const comparisonTo = new Date(currentFrom)
+  comparisonTo.setUTCDate(comparisonTo.getUTCDate() - 1)
+  const comparisonFrom = new Date(comparisonTo)
+  comparisonFrom.setUTCDate(comparisonFrom.getUTCDate() - days + 1)
+  return {
+    type: 'previous_period' as const,
+    current: { from: isoDate(currentFrom), to: isoDate(currentTo) },
+    comparison: { from: isoDate(comparisonFrom), to: isoDate(comparisonTo) },
+  }
+}
 
 function getMessageText(message: unknown) {
   if (!message || typeof message !== 'object') return ''
@@ -102,22 +129,32 @@ export async function POST(request: Request) {
     })
     // AnalysisRunState es efímero y vive únicamente durante este request.
     // No es memoria conversacional y nunca se persiste en Supabase.
-    const analysisRunState = { paidMediaSnapshots: [] as import('@/lib/ai/contracts/performance-analyst').PaidMediaSnapshot[] }
+    const analysisRunState: import('@/lib/ai/contracts/performance-analyst').AnalysisRunState = {
+      currentSnapshots: [],
+      comparisonSnapshots: [],
+      comparisonDefinition: getComparisonDefinition(query),
+    }
     let writeActivity: ((event: ActivityEvent) => void) | undefined
     const resultStream = createUIMessageStream({
       execute: async ({ writer }) => {
         writeActivity = (event) => writer.write({ type: 'data-activity', id: 'activity-status', data: event, transient: true })
-        const result = await streamSupervisorResponse(modelMessages, {
-          userId: user.id,
-          userEmail: user.email,
-          ...context,
-          analysisRunState,
-          emitActivity: (event) => writeActivity?.({
-            ...event,
-            eventId: crypto.randomUUID(),
-            timestamp: new Date().toISOString(),
-          }),
-        })
+        const supervisorTimeout = setTimeout(() => writeActivity?.({ eventId: crypto.randomUUID(), agentSlug: 'supervisor', status: 'error', label: 'La respuesta tardó demasiado. Probá nuevamente.', timestamp: new Date().toISOString() }), SUPERVISOR_TIMEOUT_MS)
+        let result
+        try {
+          result = await streamSupervisorResponse(modelMessages, {
+            userId: user.id,
+            userEmail: user.email,
+            ...context,
+            analysisRunState,
+            emitActivity: (event) => writeActivity?.({
+              ...event,
+              eventId: crypto.randomUUID(),
+              timestamp: new Date().toISOString(),
+            }),
+          })
+        } finally {
+          clearTimeout(supervisorTimeout)
+        }
         writeActivity?.({ eventId: crypto.randomUUID(), agentSlug: 'supervisor', status: 'running', label: 'Preparando respuesta...', timestamp: new Date().toISOString() })
         writer.merge(result.toUIMessageStream())
       },

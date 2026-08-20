@@ -96,22 +96,55 @@ export const PaidMediaSnapshotSchema = z.object({
   currency: z.string().nullable(),
   period: z.object({ from: z.string(), to: z.string() }),
   metrics: z.record(z.string(), z.unknown()),
+  conversion_actions: z.array(z.record(z.string(), z.unknown())),
+  conversion_actions_available: z.boolean(),
+  conversion_actions_error: z.string().nullable(),
   campaigns: z.array(z.record(z.string(), z.unknown())),
 })
 
 export type PaidMediaSnapshot = z.infer<typeof PaidMediaSnapshotSchema>
 
+export type AnalysisPeriodRole = 'current' | 'comparison'
+export type ComparisonDefinition = {
+  type: 'previous_period' | 'explicit'
+  current: { from: string; to: string }
+  comparison: { from: string; to: string }
+}
+
 export type AnalysisRunState = {
-  paidMediaSnapshots: PaidMediaSnapshot[]
+  currentSnapshots: PaidMediaSnapshot[]
+  comparisonSnapshots: PaidMediaSnapshot[]
+  comparisonDefinition?: ComparisonDefinition
+}
+
+export type ComparableMetric = { current: number; comparison: number; delta: number; delta_pct: number | null }
+
+function periodKey(period: { from: string; to: string }) {
+  return `${period.from}:${period.to}`
+}
+
+export function getSnapshotRole(state: AnalysisRunState, snapshot: PaidMediaSnapshot): AnalysisPeriodRole {
+  return state.comparisonDefinition && periodKey(snapshot.period) === periodKey(state.comparisonDefinition.comparison) ? 'comparison' : 'current'
 }
 
 export function upsertPaidMediaSnapshot(state: AnalysisRunState, snapshot: PaidMediaSnapshot) {
-  const index = state.paidMediaSnapshots.findIndex((current) =>
-    current.platform === snapshot.platform &&
-    current.account_id === snapshot.account_id &&
-    current.period.from === snapshot.period.from &&
-    current.period.to === snapshot.period.to,
-  )
-  if (index === -1) state.paidMediaSnapshots.push(snapshot)
-  else state.paidMediaSnapshots[index] = snapshot
+  const role = getSnapshotRole(state, snapshot)
+  const target = role === 'comparison' ? state.comparisonSnapshots : state.currentSnapshots
+  const index = target.findIndex((current) => current.platform === snapshot.platform && current.account_id === snapshot.account_id && current.period.from === snapshot.period.from && current.period.to === snapshot.period.to)
+  if (index === -1) target.push(snapshot)
+  else target[index] = snapshot
+}
+
+export function compareMetric(current: unknown, comparison: unknown): ComparableMetric | null {
+  const currentValue = Number(current)
+  const comparisonValue = Number(comparison)
+  if (!Number.isFinite(currentValue) || !Number.isFinite(comparisonValue)) return null
+  return { current: currentValue, comparison: comparisonValue, delta: currentValue - comparisonValue, delta_pct: comparisonValue === 0 ? null : ((currentValue - comparisonValue) / Math.abs(comparisonValue)) * 100 }
+}
+
+export function buildCampaignComparisons(current: PaidMediaSnapshot[], comparison: PaidMediaSnapshot[]) {
+  const rows = new Map<string, { current?: Record<string, unknown>; comparison?: Record<string, unknown> }>()
+  for (const snapshot of current) for (const campaign of snapshot.campaigns) { const id = String(campaign.id ?? campaign.campaign_id ?? campaign.name ?? 'unknown'); rows.set(id, { ...rows.get(id), current: campaign }) }
+  for (const snapshot of comparison) for (const campaign of snapshot.campaigns) { const id = String(campaign.id ?? campaign.campaign_id ?? campaign.name ?? 'unknown'); rows.set(id, { ...rows.get(id), comparison: campaign }) }
+  return [...rows.entries()].map(([campaign_id, row]) => ({ campaign_id, status_comparison: row.current && row.comparison ? 'existing' : row.current ? 'new' : 'not_active_current', current: row.current ?? null, comparison: row.comparison ?? null }))
 }

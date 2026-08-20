@@ -9,6 +9,7 @@ import type { ActivityEvent } from '@/lib/ai/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { MessageContent } from '@/components/chat/message-content'
 
 function messageText(message: UIMessage) {
   return message.parts
@@ -202,7 +203,11 @@ function SupervisorChatSession({
                     message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-card'
                   }`}
                 >
-                  {messageHasVisibleContent(message) ? messageText(message) : message.role === 'assistant' ? (
+                  {messageHasVisibleContent(message) ? message.role === 'assistant' ? (
+                    <MessageContent content={messageText(message)} />
+                  ) : (
+                    <span className="whitespace-pre-wrap">{messageText(message)}</span>
+                  ) : message.role === 'assistant' ? (
                     <span className="text-muted-foreground">Preparando respuesta…</span>
                   ) : null}
                 </div>

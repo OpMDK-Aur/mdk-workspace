@@ -23,6 +23,28 @@ interface MessageContentProps {
 
 // Shared markdown components: styled tables, lists, code, etc.
 const markdownComponents = {
+  p: ({ children }: { children?: React.ReactNode }) => (
+    <p className="mb-3 last:mb-0 leading-6 text-foreground/90">{children}</p>
+  ),
+  h2: ({ children }: { children?: React.ReactNode }) => (
+    <h2 className="mb-2 mt-5 text-base font-semibold leading-6 text-foreground first:mt-0">{children}</h2>
+  ),
+  h3: ({ children }: { children?: React.ReactNode }) => (
+    <h3 className="mb-2 mt-4 text-sm font-semibold leading-6 text-foreground">{children}</h3>
+  ),
+  ul: ({ children }: { children?: React.ReactNode }) => (
+    <ul className="mb-3 ml-5 list-disc space-y-1 text-foreground/90">{children}</ul>
+  ),
+  ol: ({ children }: { children?: React.ReactNode }) => (
+    <ol className="mb-3 ml-5 list-decimal space-y-1 text-foreground/90">{children}</ol>
+  ),
+  li: ({ children }: { children?: React.ReactNode }) => (
+    <li className="pl-1 leading-6">{children}</li>
+  ),
+  strong: ({ children }: { children?: React.ReactNode }) => (
+    <strong className="font-semibold text-foreground">{children}</strong>
+  ),
+  hr: () => <hr className="my-4 border-border" />,
   table: ({ children }: { children?: React.ReactNode }) => (
     <div className="my-3 w-full overflow-x-auto rounded-lg border border-border">
       <table className="w-full border-collapse text-sm">{children}</table>
