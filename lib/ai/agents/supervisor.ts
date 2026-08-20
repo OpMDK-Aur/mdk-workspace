@@ -49,6 +49,7 @@ export async function streamSupervisorResponse(
       config.systemPrompt,
       'No expongas secretos, tokens, claves ni credenciales. El contexto de ejecución ya fue provisto por el backend.',
       `Herramientas disponibles: ${definitions.map((definition) => definition.key).join(', ') || 'ninguna'}.`,
+      'REGLA OBLIGATORIA: si la consulta menciona historial, cambios, modificaciones, changelog o qué se cambió en Google Ads, ejecutá get_google_change_history antes de responder. La herramienta está habilitada para este agente; no digas que no existe ni que no está disponible sin haberla ejecutado.',
       // Reglas de memoria conversacional: los "messages" ya incluyen el
       // historial reciente de esta conversación (más antiguo primero) más
       // la consulta actual al final. Un follow-up corto ("¿Impresiones?",
