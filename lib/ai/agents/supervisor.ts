@@ -63,7 +63,7 @@ export async function streamSupervisorResponse(
     ].join('\n\n'),
     messages,
     tools,
-    stopWhen: stepCountIs(5),
+    stopWhen: stepCountIs(4),
     temperature: 0.2,
     maxOutputTokens: 1200,
   })

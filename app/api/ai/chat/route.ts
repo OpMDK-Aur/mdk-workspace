@@ -8,6 +8,9 @@ import { getOrCreateConversation, listConversationMessages, saveConversationMess
 
 export const maxDuration = 60
 
+// El stream debe fallar antes del límite de Vercel para que el cliente reciba un error visible.
+const SUPERVISOR_TIMEOUT_MS = 52_000
+
 // Ventana de memoria conversacional V1: cantidad máxima de mensajes
 // persistidos (user + assistant) que se recuperan de ai_messages para
 // darle contexto al Supervisor en cada turno. Evita cargar conversaciones
@@ -107,17 +110,23 @@ export async function POST(request: Request) {
     const resultStream = createUIMessageStream({
       execute: async ({ writer }) => {
         writeActivity = (event) => writer.write({ type: 'data-activity', id: 'activity-status', data: event, transient: true })
-        const result = await streamSupervisorResponse(modelMessages, {
-          userId: user.id,
-          userEmail: user.email,
-          ...context,
-          analysisRunState,
-          emitActivity: (event) => writeActivity?.({
-            ...event,
-            eventId: crypto.randomUUID(),
-            timestamp: new Date().toISOString(),
-          }),
-        })
+        const supervisorTimeout = setTimeout(() => writeActivity?.({ eventId: crypto.randomUUID(), agentSlug: 'supervisor', status: 'error', label: 'La respuesta tardó demasiado. Probá nuevamente.', timestamp: new Date().toISOString() }), SUPERVISOR_TIMEOUT_MS)
+        let result
+        try {
+          result = await streamSupervisorResponse(modelMessages, {
+            userId: user.id,
+            userEmail: user.email,
+            ...context,
+            analysisRunState,
+            emitActivity: (event) => writeActivity?.({
+              ...event,
+              eventId: crypto.randomUUID(),
+              timestamp: new Date().toISOString(),
+            }),
+          })
+        } finally {
+          clearTimeout(supervisorTimeout)
+        }
         writeActivity?.({ eventId: crypto.randomUUID(), agentSlug: 'supervisor', status: 'running', label: 'Preparando respuesta...', timestamp: new Date().toISOString() })
         writer.merge(result.toUIMessageStream())
       },

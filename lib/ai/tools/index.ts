@@ -251,7 +251,7 @@ const runPerformanceAnalystTool: ToolDefinition = {
 
     context.emitActivity?.({ agentSlug: 'performance-analyst', toolKey: 'run_performance_analyst', status: 'running', label: 'Analizando performance...' })
     try {
-      const output = await runPerformanceAnalyst({ context, snapshots, model: `openai/gpt-5.5` })
+      const output = await runPerformanceAnalyst({ context, snapshots, model: 'openai/gpt-4.1-mini-fast' })
       const expectedAccountIds = new Set(snapshots.map((snapshot) => snapshot.account_id))
       const outputAccountIds = new Set(output.entidad.account_ids)
       const expectedPeriod = snapshots[0].period

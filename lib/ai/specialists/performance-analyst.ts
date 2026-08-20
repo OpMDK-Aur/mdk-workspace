@@ -52,6 +52,7 @@ export async function runPerformanceAnalyst({
   const parsedSnapshots = snapshots.map((snapshot) => PaidMediaSnapshotSchema.parse(snapshot))
   const result = await generateText({
     model: getModel(model),
+    abortSignal: AbortSignal.timeout(20_000),
     system: [
       'Sos Performance Analyst de un sistema de agentes de marketing.',
       'Trabajá únicamente con los snapshots entregados por el backend.',
