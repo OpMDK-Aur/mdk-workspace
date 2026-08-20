@@ -66,6 +66,7 @@ function toSupervisorConfig(
       ...agent.enabledTools,
       'get_account_context',
       'get_google_metrics',
+      'get_google_change_history',
       'get_meta_metrics',
     ])),
     createdAt: agent.createdAt,
