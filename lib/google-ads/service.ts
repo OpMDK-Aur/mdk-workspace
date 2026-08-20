@@ -141,13 +141,15 @@ export async function getGoogleChangeHistory(input: GoogleAccountMetricsInput): 
   try {
     // change_event solo admite sus propios campos; joins con campaign/ad_group y
     // change_type provocan INVALID_ARGUMENT en Google Ads GAQL.
-    const rows = await fetchRows(customerId, `SELECT change_event.change_date_time, change_event.change_resource_type, change_event.change_resource_name, change_event.user_email, change_event.resource_change_operation FROM change_event WHERE change_event.change_date_time >= '${input.dateFrom} 00:00:00' AND change_event.change_date_time <= '${input.dateTo} 23:59:59' ORDER BY change_event.change_date_time DESC LIMIT 200`)
+    const from = input.dateFrom.replaceAll('-', '')
+    const to = input.dateTo.replaceAll('-', '')
+    const rows = await fetchRows(customerId, `SELECT change_event.change_date_time, change_event.resource_name, change_event.user_email, change_event.resource_change_operation FROM change_event WHERE change_event.change_date_time >= '${from}' AND change_event.change_date_time <= '${to}' ORDER BY change_event.change_date_time DESC LIMIT 200`)
     const events = rows.map((row) => {
       const change = row.changeEvent ?? row.change_event ?? {}
       const dateTime = String(change.changeDateTime ?? change.change_date_time ?? '')
       const changeType = String(change.resourceChangeOperation ?? change.resource_change_operation ?? 'UNKNOWN')
-      const resourceType = String(change.changeResourceType ?? change.change_resource_type ?? 'UNKNOWN')
-      const resourceName = change.changeResourceName ?? change.change_resource_name ?? null
+      const resourceName = change.resourceName ?? change.resource_name ?? null
+      const resourceType = typeof resourceName === 'string' && resourceName.includes('/') ? resourceName.split('/')[0].toUpperCase() : 'UNKNOWN'
       const userEmail = change.userEmail ?? change.user_email ?? null
       return {
         date_time: dateTime,
