@@ -17,6 +17,10 @@ function messageText(message: UIMessage) {
     .join('')
 }
 
+function messageHasVisibleContent(message: UIMessage) {
+  return messageText(message).trim().length > 0
+}
+
 function MultiagentActivityStatus({ activity }: { activity: ActivityEvent | null }) {
   if (!activity) return null
   const Icon = activity.status === 'running' ? Loader2 : activity.status === 'completed' ? Check : X
@@ -187,6 +191,7 @@ function SupervisorChatSession({
             messages.map((message) => (
               <div
                 key={message.id}
+                aria-label={messageHasVisibleContent(message) ? undefined : message.role === 'assistant' ? 'El Supervisor está procesando la respuesta' : 'Mensaje sin contenido'}
                 className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 {message.role !== 'user' && (
@@ -197,7 +202,9 @@ function SupervisorChatSession({
                     message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-card'
                   }`}
                 >
-                  {messageText(message)}
+                  {messageHasVisibleContent(message) ? messageText(message) : message.role === 'assistant' ? (
+                    <span className="text-muted-foreground">Preparando respuesta…</span>
+                  ) : null}
                 </div>
                 {message.role === 'user' && (
                   <User className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
