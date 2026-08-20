@@ -52,14 +52,16 @@ async function getSharedRefreshedToken(): Promise<string | null> {
 }
 
 async function fetchRows(customerId: string, query: string) {
-  const [{ accessToken: initialToken, error: tokenError }, developerToken, loginCustomerId] = await Promise.all([
-    getGoogleAdsAccessToken(),
+  const [developerToken, loginCustomerId] = await Promise.all([
     getGoogleAdsDeveloperToken(),
     getGoogleAdsLoginCustomerId(),
   ])
-  if (!initialToken) throw new Error(tokenError || 'No se pudo obtener el access token de Google Ads.')
+  const refreshedToken = await getSharedRefreshedToken()
+  const tokenResult = refreshedToken ? { accessToken: refreshedToken } : await getGoogleAdsAccessToken()
+  const initialToken = tokenResult.accessToken
+  if (!initialToken) throw new Error(tokenResult.error || 'No se pudo obtener el access token de Google Ads.')
 
-  let accessToken = sharedRefreshedToken && sharedRefreshedToken.expiresAt > Date.now() ? sharedRefreshedToken.token : initialToken
+  let accessToken = refreshedToken || sharedRefreshedToken?.token || initialToken
   let retriedWithRefresh = false
   const rows: any[] = []
   let pageToken: string | undefined
