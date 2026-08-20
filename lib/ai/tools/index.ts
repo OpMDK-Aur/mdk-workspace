@@ -21,6 +21,9 @@ function addGoogleSnapshot(context: ExecutionContext, account: { id_cuenta: stri
     conversion_actions: metrics.conversion_actions.map((action) => ({ ...action })),
     conversion_actions_available: metrics.conversion_actions_available,
     conversion_actions_error: metrics.conversion_actions_error,
+    change_history: metrics.change_history.map((event) => ({ ...event })),
+    change_history_available: metrics.change_history_available,
+    change_history_error: metrics.change_history_error,
     campaigns: metrics.campaigns,
   })
 }
@@ -38,6 +41,9 @@ function addMetaSnapshot(context: ExecutionContext, account: { id_cuenta: string
     conversion_actions: [],
     conversion_actions_available: false,
     conversion_actions_error: null,
+    change_history: [],
+    change_history_available: false,
+    change_history_error: null,
     campaigns: metrics.campaigns.map((campaign) => ({ ...campaign })),
   })
 }

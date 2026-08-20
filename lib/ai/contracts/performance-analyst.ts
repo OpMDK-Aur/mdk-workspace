@@ -99,6 +99,9 @@ export const PaidMediaSnapshotSchema = z.object({
   conversion_actions: z.array(z.record(z.string(), z.unknown())),
   conversion_actions_available: z.boolean(),
   conversion_actions_error: z.string().nullable(),
+  change_history: z.array(z.record(z.string(), z.unknown())),
+  change_history_available: z.boolean(),
+  change_history_error: z.string().nullable(),
   campaigns: z.array(z.record(z.string(), z.unknown())),
 })
 

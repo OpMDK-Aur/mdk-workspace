@@ -18,6 +18,18 @@ export interface GoogleConversionAction {
   campaign_names: string[]
 }
 
+export interface GoogleChangeEvent {
+  date_time: string
+  change_type: string
+  resource_type: string
+  resource_name: string | null
+  user_email: string | null
+  campaign_id: string | null
+  campaign_name: string | null
+  ad_group_id: string | null
+  summary: string
+}
+
 export interface GoogleAccountMetrics {
   account_id: string
   account_name: string | null
@@ -26,6 +38,9 @@ export interface GoogleAccountMetrics {
   conversion_actions: GoogleConversionAction[]
   conversion_actions_available: boolean
   conversion_actions_error: string | null
+  change_history: GoogleChangeEvent[]
+  change_history_available: boolean
+  change_history_error: string | null
   campaigns: Array<Record<string, unknown>>
 }
 
@@ -117,6 +132,39 @@ async function fetchRows(customerId: string, query: string) {
     if (!pageToken) break
   }
   return rows
+}
+
+export async function getGoogleChangeHistory(input: GoogleAccountMetricsInput): Promise<{ events: GoogleChangeEvent[]; available: boolean; error: string | null }> {
+  const customerId = normalizeCustomerId(input.customerId)
+  assertDate(input.dateFrom)
+  assertDate(input.dateTo)
+  try {
+    const rows = await fetchRows(customerId, `SELECT change_event.change_date_time, change_event.change_type, change_event.change_resource_type, change_event.change_resource_name, change_event.user_email, campaign.id, campaign.name, ad_group.id FROM change_event WHERE change_event.change_date_time >= '${input.dateFrom} 00:00:00' AND change_event.change_date_time <= '${input.dateTo} 23:59:59' ORDER BY change_event.change_date_time DESC LIMIT 200`)
+    const events = rows.map((row) => {
+      const change = row.changeEvent ?? row.change_event ?? {}
+      const campaign = row.campaign ?? {}
+      const adGroup = row.adGroup ?? row.ad_group ?? {}
+      const dateTime = String(change.changeDateTime ?? change.change_date_time ?? '')
+      const changeType = String(change.changeType ?? change.change_type ?? 'UNKNOWN')
+      const resourceType = String(change.changeResourceType ?? change.change_resource_type ?? 'UNKNOWN')
+      return {
+        date_time: dateTime,
+        change_type: changeType,
+        resource_type: resourceType,
+        resource_name: change.changeResourceName ?? change.change_resource_name ?? null,
+        user_email: change.userEmail ?? change.user_email ?? null,
+        campaign_id: campaign.id ? String(campaign.id) : null,
+        campaign_name: campaign.name ? String(campaign.name) : null,
+        ad_group_id: adGroup.id ? String(adGroup.id) : null,
+        summary: `${changeType} en ${resourceType}${campaign.name ? ` — ${campaign.name}` : ''}`,
+      }
+    }).filter((event) => event.date_time)
+    return { events, available: true, error: null }
+  } catch (cause) {
+    const error = cause instanceof Error ? cause.message.slice(0, 240) : 'Google Ads Change History no está disponible.'
+    console.warn('[v0] Google Ads Change History unavailable:', error)
+    return { events: [], available: false, error }
+  }
 }
 
 export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput): Promise<GoogleAccountMetrics> {
@@ -225,7 +273,8 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
     console.warn('[v0] Google Ads conversion action breakdown unavailable:', conversion_actions_error)
   }
 
-  return { account_id: customerId, account_name: input.accountName ?? null, date_range: { start: input.dateFrom, end: input.dateTo }, totals, conversion_actions, conversion_actions_available, conversion_actions_error, campaigns }
+  const history = await getGoogleChangeHistory(input)
+  return { account_id: customerId, account_name: input.accountName ?? null, date_range: { start: input.dateFrom, end: input.dateTo }, totals, conversion_actions, conversion_actions_available, conversion_actions_error, change_history: history.events, change_history_available: history.available, change_history_error: history.error, campaigns }
 }
 
 export function defaultGoogleDateRange() {
