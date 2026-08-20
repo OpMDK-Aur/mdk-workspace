@@ -10,11 +10,22 @@ export interface GoogleAccountMetricsInput {
   accountName?: string | null
 }
 
+export interface GoogleConversionAction {
+  name: string
+  conversions: number
+  conversion_value: number
+  campaign_ids: string[]
+  campaign_names: string[]
+}
+
 export interface GoogleAccountMetrics {
   account_id: string
   account_name: string | null
   date_range: { start: string; end: string }
   totals: { impressions: number; clicks: number; spend: number; leads: number; ctr: number; cpc: number; cpl: number }
+  conversion_actions: GoogleConversionAction[]
+  conversion_actions_available: boolean
+  conversion_actions_error: string | null
   campaigns: Array<Record<string, unknown>>
 }
 
@@ -179,7 +190,35 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
   totals.ctr = totals.impressions ? (totals.clicks / totals.impressions) * 100 : 0
   totals.cpc = totals.clicks ? totals.spend / totals.clicks : 0
   totals.cpl = totals.leads ? totals.spend / totals.leads : 0
-  return { account_id: customerId, account_name: input.accountName ?? null, date_range: { start: input.dateFrom, end: input.dateTo }, totals, campaigns }
+
+  let conversion_actions: GoogleConversionAction[] = []
+  let conversion_actions_available = true
+  let conversion_actions_error: string | null = null
+  try {
+    const conversionRows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, segments.conversion_action_name, metrics.conversions, metrics.conversions_value FROM ad_group_ad WHERE ${dateFilter} AND campaign.status != 'REMOVED' ORDER BY metrics.conversions DESC`)
+    const actionMap = new Map<string, GoogleConversionAction>()
+    for (const row of conversionRows) {
+      const action = row.segments?.conversionActionName ?? row.segments?.conversion_action_name
+      const name = typeof action === 'string' ? action.trim() : ''
+      if (!name) continue
+      const campaign = row.campaign ?? {}
+      const campaignId = String(campaign.id ?? '')
+      const campaignName = String(campaign.name ?? '')
+      const current = actionMap.get(name) ?? { name, conversions: 0, conversion_value: 0, campaign_ids: [], campaign_names: [] }
+      current.conversions += Number(row.metrics?.conversions ?? 0)
+      current.conversion_value += Number(row.metrics?.conversionsValue ?? row.metrics?.conversions_value ?? 0)
+      if (campaignId && !current.campaign_ids.includes(campaignId)) current.campaign_ids.push(campaignId)
+      if (campaignName && !current.campaign_names.includes(campaignName)) current.campaign_names.push(campaignName)
+      actionMap.set(name, current)
+    }
+    conversion_actions = [...actionMap.values()].sort((a, b) => b.conversions - a.conversions)
+  } catch (cause) {
+    conversion_actions_available = false
+    conversion_actions_error = cause instanceof Error ? cause.message.slice(0, 240) : 'No se pudo obtener el desglose por acción de conversión.'
+    console.warn('[v0] Google Ads conversion action breakdown unavailable:', conversion_actions_error)
+  }
+
+  return { account_id: customerId, account_name: input.accountName ?? null, date_range: { start: input.dateFrom, end: input.dateTo }, totals, conversion_actions, conversion_actions_available, conversion_actions_error, campaigns }
 }
 
 export function defaultGoogleDateRange() {

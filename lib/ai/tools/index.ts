@@ -18,6 +18,9 @@ function addGoogleSnapshot(context: ExecutionContext, account: { id_cuenta: stri
     currency: account.moneda,
     period: { from: metrics.date_range.start, to: metrics.date_range.end },
     metrics: metrics.totals,
+    conversion_actions: metrics.conversion_actions.map((action) => ({ ...action })),
+    conversion_actions_available: metrics.conversion_actions_available,
+    conversion_actions_error: metrics.conversion_actions_error,
     campaigns: metrics.campaigns,
   })
 }
@@ -32,6 +35,9 @@ function addMetaSnapshot(context: ExecutionContext, account: { id_cuenta: string
     currency: metrics.moneda ?? account.moneda,
     period: { from: metrics.date_range.start, to: metrics.date_range.end },
     metrics: { ...metrics.totals, results_by_type: metrics.results_by_type },
+    conversion_actions: [],
+    conversion_actions_available: false,
+    conversion_actions_error: null,
     campaigns: metrics.campaigns.map((campaign) => ({ ...campaign })),
   })
 }
@@ -173,7 +179,7 @@ const getMetaMetrics: ToolDefinition = {
 
 const getGoogleMetrics: ToolDefinition = {
   key: 'get_google_metrics',
-  description: 'Consulta métricas reales de Google Ads de las cuentas activas del cliente seleccionado.',
+  description: 'Consulta métricas reales de Google Ads de las cuentas activas del cliente seleccionado. Cada cuenta incluye conversion_actions con el nombre exacto de la acción de conversión, conversiones, valor y campañas relacionadas; totals.leads es únicamente el total agregado.',
   inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional(), accountId: z.string().optional() }),
   async execute(input: { dateFrom?: string; dateTo?: string; accountId?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
