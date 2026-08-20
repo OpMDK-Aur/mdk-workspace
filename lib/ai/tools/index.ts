@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import type { ExecutionContext, ToolDefinition } from '../types'
-import { getGoogleAccountMetrics, defaultGoogleDateRange, normalizeCustomerId, splitCustomerIds } from '@/lib/google-ads/service'
+import { getGoogleAccountMetrics, getGoogleChangeHistory, defaultGoogleDateRange, normalizeCustomerId, splitCustomerIds } from '@/lib/google-ads/service'
 import { defaultMetaDateRange, getMetaAccountMetrics, getMetaErrorDetails, normalizeMetaAccountId } from '@/lib/meta-ads/service'
 import { buildCampaignComparisons, compareMetric, upsertPaidMediaSnapshot } from '@/lib/ai/contracts/performance-analyst'
 import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
@@ -223,6 +223,27 @@ const getGoogleMetrics: ToolDefinition = {
   },
 }
 
+const getGoogleChangeHistoryTool: ToolDefinition = {
+  key: 'get_google_change_history',
+  description: 'Consulta explícitamente el historial de cambios de Google Ads en el período solicitado. Devuelve eventos reales de cambio, usuario, recurso, campaña y fecha; no reemplaza las métricas.',
+  inputSchema: z.object({ dateFrom: z.string(), dateTo: z.string(), accountId: z.string().optional() }),
+  async execute(input: { dateFrom: string; dateTo: string; accountId?: string }, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const supabase = await createClient()
+    const { data: accounts, error } = await supabase.from('cuentas_publicitarias').select('id_cuenta, nombre_cuenta').eq('cliente_id', context.clientId).eq('plataforma', 'google').eq('activo', true)
+    if (error) return { available: false, message: 'No se pudieron consultar las cuentas activas de Google Ads.' }
+    const availableAccounts = (accounts ?? []).flatMap((account) => splitCustomerIds(account.id_cuenta).map((id_cuenta) => ({ ...account, id_cuenta })))
+    const selected = input.accountId ? availableAccounts.filter((account) => normalizeCustomerId(account.id_cuenta) === normalizeCustomerId(input.accountId!)) : availableAccounts
+    if (!selected.length) return { available: false, message: input.accountId ? 'La cuenta solicitada no pertenece al cliente seleccionado.' : 'El cliente no tiene cuentas activas de Google Ads.' }
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_change_history', status: 'running', label: `Consultando historial de ${selected.length} cuenta${selected.length === 1 ? '' : 's'} de Google Ads...` })
+    const results = await Promise.all(selected.map(async (account) => ({ account, history: await getGoogleChangeHistory({ customerId: account.id_cuenta, accountName: account.nombre_cuenta, dateFrom: input.dateFrom, dateTo: input.dateTo }) })))
+    const events = results.flatMap(({ account, history }) => history.events.map((event) => ({ ...event, account_id: account.id_cuenta, account_name: account.nombre_cuenta })))
+    const errors = results.filter(({ history }) => !history.available).map(({ account, history }) => ({ account_id: account.id_cuenta, account_name: account.nombre_cuenta, message: history.error }))
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_change_history', status: 'completed', label: `${events.length} cambios encontrados en Google Ads` })
+    return { available: true, date_range: { start: input.dateFrom, end: input.dateTo }, events, errors, history_available: errors.length < results.length }
+  },
+}
+
 const runPerformanceAnalystTool: ToolDefinition = {
   key: 'run_performance_analyst',
   description: 'Analiza los snapshots de Google Ads y Meta Ads recolectados durante este request.',
@@ -313,6 +334,7 @@ const allTools: ToolDefinition[] = [
   getAccountContext,
   getMetaMetrics,
   getGoogleMetrics,
+  getGoogleChangeHistoryTool,
   runPerformanceAnalystTool,
   getPreviousInsights,
 ]
