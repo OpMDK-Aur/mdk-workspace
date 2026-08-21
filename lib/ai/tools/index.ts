@@ -379,6 +379,10 @@ export function getToolDefinitions(enabledKeys: string[]): ToolDefinition[] {
   return allTools.filter((definition) => enabledKeys.includes(definition.key))
 }
 
+export function getCatalogToolKeys(): string[] {
+  return allTools.map((definition) => definition.key)
+}
+
 export function getToolCatalog() {
   return allTools.map(({ key, description }) => ({ key, description }))
 }

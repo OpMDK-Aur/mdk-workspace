@@ -1,7 +1,7 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { stepCountIs, streamText, tool } from 'ai'
 import { agentConfigRepository } from '../repositories/agent-repository'
-import { getToolDefinitions } from '../tools'
+import { getCatalogToolKeys, getToolDefinitions } from '../tools'
 import type { ExecutionContext } from '../types'
 
 function getGatewayModel(model: string) {
@@ -20,7 +20,15 @@ export async function streamSupervisorResponse(
   context: ExecutionContext,
 ) {
   const config = await agentConfigRepository.getSupervisor(context.userId)
+  const catalogToolKeys = getCatalogToolKeys()
   const definitions = getToolDefinitions(config.enabledTools)
+  const exposedToolKeys = definitions.map((definition) => definition.key)
+  console.log('[multiagent-tools]', {
+    agentSlug: 'supervisor',
+    enabledToolKeys: config.enabledTools,
+    catalogToolKeys,
+    exposedToolKeys,
+  })
   console.log('[v0] Supervisor execution config', {
     source: config.configSource ?? agentConfigRepository.getSource(),
     agent_slug: 'supervisor',
