@@ -18,16 +18,25 @@ export interface GoogleConversionAction {
   campaign_names: string[]
 }
 
+export type GoogleChangeFieldCategory = 'budget' | 'status' | 'bidding' | 'targeting' | 'creative' | 'conversion' | 'schedule' | 'other'
+
+export interface GoogleChangeField {
+  field: string
+  field_category: GoogleChangeFieldCategory
+  old_value: string | null
+  new_value: string | null
+}
+
 export interface GoogleChangeEvent {
-  date_time: string
-  change_type: string
-  resource_type: string
-  resource_name: string | null
-  user_email: string | null
-  campaign_id: string | null
-  campaign_name: string | null
-  ad_group_id: string | null
-  summary: string
+  platform: 'google'
+  account_id: string
+  occurred_at: string
+  actor: { id: string | null; name: string | null; email: string | null }
+  source: 'google_ads_change_event'
+  entity: { type: string; id: string | null; name: string | null }
+  operation: string
+  changed_fields: GoogleChangeField[]
+  metadata: { resource_name: string | null; client_type: string | null; raw_change_resource_type: string | null }
 }
 
 export interface GoogleAccountMetrics {
@@ -134,42 +143,54 @@ async function fetchRows(customerId: string, query: string) {
   return rows
 }
 
-export async function getGoogleChangeHistory(input: GoogleAccountMetricsInput): Promise<{ events: GoogleChangeEvent[]; available: boolean; error: string | null }> {
+function classifyChangeField(field: string): GoogleChangeFieldCategory {
+  const path = field.toLowerCase()
+  if (/budget|amount_micros/.test(path)) return 'budget'
+  if (/status|enabled|paused|removed/.test(path)) return 'status'
+  if (/bidding|bid|target_cpa|target_roas|maximize/.test(path)) return 'bidding'
+  if (/target|audience|criterion|keyword|location|language/.test(path)) return 'targeting'
+  if (/ad|asset|headline|description|image|video|creative/.test(path)) return 'creative'
+  if (/conversion|tracking|goal/.test(path)) return 'conversion'
+  if (/schedule|hour|day_of_week/.test(path)) return 'schedule'
+  return 'other'
+}
+
+function readPath(value: unknown, path: string): string | null {
+  if (!value || typeof value !== 'object') return null
+  const result = path.split('.').reduce<unknown>((current, key) => current && typeof current === 'object' ? (current as Record<string, unknown>)[key] : undefined, value)
+  if (result === undefined || result === null) return null
+  return typeof result === 'string' ? result : JSON.stringify(result)
+}
+
+export async function getGoogleAccountChangeHistory(input: GoogleAccountMetricsInput & { limit?: number }): Promise<{ events: GoogleChangeEvent[]; available: boolean; error: string | null; requested_period: { from: string; to: string }; available_period: { from: string; to: string }; history_complete: boolean; limitation: string | null }> {
   const customerId = normalizeCustomerId(input.customerId)
-  assertDate(input.dateFrom)
-  assertDate(input.dateTo)
+  assertDate(input.dateFrom); assertDate(input.dateTo)
+  const requested = { from: input.dateFrom, to: input.dateTo }
+  const availableTo = new Date(); const availableFrom = new Date(availableTo); availableFrom.setUTCDate(availableFrom.getUTCDate() - 29)
+  const iso = (date: Date) => date.toISOString().slice(0, 10)
+  const available = { from: iso(availableFrom), to: iso(availableTo) }
+  const from = input.dateFrom < available.from ? available.from : input.dateFrom
+  const to = input.dateTo > available.to ? available.to : input.dateTo
+  const complete = from === requested.from && to === requested.to
+  const limitation = complete ? null : 'Google Ads solo expone ChangeEvent de los últimos 30 días.'
+  if (from > to) return { events: [], available: true, error: null, requested_period: requested, available_period: available, history_complete: false, limitation }
   try {
-    // change_event solo admite sus propios campos; joins con campaign/ad_group y
-    // change_type provocan INVALID_ARGUMENT en Google Ads GAQL.
-    const from = input.dateFrom.replaceAll('-', '')
-    const to = input.dateTo.replaceAll('-', '')
-    const rows = await fetchRows(customerId, `SELECT change_event.change_date_time, change_event.resource_name, change_event.user_email, change_event.resource_change_operation FROM change_event WHERE change_event.change_date_time >= '${from}' AND change_event.change_date_time <= '${to}' ORDER BY change_event.change_date_time DESC LIMIT 200`)
+    const rows = await fetchRows(customerId, `SELECT change_event.resource_name, change_event.change_date_time, change_event.change_resource_name, change_event.change_resource_type, change_event.user_email, change_event.client_type, change_event.resource_change_operation, change_event.changed_fields, change_event.old_resource, change_event.new_resource FROM change_event WHERE change_event.change_date_time >= '${from}' AND change_event.change_date_time <= '${to}' ORDER BY change_event.change_date_time DESC LIMIT ${Math.min(Math.max(input.limit ?? 200, 1), 200)}`)
     const events = rows.map((row) => {
       const change = row.changeEvent ?? row.change_event ?? {}
-      const dateTime = String(change.changeDateTime ?? change.change_date_time ?? '')
-      const changeType = String(change.resourceChangeOperation ?? change.resource_change_operation ?? 'UNKNOWN')
       const resourceName = change.resourceName ?? change.resource_name ?? null
-      const resourceType = typeof resourceName === 'string' && resourceName.includes('/') ? resourceName.split('/')[0].toUpperCase() : 'UNKNOWN'
-      const userEmail = change.userEmail ?? change.user_email ?? null
-      return {
-        date_time: dateTime,
-        change_type: changeType,
-        resource_type: resourceType,
-        resource_name: resourceName,
-        user_email: userEmail,
-        campaign_id: null,
-        campaign_name: null,
-        ad_group_id: null,
-        summary: `${changeType} en ${resourceType}${resourceName ? ` — ${resourceName}` : ''}`,
-      }
-    }).filter((event) => event.date_time)
-    return { events, available: true, error: null }
-  } catch (cause) {
-    const error = cause instanceof Error ? cause.message.slice(0, 240) : 'Google Ads Change History no está disponible.'
-    console.warn('[v0] Google Ads Change History unavailable:', error)
-    return { events: [], available: false, error }
-  }
+      const resourceType = change.changeResourceType ?? change.change_resource_type ?? 'UNKNOWN'
+      const changedFields = change.changedFields ?? change.changed_fields ?? []
+      const oldResource = change.oldResource ?? change.old_resource
+      const newResource = change.newResource ?? change.new_resource
+      const fields = (Array.isArray(changedFields) ? changedFields : Object.keys(changedFields ?? {})).map((field) => { const name = typeof field === 'string' ? field : String(field.field ?? field.path ?? ''); return { field: name, field_category: classifyChangeField(name), old_value: readPath(oldResource, name), new_value: readPath(newResource, name) } })
+      return { platform: 'google' as const, account_id: customerId, occurred_at: String(change.changeDateTime ?? change.change_date_time ?? ''), actor: { id: null, name: null, email: change.userEmail ?? change.user_email ?? null }, source: 'google_ads_change_event' as const, entity: { type: String(resourceType), id: null, name: change.changeResourceName ?? change.change_resource_name ?? null }, operation: String(change.resourceChangeOperation ?? change.resource_change_operation ?? 'UNKNOWN'), changed_fields: fields, metadata: { resource_name: resourceName, client_type: change.clientType ?? change.client_type ?? null, raw_change_resource_type: resourceType } }
+    }).filter((event) => event.occurred_at)
+    return { events, available: true, error: null, requested_period: requested, available_period: available, history_complete: complete, limitation }
+  } catch (cause) { return { events: [], available: false, error: cause instanceof Error ? cause.message.slice(0, 240) : 'Google Ads Change History no está disponible.', requested_period: requested, available_period: available, history_complete: false, limitation } }
 }
+
+export const getGoogleChangeHistory = getGoogleAccountChangeHistory
 
 export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput): Promise<GoogleAccountMetrics> {
   const customerId = normalizeCustomerId(input.customerId)
@@ -277,8 +298,7 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
     console.warn('[v0] Google Ads conversion action breakdown unavailable:', conversion_actions_error)
   }
 
-  const history = await getGoogleChangeHistory(input)
-  return { account_id: customerId, account_name: input.accountName ?? null, date_range: { start: input.dateFrom, end: input.dateTo }, totals, conversion_actions, conversion_actions_available, conversion_actions_error, change_history: history.events, change_history_available: history.available, change_history_error: history.error, campaigns }
+  return { account_id: customerId, account_name: input.accountName ?? null, date_range: { start: input.dateFrom, end: input.dateTo }, totals, conversion_actions, conversion_actions_available, conversion_actions_error, change_history: [], change_history_available: false, change_history_error: null, campaigns }
 }
 
 export function defaultGoogleDateRange() {

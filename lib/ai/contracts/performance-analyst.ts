@@ -107,6 +107,17 @@ export const PaidMediaSnapshotSchema = z.object({
 
 export type PaidMediaSnapshot = z.infer<typeof PaidMediaSnapshotSchema>
 
+export const PaidMediaChangeEventSchema = z.object({
+  platform: z.literal('google'), account_id: z.string(), occurred_at: z.string(),
+  actor: z.object({ id: z.string().nullable(), name: z.string().nullable(), email: z.string().nullable() }),
+  source: z.literal('google_ads_change_event'),
+  entity: z.object({ type: z.string(), id: z.string().nullable(), name: z.string().nullable() }),
+  operation: z.string(),
+  changed_fields: z.array(z.object({ field: z.string(), field_category: z.enum(['budget', 'status', 'bidding', 'targeting', 'creative', 'conversion', 'schedule', 'other']), old_value: z.string().nullable(), new_value: z.string().nullable() })),
+  metadata: z.object({ resource_name: z.string().nullable(), client_type: z.string().nullable(), raw_change_resource_type: z.string().nullable() }),
+})
+export type PaidMediaChangeEvent = z.infer<typeof PaidMediaChangeEventSchema>
+
 export type AnalysisPeriodRole = 'current' | 'comparison'
 export type ComparisonDefinition = {
   type: 'previous_period' | 'explicit'
@@ -117,7 +128,13 @@ export type ComparisonDefinition = {
 export type AnalysisRunState = {
   currentSnapshots: PaidMediaSnapshot[]
   comparisonSnapshots: PaidMediaSnapshot[]
+  changeHistory: PaidMediaChangeEvent[]
   comparisonDefinition?: ComparisonDefinition
+}
+
+export function upsertChangeHistory(state: AnalysisRunState, events: PaidMediaChangeEvent[]) {
+  const seen = new Set(state.changeHistory.map((event) => `${event.platform}:${event.account_id}:${event.metadata.resource_name ?? ''}:${event.occurred_at}:${event.operation}`))
+  for (const event of events) { const key = `${event.platform}:${event.account_id}:${event.metadata.resource_name ?? ''}:${event.occurred_at}:${event.operation}`; if (!seen.has(key)) { state.changeHistory.push(event); seen.add(key) } }
 }
 
 export type ComparableMetric = { current: number; comparison: number; delta: number; delta_pct: number | null }

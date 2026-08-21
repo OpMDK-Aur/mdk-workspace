@@ -132,6 +132,7 @@ export async function POST(request: Request) {
     const analysisRunState: import('@/lib/ai/contracts/performance-analyst').AnalysisRunState = {
       currentSnapshots: [],
       comparisonSnapshots: [],
+      changeHistory: [],
       comparisonDefinition: getComparisonDefinition(query),
     }
     let writeActivity: ((event: ActivityEvent) => void) | undefined
