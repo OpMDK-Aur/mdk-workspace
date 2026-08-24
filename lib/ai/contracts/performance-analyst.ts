@@ -117,13 +117,13 @@ export const PaidMediaSnapshotSchema = z.object({
 export type PaidMediaSnapshot = z.infer<typeof PaidMediaSnapshotSchema>
 
 export const PaidMediaChangeEventSchema = z.object({
-  platform: z.literal('google'), account_id: z.string(), occurred_at: z.string(),
+  platform: z.enum(['google', 'meta']), account_id: z.string(), occurred_at: z.string(),
   actor: z.object({ id: z.string().nullable(), name: z.string().nullable(), email: z.string().nullable() }),
-  source: z.literal('google_ads_change_event'),
+  source: z.string().min(1),
   entity: z.object({ type: z.string(), id: z.string().nullable(), name: z.string().nullable() }),
   operation: z.string(),
   changed_fields: z.array(z.object({ field: z.string(), field_category: z.enum(['budget', 'status', 'bidding', 'targeting', 'creative', 'conversion', 'schedule', 'other']), old_value: z.string().nullable(), new_value: z.string().nullable() })),
-  metadata: z.object({ resource_name: z.string().nullable(), client_type: z.string().nullable(), raw_change_resource_type: z.string().nullable() }),
+  metadata: z.object({ resource_name: z.string().nullable(), client_type: z.string().nullable(), raw_change_resource_type: z.string().nullable() }).catchall(z.unknown()),
 })
 export type PaidMediaChangeEvent = z.infer<typeof PaidMediaChangeEventSchema>
 

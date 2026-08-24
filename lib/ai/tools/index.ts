@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import type { ExecutionContext, ToolDefinition } from '../types'
-import { getGoogleAccountChangeHistory, getGoogleAccountMetrics, defaultGoogleDateRange, normalizeCustomerId, splitCustomerIds } from '@/lib/google-ads/service'
+import { getGoogleAccountMetrics, defaultGoogleDateRange, normalizeCustomerId, splitCustomerIds } from '@/lib/google-ads/service'
 import { defaultMetaDateRange, getMetaAccountMetrics, getMetaErrorDetails, normalizeMetaAccountId } from '@/lib/meta-ads/service'
 import { buildCampaignComparisons, compareMetric, upsertChangeHistory, upsertPaidMediaSnapshot, SpecialistOutputSchema } from '@/lib/ai/contracts/performance-analyst'
 import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
@@ -225,34 +225,32 @@ const getGoogleMetrics: ToolDefinition = {
 
 const getAccountChangeHistory: ToolDefinition = {
   key: 'get_account_change_history',
-  description: 'Consulta el historial real de cambios de Google Ads para responder quién cambió qué y cuándo. No reemplaza las métricas.',
-  inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional(), accountId: z.string().optional() }),
-  async execute(input: { dateFrom?: string; dateTo?: string; accountId?: string }, context: ExecutionContext) {
-    if ((input.dateFrom && !input.dateTo) || (!input.dateFrom && input.dateTo)) return { available: false, message: 'Debes indicar dateFrom y dateTo juntos.' }
-    const range = input.dateFrom && input.dateTo ? { dateFrom: input.dateFrom, dateTo: input.dateTo } : defaultGoogleDateRange()
-    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
-    const supabase = await createClient()
-    const { data: accounts, error } = await supabase.from('cuentas_publicitarias').select('id_cuenta, nombre_cuenta').eq('cliente_id', context.clientId).eq('plataforma', 'google').eq('activo', true)
-    if (error) return { available: false, message: 'No se pudieron consultar las cuentas activas de Google Ads.' }
-    const availableAccounts = (accounts ?? []).flatMap((account) => splitCustomerIds(account.id_cuenta).map((id_cuenta) => ({ ...account, id_cuenta })))
-    const selected = input.accountId ? availableAccounts.filter((account) => normalizeCustomerId(account.id_cuenta) === normalizeCustomerId(input.accountId!)) : availableAccounts
-    if (!selected.length) return { available: false, message: input.accountId ? 'La cuenta solicitada no pertenece al cliente seleccionado.' : 'El cliente no tiene cuentas activas de Google Ads.' }
-    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_account_change_history', status: 'running', label: `Consultando historial de ${selected.length} cuenta${selected.length === 1 ? '' : 's'} de Google Ads...` })
-    const results: Array<{ account: typeof selected[number]; history?: Awaited<ReturnType<typeof getGoogleAccountChangeHistory>>; error?: string }> = []
-    for (let index = 0; index < selected.length; index += 3) {
-      const batch = selected.slice(index, index + 3)
-      results.push(...await Promise.all(batch.map(async (account) => { try { return { account, history: await getGoogleAccountChangeHistory({ customerId: account.id_cuenta, accountName: account.nombre_cuenta, ...range }) } } catch (cause) { return { account, error: cause instanceof Error ? cause.message : 'No se pudo consultar esta cuenta.' } } })))
-    }
-    const events = results.flatMap(({ history }) => history?.events ?? [])
+  description: 'Lee el historial persistido de cambios de paid media del cliente. Filtra por plataforma, cuenta, período, entidad, categorías o actor; nunca reemplaza las métricas.',
+  inputSchema: z.object({ platform: z.enum(['google', 'meta']).nullable(), dateFrom: z.string().nullable(), dateTo: z.string().nullable(), accountId: z.string().nullable(), entityType: z.string().nullable(), entityId: z.string().nullable(), fieldCategories: z.array(z.string()).nullable(), actorEmail: z.string().nullable(), limit: z.number().int().min(1).max(200).nullable() }),
+  async execute(input: { platform?: 'google' | 'meta' | null; dateFrom?: string | null; dateTo?: string | null; accountId?: string | null; entityType?: string | null; entityId?: string | null; fieldCategories?: string[] | null; actorEmail?: string | null; limit?: number | null }, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, events: [], message: 'No hay un cliente activo seleccionado.' }
+    if ((input.dateFrom && !input.dateTo) || (!input.dateFrom && input.dateTo)) return { available: false, events: [], message: 'Debes indicar dateFrom y dateTo juntos.' }
+    const limit = Math.min(Math.max(input.limit ?? 100, 1), 200)
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_account_change_history', status: 'running', label: `Consultando historial${input.platform ? ` de ${input.platform}` : ''}...` })
+    let query = (await createClient()).from('paid_media_change_events').select('platform, account_id, account_name, source_event_id, occurred_at, actor_id, actor_name, actor_email, client_type, entity_type, entity_id, entity_name, operation, changed_fields, field_categories, source, raw_metadata').eq('client_id', context.clientId).order('occurred_at', { ascending: false }).limit(limit)
+    if (input.platform) query = query.eq('platform', input.platform)
+    if (input.accountId) query = query.eq('account_id', input.accountId)
+    if (input.entityType) query = query.eq('entity_type', input.entityType)
+    if (input.entityId) query = query.eq('entity_id', input.entityId)
+    if (input.actorEmail) query = query.eq('actor_email', input.actorEmail)
+    if (input.dateFrom) query = query.gte('occurred_at', input.dateFrom)
+    if (input.dateTo) query = query.lte('occurred_at', `${input.dateTo}T23:59:59.999Z`)
+    if (input.fieldCategories?.length) query = query.overlaps('field_categories', input.fieldCategories)
+    const { data, error } = await query
+    if (error) { context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_account_change_history', status: 'error', label: 'No se pudo leer el historial de cambios' }); return { available: false, events: [], message: 'No se pudo leer el historial persistido.' } }
+    const events = (data ?? []).map((row) => ({ platform: row.platform, account_id: row.account_id, occurred_at: row.occurred_at, actor: { id: row.actor_id, name: row.actor_name, email: row.actor_email }, source: row.source, entity: { type: row.entity_type, id: row.entity_id, name: row.entity_name }, operation: row.operation, changed_fields: row.changed_fields ?? [], metadata: { resource_name: row.source_event_id, client_type: row.client_type, raw_change_resource_type: row.entity_type } }))
     if (context.analysisRunState) upsertChangeHistory(context.analysisRunState, events)
-    const errors = results.filter((result) => result.error || result.history?.error).map((result) => ({ account_id: result.account.id_cuenta, account_name: result.account.nombre_cuenta, message: result.error ?? result.history?.error, limitation: result.history?.limitation }))
-    const completedLabel = errors.length ? `Se consultó el historial de ${results.length - errors.length} de ${results.length} cuentas` : 'Historial de cambios recibido'
-    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_account_change_history', status: 'completed', label: completedLabel })
-    return { available: true, date_range: range, events, errors, history_available: results.some((result) => result.history?.available), history_complete: results.every((result) => result.history?.history_complete), limitations: results.map((result) => result.history?.limitation).filter(Boolean) }
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_account_change_history', status: 'completed', label: events.length ? `${events.length} cambios encontrados` : 'No hay eventos registrados para los filtros solicitados' })
+    return { available: true, events, count: events.length, message: events.length ? undefined : 'No hay eventos registrados para los filtros solicitados.' }
   },
 }
 
-const getGoogleChangeHistoryTool: ToolDefinition = { ...getAccountChangeHistory, key: 'get_google_change_history', description: getAccountChangeHistory.description }
+const getGoogleChangeHistoryTool: ToolDefinition = { ...getAccountChangeHistory, key: 'get_google_change_history', description: 'Compatibilidad legacy: consultá get_account_change_history para el historial persistido multiplataforma.' }
 
 const runPerformanceAnalystTool: ToolDefinition = {
   key: 'run_performance_analyst',
