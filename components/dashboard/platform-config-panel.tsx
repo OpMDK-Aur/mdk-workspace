@@ -463,7 +463,8 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       const response = await fetch('/api/admin/advertising-accounts/sync', { method: 'POST' })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'No se pudo sincronizar')
-      setSyncSummary(`${data.created} creadas, ${data.updated} actualizadas, ${data.failed} fallidas`)
+      const details = Array.isArray(data.errors) && data.errors.length ? ` · ${data.errors.slice(0, 3).join(' | ')}` : ''
+      setSyncSummary(`${data.created} creadas, ${data.updated} actualizadas, ${data.failed} fallidas${details}`)
       await Promise.all([fetchMetaAccounts(), fetchGoogleAccounts()])
     } catch (error) {
       setSyncSummary(error instanceof Error ? error.message : 'No se pudo sincronizar')
