@@ -47,7 +47,7 @@ function buildPrompt(context: ExecutionContext, currentSnapshots: PaidMediaSnaps
     deltas,
     campaignComparisons: buildCampaignComparisons(currentSnapshots, comparisonSnapshots),
     reglas: [
-      'Devuelve exclusivamente el objeto que cumple SpecialistOutputSchema.',
+      'Devuelve exclusivamente el objeto que cumple SpecialistOutputSchema. Completa tanto las claves canónicas en inglés como las claves legacy en español.',
       'Usa agent_slug performance-analyst.',
       'Todos los arrays deben existir aunque estén vacíos.',
       'Cada recomendación debe referenciar finding_ids y evidence_ids existentes o usar arrays vacíos.',

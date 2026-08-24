@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { ExecutionContext, ToolDefinition } from '../types'
 import { getGoogleAccountChangeHistory, getGoogleAccountMetrics, defaultGoogleDateRange, normalizeCustomerId, splitCustomerIds } from '@/lib/google-ads/service'
 import { defaultMetaDateRange, getMetaAccountMetrics, getMetaErrorDetails, normalizeMetaAccountId } from '@/lib/meta-ads/service'
-import { buildCampaignComparisons, compareMetric, upsertChangeHistory, upsertPaidMediaSnapshot } from '@/lib/ai/contracts/performance-analyst'
+import { buildCampaignComparisons, compareMetric, upsertChangeHistory, upsertPaidMediaSnapshot, SpecialistOutputSchema } from '@/lib/ai/contracts/performance-analyst'
 import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 
 const noInput = z.object({})
@@ -244,31 +244,6 @@ const getAccountChangeHistory: ToolDefinition = {
       results.push(...await Promise.all(batch.map(async (account) => { try { return { account, history: await getGoogleAccountChangeHistory({ customerId: account.id_cuenta, accountName: account.nombre_cuenta, ...range }) } } catch (cause) { return { account, error: cause instanceof Error ? cause.message : 'No se pudo consultar esta cuenta.' } } })))
     }
     const events = results.flatMap(({ history }) => history?.events ?? [])
-    if (events.length) {
-      const rows = events.map((event) => ({
-        client_id: context.clientId,
-        advertising_account_id: event.account_id,
-        platform: event.platform,
-        account_id: event.account_id,
-        account_name: selected.find((account) => normalizeCustomerId(account.id_cuenta) === normalizeCustomerId(event.account_id))?.nombre_cuenta ?? null,
-        source_event_id: `${event.account_id}:${event.occurred_at}:${event.metadata.resource_name ?? ''}:${event.operation}`,
-        occurred_at: event.occurred_at,
-        actor_id: event.actor.id,
-        actor_name: event.actor.name,
-        actor_email: event.actor.email,
-        client_type: event.metadata.client_type,
-        entity_type: event.entity.type,
-        entity_id: event.entity.id,
-        entity_name: event.entity.name,
-        operation: event.operation,
-        changed_fields: event.changed_fields,
-        field_categories: [...new Set(event.changed_fields.map((field) => field.field_category))],
-        source: event.source,
-        raw_metadata: event.metadata,
-      }))
-      const { error: persistError } = await supabase.from('paid_media_change_events').insert(rows)
-      if (persistError) context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_account_change_history', status: 'error', label: 'No se pudo persistir el historial de cambios' })
-    }
     if (context.analysisRunState) upsertChangeHistory(context.analysisRunState, events)
     const errors = results.filter((result) => result.error || result.history?.error).map((result) => ({ account_id: result.account.id_cuenta, account_name: result.account.nombre_cuenta, message: result.error ?? result.history?.error, limitation: result.history?.limitation }))
     const completedLabel = errors.length ? `Se consultó el historial de ${results.length - errors.length} de ${results.length} cuentas` : 'Historial de cambios recibido'
@@ -341,8 +316,10 @@ const runPerformanceAnalystTool: ToolDefinition = {
           period: expectedPeriod,
         }
       }
+      const validatedOutput = SpecialistOutputSchema.parse(output)
+      state.specialistOutputs.push(validatedOutput)
       context.emitActivity?.({ agentSlug: 'performance-analyst', toolKey: 'run_performance_analyst', status: 'completed', label: 'Analista de Performance completó el análisis' })
-      return output
+      return validatedOutput
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'No se pudo validar la salida del Performance Analyst.'
       context.emitActivity?.({ agentSlug: 'performance-analyst', toolKey: 'run_performance_analyst', status: 'error', label: message })

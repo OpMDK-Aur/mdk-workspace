@@ -133,6 +133,7 @@ export async function POST(request: Request) {
       currentSnapshots: [],
       comparisonSnapshots: [],
       changeHistory: [],
+      specialistOutputs: [],
       comparisonDefinition: getComparisonDefinition(query),
     }
     let writeActivity: ((event: ActivityEvent) => void) | undefined

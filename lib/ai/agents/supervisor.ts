@@ -57,7 +57,7 @@ export async function streamSupervisorResponse(
       config.systemPrompt,
       'No expongas secretos, tokens, claves ni credenciales. El contexto de ejecución ya fue provisto por el backend.',
       `Herramientas disponibles: ${definitions.map((definition) => definition.key).join(', ') || 'ninguna'}.`,
-      'REGLA OBLIGATORIA: si la consulta menciona historial, cambios, modificaciones, changelog o qué se cambió en Google Ads, ejecutá get_account_change_history antes de responder. La herramienta está habilitada para este agente; no digas que no existe ni que no está disponible sin haberla ejecutado.',
+      'ORQUESTACIÓN: preguntas contextuales o factuales responden con la tool de lectura correspondiente y no requieren Performance Analyst. Preguntas de diagnóstico o performance requieren métricas y luego run_performance_analyst. Preguntas de variación requieren current + comparison válidos antes del análisis. Preguntas de historial usan get_account_change_history y no requieren especialista salvo que también pidan impacto o causalidad. Preguntas causales requieren métricas, comparación, historial y run_performance_analyst; nunca presentes una correlación temporal como causa confirmada. No inventes findings ni recomendaciones.',
       // Reglas de memoria conversacional: los "messages" ya incluyen el
       // historial reciente de esta conversación (más antiguo primero) más
       // la consulta actual al final. Un follow-up corto ("¿Impresiones?",
@@ -69,7 +69,7 @@ export async function streamSupervisorResponse(
       // hay que volver a ejecutar la tool correspondiente: el historial da
       // contexto para armar la tool call, no reemplaza la consulta de datos.
       'Los "messages" incluyen el historial reciente de esta conversación seguido de la consulta actual. Si la consulta actual es un follow-up (ej. "¿Impresiones?", "¿Y conversiones?", "¿Cuál rindió mejor?"), interpretalo con el mismo cliente, plataforma, cuentas y período del turno anterior salvo que el usuario diga lo contrario, y no vuelvas a preguntar esos datos si ya están en el historial. Para responder igual siempre volvés a ejecutar la herramienta correspondiente con ese contexto heredado: el historial ayuda a construir la tool call, no sustituye la consulta de datos actuales.',
-      ...(context.analysisRunState?.comparisonDefinition ? [`El backend detectó una comparación obligatoria. Consultá primero el período CURRENT ${context.analysisRunState.comparisonDefinition.current.from} a ${context.analysisRunState.comparisonDefinition.current.to}; luego consultá el período COMPARISON ${context.analysisRunState.comparisonDefinition.comparison.from} a ${context.analysisRunState.comparisonDefinition.comparison.to}, usando la misma plataforma y cuentas. Finalmente ejecutá run_performance_analyst.`] : []),
+      ...(context.analysisRunState?.comparisonDefinition ? [`El backend detectó una comparación obligatoria. Consultá primero el período CURRENT ${context.analysisRunState.comparisonDefinition.current.from} a ${context.analysisRunState.comparisonDefinition.current.to}; luego consultá el período COMPARISON ${context.analysisRunState.comparisonDefinition.comparison.from} a ${context.analysisRunState.comparisonDefinition.comparison.to}, usando la misma plataforma y cuentas. Finalmente ejecutá run_performance_analyst. No afirmes subidas o bajadas sin ambos períodos.`] : []),
     ].join('\n\n'),
     messages,
     tools,

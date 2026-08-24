@@ -45,6 +45,7 @@ export const FindingSchema = z.object({
   descripcion: z.string(),
   severidad: SeveritySchema,
   evidencia: z.array(EvidenceSchema),
+  evidence_ids: z.array(z.string()).default([]),
   confianza: ConfidenceSchema,
 })
 
@@ -73,17 +74,25 @@ export const CaveatSchema = z.object({
 
 export const SpecialistOutputSchema = z.object({
   agent_slug: z.literal('performance-analyst'),
+  config_version: z.string(),
   entidad: EntitySchema,
   version_config: z.object({
     schema_version: z.literal('1'),
     agent_config_version: z.string(),
   }),
+  period: z.object({ from: z.string(), to: z.string() }),
+  sufficiency: SufficiencySchema,
+  missing: z.array(MissingRequirementSchema),
+  confidence: ConfidenceSchema,
+  findings: z.array(FindingSchema),
+  recommendations: z.array(RecommendationSchema),
+  evidence: z.array(EvidenceSchema),
+  caveats: z.array(CaveatSchema),
   suficiencia: SufficiencySchema,
   faltantes: z.array(MissingRequirementSchema),
   confianza: ConfidenceSchema,
   hallazgos: z.array(FindingSchema),
   recomendaciones: z.array(RecommendationSchema),
-  caveats: z.array(CaveatSchema),
 })
 
 export type SpecialistOutput = z.infer<typeof SpecialistOutputSchema>
@@ -129,6 +138,7 @@ export type AnalysisRunState = {
   currentSnapshots: PaidMediaSnapshot[]
   comparisonSnapshots: PaidMediaSnapshot[]
   changeHistory: PaidMediaChangeEvent[]
+  specialistOutputs: SpecialistOutput[]
   comparisonDefinition?: ComparisonDefinition
 }
 
