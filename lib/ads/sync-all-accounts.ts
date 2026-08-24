@@ -14,13 +14,16 @@ function parseIds(single: unknown, plural: unknown) {
     if (typeof value === 'string') {
       const trimmed = value.trim()
       if (!trimmed) return
-      try {
-        const parsed = JSON.parse(trimmed)
-        if (parsed !== trimmed) return visit(parsed)
-      } catch {
-        // Comma-separated legacy values are supported below.
+      if (trimmed.includes(',')) return trimmed.split(',').forEach((part) => visit(part))
+      if (trimmed.startsWith('[') || trimmed.startsWith('{') || (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
+        try {
+          return visit(JSON.parse(trimmed))
+        } catch {
+          // Keep malformed legacy values as a single ID.
+        }
       }
-      return trimmed.split(',').forEach((part) => visit(part))
+      values.push(trimmed)
+      return
     }
     values.push(value)
   }
