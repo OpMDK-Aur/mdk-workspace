@@ -45,6 +45,7 @@ export const FindingSchema = z.object({
   descripcion: z.string(),
   severidad: SeveritySchema,
   evidencia: z.array(EvidenceSchema),
+  evidence_ids: z.array(z.string()).default([]),
   confianza: ConfidenceSchema,
 })
 
@@ -73,17 +74,25 @@ export const CaveatSchema = z.object({
 
 export const SpecialistOutputSchema = z.object({
   agent_slug: z.literal('performance-analyst'),
+  config_version: z.string(),
   entidad: EntitySchema,
   version_config: z.object({
     schema_version: z.literal('1'),
     agent_config_version: z.string(),
   }),
+  period: z.object({ from: z.string(), to: z.string() }),
+  sufficiency: SufficiencySchema,
+  missing: z.array(MissingRequirementSchema),
+  confidence: ConfidenceSchema,
+  findings: z.array(FindingSchema),
+  recommendations: z.array(RecommendationSchema),
+  evidence: z.array(EvidenceSchema),
+  caveats: z.array(CaveatSchema),
   suficiencia: SufficiencySchema,
   faltantes: z.array(MissingRequirementSchema),
   confianza: ConfidenceSchema,
   hallazgos: z.array(FindingSchema),
   recomendaciones: z.array(RecommendationSchema),
-  caveats: z.array(CaveatSchema),
 })
 
 export type SpecialistOutput = z.infer<typeof SpecialistOutputSchema>
@@ -107,6 +116,17 @@ export const PaidMediaSnapshotSchema = z.object({
 
 export type PaidMediaSnapshot = z.infer<typeof PaidMediaSnapshotSchema>
 
+export const PaidMediaChangeEventSchema = z.object({
+  platform: z.enum(['google', 'meta']), account_id: z.string(), occurred_at: z.string(),
+  actor: z.object({ id: z.string().nullable(), name: z.string().nullable(), email: z.string().nullable() }),
+  source: z.string().min(1),
+  entity: z.object({ type: z.string(), id: z.string().nullable(), name: z.string().nullable() }),
+  operation: z.string(),
+  changed_fields: z.array(z.object({ field: z.string(), field_category: z.enum(['budget', 'status', 'bidding', 'targeting', 'creative', 'conversion', 'schedule', 'other']), old_value: z.string().nullable(), new_value: z.string().nullable() })),
+  metadata: z.object({ resource_name: z.string().nullable(), client_type: z.string().nullable(), raw_change_resource_type: z.string().nullable() }).catchall(z.unknown()),
+})
+export type PaidMediaChangeEvent = z.infer<typeof PaidMediaChangeEventSchema>
+
 export type AnalysisPeriodRole = 'current' | 'comparison'
 export type ComparisonDefinition = {
   type: 'previous_period' | 'explicit'
@@ -117,7 +137,14 @@ export type ComparisonDefinition = {
 export type AnalysisRunState = {
   currentSnapshots: PaidMediaSnapshot[]
   comparisonSnapshots: PaidMediaSnapshot[]
+  changeHistory: PaidMediaChangeEvent[]
+  specialistOutputs: SpecialistOutput[]
   comparisonDefinition?: ComparisonDefinition
+}
+
+export function upsertChangeHistory(state: AnalysisRunState, events: PaidMediaChangeEvent[]) {
+  const seen = new Set(state.changeHistory.map((event) => `${event.platform}:${event.account_id}:${event.metadata.resource_name ?? ''}:${event.occurred_at}:${event.operation}`))
+  for (const event of events) { const key = `${event.platform}:${event.account_id}:${event.metadata.resource_name ?? ''}:${event.occurred_at}:${event.operation}`; if (!seen.has(key)) { state.changeHistory.push(event); seen.add(key) } }
 }
 
 export type ComparableMetric = { current: number; comparison: number; delta: number; delta_pct: number | null }

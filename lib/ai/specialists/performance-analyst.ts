@@ -5,7 +5,9 @@ import {
   PERFORMANCE_ANALYST_CONFIG_VERSION,
   SpecialistOutputSchema,
   PaidMediaSnapshotSchema,
+  type PaidMediaChangeEvent,
   type PaidMediaSnapshot,
+  PaidMediaChangeEventSchema,
   type SpecialistOutput,
 } from '../contracts/performance-analyst'
 import type { ExecutionContext } from '../types'
@@ -18,7 +20,7 @@ function getModel(model: string) {
   return gateway.chat(model)
 }
 
-function buildPrompt(context: ExecutionContext, currentSnapshots: PaidMediaSnapshot[], comparisonSnapshots: PaidMediaSnapshot[]) {
+function buildPrompt(context: ExecutionContext, currentSnapshots: PaidMediaSnapshot[], comparisonSnapshots: PaidMediaSnapshot[], changeHistory: PaidMediaChangeEvent[]) {
   const comparisonByAccount = new Map(comparisonSnapshots.map((snapshot) => [`${snapshot.platform}:${snapshot.account_id}`, snapshot]))
   const deltas = currentSnapshots.map((snapshot) => {
     const previous = comparisonByAccount.get(`${snapshot.platform}:${snapshot.account_id}`)
@@ -29,6 +31,7 @@ function buildPrompt(context: ExecutionContext, currentSnapshots: PaidMediaSnaps
     }))
     return { platform: snapshot.platform, account_id: snapshot.account_id, status: 'comparable', metrics }
   })
+  const relevantChangeHistory = changeHistory.filter((event) => event.changed_fields.some((field) => field.field_category !== 'other'))
   return JSON.stringify({
     tarea: 'Analiza la performance de paid media con evidencia disponible. No inventes benchmarks ni datos faltantes.',
     entidad: {
@@ -40,10 +43,11 @@ function buildPrompt(context: ExecutionContext, currentSnapshots: PaidMediaSnaps
     },
     currentSnapshots,
     comparisonSnapshots,
+    changeHistory: relevantChangeHistory,
     deltas,
     campaignComparisons: buildCampaignComparisons(currentSnapshots, comparisonSnapshots),
     reglas: [
-      'Devuelve exclusivamente el objeto que cumple SpecialistOutputSchema.',
+      'Devuelve exclusivamente el objeto que cumple SpecialistOutputSchema. Completa tanto las claves canónicas en inglés como las claves legacy en español.',
       'Usa agent_slug performance-analyst.',
       'Todos los arrays deben existir aunque estén vacíos.',
       'Cada recomendación debe referenciar finding_ids y evidence_ids existentes o usar arrays vacíos.',
@@ -54,7 +58,7 @@ function buildPrompt(context: ExecutionContext, currentSnapshots: PaidMediaSnaps
       'Apareá campañas por id: solo current = new, solo comparison = not_active_current. No interpretes automáticamente una campaña nueva como buena o mala.',
       'Si result_type cambia entre períodos, marca incompatibilidad y no compares el costo como si fuera el mismo KPI. En Google results es conversions agregado de plataforma.',
       'Si no existe comparisonSnapshots para una pregunta de variación, declara que falta comparativo y no afirmes que una métrica aumentó o bajó.',
-      'Usa change_history como evidencia observada de cambios de presupuesto, estado, campañas, anuncios, grupos, assets o segmentación. Mostrá fecha/hora, usuario, entidad, tipo de cambio y summary cuando existan.',
+      'Usa changeHistory como evidencia observada de cambios de presupuesto, estado, campañas, anuncios, grupos, assets o segmentación. Priorizá presupuesto, puja, target CPA/ROAS, estado, conversiones, targeting y calendario; no enumeres todo el changelog.',
       'No confundas un cambio observado con causalidad: solo proponé una relación causal como hipótesis si coincide temporalmente con la variación y señalá la incertidumbre.',
       'Compará change_history del período actual contra el comparativo cuando ambos existan. Si change_history_available es false, declaralo explícitamente sin bloquear el análisis de métricas.',
       'Si el historial está disponible pero vacío, indicá que no se observaron cambios en el período consultado; no inventes valores anterior/nuevo.',
@@ -66,15 +70,18 @@ export async function runPerformanceAnalyst({
   context,
   snapshots,
   comparisonSnapshots = [],
+  changeHistory = [],
   model,
 }: {
   context: ExecutionContext
   snapshots: PaidMediaSnapshot[]
   comparisonSnapshots?: PaidMediaSnapshot[]
+  changeHistory?: PaidMediaChangeEvent[]
   model: string
 }): Promise<SpecialistOutput> {
   const parsedSnapshots = snapshots.map((snapshot) => PaidMediaSnapshotSchema.parse(snapshot))
   const parsedComparisonSnapshots = comparisonSnapshots.map((snapshot) => PaidMediaSnapshotSchema.parse(snapshot))
+  const parsedChangeHistory = changeHistory.map((event) => PaidMediaChangeEventSchema.parse(event))
   const result = await generateText({
     model: getModel(model),
     abortSignal: AbortSignal.timeout(20_000),
@@ -84,7 +91,7 @@ export async function runPerformanceAnalyst({
       'No inventes datos, benchmarks, causas ni identificadores.',
       `Usá agent_config_version ${PERFORMANCE_ANALYST_CONFIG_VERSION}.`,
     ].join('\n'),
-    prompt: buildPrompt(context, parsedSnapshots, parsedComparisonSnapshots),
+    prompt: buildPrompt(context, parsedSnapshots, parsedComparisonSnapshots, parsedChangeHistory),
     output: Output.object({ schema: SpecialistOutputSchema }),
   })
   return SpecialistOutputSchema.parse(result.output)

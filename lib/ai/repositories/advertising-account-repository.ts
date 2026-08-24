@@ -4,7 +4,7 @@ type Platform = 'meta' | 'google'
 
 export async function updateAdvertisingAccountName(
   supabase: SupabaseClient,
-  input: { clienteId: string; plataforma: Platform; idCuenta: string; nombreCuenta: string },
+  input: { clienteId: string; plataforma: Platform; idCuenta: string; nombreCuenta: string; moneda?: string | null; zonaHoraria?: string | null },
 ): Promise<'created' | 'updated' | 'unchanged'> {
   const ids = input.plataforma === 'meta'
     ? [input.idCuenta, input.idCuenta.replace(/^act_/, ''), `act_${input.idCuenta.replace(/^act_/, '')}`]
@@ -14,11 +14,11 @@ export async function updateAdvertisingAccountName(
   if (findError) throw findError
   if (existing?.[0]) {
     if (existing[0].nombre_cuenta === input.nombreCuenta) return 'unchanged'
-    const { error } = await supabase.from('cuentas_publicitarias').update({ nombre_cuenta: input.nombreCuenta }).eq('id', existing[0].id)
+    const { error } = await supabase.from('cuentas_publicitarias').update({ nombre_cuenta: input.nombreCuenta, ...(input.moneda ? { moneda: input.moneda } : {}), ...(input.zonaHoraria ? { zona_horaria: input.zonaHoraria } : {}) }).eq('id', existing[0].id)
     if (error) throw error
     return 'updated'
   }
-  const { error } = await supabase.from('cuentas_publicitarias').insert({ cliente_id: input.clienteId, plataforma: input.plataforma, id_cuenta: input.idCuenta, nombre_cuenta: input.nombreCuenta })
+  const { error } = await supabase.from('cuentas_publicitarias').insert({ cliente_id: input.clienteId, plataforma: input.plataforma, id_cuenta: input.idCuenta, nombre_cuenta: input.nombreCuenta, moneda: input.moneda ?? 'ARS', zona_horaria: input.zonaHoraria ?? 'America/Argentina/Buenos_Aires', activo: true })
   if (error) throw error
   return 'created'
 }
