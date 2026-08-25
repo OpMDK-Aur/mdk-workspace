@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { ClientMemory } from '../client-memory'
 
 export const PERFORMANCE_ANALYST_CONFIG_VERSION = '1.0.0'
 
@@ -148,6 +149,7 @@ export type AnalysisRunState = {
   comparisonSnapshots: PaidMediaSnapshot[]
   changeHistory: PaidMediaChangeEvent[]
   specialistOutputs: SpecialistOutput[]
+  clientMemory?: ClientMemory
   comparisonDefinition?: ComparisonDefinition
 }
 

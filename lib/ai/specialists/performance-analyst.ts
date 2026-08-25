@@ -45,6 +45,7 @@ function buildPrompt(context: ExecutionContext, currentSnapshots: PaidMediaSnaps
     currentSnapshots,
     comparisonSnapshots,
     changeHistory: relevantChangeHistory,
+    clientMemory: context.analysisRunState?.clientMemory ?? null,
     deltas,
     campaignComparisons: buildCampaignComparisons(currentSnapshots, comparisonSnapshots),
     reglas: [
