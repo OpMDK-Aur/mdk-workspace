@@ -83,18 +83,31 @@ export async function runPerformanceAnalyst({
   const parsedSnapshots = snapshots.map((snapshot) => PaidMediaSnapshotSchema.parse(snapshot))
   const parsedComparisonSnapshots = comparisonSnapshots.map((snapshot) => PaidMediaSnapshotSchema.parse(snapshot))
   const parsedChangeHistory = changeHistory.map((event) => PaidMediaChangeEventSchema.parse(event))
-  const result = await generateText({
-    model: getModel(model),
-    abortSignal: AbortSignal.timeout(20_000),
-    system: [
-      'Sos Performance Analyst de un sistema de agentes de marketing.',
-      'Trabajá únicamente con los snapshots entregados por el backend.',
-      'No inventes datos, benchmarks, causas ni identificadores.',
-      `Usá agent_config_version ${PERFORMANCE_ANALYST_CONFIG_VERSION}.`,
-    ].join('\n'),
-    prompt: buildPrompt(context, parsedSnapshots, parsedComparisonSnapshots, parsedChangeHistory),
-    output: Output.object({ schema: SpecialistOutputSchema }),
-  })
+  let result: Awaited<ReturnType<typeof generateText>>
+  try {
+    result = await generateText({
+      model: getModel(model),
+      abortSignal: AbortSignal.timeout(20_000),
+      system: [
+        'Sos Performance Analyst de un sistema de agentes de marketing.',
+        'Trabajá únicamente con los snapshots entregados por el backend.',
+        'No inventes datos, benchmarks, causas ni identificadores.',
+        `Usá agent_config_version ${PERFORMANCE_ANALYST_CONFIG_VERSION}.`,
+      ].join('\\n'),
+      prompt: buildPrompt(context, parsedSnapshots, parsedComparisonSnapshots, parsedChangeHistory),
+      output: Output.object({ schema: SpecialistOutputSchema }),
+    })
+  } catch (cause) {
+    console.error('[performance-specialist-invalid]', {
+      agentSlug: 'performance-analyst',
+      model,
+      configVersion: PERFORMANCE_ANALYST_CONFIG_VERSION,
+      errorCode: 'SPECIALIST_GENERATION_ERROR',
+      message: cause instanceof Error ? cause.message : 'Unknown generation error',
+    })
+    throw new Error(`SPECIALIST_GENERATION_ERROR: ${cause instanceof Error ? cause.message : 'No se pudo generar la salida.'}`)
+  }
+  console.log('[performance-specialist-raw-output]', JSON.stringify(result.output, null, 2))
   const normalized = normalizeSpecialistOutput(result.output)
   const parsed = SpecialistOutputSchema.safeParse(normalized)
   if (!parsed.success) {

@@ -45,7 +45,7 @@ export const FindingSchema = z.object({
   descripcion: z.string(),
   severidad: SeveritySchema,
   evidencia: z.array(EvidenceSchema),
-  evidence_ids: z.array(z.string()).default([]),
+  evidence_ids: z.array(z.string()),
   confianza: ConfidenceSchema,
 })
 
@@ -78,12 +78,12 @@ export const SpecialistOutputSchema = z.object({
   entity: EntitySchema,
   period: z.object({ from: z.string(), to: z.string() }),
   sufficiency: SufficiencySchema,
-  missing: z.array(MissingRequirementSchema).default([]),
+  missing: z.array(MissingRequirementSchema),
   confidence: ConfidenceSchema,
-  evidence: z.array(EvidenceSchema).default([]),
-  findings: z.array(FindingSchema).default([]),
-  recommendations: z.array(RecommendationSchema).default([]),
-  caveats: z.array(CaveatSchema).default([]),
+  evidence: z.array(EvidenceSchema),
+  findings: z.array(FindingSchema),
+  recommendations: z.array(RecommendationSchema),
+  caveats: z.array(CaveatSchema),
 })
 
 export function normalizeSpecialistOutput(raw: unknown): unknown {
