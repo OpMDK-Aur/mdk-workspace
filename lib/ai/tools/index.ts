@@ -228,7 +228,7 @@ const getAccountChangeHistory: ToolDefinition = {
   key: 'get_account_change_history',
   description: 'Lee el historial persistido de cambios de paid media del cliente. Filtra por plataforma, cuenta, período, entidad, categorías o actor; nunca reemplaza las métricas.',
   inputSchema: z.object({ platform: z.enum(['google', 'meta']).nullable(), dateFrom: z.string().nullable(), dateTo: z.string().nullable(), accountId: z.string().nullable(), entityType: z.string().nullable(), entityId: z.string().nullable(), sourceEventIds: z.array(z.string()).max(200).nullable(), fieldCategories: z.array(z.string()).nullable(), actorEmail: z.string().nullable(), limit: z.number().int().min(1).max(200).nullable() }),
-  async execute(input: { platform?: 'google' | 'meta' | null; dateFrom?: string | null; dateTo?: string | null; accountId?: string | null; entityType?: string | null; entityId?: string | null; fieldCategories?: string[] | null; actorEmail?: string | null; limit?: number | null }, context: ExecutionContext) {
+  async execute(input: { platform?: 'google' | 'meta' | null; dateFrom?: string | null; dateTo?: string | null; accountId?: string | null; entityType?: string | null; entityId?: string | null; sourceEventIds?: string[] | null; fieldCategories?: string[] | null; actorEmail?: string | null; limit?: number | null }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, events: [], message: 'No hay un cliente activo seleccionado.' }
     if ((input.dateFrom && !input.dateTo) || (!input.dateFrom && input.dateTo)) return { available: false, events: [], message: 'Debes indicar dateFrom y dateTo juntos.' }
     const limit = Math.min(Math.max(input.limit ?? 100, 1), 200)
@@ -300,19 +300,19 @@ const runPerformanceAnalystTool: ToolDefinition = {
     try {
       const output = await runPerformanceAnalyst({ context, snapshots: currentSnapshots, comparisonSnapshots, changeHistory: state.changeHistory, model: 'openai/gpt-4.1-mini-fast' })
       const expectedAccountIds = new Set(currentSnapshots.map((snapshot) => snapshot.account_id))
-      const outputAccountIds = new Set(output.entidad.account_ids)
+      const outputAccountIds = new Set(output.entity.account_ids)
       const expectedPeriod = currentSnapshots[0].period
       const expectedPlatform = [...new Set(currentSnapshots.map((snapshot) => snapshot.platform))].length === 1 ? currentSnapshots[0].platform : 'mixed'
-      const entityMatches = output.entidad.client_id === context.clientId &&
-        output.entidad.platform === expectedPlatform &&
-        output.entidad.account_ids.every((accountId) => expectedAccountIds.has(accountId)) &&
+      const entityMatches = output.entity.client_id === context.clientId &&
+        output.entity.platform === expectedPlatform &&
+        output.entity.account_ids.every((accountId) => expectedAccountIds.has(accountId)) &&
         outputAccountIds.size === expectedAccountIds.size &&
-        output.entidad.period.from === expectedPeriod.from &&
-        output.entidad.period.to === expectedPeriod.to
+        output.entity.period.from === expectedPeriod.from &&
+        output.entity.period.to === expectedPeriod.to
       if (!entityMatches) {
-        console.log('[v0] performance analyst output entity validation', { client_matches: output.entidad.client_id === context.clientId, platform_matches: output.entidad.platform === expectedPlatform, account_ids_subset: [...outputAccountIds].every((accountId) => expectedAccountIds.has(accountId)), account_ids_complete: outputAccountIds.size === expectedAccountIds.size, period_matches: output.entidad.period.from === expectedPeriod.from && output.entidad.period.to === expectedPeriod.to })
-        output.entidad = {
-          ...output.entidad,
+        console.log('[v0] performance analyst output entity validation', { client_matches: output.entity.client_id === context.clientId, platform_matches: output.entity.platform === expectedPlatform, account_ids_subset: [...outputAccountIds].every((accountId) => expectedAccountIds.has(accountId)), account_ids_complete: outputAccountIds.size === expectedAccountIds.size, period_matches: output.entity.period.from === expectedPeriod.from && output.entity.period.to === expectedPeriod.to })
+        output.entity = {
+          ...output.entity,
           client_id: context.clientId,
           platform: expectedPlatform as 'google' | 'meta' | 'mixed',
           account_ids: [...expectedAccountIds],

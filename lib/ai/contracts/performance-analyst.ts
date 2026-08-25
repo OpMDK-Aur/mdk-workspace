@@ -75,25 +75,34 @@ export const CaveatSchema = z.object({
 export const SpecialistOutputSchema = z.object({
   agent_slug: z.literal('performance-analyst'),
   config_version: z.string(),
-  entidad: EntitySchema,
-  version_config: z.object({
-    schema_version: z.literal('1'),
-    agent_config_version: z.string(),
-  }),
+  entity: EntitySchema,
   period: z.object({ from: z.string(), to: z.string() }),
   sufficiency: SufficiencySchema,
-  missing: z.array(MissingRequirementSchema),
+  missing: z.array(MissingRequirementSchema).default([]),
   confidence: ConfidenceSchema,
-  findings: z.array(FindingSchema),
-  recommendations: z.array(RecommendationSchema),
-  evidence: z.array(EvidenceSchema),
-  caveats: z.array(CaveatSchema),
-  suficiencia: SufficiencySchema,
-  faltantes: z.array(MissingRequirementSchema),
-  confianza: ConfidenceSchema,
-  hallazgos: z.array(FindingSchema),
-  recomendaciones: z.array(RecommendationSchema),
+  evidence: z.array(EvidenceSchema).default([]),
+  findings: z.array(FindingSchema).default([]),
+  recommendations: z.array(RecommendationSchema).default([]),
+  caveats: z.array(CaveatSchema).default([]),
 })
+
+export function normalizeSpecialistOutput(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw
+  const value = raw as Record<string, unknown>
+  const entity = value.entity ?? value.entidad
+  const output = {
+    ...value,
+    entity,
+    missing: value.missing ?? value.faltantes ?? [],
+    confidence: value.confidence ?? value.confianza,
+    findings: value.findings ?? value.hallazgos ?? [],
+    recommendations: value.recommendations ?? value.recomendaciones ?? [],
+    sufficiency: value.sufficiency ?? value.suficiencia,
+    evidence: value.evidence ?? [],
+    caveats: value.caveats ?? [],
+  }
+  return output
+}
 
 export type SpecialistOutput = z.infer<typeof SpecialistOutputSchema>
 

@@ -1,9 +1,11 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateText, Output } from 'ai'
+import { z } from 'zod'
 import {
   buildCampaignComparisons,
   PERFORMANCE_ANALYST_CONFIG_VERSION,
   SpecialistOutputSchema,
+  normalizeSpecialistOutput,
   PaidMediaSnapshotSchema,
   type PaidMediaChangeEvent,
   type PaidMediaSnapshot,
@@ -47,7 +49,7 @@ function buildPrompt(context: ExecutionContext, currentSnapshots: PaidMediaSnaps
     deltas,
     campaignComparisons: buildCampaignComparisons(currentSnapshots, comparisonSnapshots),
     reglas: [
-      'Devuelve exclusivamente el objeto que cumple SpecialistOutputSchema. Completa tanto las claves canónicas en inglés como las claves legacy en español.',
+      'Devuelve exclusivamente un objeto JSON con claves canónicas en inglés: agent_slug, config_version, entity, period, sufficiency, missing, confidence, evidence, findings, recommendations y caveats. No inventes campos ni datos.',
       'Usa agent_slug performance-analyst.',
       'Todos los arrays deben existir aunque estén vacíos.',
       'Cada recomendación debe referenciar finding_ids y evidence_ids existentes o usar arrays vacíos.',
@@ -92,7 +94,18 @@ export async function runPerformanceAnalyst({
       `Usá agent_config_version ${PERFORMANCE_ANALYST_CONFIG_VERSION}.`,
     ].join('\n'),
     prompt: buildPrompt(context, parsedSnapshots, parsedComparisonSnapshots, parsedChangeHistory),
-    output: Output.object({ schema: SpecialistOutputSchema }),
+    output: Output.object({ schema: z.record(z.string(), z.unknown()) }),
   })
-  return SpecialistOutputSchema.parse(result.output)
+  const normalized = normalizeSpecialistOutput(result.output)
+  const parsed = SpecialistOutputSchema.safeParse(normalized)
+  if (!parsed.success) {
+    console.error('[performance-output-invalid]', {
+      agentSlug: 'performance_analyst',
+      configVersion: PERFORMANCE_ANALYST_CONFIG_VERSION,
+      model,
+      issues: parsed.error.issues.map((issue) => ({ path: issue.path, code: issue.code, message: issue.message })),
+    })
+    throw new Error(`SPECIALIST_SCHEMA_INVALID: ${parsed.error.issues.map((issue) => `${issue.path.join('.')} ${issue.message}`).join('; ')}`)
+  }
+  return parsed.data
 }
