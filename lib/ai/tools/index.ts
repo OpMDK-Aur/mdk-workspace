@@ -6,6 +6,7 @@ import { defaultMetaDateRange, getMetaAccountMetrics, getMetaErrorDetails, norma
 import { buildCampaignComparisons, compareMetric, upsertChangeHistory, upsertPaidMediaSnapshot, SpecialistOutputSchema } from '@/lib/ai/contracts/performance-analyst'
 import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 import { contextFromEvents, mergeWorkingContext } from '@/lib/ai/conversation-context'
+import { buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeIndustry, type MetricRow } from '@/lib/ai/client-memory'
 
 const noInput = z.object({})
 
@@ -115,6 +116,53 @@ const getAccountContext: ToolDefinition = {
       ...(google?.id_cuenta ? { google_ads_customer_id: google.id_cuenta } : {}),
       ...(meta?.id_cuenta ? { meta_ads_account_id: meta.id_cuenta } : {}),
     }
+  },
+}
+
+const getClientMemory: ToolDefinition = {
+  key: 'get_client_memory',
+  description: 'Recupera el perfil persistente del cliente activo y detecta campos obligatorios faltantes.',
+  inputSchema: noInput,
+  async execute(_input, context) {
+    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_client_memory', status: 'running', label: 'Recuperando contexto del cliente' })
+    const { data, error } = await (await createClient()).from('ai_client_profile').select('client_id, industry, commercial_objective, product_type, primary_conversion_type, industry_source, commercial_objective_source, product_type_source, primary_conversion_source').eq('client_id', context.clientId).maybeSingle()
+    if (error) {
+      console.error('[v0] get_client_memory failed:', error.message)
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_client_memory', status: 'error', label: 'No se pudo recuperar el contexto del cliente' })
+      return { available: false, message: 'No se pudo recuperar el contexto persistente del cliente.' }
+    }
+    const today = new Date()
+    const from = new Date(today); from.setUTCDate(from.getUTCDate() - 89)
+    const dateFrom = from.toISOString().slice(0, 10)
+    const dateTo = today.toISOString().slice(0, 10)
+    const { data: historicalRows, error: historicalError } = await (await createClient()).from('paid_media_daily_metrics').select('platform, metric_date, campaign_type, campaign_objective, result_type, currency, spend, leads, conversions').eq('client_id', context.clientId).gte('metric_date', dateFrom).lte('metric_date', dateTo)
+    const performance_90d = historicalError ? { ...emptyClientMemory().performance_90d, date_from: dateFrom, date_to: dateTo, error: 'historical_metrics_unavailable' } : buildPerformance90d((historicalRows ?? []) as MetricRow[], today)
+    if (historicalError) console.error('[v0] get_client_memory historical metrics unavailable:', historicalError.message)
+    const memory = buildClientMemory(data as Record<string, unknown> | null, performance_90d)
+    if (context.analysisRunState) context.analysisRunState.clientMemory = memory
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_client_memory', status: 'completed', label: memory.missing_fields.length ? `${memory.missing_fields.length} datos del cliente faltantes` : 'Contexto del cliente completo' })
+    return memory
+  },
+}
+
+const saveClientProfile: ToolDefinition = {
+  key: 'save_client_profile',
+  description: 'Persiste únicamente datos de perfil explícitamente confirmados por el usuario para el cliente activo.',
+  inputSchema: z.object({ industry: z.string().trim().min(1).max(120).optional(), commercial_objective: z.string().trim().min(1).max(200).optional(), product_type: z.string().trim().min(1).max(200).optional(), primary_conversion_type: z.string().trim().min(1).max(80).optional() }).refine((value) => Object.keys(value).length > 0),
+  async execute(input: { industry?: string; commercial_objective?: string; product_type?: string; primary_conversion_type?: string }, context) {
+    if (!context.clientId) return { success: false, message: 'No hay un cliente activo seleccionado.' }
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'save_client_profile', status: 'running', label: 'Actualizando contexto del cliente' })
+    const update: Record<string, unknown> = {}
+    const updatedFields: string[] = []
+    if (input.industry !== undefined) { update.industry = normalizeIndustry(input.industry); update.industry_source = 'user_confirmed'; update.industry_confirmed_at = new Date().toISOString(); updatedFields.push('industry') }
+    if (input.commercial_objective !== undefined) { update.commercial_objective = input.commercial_objective.trim(); update.commercial_objective_source = 'user_confirmed'; update.commercial_objective_confirmed_at = new Date().toISOString(); updatedFields.push('commercial_objective') }
+    if (input.product_type !== undefined) { update.product_type = input.product_type.trim(); update.product_type_source = 'user_confirmed'; update.product_type_confirmed_at = new Date().toISOString(); updatedFields.push('product_type') }
+    if (input.primary_conversion_type !== undefined) { update.primary_conversion_type = input.primary_conversion_type.trim(); update.primary_conversion_source = 'user_confirmed'; update.primary_conversion_confirmed_at = new Date().toISOString(); updatedFields.push('primary_conversion_type') }
+    const { error } = await (await createClient()).from('ai_client_profile').upsert({ client_id: context.clientId, ...update, updated_at: new Date().toISOString() }, { onConflict: 'client_id' })
+    if (error) { console.error('[v0] save_client_profile failed:', error.message); context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'save_client_profile', status: 'error', label: 'No se pudo actualizar el contexto del cliente' }); return { success: false, message: 'No se pudo actualizar el perfil del cliente.' } }
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'save_client_profile', status: 'completed', label: 'Contexto del cliente actualizado' })
+    return { success: true, updated_fields: updatedFields }
   },
 }
 
@@ -356,6 +404,8 @@ const getPreviousInsights: ToolDefinition = {
 
 const allTools: ToolDefinition[] = [
   getAccountContext,
+  getClientMemory,
+  saveClientProfile,
   getMetaMetrics,
   getGoogleMetrics,
   getAccountChangeHistory,
