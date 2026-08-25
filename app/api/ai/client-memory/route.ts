@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { buildClientMemory, emptyClientMemory, normalizeIndustry } from '@/lib/ai/client-memory'
 
 export async function GET(request: Request) {
@@ -17,7 +18,13 @@ export async function POST(request: Request) {
   for (const key of ['commercial_objective', 'product_type', 'primary_conversion_type'] as const) if (typeof body[key] === 'string' && body[key].trim()) { update[key] = body[key].trim(); update[`${key}_source`] = 'user_confirmed' }
   if (typeof body.industry === 'string' && body.industry.trim()) { update.industry = normalizeIndustry(body.industry); update.industry_source = 'user_confirmed' }
   if (!update.industry || !update.commercial_objective || !update.product_type) return NextResponse.json({ error: 'Faltan campos requeridos.' }, { status: 400 })
-  const { error } = await supabase.from('ai_client_profile').upsert({ client_id: body.clientId, ...update, updated_at: new Date().toISOString() }, { onConflict: 'client_id' })
-  if (error) return NextResponse.json({ error: 'No se pudo guardar el contexto.' }, { status: 500 })
+  const { data: client, error: clientError } = await supabase.from('clientes').select('id').eq('id', body.clientId).maybeSingle()
+  if (clientError || !client) return NextResponse.json({ error: 'El cliente seleccionado no existe o no está disponible.' }, { status: 404 })
+  const admin = createAdminClient()
+  const { error } = await admin.from('ai_client_profile').upsert({ client_id: body.clientId, ...update, updated_at: new Date().toISOString() }, { onConflict: 'client_id' })
+  if (error) {
+    console.error('[v0] client-memory save failed:', { code: error.code, message: error.message, details: error.details })
+    return NextResponse.json({ error: 'No se pudo guardar el contexto.' }, { status: 500 })
+  }
   return NextResponse.json({ memory: buildClientMemory({ ...update }) })
 }
