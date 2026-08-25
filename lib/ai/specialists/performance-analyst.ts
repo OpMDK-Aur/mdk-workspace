@@ -33,6 +33,9 @@ function buildPrompt(context: ExecutionContext, currentSnapshots: PaidMediaSnaps
     return { platform: snapshot.platform, account_id: snapshot.account_id, status: 'comparable', metrics }
   })
   const relevantChangeHistory = changeHistory.filter((event) => event.changed_fields.some((field) => field.field_category !== 'other'))
+  const historicalMemory = context.analysisRunState?.clientMemory
+    ? { ...context.analysisRunState.clientMemory, performance_90d: { ...context.analysisRunState.clientMemory.performance_90d, conversions: { ...context.analysisRunState.clientMemory.performance_90d.conversions, daily: [] } } }
+    : null
   return JSON.stringify({
     tarea: 'Analiza la performance de paid media con evidencia disponible. No inventes benchmarks ni datos faltantes.',
     entidad: {
@@ -45,7 +48,7 @@ function buildPrompt(context: ExecutionContext, currentSnapshots: PaidMediaSnaps
     currentSnapshots,
     comparisonSnapshots,
     changeHistory: relevantChangeHistory,
-    clientMemory: context.analysisRunState?.clientMemory ?? null,
+    clientMemory: historicalMemory,
     deltas,
     campaignComparisons: buildCampaignComparisons(currentSnapshots, comparisonSnapshots),
     reglas: [

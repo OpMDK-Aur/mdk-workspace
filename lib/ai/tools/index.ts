@@ -6,7 +6,7 @@ import { defaultMetaDateRange, getMetaAccountMetrics, getMetaErrorDetails, norma
 import { buildCampaignComparisons, compareMetric, upsertChangeHistory, upsertPaidMediaSnapshot, SpecialistOutputSchema } from '@/lib/ai/contracts/performance-analyst'
 import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 import { contextFromEvents, mergeWorkingContext } from '@/lib/ai/conversation-context'
-import { buildClientMemory, emptyClientMemory, normalizeIndustry } from '@/lib/ai/client-memory'
+import { buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeIndustry, type MetricRow } from '@/lib/ai/client-memory'
 
 const noInput = z.object({})
 
@@ -132,7 +132,14 @@ const getClientMemory: ToolDefinition = {
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_client_memory', status: 'error', label: 'No se pudo recuperar el contexto del cliente' })
       return { available: false, message: 'No se pudo recuperar el contexto persistente del cliente.' }
     }
-    const memory = buildClientMemory(data as Record<string, unknown> | null)
+    const today = new Date()
+    const from = new Date(today); from.setUTCDate(from.getUTCDate() - 89)
+    const dateFrom = from.toISOString().slice(0, 10)
+    const dateTo = today.toISOString().slice(0, 10)
+    const { data: historicalRows, error: historicalError } = await (await createClient()).from('paid_media_daily_metrics').select('platform, metric_date, campaign_type, campaign_objective, result_type, currency, spend, leads, conversions').eq('client_id', context.clientId).gte('metric_date', dateFrom).lte('metric_date', dateTo)
+    const performance_90d = historicalError ? { ...emptyClientMemory().performance_90d, date_from: dateFrom, date_to: dateTo, error: 'historical_metrics_unavailable' } : buildPerformance90d((historicalRows ?? []) as MetricRow[], today)
+    if (historicalError) console.error('[v0] get_client_memory historical metrics unavailable:', historicalError.message)
+    const memory = buildClientMemory(data as Record<string, unknown> | null, performance_90d)
     if (context.analysisRunState) context.analysisRunState.clientMemory = memory
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_client_memory', status: 'completed', label: memory.missing_fields.length ? `${memory.missing_fields.length} datos del cliente faltantes` : 'Contexto del cliente completo' })
     return memory
