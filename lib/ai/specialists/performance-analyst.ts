@@ -1,6 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateText, Output } from 'ai'
-import { z } from 'zod'
 import {
   buildCampaignComparisons,
   PERFORMANCE_ANALYST_CONFIG_VERSION,
@@ -94,7 +93,7 @@ export async function runPerformanceAnalyst({
       `Usá agent_config_version ${PERFORMANCE_ANALYST_CONFIG_VERSION}.`,
     ].join('\n'),
     prompt: buildPrompt(context, parsedSnapshots, parsedComparisonSnapshots, parsedChangeHistory),
-    output: Output.object({ schema: z.record(z.string(), z.unknown()) }),
+    output: Output.object({ schema: SpecialistOutputSchema }),
   })
   const normalized = normalizeSpecialistOutput(result.output)
   const parsed = SpecialistOutputSchema.safeParse(normalized)
