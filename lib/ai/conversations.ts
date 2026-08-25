@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { ConversationWorkingContextSchema, type ConversationWorkingContext } from './conversation-context'
 
 type ConversationRow = {
   id: string
@@ -46,13 +47,15 @@ export async function saveConversationMessage(
     conversationId: string
     userId: string
     role: MessageRole
-    content: string
-  },
+  content: string
+    messageData?: Record<string, unknown>
+  }
 ) {
   const { error } = await supabase.from('ai_messages').insert({
     conversation_id: input.conversationId,
     role: input.role,
     content: input.content,
+    ...(input.messageData ? { message_data: input.messageData } : {}),
   })
 
   if (error) throw error
@@ -62,6 +65,17 @@ export async function saveConversationMessage(
     .update({ updated_at: new Date().toISOString() })
     .eq('id', input.conversationId)
     .eq('user_id', input.userId)
+}
+
+export async function getLatestWorkingContext(supabase: SupabaseClient, conversationId: string, clientId: string) {
+  const { data, error } = await supabase.from('ai_messages').select('message_data, created_at').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(20)
+  if (error) throw error
+  for (const row of data ?? []) {
+    const candidate = row.message_data && typeof row.message_data === 'object' && 'context_snapshot' in row.message_data ? (row.message_data as Record<string, unknown>).context_snapshot : null
+    const parsed = ConversationWorkingContextSchema.safeParse(candidate)
+    if (parsed.success && parsed.data.client_id === clientId) return parsed.data
+  }
+  return null
 }
 
 export async function listConversationMessages(
@@ -80,7 +94,7 @@ export async function listConversationMessages(
     // ascendente (más antiguo primero) que espera tanto el modelo como la UI.
     const { data, error } = await supabase
       .from('ai_messages')
-      .select('id, role, content, created_at')
+      .select('id, role, content, message_data, created_at')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
       .limit(options.limit)
@@ -91,7 +105,7 @@ export async function listConversationMessages(
 
   const { data, error } = await supabase
     .from('ai_messages')
-    .select('id, role, content, created_at')
+    .select('id, role, content, message_data, created_at')
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: true })
 

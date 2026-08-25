@@ -5,6 +5,7 @@ import { getGoogleAccountMetrics, defaultGoogleDateRange, normalizeCustomerId, s
 import { defaultMetaDateRange, getMetaAccountMetrics, getMetaErrorDetails, normalizeMetaAccountId } from '@/lib/meta-ads/service'
 import { buildCampaignComparisons, compareMetric, upsertChangeHistory, upsertPaidMediaSnapshot, SpecialistOutputSchema } from '@/lib/ai/contracts/performance-analyst'
 import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
+import { contextFromEvents, mergeWorkingContext } from '@/lib/ai/conversation-context'
 
 const noInput = z.object({})
 
@@ -226,8 +227,8 @@ const getGoogleMetrics: ToolDefinition = {
 const getAccountChangeHistory: ToolDefinition = {
   key: 'get_account_change_history',
   description: 'Lee el historial persistido de cambios de paid media del cliente. Filtra por plataforma, cuenta, período, entidad, categorías o actor; nunca reemplaza las métricas.',
-  inputSchema: z.object({ platform: z.enum(['google', 'meta']).nullable(), dateFrom: z.string().nullable(), dateTo: z.string().nullable(), accountId: z.string().nullable(), entityType: z.string().nullable(), entityId: z.string().nullable(), fieldCategories: z.array(z.string()).nullable(), actorEmail: z.string().nullable(), limit: z.number().int().min(1).max(200).nullable() }),
-  async execute(input: { platform?: 'google' | 'meta' | null; dateFrom?: string | null; dateTo?: string | null; accountId?: string | null; entityType?: string | null; entityId?: string | null; fieldCategories?: string[] | null; actorEmail?: string | null; limit?: number | null }, context: ExecutionContext) {
+  inputSchema: z.object({ platform: z.enum(['google', 'meta']).nullable(), dateFrom: z.string().nullable(), dateTo: z.string().nullable(), accountId: z.string().nullable(), entityType: z.string().nullable(), entityId: z.string().nullable(), sourceEventIds: z.array(z.string()).max(200).nullable(), fieldCategories: z.array(z.string()).nullable(), actorEmail: z.string().nullable(), limit: z.number().int().min(1).max(200).nullable() }),
+  async execute(input: { platform?: 'google' | 'meta' | null; dateFrom?: string | null; dateTo?: string | null; accountId?: string | null; entityType?: string | null; entityId?: string | null; sourceEventIds?: string[] | null; fieldCategories?: string[] | null; actorEmail?: string | null; limit?: number | null }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, events: [], message: 'No hay un cliente activo seleccionado.' }
     if ((input.dateFrom && !input.dateTo) || (!input.dateFrom && input.dateTo)) return { available: false, events: [], message: 'Debes indicar dateFrom y dateTo juntos.' }
     const limit = Math.min(Math.max(input.limit ?? 100, 1), 200)
@@ -235,6 +236,7 @@ const getAccountChangeHistory: ToolDefinition = {
     let query = (await createClient()).from('paid_media_change_events').select('platform, account_id, account_name, source_event_id, occurred_at, actor_id, actor_name, actor_email, client_type, entity_type, entity_id, entity_name, operation, changed_fields, field_categories, source, raw_metadata').eq('client_id', context.clientId).order('occurred_at', { ascending: false }).limit(limit)
     if (input.platform) query = query.eq('platform', input.platform)
     if (input.accountId) query = query.eq('account_id', input.accountId)
+    if (input.sourceEventIds?.length) query = query.in('source_event_id', input.sourceEventIds)
     if (input.entityType) query = query.eq('entity_type', input.entityType)
     if (input.entityId) query = query.eq('entity_id', input.entityId)
     if (input.actorEmail) query = query.eq('actor_email', input.actorEmail)
@@ -245,6 +247,9 @@ const getAccountChangeHistory: ToolDefinition = {
     if (error) { context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_account_change_history', status: 'error', label: 'No se pudo leer el historial de cambios' }); return { available: false, events: [], message: 'No se pudo leer el historial persistido.' } }
     const events = (data ?? []).map((row) => ({ platform: row.platform, account_id: row.account_id, occurred_at: row.occurred_at, actor: { id: row.actor_id, name: row.actor_name, email: row.actor_email }, source: row.source, entity: { type: row.entity_type, id: row.entity_id, name: row.entity_name }, operation: row.operation, changed_fields: row.changed_fields ?? [], metadata: { resource_name: row.source_event_id, client_type: row.client_type, raw_change_resource_type: row.entity_type } }))
     if (context.analysisRunState) upsertChangeHistory(context.analysisRunState, events)
+    if (context.conversationWorkingContext && events.length) {
+      context.conversationWorkingContext = mergeWorkingContext(context.conversationWorkingContext, contextFromEvents(context.clientId, events, input.dateFrom && input.dateTo ? { from: input.dateFrom, to: input.dateTo } : null))
+    }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_account_change_history', status: 'completed', label: events.length ? `${events.length} cambios encontrados` : 'No hay eventos registrados para los filtros solicitados' })
     return { available: true, events, count: events.length, message: events.length ? undefined : 'No hay eventos registrados para los filtros solicitados.' }
   },
@@ -295,19 +300,19 @@ const runPerformanceAnalystTool: ToolDefinition = {
     try {
       const output = await runPerformanceAnalyst({ context, snapshots: currentSnapshots, comparisonSnapshots, changeHistory: state.changeHistory, model: 'openai/gpt-4.1-mini-fast' })
       const expectedAccountIds = new Set(currentSnapshots.map((snapshot) => snapshot.account_id))
-      const outputAccountIds = new Set(output.entidad.account_ids)
+      const outputAccountIds = new Set(output.entity.account_ids)
       const expectedPeriod = currentSnapshots[0].period
       const expectedPlatform = [...new Set(currentSnapshots.map((snapshot) => snapshot.platform))].length === 1 ? currentSnapshots[0].platform : 'mixed'
-      const entityMatches = output.entidad.client_id === context.clientId &&
-        output.entidad.platform === expectedPlatform &&
-        output.entidad.account_ids.every((accountId) => expectedAccountIds.has(accountId)) &&
+      const entityMatches = output.entity.client_id === context.clientId &&
+        output.entity.platform === expectedPlatform &&
+        output.entity.account_ids.every((accountId) => expectedAccountIds.has(accountId)) &&
         outputAccountIds.size === expectedAccountIds.size &&
-        output.entidad.period.from === expectedPeriod.from &&
-        output.entidad.period.to === expectedPeriod.to
+        output.entity.period.from === expectedPeriod.from &&
+        output.entity.period.to === expectedPeriod.to
       if (!entityMatches) {
-        console.log('[v0] performance analyst output entity validation', { client_matches: output.entidad.client_id === context.clientId, platform_matches: output.entidad.platform === expectedPlatform, account_ids_subset: [...outputAccountIds].every((accountId) => expectedAccountIds.has(accountId)), account_ids_complete: outputAccountIds.size === expectedAccountIds.size, period_matches: output.entidad.period.from === expectedPeriod.from && output.entidad.period.to === expectedPeriod.to })
-        output.entidad = {
-          ...output.entidad,
+        console.log('[v0] performance analyst output entity validation', { client_matches: output.entity.client_id === context.clientId, platform_matches: output.entity.platform === expectedPlatform, account_ids_subset: [...outputAccountIds].every((accountId) => expectedAccountIds.has(accountId)), account_ids_complete: outputAccountIds.size === expectedAccountIds.size, period_matches: output.entity.period.from === expectedPeriod.from && output.entity.period.to === expectedPeriod.to })
+        output.entity = {
+          ...output.entity,
           client_id: context.clientId,
           platform: expectedPlatform as 'google' | 'meta' | 'mixed',
           account_ids: [...expectedAccountIds],
@@ -319,9 +324,18 @@ const runPerformanceAnalystTool: ToolDefinition = {
       context.emitActivity?.({ agentSlug: 'performance-analyst', toolKey: 'run_performance_analyst', status: 'completed', label: 'Analista de Performance completó el análisis' })
       return validatedOutput
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'No se pudo validar la salida del Performance Analyst.'
-      context.emitActivity?.({ agentSlug: 'performance-analyst', toolKey: 'run_performance_analyst', status: 'error', label: message })
-      return { available: false, code: 'SPECIALIST_OUTPUT_INVALID', message }
+      console.error('[v0] Performance Analyst invalid output', cause instanceof Error ? cause.message : cause)
+      try {
+        const repaired = await runPerformanceAnalyst({ context, snapshots: currentSnapshots, comparisonSnapshots, changeHistory: state.changeHistory, model: 'openai/gpt-4.1-mini-fast' })
+        const validatedRepair = SpecialistOutputSchema.parse(repaired)
+        state.specialistOutputs.push(validatedRepair)
+        context.emitActivity?.({ agentSlug: 'performance-analyst', toolKey: 'run_performance_analyst', status: 'completed', label: 'Analista de Performance completó el análisis' })
+        return validatedRepair
+      } catch (retryCause) {
+        console.error('[v0] Performance Analyst repair failed', retryCause instanceof Error ? retryCause.message : retryCause)
+        context.emitActivity?.({ agentSlug: 'performance-analyst', toolKey: 'run_performance_analyst', status: 'error', label: 'El analista no devolvió un diagnóstico validado' })
+        return { available: false, code: 'SPECIALIST_OUTPUT_INVALID', specialist_status: 'invalid_output', message: 'No se pudo generar un diagnóstico validado.' }
+      }
     }
   },
 }

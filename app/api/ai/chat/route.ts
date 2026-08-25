@@ -4,7 +4,8 @@ import type { ActivityEvent } from '@/lib/ai/types'
 import { createClient } from '@/lib/supabase/server'
 import { chatRequestSchema } from '@/lib/ai/config/fallback'
 import { streamSupervisorResponse, type SupervisorModelMessage } from '@/lib/ai/agents/supervisor'
-import { getOrCreateConversation, listConversationMessages, saveConversationMessage } from '@/lib/ai/conversations'
+import { getOrCreateConversation, getLatestWorkingContext, listConversationMessages, saveConversationMessage } from '@/lib/ai/conversations'
+import { emptyWorkingContext } from '@/lib/ai/conversation-context'
 
 export const maxDuration = 60
 
@@ -102,6 +103,13 @@ export async function POST(request: Request) {
     const history = conversation
       ? await listConversationMessages(supabase, user.id, conversation.id, { limit: CONVERSATION_HISTORY_WINDOW })
       : []
+    const activeClientId = context.clientId
+    const workingContext = conversation && activeClientId
+      ? (await getLatestWorkingContext(supabase, conversation.id, activeClientId)) ?? emptyWorkingContext(activeClientId)
+      : activeClientId ? emptyWorkingContext(activeClientId) : null
+    if (workingContext) {
+      console.log('[v0] Conversation working context recovered', { platforms: workingContext.platforms, accountIds: workingContext.account_ids, referencedChanges: workingContext.referenced_change_events.length })
+    }
 
     if (conversation) {
       await saveConversationMessage(supabase, {
@@ -148,6 +156,7 @@ export async function POST(request: Request) {
             userEmail: user.email,
             ...context,
             analysisRunState,
+            conversationWorkingContext: workingContext ?? undefined,
             emitActivity: (event) => writeActivity?.({
               ...event,
               eventId: crypto.randomUUID(),
@@ -175,6 +184,7 @@ export async function POST(request: Request) {
           userId: user.id,
           role: 'assistant',
           content: assistantText,
+          messageData: workingContext ? { context_snapshot: workingContext } : undefined,
         })
       },
     })
