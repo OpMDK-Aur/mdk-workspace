@@ -4,6 +4,7 @@ import useSWR from 'swr'
 import { MessageSquare, MessagesSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ScoreGauge } from './score-gauge'
 
 export interface ConversationSummary {
   id: string
@@ -12,6 +13,7 @@ export interface ConversationSummary {
   updatedAt: string
   lastMessagePreview: string | null
   lastMessageRole: 'user' | 'assistant' | null
+  optimizationScore: number | null
 }
 
 const fetcher = (url: string) =>
@@ -93,7 +95,10 @@ export function ConversationsSidebar({ activeClientId, onSelect }: Conversations
                 )}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-medium text-foreground">{conversation.clientName}</span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {conversation.optimizationScore !== null && <ScoreGauge score={conversation.optimizationScore} />}
+                    <span className="truncate text-sm font-medium text-foreground">{conversation.clientName}</span>
+                  </span>
                   <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(conversation.updatedAt)}</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

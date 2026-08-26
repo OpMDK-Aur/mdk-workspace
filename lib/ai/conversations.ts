@@ -120,6 +120,8 @@ export interface ConversationSummary {
   updatedAt: string
   lastMessagePreview: string | null
   lastMessageRole: MessageRole | null
+  /** Último optimization_score que dejó el Performance Analyst en esta conversación, si ya corrió al menos un análisis. */
+  optimizationScore: number | null
 }
 
 export async function listActiveConversations(
@@ -140,7 +142,7 @@ export async function listActiveConversations(
 
   const { data: lastMessages, error: messagesError } = await supabase
     .from('ai_messages')
-    .select('conversation_id, content, role, created_at')
+    .select('conversation_id, content, role, message_data, created_at')
     .in('conversation_id', rows.map((row) => row.id))
     .order('created_at', { ascending: false })
 
@@ -149,9 +151,18 @@ export async function listActiveConversations(
   // Nos quedamos con el primer mensaje que aparece por conversation_id: como
   // vienen ordenados desc por created_at, es el más reciente.
   const previewByConversation = new Map<string, { content: string; role: MessageRole }>()
+  // El score puede venir de un mensaje del asistente anterior al último
+  // (p. ej. si la última respuesta no disparó un nuevo análisis), así que lo
+  // buscamos por separado recorriendo todos los mensajes ya ordenados desc.
+  const scoreByConversation = new Map<string, number>()
   for (const message of lastMessages ?? []) {
     if (!previewByConversation.has(message.conversation_id)) {
       previewByConversation.set(message.conversation_id, { content: message.content, role: message.role })
+    }
+    if (!scoreByConversation.has(message.conversation_id) && message.role === 'assistant') {
+      const messageData = message.message_data as { performance_analysis?: { optimization_score?: number | null } } | null
+      const score = messageData?.performance_analysis?.optimization_score
+      if (typeof score === 'number') scoreByConversation.set(message.conversation_id, score)
     }
   }
 
@@ -166,6 +177,7 @@ export async function listActiveConversations(
       updatedAt: row.updated_at,
       lastMessagePreview: preview?.content ?? null,
       lastMessageRole: preview?.role ?? null,
+      optimizationScore: scoreByConversation.get(row.id) ?? null,
     }
   })
 }
