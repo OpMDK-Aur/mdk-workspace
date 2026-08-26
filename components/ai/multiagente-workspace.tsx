@@ -15,7 +15,7 @@ export function MultiagenteWorkspace() {
   const [loadingMemory, setLoadingMemory] = useState(false)
   const [active, setActive] = useState(false)
   const [editingMemory, setEditingMemory] = useState(false)
-  useEffect(() => { if (!selectedClient) { setMemory(null); setActive(false); return }; setActive(false); setLoadingMemory(true); fetch(`/api/ai/client-memory?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json()).then((data) => setMemory(data.memory)).finally(() => setLoadingMemory(false)) }, [selectedClient])
+  useEffect(() => { if (!selectedClient) { setMemory(null); setActive(false); setEditingMemory(false); return }; setActive(false); setEditingMemory(false); setLoadingMemory(true); fetch(`/api/ai/client-memory?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json()).then((data) => { const loadedMemory = data.memory as ClientMemory | null; setMemory(loadedMemory); setActive(Boolean(loadedMemory)) }).finally(() => setLoadingMemory(false)) }, [selectedClient])
 
   return (
     <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">
@@ -33,12 +33,14 @@ export function MultiagenteWorkspace() {
 
         <div className="flex flex-col gap-2">
           <span className="text-sm font-medium text-foreground">Cliente a analizar</span>
-          <ClientSelector value={selectedClient} onChange={setSelectedClient} />
+          <div className="flex flex-wrap items-center gap-3">
+            <ClientSelector value={selectedClient} onChange={setSelectedClient} />
+            {selectedClient && memory && !loadingMemory && !editingMemory && <Button variant="outline" size="sm" onClick={() => setEditingMemory(true)}><Pencil className="mr-2 size-4" aria-hidden="true" />Actualizar memoria</Button>}
+          </div>
         </div>
 
         {selectedClient && loadingMemory && <div className="flex flex-col gap-4"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>}
-        {selectedClient && !loadingMemory && !active && memory && !editingMemory && <MemorySummary memory={memory} onEdit={() => setEditingMemory(true)} />}
-        {selectedClient && !loadingMemory && !active && memory && editingMemory && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} mode="edit" onCancel={() => setEditingMemory(false)} onCompleted={(updated) => { setMemory(updated); setEditingMemory(false); setActive(true) }} />}
+        {selectedClient && !loadingMemory && editingMemory && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} mode="edit" onCancel={() => setEditingMemory(false)} onCompleted={(updated) => { setMemory(updated); setEditingMemory(false); setActive(true) }} />}
         {selectedClient && !loadingMemory && !active && !memory && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={null} onCompleted={(updated) => { setMemory(updated); setActive(true) }} />}
         {active && <SupervisorChat key={selectedClient?.id ?? 'no-client'} clientId={selectedClient?.id ?? null} disabled={!selectedClient} disabledMessage="Seleccioná un cliente para comenzar el análisis." title="Análisis del cliente" description="El Multiagente consulta el contexto de la cuenta y responde con datos reales." />}
       </div>
@@ -46,7 +48,7 @@ export function MultiagenteWorkspace() {
   )
 }
 
-function MemorySummary({ memory, onEdit }: { memory: ClientMemory; onEdit: () => void }) {
+function MemorySummaryLegacy({ memory, onEdit }: { memory: ClientMemory; onEdit: () => void }) {
   const rows = [['Industria', memory.profile.industry], ['Objetivo comercial', memory.profile.commercial_objective], ['Qué ofrece', memory.profile.product_type], ['Conversión principal', memory.profile.primary_conversion_type]]
   return <section className="mx-auto flex w-full max-w-2xl flex-col gap-5 rounded-lg border bg-card p-5" aria-labelledby="memory-summary-title">
     <div className="flex items-start justify-between gap-4"><div><p className="font-mono text-xs uppercase tracking-[0.18em] text-primary">Memoria del cliente</p><h2 id="memory-summary-title" className="mt-1 text-xl font-semibold">Contexto listo para analizar</h2></div><Button variant="outline" size="sm" onClick={onEdit}><Pencil className="mr-2 size-4" aria-hidden="true" />Actualizar memoria</Button></div>
