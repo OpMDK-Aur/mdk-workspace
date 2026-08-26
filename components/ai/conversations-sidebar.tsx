@@ -46,7 +46,16 @@ export function ConversationsSidebar({ activeClientId, onSelect }: Conversations
   const conversations = data?.conversations ?? []
 
   return (
-    <aside className="flex w-full shrink-0 flex-col gap-3 border-b pb-6 lg:w-64 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-4">
+    <aside
+      className={cn(
+        'flex w-full shrink-0 flex-col gap-3 rounded-lg border bg-card p-4',
+        // Sticky solo desde lg: en desktop el panel queda fijo mientras se
+        // hace scroll del contenido principal, con su propio scroll interno
+        // si la lista de chats no entra en la altura disponible. En mobile
+        // sigue el flujo normal de la página (position: static).
+        'lg:sticky lg:top-8 lg:w-64 lg:max-h-[calc(100vh-4rem)] lg:self-start lg:overflow-y-auto',
+      )}
+    >
       <div className="flex items-center gap-2 text-sm font-medium text-foreground">
         <MessagesSquare className="size-4 text-primary" aria-hidden="true" />
         Chats activos
