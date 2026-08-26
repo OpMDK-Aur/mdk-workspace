@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getOrCreateConversation, listActiveConversations, listConversationMessages } from '@/lib/ai/conversations'
+import { archiveConversation, getOrCreateConversation, listActiveConversations, listConversationMessages } from '@/lib/ai/conversations'
 
 export async function GET() {
   const supabase = await createClient()
@@ -33,5 +33,27 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('[v0] Conversation load failed:', error instanceof Error ? error.message : error)
     return NextResponse.json({ error: 'No se pudo cargar la conversación.' }, { status: 500 })
+  }
+}
+
+/** Resetea el chat: archiva la conversación activa para que el próximo turno arranque una nueva, vacía. */
+export async function DELETE(request: Request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await request.json().catch(() => ({}))
+  if (typeof body.conversationId !== 'string' || !body.conversationId) {
+    return NextResponse.json({ error: 'conversationId es requerido.' }, { status: 400 })
+  }
+
+  try {
+    // archiveConversation filtra por user_id, así que un usuario nunca puede
+    // resetear un chat que no le pertenece.
+    await archiveConversation(supabase, user.id, body.conversationId)
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('[v0] Conversation reset failed:', error instanceof Error ? error.message : error)
+    return NextResponse.json({ error: 'No se pudo resetear el chat.' }, { status: 500 })
   }
 }

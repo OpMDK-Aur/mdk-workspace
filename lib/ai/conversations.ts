@@ -60,6 +60,22 @@ export async function getOrCreateConversation(supabase: SupabaseClient, userId: 
   return data as ConversationRow
 }
 
+/**
+ * Archiva el chat activo de un cliente para "resetearlo": libera el slot
+ * único (user_id, client_id) para que la próxima consulta de
+ * getOrCreateConversation cree una conversación nueva y vacía. El historial
+ * archivado no se borra, solo deja de ser el chat activo.
+ */
+export async function archiveConversation(supabase: SupabaseClient, userId: string, conversationId: string) {
+  const { error } = await supabase
+    .from('ai_conversations')
+    .update({ archived: true })
+    .eq('id', conversationId)
+    .eq('user_id', userId)
+
+  if (error) throw error
+}
+
 export async function saveConversationMessage(
   supabase: SupabaseClient,
   input: {

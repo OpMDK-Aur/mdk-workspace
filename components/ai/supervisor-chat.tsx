@@ -1,12 +1,23 @@
 'use client'
 
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useRef, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
 import { mutate } from 'swr'
-import { Bot, Check, ChevronRight, Loader2, Send, User, X } from 'lucide-react'
+import { Bot, Check, ChevronRight, Loader2, RotateCcw, Send, User, X } from 'lucide-react'
 import type { ActivityEvent } from '@/lib/ai/types'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -62,6 +73,10 @@ export function SupervisorChat(props: SupervisorChatProps) {
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [history, setHistory] = useState<PersistedMessage[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+  const [isResetting, setIsResetting] = useState(false)
+  // Se incrementa al resetear el chat para forzar el refetch de abajo aunque
+  // clientId no haya cambiado.
+  const [refreshToken, setRefreshToken] = useState(0)
 
   useEffect(() => {
     if (!clientId || disabled) {
@@ -96,11 +111,34 @@ export function SupervisorChat(props: SupervisorChatProps) {
         }
       })
       .finally(() => {
-        if (!cancelled) setIsLoadingHistory(false)
+        if (!cancelled) {
+          setIsLoadingHistory(false)
+          setIsResetting(false)
+        }
       })
 
     return () => { cancelled = true }
-  }, [clientId, disabled])
+  }, [clientId, disabled, refreshToken])
+
+  async function handleReset() {
+    if (!conversationId || isResetting) return
+    setIsResetting(true)
+    try {
+      await fetch('/api/ai/conversations', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ conversationId }),
+      })
+    } catch {
+      // Si falla el archivado, igual reintentamos el refetch: en el peor
+      // caso el chat sigue mostrando la conversación anterior.
+    }
+    // El chat archivado deja de ser el "activo" del cliente, así que este
+    // refetch trae/crea uno nuevo y vacío. La lista de "chats activos"
+    // también se revalida para que desaparezca el preview del chat viejo.
+    mutate(CONVERSATIONS_SWR_KEY)
+    setRefreshToken((token) => token + 1)
+  }
 
   if (isLoadingHistory && clientId && !disabled) {
     return <SupervisorChatShell {...props} loading />
@@ -112,6 +150,8 @@ export function SupervisorChat(props: SupervisorChatProps) {
       {...props}
       conversationId={conversationId}
       initialMessages={history}
+      onReset={handleReset}
+      isResetting={isResetting}
     />
   )
 }
@@ -142,9 +182,24 @@ function SupervisorChatSession({
   emptyStateMessage = 'Probá con una pregunta sobre cuentas, Meta Ads, Google Ads o insights previos.',
   conversationId,
   initialMessages = [],
-}: SupervisorChatProps & { conversationId: string | null; initialMessages?: PersistedMessage[] }) {
+  onReset,
+  isResetting = false,
+}: SupervisorChatProps & {
+  conversationId: string | null
+  initialMessages?: PersistedMessage[]
+  onReset?: () => void
+  isResetting?: boolean
+}) {
   const [input, setInput] = useState('')
   const [currentActivity, setCurrentActivity] = useState<ActivityEvent | null>(null)
+  // El Performance Analyst calcula el score/temperatura como parte del turno
+  // del Supervisor, pero recién queda persistido en message_data cuando el
+  // stream termina (onFinish del backend). Lo reflejamos acá apenas termina
+  // cada turno, sin esperar a que el usuario recargue o cambie de cliente.
+  const [latestAnalysis, setLatestAnalysis] = useState(
+    initialMessages.findLast((message) => message.role === 'assistant')?.message_data?.performance_analysis ?? null,
+  )
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const persistedMessages: UIMessage[] = initialMessages.map((message) => ({
     id: message.id,
     role: message.role,
@@ -169,12 +224,37 @@ function SupervisorChatSession({
       // Revalida el listado de "chats activos" para que el sidebar refleje
       // el nuevo último mensaje y suba esta conversación al tope.
       mutate(CONVERSATIONS_SWR_KEY)
+      // El score recién quedó persistido en el backend en este mismo
+      // instante: lo traemos para actualizar el panel de análisis sin
+      // esperar a un reload.
+      if (clientId) {
+        fetch('/api/ai/conversations', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ clientId }),
+        })
+          .then((response) => (response.ok ? response.json() : null))
+          .then((data: { messages: PersistedMessage[] } | null) => {
+            const analysis = data?.messages.findLast((message) => message.role === 'assistant')?.message_data?.performance_analysis
+            if (analysis) setLatestAnalysis(analysis)
+          })
+          .catch(() => {})
+      }
     },
   })
   const isBusy = status === 'submitted' || status === 'streaming'
   const lastMessage = messages.at(-1)
   const hasStreamingText = isBusy && lastMessage?.role === 'assistant' && messageText(lastMessage).length > 0
-  const isInputDisabled = disabled || isBusy
+  const isInputDisabled = disabled || isBusy || isResetting
+
+  // Mantiene la conversación con scroll propio: cada mensaje nuevo o cambio
+  // de estado hace autoscroll al final, en vez de forzar scroll de toda la
+  // página para poder ver el historial completo.
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    container.scrollTop = container.scrollHeight
+  }, [messages, isBusy, currentActivity])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -192,14 +272,38 @@ function SupervisorChatSession({
 
   return (
     <Card className="overflow-hidden">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <div>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </div>
+        {!disabled && onReset && messages.length > 0 && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" size="sm" disabled={isBusy || isResetting}>
+                {isResetting ? <Loader2 className="animate-spin" aria-hidden="true" /> : <RotateCcw aria-hidden="true" />}
+                Resetear chat
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Resetear esta conversación?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Se va a archivar el historial actual y vas a empezar un chat nuevo y vacío con este cliente. El historial anterior no se borra, pero deja de mostrarse acá.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={onReset}>Resetear chat</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-4 p-0">
         <div className="flex flex-col lg:flex-row">
           <div className="flex min-w-0 flex-1 flex-col gap-4 p-4">
-        <div className="flex min-h-[360px] flex-col gap-3 rounded-lg border bg-muted/30 p-4" aria-live="polite">
+        <div ref={scrollContainerRef} className="flex h-[65vh] min-h-[420px] max-h-[640px] flex-col gap-3 overflow-y-auto rounded-lg border bg-muted/30 p-4" aria-live="polite">
           {disabled ? (
             <div className="m-auto flex max-w-sm flex-col items-center gap-3 text-center text-muted-foreground">
               <Bot className="size-8" aria-hidden="true" />
@@ -245,8 +349,8 @@ function SupervisorChatSession({
                   <Bot className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
                 )}
                 <div
-                  className={`max-w-[80%] rounded-lg px-3 py-2 text-sm leading-6 ${
-                    message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-card'
+                  className={`min-w-0 rounded-lg px-3 py-2 text-sm leading-6 ${
+                    message.role === 'user' ? 'max-w-[80%] bg-primary text-primary-foreground' : 'w-full max-w-[95%] bg-card'
                   }`}
                 >
                   {messageHasVisibleContent(message) ? message.role === 'assistant' ? (
@@ -285,7 +389,7 @@ function SupervisorChatSession({
           </Button>
         </form>
           </div>
-          <AIAnalysisPanel content={lastMessage?.role === 'assistant' ? messageText(lastMessage) : ''} analysis={initialMessages.findLast((message) => message.role === 'assistant')?.message_data?.performance_analysis ?? null} />
+          <AIAnalysisPanel content={lastMessage?.role === 'assistant' ? messageText(lastMessage) : ''} analysis={latestAnalysis} />
         </div>
       </CardContent>
     </Card>
