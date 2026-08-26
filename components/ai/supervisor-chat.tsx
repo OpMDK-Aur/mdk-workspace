@@ -60,12 +60,20 @@ interface SupervisorChatProps {
   emptyStateMessage?: string
 }
 
+type PersistedPerformanceAnalysis = {
+  optimization_score?: number
+  optimization_level?: string
+  recommendations?: Array<{ id?: string; descripcion?: string; prioridad?: 'alta' | 'media' | 'baja'; evidence_ids?: string[] }>
+  evidence?: Array<{ id?: string; source?: 'google' | 'meta' | 'crm' | 'user' | 'derived' | 'other' | null; account_id?: string | null; campaign_id?: string | null }>
+  entity?: { platform?: 'google' | 'meta' | 'mixed'; account_ids?: string[] }
+}
+
 type PersistedMessage = {
   id: string
   role: 'user' | 'assistant'
   content: string
   created_at: string
-  message_data?: { performance_analysis?: { optimization_score?: number; optimization_level?: string; recommendations?: Array<{ descripcion?: string }> } } | null
+  message_data?: { performance_analysis?: PersistedPerformanceAnalysis } | null
 }
 
 export function SupervisorChat(props: SupervisorChatProps) {

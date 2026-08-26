@@ -1,8 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { AlertTriangle, Gauge, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+
+const LEVEL_ICON = { low: AlertTriangle, intermediate: Gauge, high: TrendingUp } as const
+const LEVEL_ICON_COLOR = { low: 'text-status-rojo', intermediate: 'text-status-amarillo', high: 'text-status-verde' } as const
 
 export function ScoreConfigPanel({ clientId, onSaved }: { clientId: string; onSaved?: (config: { descriptions: { low: string; intermediate: string; high: string } }) => void }) {
   const defaults = { low: 'Campaña con CPL alto, 0 impresiones o 0 conversiones. Optimización baja y necesita acciones inmediatas.', intermediate: 'Campaña con señales mixtas: el rendimiento requiere seguimiento y ajustes para mejorar la eficiencia.', high: 'Campaña con buen volumen, conversiones y eficiencia. Optimización alta; mantener y escalar con control.' }
@@ -34,6 +38,6 @@ export function ScoreConfigPanel({ clientId, onSaved }: { clientId: string; onSa
 
   return <section className="flex flex-col gap-4 rounded-lg border bg-card p-4" aria-labelledby="score-config-title">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 id="score-config-title" className="font-medium">Optimización de campañas</h2><p className="text-sm text-muted-foreground">Definí qué significa una optimización baja, intermedia o alta para este cliente.</p></div><Button type="button" variant="outline" size="sm" onClick={() => setOpen((value) => !value)}>{open ? 'Ocultar configuración' : 'Configurar niveles'}</Button></div>
-    {open && <div className="flex flex-col gap-4 border-t pt-4">{([['low', 'Baja'], ['intermediate', 'Intermedia'], ['high', 'Alta']] as const).map(([key, label]) => <label key={key} className="flex flex-col gap-2 text-sm"><span className="font-medium">Optimización {label}</span><Textarea value={descriptions[key]} onChange={(event) => setDescriptions((current) => ({ ...current, [key]: event.target.value }))} rows={4} placeholder={`Describí cuándo una campaña tiene optimización ${label.toLowerCase()}.`} /></label>)}<div className="flex items-center gap-3"><Button type="button" onClick={save} disabled={saving}>{saving ? 'Guardando…' : 'Guardar configuración'}</Button>{message && <span className="text-sm text-muted-foreground" role="status">{message}</span>}</div></div>}
+    {open && <div className="flex flex-col gap-4 border-t pt-4">{([['low', 'Baja'], ['intermediate', 'Intermedia'], ['high', 'Alta']] as const).map(([key, label]) => { const Icon = LEVEL_ICON[key]; return <label key={key} className="flex flex-col gap-2 text-sm"><span className="flex items-center gap-1.5 font-medium"><Icon className={`size-4 ${LEVEL_ICON_COLOR[key]}`} aria-hidden="true" />Optimización {label}</span><Textarea value={descriptions[key]} onChange={(event) => setDescriptions((current) => ({ ...current, [key]: event.target.value }))} rows={4} placeholder={`Describí cuándo una campaña tiene optimización ${label.toLowerCase()}.`} /></label> })}<div className="flex items-center gap-3"><Button type="button" onClick={save} disabled={saving}>{saving ? 'Guardando…' : 'Guardar configuración'}</Button>{message && <span className="text-sm text-muted-foreground" role="status">{message}</span>}</div></div>}
   </section>
 }
