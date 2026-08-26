@@ -71,11 +71,14 @@ export const useTimerStore = create<TimerState>()(
         const startedAt = new Date().toISOString()
 
         const { data: { user } } = await supabase.auth.getUser()
+        const { data: colaborador } = user?.email
+          ? await supabase.from('colaboradores').select('id').eq('email', user.email).maybeSingle()
+          : { data: null }
 
         const { data: newEntry, error } = await supabase
           .from('entradas_de_tiempo')
           .insert({
-            colaborador_id: user?.id ?? null,
+            colaborador_id: colaborador?.id ?? null,
             cliente_id: state.clientId,
             tipo_tarea_id: state.tipoTareaId,
             descripcion: state.description || 'Sin descripción',
@@ -235,11 +238,14 @@ export const useTimerStore = create<TimerState>()(
         const descripcion = `[Tarea] ${taskTitle}`
 
         const { data: { user } } = await supabase.auth.getUser()
+        const { data: colaborador } = user?.email
+          ? await supabase.from('colaboradores').select('id').eq('email', user.email).maybeSingle()
+          : { data: null }
 
         const { data: newEntry, error } = await supabase
           .from('entradas_de_tiempo')
           .insert({
-            colaborador_id: user?.id ?? null,
+            colaborador_id: colaborador?.id ?? null,
             cliente_id: clientId,
             tipo_tarea_id: null,
             descripcion,
@@ -307,11 +313,19 @@ export const useTimerStore = create<TimerState>()(
             return
           }
           
-          // Only load entries for the current user
+          // Use colaboradores.id consistently; it is the foreign key in entradas_de_tiempo.
+          const { data: colaborador } = user.email
+            ? await supabase.from('colaboradores').select('id').eq('email', user.email).maybeSingle()
+            : { data: null }
+          if (!colaborador) {
+            set({ entries: [], isLoading: false })
+            return
+          }
+
           const { data, error } = await supabase
             .from('entradas_de_tiempo')
             .select('*')
-            .eq('colaborador_id', user.id)
+            .eq('colaborador_id', colaborador.id)
             .order('iniciado_en', { ascending: false })
             .limit(100)
 
