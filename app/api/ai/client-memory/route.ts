@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const supabase = await createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const body = await request.json().catch(() => ({})); if (typeof body.clientId !== 'string' || !body.clientId) return NextResponse.json({ error: 'clientId es requerido.' }, { status: 400 })
   const update: Record<string, string> = {}
-  for (const key of ['commercial_objective', 'product_type', 'primary_conversion_type'] as const) if (typeof body[key] === 'string' && body[key].trim()) { update[key] = body[key].trim(); update[`${key}_source`] = 'user_confirmed' }
+  for (const key of ['commercial_objective', 'product_type', 'primary_conversion_type'] as const) if (typeof body[key] === 'string' && body[key].trim()) { update[key] = body[key].trim(); update[key === 'primary_conversion_type' ? 'primary_conversion_source' : `${key}_source`] = 'user_confirmed' }
   if (typeof body.industry === 'string' && body.industry.trim()) { update.industry = normalizeIndustry(body.industry); update.industry_source = 'user_confirmed' }
   if (!update.industry || !update.commercial_objective || !update.product_type) return NextResponse.json({ error: 'Faltan campos requeridos.' }, { status: 400 })
   const admin = createAdminClient()
