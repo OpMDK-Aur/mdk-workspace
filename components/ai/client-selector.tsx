@@ -16,8 +16,11 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
 
-interface ClientAccount {
+export interface ClientAccount {
+  id_cuenta: string | null
+  nombre_cuenta: string | null
   plataforma: string | null
+  activo?: boolean | null
 }
 
 export interface AnalyzableClient {
@@ -52,7 +55,7 @@ export function ClientSelector({ value, onChange }: ClientSelectorProps) {
       // Only clients with at least one row in cuentas_publicitarias (INNER JOIN via embed).
       const { data, error } = await supabase
         .from('clientes')
-        .select('id, nombre_del_negocio, cuentas_publicitarias!inner(plataforma)')
+        .select('id, nombre_del_negocio, cuentas_publicitarias!inner(id_cuenta, nombre_cuenta, plataforma, activo)')
         .order('nombre_del_negocio')
 
       if (!isMounted) return
@@ -73,6 +76,24 @@ export function ClientSelector({ value, onChange }: ClientSelectorProps) {
       isMounted = false
     }
   }, [])
+
+  const [resolvedAccounts, setResolvedAccounts] = useState<ClientAccount[]>([])
+  const [selectedAccounts, setSelectedAccounts] = useState<ClientAccount[]>([])
+  const [accountOpen, setAccountOpen] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    setSelectedAccounts([])
+    setResolvedAccounts([])
+    if (!value?.id) return () => { active = false }
+    fetch(`/api/agentes/analista/cuentas?clientId=${encodeURIComponent(value.id)}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron cargar las cuentas')))
+      .then((payload) => { if (active) setResolvedAccounts(payload.cuentas ?? []) })
+      .catch((error) => console.error('[v0] Advertising accounts fetch failed:', error))
+    return () => { active = false }
+  }, [value?.id])
+
+  const accounts = (resolvedAccounts.length > 0 ? resolvedAccounts : value?.cuentas_publicitarias ?? []).filter((account) => account.id_cuenta)
 
   const platforms = value
     ? Array.from(new Set(value.cuentas_publicitarias.map((account) => account.plataforma).filter(Boolean)))
@@ -129,7 +150,31 @@ export function ClientSelector({ value, onChange }: ClientSelectorProps) {
       </Popover>
 
       {value && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-medium text-foreground">Cuenta publicitaria</span>
+          <Popover open={accountOpen} onOpenChange={setAccountOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" role="combobox" aria-expanded={accountOpen} className="w-full justify-between sm:w-[360px]" disabled={accounts.length === 0}>
+                {selectedAccounts.length ? `${selectedAccounts.length} cuenta${selectedAccounts.length === 1 ? '' : 's'} seleccionada${selectedAccounts.length === 1 ? '' : 's'}` : accounts.length ? 'Seleccionar cuentas publicitarias…' : 'Sin cuentas publicitarias'}
+                <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" aria-hidden="true" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[360px] p-0">
+              <Command>
+                <CommandInput placeholder="Buscar por nombre o ID…" />
+                <CommandList>
+                  <CommandEmpty>No se encontraron cuentas.</CommandEmpty>
+                  <CommandGroup>
+                    {accounts.map((account) => {
+                      const label = `${account.nombre_cuenta || 'Sin nombre'} ${account.id_cuenta}`
+                      return <CommandItem key={`${account.plataforma}-${account.id_cuenta}`} value={label} onSelect={() => { setSelectedAccounts((current) => current.some((item) => item.id_cuenta === account.id_cuenta && item.plataforma === account.plataforma) ? current.filter((item) => !(item.id_cuenta === account.id_cuenta && item.plataforma === account.plataforma)) : [...current, account]) }}><Check className={cn('mr-2 size-4', selectedAccounts.some((item) => item.id_cuenta === account.id_cuenta && item.plataforma === account.plataforma) ? 'opacity-100' : 'opacity-0')} aria-hidden="true" /><span className="flex flex-col"><span>{account.nombre_cuenta || 'Sin nombre'}</span><span className="font-mono text-xs text-muted-foreground">{account.id_cuenta} · {platformLabel(account.plataforma)}</span></span></CommandItem>
+                    })}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+          <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-muted-foreground">{value.nombre_del_negocio}</span>
           {platforms.length > 0 ? (
             platforms.map((platform) => (
@@ -140,6 +185,7 @@ export function ClientSelector({ value, onChange }: ClientSelectorProps) {
           ) : (
             <Badge variant="outline">Sin plataformas activas</Badge>
           )}
+          </div>
         </div>
       )}
     </div>

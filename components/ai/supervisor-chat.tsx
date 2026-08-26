@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
-import { Bot, Check, Loader2, Send, User, X } from 'lucide-react'
+import { Bot, Check, ChevronRight, Loader2, Send, User, X } from 'lucide-react'
 import type { ActivityEvent } from '@/lib/ai/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -184,9 +184,33 @@ function SupervisorChatSession({
               <p>{disabledMessage}</p>
             </div>
           ) : messages.length === 0 ? (
-            <div className="m-auto flex max-w-sm flex-col items-center gap-3 text-center text-muted-foreground">
-              <Bot className="size-8" aria-hidden="true" />
-              <p>{emptyStateMessage}</p>
+            <div className="m-auto flex w-full max-w-2xl flex-col gap-6 py-4">
+              <div className="flex items-start gap-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Bot className="size-5" aria-hidden="true" />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <p className="font-medium text-foreground">¿En qué podemos ayudarte?</p>
+                  <p className="text-sm leading-6 text-muted-foreground">Este multiagente analiza el rendimiento comercial y de paid media del cliente seleccionado. Puede consultar Google Ads y Meta Ads, comparar períodos, detectar oportunidades y convertir los datos en recomendaciones accionables.</p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Podés empezar preguntando</p>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {[
+                    '¿Cómo fue el rendimiento de mis campañas en los últimos 90 días?',
+                    '¿Qué campañas debería optimizar primero y por qué?',
+                    'Compará Meta Ads y Google Ads y señalá las diferencias.',
+                    '¿Qué acciones concretas recomendás para mejorar las conversiones?',
+                  ].map((suggestion) => (
+                    <button key={suggestion} type="button" className="group flex items-center justify-between gap-3 rounded-md border bg-card px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent" onClick={() => setInput(suggestion)}>
+                      <span>{suggestion}</span>
+                      <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="text-center text-xs text-muted-foreground">{emptyStateMessage}</p>
             </div>
           ) : (
             messages.map((message) => (
