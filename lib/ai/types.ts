@@ -37,6 +37,7 @@ export interface ExecutionContext {
   accountId?: string
   metaAccountId?: string
   googleCustomerId?: string
+  scoreConfig?: { coldMax: number; warmMax: number }
   /** Run-scoped only: never persisted; conversation memory is separate. */
   analysisRunState?: AnalysisRunState
   conversationWorkingContext?: ConversationWorkingContext

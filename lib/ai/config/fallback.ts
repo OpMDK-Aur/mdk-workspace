@@ -87,6 +87,7 @@ export const chatRequestSchema = z.object({
       accountId: z.string().max(200).optional(),
       metaAccountId: z.string().max(200).optional(),
       googleCustomerId: z.string().max(200).optional(),
+      scoreConfig: z.object({ coldMax: z.number().int().min(0).max(98), warmMax: z.number().int().min(1).max(99) }).optional(),
     })
     .optional()
     .default({}),

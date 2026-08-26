@@ -97,6 +97,8 @@ export async function runPerformanceAnalyst({
         'Trabajá únicamente con los snapshots entregados por el backend.',
         'No inventes datos, benchmarks, causas ni identificadores.',
         `Usá agent_config_version ${PERFORMANCE_ANALYST_CONFIG_VERSION}.`,
+        `Clasificación configurable: score <= ${context.scoreConfig?.coldMax ?? 39} es FRÍO; score <= ${context.scoreConfig?.warmMax ?? 69} es TIBIO; superior es CALIENTE.`,
+        'Devolvé score y temperatura sólo si están sustentados por los snapshots entregados.',
       ].join('\\n'),
       prompt: buildPrompt(context, parsedSnapshots, parsedComparisonSnapshots, parsedChangeHistory),
       output: Output.object({ schema: SpecialistOutputSchema }),

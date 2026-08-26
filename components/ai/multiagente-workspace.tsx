@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { ClientSelector, type AnalyzableClient } from './client-selector'
 import { SupervisorChat } from './supervisor-chat'
 import { ClientContextForm } from './client-context-form'
+import { ScoreConfigPanel } from './score-config-panel'
 import type { ClientMemory } from '@/lib/ai/client-memory'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -15,7 +16,8 @@ export function MultiagenteWorkspace() {
   const [loadingMemory, setLoadingMemory] = useState(false)
   const [active, setActive] = useState(false)
   const [editingMemory, setEditingMemory] = useState(false)
-  useEffect(() => { if (!selectedClient) { setMemory(null); setActive(false); setEditingMemory(false); return }; setActive(false); setEditingMemory(false); setLoadingMemory(true); fetch(`/api/ai/client-memory?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json()).then((data) => { const loadedMemory = data.memory as ClientMemory | null; setMemory(loadedMemory); setActive(loadedMemory?.completeness === 'complete') }).finally(() => setLoadingMemory(false)) }, [selectedClient])
+  const [scoreConfig, setScoreConfig] = useState<{ coldMax: number; warmMax: number } | null>(null)
+  useEffect(() => { if (!selectedClient) { setMemory(null); setScoreConfig(null); setActive(false); setEditingMemory(false); return }; setActive(false); setEditingMemory(false); setScoreConfig(null); setLoadingMemory(true); Promise.all([fetch(`/api/ai/client-memory?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json()), fetch(`/api/ai/score-config?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json())]).then(([memoryData, scoreData]) => { const loadedMemory = memoryData.memory as ClientMemory | null; setMemory(loadedMemory); setScoreConfig({ coldMax: scoreData.coldMax ?? 39, warmMax: scoreData.warmMax ?? 69 }); setActive(loadedMemory?.completeness === 'complete') }).finally(() => setLoadingMemory(false)) }, [selectedClient])
 
   return (
     <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">
@@ -38,11 +40,12 @@ export function MultiagenteWorkspace() {
             {selectedClient && memory && !loadingMemory && !editingMemory && <Button variant="outline" size="sm" onClick={() => setEditingMemory(true)}><Pencil className="mr-2 size-4" aria-hidden="true" />Actualizar memoria</Button>}
           </div>
         </div>
+        {selectedClient && <ScoreConfigPanel clientId={selectedClient.id} onSaved={setScoreConfig} />}
 
         {selectedClient && loadingMemory && <div className="flex flex-col gap-4"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>}
         {selectedClient && !loadingMemory && editingMemory && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} mode="edit" onCancel={() => setEditingMemory(false)} onCompleted={(updated) => { setMemory(updated); setEditingMemory(false); setActive(true) }} />}
         {selectedClient && !loadingMemory && !active && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} onCompleted={(updated) => { setMemory(updated); setActive(true) }} />}
-        {active && <SupervisorChat key={selectedClient?.id ?? 'no-client'} clientId={selectedClient?.id ?? null} disabled={!selectedClient} disabledMessage="Seleccioná un cliente para comenzar el análisis." title="Análisis del cliente" description="El Multiagente consulta el contexto de la cuenta y responde con datos reales." />}
+        {active && <SupervisorChat key={selectedClient?.id ?? 'no-client'} clientId={selectedClient?.id ?? null} disabled={!selectedClient} disabledMessage="Seleccioná un cliente para comenzar el análisis." scoreConfig={scoreConfig ?? undefined} title="Análisis del cliente" description="El Multiagente consulta el contexto de la cuenta y responde con datos reales." />}
       </div>
     </main>
   )

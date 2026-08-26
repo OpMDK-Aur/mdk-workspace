@@ -37,6 +37,7 @@ function MultiagentActivityStatus({ activity }: { activity: ActivityEvent | null
 
 interface SupervisorChatProps {
   clientId: string | null
+  scoreConfig?: { coldMax: number; warmMax: number }
   /** When true, the chat input is disabled and a placeholder message is shown instead of the conversation. */
   disabled?: boolean
   disabledMessage?: string
@@ -126,6 +127,7 @@ function SupervisorChatShell({ ...props }: SupervisorChatProps & { loading?: boo
 
 function SupervisorChatSession({
   clientId,
+  scoreConfig,
   disabled = false,
   disabledMessage = 'Seleccioná un cliente para comenzar el análisis.',
   title = 'Conversación de prueba',
@@ -147,7 +149,7 @@ function SupervisorChatSession({
       api: '/api/ai/chat',
       body: {
         context: clientId
-          ? { clientId, ...(conversationId ? { conversationId } : {}) }
+          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}) }
           : {},
       },
     }),
