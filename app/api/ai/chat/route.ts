@@ -71,7 +71,17 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const parsed = chatRequestSchema.safeParse(body)
+    // AI SDK puede enviar campos adicionales del transporte en el body raíz.
+    // Normalizamos ambas formas para que el contexto del cliente nunca se pierda.
+    const normalizedBody = {
+      ...body,
+      context: body?.context ?? {
+        ...(body?.clientId ? { clientId: body.clientId } : {}),
+        ...(body?.conversationId ? { conversationId: body.conversationId } : {}),
+        ...(body?.scoreConfig ? { scoreConfig: body.scoreConfig } : {}),
+      },
+    }
+    const parsed = chatRequestSchema.safeParse(normalizedBody)
 
     if (!parsed.success) {
       console.error('[v0] AI request validation failed:', parsed.error.flatten())
@@ -184,7 +194,10 @@ export async function POST(request: Request) {
           userId: user.id,
           role: 'assistant',
           content: assistantText,
-          messageData: workingContext ? { context_snapshot: workingContext } : undefined,
+          messageData: {
+            ...(workingContext ? { context_snapshot: workingContext } : {}),
+            ...(analysisRunState.specialistOutputs.at(-1) ? { performance_analysis: analysisRunState.specialistOutputs.at(-1) } : {}),
+          },
         })
       },
     })
