@@ -77,13 +77,23 @@ export function ClientSelector({ value, onChange }: ClientSelectorProps) {
     }
   }, [])
 
-  const accounts = value?.cuentas_publicitarias.filter((account) => account.id_cuenta) ?? []
+  const [resolvedAccounts, setResolvedAccounts] = useState<ClientAccount[]>([])
   const [selectedAccount, setSelectedAccount] = useState<ClientAccount | null>(null)
   const [accountOpen, setAccountOpen] = useState(false)
 
   useEffect(() => {
+    let active = true
     setSelectedAccount(null)
+    setResolvedAccounts([])
+    if (!value?.id) return () => { active = false }
+    fetch(`/api/agentes/analista/cuentas?clientId=${encodeURIComponent(value.id)}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron cargar las cuentas')))
+      .then((payload) => { if (active) setResolvedAccounts(payload.cuentas ?? []) })
+      .catch((error) => console.error('[v0] Advertising accounts fetch failed:', error))
+    return () => { active = false }
   }, [value?.id])
+
+  const accounts = (resolvedAccounts.length > 0 ? resolvedAccounts : value?.cuentas_publicitarias ?? []).filter((account) => account.id_cuenta)
 
   const platforms = value
     ? Array.from(new Set(value.cuentas_publicitarias.map((account) => account.plataforma).filter(Boolean)))
