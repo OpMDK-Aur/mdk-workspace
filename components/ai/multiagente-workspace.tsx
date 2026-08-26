@@ -23,7 +23,7 @@ export function MultiagenteWorkspace() {
         <header className="flex flex-col gap-2 border-b pb-6">
           <div className="flex items-center gap-2 text-primary">
             <Sparkles className="size-5" aria-hidden="true" />
-            <span className="font-mono text-xs uppercase tracking-[0.18em]">AI workspace</span>
+            <span className="font-mono text-xs uppercase tracking-[0.18em]">AI WORKSPACE - QA VERSION</span>
           </div>
           <h1 className="text-balance text-3xl font-semibold tracking-tight md:text-4xl">Multiagente</h1>
           <p className="max-w-2xl text-pretty text-muted-foreground">
