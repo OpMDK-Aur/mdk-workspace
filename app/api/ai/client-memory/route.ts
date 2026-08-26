@@ -9,7 +9,8 @@ export async function GET(request: Request) {
   const admin = createAdminClient()
   const { data, error } = await admin.from('ai_client_profile').select('industry, commercial_objective, product_type, primary_conversion_type, industry_source, commercial_objective_source, product_type_source, primary_conversion_source').eq('client_id', clientId).maybeSingle()
   if (error) return NextResponse.json({ error: 'No se pudo cargar el contexto.' }, { status: 500 })
-  return NextResponse.json({ memory: buildClientMemory(data as Record<string, unknown> | null) })
+  const memory = buildClientMemory(data as Record<string, unknown> | null)
+  return NextResponse.json({ memory: memory.completeness === 'empty' ? null : memory })
 }
 
 export async function POST(request: Request) {

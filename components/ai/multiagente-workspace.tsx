@@ -15,7 +15,7 @@ export function MultiagenteWorkspace() {
   const [loadingMemory, setLoadingMemory] = useState(false)
   const [active, setActive] = useState(false)
   const [editingMemory, setEditingMemory] = useState(false)
-  useEffect(() => { if (!selectedClient) { setMemory(null); setActive(false); setEditingMemory(false); return }; setActive(false); setEditingMemory(false); setLoadingMemory(true); fetch(`/api/ai/client-memory?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json()).then((data) => { const loadedMemory = data.memory as ClientMemory | null; setMemory(loadedMemory); setActive(Boolean(loadedMemory)) }).finally(() => setLoadingMemory(false)) }, [selectedClient])
+  useEffect(() => { if (!selectedClient) { setMemory(null); setActive(false); setEditingMemory(false); return }; setActive(false); setEditingMemory(false); setLoadingMemory(true); fetch(`/api/ai/client-memory?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json()).then((data) => { const loadedMemory = data.memory as ClientMemory | null; setMemory(loadedMemory); setActive(loadedMemory?.completeness === 'complete') }).finally(() => setLoadingMemory(false)) }, [selectedClient])
 
   return (
     <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">
@@ -41,7 +41,7 @@ export function MultiagenteWorkspace() {
 
         {selectedClient && loadingMemory && <div className="flex flex-col gap-4"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>}
         {selectedClient && !loadingMemory && editingMemory && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} mode="edit" onCancel={() => setEditingMemory(false)} onCompleted={(updated) => { setMemory(updated); setEditingMemory(false); setActive(true) }} />}
-        {selectedClient && !loadingMemory && !active && !memory && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={null} onCompleted={(updated) => { setMemory(updated); setActive(true) }} />}
+        {selectedClient && !loadingMemory && !active && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} onCompleted={(updated) => { setMemory(updated); setActive(true) }} />}
         {active && <SupervisorChat key={selectedClient?.id ?? 'no-client'} clientId={selectedClient?.id ?? null} disabled={!selectedClient} disabledMessage="Seleccioná un cliente para comenzar el análisis." title="Análisis del cliente" description="El Multiagente consulta el contexto de la cuenta y responde con datos reales." />}
       </div>
     </main>
