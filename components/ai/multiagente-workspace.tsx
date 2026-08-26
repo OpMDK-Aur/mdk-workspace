@@ -17,7 +17,49 @@ export function MultiagenteWorkspace() {
   const [active, setActive] = useState(false)
   const [editingMemory, setEditingMemory] = useState(false)
   const [scoreConfig, setScoreConfig] = useState<{ descriptions: { low: string; intermediate: string; high: string } } | null>(null)
-  useEffect(() => { if (!selectedClient) { setMemory(null); setScoreConfig(null); setActive(false); setEditingMemory(false); return }; setActive(false); setEditingMemory(false); setScoreConfig(null); setLoadingMemory(true); Promise.all([fetch(`/api/ai/client-memory?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json()), fetch(`/api/ai/score-config?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json())]).then(([memoryData, scoreData]) => { const loadedMemory = memoryData.memory as ClientMemory | null; setMemory(loadedMemory); setScoreConfig({ descriptions: { low: scoreData.lowDescription, intermediate: scoreData.intermediateDescription, high: scoreData.highDescription } }); setActive(loadedMemory?.completeness === 'complete') }).finally(() => setLoadingMemory(false)) }, [selectedClient])
+  useEffect(() => {
+    if (!selectedClient) {
+      setMemory(null)
+      setScoreConfig(null)
+      setActive(false)
+      setEditingMemory(false)
+      return
+    }
+    setActive(false)
+    setEditingMemory(false)
+    setScoreConfig(null)
+    setLoadingMemory(true)
+    Promise.all([
+      fetch(`/api/ai/client-memory?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json()),
+      fetch(`/api/ai/score-config?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json()),
+    ])
+      .then(([memoryData, scoreData]) => {
+        const loadedMemory = memoryData.memory as ClientMemory | null
+        setMemory(loadedMemory)
+        // scoreData puede venir de un error (tabla ausente, 500, etc.). Solo
+        // armamos scoreConfig cuando las 3 descripciones son strings reales;
+        // de lo contrario dejamos scoreConfig en null para que el Supervisor
+        // use sus valores por defecto en vez de mandar un objeto incompleto
+        // que rompería la validación de /api/ai/chat.
+        const hasValidDescriptions =
+          typeof scoreData?.lowDescription === 'string' &&
+          typeof scoreData?.intermediateDescription === 'string' &&
+          typeof scoreData?.highDescription === 'string'
+        setScoreConfig(
+          hasValidDescriptions
+            ? {
+                descriptions: {
+                  low: scoreData.lowDescription,
+                  intermediate: scoreData.intermediateDescription,
+                  high: scoreData.highDescription,
+                },
+              }
+            : null,
+        )
+        setActive(loadedMemory?.completeness === 'complete')
+      })
+      .finally(() => setLoadingMemory(false))
+  }, [selectedClient])
 
   return (
     <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">

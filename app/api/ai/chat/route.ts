@@ -81,7 +81,6 @@ export async function POST(request: Request) {
         ...(body?.scoreConfig ? { scoreConfig: body.scoreConfig } : {}),
       },
     }
-    console.log('[v0] AI request context keys:', Object.keys(normalizedBody.context ?? {}))
     const parsed = chatRequestSchema.safeParse(normalizedBody)
 
     if (!parsed.success) {
