@@ -14,7 +14,6 @@ import { createClient } from '@/lib/supabase/client'
 
 export function MultiagenteWorkspace() {
   const [selectedClient, setSelectedClient] = useState<AnalyzableClient | null>(null)
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [memory, setMemory] = useState<ClientMemory | null>(null)
   const [loadingMemory, setLoadingMemory] = useState(false)
   const [active, setActive] = useState(false)
@@ -22,11 +21,11 @@ export function MultiagenteWorkspace() {
   const [scoreConfig, setScoreConfig] = useState<{ descriptions: { low: string; intermediate: string; high: string } } | null>(null)
 
   async function handleSelectConversation(conversation: ConversationSummary) {
-    setSelectedConversationId(conversation.id)
     // Mostramos el nombre ya conocido de inmediato; en paralelo traemos el
     // registro completo del cliente (con sus cuentas publicitarias) para que
     // el selector de cliente y el chat queden 100% equivalentes a haberlo
-    // elegido desde el combobox.
+    // elegido desde el combobox. Como hay un único chat por cliente, elegir
+    // un chat del sidebar es exactamente lo mismo que elegir su cliente.
     setSelectedClient({ id: conversation.clientId, nombre_del_negocio: conversation.clientName, cuentas_publicitarias: [] })
 
     const supabase = createClient()
@@ -41,10 +40,6 @@ export function MultiagenteWorkspace() {
     }
   }
 
-  function handleSelectClientFromCombobox(client: AnalyzableClient | null) {
-    setSelectedConversationId(null)
-    setSelectedClient(client)
-  }
   useEffect(() => {
     if (!selectedClient) {
       setMemory(null)
@@ -109,13 +104,13 @@ export function MultiagenteWorkspace() {
         </header>
 
         <div className="flex flex-col gap-6 lg:flex-row">
-          <ConversationsSidebar activeConversationId={selectedConversationId} onSelect={handleSelectConversation} />
+          <ConversationsSidebar activeClientId={selectedClient?.id ?? null} onSelect={handleSelectConversation} />
 
           <div className="flex min-w-0 flex-1 flex-col gap-6">
             <div className="flex flex-col gap-2">
               <span className="text-sm font-medium text-foreground">Cliente a analizar</span>
               <div className="flex flex-wrap items-center gap-3">
-                <ClientSelector value={selectedClient} onChange={handleSelectClientFromCombobox} />
+                <ClientSelector value={selectedClient} onChange={setSelectedClient} />
                 {selectedClient && memory && !loadingMemory && !editingMemory && <Button variant="outline" size="sm" onClick={() => setEditingMemory(true)}><Pencil className="mr-2 size-4" aria-hidden="true" />Actualizar memoria</Button>}
               </div>
             </div>
@@ -128,7 +123,6 @@ export function MultiagenteWorkspace() {
               <SupervisorChat
                 key={selectedClient?.id ?? 'no-client'}
                 clientId={selectedClient?.id ?? null}
-                initialConversationId={selectedConversationId}
                 disabled={!selectedClient}
                 disabledMessage="Seleccioná un cliente para comenzar el análisis."
                 scoreConfig={scoreConfig ?? undefined}

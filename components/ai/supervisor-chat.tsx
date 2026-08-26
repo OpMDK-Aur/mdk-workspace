@@ -47,8 +47,6 @@ interface SupervisorChatProps {
   title?: string
   description?: string
   emptyStateMessage?: string
-  /** Cuando viene de seleccionar un chat en el sidebar, reabre esa conversación puntual en vez de la más reciente del cliente. */
-  initialConversationId?: string | null
 }
 
 type PersistedMessage = {
@@ -60,7 +58,7 @@ type PersistedMessage = {
 }
 
 export function SupervisorChat(props: SupervisorChatProps) {
-  const { clientId, disabled = false, initialConversationId = null } = props
+  const { clientId, disabled = false } = props
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [history, setHistory] = useState<PersistedMessage[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
@@ -74,10 +72,13 @@ export function SupervisorChat(props: SupervisorChatProps) {
 
     let cancelled = false
     setIsLoadingHistory(true)
+    // Cada cliente tiene exactamente un chat activo (garantizado por un
+    // índice único en la base), así que alcanza con mandar el clientId: el
+    // backend siempre resuelve/crea ese único chat, nunca uno nuevo.
     fetch('/api/ai/conversations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ clientId, conversationId: initialConversationId }),
+      body: JSON.stringify({ clientId }),
     })
       .then(async (response) => {
         if (!response.ok) throw new Error('No se pudo cargar la conversación.')
@@ -99,7 +100,7 @@ export function SupervisorChat(props: SupervisorChatProps) {
       })
 
     return () => { cancelled = true }
-  }, [clientId, disabled, initialConversationId])
+  }, [clientId, disabled])
 
   if (isLoadingHistory && clientId && !disabled) {
     return <SupervisorChatShell {...props} loading />

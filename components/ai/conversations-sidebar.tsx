@@ -34,11 +34,12 @@ function relativeTime(iso: string) {
 export const CONVERSATIONS_SWR_KEY = '/api/ai/conversations'
 
 interface ConversationsSidebarProps {
-  activeConversationId: string | null
+  /** Hay un único chat por cliente, así que resaltamos por clientId en vez de conversationId. */
+  activeClientId: string | null
   onSelect: (conversation: ConversationSummary) => void
 }
 
-export function ConversationsSidebar({ activeConversationId, onSelect }: ConversationsSidebarProps) {
+export function ConversationsSidebar({ activeClientId, onSelect }: ConversationsSidebarProps) {
   const { data, error, isLoading } = useSWR(CONVERSATIONS_SWR_KEY, fetcher, {
     refreshInterval: 30000,
   })
@@ -70,7 +71,7 @@ export function ConversationsSidebar({ activeConversationId, onSelect }: Convers
       {!isLoading && conversations.length > 0 && (
         <nav aria-label="Chats activos" className="flex flex-col gap-1">
           {conversations.map((conversation) => {
-            const isActive = conversation.id === activeConversationId
+            const isActive = conversation.clientId === activeClientId
             return (
               <button
                 key={conversation.id}

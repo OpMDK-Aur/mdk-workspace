@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const conversation = await getOrCreateConversation(supabase, user.id, body.clientId, body.conversationId)
+    const conversation = await getOrCreateConversation(supabase, user.id, body.clientId)
     const messages = await listConversationMessages(supabase, user.id, conversation.id)
     return NextResponse.json({ conversation, messages })
   } catch (error) {

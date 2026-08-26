@@ -12,31 +12,18 @@ type ConversationRow = {
 
 type MessageRole = 'user' | 'assistant'
 
-export async function getOrCreateConversation(
-  supabase: SupabaseClient,
-  userId: string,
-  clientId: string,
-  conversationId?: string | null,
-) {
-  if (conversationId) {
-    const { data, error } = await supabase
-      .from('ai_conversations')
-      .select('id, user_id, client_id, title, created_at, updated_at')
-      .eq('id', conversationId)
-      .eq('user_id', userId)
-      .eq('client_id', clientId)
-      .maybeSingle()
+const CONVERSATION_COLUMNS = 'id, user_id, client_id, title, created_at, updated_at'
 
-    if (error) throw error
-    if (data) return data as ConversationRow
-  }
-
-  // Sin un conversationId explícito, reutilizamos la conversación activa más
-  // reciente de este cliente en vez de crear una nueva cada vez. Esto es lo
-  // que mantiene un solo "chat activo" por cliente en el sidebar.
+/**
+ * Hay como máximo un chat activo por (usuario, cliente) — lo garantiza el
+ * índice único `ai_conversations_one_active_per_client` en la base. Por eso
+ * esta función ignora cualquier `conversationId` suelto: el chat siempre se
+ * resuelve por cliente, nunca por id de conversación puntual.
+ */
+export async function getOrCreateConversation(supabase: SupabaseClient, userId: string, clientId: string) {
   const { data: existing, error: existingError } = await supabase
     .from('ai_conversations')
-    .select('id, user_id, client_id, title, created_at, updated_at')
+    .select(CONVERSATION_COLUMNS)
     .eq('user_id', userId)
     .eq('client_id', clientId)
     .eq('archived', false)
@@ -50,10 +37,26 @@ export async function getOrCreateConversation(
   const { data, error } = await supabase
     .from('ai_conversations')
     .insert({ user_id: userId, client_id: clientId, title: null })
-    .select('id, user_id, client_id, title, created_at, updated_at')
+    .select(CONVERSATION_COLUMNS)
     .single()
 
-  if (error) throw error
+  if (error) {
+    // 23505 = unique_violation: otra request creó el chat de este cliente
+    // justo antes que esta. En vez de fallar, recuperamos la fila que ganó
+    // la carrera.
+    if (error.code === '23505') {
+      const { data: winner, error: winnerError } = await supabase
+        .from('ai_conversations')
+        .select(CONVERSATION_COLUMNS)
+        .eq('user_id', userId)
+        .eq('client_id', clientId)
+        .eq('archived', false)
+        .single()
+      if (winnerError) throw winnerError
+      return winner as ConversationRow
+    }
+    throw error
+  }
   return data as ConversationRow
 }
 
