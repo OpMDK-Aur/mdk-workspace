@@ -71,7 +71,18 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const parsed = chatRequestSchema.safeParse(body)
+    // AI SDK puede enviar campos adicionales del transporte en el body raíz.
+    // Normalizamos ambas formas para que el contexto del cliente nunca se pierda.
+    const normalizedBody = {
+      ...body,
+      context: body?.context ?? {
+        ...(body?.clientId ? { clientId: body.clientId } : {}),
+        ...(body?.conversationId ? { conversationId: body.conversationId } : {}),
+        ...(body?.scoreConfig ? { scoreConfig: body.scoreConfig } : {}),
+      },
+    }
+    console.log('[v0] AI request context keys:', Object.keys(normalizedBody.context ?? {}))
+    const parsed = chatRequestSchema.safeParse(normalizedBody)
 
     if (!parsed.success) {
       console.error('[v0] AI request validation failed:', parsed.error.flatten())
