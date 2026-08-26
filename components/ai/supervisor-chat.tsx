@@ -171,7 +171,13 @@ function SupervisorChatSession({
     const query = input.trim()
     if (!query || isInputDisabled) return
     setInput('')
-    await sendMessage({ text: query })
+    await sendMessage({ text: query }, {
+      body: {
+        context: clientId
+          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}) }
+          : {},
+      },
+    })
   }
 
   return (
