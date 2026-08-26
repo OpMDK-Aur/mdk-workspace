@@ -322,17 +322,34 @@ export const useTimerStore = create<TimerState>()(
             return
           }
 
-          const { data, error } = await supabase
-            .from('entradas_de_tiempo')
-            .select('*')
-            .eq('colaborador_id', colaborador.id)
-            .order('iniciado_en', { ascending: false })
-            .limit(100)
+          const pageSize = 1000
+          const allEntries: TimeEntry[] = []
+          let page = 0
+          let error: { message?: string } | null = null
 
-          if (!error && data) {
+          while (true) {
+            const from = page * pageSize
+            const to = from + pageSize - 1
+            const { data: pageEntries, error: pageError } = await supabase
+              .from('entradas_de_tiempo')
+              .select('*')
+              .eq('colaborador_id', colaborador.id)
+              .order('iniciado_en', { ascending: false })
+              .range(from, to)
+
+            if (pageError) {
+              error = pageError
+              break
+            }
+            allEntries.push(...(pageEntries ?? []))
+            if (!pageEntries || pageEntries.length < pageSize) break
+            page += 1
+          }
+
+          if (!error) {
             // Filter out entries with invalid iniciado_en
-            const validEntries = data.filter((e) => e.iniciado_en && !isNaN(new Date(e.iniciado_en).getTime()))
-            set({ entries: validEntries as TimeEntry[] })
+            const validEntries = allEntries.filter((e) => e.iniciado_en && !isNaN(new Date(e.iniciado_en).getTime()))
+            set({ entries: validEntries })
 
             // Check if there's actually a running entry in the database
             const runningEntry = validEntries.find((e) => e.finalizado_en === null)
