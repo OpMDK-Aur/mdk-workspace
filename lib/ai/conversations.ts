@@ -230,15 +230,19 @@ export async function listConversations(
     if (client?.account_manager_id) managerIds.add(client.account_manager_id)
   }
 
+  // project_manager_id / account_manager_id en clientes referencian colaboradores(id),
+  // no profiles(id): el nombre completo se compone de nombre + apellido, igual que en
+  // app/dashboard/platform/page.tsx y app/dashboard/agentes/controller/page.tsx.
   const managerNameById = new Map<string, string>()
   if (managerIds.size > 0) {
     const { data: managers, error: managersError } = await supabase
-      .from('profiles')
-      .select('id, full_name')
+      .from('colaboradores')
+      .select('id, nombre, apellido')
       .in('id', Array.from(managerIds))
     if (managersError) throw managersError
     for (const manager of managers ?? []) {
-      if (manager.full_name) managerNameById.set(manager.id, manager.full_name)
+      const fullName = `${manager.nombre || ''}${manager.apellido ? ' ' + manager.apellido : ''}`.trim()
+      if (fullName) managerNameById.set(manager.id, fullName)
     }
   }
 
