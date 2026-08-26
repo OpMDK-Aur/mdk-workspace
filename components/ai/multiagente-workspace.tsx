@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { Fraunces } from 'next/font/google'
-import { Eye, Pencil, Sparkles } from 'lucide-react'
+import { Eye, Info, Pencil, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { ClientSelector, type AnalyzableClient } from './client-selector'
 import { SupervisorChat } from './supervisor-chat'
@@ -118,21 +119,38 @@ export function MultiagenteWorkspace() {
 
           <div className="flex min-w-0 flex-1 flex-col gap-6">
             <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-foreground">Cliente a analizar</span>
-              <div className="flex flex-wrap items-center gap-3">
-                <ClientSelector value={selectedClient} onChange={setSelectedClient} />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm font-medium text-foreground">Cliente a analizar</span>
                 {selectedClient && memory && !loadingMemory && !editingMemory && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingMemory(true)}
-                    className="gap-1.5 text-muted-foreground hover:text-foreground"
-                  >
-                    <Eye className="size-4" aria-hidden="true" />
-                    Ver memoria
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditingMemory(true)}
+                      className="gap-1.5 border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 hover:text-primary"
+                    >
+                      <Eye className="size-4" aria-hidden="true" />
+                      Ver memoria
+                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex size-6 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+                          aria-label="Qué muestra Ver memoria"
+                        >
+                          <Info className="size-4" aria-hidden="true" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-64 text-pretty">
+                        Abre el contexto guardado del cliente: industria, objetivo comercial, qué vende y su conversión principal. Desde ahí también podés editarlo.
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
                 )}
               </div>
+              <ClientSelector value={selectedClient} onChange={setSelectedClient} />
             </div>
             {selectedClient && <ScoreConfigPanel clientId={selectedClient.id} onSaved={setScoreConfig} />}
 
