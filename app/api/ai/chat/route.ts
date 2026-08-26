@@ -184,7 +184,10 @@ export async function POST(request: Request) {
           userId: user.id,
           role: 'assistant',
           content: assistantText,
-          messageData: workingContext ? { context_snapshot: workingContext } : undefined,
+          messageData: {
+            ...(workingContext ? { context_snapshot: workingContext } : {}),
+            ...(analysisRunState.specialistOutputs.at(-1) ? { performance_analysis: analysisRunState.specialistOutputs.at(-1) } : {}),
+          },
         })
       },
     })

@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { MessageContent } from '@/components/chat/message-content'
+import { AIAnalysisPanel } from './ai-analysis-panel'
 
 function messageText(message: UIMessage) {
   return message.parts
@@ -51,6 +52,7 @@ type PersistedMessage = {
   role: 'user' | 'assistant'
   content: string
   created_at: string
+  message_data?: { performance_analysis?: { optimization_score?: number; optimization_level?: string; recommendations?: Array<{ descripcion?: string }> } } | null
 }
 
 export function SupervisorChat(props: SupervisorChatProps) {
@@ -178,7 +180,9 @@ function SupervisorChatSession({
         <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex flex-col gap-4 p-0">
+        <div className="flex flex-col lg:flex-row">
+          <div className="flex min-w-0 flex-1 flex-col gap-4 p-4">
         <div className="flex min-h-[360px] flex-col gap-3 rounded-lg border bg-muted/30 p-4" aria-live="polite">
           {disabled ? (
             <div className="m-auto flex max-w-sm flex-col items-center gap-3 text-center text-muted-foreground">
@@ -264,6 +268,9 @@ function SupervisorChatSession({
             Enviar
           </Button>
         </form>
+          </div>
+          <AIAnalysisPanel content={lastMessage?.role === 'assistant' ? messageText(lastMessage) : ''} analysis={initialMessages.findLast((message) => message.role === 'assistant')?.message_data?.performance_analysis ?? null} />
+        </div>
       </CardContent>
     </Card>
   )
