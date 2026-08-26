@@ -78,12 +78,12 @@ export function ClientSelector({ value, onChange }: ClientSelectorProps) {
   }, [])
 
   const [resolvedAccounts, setResolvedAccounts] = useState<ClientAccount[]>([])
-  const [selectedAccount, setSelectedAccount] = useState<ClientAccount | null>(null)
+  const [selectedAccounts, setSelectedAccounts] = useState<ClientAccount[]>([])
   const [accountOpen, setAccountOpen] = useState(false)
 
   useEffect(() => {
     let active = true
-    setSelectedAccount(null)
+    setSelectedAccounts([])
     setResolvedAccounts([])
     if (!value?.id) return () => { active = false }
     fetch(`/api/agentes/analista/cuentas?clientId=${encodeURIComponent(value.id)}`)
@@ -155,7 +155,7 @@ export function ClientSelector({ value, onChange }: ClientSelectorProps) {
           <Popover open={accountOpen} onOpenChange={setAccountOpen}>
             <PopoverTrigger asChild>
               <Button variant="outline" role="combobox" aria-expanded={accountOpen} className="w-full justify-between sm:w-[360px]" disabled={accounts.length === 0}>
-                {selectedAccount ? `${selectedAccount.nombre_cuenta || 'Sin nombre'} · ${selectedAccount.id_cuenta}` : accounts.length ? 'Seleccionar cuenta publicitaria…' : 'Sin cuentas publicitarias'}
+                {selectedAccounts.length ? `${selectedAccounts.length} cuenta${selectedAccounts.length === 1 ? '' : 's'} seleccionada${selectedAccounts.length === 1 ? '' : 's'}` : accounts.length ? 'Seleccionar cuentas publicitarias…' : 'Sin cuentas publicitarias'}
                 <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" aria-hidden="true" />
               </Button>
             </PopoverTrigger>
@@ -167,7 +167,7 @@ export function ClientSelector({ value, onChange }: ClientSelectorProps) {
                   <CommandGroup>
                     {accounts.map((account) => {
                       const label = `${account.nombre_cuenta || 'Sin nombre'} ${account.id_cuenta}`
-                      return <CommandItem key={`${account.plataforma}-${account.id_cuenta}`} value={label} onSelect={() => { setSelectedAccount(account); setAccountOpen(false) }}><Check className={cn('mr-2 size-4', selectedAccount?.id_cuenta === account.id_cuenta ? 'opacity-100' : 'opacity-0')} aria-hidden="true" /><span className="flex flex-col"><span>{account.nombre_cuenta || 'Sin nombre'}</span><span className="font-mono text-xs text-muted-foreground">{account.id_cuenta} · {platformLabel(account.plataforma)}</span></span></CommandItem>
+                      return <CommandItem key={`${account.plataforma}-${account.id_cuenta}`} value={label} onSelect={() => { setSelectedAccounts((current) => current.some((item) => item.id_cuenta === account.id_cuenta && item.plataforma === account.plataforma) ? current.filter((item) => !(item.id_cuenta === account.id_cuenta && item.plataforma === account.plataforma)) : [...current, account]) }}><Check className={cn('mr-2 size-4', selectedAccounts.some((item) => item.id_cuenta === account.id_cuenta && item.plataforma === account.plataforma) ? 'opacity-100' : 'opacity-0')} aria-hidden="true" /><span className="flex flex-col"><span>{account.nombre_cuenta || 'Sin nombre'}</span><span className="font-mono text-xs text-muted-foreground">{account.id_cuenta} · {platformLabel(account.plataforma)}</span></span></CommandItem>
                     })}
                   </CommandGroup>
                 </CommandList>
