@@ -1,8 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Fraunces } from 'next/font/google'
 import { Pencil, Sparkles } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { ClientSelector, type AnalyzableClient } from './client-selector'
 import { SupervisorChat } from './supervisor-chat'
 import { ClientContextForm } from './client-context-form'
@@ -11,6 +14,11 @@ import { ConversationsSidebar, type ConversationSummary } from './conversations-
 import type { ClientMemory } from '@/lib/ai/client-memory'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createClient } from '@/lib/supabase/client'
+
+// Tipografía distintiva sólo para el título del workspace: un serif editorial
+// con eje óptico (opsz) e itálica propia, para diferenciarlo del Geist Sans
+// que usa el resto del producto sin sumar una tercera familia global.
+const displayFont = Fraunces({ subsets: ['latin'], weight: ['500', '600'], style: ['normal', 'italic'], variable: '--font-display' })
 
 export function MultiagenteWorkspace() {
   const [selectedClient, setSelectedClient] = useState<AnalyzableClient | null>(null)
@@ -97,7 +105,9 @@ export function MultiagenteWorkspace() {
             <Sparkles className="size-5" aria-hidden="true" />
             <span className="font-mono text-xs uppercase tracking-[0.18em]">AI WORKSPACE - QA VERSION</span>
           </div>
-          <h1 className="text-balance text-3xl font-semibold tracking-tight md:text-4xl">Multiagente</h1>
+          <h1 className={cn(displayFont.className, 'text-balance text-4xl italic tracking-tight text-foreground md:text-5xl')}>
+            Paid Media Assistant
+          </h1>
           <p className="max-w-2xl text-pretty text-muted-foreground">
             Elegí un cliente para que el sistema analice sus cuentas publicitarias y responda tus consultas.
           </p>
@@ -117,7 +127,7 @@ export function MultiagenteWorkspace() {
             {selectedClient && <ScoreConfigPanel clientId={selectedClient.id} onSaved={setScoreConfig} />}
 
             {selectedClient && loadingMemory && <div className="flex flex-col gap-4"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>}
-            {selectedClient && !loadingMemory && editingMemory && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} mode="edit" onCancel={() => setEditingMemory(false)} onCompleted={(updated) => { setMemory(updated); setEditingMemory(false); setActive(true) }} />}
+            {selectedClient && !loadingMemory && editingMemory && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} mode="edit" onCancel={() => setEditingMemory(false)} onCompleted={(updated) => { setMemory(updated); setEditingMemory(false); setActive(true); toast.success('Memoria del cliente actualizada.') }} />}
             {selectedClient && !loadingMemory && !active && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} onCompleted={(updated) => { setMemory(updated); setActive(true) }} />}
             {active && (
               <SupervisorChat

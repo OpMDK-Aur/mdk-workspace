@@ -76,6 +76,24 @@ export async function archiveConversation(supabase: SupabaseClient, userId: stri
   if (error) throw error
 }
 
+/**
+ * Desarchiva una conversación para volver a mostrarla en "Chats activos".
+ * Si el cliente ya tiene otro chat activo (porque se creó uno nuevo después
+ * de archivar este), el índice único `ai_conversations_one_active_per_client`
+ * rechaza la operación con 23505: en ese caso no hay nada seguro que hacer
+ * automáticamente, así que dejamos que el error suba y el llamador informe
+ * que hay que archivar el chat activo actual antes de restaurar este.
+ */
+export async function unarchiveConversation(supabase: SupabaseClient, userId: string, conversationId: string) {
+  const { error } = await supabase
+    .from('ai_conversations')
+    .update({ archived: false })
+    .eq('id', conversationId)
+    .eq('user_id', userId)
+
+  if (error) throw error
+}
+
 export async function saveConversationMessage(
   supabase: SupabaseClient,
   input: {
@@ -122,19 +140,48 @@ export interface ConversationSummary {
   lastMessageRole: MessageRole | null
   /** Último optimization_score que dejó el Performance Analyst en esta conversación, si ya corrió al menos un análisis. */
   optimizationScore: number | null
+  archived: boolean
+  unidadesNegocio: string[]
+  /** Peor semáforo entre las unidades de negocio del cliente (rojo > naranja > amarillo > verde), o null si no tiene definido. */
+  semaforo: string | null
+  projectManagerId: string | null
+  projectManagerName: string | null
+  accountManagerId: string | null
+  accountManagerName: string | null
 }
 
-export async function listActiveConversations(
+const SEMAFORO_SEVERITY: Record<string, number> = { rojo: 4, naranja: 3, amarillo: 2, verde: 1 }
+
+function worstSemaforo(semaforoUnidades: Record<string, string> | null, unidades: string[] | null): string | null {
+  if (!semaforoUnidades) return null
+  const keys = unidades && unidades.length > 0 ? unidades : Object.keys(semaforoUnidades)
+  const relevant = keys.map((key) => semaforoUnidades[key]).filter((value): value is string => typeof value === 'string')
+  if (relevant.length === 0) return null
+  return relevant.reduce((worst, current) => ((SEMAFORO_SEVERITY[current] ?? 0) > (SEMAFORO_SEVERITY[worst] ?? 0) ? current : worst))
+}
+
+export interface ListConversationsOptions {
+  /** Por default sólo se listan los chats activos (no archivados). */
+  includeArchived?: boolean
+}
+
+export async function listConversations(
   supabase: SupabaseClient,
   userId: string,
+  options?: ListConversationsOptions,
 ): Promise<ConversationSummary[]> {
-  const { data: conversations, error } = await supabase
+  let query = supabase
     .from('ai_conversations')
-    .select('id, client_id, updated_at, clientes(nombre_del_negocio)')
+    .select(
+      'id, client_id, updated_at, archived, clientes(nombre_del_negocio, unidades_negocio, semaforo_unidades, project_manager_id, account_manager_id)',
+    )
     .eq('user_id', userId)
-    .eq('archived', false)
     .order('updated_at', { ascending: false })
-    .limit(50)
+    .limit(100)
+
+  if (!options?.includeArchived) query = query.eq('archived', false)
+
+  const { data: conversations, error } = await query
 
   if (error) throw error
   const rows = conversations ?? []
@@ -166,9 +213,37 @@ export async function listActiveConversations(
     }
   }
 
+  type ClientRelation = {
+    nombre_del_negocio: string | null
+    unidades_negocio: string[] | null
+    semaforo_unidades: Record<string, string> | null
+    project_manager_id: string | null
+    account_manager_id: string | null
+  }
+  const clientByConversation = new Map<string, ClientRelation | null>()
+  const managerIds = new Set<string>()
+  for (const row of rows) {
+    const clientRelation = row.clientes as ClientRelation | ClientRelation[] | null
+    const client = Array.isArray(clientRelation) ? clientRelation[0] ?? null : clientRelation
+    clientByConversation.set(row.id, client)
+    if (client?.project_manager_id) managerIds.add(client.project_manager_id)
+    if (client?.account_manager_id) managerIds.add(client.account_manager_id)
+  }
+
+  const managerNameById = new Map<string, string>()
+  if (managerIds.size > 0) {
+    const { data: managers, error: managersError } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .in('id', Array.from(managerIds))
+    if (managersError) throw managersError
+    for (const manager of managers ?? []) {
+      if (manager.full_name) managerNameById.set(manager.id, manager.full_name)
+    }
+  }
+
   return rows.map((row) => {
-    const clientRelation = row.clientes as { nombre_del_negocio: string | null } | { nombre_del_negocio: string | null }[] | null
-    const client = Array.isArray(clientRelation) ? clientRelation[0] : clientRelation
+    const client = clientByConversation.get(row.id) ?? null
     const preview = previewByConversation.get(row.id)
     return {
       id: row.id,
@@ -178,6 +253,13 @@ export async function listActiveConversations(
       lastMessagePreview: preview?.content ?? null,
       lastMessageRole: preview?.role ?? null,
       optimizationScore: scoreByConversation.get(row.id) ?? null,
+      archived: row.archived,
+      unidadesNegocio: client?.unidades_negocio ?? [],
+      semaforo: worstSemaforo(client?.semaforo_unidades ?? null, client?.unidades_negocio ?? null),
+      projectManagerId: client?.project_manager_id ?? null,
+      projectManagerName: client?.project_manager_id ? managerNameById.get(client.project_manager_id) ?? null : null,
+      accountManagerId: client?.account_manager_id ?? null,
+      accountManagerName: client?.account_manager_id ? managerNameById.get(client.account_manager_id) ?? null : null,
     }
   })
 }
