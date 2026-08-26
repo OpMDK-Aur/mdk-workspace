@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Fraunces } from 'next/font/google'
-import { Pencil, Sparkles } from 'lucide-react'
+import { Eye, Pencil, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -121,7 +121,17 @@ export function MultiagenteWorkspace() {
               <span className="text-sm font-medium text-foreground">Cliente a analizar</span>
               <div className="flex flex-wrap items-center gap-3">
                 <ClientSelector value={selectedClient} onChange={setSelectedClient} />
-                {selectedClient && memory && !loadingMemory && !editingMemory && <Button variant="outline" size="sm" onClick={() => setEditingMemory(true)}><Pencil className="mr-2 size-4" aria-hidden="true" />Actualizar memoria</Button>}
+                {selectedClient && memory && !loadingMemory && !editingMemory && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingMemory(true)}
+                    className="gap-1.5 text-muted-foreground hover:text-foreground"
+                  >
+                    <Eye className="size-4" aria-hidden="true" />
+                    Ver memoria
+                  </Button>
+                )}
               </div>
             </div>
             {selectedClient && <ScoreConfigPanel clientId={selectedClient.id} onSaved={setScoreConfig} />}
