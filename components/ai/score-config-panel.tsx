@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Gauge, TrendingUp } from 'lucide-react'
+import { AlertTriangle, Gauge, Sparkles, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -13,6 +13,7 @@ export function ScoreConfigPanel({ clientId, onSaved }: { clientId: string; onSa
   const [descriptions, setDescriptions] = useState(defaults)
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [suggesting, setSuggesting] = useState(false)
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -23,6 +24,18 @@ export function ScoreConfigPanel({ clientId, onSaved }: { clientId: string; onSa
       .then((data) => { setDescriptions({ low: data.lowDescription || defaults.low, intermediate: data.intermediateDescription || defaults.intermediate, high: data.highDescription || defaults.high }) })
       .catch(() => setMessage('No se pudo cargar la configuración.'))
   }, [clientId])
+
+  async function suggest() {
+    setMessage('')
+    setSuggesting(true)
+    try {
+      const response = await fetch('/api/ai/score-config/suggest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId, ...descriptions }) })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'No se pudo generar la sugerencia.')
+      setDescriptions({ low: data.lowDescription || descriptions.low, intermediate: data.intermediateDescription || descriptions.intermediate, high: data.highDescription || descriptions.high })
+      setMessage('Sugerencia generada. Revisá el texto y guardá cuando estés de acuerdo.')
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo generar la sugerencia.') } finally { setSuggesting(false) }
+  }
 
   async function save() {
     setMessage('')
@@ -38,6 +51,13 @@ export function ScoreConfigPanel({ clientId, onSaved }: { clientId: string; onSa
 
   return <section className="flex flex-col gap-4 rounded-lg border bg-card p-4" aria-labelledby="score-config-title">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 id="score-config-title" className="font-medium">Optimización de campañas</h2><p className="text-sm text-muted-foreground">Definí qué significa una optimización baja, intermedia o alta para este cliente.</p></div><Button type="button" variant="outline" size="sm" onClick={() => setOpen((value) => !value)}>{open ? 'Ocultar configuración' : 'Configurar niveles'}</Button></div>
-    {open && <div className="flex flex-col gap-4 border-t pt-4">{([['low', 'Baja'], ['intermediate', 'Intermedia'], ['high', 'Alta']] as const).map(([key, label]) => { const Icon = LEVEL_ICON[key]; return <label key={key} className="flex flex-col gap-2 text-sm"><span className="flex items-center gap-1.5 font-medium"><Icon className={`size-4 ${LEVEL_ICON_COLOR[key]}`} aria-hidden="true" />Optimización {label}</span><Textarea value={descriptions[key]} onChange={(event) => setDescriptions((current) => ({ ...current, [key]: event.target.value }))} rows={4} placeholder={`Describí cuándo una campaña tiene optimización ${label.toLowerCase()}.`} /></label> })}<div className="flex items-center gap-3"><Button type="button" onClick={save} disabled={saving}>{saving ? 'Guardando…' : 'Guardar configuración'}</Button>{message && <span className="text-sm text-muted-foreground" role="status">{message}</span>}</div></div>}
+    {open && <div className="flex flex-col gap-4 border-t pt-4">      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed bg-muted/40 p-3">
+        <p className="text-sm text-muted-foreground">Dejá que la IA proponga o mejore la redacción de los tres niveles según lo que ya escribiste.</p>
+        <Button type="button" variant="secondary" size="sm" onClick={suggest} disabled={suggesting} className="gap-1.5 shrink-0">
+          <Sparkles className="size-4" aria-hidden="true" />
+          {suggesting ? 'Generando sugerencia…' : 'Sugerir con IA'}
+        </Button>
+      </div>
+      {([['low', 'Baja'], ['intermediate', 'Intermedia'], ['high', 'Alta']] as const).map(([key, label]) => { const Icon = LEVEL_ICON[key]; return <label key={key} className="flex flex-col gap-2 text-sm"><span className="flex items-center gap-1.5 font-medium"><Icon className={`size-4 ${LEVEL_ICON_COLOR[key]}`} aria-hidden="true" />Optimización {label}</span><Textarea value={descriptions[key]} onChange={(event) => setDescriptions((current) => ({ ...current, [key]: event.target.value }))} rows={4} placeholder={`Describí cuándo una campaña tiene optimización ${label.toLowerCase()}.`} disabled={suggesting} /></label> })}<div className="flex items-center gap-3"><Button type="button" onClick={save} disabled={saving || suggesting}>{saving ? 'Guardando…' : 'Guardar configuración'}</Button>{message && <span className="text-sm text-muted-foreground" role="status">{message}</span>}</div></div>}
   </section>
 }
