@@ -31,6 +31,22 @@ export async function getOrCreateConversation(
     if (data) return data as ConversationRow
   }
 
+  // Sin un conversationId explícito, reutilizamos la conversación activa más
+  // reciente de este cliente en vez de crear una nueva cada vez. Esto es lo
+  // que mantiene un solo "chat activo" por cliente en el sidebar.
+  const { data: existing, error: existingError } = await supabase
+    .from('ai_conversations')
+    .select('id, user_id, client_id, title, created_at, updated_at')
+    .eq('user_id', userId)
+    .eq('client_id', clientId)
+    .eq('archived', false)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (existingError) throw existingError
+  if (existing) return existing as ConversationRow
+
   const { data, error } = await supabase
     .from('ai_conversations')
     .insert({ user_id: userId, client_id: clientId, title: null })
@@ -76,6 +92,63 @@ export async function getLatestWorkingContext(supabase: SupabaseClient, conversa
     if (parsed.success && parsed.data.client_id === clientId) return parsed.data
   }
   return null
+}
+
+export interface ConversationSummary {
+  id: string
+  clientId: string
+  clientName: string
+  updatedAt: string
+  lastMessagePreview: string | null
+  lastMessageRole: MessageRole | null
+}
+
+export async function listActiveConversations(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<ConversationSummary[]> {
+  const { data: conversations, error } = await supabase
+    .from('ai_conversations')
+    .select('id, client_id, updated_at, clientes(nombre_del_negocio)')
+    .eq('user_id', userId)
+    .eq('archived', false)
+    .order('updated_at', { ascending: false })
+    .limit(50)
+
+  if (error) throw error
+  const rows = conversations ?? []
+  if (rows.length === 0) return []
+
+  const { data: lastMessages, error: messagesError } = await supabase
+    .from('ai_messages')
+    .select('conversation_id, content, role, created_at')
+    .in('conversation_id', rows.map((row) => row.id))
+    .order('created_at', { ascending: false })
+
+  if (messagesError) throw messagesError
+
+  // Nos quedamos con el primer mensaje que aparece por conversation_id: como
+  // vienen ordenados desc por created_at, es el más reciente.
+  const previewByConversation = new Map<string, { content: string; role: MessageRole }>()
+  for (const message of lastMessages ?? []) {
+    if (!previewByConversation.has(message.conversation_id)) {
+      previewByConversation.set(message.conversation_id, { content: message.content, role: message.role })
+    }
+  }
+
+  return rows.map((row) => {
+    const clientRelation = row.clientes as { nombre_del_negocio: string | null } | { nombre_del_negocio: string | null }[] | null
+    const client = Array.isArray(clientRelation) ? clientRelation[0] : clientRelation
+    const preview = previewByConversation.get(row.id)
+    return {
+      id: row.id,
+      clientId: row.client_id,
+      clientName: client?.nombre_del_negocio ?? 'Cliente sin nombre',
+      updatedAt: row.updated_at,
+      lastMessagePreview: preview?.content ?? null,
+      lastMessageRole: preview?.role ?? null,
+    }
+  })
 }
 
 export async function listConversationMessages(

@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
+import { mutate } from 'swr'
 import { Bot, Check, ChevronRight, Loader2, Send, User, X } from 'lucide-react'
 import type { ActivityEvent } from '@/lib/ai/types'
 import { Button } from '@/components/ui/button'
@@ -11,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { MessageContent } from '@/components/chat/message-content'
 import { AIAnalysisPanel } from './ai-analysis-panel'
+import { CONVERSATIONS_SWR_KEY } from './conversations-sidebar'
 
 function messageText(message: UIMessage) {
   return message.parts
@@ -45,6 +47,8 @@ interface SupervisorChatProps {
   title?: string
   description?: string
   emptyStateMessage?: string
+  /** Cuando viene de seleccionar un chat en el sidebar, reabre esa conversación puntual en vez de la más reciente del cliente. */
+  initialConversationId?: string | null
 }
 
 type PersistedMessage = {
@@ -56,7 +60,7 @@ type PersistedMessage = {
 }
 
 export function SupervisorChat(props: SupervisorChatProps) {
-  const { clientId, disabled = false } = props
+  const { clientId, disabled = false, initialConversationId = null } = props
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [history, setHistory] = useState<PersistedMessage[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
@@ -73,7 +77,7 @@ export function SupervisorChat(props: SupervisorChatProps) {
     fetch('/api/ai/conversations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ clientId }),
+      body: JSON.stringify({ clientId, conversationId: initialConversationId }),
     })
       .then(async (response) => {
         if (!response.ok) throw new Error('No se pudo cargar la conversación.')
@@ -95,7 +99,7 @@ export function SupervisorChat(props: SupervisorChatProps) {
       })
 
     return () => { cancelled = true }
-  }, [clientId, disabled])
+  }, [clientId, disabled, initialConversationId])
 
   if (isLoadingHistory && clientId && !disabled) {
     return <SupervisorChatShell {...props} loading />
@@ -159,6 +163,11 @@ function SupervisorChatSession({
       if (dataPart.type === 'data-activity') {
         setCurrentActivity(dataPart.data as ActivityEvent)
       }
+    },
+    onFinish: () => {
+      // Revalida el listado de "chats activos" para que el sidebar refleje
+      // el nuevo último mensaje y suba esta conversación al tope.
+      mutate(CONVERSATIONS_SWR_KEY)
     },
   })
   const isBusy = status === 'submitted' || status === 'streaming'

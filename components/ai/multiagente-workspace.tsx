@@ -7,16 +7,44 @@ import { ClientSelector, type AnalyzableClient } from './client-selector'
 import { SupervisorChat } from './supervisor-chat'
 import { ClientContextForm } from './client-context-form'
 import { ScoreConfigPanel } from './score-config-panel'
+import { ConversationsSidebar, type ConversationSummary } from './conversations-sidebar'
 import type { ClientMemory } from '@/lib/ai/client-memory'
 import { Skeleton } from '@/components/ui/skeleton'
+import { createClient } from '@/lib/supabase/client'
 
 export function MultiagenteWorkspace() {
   const [selectedClient, setSelectedClient] = useState<AnalyzableClient | null>(null)
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [memory, setMemory] = useState<ClientMemory | null>(null)
   const [loadingMemory, setLoadingMemory] = useState(false)
   const [active, setActive] = useState(false)
   const [editingMemory, setEditingMemory] = useState(false)
   const [scoreConfig, setScoreConfig] = useState<{ descriptions: { low: string; intermediate: string; high: string } } | null>(null)
+
+  async function handleSelectConversation(conversation: ConversationSummary) {
+    setSelectedConversationId(conversation.id)
+    // Mostramos el nombre ya conocido de inmediato; en paralelo traemos el
+    // registro completo del cliente (con sus cuentas publicitarias) para que
+    // el selector de cliente y el chat queden 100% equivalentes a haberlo
+    // elegido desde el combobox.
+    setSelectedClient({ id: conversation.clientId, nombre_del_negocio: conversation.clientName, cuentas_publicitarias: [] })
+
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('clientes')
+      .select('id, nombre_del_negocio, cuentas_publicitarias(id_cuenta, nombre_cuenta, plataforma, activo)')
+      .eq('id', conversation.clientId)
+      .maybeSingle()
+
+    if (!error && data) {
+      setSelectedClient(data as unknown as AnalyzableClient)
+    }
+  }
+
+  function handleSelectClientFromCombobox(client: AnalyzableClient | null) {
+    setSelectedConversationId(null)
+    setSelectedClient(client)
+  }
   useEffect(() => {
     if (!selectedClient) {
       setMemory(null)
@@ -59,11 +87,16 @@ export function MultiagenteWorkspace() {
         setActive(loadedMemory?.completeness === 'complete')
       })
       .finally(() => setLoadingMemory(false))
-  }, [selectedClient])
+    // Depende sólo del id: al elegir un chat desde el sidebar, selectedClient
+    // se actualiza dos veces (versión parcial y luego completa con cuentas
+    // publicitarias) pero con el mismo id, y no queremos refetchear memoria
+    // ni score-config ni parpadear el chat activo por eso.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClient?.id])
 
   return (
     <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">
-      <div className="mx-auto flex max-w-5xl flex-col gap-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <header className="flex flex-col gap-2 border-b pb-6">
           <div className="flex items-center gap-2 text-primary">
             <Sparkles className="size-5" aria-hidden="true" />
@@ -75,19 +108,36 @@ export function MultiagenteWorkspace() {
           </p>
         </header>
 
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-foreground">Cliente a analizar</span>
-          <div className="flex flex-wrap items-center gap-3">
-            <ClientSelector value={selectedClient} onChange={setSelectedClient} />
-            {selectedClient && memory && !loadingMemory && !editingMemory && <Button variant="outline" size="sm" onClick={() => setEditingMemory(true)}><Pencil className="mr-2 size-4" aria-hidden="true" />Actualizar memoria</Button>}
+        <div className="flex flex-col gap-6 lg:flex-row">
+          <ConversationsSidebar activeConversationId={selectedConversationId} onSelect={handleSelectConversation} />
+
+          <div className="flex min-w-0 flex-1 flex-col gap-6">
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium text-foreground">Cliente a analizar</span>
+              <div className="flex flex-wrap items-center gap-3">
+                <ClientSelector value={selectedClient} onChange={handleSelectClientFromCombobox} />
+                {selectedClient && memory && !loadingMemory && !editingMemory && <Button variant="outline" size="sm" onClick={() => setEditingMemory(true)}><Pencil className="mr-2 size-4" aria-hidden="true" />Actualizar memoria</Button>}
+              </div>
+            </div>
+            {selectedClient && <ScoreConfigPanel clientId={selectedClient.id} onSaved={setScoreConfig} />}
+
+            {selectedClient && loadingMemory && <div className="flex flex-col gap-4"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>}
+            {selectedClient && !loadingMemory && editingMemory && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} mode="edit" onCancel={() => setEditingMemory(false)} onCompleted={(updated) => { setMemory(updated); setEditingMemory(false); setActive(true) }} />}
+            {selectedClient && !loadingMemory && !active && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} onCompleted={(updated) => { setMemory(updated); setActive(true) }} />}
+            {active && (
+              <SupervisorChat
+                key={selectedClient?.id ?? 'no-client'}
+                clientId={selectedClient?.id ?? null}
+                initialConversationId={selectedConversationId}
+                disabled={!selectedClient}
+                disabledMessage="Seleccioná un cliente para comenzar el análisis."
+                scoreConfig={scoreConfig ?? undefined}
+                title="Análisis del cliente"
+                description="El Multiagente consulta el contexto de la cuenta y responde con datos reales."
+              />
+            )}
           </div>
         </div>
-        {selectedClient && <ScoreConfigPanel clientId={selectedClient.id} onSaved={setScoreConfig} />}
-
-        {selectedClient && loadingMemory && <div className="flex flex-col gap-4"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>}
-        {selectedClient && !loadingMemory && editingMemory && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} mode="edit" onCancel={() => setEditingMemory(false)} onCompleted={(updated) => { setMemory(updated); setEditingMemory(false); setActive(true) }} />}
-        {selectedClient && !loadingMemory && !active && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} onCompleted={(updated) => { setMemory(updated); setActive(true) }} />}
-        {active && <SupervisorChat key={selectedClient?.id ?? 'no-client'} clientId={selectedClient?.id ?? null} disabled={!selectedClient} disabledMessage="Seleccioná un cliente para comenzar el análisis." scoreConfig={scoreConfig ?? undefined} title="Análisis del cliente" description="El Multiagente consulta el contexto de la cuenta y responde con datos reales." />}
       </div>
     </main>
   )
