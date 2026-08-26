@@ -16,8 +16,8 @@ export function MultiagenteWorkspace() {
   const [loadingMemory, setLoadingMemory] = useState(false)
   const [active, setActive] = useState(false)
   const [editingMemory, setEditingMemory] = useState(false)
-  const [scoreConfig, setScoreConfig] = useState<{ coldMax: number; warmMax: number } | null>(null)
-  useEffect(() => { if (!selectedClient) { setMemory(null); setScoreConfig(null); setActive(false); setEditingMemory(false); return }; setActive(false); setEditingMemory(false); setScoreConfig(null); setLoadingMemory(true); Promise.all([fetch(`/api/ai/client-memory?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json()), fetch(`/api/ai/score-config?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json())]).then(([memoryData, scoreData]) => { const loadedMemory = memoryData.memory as ClientMemory | null; setMemory(loadedMemory); setScoreConfig({ coldMax: scoreData.coldMax ?? 39, warmMax: scoreData.warmMax ?? 69 }); setActive(loadedMemory?.completeness === 'complete') }).finally(() => setLoadingMemory(false)) }, [selectedClient])
+  const [scoreConfig, setScoreConfig] = useState<{ descriptions: { low: string; intermediate: string; high: string } } | null>(null)
+  useEffect(() => { if (!selectedClient) { setMemory(null); setScoreConfig(null); setActive(false); setEditingMemory(false); return }; setActive(false); setEditingMemory(false); setScoreConfig(null); setLoadingMemory(true); Promise.all([fetch(`/api/ai/client-memory?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json()), fetch(`/api/ai/score-config?clientId=${encodeURIComponent(selectedClient.id)}`).then((r) => r.json())]).then(([memoryData, scoreData]) => { const loadedMemory = memoryData.memory as ClientMemory | null; setMemory(loadedMemory); setScoreConfig({ descriptions: { low: scoreData.lowDescription, intermediate: scoreData.intermediateDescription, high: scoreData.highDescription } }); setActive(loadedMemory?.completeness === 'complete') }).finally(() => setLoadingMemory(false)) }, [selectedClient])
 
   return (
     <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">

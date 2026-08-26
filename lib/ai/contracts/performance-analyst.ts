@@ -85,6 +85,8 @@ export const SpecialistOutputSchema = z.object({
   findings: z.array(FindingSchema),
   recommendations: z.array(RecommendationSchema),
   caveats: z.array(CaveatSchema),
+  optimization_level: z.enum(['baja', 'intermedia', 'alta']).optional(),
+  optimization_score: z.number().min(0).max(100).optional(),
 })
 
 export function normalizeSpecialistOutput(raw: unknown): unknown {
