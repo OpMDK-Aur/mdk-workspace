@@ -85,8 +85,15 @@ export const SpecialistOutputSchema = z.object({
   findings: z.array(FindingSchema),
   recommendations: z.array(RecommendationSchema),
   caveats: z.array(CaveatSchema),
-  optimization_level: z.enum(['baja', 'intermedia', 'alta']).optional(),
-  optimization_score: z.number().min(0).max(100).optional(),
+  // OpenAI structured outputs en modo strict exige que TODAS las propiedades
+  // del objeto figuren en "required" del JSON Schema generado. z.optional()
+  // las excluye de ese array y rompe la llamada con un 400 ("'required' is
+  // required to be supplied and to be an array including every key in
+  // properties"). Usamos z.nullable() en su lugar: el campo sigue siendo
+  // obligatorio en el schema, pero el modelo puede devolver null cuando no
+  // hay evidencia suficiente para clasificar.
+  optimization_level: z.enum(['baja', 'intermedia', 'alta']).nullable(),
+  optimization_score: z.number().min(0).max(100).nullable(),
 })
 
 export function normalizeSpecialistOutput(raw: unknown): unknown {
@@ -103,6 +110,8 @@ export function normalizeSpecialistOutput(raw: unknown): unknown {
     sufficiency: value.sufficiency ?? value.suficiencia,
     evidence: value.evidence ?? [],
     caveats: value.caveats ?? [],
+    optimization_level: value.optimization_level ?? null,
+    optimization_score: value.optimization_score ?? null,
   }
   return output
 }
