@@ -42,6 +42,8 @@ export interface GoogleChangeEvent {
 export interface GoogleAccountMetrics {
   account_id: string
   account_name: string | null
+  api_rows_received: number
+  raw_rows?: unknown[]
   date_range: { start: string; end: string }
   totals: { impressions: number; clicks: number; spend: number; leads: number; ctr: number; cpc: number; cpl: number }
   conversion_actions: GoogleConversionAction[]
@@ -298,7 +300,7 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
     console.warn('[v0] Google Ads conversion action breakdown unavailable:', conversion_actions_error)
   }
 
-  return { account_id: customerId, account_name: input.accountName ?? null, date_range: { start: input.dateFrom, end: input.dateTo }, totals, conversion_actions, conversion_actions_available, conversion_actions_error, change_history: [], change_history_available: false, change_history_error: null, campaigns }
+  return { account_id: customerId, account_name: input.accountName ?? null, api_rows_received: rows.length, raw_rows: rows.slice(0, 3), date_range: { start: input.dateFrom, end: input.dateTo }, totals, conversion_actions, conversion_actions_available, conversion_actions_error, change_history: [], change_history_available: false, change_history_error: null, campaigns }
 }
 
 export function defaultGoogleDateRange() {

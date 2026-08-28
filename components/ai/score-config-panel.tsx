@@ -41,13 +41,14 @@ export function ScoreConfigPanel({ clientId, onSaved }: { clientId: string; onSa
     try {
       const response = await fetch('/api/ai/score-config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId, objective }) })
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data.error || 'No se pudo guardar la configuración.')
-      setObjective(data.objective || objective); onSaved?.({ objective: data.objective || objective }); setMessage('Objetivo guardado. Los tres niveles se interpretarán en relación con este objetivo.')
+      if (!response.ok) throw new Error(data.error || 'No se pudo guardar la configuración. Intentá nuevamente.')
+      if (typeof data.objective !== 'string') throw new Error('La API no confirmó el objetivo guardado. Intentá nuevamente.')
+      setObjective(data.objective); onSaved?.({ objective: data.objective }); setMessage('Objetivo guardado. Los tres niveles se interpretarán en relación con este objetivo.')
     } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo guardar la configuración.') } finally { setSaving(false) }
   }
 
   return <section className="flex flex-col gap-4 rounded-lg border bg-card p-4" aria-labelledby="score-config-title">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 id="score-config-title" className="font-medium">Optimización de campañas</h2><p className="text-sm text-muted-foreground">Definí qué significa una optimización baja, intermedia o alta para este cliente.</p></div><Button type="button" variant="outline" size="sm" onClick={() => setOpen((value) => !value)}>{open ? 'Ocultar configuración' : 'Configurar niveles'}</Button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 id="score-config-title" className="font-medium">Optimización de campañas</h2><p className="text-sm text-muted-foreground">Definí el objetivo único de optimización para este cliente.</p></div><Button type="button" variant="outline" size="sm" onClick={() => setOpen((value) => !value)}>{open ? 'Ocultar configuración' : 'Configurar niveles'}</Button></div>
     {open && <div className="flex flex-col gap-4 border-t pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed bg-muted/40 p-3">
         <p className="text-sm text-muted-foreground">Escribí un único objetivo. La IA interpretará siempre los tres niveles en relación con él, sin mezclar objetivos distintos.</p>

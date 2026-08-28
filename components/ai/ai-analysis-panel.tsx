@@ -55,9 +55,10 @@ function resolveRecommendationLink(recommendation: Recommendation, analysis: Ana
 export function AIAnalysisPanel({ content, analysis }: { content: string; analysis?: Analysis | null }) {
   const scoreMatch = content.match(/(?:optimization_score|score|scoring|calificaci[oó]n)\D{0,20}(\d{1,3})\s*(?:\/\s*100)?/i)
   const score = analysis?.optimization_score ?? (scoreMatch ? Math.min(100, Number(scoreMatch[1])) : null)
-  const levelMatch = content.match(/\b(baja|intermedia|alta)\b/i)
-  const level = analysis?.optimization_level ?? levelMatch?.[1]?.toLowerCase() ?? null
-  const temperature = level === 'alta' ? 'Alta' : level === 'intermedia' ? 'Intermedia' : level === 'baja' ? 'Baja' : null
+  const levelMatch = content.match(/\b(baja|intermedia|buena|alta)\b/i)
+  const rawLevel = analysis?.optimization_level ?? levelMatch?.[1]?.toLowerCase() ?? null
+  const level = rawLevel === 'alta' ? 'buena' : rawLevel
+  const temperature = level === 'buena' ? 'Buena' : level === 'intermedia' ? 'Intermedia' : level === 'baja' ? 'Baja' : null
 
   const recommendations = [...(analysis?.recommendations ?? [])]
     .filter((recommendation) => recommendation.descripcion)
