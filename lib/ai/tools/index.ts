@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { ExecutionContext, ToolDefinition } from '../types'
 import { getGoogleAccountMetrics, defaultGoogleDateRange, normalizeCustomerId, splitCustomerIds } from '@/lib/google-ads/service'
 import { defaultMetaDateRange, getMetaAccountMetrics, getMetaErrorDetails, normalizeMetaAccountId } from '@/lib/meta-ads/service'
-import { buildCampaignComparisons, compareMetric, upsertChangeHistory, upsertPaidMediaSnapshot, SpecialistOutputSchema } from '@/lib/ai/contracts/performance-analyst'
+import { buildCampaignComparisons, compareMetric, upsertChangeHistory, upsertPaidMediaSnapshot, SpecialistOutputSchema, type IndustryBenchmark } from '@/lib/ai/contracts/performance-analyst'
 import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 import { contextFromEvents, mergeWorkingContext } from '@/lib/ai/conversation-context'
 import { buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeIndustry, type MetricRow } from '@/lib/ai/client-memory'
@@ -163,6 +163,43 @@ const saveClientProfile: ToolDefinition = {
     if (error) { console.error('[v0] save_client_profile failed:', error.message); context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'save_client_profile', status: 'error', label: 'No se pudo actualizar el contexto del cliente' }); return { success: false, message: 'No se pudo actualizar el perfil del cliente.' } }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'save_client_profile', status: 'completed', label: 'Contexto del cliente actualizado' })
     return { success: true, updated_fields: updatedFields }
+  },
+}
+
+const getIndustryBenchmark: ToolDefinition = {
+  key: 'get_industry_benchmark',
+  description: 'Calcula un benchmark descriptivo y anonimizado usando clientes de la misma industria.',
+  inputSchema: z.object({ days: z.number().int().min(30).max(365).optional() }),
+  async execute(input: { days?: number }, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, error: 'missing_client_id', message: 'No hay un cliente activo seleccionado.' }
+    const supabase = await createClient()
+    const { data: profile, error: profileError } = await supabase.from('ai_client_profile').select('client_id, industry').eq('client_id', context.clientId).maybeSingle()
+    const days = input.days ?? 90
+    const to = new Date()
+    const from = new Date(to); from.setUTCDate(from.getUTCDate() - days + 1)
+    const period = { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }
+    if (profileError || !profile?.industry) {
+      const benchmark: IndustryBenchmark = { available: false, industry: profile?.industry ?? null, peer_client_ids: [], period, sample_size: 0, metrics: { spend: null, impressions: null, clicks: null, results: null, leads: null, conversions: null, cpl: null, ctr: null }, methodology: 'Sin benchmark: el perfil activo no tiene industry disponible.', limitations: ['industry_missing'], error: profileError ? 'profile_unavailable' : 'industry_missing' }
+      if (context.analysisRunState) context.analysisRunState.industryBenchmark = benchmark
+      return benchmark
+    }
+    const { data: peerProfiles, error: peersError } = await supabase.from('ai_client_profile').select('client_id, industry').ilike('industry', profile.industry.trim()).neq('client_id', context.clientId)
+    const peerIds = (peerProfiles ?? []).map((peer) => peer.client_id).filter((id): id is string => typeof id === 'string')
+    if (peersError || peerIds.length === 0) {
+      const benchmark: IndustryBenchmark = { available: false, industry: profile.industry, peer_client_ids: [], period, sample_size: 0, metrics: { spend: null, impressions: null, clicks: null, results: null, leads: null, conversions: null, cpl: null, ctr: null }, methodology: 'Benchmark peer descriptivo por industry exacta, excluyendo el cliente activo.', limitations: [peersError ? 'peer_profiles_unavailable' : 'no_peers'] , error: peersError ? 'peer_profiles_unavailable' : 'no_peers' }
+      if (context.analysisRunState) context.analysisRunState.industryBenchmark = benchmark
+      return benchmark
+    }
+    const { data: rows, error: metricsError } = await supabase.from('paid_media_daily_metrics').select('client_id, spend, impressions, clicks, results, leads, conversions, metric_date').in('client_id', peerIds).gte('metric_date', period.from).lte('metric_date', period.to)
+    const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : Number(value ?? 0) || 0
+    const grouped = new Map<string, Record<string, number>>()
+    for (const row of (rows ?? []) as Array<Record<string, unknown> & { client_id: string }>) { const current = grouped.get(row.client_id) ?? { spend: 0, impressions: 0, clicks: 0, results: 0, leads: 0, conversions: 0 }; for (const key of ['spend', 'impressions', 'clicks', 'results', 'leads', 'conversions'] as const) current[key] += number(row[key]); grouped.set(row.client_id, current) }
+    const peerTotals = [...grouped.values()]
+    const average = (key: string) => peerTotals.length ? peerTotals.reduce((sum, row) => sum + row[key], 0) / peerTotals.length : null
+    const spend = average('spend'); const clicks = average('clicks'); const impressions = average('impressions'); const leads = average('leads'); const conversions = average('conversions'); const results = average('results')
+    const benchmark: IndustryBenchmark = { available: !metricsError && peerTotals.length >= 3, industry: profile.industry, peer_client_ids: [...grouped.keys()], period, sample_size: peerTotals.length, metrics: { spend, impressions, clicks, results, leads, conversions, cpl: spend !== null && leads && leads > 0 ? spend / leads : null, ctr: impressions && impressions > 0 && clicks !== null ? clicks / impressions : null }, methodology: 'Promedio simple por cliente peer con al menos una fila de paid_media_daily_metrics en el período; no ponderado por inversión.', limitations: [...(metricsError ? ['metrics_unavailable'] : []), ...(peerTotals.length < 3 ? ['minimum_peer_sample_not_met'] : [])], error: metricsError ? 'peer_metrics_unavailable' : undefined }
+    if (context.analysisRunState) context.analysisRunState.industryBenchmark = benchmark
+    return benchmark
   },
 }
 
@@ -406,6 +443,7 @@ const allTools: ToolDefinition[] = [
   getAccountContext,
   getClientMemory,
   saveClientProfile,
+  getIndustryBenchmark,
   getMetaMetrics,
   getGoogleMetrics,
   getAccountChangeHistory,

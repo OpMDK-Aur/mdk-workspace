@@ -33,6 +33,7 @@ function buildPrompt(context: ExecutionContext, currentSnapshots: PaidMediaSnaps
     return { platform: snapshot.platform, account_id: snapshot.account_id, status: 'comparable', metrics }
   })
   const relevantChangeHistory = changeHistory.filter((event) => event.changed_fields.some((field) => field.field_category !== 'other'))
+  const industryBenchmark = context.analysisRunState?.industryBenchmark ?? null
   const historicalMemory = context.analysisRunState?.clientMemory
     ? { ...context.analysisRunState.clientMemory, performance_90d: { ...context.analysisRunState.clientMemory.performance_90d, conversions: { ...context.analysisRunState.clientMemory.performance_90d.conversions, daily: [] } } }
     : null
@@ -49,6 +50,7 @@ function buildPrompt(context: ExecutionContext, currentSnapshots: PaidMediaSnaps
     comparisonSnapshots,
     changeHistory: relevantChangeHistory,
     clientMemory: historicalMemory,
+    industryBenchmark,
     deltas,
     campaignComparisons: buildCampaignComparisons(currentSnapshots, comparisonSnapshots),
     optimizationObjective: context.scoreConfig?.objective ?? null,
@@ -58,7 +60,7 @@ function buildPrompt(context: ExecutionContext, currentSnapshots: PaidMediaSnaps
       'Todos los arrays deben existir aunque estén vacíos.',
       'Incluí optimization_level como baja, intermedia o buena y optimization_score de 0 a 100 cuando haya evidencia suficiente. El nivel debe expresar qué tan cerca está la cuenta del objetivo único configurado; no evalúes tres objetivos independientes. Explicá y priorizá recomendaciones accionables.',
       'Cada recomendación debe referenciar finding_ids y evidence_ids existentes o usar arrays vacíos.',
-      'Si faltan benchmarks, tracking o contexto causal, marca suficiencia parcial o insuficiente y explica el faltante.',
+      'Usá industryBenchmark sólo si available=true y sample_size>=3; no lo presentes como causalidad ni como promedio universal. Si faltan benchmarks, tracking o contexto causal, marca suficiencia parcial o insuficiente y explica el faltante.',
       'No conviertas clics o impresiones en leads.',
       'No mezcles importes de monedas distintas.',
       'Cuando exista comparisonSnapshots, prioriza deltas y explica qué componente soporta la variación; distingue correlación de causalidad.',
