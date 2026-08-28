@@ -1,12 +1,14 @@
 'use client'
 
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import type { UIMessage } from 'ai'
+import type { FileUIPart, UIMessage } from 'ai'
 import { mutate } from 'swr'
-import { Bot, Check, ChevronRight, Loader2, RotateCcw, Send, User, X } from 'lucide-react'
+import { Bot, Check, ChevronRight, FileText, Loader2, Paperclip, RotateCcw, Send, User, X } from 'lucide-react'
 import type { ActivityEvent } from '@/lib/ai/types'
+import { ATTACHMENT_ACCEPT_ATTRIBUTE, ATTACHMENT_MAX_COUNT, ATTACHMENT_MAX_SIZE_BYTES, isAttachmentMimeTypeAllowed } from '@/lib/ai/attachments'
+import { createClient } from '@/lib/supabase/client'
 import {
   AlertDialog,
   AlertDialogAction,

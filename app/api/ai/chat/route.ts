@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createUIMessageStream, createUIMessageStreamResponse } from 'ai'
+import * as XLSX from 'xlsx'
 import type { ActivityEvent } from '@/lib/ai/types'
 import { createClient } from '@/lib/supabase/server'
 import { chatRequestSchema } from '@/lib/ai/config/fallback'
 import { streamSupervisorResponse, type SupervisorModelMessage } from '@/lib/ai/agents/supervisor'
 import { getOrCreateConversation, getLatestWorkingContext, listConversationMessages, saveConversationMessage } from '@/lib/ai/conversations'
 import { emptyWorkingContext } from '@/lib/ai/conversation-context'
+import { ATTACHMENT_MAX_COUNT, isImageOrPdfAttachment, isPlainTextAttachment, isSpreadsheetAttachment } from '@/lib/ai/attachments'
 
 export const maxDuration = 60
 
@@ -55,6 +57,100 @@ function getMessageText(message: unknown) {
     .trim()
 }
 
+type IncomingFilePart = { type: 'file'; mediaType: string; filename?: string; url: string }
+
+// Los archivos adjuntos llegan como parts type="file" (FileUIPart) dentro del
+// último mensaje del usuario. Sólo miramos el último mensaje: los adjuntos de
+// turnos anteriores ya quedaron resueltos (texto inyectado o referenciados) en
+// la respuesta que el Supervisor dio en su momento.
+function getMessageFileParts(message: unknown): IncomingFilePart[] {
+  if (!message || typeof message !== 'object') return []
+  const parts = 'parts' in message && Array.isArray(message.parts) ? message.parts : []
+  return parts
+    .filter((part): part is IncomingFilePart =>
+      Boolean(
+        part &&
+          typeof part === 'object' &&
+          'type' in part &&
+          part.type === 'file' &&
+          'url' in part &&
+          typeof (part as { url?: unknown }).url === 'string',
+      ),
+    )
+    .slice(0, ATTACHMENT_MAX_COUNT)
+    .map((part) => ({
+      type: 'file' as const,
+      mediaType: typeof part.mediaType === 'string' && part.mediaType ? part.mediaType : 'application/octet-stream',
+      filename: typeof part.filename === 'string' ? part.filename : undefined,
+      url: part.url,
+    }))
+}
+
+type AttachmentContentPart = { type: 'text'; text: string } | { type: 'file'; data: string; mediaType: string; filename?: string }
+type AttachmentMeta = { filename: string; mediaType: string; url: string }
+
+const ATTACHMENT_TEXT_CHAR_LIMIT = 20_000
+
+/**
+ * Convierte cada archivo adjunto en algo que el modelo pueda consumir:
+ * - imágenes/PDF: parte de archivo multimodal (el modelo la "ve" directamente).
+ * - csv/txt/tsv/json: se lee el texto y se inyecta como contexto adicional.
+ * - xlsx/xls: se parsea con la librería xlsx y se convierte cada hoja a CSV.
+ * - cualquier otro formato: se avisa al modelo que no pudo leerse automáticamente.
+ */
+async function resolveAttachmentParts(files: IncomingFilePart[]): Promise<{ contentParts: AttachmentContentPart[]; attachmentsMeta: AttachmentMeta[] }> {
+  const contentParts: AttachmentContentPart[] = []
+  const attachmentsMeta: AttachmentMeta[] = []
+
+  for (const file of files) {
+    const filename = file.filename || 'archivo adjunto'
+    const mediaType = file.mediaType
+    attachmentsMeta.push({ filename, mediaType, url: file.url })
+
+    if (isImageOrPdfAttachment(mediaType, filename)) {
+      contentParts.push({ type: 'file', data: file.url, mediaType, filename })
+      continue
+    }
+
+    if (isPlainTextAttachment(mediaType, filename)) {
+      try {
+        const response = await fetch(file.url)
+        if (!response.ok) throw new Error(`status ${response.status}`)
+        const text = await response.text()
+        contentParts.push({ type: 'text', text: `Contenido del archivo adjunto "${filename}":\n\n${text.slice(0, ATTACHMENT_TEXT_CHAR_LIMIT)}` })
+      } catch (error) {
+        console.error('[v0] Attachment text read failed:', filename, error instanceof Error ? error.message : error)
+        contentParts.push({ type: 'text', text: `No se pudo leer el contenido del archivo adjunto "${filename}".` })
+      }
+      continue
+    }
+
+    if (isSpreadsheetAttachment(mediaType, filename)) {
+      try {
+        const response = await fetch(file.url)
+        if (!response.ok) throw new Error(`status ${response.status}`)
+        const buffer = Buffer.from(await response.arrayBuffer())
+        const workbook = XLSX.read(buffer, { type: 'buffer' })
+        const csvBySheet = workbook.SheetNames.map(
+          (sheetName) => `Hoja "${sheetName}":\n${XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName])}`,
+        ).join('\n\n')
+        contentParts.push({ type: 'text', text: `Contenido del archivo adjunto "${filename}" (convertido a CSV):\n\n${csvBySheet.slice(0, ATTACHMENT_TEXT_CHAR_LIMIT)}` })
+      } catch (error) {
+        console.error('[v0] Attachment spreadsheet parse failed:', filename, error instanceof Error ? error.message : error)
+        contentParts.push({ type: 'text', text: `No se pudo leer el contenido del archivo adjunto "${filename}".` })
+      }
+      continue
+    }
+
+    contentParts.push({
+      type: 'text',
+      text: `El usuario adjuntó el archivo "${filename}" pero su formato no puede leerse automáticamente. Si necesitás sus datos para responder, pedile que comparta la información como texto, CSV o Excel.`,
+    })
+  }
+
+  return { contentParts, attachmentsMeta }
+}
+
 export async function POST(request: Request) {
   console.log('[v0] AI request received')
   const supabase = await createClient()
@@ -91,10 +187,17 @@ export async function POST(request: Request) {
       )
     }
 
-    const query = getMessageText(parsed.data.messages.at(-1))
+    const lastMessage = parsed.data.messages.at(-1)
+    const fileParts = getMessageFileParts(lastMessage)
+    // Si el usuario sólo adjuntó archivos sin escribir texto, igual mandamos
+    // un mensaje con contenido (así queda algo legible en el historial y el
+    // Supervisor sabe que debe mirar los adjuntos).
+    const query = getMessageText(lastMessage) || (fileParts.length > 0 ? 'Adjunto archivo(s) para análisis.' : '')
     if (!query) {
       return NextResponse.json({ error: 'El último mensaje debe contener texto.' }, { status: 400 })
     }
+
+    const { contentParts: attachmentContentParts, attachmentsMeta } = await resolveAttachmentParts(fileParts)
 
     const context = parsed.data.context
     // getOrCreateConversation valida server-side que la conversación (si se
@@ -127,16 +230,20 @@ export async function POST(request: Request) {
         userId: user.id,
         role: 'user',
         content: query,
+        ...(attachmentsMeta.length > 0 ? { messageData: { attachments: attachmentsMeta } } : {}),
       })
     }
 
     // Mensajes que ve el modelo: historial persistido + la consulta actual
     // al final. Las filas de ai_messages ya tienen el formato { role, content }
     // esperado por streamText (no son UIMessage con "parts", así que no
-    // necesitan convertToModelMessages).
+    // necesitan convertToModelMessages). El turno actual puede llevar además
+    // partes multimodales (imagen/PDF) o texto extraído de CSV/Excel cuando
+    // el usuario adjuntó archivos.
+    const currentUserContent = attachmentContentParts.length > 0 ? [{ type: 'text' as const, text: query }, ...attachmentContentParts] : query
     const modelMessages: SupervisorModelMessage[] = [
       ...history.map((message) => ({ role: message.role, content: message.content })),
-      { role: 'user' as const, content: query },
+      { role: 'user' as const, content: currentUserContent },
     ]
 
     console.log('[v0] Supervisor starting:', {
