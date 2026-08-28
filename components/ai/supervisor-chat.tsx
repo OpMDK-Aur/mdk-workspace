@@ -451,8 +451,12 @@ function SupervisorChatSession({
             con el sidebar de chats también presente, mantenerlo al costado
             desde lg dejaba la columna del chat demasiado angosta. */}
         <div className="flex flex-col xl:flex-row">
-          <div className="flex min-h-[540px] min-w-0 flex-1 flex-col gap-4 p-4">
-        <div ref={scrollContainerRef} className="flex min-h-[420px] flex-1 flex-col gap-3 overflow-y-auto rounded-lg border bg-muted/30 p-4" aria-live="polite">
+          {/* Altura acotada a la ventana: así el input queda siempre dentro
+              del área visible de la columna y solo la lista de mensajes
+              scrollea por dentro, en vez de que el input se desplace junto
+              con el contenido y termine fuera de pantalla. */}
+          <div className="flex h-[calc(100vh-14rem)] min-h-[480px] min-w-0 flex-1 flex-col gap-4 p-4">
+        <div ref={scrollContainerRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-lg border bg-muted/30 p-4" aria-live="polite">
           {disabled ? (
             <div className="m-auto flex max-w-sm flex-col items-center gap-3 text-center text-muted-foreground">
               <Bot className="size-8" aria-hidden="true" />
@@ -532,12 +536,10 @@ function SupervisorChatSession({
           )}
         </div>
 
-        {/* Sticky al fondo de la ventana: como la página puede scrollear
-            cuando el card crece, el input queda siempre visible en vez de
-            quedar tapado o fuera de pantalla al bajar en la conversación.
-            Los márgenes negativos cancelan el padding del contenedor padre
-            para que la barra se extienda de borde a borde del card. */}
-        <div className="sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col gap-2 border-t bg-card px-4 pb-4 pt-3">
+        {/* No necesita sticky: como la columna del chat tiene altura acotada
+            y solo la lista de mensajes de arriba scrollea, este bloque
+            siempre queda dentro del área visible sin moverse. */}
+        <div className="flex shrink-0 flex-col gap-2 border-t pt-3">
           {attachmentError && (
             <p className="text-xs text-destructive" role="alert">{attachmentError}</p>
           )}
