@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { FileUIPart, UIMessage } from 'ai'
@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { MessageContent } from '@/components/chat/message-content'
 import { AIAnalysisPanel } from './ai-analysis-panel'
 import { CONVERSATIONS_SWR_KEY } from './conversations-sidebar'
@@ -253,6 +253,7 @@ function SupervisorChatSession({
   const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [currentActivity, setCurrentActivity] = useState<ActivityEvent | null>(null)
   // El Performance Analyst calcula el score/temperatura como parte del turno
   // del Supervisor, pero recién queda persistido en message_data cuando el
@@ -358,6 +359,16 @@ function SupervisorChatSession({
     setPendingFiles((prev) => prev.filter((item) => item.localId !== localId))
   }
 
+  function handleTextareaKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // Enter envía el mensaje; Shift+Enter agrega un salto de línea. No
+    // enviamos mientras el usuario está componiendo texto con un IME
+    // (chino/japonés/coreano) ni en el evento final poco confiable de
+    // Safari Desktop (keyCode 229), para no cortar la composición.
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229) return
+    event.preventDefault()
+    event.currentTarget.form?.requestSubmit()
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const query = input.trim()
@@ -370,6 +381,10 @@ function SupervisorChatSession({
     setInput('')
     setPendingFiles([])
     setAttachmentError(null)
+    // El alto se manejaba a mano en el DOM (onChange), así que hay que
+    // resetearlo explícitamente al vaciar el textarea; si no, queda con la
+    // altura expandida del mensaje anterior.
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
     await sendMessage({ text, files: fileParts }, {
       body: {
         context: clientId
@@ -518,7 +533,7 @@ function SupervisorChatSession({
               ))}
             </div>
           )}
-          <form className="flex gap-2" onSubmit={handleSubmit}>
+          <form className="flex items-end gap-2" onSubmit={handleSubmit}>
             <input
               ref={fileInputRef}
               type="file"
@@ -533,6 +548,7 @@ function SupervisorChatSession({
               type="button"
               variant="outline"
               size="icon"
+              className="shrink-0"
               disabled={isInputDisabled || pendingFiles.length >= ATTACHMENT_MAX_COUNT}
               onClick={() => fileInputRef.current?.click()}
               aria-label="Adjuntar archivo"
@@ -540,15 +556,25 @@ function SupervisorChatSession({
             >
               <Paperclip aria-hidden="true" />
             </Button>
-            <Input
+            <Textarea
+              ref={textareaRef}
               value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder={disabled ? disabledMessage : 'Escribí una consulta para el Supervisor…'}
+              onChange={(event) => {
+                setInput(event.target.value)
+                const el = event.target
+                el.style.height = 'auto'
+                el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+              }}
+              onKeyDown={handleTextareaKeyDown}
+              placeholder={disabled ? disabledMessage : 'Escribí una consulta para el Supervisor… (Enter para enviar, Shift+Enter para salto de línea)'}
               aria-label="Consulta para el Supervisor"
               disabled={isInputDisabled}
+              rows={1}
+              className="min-h-9 flex-1 resize-none py-2 leading-6"
             />
             <Button
               type="submit"
+              className="shrink-0"
               disabled={isInputDisabled || (!input.trim() && pendingFiles.length === 0) || pendingFiles.some((file) => file.status === 'uploading')}
               aria-label="Enviar consulta"
             >
