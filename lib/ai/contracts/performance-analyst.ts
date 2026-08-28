@@ -19,6 +19,8 @@ export const CauseDimensionSchema = z.enum([
 export const LeverSchema = z.enum(['presupuesto', 'segmentacion', 'creatividad', 'landing_page', 'puja', 'tracking', 'conversion', 'datos'])
 export const DirectionSchema = z.enum(['aumentar', 'reducir', 'mantener', 'optimizar', 'investigar', 'no_escalar'])
 export const PrioritySchema = z.enum(['alta', 'media', 'baja'])
+export const OptimizationLevelSchema = z.enum(['baja', 'intermedia', 'buena'])
+export type OptimizationLevel = z.infer<typeof OptimizationLevelSchema>
 
 export const EntitySchema = z.object({
   client_id: z.string(),
@@ -92,13 +94,15 @@ export const SpecialistOutputSchema = z.object({
   // properties"). Usamos z.nullable() en su lugar: el campo sigue siendo
   // obligatorio en el schema, pero el modelo puede devolver null cuando no
   // hay evidencia suficiente para clasificar.
-  optimization_level: z.enum(['baja', 'intermedia', 'alta']).nullable(),
+  optimization_level: OptimizationLevelSchema.nullable(),
   optimization_score: z.number().min(0).max(100).nullable(),
 })
 
 export function normalizeSpecialistOutput(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw
   const value = raw as Record<string, unknown>
+  const legacyLevel = value.optimization_level
+  const normalizedLevel = legacyLevel === 'alta' ? 'buena' : legacyLevel
   const entity = value.entity ?? value.entidad
   const output = {
     ...value,
@@ -110,7 +114,7 @@ export function normalizeSpecialistOutput(raw: unknown): unknown {
     sufficiency: value.sufficiency ?? value.suficiencia,
     evidence: value.evidence ?? [],
     caveats: value.caveats ?? [],
-    optimization_level: value.optimization_level ?? null,
+    optimization_level: normalizedLevel ?? null,
     optimization_score: value.optimization_score ?? null,
   }
   return output
