@@ -64,7 +64,7 @@ export function AIAnalysisPanel({ content, analysis }: { content: string; analys
     .sort((a, b) => (PRIORITY_RANK[a.prioridad ?? 'baja'] ?? 3) - (PRIORITY_RANK[b.prioridad ?? 'baja'] ?? 3))
 
   return (
-    <aside className="flex w-full shrink-0 flex-col gap-4 border-t bg-card p-4 lg:w-80 lg:border-l lg:border-t-0" aria-label="Análisis IA del cliente">
+    <aside className="flex w-full shrink-0 flex-col gap-4 border-t bg-card p-4 xl:w-80 xl:border-l xl:border-t-0" aria-label="Análisis IA del cliente">
       <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 text-primary"><Sparkles className="size-4" aria-hidden="true" /><h2 className="text-sm font-semibold">Análisis IA</h2></div><span className="text-[11px] text-muted-foreground">Último análisis</span></div>
       {score !== null ? (
         <>
