@@ -5,10 +5,10 @@ import { updateAdvertisingAccountName } from '@/lib/ai/repositories/advertising-
 
 type Platform = 'google' | 'meta'
 type Account = { id: string; cliente_id: string; plataforma: Platform; id_cuenta: string; nombre_cuenta: string | null; moneda: string | null; zona_horaria: string | null }
-export type SyncOptions = { mode?: 'daily' | 'backfill'; dateFrom?: string; dateTo?: string; clientId?: string; accountId?: string; dryRun?: boolean }
-export type SyncStatus = 'completed' | 'no_delivery' | 'normalization_empty' | 'partial' | 'failed'
+export type SyncOptions = { mode?: 'daily' | 'backfill'; dateFrom?: string; dateTo?: string; clientId?: string; accountId?: string; advertisingAccountId?: string; dryRun?: boolean }
+export type SyncStatus = 'completed' | 'no_delivery' | 'normalization_empty' | 'partial' | 'failed' | 'sync_not_executed'
 export type SyncWindowDiagnostic = { platform: Platform; account_id: string; date_from: string; date_to: string; status: SyncStatus; api_rows_received: number; normalized_rows: number; rows_upserted: number; errors: string[]; raw_sample?: Record<string, unknown>[] }
-export type SyncResult = { mode: string; date_from: string; date_to: string; status: SyncStatus; processed: number; upserted: number; failed: number; skipped: number; api_rows_received: number; normalized_rows: number; rows_upserted: number; windows_processed: number; windows_with_data: number; windows_without_data: number; errors: string[]; windows: SyncWindowDiagnostic[] }
+export type SyncResult = { mode: string; date_from: string; date_to: string; status: SyncStatus; reason?: string; error_code?: string; processed: number; upserted: number; failed: number; skipped: number; api_rows_received: number; normalized_rows: number; rows_upserted: number; windows_processed: number; windows_with_data: number; windows_without_data: number; errors: string[]; windows: SyncWindowDiagnostic[] }
 
 const iso = (date: Date) => date.toISOString().slice(0, 10)
 function range(options: SyncOptions) { const end = options.dateTo ?? iso(new Date()); const start = options.dateFrom ?? (options.mode === 'backfill' ? iso(new Date(Date.now() - 89 * 86400000)) : iso(new Date(Date.now() - 2 * 86400000))); return { start, end } }
@@ -28,14 +28,21 @@ export async function runPaidMediaSync(options: SyncOptions = {}): Promise<SyncR
   const { start, end } = range(options); const db = createAdminClient(); const result: SyncResult = { mode: options.mode ?? 'daily', date_from: start, date_to: end, status: 'completed', processed: 0, upserted: 0, failed: 0, skipped: 0, api_rows_received: 0, normalized_rows: 0, rows_upserted: 0, windows_processed: 0, windows_with_data: 0, windows_without_data: 0, errors: [], windows: [] }
   let query = db.from('cuentas_publicitarias').select('id, cliente_id, plataforma, id_cuenta, nombre_cuenta, moneda, zona_horaria').eq('activo', true)
   if (options.clientId) query = query.eq('cliente_id', options.clientId)
-  if (options.accountId) query = query.eq('id_cuenta', options.accountId.replace(/^act_/, ''))
+  if (options.advertisingAccountId) query = query.eq('id', options.advertisingAccountId)
+  else if (options.accountId) query = query.eq('id_cuenta', options.accountId)
   const { data: accounts, error } = await query
   if (error) throw new Error(`No se pudieron cargar cuentas: ${error.message}`)
+  if (!accounts?.length) return { ...result, status: 'sync_not_executed', reason: 'La cuenta publicitaria no pudo resolverse.', error_code: 'account_not_found' }
+  console.log('[paid-media-backfill]', { advertising_account_id: options.advertisingAccountId ?? null, platform: accounts[0].plataforma, external_account_id: accounts[0].id_cuenta, days: Math.max(0, Math.round((new Date(`${end}T00:00:00Z`).getTime() - new Date(`${start}T00:00:00Z`).getTime()) / 86400000) + 1), dry_run: options.dryRun === true })
+  const requestedDays = Math.max(0, Math.round((new Date(`${end}T00:00:00Z`).getTime() - new Date(`${start}T00:00:00Z`).getTime()) / 86400000) + 1)
+  const generatedWindows = requestedDays > 0 ? requestedDays : 0
+  if (requestedDays > 0 && generatedWindows === 0) return { ...result, status: 'sync_not_executed', reason: 'No se generaron ventanas para el período.', error_code: 'no_windows_generated' }
+  console.log('[paid-media-backfill]', { advertising_account_id: options.advertisingAccountId ?? null, windows_generated: generatedWindows })
   for (let cursor = new Date(`${start}T00:00:00Z`); iso(cursor) <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
     const date = iso(cursor)
     for (let offset = 0; offset < (accounts ?? []).length; offset += 3) {
       const batch = (accounts ?? []).slice(offset, offset + 3) as Account[]
-      await Promise.all(batch.map(async (account) => { result.processed++
+      await Promise.all(batch.map(async (account) => { result.processed++; console.log('[paid-media-backfill]', { platform: account.plataforma, account_id: account.id, external_account_id: account.id_cuenta, date_from: date, date_to: date, request_started: true })
         try {
           const metrics: any = account.plataforma === 'google'
             ? await retry<any>(() => getGoogleAccountMetrics({ customerId: account.id_cuenta, accountName: account.nombre_cuenta, dateFrom: date, dateTo: date }))
@@ -54,7 +61,8 @@ export async function runPaidMediaSync(options: SyncOptions = {}): Promise<SyncR
       }))
     }
   }
-  result.status = result.failed === result.windows_processed && result.windows_processed > 0 ? 'failed' : result.failed > 0 ? 'partial' : result.api_rows_received === 0 ? 'no_delivery' : result.normalized_rows === 0 ? 'normalization_empty' : 'completed'
+  result.status = result.windows_processed === 0 ? 'sync_not_executed' : result.failed === result.windows_processed ? 'failed' : result.failed > 0 ? 'partial' : result.api_rows_received === 0 ? 'no_delivery' : result.normalized_rows === 0 ? 'normalization_empty' : 'completed'
+  if (result.status === 'sync_not_executed') { result.reason = 'La sincronización no llegó a ejecutarse.'; result.error_code = 'sync_not_executed' }
   return result
 }
 

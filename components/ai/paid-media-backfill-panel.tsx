@@ -10,8 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils'
 
 type Account = { id: string; plataforma: 'meta' | 'google'; id_cuenta: string; nombre_cuenta: string; activo?: boolean | null }
-type BackfillStatus = 'completed' | 'no_delivery' | 'normalization_empty' | 'partial' | 'failed'
-type BackfillResult = { status?: BackfillStatus; mode?: string; date_from?: string; date_to?: string; processed?: number; upserted?: number; failed?: number; skipped?: number; api_rows_received?: number; normalized_rows?: number; rows_upserted?: number; windows_processed?: number; windows_with_data?: number; windows_without_data?: number; errors?: string[]; windows?: Array<{ platform: string; account_id: string; date_from: string; date_to: string; status: BackfillStatus; api_rows_received: number; normalized_rows: number; rows_upserted: number; errors: string[]; raw_sample?: Record<string, unknown>[] }>; rows?: Record<string, unknown>[] }
+type BackfillStatus = 'completed' | 'no_delivery' | 'normalization_empty' | 'partial' | 'failed' | 'sync_not_executed'
+type BackfillResult = { status?: BackfillStatus; reason?: string; error_code?: string; mode?: string; date_from?: string; date_to?: string; processed?: number; upserted?: number; failed?: number; skipped?: number; api_rows_received?: number; normalized_rows?: number; rows_upserted?: number; windows_processed?: number; windows_with_data?: number; windows_without_data?: number; errors?: string[]; windows?: Array<{ platform: string; account_id: string; date_from: string; date_to: string; status: BackfillStatus; api_rows_received: number; normalized_rows: number; rows_upserted: number; errors: string[]; raw_sample?: Record<string, unknown>[] }>; rows?: Record<string, unknown>[] }
 
 const periods = [
   { value: '7', label: 'Últimos 7 días' },
@@ -21,7 +21,6 @@ const periods = [
 
 const sampleColumns = ['metric_date', 'campaign_name', 'campaign_type', 'campaign_objective', 'result_type', 'currency', 'spend', 'impressions', 'clicks', 'results', 'leads', 'conversions'] as const
 
-function formatDate(date: Date) { return date.toISOString().slice(0, 10) }
 function platformLabel(value: Account['plataforma']) { return value === 'google' ? 'Google Ads' : 'Meta Ads' }
 
 export function PaidMediaBackfillPanel({ clientId, clientName }: { clientId: string; clientName: string }) {
@@ -61,14 +60,11 @@ export function PaidMediaBackfillPanel({ clientId, clientName }: { clientId: str
     setStatus('idle')
     setMessage('Consultando...')
     setResult(null)
-    const end = new Date()
-    const start = new Date(end)
-    start.setUTCDate(start.getUTCDate() - Number(period) + 1)
     try {
       const response = await fetch('/api/admin/paid-media/backfill', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ clientId, accountId: selectedAccount.id_cuenta, dateFrom: formatDate(start), dateTo: formatDate(end), dryRun }),
+        body: JSON.stringify({ clientId, advertising_account_id: selectedAccount.id, days: Number(period), dryRun }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'Error de sincronización')
@@ -122,8 +118,9 @@ export function PaidMediaBackfillPanel({ clientId, clientName }: { clientId: str
           </span>}
         </div>
         {result && <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 text-sm">
-          <div className="flex flex-wrap gap-x-6 gap-y-2"><span>Estado: <strong>{result.status === 'no_delivery' ? 'Sin delivery en el período' : result.status === 'normalization_empty' ? 'La normalización descartó todos los registros' : result.status === 'partial' ? 'Completado con errores parciales' : result.status === 'failed' ? 'Falló la consulta' : 'Completado con datos'}</strong></span><span>Período: <strong>{result.date_from} → {result.date_to}</strong></span></div>
+          <div className="flex flex-wrap gap-x-6 gap-y-2"><span>Estado: <strong>{result.status === 'no_delivery' ? 'Sin delivery en el período' : result.status === 'normalization_empty' ? 'La normalización descartó todos los registros' : result.status === 'partial' ? 'Completado con errores parciales' : result.status === 'failed' ? 'Falló la consulta' : result.status === 'sync_not_executed' ? 'No se llegó a consultar la plataforma' : 'Completado con datos'}</strong></span><span>Período: <strong>{result.date_from} → {result.date_to}</strong></span></div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"><span>Filas recibidas desde plataforma: <strong>{result.api_rows_received ?? 0}</strong></span><span>Filas normalizadas: <strong>{result.normalized_rows ?? 0}</strong></span><span>{dryRun ? 'Filas que se guardarían' : 'Filas guardadas'}: <strong>{dryRun ? result.normalized_rows ?? 0 : result.rows_upserted ?? result.upserted ?? 0}</strong></span><span>Ventanas procesadas: <strong>{result.windows_processed ?? result.processed ?? 0}</strong></span><span>Ventanas con datos: <strong>{result.windows_with_data ?? 0}</strong></span><span>Ventanas sin datos: <strong>{result.windows_without_data ?? 0}</strong></span><span>Errores: <strong>{result.failed ?? 0}</strong></span></div>
+          {result.reason && <p className="text-xs text-muted-foreground">{result.reason}{result.error_code ? ` (${result.error_code})` : ''}</p>}
         </div>}
         {!!result?.errors?.length && <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"><p className="font-medium">Errores</p><ul className="mt-1 list-disc pl-5">{result.errors.map((error, index) => <li key={`${error}-${index}`}>{error}</li>)}</ul></div>}
         {dryRun && result?.rows?.length ? <div className="overflow-x-auto rounded-md border"><table className="min-w-[1100px] text-left text-xs"><thead className="bg-muted/50"><tr>{sampleColumns.map((column) => <th key={column} className="whitespace-nowrap px-3 py-2 font-medium">{column}</th>)}</tr></thead><tbody>{result.rows.slice(0, 10).map((row, index) => <tr key={index} className="border-t">{sampleColumns.map((column) => <td key={column} className="whitespace-nowrap px-3 py-2">{String(row[column] ?? '—')}</td>)}</tr>)}</tbody></table></div> : null}
