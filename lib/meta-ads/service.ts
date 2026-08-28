@@ -71,7 +71,7 @@ export interface MetaAccountMetrics {
 
 export type MetaResultType =
   | 'lead'
-  | 'messaging_conversation'
+  | 'messaging_conversation_started'
   | 'contact'
   | 'application'
   | 'registration'
@@ -110,6 +110,12 @@ const LEAD_ACTIONS = [
   'contact',
   'submit_application',
   'complete_registration',
+]
+const PRIORITY_ACTIONS = [
+  'onsite_conversion.messaging_conversation_started_7d', 'messaging_conversation_started',
+  'lead', 'leadgen_grouped', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead',
+  'contact', 'submit_application', 'complete_registration',
+  'purchase', 'omni_purchase', 'reach', 'landing_page_view', 'link_click',
 ]
 const TRAFFIC_ACTIONS = [
   'link_click',
@@ -213,13 +219,14 @@ function toInt(value?: string) {
 
 export function normalizeMetaResult(objective: string, actions: MetaAction[] | undefined) {
   const available = new Set(actions?.map((action) => action.action_type) ?? [])
-  const priorities = TRAFFIC_OBJECTIVES.has(objective) ? [...TRAFFIC_ACTIONS, ...LEAD_ACTIONS] : [...LEAD_ACTIONS, ...TRAFFIC_ACTIONS]
+  const objectiveActions = TRAFFIC_OBJECTIVES.has(objective) ? [...TRAFFIC_ACTIONS, ...LEAD_ACTIONS] : [...LEAD_ACTIONS, ...TRAFFIC_ACTIONS]
+  const priorities = [...PRIORITY_ACTIONS, ...objectiveActions]
   const actionType = priorities.find((type) => available.has(type)) ?? null
   if (!actionType) return { results: 0, resultType: 'unknown' as MetaResultType, sourceActionType: null, leads: 0, conversions: 0 }
   const action = actions?.find((item) => item.action_type === actionType)
   const results = Math.max(0, Math.round(toNumber(action?.value)))
   let resultType: MetaResultType = 'unknown'
-  if (actionType === 'onsite_conversion.messaging_conversation_started_7d') resultType = 'messaging_conversation'
+  if (actionType === 'onsite_conversion.messaging_conversation_started_7d' || actionType === 'messaging_conversation_started') resultType = 'messaging_conversation_started'
   else if (actionType === 'contact') resultType = 'contact'
   else if (actionType === 'submit_application') resultType = 'application'
   else if (actionType === 'complete_registration') resultType = 'registration'
@@ -231,13 +238,13 @@ export function normalizeMetaResult(objective: string, actions: MetaAction[] | u
   else if (actionType === 'video_view') resultType = 'video_view'
   else if (TRAFFIC_ACTIONS.includes(actionType)) resultType = 'engagement'
   const leads = resultType === 'lead' ? results : 0
-  const conversions = resultType === 'lead' || resultType === 'purchase' ? results : 0
+  const conversions = resultType === 'lead' || resultType === 'purchase' || resultType === 'messaging_conversation_started' ? results : 0
   return { results, resultType, sourceActionType: actionType, leads, conversions }
 }
 
 function legacyLabel(resultType: MetaResultType) {
   return ({
-    lead: 'Lead', messaging_conversation: 'Conversacion iniciada', contact: 'Contacto',
+    lead: 'Lead', messaging_conversation_started: 'Conversacion iniciada', contact: 'Contacto',
     application: 'Aplicacion', registration: 'Registro', link_click: 'Clic en enlace',
     landing_page_view: 'Visita a landing', engagement: 'Interaccion', video_view: 'Reproduccion', purchase: 'Compra', reach: 'Alcance', unknown: 'Sin resultado',
   } satisfies Record<MetaResultType, string>)[resultType]
