@@ -100,7 +100,7 @@ export function MultiagenteWorkspace() {
 
   return (
     <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6">
+      <div className="mx-auto flex w-full flex-col gap-6">
         <header className="flex flex-col gap-2 border-b pb-6">
           <div className="flex items-center gap-2 text-primary">
             <Sparkles className="size-5" aria-hidden="true" />

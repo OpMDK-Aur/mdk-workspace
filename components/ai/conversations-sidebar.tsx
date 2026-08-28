@@ -3,10 +3,12 @@
 import { useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
 import { toast } from 'sonner'
-import { Archive, ArchiveRestore, Loader2, MessageSquare, MessagesSquare } from 'lucide-react'
+import { Archive, ArchiveRestore, ChevronsLeft, ChevronsRight, Filter, Loader2, MessageSquare, MessagesSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ScoreGauge } from './score-gauge'
 
@@ -62,6 +64,7 @@ interface ConversationsSidebarProps {
 }
 
 export function ConversationsSidebar({ activeClientId, onSelect }: ConversationsSidebarProps) {
+  const [collapsed, setCollapsed] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [unidadFilter, setUnidadFilter] = useState<string>('all')
   const [pmFilter, setPmFilter] = useState<string>('all')
@@ -102,7 +105,8 @@ export function ConversationsSidebar({ activeClientId, onSelect }: Conversations
     return true
   })
 
-  const hasActiveFilters = unidadFilter !== 'all' || pmFilter !== 'all' || amFilter !== 'all' || semaforoFilter !== 'all'
+  const activeFilterCount = [unidadFilter, pmFilter, amFilter, semaforoFilter].filter((f) => f !== 'all').length
+  const hasActiveFilters = activeFilterCount > 0
 
   async function handleArchiveToggle(conversation: ConversationSummary, event: MouseEvent | KeyboardEvent) {
     event.stopPropagation()
@@ -125,6 +129,24 @@ export function ConversationsSidebar({ activeClientId, onSelect }: Conversations
     }
   }
 
+  if (collapsed) {
+    return (
+      <aside className="flex w-full shrink-0 flex-col items-center gap-2 rounded-lg border bg-card p-2 lg:sticky lg:top-8 lg:w-12 lg:self-start">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          onClick={() => setCollapsed(false)}
+          aria-label="Mostrar panel de chats"
+          title="Mostrar panel de chats"
+        >
+          <ChevronsRight className="size-4" aria-hidden="true" />
+        </Button>
+        <MessagesSquare className="size-4 text-primary" aria-hidden="true" />
+      </aside>
+    )
+  }
+
   return (
     <aside
       className={cn(
@@ -143,45 +165,66 @@ export function ConversationsSidebar({ activeClientId, onSelect }: Conversations
         </div>
         <Button
           variant="ghost"
+          size="icon"
+          className="size-6 shrink-0 text-muted-foreground"
+          onClick={() => setCollapsed(true)}
+          aria-label="Colapsar panel de chats"
+          title="Colapsar panel de chats"
+        >
+          <ChevronsLeft className="size-4" aria-hidden="true" />
+        </Button>
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs">
+              <Filter className="size-3.5" aria-hidden="true" />
+              Filtros
+              {hasActiveFilters && <Badge variant="secondary" className="h-4 min-w-4 rounded-full px-1 text-[10px]">{activeFilterCount}</Badge>}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="flex w-64 flex-col gap-1.5">
+            <FilterSelect placeholder="Unidad de negocio" value={unidadFilter} onChange={setUnidadFilter} options={unidadOptions.map((u) => ({ value: u, label: u }))} />
+            <FilterSelect placeholder="Project Manager" value={pmFilter} onChange={setPmFilter} options={pmOptions.map(([id, name]) => ({ value: id, label: name }))} />
+            <FilterSelect placeholder="Account Manager" value={amFilter} onChange={setAmFilter} options={amOptions.map(([id, name]) => ({ value: id, label: name }))} />
+            <FilterSelect
+              placeholder="Semáforo"
+              value={semaforoFilter}
+              onChange={setSemaforoFilter}
+              options={Object.entries(SEMAFORO_LABEL).map(([value, label]) => ({ value, label }))}
+              renderOption={(opt) => (
+                <span className="flex items-center gap-1.5">
+                  <span className={cn('size-2 rounded-full', SEMAFORO_DOT[opt.value])} aria-hidden="true" />
+                  {opt.label}
+                </span>
+              )}
+            />
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 self-start px-1.5 text-xs text-muted-foreground"
+                onClick={() => {
+                  setUnidadFilter('all')
+                  setPmFilter('all')
+                  setAmFilter('all')
+                  setSemaforoFilter('all')
+                }}
+              >
+                Limpiar filtros
+              </Button>
+            )}
+          </PopoverContent>
+        </Popover>
+        <Button
+          variant="ghost"
           size="sm"
           className="h-7 px-2 text-xs text-muted-foreground"
           onClick={() => setShowArchived((v) => !v)}
         >
           {showArchived ? 'Ver activos' : 'Ver archivados'}
         </Button>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <FilterSelect placeholder="Unidad de negocio" value={unidadFilter} onChange={setUnidadFilter} options={unidadOptions.map((u) => ({ value: u, label: u }))} />
-        <FilterSelect placeholder="Project Manager" value={pmFilter} onChange={setPmFilter} options={pmOptions.map(([id, name]) => ({ value: id, label: name }))} />
-        <FilterSelect placeholder="Account Manager" value={amFilter} onChange={setAmFilter} options={amOptions.map(([id, name]) => ({ value: id, label: name }))} />
-        <FilterSelect
-          placeholder="Semáforo"
-          value={semaforoFilter}
-          onChange={setSemaforoFilter}
-          options={Object.entries(SEMAFORO_LABEL).map(([value, label]) => ({ value, label }))}
-          renderOption={(opt) => (
-            <span className="flex items-center gap-1.5">
-              <span className={cn('size-2 rounded-full', SEMAFORO_DOT[opt.value])} aria-hidden="true" />
-              {opt.label}
-            </span>
-          )}
-        />
-        {hasActiveFilters && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 self-start px-1.5 text-xs text-muted-foreground"
-            onClick={() => {
-              setUnidadFilter('all')
-              setPmFilter('all')
-              setAmFilter('all')
-              setSemaforoFilter('all')
-            }}
-          >
-            Limpiar filtros
-          </Button>
-        )}
       </div>
 
       {isLoading && (
