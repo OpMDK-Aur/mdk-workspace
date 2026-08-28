@@ -532,7 +532,12 @@ function SupervisorChatSession({
           )}
         </div>
 
-        <div className="flex flex-col gap-2">
+        {/* Sticky al fondo de la ventana: como la página puede scrollear
+            cuando el card crece, el input queda siempre visible en vez de
+            quedar tapado o fuera de pantalla al bajar en la conversación.
+            Los márgenes negativos cancelan el padding del contenedor padre
+            para que la barra se extienda de borde a borde del card. */}
+        <div className="sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col gap-2 border-t bg-card px-4 pb-4 pt-3">
           {attachmentError && (
             <p className="text-xs text-destructive" role="alert">{attachmentError}</p>
           )}
