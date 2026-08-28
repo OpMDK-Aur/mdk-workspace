@@ -38,6 +38,28 @@ function messageHasVisibleContent(message: UIMessage) {
   return messageText(message).trim().length > 0
 }
 
+/** Muestra los archivos que el usuario adjuntó en ese mensaje, si tiene. */
+function MessageFileChips({ message }: { message: UIMessage }) {
+  const fileParts = message.parts.filter((part): part is FileUIPart => part.type === 'file')
+  if (fileParts.length === 0) return null
+  return (
+    <div className="mb-2 flex flex-wrap gap-1.5">
+      {fileParts.map((part, index) => (
+        <a
+          key={`${part.filename}-${index}`}
+          href={part.url}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 rounded-md bg-primary-foreground/15 px-2 py-1 text-xs text-primary-foreground hover:bg-primary-foreground/25"
+        >
+          <FileText className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="max-w-[160px] truncate">{part.filename || 'archivo adjunto'}</span>
+        </a>
+      ))}
+    </div>
+  )
+}
+
 function MultiagentActivityStatus({ activity }: { activity: ActivityEvent | null }) {
   if (!activity) return null
   const Icon = activity.status === 'running' ? Loader2 : activity.status === 'completed' ? Check : X
@@ -166,6 +188,33 @@ export function SupervisorChat(props: SupervisorChatProps) {
   )
 }
 
+type PendingAttachment = {
+  localId: string
+  filename: string
+  mediaType: string
+  status: 'uploading' | 'ready' | 'error'
+  url?: string
+  errorMessage?: string
+}
+
+/**
+ * Sube un archivo al bucket público "chat-adjuntos" de Supabase Storage y
+ * devuelve la URL pública. Cada archivo va en una carpeta por conversación
+ * para poder limpiarlos más adelante si se quiere.
+ */
+async function uploadChatAttachment(file: File, folderKey: string): Promise<string> {
+  const supabase = createClient()
+  const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
+  const path = `${folderKey}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`
+  const { error } = await supabase.storage.from('chat-adjuntos').upload(path, file, {
+    contentType: file.type || 'application/octet-stream',
+    cacheControl: '3600',
+  })
+  if (error) throw new Error(error.message)
+  const { data } = supabase.storage.from('chat-adjuntos').getPublicUrl(path)
+  return data.publicUrl
+}
+
 function SupervisorChatShell({ ...props }: SupervisorChatProps & { loading?: boolean }) {
   return (
     <Card className="overflow-hidden">
@@ -201,6 +250,9 @@ function SupervisorChatSession({
   isResetting?: boolean
 }) {
   const [input, setInput] = useState('')
+  const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([])
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [currentActivity, setCurrentActivity] = useState<ActivityEvent | null>(null)
   // El Performance Analyst calcula el score/temperatura como parte del turno
   // del Supervisor, pero recién queda persistido en message_data cuando el
@@ -266,12 +318,59 @@ function SupervisorChatSession({
     container.scrollTop = container.scrollHeight
   }, [messages, isBusy, currentActivity])
 
+  async function handleFileSelect(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    if (files.length === 0) return
+    setAttachmentError(null)
+
+    if (pendingFiles.length + files.length > ATTACHMENT_MAX_COUNT) {
+      setAttachmentError(`Podés adjuntar hasta ${ATTACHMENT_MAX_COUNT} archivos por mensaje.`)
+      return
+    }
+
+    const folderKey = conversationId ?? clientId ?? 'sin-cliente'
+    const accepted: PendingAttachment[] = []
+    for (const file of files) {
+      if (!isAttachmentMimeTypeAllowed(file.type, file.name)) {
+        setAttachmentError(`"${file.name}" no es un formato soportado. Usá imagen, PDF, CSV, TXT o Excel.`)
+        continue
+      }
+      if (file.size > ATTACHMENT_MAX_SIZE_BYTES) {
+        setAttachmentError(`"${file.name}" supera el tamaño máximo de ${Math.round(ATTACHMENT_MAX_SIZE_BYTES / (1024 * 1024))}MB.`)
+        continue
+      }
+      accepted.push({ localId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, filename: file.name, mediaType: file.type || 'application/octet-stream', status: 'uploading' })
+      const localId = accepted.at(-1)!.localId
+      setPendingFiles((prev) => [...prev, accepted.at(-1)!])
+      uploadChatAttachment(file, folderKey)
+        .then((url) => {
+          setPendingFiles((prev) => prev.map((item) => (item.localId === localId ? { ...item, status: 'ready', url } : item)))
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : 'No se pudo subir el archivo.'
+          setPendingFiles((prev) => prev.map((item) => (item.localId === localId ? { ...item, status: 'error', errorMessage: message } : item)))
+        })
+    }
+  }
+
+  function handleRemoveFile(localId: string) {
+    setPendingFiles((prev) => prev.filter((item) => item.localId !== localId))
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const query = input.trim()
-    if (!query || isInputDisabled) return
+    const readyFiles = pendingFiles.filter((file) => file.status === 'ready' && file.url)
+    const isUploadingFiles = pendingFiles.some((file) => file.status === 'uploading')
+    if ((!query && readyFiles.length === 0) || isInputDisabled || isUploadingFiles) return
+
+    const fileParts: FileUIPart[] = readyFiles.map((file) => ({ type: 'file', mediaType: file.mediaType, filename: file.filename, url: file.url! }))
+    const text = query || 'Adjunto archivo(s) para análisis.'
     setInput('')
-    await sendMessage({ text: query }, {
+    setPendingFiles([])
+    setAttachmentError(null)
+    await sendMessage({ text, files: fileParts }, {
       body: {
         context: clientId
           ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}) }
@@ -363,6 +462,9 @@ function SupervisorChatSession({
                     message.role === 'user' ? 'max-w-[80%] bg-primary text-primary-foreground' : 'w-full max-w-[95%] bg-card'
                   }`}
                 >
+                  {message.role === 'user' && (
+                    <MessageFileChips message={message} />
+                  )}
                   {messageHasVisibleContent(message) ? message.role === 'assistant' ? (
                     <MessageContent content={messageText(message)} />
                   ) : (
@@ -385,19 +487,76 @@ function SupervisorChatSession({
           )}
         </div>
 
-        <form className="flex gap-2" onSubmit={handleSubmit}>
-          <Input
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder={disabled ? disabledMessage : 'Escribí una consulta para el Supervisor…'}
-            aria-label="Consulta para el Supervisor"
-            disabled={isInputDisabled}
-          />
-          <Button type="submit" disabled={isInputDisabled || !input.trim()} aria-label="Enviar consulta">
-            <Send data-icon="inline-start" />
-            Enviar
-          </Button>
-        </form>
+        <div className="flex flex-col gap-2">
+          {attachmentError && (
+            <p className="text-xs text-destructive" role="alert">{attachmentError}</p>
+          )}
+          {pendingFiles.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {pendingFiles.map((file) => (
+                <span
+                  key={file.localId}
+                  className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+                    file.status === 'error' ? 'border-destructive/40 bg-destructive/10 text-destructive' : 'border-border bg-card text-foreground'
+                  }`}
+                >
+                  {file.status === 'uploading' ? (
+                    <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <FileText className="size-3.5 shrink-0" aria-hidden="true" />
+                  )}
+                  <span className="max-w-[140px] truncate" title={file.errorMessage ?? file.filename}>{file.filename}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveFile(file.localId)}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label={`Quitar ${file.filename}`}
+                  >
+                    <X className="size-3.5" aria-hidden="true" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <form className="flex gap-2" onSubmit={handleSubmit}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={ATTACHMENT_ACCEPT_ATTRIBUTE}
+              onChange={handleFileSelect}
+              className="hidden"
+              aria-hidden="true"
+              tabIndex={-1}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              disabled={isInputDisabled || pendingFiles.length >= ATTACHMENT_MAX_COUNT}
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Adjuntar archivo"
+              title="Adjuntar archivo (imagen, PDF, CSV, TXT o Excel)"
+            >
+              <Paperclip aria-hidden="true" />
+            </Button>
+            <Input
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder={disabled ? disabledMessage : 'Escribí una consulta para el Supervisor…'}
+              aria-label="Consulta para el Supervisor"
+              disabled={isInputDisabled}
+            />
+            <Button
+              type="submit"
+              disabled={isInputDisabled || (!input.trim() && pendingFiles.length === 0) || pendingFiles.some((file) => file.status === 'uploading')}
+              aria-label="Enviar consulta"
+            >
+              <Send data-icon="inline-start" />
+              Enviar
+            </Button>
+          </form>
+        </div>
           </div>
           <AIAnalysisPanel content={lastMessage?.role === 'assistant' ? messageText(lastMessage) : ''} analysis={latestAnalysis} />
         </div>
