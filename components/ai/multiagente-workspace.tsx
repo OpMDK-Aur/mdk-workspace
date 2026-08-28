@@ -27,7 +27,7 @@ export function MultiagenteWorkspace() {
   const [loadingMemory, setLoadingMemory] = useState(false)
   const [active, setActive] = useState(false)
   const [editingMemory, setEditingMemory] = useState(false)
-  const [scoreConfig, setScoreConfig] = useState<{ descriptions: { low: string; intermediate: string; high: string } } | null>(null)
+  const [scoreConfig, setScoreConfig] = useState<{ objective: string } | null>(null)
 
   async function handleSelectConversation(conversation: ConversationSummary) {
     // Mostramos el nombre ya conocido de inmediato; en paralelo traemos el
@@ -68,26 +68,10 @@ export function MultiagenteWorkspace() {
       .then(([memoryData, scoreData]) => {
         const loadedMemory = memoryData.memory as ClientMemory | null
         setMemory(loadedMemory)
-        // scoreData puede venir de un error (tabla ausente, 500, etc.). Solo
-        // armamos scoreConfig cuando las 3 descripciones son strings reales;
-        // de lo contrario dejamos scoreConfig en null para que el Supervisor
-        // use sus valores por defecto en vez de mandar un objeto incompleto
-        // que rompería la validación de /api/ai/chat.
-        const hasValidDescriptions =
-          typeof scoreData?.lowDescription === 'string' &&
-          typeof scoreData?.intermediateDescription === 'string' &&
-          typeof scoreData?.highDescription === 'string'
-        setScoreConfig(
-          hasValidDescriptions
-            ? {
-                descriptions: {
-                  low: scoreData.lowDescription,
-                  intermediate: scoreData.intermediateDescription,
-                  high: scoreData.highDescription,
-                },
-              }
-            : null,
-        )
+        // Solo mandamos el objetivo cuando la API devolvió un string válido;
+        // si la configuración todavía no existe, el Supervisor usa su
+        // objetivo predeterminado.
+        setScoreConfig(typeof scoreData?.objective === 'string' ? { objective: scoreData.objective } : null)
         setActive(loadedMemory?.completeness === 'complete')
       })
       .finally(() => setLoadingMemory(false))
@@ -100,7 +84,7 @@ export function MultiagenteWorkspace() {
 
   return (
     <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6">
+      <div className="mx-auto flex w-full flex-col gap-6">
         <header className="flex flex-col gap-2 border-b pb-6">
           <div className="flex items-center gap-2 text-primary">
             <Sparkles className="size-5" aria-hidden="true" />

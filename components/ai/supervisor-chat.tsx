@@ -1,12 +1,14 @@
 'use client'
 
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import type { UIMessage } from 'ai'
+import type { FileUIPart, UIMessage } from 'ai'
 import { mutate } from 'swr'
-import { Bot, Check, ChevronRight, Loader2, RotateCcw, Send, User, X } from 'lucide-react'
+import { Bot, Check, ChevronRight, FileText, Loader2, Paperclip, RotateCcw, Send, User, X } from 'lucide-react'
 import type { ActivityEvent } from '@/lib/ai/types'
+import { ATTACHMENT_ACCEPT_ATTRIBUTE, ATTACHMENT_MAX_COUNT, ATTACHMENT_MAX_SIZE_BYTES, isAttachmentMimeTypeAllowed } from '@/lib/ai/attachments'
+import { createClient } from '@/lib/supabase/client'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,7 +22,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { MessageContent } from '@/components/chat/message-content'
 import { AIAnalysisPanel } from './ai-analysis-panel'
 import { CONVERSATIONS_SWR_KEY } from './conversations-sidebar'
@@ -34,6 +36,48 @@ function messageText(message: UIMessage) {
 
 function messageHasVisibleContent(message: UIMessage) {
   return messageText(message).trim().length > 0
+}
+
+/** Muestra los archivos que el usuario adjuntó en ese mensaje, si tiene. */
+function MessageFileChips({ message }: { message: UIMessage }) {
+  const fileParts = message.parts.filter((part): part is FileUIPart => part.type === 'file')
+  if (fileParts.length === 0) return null
+  return (
+    <div className="mb-2 flex flex-wrap gap-1.5">
+      {fileParts.map((part, index) => (
+        <a
+          key={`${part.filename}-${index}`}
+          href={part.url}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 rounded-md bg-primary-foreground/15 px-2 py-1 text-xs text-primary-foreground hover:bg-primary-foreground/25"
+        >
+          <FileText className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="max-w-[160px] truncate">{part.filename || 'archivo adjunto'}</span>
+        </a>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Se muestra en el lugar del mensaje del asistente mientras el Supervisor
+ * todavía está generando la respuesta. En vez de ir pintando el markdown a
+ * medio terminar (listas sin cerrar, negritas cortadas a la mitad), se
+ * queda en este estado de "pensando" hasta que el turno completo esté listo
+ * y recién ahí se reemplaza por el mensaje final ya formateado.
+ */
+function ThinkingBubble({ activity }: { activity: ActivityEvent | null }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm text-muted-foreground">
+      <span className="flex gap-1" aria-hidden="true">
+        <span className="size-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
+        <span className="size-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
+        <span className="size-1.5 animate-bounce rounded-full bg-primary" />
+      </span>
+      <span>{activity?.label ?? 'Pensando…'}</span>
+    </div>
+  )
 }
 
 function MultiagentActivityStatus({ activity }: { activity: ActivityEvent | null }) {
@@ -51,7 +95,7 @@ function MultiagentActivityStatus({ activity }: { activity: ActivityEvent | null
 
 interface SupervisorChatProps {
   clientId: string | null
-  scoreConfig?: { descriptions: { low: string; intermediate: string; high: string } }
+  scoreConfig?: { objective: string }
   /** When true, the chat input is disabled and a placeholder message is shown instead of the conversation. */
   disabled?: boolean
   disabledMessage?: string
@@ -164,6 +208,33 @@ export function SupervisorChat(props: SupervisorChatProps) {
   )
 }
 
+type PendingAttachment = {
+  localId: string
+  filename: string
+  mediaType: string
+  status: 'uploading' | 'ready' | 'error'
+  url?: string
+  errorMessage?: string
+}
+
+/**
+ * Sube un archivo al bucket público "chat-adjuntos" de Supabase Storage y
+ * devuelve la URL pública. Cada archivo va en una carpeta por conversación
+ * para poder limpiarlos más adelante si se quiere.
+ */
+async function uploadChatAttachment(file: File, folderKey: string): Promise<string> {
+  const supabase = createClient()
+  const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
+  const path = `${folderKey}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`
+  const { error } = await supabase.storage.from('chat-adjuntos').upload(path, file, {
+    contentType: file.type || 'application/octet-stream',
+    cacheControl: '3600',
+  })
+  if (error) throw new Error(error.message)
+  const { data } = supabase.storage.from('chat-adjuntos').getPublicUrl(path)
+  return data.publicUrl
+}
+
 function SupervisorChatShell({ ...props }: SupervisorChatProps & { loading?: boolean }) {
   return (
     <Card className="overflow-hidden">
@@ -199,6 +270,10 @@ function SupervisorChatSession({
   isResetting?: boolean
 }) {
   const [input, setInput] = useState('')
+  const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([])
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [currentActivity, setCurrentActivity] = useState<ActivityEvent | null>(null)
   // El Performance Analyst calcula el score/temperatura como parte del turno
   // del Supervisor, pero recién queda persistido en message_data cuando el
@@ -252,7 +327,9 @@ function SupervisorChatSession({
   })
   const isBusy = status === 'submitted' || status === 'streaming'
   const lastMessage = messages.at(-1)
-  const hasStreamingText = isBusy && lastMessage?.role === 'assistant' && messageText(lastMessage).length > 0
+  // Mientras el turno del asistente sigue en curso, el mensaje se muestra
+  // como "pensando" en vez de ir revelando el markdown a medio terminar.
+  const isStreamingAssistantMessage = isBusy && lastMessage?.role === 'assistant'
   const isInputDisabled = disabled || isBusy || isResetting
 
   // Mantiene la conversación con scroll propio: cada mensaje nuevo o cambio
@@ -264,12 +341,73 @@ function SupervisorChatSession({
     container.scrollTop = container.scrollHeight
   }, [messages, isBusy, currentActivity])
 
+  async function handleFileSelect(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    if (files.length === 0) return
+    setAttachmentError(null)
+
+    if (pendingFiles.length + files.length > ATTACHMENT_MAX_COUNT) {
+      setAttachmentError(`Podés adjuntar hasta ${ATTACHMENT_MAX_COUNT} archivos por mensaje.`)
+      return
+    }
+
+    const folderKey = conversationId ?? clientId ?? 'sin-cliente'
+    const accepted: PendingAttachment[] = []
+    for (const file of files) {
+      if (!isAttachmentMimeTypeAllowed(file.type, file.name)) {
+        setAttachmentError(`"${file.name}" no es un formato soportado. Usá imagen, PDF, CSV, TXT o Excel.`)
+        continue
+      }
+      if (file.size > ATTACHMENT_MAX_SIZE_BYTES) {
+        setAttachmentError(`"${file.name}" supera el tamaño máximo de ${Math.round(ATTACHMENT_MAX_SIZE_BYTES / (1024 * 1024))}MB.`)
+        continue
+      }
+      accepted.push({ localId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, filename: file.name, mediaType: file.type || 'application/octet-stream', status: 'uploading' })
+      const localId = accepted.at(-1)!.localId
+      setPendingFiles((prev) => [...prev, accepted.at(-1)!])
+      uploadChatAttachment(file, folderKey)
+        .then((url) => {
+          setPendingFiles((prev) => prev.map((item) => (item.localId === localId ? { ...item, status: 'ready', url } : item)))
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : 'No se pudo subir el archivo.'
+          setPendingFiles((prev) => prev.map((item) => (item.localId === localId ? { ...item, status: 'error', errorMessage: message } : item)))
+        })
+    }
+  }
+
+  function handleRemoveFile(localId: string) {
+    setPendingFiles((prev) => prev.filter((item) => item.localId !== localId))
+  }
+
+  function handleTextareaKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // Enter envía el mensaje; Shift+Enter agrega un salto de línea. No
+    // enviamos mientras el usuario está componiendo texto con un IME
+    // (chino/japonés/coreano) ni en el evento final poco confiable de
+    // Safari Desktop (keyCode 229), para no cortar la composición.
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229) return
+    event.preventDefault()
+    event.currentTarget.form?.requestSubmit()
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const query = input.trim()
-    if (!query || isInputDisabled) return
+    const readyFiles = pendingFiles.filter((file) => file.status === 'ready' && file.url)
+    const isUploadingFiles = pendingFiles.some((file) => file.status === 'uploading')
+    if ((!query && readyFiles.length === 0) || isInputDisabled || isUploadingFiles) return
+
+    const fileParts: FileUIPart[] = readyFiles.map((file) => ({ type: 'file', mediaType: file.mediaType, filename: file.filename, url: file.url! }))
+    const text = query || 'Adjunto archivo(s) para análisis.'
     setInput('')
-    await sendMessage({ text: query }, {
+    setPendingFiles([])
+    setAttachmentError(null)
+    // El alto se manejaba a mano en el DOM (onChange), así que hay que
+    // resetearlo explícitamente al vaciar el textarea; si no, queda con la
+    // altura expandida del mensaje anterior.
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    await sendMessage({ text, files: fileParts }, {
       body: {
         context: clientId
           ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}) }
@@ -309,9 +447,16 @@ function SupervisorChatSession({
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-4 p-0">
-        <div className="flex flex-col lg:flex-row">
-          <div className="flex min-w-0 flex-1 flex-col gap-4 p-4">
-        <div ref={scrollContainerRef} className="flex h-[65vh] min-h-[420px] max-h-[640px] flex-col gap-3 overflow-y-auto rounded-lg border bg-muted/30 p-4" aria-live="polite">
+        {/* El panel de Análisis IA se apila debajo recién a partir de xl:
+            con el sidebar de chats también presente, mantenerlo al costado
+            desde lg dejaba la columna del chat demasiado angosta. */}
+        <div className="flex flex-col xl:flex-row">
+          {/* Altura acotada a la ventana: así el input queda siempre dentro
+              del área visible de la columna y solo la lista de mensajes
+              scrollea por dentro, en vez de que el input se desplace junto
+              con el contenido y termine fuera de pantalla. */}
+          <div className="flex h-[calc(100vh-14rem)] min-h-[480px] min-w-0 flex-1 flex-col gap-4 p-4">
+        <div ref={scrollContainerRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-lg border bg-muted/30 p-4" aria-live="polite">
           {disabled ? (
             <div className="m-auto flex max-w-sm flex-col items-center gap-3 text-center text-muted-foreground">
               <Bot className="size-8" aria-hidden="true" />
@@ -347,35 +492,43 @@ function SupervisorChatSession({
               <p className="text-center text-xs text-muted-foreground">{emptyStateMessage}</p>
             </div>
           ) : (
-            messages.map((message) => (
-              <div
-                key={message.id}
-                aria-label={messageHasVisibleContent(message) ? undefined : message.role === 'assistant' ? 'El Supervisor está procesando la respuesta' : 'Mensaje sin contenido'}
-                className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                {message.role !== 'user' && (
-                  <Bot className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
-                )}
+            messages.map((message, index) => {
+              const isThisMessageStreaming = isStreamingAssistantMessage && index === messages.length - 1
+              return (
                 <div
-                  className={`min-w-0 rounded-lg px-3 py-2 text-sm leading-6 ${
-                    message.role === 'user' ? 'max-w-[80%] bg-primary text-primary-foreground' : 'w-full max-w-[95%] bg-card'
-                  }`}
+                  key={message.id}
+                  aria-label={isThisMessageStreaming ? 'El Supervisor está pensando la respuesta' : messageHasVisibleContent(message) ? undefined : message.role === 'assistant' ? 'El Supervisor está procesando la respuesta' : 'Mensaje sin contenido'}
+                  className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  {messageHasVisibleContent(message) ? message.role === 'assistant' ? (
-                    <MessageContent content={messageText(message)} />
-                  ) : (
-                    <span className="whitespace-pre-wrap">{messageText(message)}</span>
-                  ) : message.role === 'assistant' ? (
-                    <span className="text-muted-foreground">Preparando respuesta…</span>
-                  ) : null}
+                  {message.role !== 'user' && (
+                    <Bot className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
+                  )}
+                  <div
+                    className={`min-w-0 rounded-lg px-3 py-2 text-sm leading-6 ${
+                      message.role === 'user' ? 'max-w-[80%] bg-primary text-primary-foreground' : 'w-full max-w-[95%] bg-card'
+                    }`}
+                  >
+                    {message.role === 'user' && (
+                      <MessageFileChips message={message} />
+                    )}
+                    {isThisMessageStreaming ? (
+                      <ThinkingBubble activity={currentActivity} />
+                    ) : messageHasVisibleContent(message) ? message.role === 'assistant' ? (
+                      <MessageContent content={messageText(message)} />
+                    ) : (
+                      <span className="whitespace-pre-wrap">{messageText(message)}</span>
+                    ) : message.role === 'assistant' ? (
+                      <span className="text-muted-foreground">Preparando respuesta…</span>
+                    ) : null}
+                  </div>
+                  {message.role === 'user' && (
+                    <User className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  )}
                 </div>
-                {message.role === 'user' && (
-                  <User className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                )}
-              </div>
-            ))
+              )
+            })
           )}
-          {!disabled && isBusy && !hasStreamingText && <MultiagentActivityStatus activity={currentActivity ?? { eventId: 'fallback', agentSlug: 'supervisor', status: 'running', label: 'Procesando consulta…', timestamp: new Date().toISOString() }} />}
+          {!disabled && isBusy && !isStreamingAssistantMessage && <MultiagentActivityStatus activity={currentActivity ?? { eventId: 'fallback', agentSlug: 'supervisor', status: 'running', label: 'Procesando consulta…', timestamp: new Date().toISOString() }} />}
           {!disabled && error && (
             <p className="text-sm text-destructive" role="alert">
               {error.message || 'No se pudo procesar la conversación del Supervisor.'}
@@ -383,19 +536,90 @@ function SupervisorChatSession({
           )}
         </div>
 
-        <form className="flex gap-2" onSubmit={handleSubmit}>
-          <Input
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder={disabled ? disabledMessage : 'Escribí una consulta para el Supervisor…'}
-            aria-label="Consulta para el Supervisor"
-            disabled={isInputDisabled}
-          />
-          <Button type="submit" disabled={isInputDisabled || !input.trim()} aria-label="Enviar consulta">
-            <Send data-icon="inline-start" />
-            Enviar
-          </Button>
-        </form>
+        {/* No necesita sticky: como la columna del chat tiene altura acotada
+            y solo la lista de mensajes de arriba scrollea, este bloque
+            siempre queda dentro del área visible sin moverse. */}
+        <div className="flex shrink-0 flex-col gap-2 border-t pt-3">
+          {attachmentError && (
+            <p className="text-xs text-destructive" role="alert">{attachmentError}</p>
+          )}
+          {pendingFiles.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {pendingFiles.map((file) => (
+                <span
+                  key={file.localId}
+                  className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+                    file.status === 'error' ? 'border-destructive/40 bg-destructive/10 text-destructive' : 'border-border bg-card text-foreground'
+                  }`}
+                >
+                  {file.status === 'uploading' ? (
+                    <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <FileText className="size-3.5 shrink-0" aria-hidden="true" />
+                  )}
+                  <span className="max-w-[140px] truncate" title={file.errorMessage ?? file.filename}>{file.filename}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveFile(file.localId)}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label={`Quitar ${file.filename}`}
+                  >
+                    <X className="size-3.5" aria-hidden="true" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <form className="flex items-end gap-2" onSubmit={handleSubmit}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={ATTACHMENT_ACCEPT_ATTRIBUTE}
+              onChange={handleFileSelect}
+              className="hidden"
+              aria-hidden="true"
+              tabIndex={-1}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="shrink-0"
+              disabled={isInputDisabled || pendingFiles.length >= ATTACHMENT_MAX_COUNT}
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Adjuntar archivo"
+              title="Adjuntar archivo (imagen, PDF, CSV, TXT o Excel)"
+            >
+              <Paperclip aria-hidden="true" />
+            </Button>
+            <Textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(event) => {
+                setInput(event.target.value)
+                const el = event.target
+                el.style.height = 'auto'
+                el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+              }}
+              onKeyDown={handleTextareaKeyDown}
+              placeholder={disabled ? disabledMessage : 'Escribí una consulta para el Supervisor… (Enter para enviar, Shift+Enter para salto de línea)'}
+              aria-label="Consulta para el Supervisor"
+              disabled={isInputDisabled}
+              rows={1}
+              className="min-h-9 flex-1 resize-none py-2 leading-6"
+            />
+            <Button
+              type="submit"
+              className="shrink-0"
+              disabled={isInputDisabled || (!input.trim() && pendingFiles.length === 0) || pendingFiles.some((file) => file.status === 'uploading')}
+              aria-label="Enviar consulta"
+            >
+              <Send data-icon="inline-start" />
+              Enviar
+            </Button>
+          </form>
+        </div>
           </div>
           <AIAnalysisPanel content={lastMessage?.role === 'assistant' ? messageText(lastMessage) : ''} analysis={latestAnalysis} />
         </div>

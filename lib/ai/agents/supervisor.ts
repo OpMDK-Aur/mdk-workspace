@@ -1,5 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { stepCountIs, streamText, tool } from 'ai'
+import type { ModelMessage } from 'ai'
 import { agentConfigRepository } from '../repositories/agent-repository'
 import { getCatalogToolKeys, getToolDefinitions } from '../tools'
 import type { ExecutionContext } from '../types'
@@ -13,7 +14,10 @@ function getGatewayModel(model: string) {
   return gateway.chat(model)
 }
 
-export type SupervisorModelMessage = { role: 'user' | 'assistant'; content: string }
+// El contenido de cada mensaje suele ser texto plano, pero el turno actual
+// puede incluir además archivos adjuntos (imagen/PDF como parte multimodal,
+// o texto extraído de CSV/Excel ya inyectado como parte de texto adicional).
+export type SupervisorModelMessage = ModelMessage
 
 export async function streamSupervisorResponse(
   messages: SupervisorModelMessage[],

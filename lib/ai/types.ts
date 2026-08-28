@@ -37,7 +37,7 @@ export interface ExecutionContext {
   accountId?: string
   metaAccountId?: string
   googleCustomerId?: string
-  scoreConfig?: { descriptions: { low: string; intermediate: string; high: string } }
+  scoreConfig?: { objective: string }
   /** Run-scoped only: never persisted; conversation memory is separate. */
   analysisRunState?: AnalysisRunState
   conversationWorkingContext?: ConversationWorkingContext
