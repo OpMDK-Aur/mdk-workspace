@@ -92,7 +92,7 @@ export const chatRequestSchema = z.object({
       // en vez de invalidar toda la request. El Supervisor cae a sus
       // descripciones por defecto.
       scoreConfig: z
-        .object({ descriptions: z.object({ low: z.string().max(4000), intermediate: z.string().max(4000), high: z.string().max(4000) }) })
+        .object({ objective: z.string().trim().min(10).max(4000) })
         .optional()
         .catch(undefined),
     })

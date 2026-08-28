@@ -7,15 +7,11 @@ export const maxDuration = 30
 
 const bodySchema = z.object({
   clientId: z.string().uuid(),
-  low: z.string().trim().max(4000).optional(),
-  intermediate: z.string().trim().max(4000).optional(),
-  high: z.string().trim().max(4000).optional(),
+  objective: z.string().trim().min(10).max(4000),
 })
 
 const suggestionSchema = z.object({
-  low: z.string(),
-  intermediate: z.string(),
-  high: z.string(),
+  objective: z.string(),
 })
 
 async function getAuthenticatedClient() {
@@ -30,35 +26,23 @@ export async function POST(request: Request) {
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos.' }, { status: 400 })
-  const { clientId, low, intermediate, high } = parsed.data
+  const { clientId, objective } = parsed.data
 
   const { data: client } = await supabase.from('clientes').select('nombre_del_negocio').eq('id', clientId).maybeSingle()
   const clientName = client?.nombre_del_negocio || 'este cliente'
-
-  const hasDrafts = Boolean(low || intermediate || high)
 
   try {
     const { output: suggestion } = await generateText({
       model: 'openai/gpt-5-mini',
       system:
-        'Eres un estratega senior de paid media que ayuda a definir criterios de optimización de campañas para una agencia de marketing digital. ' +
-        'Escribís en español, en tono profesional y directo, con oraciones cortas (1-2 frases por nivel). ' +
-        'Cada nivel describe cuándo una campaña se considera en ese estado, mencionando señales concretas (CPL, impresiones, conversiones, eficiencia, volumen, tendencia) y qué acción implica. ' +
-        'Los tres niveles deben ser coherentes entre sí, progresivos y mutuamente excluyentes: Baja (alerta, requiere acción inmediata), Intermedia (señales mixtas, requiere seguimiento), Alta (buen desempeño, mantener y escalar).',
-      prompt: hasDrafts
-        ? `Cliente: ${clientName}.\n\nTengo estos borradores de criterios de optimización, mejorá la redacción y la claridad de cada uno sin cambiar su intención, y completá los niveles que falten para que sean coherentes con los demás:\n\n` +
-          `Baja: ${low || '(sin definir, proponé una redacción coherente con los otros niveles)'}\n` +
-          `Intermedia: ${intermediate || '(sin definir, proponé una redacción coherente con los otros niveles)'}\n` +
-          `Alta: ${high || '(sin definir, proponé una redacción coherente con los otros niveles)'}`
-        : `Cliente: ${clientName}.\n\nProponé criterios de optimización de campañas de paid media para los tres niveles (Baja, Intermedia, Alta), pensados para una cuenta publicitaria genérica.`,
+        'Eres un estratega senior de paid media que ayuda a definir un único objetivo de optimización para una agencia de marketing digital. ' +
+        'Escribís en español, en tono profesional y directo, con una sola frase clara. ' +
+        'No agregues parámetros ni objetivos alternativos: conservá el objetivo principal y mejorá únicamente su precisión y accionabilidad.',
+      prompt: `Cliente: ${clientName}.\n\nMejorá la redacción de este único objetivo de optimización de paid media sin cambiar su intención. Debe explicar claramente qué se busca optimizar, cómo se considera alcanzado y qué evidencia debería revisar el analista. No menciones tres niveles ni inventes un segundo objetivo.\n\nObjetivo: ${objective}`,
       output: Output.object({ schema: suggestionSchema }),
     })
 
-    return NextResponse.json({
-      lowDescription: suggestion.low,
-      intermediateDescription: suggestion.intermediate,
-      highDescription: suggestion.high,
-    })
+    return NextResponse.json({ objective: suggestion.objective })
   } catch (error) {
     console.error('[v0] score config suggestion failed:', error)
     return NextResponse.json({ error: 'No se pudo generar la sugerencia.' }, { status: 500 })

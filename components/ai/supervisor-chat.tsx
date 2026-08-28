@@ -95,7 +95,7 @@ function MultiagentActivityStatus({ activity }: { activity: ActivityEvent | null
 
 interface SupervisorChatProps {
   clientId: string | null
-  scoreConfig?: { descriptions: { low: string; intermediate: string; high: string } }
+  scoreConfig?: { objective: string }
   /** When true, the chat input is disabled and a placeholder message is shown instead of the conversation. */
   disabled?: boolean
   disabledMessage?: string
