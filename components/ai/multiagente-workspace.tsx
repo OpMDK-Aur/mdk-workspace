@@ -12,6 +12,7 @@ import { SupervisorChat } from './supervisor-chat'
 import { ClientContextForm } from './client-context-form'
 import { ScoreConfigPanel } from './score-config-panel'
 import { ConversationsSidebar, type ConversationSummary } from './conversations-sidebar'
+import { PaidMediaBackfillPanel } from './paid-media-backfill-panel'
 import type { ClientMemory } from '@/lib/ai/client-memory'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createClient } from '@/lib/supabase/client'
@@ -137,6 +138,7 @@ export function MultiagenteWorkspace() {
               <ClientSelector value={selectedClient} onChange={setSelectedClient} />
             </div>
             {selectedClient && <ScoreConfigPanel clientId={selectedClient.id} onSaved={setScoreConfig} />}
+            {selectedClient && <PaidMediaBackfillPanel clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} />}
 
             {selectedClient && loadingMemory && <div className="flex flex-col gap-4"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>}
             {selectedClient && !loadingMemory && editingMemory && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} mode="edit" onCancel={() => setEditingMemory(false)} onCompleted={(updated) => { setMemory(updated); setEditingMemory(false); setActive(true); toast.success('Memoria del cliente actualizada.') }} />}
