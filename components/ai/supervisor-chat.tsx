@@ -60,6 +60,26 @@ function MessageFileChips({ message }: { message: UIMessage }) {
   )
 }
 
+/**
+ * Se muestra en el lugar del mensaje del asistente mientras el Supervisor
+ * todavía está generando la respuesta. En vez de ir pintando el markdown a
+ * medio terminar (listas sin cerrar, negritas cortadas a la mitad), se
+ * queda en este estado de "pensando" hasta que el turno completo esté listo
+ * y recién ahí se reemplaza por el mensaje final ya formateado.
+ */
+function ThinkingBubble({ activity }: { activity: ActivityEvent | null }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm text-muted-foreground">
+      <span className="flex gap-1" aria-hidden="true">
+        <span className="size-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
+        <span className="size-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
+        <span className="size-1.5 animate-bounce rounded-full bg-primary" />
+      </span>
+      <span>{activity?.label ?? 'Pensando…'}</span>
+    </div>
+  )
+}
+
 function MultiagentActivityStatus({ activity }: { activity: ActivityEvent | null }) {
   if (!activity) return null
   const Icon = activity.status === 'running' ? Loader2 : activity.status === 'completed' ? Check : X
@@ -307,7 +327,9 @@ function SupervisorChatSession({
   })
   const isBusy = status === 'submitted' || status === 'streaming'
   const lastMessage = messages.at(-1)
-  const hasStreamingText = isBusy && lastMessage?.role === 'assistant' && messageText(lastMessage).length > 0
+  // Mientras el turno del asistente sigue en curso, el mensaje se muestra
+  // como "pensando" en vez de ir revelando el markdown a medio terminar.
+  const isStreamingAssistantMessage = isBusy && lastMessage?.role === 'assistant'
   const isInputDisabled = disabled || isBusy || isResetting
 
   // Mantiene la conversación con scroll propio: cada mensaje nuevo o cambio
@@ -463,38 +485,43 @@ function SupervisorChatSession({
               <p className="text-center text-xs text-muted-foreground">{emptyStateMessage}</p>
             </div>
           ) : (
-            messages.map((message) => (
-              <div
-                key={message.id}
-                aria-label={messageHasVisibleContent(message) ? undefined : message.role === 'assistant' ? 'El Supervisor está procesando la respuesta' : 'Mensaje sin contenido'}
-                className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                {message.role !== 'user' && (
-                  <Bot className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
-                )}
+            messages.map((message, index) => {
+              const isThisMessageStreaming = isStreamingAssistantMessage && index === messages.length - 1
+              return (
                 <div
-                  className={`min-w-0 rounded-lg px-3 py-2 text-sm leading-6 ${
-                    message.role === 'user' ? 'max-w-[80%] bg-primary text-primary-foreground' : 'w-full max-w-[95%] bg-card'
-                  }`}
+                  key={message.id}
+                  aria-label={isThisMessageStreaming ? 'El Supervisor está pensando la respuesta' : messageHasVisibleContent(message) ? undefined : message.role === 'assistant' ? 'El Supervisor está procesando la respuesta' : 'Mensaje sin contenido'}
+                  className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  {message.role === 'user' && (
-                    <MessageFileChips message={message} />
+                  {message.role !== 'user' && (
+                    <Bot className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
                   )}
-                  {messageHasVisibleContent(message) ? message.role === 'assistant' ? (
-                    <MessageContent content={messageText(message)} />
-                  ) : (
-                    <span className="whitespace-pre-wrap">{messageText(message)}</span>
-                  ) : message.role === 'assistant' ? (
-                    <span className="text-muted-foreground">Preparando respuesta…</span>
-                  ) : null}
+                  <div
+                    className={`min-w-0 rounded-lg px-3 py-2 text-sm leading-6 ${
+                      message.role === 'user' ? 'max-w-[80%] bg-primary text-primary-foreground' : 'w-full max-w-[95%] bg-card'
+                    }`}
+                  >
+                    {message.role === 'user' && (
+                      <MessageFileChips message={message} />
+                    )}
+                    {isThisMessageStreaming ? (
+                      <ThinkingBubble activity={currentActivity} />
+                    ) : messageHasVisibleContent(message) ? message.role === 'assistant' ? (
+                      <MessageContent content={messageText(message)} />
+                    ) : (
+                      <span className="whitespace-pre-wrap">{messageText(message)}</span>
+                    ) : message.role === 'assistant' ? (
+                      <span className="text-muted-foreground">Preparando respuesta…</span>
+                    ) : null}
+                  </div>
+                  {message.role === 'user' && (
+                    <User className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  )}
                 </div>
-                {message.role === 'user' && (
-                  <User className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                )}
-              </div>
-            ))
+              )
+            })
           )}
-          {!disabled && isBusy && !hasStreamingText && <MultiagentActivityStatus activity={currentActivity ?? { eventId: 'fallback', agentSlug: 'supervisor', status: 'running', label: 'Procesando consulta…', timestamp: new Date().toISOString() }} />}
+          {!disabled && isBusy && !isStreamingAssistantMessage && <MultiagentActivityStatus activity={currentActivity ?? { eventId: 'fallback', agentSlug: 'supervisor', status: 'running', label: 'Procesando consulta…', timestamp: new Date().toISOString() }} />}
           {!disabled && error && (
             <p className="text-sm text-destructive" role="alert">
               {error.message || 'No se pudo procesar la conversación del Supervisor.'}
