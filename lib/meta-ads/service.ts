@@ -79,7 +79,9 @@ export type MetaResultType =
   | 'landing_page_view'
   | 'engagement'
   | 'video_view'
-  | 'other'
+  | 'purchase'
+  | 'reach'
+  | 'unknown'
 
 interface MetaInsightRow {
   campaign_id?: string
@@ -119,6 +121,9 @@ const TRAFFIC_ACTIONS = [
   'like',
   'video_view',
   'omni_view_content',
+  'purchase',
+  'omni_purchase',
+  'reach',
 ]
 const TRAFFIC_OBJECTIVES = new Set([
   'LINK_CLICKS', 'OUTCOME_TRAFFIC', 'POST_ENGAGEMENT', 'OUTCOME_ENGAGEMENT',
@@ -206,14 +211,14 @@ function toInt(value?: string) {
   return Math.round(toNumber(value))
 }
 
-function classifyAction(objective: string, actions: MetaAction[] | undefined) {
+export function normalizeMetaResult(objective: string, actions: MetaAction[] | undefined) {
   const available = new Set(actions?.map((action) => action.action_type) ?? [])
   const priorities = TRAFFIC_OBJECTIVES.has(objective) ? [...TRAFFIC_ACTIONS, ...LEAD_ACTIONS] : [...LEAD_ACTIONS, ...TRAFFIC_ACTIONS]
   const actionType = priorities.find((type) => available.has(type)) ?? null
-  if (!actionType) return { results: 0, resultType: 'other' as MetaResultType, sourceActionType: null }
+  if (!actionType) return { results: 0, resultType: 'unknown' as MetaResultType, sourceActionType: null, leads: 0, conversions: 0 }
   const action = actions?.find((item) => item.action_type === actionType)
-  const results = Math.round(toNumber(action?.value))
-  let resultType: MetaResultType = 'other'
+  const results = Math.max(0, Math.round(toNumber(action?.value)))
+  let resultType: MetaResultType = 'unknown'
   if (actionType === 'onsite_conversion.messaging_conversation_started_7d') resultType = 'messaging_conversation'
   else if (actionType === 'contact') resultType = 'contact'
   else if (actionType === 'submit_application') resultType = 'application'
@@ -221,18 +226,20 @@ function classifyAction(objective: string, actions: MetaAction[] | undefined) {
   else if (LEAD_ACTIONS.includes(actionType)) resultType = 'lead'
   else if (actionType === 'link_click') resultType = 'link_click'
   else if (actionType === 'landing_page_view') resultType = 'landing_page_view'
+  else if (actionType === 'purchase' || actionType === 'omni_purchase') resultType = 'purchase'
+  else if (actionType === 'reach') resultType = 'reach'
   else if (actionType === 'video_view') resultType = 'video_view'
   else if (TRAFFIC_ACTIONS.includes(actionType)) resultType = 'engagement'
-  // V1 no calcula ROAS ni valores de compra. Un action_type de purchase
-  // nunca entra en las prioridades y queda como `other`, sin llamarlo lead.
-  return { results, resultType, sourceActionType: actionType }
+  const leads = resultType === 'lead' ? results : 0
+  const conversions = resultType === 'lead' || resultType === 'purchase' ? results : 0
+  return { results, resultType, sourceActionType: actionType, leads, conversions }
 }
 
 function legacyLabel(resultType: MetaResultType) {
   return ({
     lead: 'Lead', messaging_conversation: 'Conversacion iniciada', contact: 'Contacto',
     application: 'Aplicacion', registration: 'Registro', link_click: 'Clic en enlace',
-    landing_page_view: 'Visita a landing', engagement: 'Interaccion', video_view: 'Reproduccion', other: 'Resultado',
+    landing_page_view: 'Visita a landing', engagement: 'Interaccion', video_view: 'Reproduccion', purchase: 'Compra', reach: 'Alcance', unknown: 'Sin resultado',
   } satisfies Record<MetaResultType, string>)[resultType]
 }
 
@@ -248,14 +255,14 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
   const [rows, activeIds] = await Promise.all([rowsPromise, activeIdsPromise])
   const campaigns = rows.filter((row) => !activeIds || activeIds.has(row.campaign_id || '')).map((row) => {
     const spend = toNumber(row.spend)
-    const result = classifyAction(row.objective || '', row.actions)
+    const result = normalizeMetaResult(row.objective || '', row.actions)
     const costPerResult = result.results > 0 ? spend / result.results : 0
     return {
       id: row.campaign_id || '', name: row.campaign_name || 'Sin nombre', objective: row.objective || 'UNKNOWN',
       impressions: toInt(row.impressions), clicks: toInt(row.clicks), spend, results: result.results,
       result_type: result.resultType, source_action_type: result.sourceActionType,
       ctr: toNumber(row.ctr), cpc: toNumber(row.cpc), cost_per_result: costPerResult,
-      leads: result.results, cpl: costPerResult, lead_type: legacyLabel(result.resultType),
+      leads: result.leads, cpl: result.leads > 0 ? spend / result.leads : 0, lead_type: legacyLabel(result.resultType),
     }
   }).filter((campaign) => campaign.id)
 
