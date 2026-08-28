@@ -90,6 +90,147 @@ type AttachmentContentPart = { type: 'text'; text: string } | { type: 'file'; da
 type AttachmentMeta = { filename: string; mediaType: string; url: string }
 
 const ATTACHMENT_TEXT_CHAR_LIMIT = 20_000
+const ATTACHMENT_SAMPLE_ROW_COUNT = 15
+const ATTACHMENT_CATEGORICAL_MAX_DISTINCT = 20
+
+/** Intenta interpretar el texto como un array JSON de objetos (export tabular tipo Supabase). */
+function tryParseJsonRows(raw: string): Record<string, unknown>[] | null {
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((row) => row && typeof row === 'object' && !Array.isArray(row))) {
+      return parsed as Record<string, unknown>[]
+    }
+  } catch {
+    // No es JSON válido, se intenta como CSV más abajo.
+  }
+  return null
+}
+
+/** Parser CSV simple con soporte de comillas (suficiente para exports estándar, no RFC completo). */
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = []
+  let current = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+    if (inQuotes) {
+      if (char === '"' && line[i + 1] === '"') {
+        current += '"'
+        i++
+      } else if (char === '"') inQuotes = false
+      else current += char
+    } else if (char === '"') inQuotes = true
+    else if (char === ',') {
+      cells.push(current)
+      current = ''
+    } else current += char
+  }
+  cells.push(current)
+  return cells
+}
+
+function tryParseCsvRows(raw: string): Record<string, string>[] | null {
+  const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0)
+  if (lines.length < 2) return null
+  const header = splitCsvLine(lines[0])
+  if (header.length < 2) return null
+  return lines.slice(1).map((line) => {
+    const cells = splitCsvLine(line)
+    const row: Record<string, string> = {}
+    header.forEach((col, index) => {
+      row[col] = cells[index] ?? ''
+    })
+    return row
+  })
+}
+
+/**
+ * Muchos exports de CRM (contactos, mensajes, conversaciones) traen datos de
+ * varias cuentas mezcladas en la misma tabla. Si el archivo tiene una
+ * columna "client_id" y sabemos la cuenta activa, filtramos automáticamente
+ * para que el Supervisor no cruce datos de otro cliente.
+ */
+function filterRowsByClientId(rows: Record<string, unknown>[], clientId: string | undefined) {
+  const originalCount = rows.length
+  const hadClientIdColumn = rows.length > 0 && 'client_id' in rows[0]
+  if (!clientId || !hadClientIdColumn) {
+    return { rows, hadClientIdColumn: false, matchedCount: rows.length, originalCount }
+  }
+  const filtered = rows.filter((row) => row.client_id === clientId)
+  return { rows: filtered, hadClientIdColumn: true, matchedCount: filtered.length, originalCount }
+}
+
+/** Resume filas tabulares en lugar de listarlas todas: conteos, rango de fechas y una muestra. */
+function summarizeRows(rows: Record<string, unknown>[]): string {
+  if (rows.length === 0) return 'No hay filas para mostrar.'
+  const columns = Object.keys(rows[0])
+  const lines: string[] = [`Total de filas: ${rows.length}`, `Columnas: ${columns.join(', ')}`]
+
+  for (const column of columns) {
+    const values = rows.map((row) => row[column]).filter((value) => value !== null && value !== undefined && value !== '')
+    if (values.length === 0) continue
+    const counts = new Map<string, number>()
+    for (const value of values) {
+      const key = String(value)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    if (counts.size > 1 && counts.size <= ATTACHMENT_CATEGORICAL_MAX_DISTINCT && counts.size < rows.length) {
+      const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1])
+      lines.push(`Distribución de "${column}": ${sorted.map(([key, count]) => `${key}=${count}`).join(', ')}`)
+    }
+  }
+
+  const dateColumn = columns.find((column) => /(_at|date|fecha)$/i.test(column))
+  if (dateColumn) {
+    const dates = rows
+      .map((row) => row[dateColumn])
+      .filter((value): value is string => typeof value === 'string' && !Number.isNaN(Date.parse(value)))
+      .sort()
+    if (dates.length > 0) lines.push(`Rango de "${dateColumn}": ${dates[0]} a ${dates.at(-1)}`)
+  }
+
+  lines.push(`Muestra de las primeras ${Math.min(ATTACHMENT_SAMPLE_ROW_COUNT, rows.length)} filas:`)
+  lines.push(JSON.stringify(rows.slice(0, ATTACHMENT_SAMPLE_ROW_COUNT), null, 1))
+  return lines.join('\n')
+}
+
+/**
+ * Convierte el texto crudo de un adjunto (JSON tabular, CSV o texto libre) en
+ * el bloque que se le inyecta al modelo. Si detecta estructura tabular:
+ * filtra por client_id cuando corresponde y, si es demasiado grande para
+ * mandarlo entero, lo resume en vez de cortarlo a ciegas.
+ */
+function buildAttachmentText(filename: string, raw: string, clientId: string | undefined): string {
+  const jsonRows = tryParseJsonRows(raw)
+  const rows = jsonRows ?? tryParseCsvRows(raw)
+
+  if (!rows) {
+    if (raw.length <= ATTACHMENT_TEXT_CHAR_LIMIT) {
+      return `Contenido del archivo adjunto "${filename}":\n\n${raw}`
+    }
+    return `Contenido del archivo adjunto "${filename}" (se muestran los primeros ${ATTACHMENT_TEXT_CHAR_LIMIT} caracteres de ${raw.length} totales; el resto fue omitido):\n\n${raw.slice(0, ATTACHMENT_TEXT_CHAR_LIMIT)}`
+  }
+
+  const { rows: filteredRows, hadClientIdColumn, matchedCount, originalCount } = filterRowsByClientId(rows, clientId)
+  const filterNote = !hadClientIdColumn
+    ? ''
+    : matchedCount === 0
+      ? `\n\nAVISO: el archivo tiene una columna "client_id" pero ninguna fila coincide con la cuenta activa. Es posible que el archivo corresponda a otra cuenta o que el export no esté filtrado correctamente; no se usó ningún dato de este archivo para el análisis.`
+      : matchedCount < originalCount
+        ? `\n\nNota: el archivo tenía ${originalCount} filas de una o más cuentas; se filtraron automáticamente a ${matchedCount} filas que corresponden a la cuenta activa.`
+        : ''
+
+  if (hadClientIdColumn && matchedCount === 0) {
+    return `Contenido del archivo adjunto "${filename}":${filterNote}`
+  }
+
+  const serialized = JSON.stringify(filteredRows)
+  if (serialized.length <= ATTACHMENT_TEXT_CHAR_LIMIT) {
+    return `Contenido del archivo adjunto "${filename}" (${filteredRows.length} filas):${filterNote}\n\n${serialized}`
+  }
+
+  return `Contenido del archivo adjunto "${filename}" es grande (${filteredRows.length} filas, formato ${jsonRows ? 'JSON' : 'CSV'}), así que se resumió automáticamente en vez de recortarlo:${filterNote}\n\n${summarizeRows(filteredRows)}`
+}
 
 /**
  * Convierte cada archivo adjunto en algo que el modelo pueda consumir:
@@ -98,7 +239,10 @@ const ATTACHMENT_TEXT_CHAR_LIMIT = 20_000
  * - xlsx/xls: se parsea con la librería xlsx y se convierte cada hoja a CSV.
  * - cualquier otro formato: se avisa al modelo que no pudo leerse automáticamente.
  */
-async function resolveAttachmentParts(files: IncomingFilePart[]): Promise<{ contentParts: AttachmentContentPart[]; attachmentsMeta: AttachmentMeta[] }> {
+async function resolveAttachmentParts(
+  files: IncomingFilePart[],
+  clientId: string | undefined,
+): Promise<{ contentParts: AttachmentContentPart[]; attachmentsMeta: AttachmentMeta[] }> {
   const contentParts: AttachmentContentPart[] = []
   const attachmentsMeta: AttachmentMeta[] = []
 
@@ -117,7 +261,7 @@ async function resolveAttachmentParts(files: IncomingFilePart[]): Promise<{ cont
         const response = await fetch(file.url)
         if (!response.ok) throw new Error(`status ${response.status}`)
         const text = await response.text()
-        contentParts.push({ type: 'text', text: `Contenido del archivo adjunto "${filename}":\n\n${text.slice(0, ATTACHMENT_TEXT_CHAR_LIMIT)}` })
+        contentParts.push({ type: 'text', text: buildAttachmentText(filename, text, clientId) })
       } catch (error) {
         console.error('[v0] Attachment text read failed:', filename, error instanceof Error ? error.message : error)
         contentParts.push({ type: 'text', text: `No se pudo leer el contenido del archivo adjunto "${filename}".` })
@@ -132,9 +276,9 @@ async function resolveAttachmentParts(files: IncomingFilePart[]): Promise<{ cont
         const buffer = Buffer.from(await response.arrayBuffer())
         const workbook = XLSX.read(buffer, { type: 'buffer' })
         const csvBySheet = workbook.SheetNames.map(
-          (sheetName) => `Hoja "${sheetName}":\n${XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName])}`,
+          (sheetName) => `Hoja "${sheetName}":\n${buildAttachmentText(filename, XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]), clientId)}`,
         ).join('\n\n')
-        contentParts.push({ type: 'text', text: `Contenido del archivo adjunto "${filename}" (convertido a CSV):\n\n${csvBySheet.slice(0, ATTACHMENT_TEXT_CHAR_LIMIT)}` })
+        contentParts.push({ type: 'text', text: `Contenido del archivo adjunto "${filename}" (convertido de Excel a CSV):\n\n${csvBySheet}` })
       } catch (error) {
         console.error('[v0] Attachment spreadsheet parse failed:', filename, error instanceof Error ? error.message : error)
         contentParts.push({ type: 'text', text: `No se pudo leer el contenido del archivo adjunto "${filename}".` })
@@ -197,9 +341,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'El último mensaje debe contener texto.' }, { status: 400 })
     }
 
-    const { contentParts: attachmentContentParts, attachmentsMeta } = await resolveAttachmentParts(fileParts)
-
     const context = parsed.data.context
+    const { contentParts: attachmentContentParts, attachmentsMeta } = await resolveAttachmentParts(fileParts, context.clientId)
     // getOrCreateConversation valida server-side que la conversación (si se
     // pasó un conversationId) pertenezca a este user_id + client_id antes de
     // devolverla. Si no coincide (otro usuario u otro cliente), la búsqueda
