@@ -51,6 +51,8 @@ export interface MetaAccountMetrics {
   account_name: string | null
   moneda: string | null
   zona_horaria: string | null
+  api_rows_received: number
+  raw_rows?: unknown[]
   date_range: { start: string; end: string }
   totals: {
     impressions: number
@@ -275,6 +277,8 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
   }
   return {
     account_id: accountId, account_name: input.accountName ?? null, moneda: input.moneda ?? null, zona_horaria: input.zonaHoraria ?? null,
+    api_rows_received: rows.length,
+    raw_rows: rows.slice(0, 3),
     date_range: { start: input.dateFrom, end: input.dateTo }, totals, results_by_type: resultsByType, campaigns,
   }
 }
