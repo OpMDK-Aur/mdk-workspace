@@ -7,8 +7,9 @@ type Platform = 'google' | 'meta'
 type Account = { id: string; cliente_id: string; plataforma: Platform; id_cuenta: string; nombre_cuenta: string | null; moneda: string | null; zona_horaria: string | null }
 export type SyncOptions = { mode?: 'daily' | 'backfill'; dateFrom?: string; dateTo?: string; clientId?: string; accountId?: string; advertisingAccountId?: string; dryRun?: boolean }
 export type SyncStatus = 'completed' | 'no_delivery' | 'normalization_empty' | 'partial' | 'failed' | 'sync_not_executed'
-export type SyncWindowDiagnostic = { platform: Platform; account_id: string; date_from: string; date_to: string; status: SyncStatus; api_rows_received: number; normalized_rows: number; rows_upserted: number; errors: string[]; raw_sample?: Record<string, unknown>[] }
-export type SyncResult = { mode: string; date_from: string; date_to: string; status: SyncStatus; reason?: string; error_code?: string; processed: number; upserted: number; failed: number; skipped: number; api_rows_received: number; normalized_rows: number; rows_upserted: number; windows_processed: number; windows_with_data: number; windows_without_data: number; errors: string[]; windows: SyncWindowDiagnostic[] }
+export type PersistenceError = { platform: Platform; account_id: string; date: string; stage: 'persistence'; error_code: string; error_message: string; error_details: string; error_hint: string; validation_errors?: string[]; sample_row?: Record<string, unknown> }
+export type SyncWindowDiagnostic = { platform: Platform; account_id: string; date_from: string; date_to: string; status: SyncStatus; api_rows_received: number; normalized_rows: number; rows_upserted: number; errors: string[]; persistence_errors?: PersistenceError[]; raw_sample?: Record<string, unknown>[] }
+export type SyncResult = { mode: string; date_from: string; date_to: string; status: SyncStatus; reason?: string; error_code?: string; processed: number; upserted: number; failed: number; skipped: number; api_rows_received: number; normalized_rows: number; rows_upserted: number; windows_processed: number; windows_with_data: number; windows_without_data: number; errors: string[]; persistence_errors: PersistenceError[]; windows: SyncWindowDiagnostic[] }
 
 const iso = (date: Date) => date.toISOString().slice(0, 10)
 function range(options: SyncOptions) { const end = options.dateTo ?? iso(new Date()); const start = options.dateFrom ?? (options.mode === 'backfill' ? iso(new Date(Date.now() - 89 * 86400000)) : iso(new Date(Date.now() - 2 * 86400000))); return { start, end } }
@@ -16,6 +17,23 @@ function sleep(ms: number) { return new Promise((resolve) => setTimeout(resolve,
 function safeRawSample(rows: unknown[]) {
   const secret = /token|secret|password|authorization|cookie|credential|access_key|refresh/i
   return rows.slice(0, 3).map((row) => Object.fromEntries(Object.entries(row as Record<string, unknown>).filter(([key]) => !secret.test(key)).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 240) : value])))
+}
+function persistenceCode(error: { code?: string; message?: string }) {
+  if (error.code === '23502') return 'NOT_NULL_VIOLATION'
+  if (error.code === '23503') return 'FOREIGN_KEY_VIOLATION'
+  if (error.code === '23505') return 'UNIQUE_VIOLATION'
+  if (error.code === '23514') return 'CHECK_VIOLATION'
+  if (error.code === '42501') return 'RLS_DENIED / PERMISSION_DENIED'
+  return error.code ?? 'UNKNOWN_PERSISTENCE_ERROR'
+}
+function invalidRowFields(row: Record<string, unknown>) {
+  const required = ['client_id', 'platform', 'account_id', 'campaign_id', 'metric_date', 'result_type']
+  const numeric = ['spend', 'impressions', 'clicks', 'results', 'leads', 'conversions']
+  return [...required.filter((key) => row[key] === undefined || row[key] === null || row[key] === ''), ...numeric.filter((key) => { const value = row[key]; return value === undefined || (typeof value === 'number' && !Number.isFinite(value)) })]
+}
+function sampleRow(row: Record<string, unknown>) {
+  const keys = ['client_id', 'advertising_account_id', 'platform', 'account_id', 'metric_date', 'campaign_id', 'campaign_name', 'campaign_type', 'campaign_objective', 'result_type', 'currency', 'spend', 'impressions', 'clicks', 'results', 'leads', 'conversions']
+  return Object.fromEntries(keys.map((key) => [key, row[key] ?? null]))
 }
 async function retry<T>(work: () => Promise<T>) { let last: unknown; for (let attempt = 0; attempt < 3; attempt++) { try { return await work() } catch (error) { last = error; if (attempt < 2) await sleep(250 * 2 ** attempt) } } throw last }
 
@@ -25,7 +43,7 @@ function rowsForAccount(account: Account, metrics: any, date: string) {
 }
 
 export async function runPaidMediaSync(options: SyncOptions = {}): Promise<SyncResult> {
-  const { start, end } = range(options); const db = createAdminClient(); const result: SyncResult = { mode: options.mode ?? 'daily', date_from: start, date_to: end, status: 'completed', processed: 0, upserted: 0, failed: 0, skipped: 0, api_rows_received: 0, normalized_rows: 0, rows_upserted: 0, windows_processed: 0, windows_with_data: 0, windows_without_data: 0, errors: [], windows: [] }
+  const { start, end } = range(options); const db = createAdminClient(); const result: SyncResult = { mode: options.mode ?? 'daily', date_from: start, date_to: end, status: 'completed', processed: 0, upserted: 0, failed: 0, skipped: 0, api_rows_received: 0, normalized_rows: 0, rows_upserted: 0, windows_processed: 0, windows_with_data: 0, windows_without_data: 0, errors: [], persistence_errors: [], windows: [] }
   let query = db.from('cuentas_publicitarias').select('id, cliente_id, plataforma, id_cuenta, nombre_cuenta, moneda, zona_horaria').eq('activo', true)
   if (options.clientId) query = query.eq('cliente_id', options.clientId)
   if (options.advertisingAccountId) query = query.eq('id', options.advertisingAccountId)
@@ -54,10 +72,23 @@ export async function runPaidMediaSync(options: SyncOptions = {}): Promise<SyncR
           if (options.dryRun && apiRows > 0 && rows.length === 0 && process.env.NODE_ENV !== 'production') diagnostic.raw_sample = safeRawSample(Array.isArray(metrics.raw_rows) ? metrics.raw_rows : [])
           result.windows.push(diagnostic); result.windows_processed++; result.api_rows_received += apiRows; result.normalized_rows += rows.length; result.rows_upserted += options.dryRun ? 0 : rows.length
           if (apiRows > 0) result.windows_with_data++; else result.windows_without_data++
-          if (!options.dryRun && rows.length) { const write = await db.from('paid_media_daily_metrics').upsert(rows, { onConflict: 'client_id,platform,account_id,campaign_id,metric_date' }); if (write.error) throw write.error }
+          if (!options.dryRun && rows.length) {
+            const validationErrors = rows.flatMap((row: Record<string, unknown>, index: number) => invalidRowFields(row).map((field) => `row[${index}].${field}`))
+            if (validationErrors.length) throw Object.assign(new Error('Payload inválido antes del upsert.'), { code: 'PAYLOAD_INVALID', details: validationErrors.join(', '), validation_errors: validationErrors })
+            const write = await db.from('paid_media_daily_metrics').upsert(rows, { onConflict: 'client_id,platform,account_id,campaign_id,metric_date' })
+            if (write.error) {
+              const error = write.error
+              const persistence = { platform: account.plataforma, account_id: account.id_cuenta, date, stage: 'persistence' as const, error_code: persistenceCode(error), error_message: error.message ?? '', error_details: error.details ?? '', error_hint: error.hint ?? '', sample_row: sampleRow(rows[0]) }
+              console.error('[daily-metrics-upsert-error]', { platform: account.plataforma, accountId: account.id_cuenta, date, rowsCount: rows.length, supabase: { code: error.code, message: error.message, details: error.details, hint: error.hint }, sampleRow: persistence.sample_row })
+              result.persistence_errors.push(persistence)
+              const diagnostic = result.windows[result.windows.length - 1]
+              if (diagnostic) { diagnostic.status = 'failed'; diagnostic.rows_upserted = 0; diagnostic.persistence_errors = [persistence]; diagnostic.errors = [persistence.error_message] }
+              throw Object.assign(new Error(persistence.error_message), { code: persistence.error_code, details: persistence.error_details, hint: persistence.error_hint })
+            }
+          }
           result.upserted += rows.length
           if (account.nombre_cuenta === null && !options.dryRun) await updateAdvertisingAccountName(db, { clienteId: account.cliente_id, plataforma: account.plataforma, idCuenta: account.id_cuenta, nombreCuenta: metrics.account_name ?? account.id_cuenta, moneda: metrics.moneda, zonaHoraria: metrics.zona_horaria })
-        } catch (error) { const message = `${account.plataforma}:${account.id_cuenta}:${date} ${error instanceof Error ? error.message.slice(0, 240) : 'error'}`; result.failed++; result.windows_processed++; result.windows.push({ platform: account.plataforma, account_id: account.id_cuenta, date_from: date, date_to: date, status: 'failed', api_rows_received: 0, normalized_rows: 0, rows_upserted: 0, errors: [message] }); result.errors.push(message) }
+        } catch (error) { const raw = error as { code?: string; message?: string; details?: string; hint?: string; validation_errors?: string[] }; const message = `${account.plataforma}:${account.id_cuenta}:${date} ${raw.message?.slice(0, 240) ?? 'error'}`; result.failed++; const existing = result.persistence_errors.find((item) => item.platform === account.plataforma && item.account_id === account.id_cuenta && item.date === date); if (!existing) { const persistence = { platform: account.plataforma, account_id: account.id_cuenta, date, stage: 'persistence' as const, error_code: persistenceCode(raw), error_message: raw.message ?? 'Error durante la sincronización.', error_details: raw.details ?? '', error_hint: raw.hint ?? '', validation_errors: raw.validation_errors }; result.persistence_errors.push(persistence) } if (!existing) result.windows.push({ platform: account.plataforma, account_id: account.id_cuenta, date_from: date, date_to: date, status: 'failed', api_rows_received: 0, normalized_rows: 0, rows_upserted: 0, errors: [message], persistence_errors: [result.persistence_errors[result.persistence_errors.length - 1]] }); result.errors.push(message) }
       }))
     }
   }
