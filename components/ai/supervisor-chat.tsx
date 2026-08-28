@@ -449,7 +449,7 @@ function SupervisorChatSession({
       <CardContent className="flex flex-col gap-4 p-0">
         <div className="flex flex-col lg:flex-row">
           <div className="flex min-w-0 flex-1 flex-col gap-4 p-4">
-        <div ref={scrollContainerRef} className="flex min-h-[420px] flex-1 flex-col gap-3 overflow-y-auto rounded-lg border bg-muted/30 p-4" aria-live="polite">
+        <div ref={scrollContainerRef} className="flex h-[50vh] min-h-[420px] flex-col gap-3 overflow-y-auto rounded-lg border bg-muted/30 p-4" aria-live="polite">
           {disabled ? (
             <div className="m-auto flex max-w-sm flex-col items-center gap-3 text-center text-muted-foreground">
               <Bot className="size-8" aria-hidden="true" />
