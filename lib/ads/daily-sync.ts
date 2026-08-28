@@ -33,7 +33,7 @@ function invalidRowFields(row: Record<string, unknown>) {
 }
 function normalizeOptional(value: unknown) { return value === undefined ? null : value }
 function invalidFieldDetails(row: Record<string, unknown>, rowIndex: number) {
-  return invalidRowFields(row).map((field) => ({ row_index: rowIndex, field, value_type: row[field] === null ? 'null' : typeof row[field], campaign_id: row.campaign_id ?? null, campaign_name: row.campaign_name ?? null, value: row[field] }))
+  return invalidRowFields(row).map((field) => ({ row_index: rowIndex, campaign_id: row.campaign_id ?? null, campaign_name: row.campaign_name ?? null, field, reason: row[field] === undefined ? 'undefined' : row[field] === null ? 'null' : !Number.isFinite(row[field] as number) ? String(row[field]) : 'invalid', value_type: row[field] === null ? 'null' : typeof row[field], value: row[field] }))
 }
 function sampleRow(row: Record<string, unknown>) {
   const keys = ['client_id', 'advertising_account_id', 'platform', 'account_id', 'metric_date', 'campaign_id', 'campaign_name', 'campaign_type', 'campaign_objective', 'result_type', 'currency', 'spend', 'impressions', 'clicks', 'results', 'leads', 'conversions']
@@ -77,9 +77,19 @@ export async function runPaidMediaSync(options: SyncOptions = {}): Promise<SyncR
           result.windows.push(diagnostic); result.windows_processed++; result.api_rows_received += apiRows; result.normalized_rows += rows.length
           if (apiRows > 0) result.windows_with_data++; else result.windows_without_data++
           if (!options.dryRun && rows.length) {
-            const invalidFields = rows.flatMap((row: Record<string, unknown>, index: number) => invalidFieldDetails(row, index))
-            diagnostic.validated_rows = rows.length - new Set(invalidFields.map((item: { row_index: number }) => item.row_index)).size
-            if (invalidFields.length) { diagnostic.status = 'payload_invalid' as SyncStatus; diagnostic.validated_rows = 0; diagnostic.errors = ['Payload inválido antes del upsert.']; throw Object.assign(new Error('Payload inválido antes del upsert.'), { code: 'PAYLOAD_INVALID', details: JSON.stringify(invalidFields), validation_errors: invalidFields as Array<Record<string, unknown>> }) }
+            const allInvalidFields = rows.flatMap((row: Record<string, unknown>, index: number) => invalidFieldDetails(row, index))
+            const invalidFields = allInvalidFields.slice(0, 5)
+            diagnostic.validated_rows = rows.length - new Set(allInvalidFields.map((item: { row_index: number }) => item.row_index)).size
+            if (allInvalidFields.length) {
+              diagnostic.status = 'payload_invalid' as SyncStatus
+              diagnostic.validated_rows = 0
+              diagnostic.errors = ['Payload inválido antes del upsert.']
+              const payloadError = { platform: account.plataforma, account_id: account.id_cuenta, date, stage: 'payload_validation' as const, error_code: 'PAYLOAD_INVALID', error_message: 'Payload inválido antes del upsert.', error_details: `${allInvalidFields.length} campos inválidos en ${new Set(allInvalidFields.map((item: { row_index: number }) => item.row_index)).size} filas.`, error_hint: 'Revisar invalid_fields antes de flexibilizar el contrato.', validation_errors: invalidFields as Array<Record<string, unknown>>, sample_row: sampleRow(rows[0]) }
+              console.error('[daily-metrics-payload-invalid]', { date, campaignId: rows[0]?.campaign_id ?? null, campaignName: rows[0]?.campaign_name ?? null, invalidFields, sample: payloadError.sample_row })
+              result.persistence_errors.push(payloadError)
+              diagnostic.persistence_errors = [payloadError]
+              throw Object.assign(new Error(payloadError.error_message), payloadError)
+            }
             const write = await db.from('paid_media_daily_metrics').upsert(rows, { onConflict: 'client_id,platform,account_id,campaign_id,metric_date' })
             if (write.error) {
               const error = write.error
