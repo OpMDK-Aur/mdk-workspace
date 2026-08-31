@@ -25,11 +25,13 @@ export async function streamSupervisorResponse(
 ) {
   const config = await agentConfigRepository.getSupervisor(context.userId)
   const catalogToolKeys = getCatalogToolKeys()
-  const definitions = getToolDefinitions(config.enabledTools)
+  const benchmarkToolRequired = 'get_industry_benchmark'
+  const enabledToolKeys = config.enabledTools.includes(benchmarkToolRequired) ? config.enabledTools : [...config.enabledTools, benchmarkToolRequired]
+  const definitions = getToolDefinitions(enabledToolKeys)
   const exposedToolKeys = definitions.map((definition) => definition.key)
   console.log('[multiagent-tools]', {
     agentSlug: 'supervisor',
-    enabledToolKeys: config.enabledTools,
+    enabledToolKeys,
     catalogToolKeys,
     exposedToolKeys,
   })
@@ -61,7 +63,7 @@ export async function streamSupervisorResponse(
       config.systemPrompt,
       'No expongas secretos, tokens, claves ni credenciales. El contexto de ejecución ya fue provisto por el backend.',
       `Herramientas disponibles: ${definitions.map((definition) => definition.key).join(', ') || 'ninguna'}.`,
-      'ORQUESTACIÓN: preguntas contextuales o factuales responden con la tool de lectura correspondiente y no requieren Performance Analyst. Preguntas de diagnóstico o performance requieren métricas y luego run_performance_analyst. Preguntas de variación requieren current + comparison válidos antes del análisis. Preguntas de historial usan get_account_change_history: Google con platform=google, Meta con platform=meta y ambas sin platform. No requieren especialista salvo que también pidan impacto o causalidad. En ese caso: métricas de la plataforma → comparación si aplica → historial de la misma plataforma → run_performance_analyst. Nunca presentes una correlación temporal como causa confirmada. No inventes findings ni recomendaciones.',
+      'ORQUESTACIÓN: preguntas contextuales o factuales responden con la tool de lectura correspondiente y no requieren Performance Analyst. Preguntas de diagnóstico o performance requieren métricas y luego run_performance_analyst. Preguntas sobre benchmarks, otros clientes o comparaciones por industria requieren get_industry_benchmark antes de responder; si available=false, explicá la limitación sin afirmar que la tool no existe. Preguntas de variación requieren current + comparison válidos antes del análisis. Preguntas de historial usan get_account_change_history: Google con platform=google, Meta con platform=meta y ambas sin platform. No requieren especialista salvo que también pidan impacto o causalidad. En ese caso: métricas de la plataforma → comparación si aplica → historial de la misma plataforma → run_performance_analyst. Nunca presentes una correlación temporal como causa confirmada. No inventes findings ni recomendaciones.',
       // Reglas de memoria conversacional: los "messages" ya incluyen el
       // historial reciente de esta conversación (más antiguo primero) más
       // la consulta actual al final. Un follow-up corto ("¿Impresiones?",
