@@ -56,8 +56,9 @@ export function ServiceMapMilestoneEditor() {
     const itemPlan = normalizePlan(item.tipo_servicio)
     if (!clientPlan) return true
     if (clientPlan === 'esencial') return itemPlan === 'esencial'
-    if (clientPlan === 'adt' || clientPlan === 'estrategico') return itemPlan !== 'esencial'
-    return itemPlan === clientPlan || itemPlan === 'estrategico'
+    if (clientPlan === 'adt') return itemPlan === 'estrategico' || itemPlan === 'adt'
+    if (clientPlan === 'estrategico') return itemPlan === 'estrategico'
+    return itemPlan === clientPlan
   }
   const planHitos = items.filter((item) => isClientPlanHito(item) && !currentHitoIds.has(item.id))
   const choose = (item: HitoCatalogo) => { setSelected(item); setDraft({ ...item }); setNotice('') }
