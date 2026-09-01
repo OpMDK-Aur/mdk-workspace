@@ -220,7 +220,13 @@ function toInt(value?: string) {
 export function normalizeMetaResult(objective: string, actions: MetaAction[] | undefined) {
   const available = new Set(actions?.map((action) => action.action_type) ?? [])
   const objectiveActions = TRAFFIC_OBJECTIVES.has(objective) ? [...TRAFFIC_ACTIONS, ...LEAD_ACTIONS] : [...LEAD_ACTIONS, ...TRAFFIC_ACTIONS]
-  const priorities = [...PRIORITY_ACTIONS, ...objectiveActions]
+  // objectiveActions va primero: dentro de LEAD_ACTIONS, "lead"/"leadgen_grouped"
+  // ya están antes que "messaging_conversation_started_7d", así que una
+  // campaña de formulario que además dispara algún mensaje incidental de
+  // Messenger sigue contando sus leads reales como resultado principal.
+  // PRIORITY_ACTIONS solo actúa como desempate para action_types que no
+  // están en ninguna de las dos listas anteriores.
+  const priorities = [...objectiveActions, ...PRIORITY_ACTIONS]
   const actionType = priorities.find((type) => available.has(type)) ?? null
   if (!actionType) return { results: 0, resultType: 'unknown' as MetaResultType, sourceActionType: null, leads: 0, conversions: 0 }
   const action = actions?.find((item) => item.action_type === actionType)
