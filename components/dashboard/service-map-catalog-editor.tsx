@@ -85,16 +85,11 @@ export function ServiceMapCatalogEditor() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error, count } = await supabase
+    const { data, error } = await supabase
       .from("hitos_catalogo")
-      .select("*", { count: "exact" })
+      .select("*")
       .order("tipo_servicio")
       .order("orden");
-    console.log("[v0] hitos_catalogo load →", {
-      count,
-      returned: data?.length,
-      error,
-    });
     if (error) setNotice(`No se pudo cargar el catálogo: ${error.message}`);
     setItems((data ?? []) as CatalogHito[]);
     setLoading(false);
@@ -103,8 +98,14 @@ export function ServiceMapCatalogEditor() {
     void load();
   }, [load]);
 
+  // Un cliente en plan Estratégico recibe TODOS los hitos (esenciales + estratégicos),
+  // ya que generateMonthInstances no filtra por tipo cuando el plan no es Esencial.
+  // Por eso el filtro "Estratégico" acá muestra el set completo, igual que en Biblos.
   const filteredItems = items.filter(
-    (item) => planFilter === "todos" || item.tipo_servicio === planFilter,
+    (item) =>
+      planFilter === "todos" ||
+      planFilter === "estrategico" ||
+      item.tipo_servicio === planFilter,
   );
   const planLabel =
     PLAN_OPTIONS.find((option) => option.value === planFilter)?.label ??
