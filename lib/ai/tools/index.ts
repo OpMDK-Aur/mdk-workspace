@@ -80,7 +80,7 @@ const getAccountContext: ToolDefinition = {
     const supabase = await createClient()
     const { data: client, error: clientError } = await supabase
       .from('clientes')
-      .select('id, nombre_del_negocio')
+      .select('*')
       .eq('id', context.clientId)
       .single()
 
@@ -100,6 +100,13 @@ const getAccountContext: ToolDefinition = {
       return { available: false, client_id: context.clientId, message: 'No se pudieron consultar las cuentas publicitarias.' }
     }
 
+    const [{ data: tasks, error: tasksError }, { data: instances, error: instancesError }] = await Promise.all([
+      supabase.from('tareas').select('*').eq('cliente_id', context.clientId).limit(100),
+      supabase.from('mapa_servicio_instancias').select('*, hitos_catalogo(nombre, frecuencia, tipo_servicio)').eq('cliente_id', context.clientId).limit(100),
+    ])
+    if (tasksError) console.warn('[v0] get_account_context tasks unavailable:', tasksError.message)
+    if (instancesError) console.warn('[v0] get_account_context milestones unavailable:', instancesError.message)
+
     const allAccounts = (accounts ?? []).flatMap((account) => String(account.id_cuenta ?? '')
       .split(',')
       .map((id) => id.trim())
@@ -117,6 +124,9 @@ const getAccountContext: ToolDefinition = {
     // del cliente.
     const metaSelection = parseSelectedAccountIds(context.metaAccountId, normalizeMetaAccountId)
     const googleSelection = parseSelectedAccountIds(context.googleCustomerId, normalizeCustomerId)
+    if (!metaSelection && !googleSelection) {
+      return { available: false, message: 'Seleccioná al menos una cuenta publicitaria antes de iniciar el análisis.' }
+    }
     const safeAccounts = allAccounts.filter((account) => {
       const platform = account.plataforma?.toLowerCase()
       if (platform === 'meta' && metaSelection) return metaSelection.has(normalizeMetaAccountId(account.id_cuenta))
@@ -140,7 +150,10 @@ const getAccountContext: ToolDefinition = {
       available: true,
       client_id: client.id,
       nombre_del_negocio: client.nombre_del_negocio,
+      tarjeta_cliente: client,
       cuentas_publicitarias: safeAccounts,
+      tareas: tasks ?? [],
+      hitos_asignados: instances ?? [],
       ...(google?.id_cuenta ? { google_ads_customer_id: google.id_cuenta } : {}),
       ...(meta?.id_cuenta ? { meta_ads_account_id: meta.id_cuenta } : {}),
     }
@@ -254,7 +267,8 @@ const getMetaMetrics: ToolDefinition = {
     // siempre restringe el universo de cuentas, incluso si el modelo no
     // pasó accountId explícito en la tool call.
     const selectionIds = parseSelectedAccountIds(context.metaAccountId, normalizeMetaAccountId)
-    const restrictedAccounts = selectionIds ? availableAccounts.filter((account) => selectionIds.has(normalizeMetaAccountId(account.id_cuenta))) : availableAccounts
+    if (!selectionIds) return { available: false, message: 'Seleccioná al menos una cuenta de Meta Ads en el selector antes de analizar.' }
+    const restrictedAccounts = availableAccounts.filter((account) => selectionIds.has(normalizeMetaAccountId(account.id_cuenta)))
     const selected = input.accountId
       ? restrictedAccounts.filter((account) => normalizeMetaAccountId(account.id_cuenta) === normalizeMetaAccountId(input.accountId!))
       : restrictedAccounts
@@ -323,7 +337,8 @@ const getGoogleMetrics: ToolDefinition = {
     // siempre restringe el universo de cuentas, incluso si el modelo no
     // pasó accountId explícito en la tool call.
     const selectionIds = parseSelectedAccountIds(context.googleCustomerId, normalizeCustomerId)
-    const restrictedAccounts = selectionIds ? availableAccounts.filter((account) => selectionIds.has(normalizeCustomerId(account.id_cuenta))) : availableAccounts
+    if (!selectionIds) return { available: false, message: 'Seleccioná al menos una cuenta de Google Ads en el selector antes de analizar.' }
+    const restrictedAccounts = availableAccounts.filter((account) => selectionIds.has(normalizeCustomerId(account.id_cuenta)))
     const selected = input.accountId
       ? restrictedAccounts.filter((account) => normalizeCustomerId(account.id_cuenta) === normalizeCustomerId(input.accountId!))
       : restrictedAccounts
