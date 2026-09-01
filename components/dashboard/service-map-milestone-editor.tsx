@@ -126,6 +126,13 @@ export function ServiceMapMilestoneEditor() {
     setSaving(true);
     setAddingHitoId(item.id);
     setAddFeedback(null);
+    // Si este hito había sido excluido antes para este cliente, lo
+    // reincorporamos quitando la exclusión antes de regenerar la instancia.
+    await supabase
+      .from("hitos_catalogo_exclusiones")
+      .delete()
+      .eq("cliente_id", clientId)
+      .eq("hito_id", item.id);
     const now = new Date();
     const result = await generateMonthInstances(
       clientId,
@@ -154,6 +161,15 @@ export function ServiceMapMilestoneEditor() {
       .from("mapa_servicio_instancias")
       .delete()
       .eq("id", instance.id);
+    if (!error) {
+      // Registramos la exclusión para que este hito no se vuelva a generar
+      // para este cliente en los próximos meses (aunque siga activo en el
+      // catálogo para el resto de los clientes del mismo plan).
+      await supabase.from("hitos_catalogo_exclusiones").upsert(
+        { cliente_id: clientId, hito_id: instance.hito_id },
+        { onConflict: "cliente_id,hito_id" },
+      );
+    }
     setSaving(false);
     if (error) {
       setRemoveFeedback({ id: instance.id, error: true });
