@@ -152,6 +152,18 @@ export const PaidMediaChangeEventSchema = z.object({
 })
 export type PaidMediaChangeEvent = z.infer<typeof PaidMediaChangeEventSchema>
 
+export type IndustryBenchmark = {
+  available: boolean
+  industry: string | null
+  peer_client_ids: string[]
+  period: { from: string; to: string }
+  sample_size: number
+  metrics: { spend: number | null; impressions: number | null; clicks: number | null; results: number | null; leads: number | null; conversions: number | null; cpl: number | null; ctr: number | null }
+  methodology: string
+  limitations: string[]
+  error?: string
+}
+
 export type AnalysisPeriodRole = 'current' | 'comparison'
 export type ComparisonDefinition = {
   type: 'previous_period' | 'explicit'
@@ -165,6 +177,7 @@ export type AnalysisRunState = {
   changeHistory: PaidMediaChangeEvent[]
   specialistOutputs: SpecialistOutput[]
   clientMemory?: ClientMemory
+  industryBenchmark?: IndustryBenchmark
   comparisonDefinition?: ComparisonDefinition
 }
 
