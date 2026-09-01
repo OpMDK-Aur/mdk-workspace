@@ -139,16 +139,24 @@ export function ServiceMapCatalogEditor() {
       nombre: draft.nombre.trim(),
       descripcion: draft.descripcion?.trim() || null,
     };
-    const query =
-      editingId && editingId !== "new"
-        ? supabase.from("hitos_catalogo").update(payload).eq("id", editingId)
-        : supabase.from("hitos_catalogo").insert(payload);
-    const { error } = await query;
+    const isEditing = Boolean(editingId && editingId !== "new");
+    const query = isEditing
+      ? supabase
+          .from("hitos_catalogo")
+          .update(payload)
+          .eq("id", editingId as string)
+          .select("id")
+      : supabase.from("hitos_catalogo").insert(payload).select("id");
+    const { error, data: savedRows } = await query;
     setSaving(false);
     if (error) return setNotice(`No se pudo guardar: ${error.message}`);
-    setNotice(
-      editingId && editingId !== "new" ? "Hito actualizado." : "Hito creado.",
-    );
+    if (!savedRows || savedRows.length === 0) {
+      // RLS bloqueó el insert/update sin lanzar error: 0 filas afectadas.
+      return setNotice(
+        "No se pudo guardar: tu usuario no tiene permisos de master para modificar el catálogo de hitos.",
+      );
+    }
+    setNotice(isEditing ? "Hito actualizado." : "Hito creado.");
     cancelEdit();
     await load();
   };
@@ -164,17 +172,30 @@ export function ServiceMapCatalogEditor() {
     if (!confirmDeleteId) return;
     setSaving(true);
     const id = confirmDeleteId;
-    const { error } = await supabase
+    const { error, data: deletedRows } = await supabase
       .from("hitos_catalogo")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .select("id");
     setSaving(false);
     setConfirmDeleteId(null);
     if (error) {
+      setNotice(`No se pudo borrar: ${error.message}`);
       setRowFeedback({ id, error: true });
       setTimeout(() => setRowFeedback(null), 1800);
       return;
     }
+    if (!deletedRows || deletedRows.length === 0) {
+      // RLS bloqueó el delete sin lanzar error: 0 filas afectadas.
+      // Solo un colaborador con rol "master" puede borrar del catálogo.
+      setNotice(
+        "No se pudo borrar: tu usuario no tiene permisos de master para modificar el catálogo de hitos.",
+      );
+      setRowFeedback({ id, error: true });
+      setTimeout(() => setRowFeedback(null), 1800);
+      return;
+    }
+    setNotice("");
     setRowFeedback({ id, error: false });
     setTimeout(async () => {
       setRowFeedback(null);
