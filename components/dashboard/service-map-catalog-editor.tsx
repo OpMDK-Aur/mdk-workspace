@@ -85,11 +85,17 @@ export function ServiceMapCatalogEditor() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
+    const { data, error, count } = await supabase
       .from("hitos_catalogo")
-      .select("*")
+      .select("*", { count: "exact" })
       .order("tipo_servicio")
       .order("orden");
+    console.log("[v0] hitos_catalogo load →", {
+      count,
+      returned: data?.length,
+      error,
+    });
+    if (error) setNotice(`No se pudo cargar el catálogo: ${error.message}`);
     setItems((data ?? []) as CatalogHito[]);
     setLoading(false);
   }, [supabase]);
