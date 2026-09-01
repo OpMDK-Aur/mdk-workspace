@@ -197,7 +197,7 @@ export function ServiceMapMilestoneEditor() {
         prev.filter((entry) => entry.id !== instance.id),
       );
       setRemoveFeedback(null);
-    }, 700);
+    }, 1400);
   };
   const save = async () => {
     if (!draft.nombre.trim())
