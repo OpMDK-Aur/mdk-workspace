@@ -63,7 +63,7 @@ const FRECUENCIAS: FrecuenciaHito[] = [
 const PLAN_OPTIONS: { value: string; label: string }[] = [
   { value: "todos", label: "Todos los planes" },
   { value: "esencial", label: "Esencial" },
-  { value: "estrategico", label: "Estratégico / ADT" },
+  { value: "estrategico", label: "Estratégico" },
 ];
 
 export function ServiceMapCatalogEditor() {
@@ -262,9 +262,7 @@ export function ServiceMapCatalogEditor() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="esencial">Esencial</SelectItem>
-                    <SelectItem value="estrategico">
-                      Estratégico / ADT
-                    </SelectItem>
+                    <SelectItem value="estrategico">Estratégico</SelectItem>
                   </SelectContent>
                 </Select>
               </label>
