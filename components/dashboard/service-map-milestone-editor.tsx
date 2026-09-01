@@ -51,7 +51,15 @@ export function ServiceMapMilestoneEditor() {
   const selectedClient = clients.find((client) => client.id === clientId)
   const normalizePlan = (value?: string | null) => value?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
   const clientPlan = normalizePlan(selectedClient?.plan)
-  const planHitos = items.filter((item) => !clientPlan || normalizePlan(item.tipo_servicio) === clientPlan || (clientPlan === 'adt' && normalizePlan(item.tipo_servicio) === 'estrategico'))
+  const currentHitoIds = new Set(currentMilestones.map((instance) => instance.hito?.id).filter(Boolean))
+  const isClientPlanHito = (item: HitoCatalogo) => {
+    const itemPlan = normalizePlan(item.tipo_servicio)
+    if (!clientPlan) return true
+    if (clientPlan === 'esencial') return itemPlan === 'esencial'
+    if (clientPlan === 'adt' || clientPlan === 'estrategico') return itemPlan !== 'esencial'
+    return itemPlan === clientPlan || itemPlan === 'estrategico'
+  }
+  const planHitos = items.filter((item) => isClientPlanHito(item) && !currentHitoIds.has(item.id))
   const choose = (item: HitoCatalogo) => { setSelected(item); setDraft({ ...item }); setNotice('') }
   const addBaseHito = async (item: HitoCatalogo) => {
     if (!clientId) return
