@@ -27,6 +27,8 @@ export function ServiceMapMilestoneEditor() {
   const [clients, setClients] = useState<Array<{ id: string; nombre_del_negocio: string; plan?: string | null }>>([])
   const [notice, setNotice] = useState('')
   const [saving, setSaving] = useState(false)
+  const [addingHitoId, setAddingHitoId] = useState('')
+  const [addedHitoId, setAddedHitoId] = useState<string | null>(null)
   const [currentMilestones, setCurrentMilestones] = useState<Array<{ id: string; hito_id: string; tarea_id?: string | null; mes: number; anio: number; estado: string; hito: { id: string; nombre: string; frecuencia: string; tipo_servicio: string } | null }>>([])
   const [loadingCurrent, setLoadingCurrent] = useState(false)
 
@@ -65,11 +67,15 @@ export function ServiceMapMilestoneEditor() {
   const addBaseHito = async (item: HitoCatalogo) => {
     if (!clientId) return
     setSaving(true)
+    setAddingHitoId(item.id)
+    setAddedHitoId(null)
     const now = new Date()
     const result = await generateMonthInstances(clientId, now.getMonth() + 1, now.getFullYear(), (selectedClient?.plan ?? item.tipo_servicio) as any)
     setSaving(false)
-    if (!result.success) return setNotice(`No se pudo agregar el hito: ${result.error ?? 'error desconocido'}`)
-    setNotice(`Hito “${item.nombre}” agregado al mes corriente.`)
+    setAddingHitoId('')
+    if (!result.success) return setNotice('No se pudo agregar el hito.')
+    setAddedHitoId(item.id)
+    setNotice('Hito agregado.')
     await loadCurrentMilestones(clientId)
   }
   const removeCurrent = async (instance: typeof currentMilestones[number]) => {
@@ -77,8 +83,8 @@ export function ServiceMapMilestoneEditor() {
     if (instance.tarea_id) await supabase.from('tareas').delete().eq('id', instance.tarea_id)
     const { error } = await supabase.from('mapa_servicio_instancias').delete().eq('id', instance.id)
     setSaving(false)
-    if (error) return setNotice(`No se pudo borrar el hito: ${error.message}`)
-    setNotice('Hito borrado del mes corriente. Los meses anteriores no fueron modificados.')
+    if (error) return setNotice('No se pudo borrar el hito.')
+    setNotice('Hito quitado.')
     await loadCurrentMilestones(clientId)
   }
   const save = async () => {
@@ -111,7 +117,7 @@ setSelected(null); setDraft(blank); await load(); await loadCurrentMilestones(cl
     setNotice('Hito borrado del catálogo. Las tareas históricas no se modifican.'); setSelected(null); setDraft(blank); await load()
   }
 
-  return <Card className="mt-6"><CardHeader><div className="flex items-start justify-between gap-4"><div><CardTitle>Administrar hitos</CardTitle><CardDescription>Seleccioná un cliente para personalizar sus hitos. Los cambios se aplican desde el mes corriente.</CardDescription></div><div className="flex items-center gap-2"><Select value={clientId || 'all'} onValueChange={(value) => setClientId(value === 'all' ? '' : value)}><SelectTrigger className="w-64"><SelectValue placeholder="Seleccionar cliente" /></SelectTrigger><SelectContent><SelectItem value="all">Seleccionar cliente</SelectItem>{clients.map((client) => <SelectItem key={client.id} value={client.id}>{client.nombre_del_negocio}</SelectItem>)}</SelectContent></Select><Select onValueChange={(value) => { const item = planHitos.find((candidate) => candidate.id === value); if (item) void addBaseHito(item) }} disabled={!clientId}><SelectTrigger className="w-56"><SelectValue placeholder={clientId ? 'Agregar hito base' : 'Elegí un cliente'} /></SelectTrigger><SelectContent>{planHitos.map((item) => <SelectItem key={item.id} value={item.id}>{item.nombre}</SelectItem>)}</SelectContent></Select></div></div></CardHeader><CardContent className="flex flex-col gap-6">
+  return <Card className="mt-6"><CardHeader><div className="flex items-start justify-between gap-4"><div><CardTitle>Administrar hitos</CardTitle><CardDescription>Seleccioná un cliente para personalizar sus hitos. Los cambios se aplican desde el mes corriente.</CardDescription></div><div className="flex items-center gap-2"><Select value={clientId || 'all'} onValueChange={(value) => setClientId(value === 'all' ? '' : value)}><SelectTrigger className="w-64"><SelectValue placeholder="Seleccionar cliente" /></SelectTrigger><SelectContent><SelectItem value="all">Seleccionar cliente</SelectItem>{clients.map((client) => <SelectItem key={client.id} value={client.id}>{client.nombre_del_negocio}</SelectItem>)}</SelectContent></Select><div className="flex items-center gap-2"><Select value={addingHitoId || 'none'} onValueChange={setAddingHitoId} disabled={!clientId || saving}><SelectTrigger className="w-56"><SelectValue placeholder={clientId ? 'Elegí un hito base' : 'Elegí un cliente'} /></SelectTrigger><SelectContent><SelectItem value="none">Elegí un hito base</SelectItem>{planHitos.map((item) => <SelectItem key={item.id} value={item.id}>{item.nombre}</SelectItem>)}</SelectContent></Select><Button size="sm" onClick={() => { const item = planHitos.find((candidate) => candidate.id === addingHitoId); if (item) void addBaseHito(item) }} disabled={!clientId || !addingHitoId || addingHitoId === 'none' || saving}>{saving && addingHitoId ? <Loader2 className="animate-spin" /> : addedHitoId === addingHitoId ? 'Agregado' : 'Agregar'}</Button></div></div></div></CardHeader><CardContent className="flex flex-col gap-6">
     {notice && <Alert><AlertTitle>Mapa de servicio</AlertTitle><AlertDescription>{notice}</AlertDescription></Alert>}
     <section className="rounded-xl border bg-muted/20 p-4" aria-labelledby="client-current-map-heading"><div className="flex items-start justify-between gap-4"><div><h3 id="client-current-map-heading" className="font-semibold">Hitos activos del mes corriente</h3><p className="text-sm text-muted-foreground">Seleccioná un cliente para ver cómo está configurado hoy.</p></div>{clientId && <Badge variant="secondary">{new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</Badge>}</div>{!clientId ? <div className="mt-4 rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Elegí un cliente arriba para cargar sus hitos actuales.</div> : loadingCurrent ? <div className="mt-4 flex items-center justify-center gap-2 rounded-lg border p-6 text-sm text-muted-foreground"><Loader2 className="animate-spin" />Cargando hitos actuales...</div> : currentMilestones.length === 0 ? <div className="mt-4 rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Este cliente no tiene hitos generados para el mes corriente.</div> : <ul className="mt-4 flex flex-col divide-y rounded-lg border bg-background">{currentMilestones.map((instance) => <li key={instance.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex min-w-0 items-start gap-3"><span className="mt-1 size-2 shrink-0 rounded-full bg-[#ff4b3e]" aria-hidden="true" /><div className="min-w-0"><h4 className="font-semibold text-foreground">{instance.hito?.nombre ?? 'Hito sin catálogo'}</h4><p className="mt-1 text-sm text-muted-foreground">{instance.hito?.tipo_servicio ?? 'Sin plan'} · {instance.hito?.frecuencia ?? 'Sin frecuencia'}</p></div></div><div className="flex items-center gap-3 sm:shrink-0"><Badge className="border-[#ff4b3e]/30 bg-[#fff1ef] text-[#e3342f]" variant="outline">{instance.estado ?? 'pendiente'}</Badge><Button className="border-[#ff4b3e] text-[#e3342f] hover:bg-[#fff1ef] hover:text-[#c92a25]" variant="outline" size="sm" onClick={() => void removeCurrent(instance)} disabled={saving}><Trash2 data-icon="inline-start" />Borrar</Button></div></li>)}</ul>}</section>
     <div className="hidden">
