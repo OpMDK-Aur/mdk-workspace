@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { ClientSelector, type AnalyzableClient } from './client-selector'
+import { ClientSelector, type AnalyzableClient, type ClientAccount } from './client-selector'
 import { SupervisorChat } from './supervisor-chat'
 import { ClientContextForm } from './client-context-form'
 import { ScoreConfigPanel } from './score-config-panel'
@@ -24,6 +24,7 @@ const displayFont = Fraunces({ subsets: ['latin'], weight: ['500', '600'], style
 
 export function MultiagenteWorkspace() {
   const [selectedClient, setSelectedClient] = useState<AnalyzableClient | null>(null)
+  const [selectedAccounts, setSelectedAccounts] = useState<ClientAccount[]>([])
   const [memory, setMemory] = useState<ClientMemory | null>(null)
   const [loadingMemory, setLoadingMemory] = useState(false)
   const [active, setActive] = useState(false)
@@ -83,6 +84,19 @@ export function MultiagenteWorkspace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClient?.id])
 
+  // Deriva los ids de cuenta seleccionados por plataforma para pasárselos
+  // al chat: si el usuario elige una o varias cuentas puntuales en el
+  // selector, el agente debe quedar restringido a esas cuentas en vez de
+  // analizar todas las activas del cliente.
+  const selectedMetaAccountId = selectedAccounts
+    .filter((account) => account.plataforma?.toLowerCase() === 'meta' && account.id_cuenta)
+    .map((account) => account.id_cuenta as string)
+    .join(',') || undefined
+  const selectedGoogleCustomerId = selectedAccounts
+    .filter((account) => account.plataforma?.toLowerCase() === 'google' && account.id_cuenta)
+    .map((account) => account.id_cuenta as string)
+    .join(',') || undefined
+
   return (
     <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">
       <div className="mx-auto flex w-full flex-col gap-6">
@@ -135,7 +149,7 @@ export function MultiagenteWorkspace() {
                   </div>
                 )}
               </div>
-              <ClientSelector value={selectedClient} onChange={setSelectedClient} />
+              <ClientSelector value={selectedClient} onChange={setSelectedClient} onAccountsChange={setSelectedAccounts} />
             </div>
             {selectedClient && <ScoreConfigPanel clientId={selectedClient.id} onSaved={setScoreConfig} />}
             {selectedClient && <PaidMediaBackfillPanel clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} />}
@@ -147,6 +161,8 @@ export function MultiagenteWorkspace() {
               <SupervisorChat
                 key={selectedClient?.id ?? 'no-client'}
                 clientId={selectedClient?.id ?? null}
+                metaAccountId={selectedMetaAccountId}
+                googleCustomerId={selectedGoogleCustomerId}
                 disabled={!selectedClient}
                 disabledMessage="Seleccioná un cliente para comenzar el análisis."
                 scoreConfig={scoreConfig ?? undefined}

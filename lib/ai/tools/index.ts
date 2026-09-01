@@ -10,6 +10,20 @@ import { buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeInd
 
 const noInput = z.object({})
 
+/**
+ * Convierte el string (potencialmente separado por comas) de cuenta(s)
+ * seleccionada(s) en la UI en un set de ids normalizados. Devuelve null
+ * cuando no hay selección explícita, para no restringir nada en ese caso.
+ */
+function parseSelectedAccountIds(value: string | undefined, normalize: (id: string) => string): Set<string> | null {
+  if (!value) return null
+  const ids = value
+    .split(',')
+    .map((id) => normalize(id.trim()))
+    .filter(Boolean)
+  return ids.length > 0 ? new Set(ids) : null
+}
+
 function addGoogleSnapshot(context: ExecutionContext, account: { id_cuenta: string; nombre_cuenta: string | null; moneda: string | null }, metrics: Awaited<ReturnType<typeof getGoogleAccountMetrics>>) {
   if (!context.analysisRunState || !context.clientId) return
   upsertPaidMediaSnapshot(context.analysisRunState, {
@@ -86,7 +100,7 @@ const getAccountContext: ToolDefinition = {
       return { available: false, client_id: context.clientId, message: 'No se pudieron consultar las cuentas publicitarias.' }
     }
 
-    const safeAccounts = (accounts ?? []).flatMap((account) => String(account.id_cuenta ?? '')
+    const allAccounts = (accounts ?? []).flatMap((account) => String(account.id_cuenta ?? '')
       .split(',')
       .map((id) => id.trim())
       .filter(Boolean)
@@ -98,15 +112,29 @@ const getAccountContext: ToolDefinition = {
         ...(account.zona_horaria ? { zona_horaria: account.zona_horaria } : {}),
       })))
 
+    // Si el usuario eligió cuenta(s) específicas en la UI, el agente sólo
+    // debe ver (y por lo tanto analizar) esas cuentas, no todas las activas
+    // del cliente.
+    const metaSelection = parseSelectedAccountIds(context.metaAccountId, normalizeMetaAccountId)
+    const googleSelection = parseSelectedAccountIds(context.googleCustomerId, normalizeCustomerId)
+    const safeAccounts = allAccounts.filter((account) => {
+      const platform = account.plataforma?.toLowerCase()
+      if (platform === 'meta' && metaSelection) return metaSelection.has(normalizeMetaAccountId(account.id_cuenta))
+      if (platform === 'google' && googleSelection) return googleSelection.has(normalizeCustomerId(account.id_cuenta))
+      return true
+    })
+
     const google = safeAccounts.find((account) => account.plataforma?.toLowerCase() === 'google')
     const meta = safeAccounts.find((account) => account.plataforma?.toLowerCase() === 'meta')
 
     console.log('[v0] get_account_context executed', {
       client_id: client.id,
       active_accounts_count: safeAccounts.length,
+      total_active_accounts_count: allAccounts.length,
       platforms: safeAccounts.map((account) => account.plataforma),
+      restricted_by_selection: Boolean(metaSelection || googleSelection),
     })
-    emit?.({ agentSlug: 'supervisor', toolKey: 'get_account_context', status: 'completed', label: `${safeAccounts.length} cuentas publicitarias encontradas` })
+    emit?.({ agentSlug: 'supervisor', toolKey: 'get_account_context', status: 'completed', label: `${safeAccounts.length} cuenta${safeAccounts.length === 1 ? '' : 's'} publicitaria${safeAccounts.length === 1 ? '' : 's'} encontrada${safeAccounts.length === 1 ? '' : 's'}` })
 
     return {
       available: true,
@@ -222,10 +250,16 @@ const getMetaMetrics: ToolDefinition = {
     if (error) return { available: false, message: 'No se pudieron consultar las cuentas activas de Meta Ads.' }
 
     const availableAccounts = (accounts ?? []).flatMap((account) => splitCustomerIds(account.id_cuenta).map((id_cuenta) => ({ ...account, id_cuenta })))
+    // La cuenta elegida por el usuario en la UI (context.metaAccountId)
+    // siempre restringe el universo de cuentas, incluso si el modelo no
+    // pasó accountId explícito en la tool call.
+    const selectionIds = parseSelectedAccountIds(context.metaAccountId, normalizeMetaAccountId)
+    const restrictedAccounts = selectionIds ? availableAccounts.filter((account) => selectionIds.has(normalizeMetaAccountId(account.id_cuenta))) : availableAccounts
     const selected = input.accountId
-? availableAccounts.filter((account) => normalizeMetaAccountId(account.id_cuenta) === normalizeMetaAccountId(input.accountId!))
-      : availableAccounts
+      ? restrictedAccounts.filter((account) => normalizeMetaAccountId(account.id_cuenta) === normalizeMetaAccountId(input.accountId!))
+      : restrictedAccounts
     if (input.accountId && selected.length === 0) return { available: false, message: 'La cuenta solicitada no pertenece al cliente seleccionado.' }
+    if (selectionIds && restrictedAccounts.length === 0) return { available: false, message: 'La cuenta seleccionada en la interfaz no pertenece al cliente activo.' }
     if (!selected.length) return { available: false, message: 'El cliente no tiene cuentas activas de Meta Ads.' }
 
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_meta_metrics', status: 'running', label: 'Consultando Meta Ads...' })
@@ -285,8 +319,16 @@ const getGoogleMetrics: ToolDefinition = {
     const { data: accounts, error } = await supabase.from('cuentas_publicitarias').select('id_cuenta, nombre_cuenta, moneda, zona_horaria').eq('cliente_id', context.clientId).eq('plataforma', 'google').eq('activo', true)
     if (error) return { available: false, message: 'No se pudieron consultar las cuentas activas de Google Ads.' }
     const availableAccounts = (accounts ?? []).flatMap((account) => splitCustomerIds(account.id_cuenta).map((id_cuenta) => ({ ...account, id_cuenta })))
-    const selected = input.accountId ? availableAccounts.filter((account) => normalizeCustomerId(account.id_cuenta) === normalizeCustomerId(input.accountId!)) : availableAccounts
+    // La cuenta elegida por el usuario en la UI (context.googleCustomerId)
+    // siempre restringe el universo de cuentas, incluso si el modelo no
+    // pasó accountId explícito en la tool call.
+    const selectionIds = parseSelectedAccountIds(context.googleCustomerId, normalizeCustomerId)
+    const restrictedAccounts = selectionIds ? availableAccounts.filter((account) => selectionIds.has(normalizeCustomerId(account.id_cuenta))) : availableAccounts
+    const selected = input.accountId
+      ? restrictedAccounts.filter((account) => normalizeCustomerId(account.id_cuenta) === normalizeCustomerId(input.accountId!))
+      : restrictedAccounts
     if (input.accountId && selected.length === 0) return { available: false, message: 'La cuenta solicitada no pertenece al cliente seleccionado.' }
+    if (selectionIds && restrictedAccounts.length === 0) return { available: false, message: 'La cuenta seleccionada en la interfaz no pertenece al cliente activo.' }
     if (!selected.length) return { available: false, message: 'El cliente no tiene cuentas activas de Google Ads.' }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_metrics', status: 'running', label: 'Consultando Google Ads...' })
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_metrics', status: 'running', label: `Consultando ${selected.length} cuenta${selected.length === 1 ? '' : 's'} de Google Ads...` })

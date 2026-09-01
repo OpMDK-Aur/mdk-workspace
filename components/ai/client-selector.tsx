@@ -39,9 +39,11 @@ function platformLabel(plataforma: string | null) {
 interface ClientSelectorProps {
   value: AnalyzableClient | null
   onChange: (client: AnalyzableClient | null) => void
+  /** Se dispara cada vez que cambia la selección de cuentas publicitarias, para que el chat filtre por ellas. */
+  onAccountsChange?: (accounts: ClientAccount[]) => void
 }
 
-export function ClientSelector({ value, onChange }: ClientSelectorProps) {
+export function ClientSelector({ value, onChange, onAccountsChange }: ClientSelectorProps) {
   const [clients, setClients] = useState<AnalyzableClient[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -92,6 +94,13 @@ export function ClientSelector({ value, onChange }: ClientSelectorProps) {
       .catch((error) => console.error('[v0] Advertising accounts fetch failed:', error))
     return () => { active = false }
   }, [value?.id])
+
+  // Notifica al padre en cada cambio de selección (incluido el reset al
+  // cambiar de cliente) para que el chat pueda filtrar por estas cuentas.
+  useEffect(() => {
+    onAccountsChange?.(selectedAccounts)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAccounts])
 
   const accounts = (resolvedAccounts.length > 0 ? resolvedAccounts : value?.cuentas_publicitarias ?? []).filter((account) => account.id_cuenta)
 

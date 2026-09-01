@@ -95,6 +95,10 @@ function MultiagentActivityStatus({ activity }: { activity: ActivityEvent | null
 
 interface SupervisorChatProps {
   clientId: string | null
+  /** Id(s) de cuenta de Meta Ads seleccionados en la UI (separados por coma si son varios). Restringe el análisis a esas cuentas. */
+  metaAccountId?: string
+  /** Id(s) de cuenta de Google Ads seleccionados en la UI (separados por coma si son varios). Restringe el análisis a esas cuentas. */
+  googleCustomerId?: string
   scoreConfig?: { objective: string }
   /** When true, the chat input is disabled and a placeholder message is shown instead of the conversation. */
   disabled?: boolean
@@ -253,6 +257,8 @@ function SupervisorChatShell({ ...props }: SupervisorChatProps & { loading?: boo
 
 function SupervisorChatSession({
   clientId,
+  metaAccountId,
+  googleCustomerId,
   scoreConfig,
   disabled = false,
   disabledMessage = 'Seleccioná un cliente para comenzar el análisis.',
@@ -294,7 +300,7 @@ function SupervisorChatSession({
       api: '/api/ai/chat',
       body: {
         context: clientId
-          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}) }
+          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}) }
           : {},
       },
     }),
@@ -410,7 +416,7 @@ function SupervisorChatSession({
     await sendMessage({ text, files: fileParts }, {
       body: {
         context: clientId
-          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}) }
+          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}) }
           : {},
       },
     })
