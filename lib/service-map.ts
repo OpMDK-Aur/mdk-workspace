@@ -157,6 +157,23 @@ export async function generateMonthInstances(
       return { success: true, generated: 0 }
     }
 
+    // Excluye hitos desactivados puntualmente para este cliente (ej: ADT no
+    // quiere "Análisis de Competencia" aunque el resto de los clientes
+    // Estratégicos sí lo reciban).
+    const { data: exclusiones } = await supabase
+      .from('hitos_catalogo_exclusiones')
+      .select('hito_id')
+      .eq('cliente_id', clienteId)
+
+    const hitoIdsExcluidos = new Set((exclusiones ?? []).map((e) => e.hito_id))
+    const hitosFiltrados = hitoIdsExcluidos.size
+      ? (hitos as HitoCatalogo[]).filter((h) => !hitoIdsExcluidos.has(h.id))
+      : (hitos as HitoCatalogo[])
+
+    if (hitosFiltrados.length === 0) {
+      return { success: true, generated: 0 }
+    }
+
     const instanciasToInsert: Array<{
       cliente_id: string
       hito_id: string
@@ -168,7 +185,7 @@ export async function generateMonthInstances(
       fecha_vencimiento: string
     }> = []
 
-    for (const hito of hitos as HitoCatalogo[]) {
+    for (const hito of hitosFiltrados) {
       if (!shouldAppearInMonth(hito.frecuencia, mes, hito.orden)) {
         continue
       }
@@ -211,7 +228,7 @@ export async function generateMonthInstances(
       insertedCount++
     }
 
-    const hitosConTarea = (hitos as HitoCatalogo[]).filter((h) => h.genera_tarea)
+    const hitosConTarea = hitosFiltrados.filter((h) => h.genera_tarea)
 
     for (const hito of hitosConTarea) {
       const { data: instancias } = await supabase
