@@ -27,13 +27,13 @@ export function ServiceMapMilestoneEditor() {
   const [clients, setClients] = useState<Array<{ id: string; nombre_del_negocio: string; plan?: string | null }>>([])
   const [notice, setNotice] = useState('')
   const [saving, setSaving] = useState(false)
-  const [currentMilestones, setCurrentMilestones] = useState<Array<{ id: string; tarea_id?: string | null; mes: number; anio: number; estado: string; hito: { id: string; nombre: string; frecuencia: string; tipo_servicio: string } | null }>>([])
+  const [currentMilestones, setCurrentMilestones] = useState<Array<{ id: string; hito_id: string; tarea_id?: string | null; mes: number; anio: number; estado: string; hito: { id: string; nombre: string; frecuencia: string; tipo_servicio: string } | null }>>([])
   const [loadingCurrent, setLoadingCurrent] = useState(false)
 
   const loadCurrentMilestones = useCallback(async (id: string) => {
     setLoadingCurrent(true)
     const now = new Date()
-    const { data } = await supabase.from('mapa_servicio_instancias').select('id, mes, anio, estado, hito:hitos_catalogo(id, nombre, frecuencia, tipo_servicio)').eq('cliente_id', id).eq('mes', now.getMonth() + 1).eq('anio', now.getFullYear()).order('mes')
+    const { data } = await supabase.from('mapa_servicio_instancias').select('id, hito_id, tarea_id, mes, anio, estado, hito:hitos_catalogo(id, nombre, frecuencia, tipo_servicio)').eq('cliente_id', id).eq('mes', now.getMonth() + 1).eq('anio', now.getFullYear()).order('mes')
     setCurrentMilestones((data ?? []) as unknown as typeof currentMilestones)
     setLoadingCurrent(false)
   }, [supabase])
@@ -51,7 +51,7 @@ export function ServiceMapMilestoneEditor() {
   const selectedClient = clients.find((client) => client.id === clientId)
   const normalizePlan = (value?: string | null) => value?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
   const clientPlan = normalizePlan(selectedClient?.plan)
-  const currentHitoIds = new Set(currentMilestones.map((instance) => instance.hito?.id).filter(Boolean))
+  const currentHitoIds = new Set(currentMilestones.map((instance) => instance.hito_id).filter(Boolean))
   const isClientPlanHito = (item: HitoCatalogo) => {
     const itemPlan = normalizePlan(item.tipo_servicio)
     if (!clientPlan) return true
