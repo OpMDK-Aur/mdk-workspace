@@ -109,14 +109,16 @@ export function ServiceMapMilestoneEditor() {
   const currentHitoIds = new Set(
     currentMilestones.map((instance) => instance.hito_id).filter(Boolean),
   );
+  // Debe reflejar exactamente la regla de generateMonthInstances: un cliente
+  // en plan Esencial solo recibe hitos tipo_servicio="esencial"; cualquier
+  // otro plan (Estratégico, ADT, etc.) recibe TODO el catálogo (esenciales +
+  // estratégicos). Por eso el desplegable no debe filtrar por tipo cuando el
+  // plan no es Esencial.
   const isClientPlanHito = (item: HitoCatalogo) => {
-    const itemPlan = normalizePlan(item.tipo_servicio);
     if (!clientPlan) return true;
-    if (clientPlan === "esencial") return itemPlan === "esencial";
-    if (clientPlan === "adt")
-      return itemPlan === "estrategico" || itemPlan === "adt";
-    if (clientPlan === "estrategico") return itemPlan === "estrategico";
-    return itemPlan === clientPlan;
+    if (clientPlan === "esencial")
+      return normalizePlan(item.tipo_servicio) === "esencial";
+    return true;
   };
   const planHitos = items.filter(
     (item) => isClientPlanHito(item) && !currentHitoIds.has(item.id),
