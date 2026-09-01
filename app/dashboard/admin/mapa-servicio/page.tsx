@@ -12,6 +12,8 @@ import {
 import { MultiSelect } from '@/components/ui/multi-select'
 import { Button } from '@/components/ui/button'
 import { X } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ServiceMapMilestoneEditor } from '@/components/dashboard/service-map-milestone-editor'
 import type { ClientPlan, UnidadNegocio } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 
@@ -105,6 +107,9 @@ export default function MapaServicioPage() {
         </div>
       </div>
 
+      <Tabs defaultValue="seguimiento" className="flex flex-col gap-4">
+        <TabsList><TabsTrigger value="seguimiento">Seguimiento</TabsTrigger><TabsTrigger value="hitos">Administrar hitos</TabsTrigger></TabsList>
+        <TabsContent value="seguimiento" className="mt-0">
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
         {/* Month Selector */}
@@ -238,6 +243,9 @@ export default function MapaServicioPage() {
         amFilter={selectedAMs}
         clienteFilter={selectedClientes}
       />
+        </TabsContent>
+        <TabsContent value="hitos" className="mt-0"><ServiceMapMilestoneEditor /></TabsContent>
+      </Tabs>
     </div>
   )
 }
