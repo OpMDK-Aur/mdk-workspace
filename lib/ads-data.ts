@@ -43,15 +43,29 @@ const emptyTotals = (): AdsTotals => ({
 const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
 const META_BASE_URL = `https://graph.facebook.com/${META_API_VERSION}`
 
-const LEAD_ACTION_PRIORITY = [
+// Una misma campaña suele reportar varios action_type a la vez (ej: una
+// campaña de WhatsApp también acumula link_click incidentales; una de
+// formulario también puede acumular algún mensaje incidental de Messenger).
+// Por eso NO elegimos el resultado por un orden de prioridad fijo por
+// objetivo -- eso hacía que ganara el tipo de acción equivocado aunque
+// tuviera un valor mucho menor que el real. En cambio: entre las acciones de
+// "conversión real" presentes, se elige la de MAYOR valor; sólo si no hay
+// ninguna se recurre a las de tráfico/engagement, también por mayor valor.
+// (Debe mantenerse en sync con la misma lógica en lib/meta-ads/service.ts.)
+const CONVERSION_ACTION_TYPES = [
   'lead',
   'leadgen_grouped',
   'onsite_conversion.lead_grouped',
   'offsite_conversion.fb_pixel_lead',
-  'onsite_conversion.messaging_conversation_started_7d',
   'contact',
   'submit_application',
   'complete_registration',
+  'onsite_conversion.messaging_conversation_started_7d',
+  'messaging_conversation_started',
+  'onsite_conversion.messaging_first_reply',
+  'onsite_conversion.total_messaging_connection',
+  'purchase',
+  'omni_purchase',
 ]
 
 const TRAFFIC_ACTION_PRIORITY = [
@@ -64,37 +78,25 @@ const TRAFFIC_ACTION_PRIORITY = [
   'like',
   'video_view',
   'omni_view_content',
-]
-
-const TRAFFIC_OBJECTIVES = [
-  'LINK_CLICKS',
-  'OUTCOME_TRAFFIC',
-  'POST_ENGAGEMENT',
-  'OUTCOME_ENGAGEMENT',
-  'PAGE_LIKES',
-  'VIDEO_VIEWS',
-  'REACH',
-  'OUTCOME_AWARENESS',
-  'BRAND_AWARENESS',
+  'reach',
 ]
 
 function extractResults(
-  objective: string,
+  _objective: string,
   actions: Array<{ action_type: string; value: string }> | undefined
 ): number {
   if (!actions || actions.length === 0) return 0
-  const isTraffic = TRAFFIC_OBJECTIVES.includes(objective)
-  const priority = isTraffic ? TRAFFIC_ACTION_PRIORITY : LEAD_ACTION_PRIORITY
-  for (const type of priority) {
-    const match = actions.find((a) => a.action_type === type)
-    if (match) return Math.round(parseFloat(match.value) || 0)
-  }
-  const fallback = isTraffic ? LEAD_ACTION_PRIORITY : TRAFFIC_ACTION_PRIORITY
-  for (const type of fallback) {
-    const match = actions.find((a) => a.action_type === type)
-    if (match) return Math.round(parseFloat(match.value) || 0)
-  }
-  return 0
+  const bestOf = (types: string[]) =>
+    actions
+      .filter((a) => types.includes(a.action_type))
+      .reduce<number | null>((max, a) => {
+        const value = parseFloat(a.value) || 0
+        return max === null || value > max ? value : max
+      }, null)
+  const bestConversion = bestOf(CONVERSION_ACTION_TYPES)
+  if (bestConversion !== null) return Math.round(bestConversion)
+  const bestTraffic = bestOf(TRAFFIC_ACTION_PRIORITY)
+  return bestTraffic !== null ? Math.round(bestTraffic) : 0
 }
 
 const toNum = (s: string | undefined): number => parseFloat(s || '0') || 0
