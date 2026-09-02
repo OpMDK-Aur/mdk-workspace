@@ -123,7 +123,15 @@ const getAccountContext: ToolDefinition = {
     const [{ data: tasks, error: tasksError }, { data: instances, error: instancesError }, { data: clientComments, error: clientCommentsError }] = await Promise.all([
       supabase.from('tareas').select('*').eq('cliente_id', context.clientId).order('created_at', { ascending: false }).limit(40),
       supabase.from('mapa_servicio_instancias').select('*, hitos_catalogo(nombre, frecuencia, tipo_servicio)').eq('cliente_id', context.clientId).limit(40),
-      periodFilter(supabase.from('comentarios_clientes').select('*').eq('cliente_id', context.clientId).order('created_at', { ascending: false }).limit(80)),
+      periodFilter(
+        supabase
+          .from('comentarios_clientes')
+          .select('id, cliente_id, contenido, autor, colaborador_id, tipo, creado_en, actualizado_en')
+          .eq('cliente_id', context.clientId)
+          .order('creado_en', { ascending: false })
+          .limit(80),
+        'creado_en'
+      ),
     ])
     if (tasksError) console.warn('[v0] get_account_context tasks unavailable:', tasksError.message)
     if (instancesError) console.warn('[v0] get_account_context milestones unavailable:', instancesError.message)
