@@ -422,7 +422,7 @@ export function ClientServiceMap({ clientId, clientPlan, currentUserId }: Client
 
   // Get checklist items for the hito based on client plan
   const getChecklistItems = useCallback((hito: HitoCatalogo): ChecklistItem[] => {
-    const normalizedPlan = clientPlan.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    const normalizedPlan = String(clientPlan ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     if (normalizedPlan === 'estrategico' && hito.checklist_estrategico?.length) {
       return hito.checklist_estrategico
     }
