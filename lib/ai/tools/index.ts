@@ -172,6 +172,19 @@ const getAccountContext: ToolDefinition = {
 
     const google = safeAccounts.find((account) => account.plataforma?.toLowerCase() === 'google')
     const meta = safeAccounts.find((account) => account.plataforma?.toLowerCase() === 'meta')
+    const selectedTimezones = [...new Set(safeAccounts.map((account) => account.zona_horaria).filter(Boolean))]
+    const analysisPeriod = period
+      ? {
+          date_from: period.from,
+          time_from: '00:00:00',
+          date_to: period.to,
+          time_to: '23:59:59',
+          timezones: selectedTimezones,
+          attribution_note: selectedTimezones.length === 1
+            ? `Las fechas se interpretan en la zona horaria de la cuenta: ${selectedTimezones[0]}.`
+            : 'Las cuentas seleccionadas tienen zonas horarias diferentes; interpretar cada métrica en la zona horaria informada por su cuenta.',
+        }
+      : null
 
     console.log('[v0] get_account_context executed', {
       client_id: client.id,
@@ -192,6 +205,7 @@ const getAccountContext: ToolDefinition = {
       comentarios_cliente_en_periodo: compactRecords(clientComments, CONTEXT_COMMENT_LIMIT, 80),
       comentarios_de_tareas: compactRecords(taskComments, CONTEXT_COMMENT_LIMIT, 150),
       hitos_asignados: compactRecords(instances, CONTEXT_FIELD_LIMIT, 40),
+      periodo_analizado: analysisPeriod,
       ...(google?.id_cuenta ? { google_ads_customer_id: google.id_cuenta } : {}),
       ...(meta?.id_cuenta ? { meta_ads_account_id: meta.id_cuenta } : {}),
     }
@@ -347,8 +361,8 @@ const getMetaMetrics: ToolDefinition = {
     return {
       available: true,
       platform: 'meta',
-      date_range: { start: dateFrom, end: dateTo },
-      requested_accounts: selected.length,
+  date_range: { start: dateFrom, start_time: '00:00:00', end: dateTo, end_time: '23:59:59', timezones: [...new Set(selected.map((account) => account.zona_horaria).filter(Boolean))] },
+  requested_accounts: selected.length,
       successful_accounts: successful.length,
       failed_accounts: errors.length,
       partial: errors.length > 0,
@@ -400,7 +414,7 @@ const getGoogleMetrics: ToolDefinition = {
     }
     const successful = results.filter((result) => result.metrics)
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_metrics', status: 'completed', label: successful.length === selected.length ? 'Métricas de Google Ads recibidas' : `Se consultaron ${successful.length} de ${selected.length} cuentas de Google Ads` })
-    return { available: true, partial: successful.length !== selected.length, date_range: { start: dateFrom, end: dateTo }, accounts: successful.map((result) => result.metrics), errors: results.filter((result) => result.error).map((result) => ({ account_id: result.account.id_cuenta, account_name: result.account.nombre_cuenta, message: result.error })) }
+    return { available: true, partial: successful.length !== selected.length, date_range: { start: dateFrom, start_time: '00:00:00', end: dateTo, end_time: '23:59:59', timezones: [...new Set(selected.map((account) => account.zona_horaria).filter(Boolean))] }, accounts: successful.map((result) => result.metrics), errors: results.filter((result) => result.error).map((result) => ({ account_id: result.account.id_cuenta, account_name: result.account.nombre_cuenta, message: result.error })) }
   },
 }
 
