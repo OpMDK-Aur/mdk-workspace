@@ -66,7 +66,7 @@ function addMetaSnapshot(context: ExecutionContext, account: { id_cuenta: string
 
 const getAccountContext: ToolDefinition = {
   key: 'get_account_context',
-  description: 'Obtiene el cliente activo y sus cuentas publicitarias activas desde Supabase.',
+  description: 'Obtiene el contexto global del cliente activo: tarjeta completa, cuentas seleccionadas, tareas, hitos y comentarios del cliente y de sus tareas dentro del período analizado.',
   inputSchema: noInput,
   async execute(_input, context: ExecutionContext) {
     const emit = context.emitActivity
@@ -100,12 +100,24 @@ const getAccountContext: ToolDefinition = {
       return { available: false, client_id: context.clientId, message: 'No se pudieron consultar las cuentas publicitarias.' }
     }
 
-    const [{ data: tasks, error: tasksError }, { data: instances, error: instancesError }] = await Promise.all([
+    const period = context.analysisRunState?.comparisonDefinition?.current
+    const periodFilter = (query: any, dateColumn = 'created_at') => period
+      ? query.gte(dateColumn, `${period.from}T00:00:00.000Z`).lte(dateColumn, `${period.to}T23:59:59.999Z`)
+      : query
+    const [{ data: tasks, error: tasksError }, { data: instances, error: instancesError }, { data: clientComments, error: clientCommentsError }] = await Promise.all([
       supabase.from('tareas').select('*').eq('cliente_id', context.clientId).limit(100),
       supabase.from('mapa_servicio_instancias').select('*, hitos_catalogo(nombre, frecuencia, tipo_servicio)').eq('cliente_id', context.clientId).limit(100),
+      periodFilter(supabase.from('comentarios_clientes').select('*').eq('cliente_id', context.clientId).order('created_at', { ascending: true }).limit(200)),
     ])
     if (tasksError) console.warn('[v0] get_account_context tasks unavailable:', tasksError.message)
     if (instancesError) console.warn('[v0] get_account_context milestones unavailable:', instancesError.message)
+    if (clientCommentsError) console.warn('[v0] get_account_context client comments unavailable:', clientCommentsError.message)
+
+    const taskIds = (tasks ?? []).map((task: { id?: string }) => task.id).filter(Boolean)
+    const { data: taskComments, error: taskCommentsError } = taskIds.length > 0
+      ? await supabase.from('comentarios_tareas').select('*').in('tarea_id', taskIds).order('created_at', { ascending: true }).limit(500)
+      : { data: [], error: null }
+    if (taskCommentsError) console.warn('[v0] get_account_context task comments unavailable:', taskCommentsError.message)
 
     const allAccounts = (accounts ?? []).flatMap((account) => String(account.id_cuenta ?? '')
       .split(',')
@@ -153,6 +165,8 @@ const getAccountContext: ToolDefinition = {
       tarjeta_cliente: client,
       cuentas_publicitarias: safeAccounts,
       tareas: tasks ?? [],
+      comentarios_cliente_en_periodo: clientComments ?? [],
+      comentarios_de_tareas: taskComments ?? [],
       hitos_asignados: instances ?? [],
       ...(google?.id_cuenta ? { google_ads_customer_id: google.id_cuenta } : {}),
       ...(meta?.id_cuenta ? { meta_ads_account_id: meta.id_cuenta } : {}),
