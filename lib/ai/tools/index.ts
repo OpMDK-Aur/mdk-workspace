@@ -10,6 +10,22 @@ import { buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeInd
 
 const noInput = z.object({})
 
+const CONTEXT_FIELD_LIMIT = 1200
+const CONTEXT_COMMENT_LIMIT = 1800
+
+function compactValue(value: unknown, limit = CONTEXT_FIELD_LIMIT): unknown {
+  if (typeof value === 'string') return value.length > limit ? `${value.slice(0, limit)}…` : value
+  if (Array.isArray(value)) return value.slice(0, 100).map((item) => compactValue(item, limit))
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, compactValue(item, limit)]))
+  }
+  return value
+}
+
+function compactRecords(records: unknown[] | null | undefined, limit: number, count = 100) {
+  return (records ?? []).slice(0, count).map((record) => compactValue(record, limit))
+}
+
 /**
  * Convierte el string (potencialmente separado por comas) de cuenta(s)
  * seleccionada(s) en la UI en un set de ids normalizados. Devuelve null
@@ -105,9 +121,9 @@ const getAccountContext: ToolDefinition = {
       ? query.gte(dateColumn, `${period.from}T00:00:00.000Z`).lte(dateColumn, `${period.to}T23:59:59.999Z`)
       : query
     const [{ data: tasks, error: tasksError }, { data: instances, error: instancesError }, { data: clientComments, error: clientCommentsError }] = await Promise.all([
-      supabase.from('tareas').select('*').eq('cliente_id', context.clientId).limit(100),
-      supabase.from('mapa_servicio_instancias').select('*, hitos_catalogo(nombre, frecuencia, tipo_servicio)').eq('cliente_id', context.clientId).limit(100),
-      periodFilter(supabase.from('comentarios_clientes').select('*').eq('cliente_id', context.clientId).order('created_at', { ascending: true }).limit(200)),
+      supabase.from('tareas').select('*').eq('cliente_id', context.clientId).order('created_at', { ascending: false }).limit(40),
+      supabase.from('mapa_servicio_instancias').select('*, hitos_catalogo(nombre, frecuencia, tipo_servicio)').eq('cliente_id', context.clientId).limit(40),
+      periodFilter(supabase.from('comentarios_clientes').select('*').eq('cliente_id', context.clientId).order('created_at', { ascending: false }).limit(80)),
     ])
     if (tasksError) console.warn('[v0] get_account_context tasks unavailable:', tasksError.message)
     if (instancesError) console.warn('[v0] get_account_context milestones unavailable:', instancesError.message)
@@ -115,7 +131,7 @@ const getAccountContext: ToolDefinition = {
 
     const taskIds = (tasks ?? []).map((task: { id?: string }) => task.id).filter(Boolean)
     const { data: taskComments, error: taskCommentsError } = taskIds.length > 0
-      ? await supabase.from('comentarios_tareas').select('*').in('tarea_id', taskIds).order('created_at', { ascending: true }).limit(500)
+      ? await supabase.from('comentarios_tareas').select('*').in('tarea_id', taskIds).order('created_at', { ascending: false }).limit(150)
       : { data: [], error: null }
     if (taskCommentsError) console.warn('[v0] get_account_context task comments unavailable:', taskCommentsError.message)
 
@@ -162,12 +178,12 @@ const getAccountContext: ToolDefinition = {
       available: true,
       client_id: client.id,
       nombre_del_negocio: client.nombre_del_negocio,
-      tarjeta_cliente: client,
+      tarjeta_cliente: compactValue(client, CONTEXT_FIELD_LIMIT),
       cuentas_publicitarias: safeAccounts,
-      tareas: tasks ?? [],
-      comentarios_cliente_en_periodo: clientComments ?? [],
-      comentarios_de_tareas: taskComments ?? [],
-      hitos_asignados: instances ?? [],
+      tareas: compactRecords(tasks, CONTEXT_FIELD_LIMIT, 40),
+      comentarios_cliente_en_periodo: compactRecords(clientComments, CONTEXT_COMMENT_LIMIT, 80),
+      comentarios_de_tareas: compactRecords(taskComments, CONTEXT_COMMENT_LIMIT, 150),
+      hitos_asignados: compactRecords(instances, CONTEXT_FIELD_LIMIT, 40),
       ...(google?.id_cuenta ? { google_ads_customer_id: google.id_cuenta } : {}),
       ...(meta?.id_cuenta ? { meta_ads_account_id: meta.id_cuenta } : {}),
     }
