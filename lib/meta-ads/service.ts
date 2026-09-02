@@ -101,22 +101,33 @@ interface MetaApiErrorPayload {
 
 const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
 const META_BASE_URL = `https://graph.facebook.com/${META_API_VERSION}`
+// Una misma campaña suele reportar varios action_type a la vez (ej: una
+// campaña de WhatsApp también acumula link_click incidentales; una de
+// formulario también puede acumular algún mensaje incidental de Messenger).
+// Por eso NO elegimos el resultado por un orden de prioridad fijo -- eso
+// hacía que, según el objetivo, ganara el tipo de acción equivocado aunque
+// tuviera un valor mucho menor que el real (ver bug histórico: leads reales
+// de 2.319 tapados por 47 "conversaciones" incidentales, y viceversa).
+// En cambio: entre las acciones de "conversión real" presentes, se elige la
+// de MAYOR valor. Sólo si no hay ninguna conversión real se recurre a las
+// acciones de tráfico/engagement, también por mayor valor.
 const LEAD_ACTIONS = [
   'lead',
   'leadgen_grouped',
   'onsite_conversion.lead_grouped',
   'offsite_conversion.fb_pixel_lead',
-  'onsite_conversion.messaging_conversation_started_7d',
   'contact',
   'submit_application',
   'complete_registration',
 ]
-const PRIORITY_ACTIONS = [
-  'onsite_conversion.messaging_conversation_started_7d', 'messaging_conversation_started',
-  'lead', 'leadgen_grouped', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead',
-  'contact', 'submit_application', 'complete_registration',
-  'purchase', 'omni_purchase', 'reach', 'landing_page_view', 'link_click',
+const MESSAGING_ACTIONS = [
+  'onsite_conversion.messaging_conversation_started_7d',
+  'messaging_conversation_started',
+  'onsite_conversion.messaging_first_reply',
+  'onsite_conversion.total_messaging_connection',
 ]
+const PURCHASE_ACTIONS = ['purchase', 'omni_purchase']
+const CONVERSION_ACTIONS = [...LEAD_ACTIONS, ...MESSAGING_ACTIONS, ...PURCHASE_ACTIONS]
 const TRAFFIC_ACTIONS = [
   'link_click',
   'landing_page_view',
@@ -127,14 +138,8 @@ const TRAFFIC_ACTIONS = [
   'like',
   'video_view',
   'omni_view_content',
-  'purchase',
-  'omni_purchase',
   'reach',
 ]
-const TRAFFIC_OBJECTIVES = new Set([
-  'LINK_CLICKS', 'OUTCOME_TRAFFIC', 'POST_ENGAGEMENT', 'OUTCOME_ENGAGEMENT',
-  'PAGE_LIKES', 'VIDEO_VIEWS', 'REACH', 'OUTCOME_AWARENESS', 'BRAND_AWARENESS',
-])
 
 export function normalizeMetaAccountId(value: string) {
   return value.replace(/^act_/, '').trim()
@@ -217,23 +222,38 @@ function toInt(value?: string) {
   return Math.round(toNumber(value))
 }
 
-export function normalizeMetaResult(objective: string, actions: MetaAction[] | undefined) {
-  const available = new Set(actions?.map((action) => action.action_type) ?? [])
-  const objectiveActions = TRAFFIC_OBJECTIVES.has(objective) ? [...TRAFFIC_ACTIONS, ...LEAD_ACTIONS] : [...LEAD_ACTIONS, ...TRAFFIC_ACTIONS]
-  const priorities = [...PRIORITY_ACTIONS, ...objectiveActions]
-  const actionType = priorities.find((type) => available.has(type)) ?? null
-  if (!actionType) return { results: 0, resultType: 'unknown' as MetaResultType, sourceActionType: null, leads: 0, conversions: 0 }
-  const action = actions?.find((item) => item.action_type === actionType)
-  const results = Math.max(0, Math.round(toNumber(action?.value)))
+function pickByMagnitude(actions: MetaAction[] | undefined, candidateTypes: string[]) {
+  let best: { type: string; value: number } | null = null
+  for (const action of actions ?? []) {
+    if (!candidateTypes.includes(action.action_type)) continue
+    const value = toNumber(action.value)
+    if (!best || value > best.value) best = { type: action.action_type, value }
+  }
+  return best
+}
+
+export function normalizeMetaResult(_objective: string, actions: MetaAction[] | undefined) {
+  // 1) Entre las acciones de conversión real (leads, mensajes, compras)
+  //    presentes en la campaña, gana la de mayor valor -- nunca la primera
+  //    de una lista fija -- para que un action_type incidental con un valor
+  //    chico nunca tape al resultado real de la campaña.
+  const bestConversion = pickByMagnitude(actions, CONVERSION_ACTIONS)
+  // 2) Si no hay ninguna conversión real, se usa la acción de tráfico o
+  //    engagement de mayor valor como resultado (clics, visitas a landing, etc).
+  const best = bestConversion ?? pickByMagnitude(actions, TRAFFIC_ACTIONS)
+  if (!best) return { results: 0, resultType: 'unknown' as MetaResultType, sourceActionType: null, leads: 0, conversions: 0 }
+
+  const actionType = best.type
+  const results = Math.max(0, Math.round(best.value))
   let resultType: MetaResultType = 'unknown'
-  if (actionType === 'onsite_conversion.messaging_conversation_started_7d' || actionType === 'messaging_conversation_started') resultType = 'messaging_conversation_started'
+  if (MESSAGING_ACTIONS.includes(actionType)) resultType = 'messaging_conversation_started'
   else if (actionType === 'contact') resultType = 'contact'
   else if (actionType === 'submit_application') resultType = 'application'
   else if (actionType === 'complete_registration') resultType = 'registration'
   else if (LEAD_ACTIONS.includes(actionType)) resultType = 'lead'
   else if (actionType === 'link_click') resultType = 'link_click'
   else if (actionType === 'landing_page_view') resultType = 'landing_page_view'
-  else if (actionType === 'purchase' || actionType === 'omni_purchase') resultType = 'purchase'
+  else if (PURCHASE_ACTIONS.includes(actionType)) resultType = 'purchase'
   else if (actionType === 'reach') resultType = 'reach'
   else if (actionType === 'video_view') resultType = 'video_view'
   else if (TRAFFIC_ACTIONS.includes(actionType)) resultType = 'engagement'

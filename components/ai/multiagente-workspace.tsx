@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { ClientSelector, type AnalyzableClient } from './client-selector'
+import { ClientSelector, type AnalyzableClient, type ClientAccount } from './client-selector'
 import { SupervisorChat } from './supervisor-chat'
 import { ClientContextForm } from './client-context-form'
 import { ScoreConfigPanel } from './score-config-panel'
@@ -24,6 +24,7 @@ const displayFont = Fraunces({ subsets: ['latin'], weight: ['500', '600'], style
 
 export function MultiagenteWorkspace() {
   const [selectedClient, setSelectedClient] = useState<AnalyzableClient | null>(null)
+  const [selectedAccounts, setSelectedAccounts] = useState<ClientAccount[]>([])
   const [memory, setMemory] = useState<ClientMemory | null>(null)
   const [loadingMemory, setLoadingMemory] = useState(false)
   const [active, setActive] = useState(false)
@@ -83,6 +84,27 @@ export function MultiagenteWorkspace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClient?.id])
 
+  // Deriva los ids de cuenta seleccionados por plataforma para pasárselos
+  // al chat: si el usuario elige una o varias cuentas puntuales en el
+  // selector, el agente debe quedar restringido a esas cuentas en vez de
+  // analizar todas las activas del cliente.
+  const selectedMetaAccountId = selectedAccounts
+    .filter((account) => account.plataforma?.toLowerCase() === 'meta' && account.id_cuenta)
+    .map((account) => account.id_cuenta as string)
+    .join(',') || undefined
+  const selectedGoogleCustomerId = selectedAccounts
+    .filter((account) => account.plataforma?.toLowerCase() === 'google' && account.id_cuenta)
+    .map((account) => account.id_cuenta as string)
+    .join(',') || undefined
+  const selectedAccountSummary = selectedAccounts.map((account) => ({
+    id: account.id_cuenta,
+    name: account.nombre_cuenta || account.id_cuenta || 'Cuenta sin nombre',
+    platform: account.plataforma,
+  }))
+  const selectedAccountReading = selectedAccountSummary.length > 0
+    ? `Lectura de contexto: analizá exclusivamente ${selectedAccountSummary.map((account) => `${account.name} (${account.platform === 'meta' ? 'Meta Ads' : account.platform === 'google' ? 'Google Ads' : account.platform || 'plataforma'})`).join(', ')}. No uses datos de otras cuentas.`
+    : 'Lectura de contexto: no hay una cuenta publicitaria seleccionada. Pedí al usuario que seleccione una antes de analizar.'
+
   return (
     <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">
       <div className="mx-auto flex w-full flex-col gap-6">
@@ -135,8 +157,25 @@ export function MultiagenteWorkspace() {
                   </div>
                 )}
               </div>
-              <ClientSelector value={selectedClient} onChange={setSelectedClient} />
+              <ClientSelector value={selectedClient} onChange={setSelectedClient} onAccountsChange={setSelectedAccounts} />
             </div>
+            {selectedClient && selectedAccounts.length > 0 && (
+              <section className="flex flex-col gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4" aria-label="Cuentas incluidas en el análisis">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-foreground">El análisis está limitado a:</p>
+                  <span className="font-mono text-[11px] uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Filtro activo</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {selectedAccounts.map((account) => (
+                    <span key={`${account.plataforma}-${account.id_cuenta}`} className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs text-foreground">
+                      <span className="size-2 rounded-full bg-emerald-500" aria-hidden="true" />
+                      <span className="font-medium">{account.nombre_cuenta || account.id_cuenta || 'Cuenta sin nombre'}</span>
+                      <span className="text-emerald-700 dark:text-emerald-300">({account.plataforma === 'meta' ? 'Meta Ads' : account.plataforma === 'google' ? 'Google Ads' : account.plataforma || 'Plataforma'})</span>
+                    </span>
+                  ))}
+                </div>
+              </section>
+            )}
             {selectedClient && <ScoreConfigPanel clientId={selectedClient.id} onSaved={setScoreConfig} />}
             {selectedClient && <PaidMediaBackfillPanel clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} />}
 
@@ -145,8 +184,12 @@ export function MultiagenteWorkspace() {
             {selectedClient && !loadingMemory && !active && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} onCompleted={(updated) => { setMemory(updated); setActive(true) }} />}
             {active && (
               <SupervisorChat
-                key={selectedClient?.id ?? 'no-client'}
+                key={`${selectedClient?.id ?? 'no-client'}:${selectedMetaAccountId ?? 'all-meta'}:${selectedGoogleCustomerId ?? 'all-google'}`}
                 clientId={selectedClient?.id ?? null}
+                metaAccountId={selectedMetaAccountId}
+                googleCustomerId={selectedGoogleCustomerId}
+                selectedAccountSummary={selectedAccountSummary}
+                selectedAccountReading={selectedAccountReading}
                 disabled={!selectedClient}
                 disabledMessage="Seleccioná un cliente para comenzar el análisis."
                 scoreConfig={scoreConfig ?? undefined}
