@@ -348,7 +348,21 @@ function SupervisorChatSession({
   useEffect(() => {
     const container = scrollContainerRef.current
     if (!container) return
-    container.scrollTop = container.scrollHeight
+
+    const scrollToLatest = () => {
+      container.scrollTop = container.scrollHeight
+    }
+
+    scrollToLatest()
+    const frame = requestAnimationFrame(scrollToLatest)
+    const observer = new ResizeObserver(scrollToLatest)
+    observer.observe(container)
+    if (container.lastElementChild instanceof HTMLElement) observer.observe(container.lastElementChild)
+
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
   }, [messages, isBusy, currentActivity])
 
   async function handleFileSelect(event: ChangeEvent<HTMLInputElement>) {
@@ -522,7 +536,7 @@ function SupervisorChatSession({
                     <Bot className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
                   )}
                   <div
-                    className={`min-w-0 rounded-lg px-3 py-2 text-sm leading-6 ${
+                    className={`min-w-0 break-words rounded-lg px-3 py-2 text-sm leading-6 ${
                       message.role === 'user' ? 'max-w-[80%] bg-primary text-primary-foreground' : 'w-full max-w-[95%] bg-card'
                     }`}
                   >
