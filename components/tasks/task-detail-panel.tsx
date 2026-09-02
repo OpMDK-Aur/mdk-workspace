@@ -2479,7 +2479,14 @@ export function TaskDetailPanel() {
                                             role="textbox"
                                             aria-label="Editar comentario"
                                             dangerouslySetInnerHTML={{ __html: editingActivityContent }}
-                                            onInput={(e) => setEditingActivityContent((e.target as HTMLDivElement).innerHTML)}
+                                            onInput={() => {
+                                              // Keep the DOM as the source of truth while editing. Updating
+                                              // React state on every keystroke re-applies dangerouslySetInnerHTML
+                                              // and resets the caret to the beginning.
+                                              if (editingActivityEditorRef.current) {
+                                                editingActivityEditorRef.current.dataset.dirty = 'true'
+                                              }
+                                            }}
                                             onKeyDown={(e) => {
                                               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                                                 e.preventDefault()
