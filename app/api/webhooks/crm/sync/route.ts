@@ -60,9 +60,25 @@ export async function POST(request: Request) {
   if (eventError?.code === '23505') return NextResponse.json({ ok: true, duplicate: true })
   if (eventError) return NextResponse.json({ error: 'Could not register event' }, { status: 500 })
 
+  const aureliaAccountId = text(record, 'aurelia_account_id', 'aureliaAccountId', 'account_id', 'accountId', 'cliente_id')
+  let internalClientId = text(record, 'client_id', 'internal_client_id')
+  if (!internalClientId && aureliaAccountId) {
+    const { data: mappedClient } = await supabase
+      .from('clientes')
+      .select('id')
+      .eq('crm_type', 'aurelia')
+      .eq('ghl_location_id', aureliaAccountId)
+      .maybeSingle()
+    internalClientId = mappedClient?.id ?? null
+  }
+  if (!internalClientId) {
+    await supabase.from('crm_sync_events').update({ status: 'failed', processed_at: new Date().toISOString(), error_message: 'No client mapping found' }).eq('event_id', eventId)
+    return NextResponse.json({ error: 'No client mapping found' }, { status: 422 })
+  }
+
   const common = {
     external_id: externalId,
-    client_id: text(record, 'client_id', 'cliente_id'),
+    client_id: internalClientId,
     crm_created_at: timestamp(record, 'created_at', 'createdAt', 'creado_en'),
     crm_updated_at: timestamp(record, 'updated_at', 'updatedAt', 'actualizado_en'),
     synced_at: new Date().toISOString(),

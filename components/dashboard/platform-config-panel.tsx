@@ -587,8 +587,8 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       config.google.trim() || null,
       config.crmType.trim() || null,
       config.ghlLocationId.trim() || null,
-      config.ghlToken.trim() || null,
-    )
+  config.crmType === 'aurelia' ? null : config.ghlToken.trim() || null,
+  )
 
     setSaving(prev => ({ ...prev, [clientId]: false }))
     if (result.error) {
@@ -982,14 +982,14 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
 
                 {config.crmType === 'aurelia' && (
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">API Token</Label>
+                    <Label className="text-xs text-muted-foreground">ID de cuenta en Aurelia CRM</Label>
                     <Input
-                      type="password"
-                      placeholder="Token de Aurelia CRM..."
-                      value={config.ghlToken}
-                      onChange={e => updateField(client.id, 'ghlToken', e.target.value)}
+                      placeholder="ID de cuenta o cliente en Aurelia..."
+                      value={config.ghlLocationId}
+                      onChange={e => updateField(client.id, 'ghlLocationId', e.target.value)}
                       className="h-9 font-mono text-sm"
                     />
+                    <p className="text-[11px] text-muted-foreground">Este ID se usa para asociar los webhooks del CRM con este cliente interno. No se requiere token.</p>
                   </div>
                 )}
               </div>
