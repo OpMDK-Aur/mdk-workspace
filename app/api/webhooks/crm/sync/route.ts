@@ -10,11 +10,12 @@ const TABLES = {
 } as const
 
 type CrmTable = keyof typeof TABLES
-type WebhookPayload = {
+type WebhookPayload = Record<string, unknown> & {
   type?: string
   table?: string
   record?: Record<string, unknown> | null
   old_record?: Record<string, unknown> | null
+  event?: string
 }
 
 function text(record: Record<string, unknown>, ...keys: string[]) {
@@ -48,11 +49,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const table = payload.table as CrmTable
-  const record = payload.record
-  const type = String(payload.type ?? '').toUpperCase()
   const path = new URL(request.url).pathname
   const expectedTable = path.endsWith('/contacts') ? 'contacts' : path.endsWith('/messages') ? 'messages' : null
+  const eventName = String(payload.event ?? '').toLowerCase()
+  const inferredTable = eventName.startsWith('contact_') ? 'contacts' : eventName.startsWith('message_') ? 'messages' : null
+  const table = (payload.table ?? expectedTable ?? inferredTable) as CrmTable
+  const record = payload.record ?? payload
+  const type = String(payload.type ?? (eventName.endsWith('_insert') ? 'INSERT' : eventName.endsWith('_update') ? 'UPDATE' : '')).toUpperCase()
   if (!record || !(table in TABLES) || (expectedTable && table !== expectedTable) || !['INSERT', 'UPDATE'].includes(type)) {
     return NextResponse.json({ error: 'Unsupported webhook payload' }, { status: 400 })
   }
