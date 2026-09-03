@@ -88,6 +88,7 @@ export async function POST(request: Request) {
   const common = {
     external_id: externalId,
     client_id: internalClientId,
+    created_at: timestamp(record, 'created_at', 'createdAt', 'creado_en'),
     crm_created_at: timestamp(record, 'created_at', 'createdAt', 'creado_en'),
     crm_updated_at: timestamp(record, 'updated_at', 'updatedAt', 'actualizado_en'),
     synced_at: new Date().toISOString(),
