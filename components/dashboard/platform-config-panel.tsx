@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { updateClientPlatformIds } from '@/app/actions/platform-config'
+import { replaceClientCrmAccounts, updateClientPlatformIds } from '@/app/actions/platform-config'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -451,6 +451,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   )
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [saved, setSaved] = useState<Record<string, boolean>>({})
+  const [crmAccountDrafts, setCrmAccountDrafts] = useState<Record<string, string[]>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [autoSaving, setAutoSaving] = useState(false)
   const [syncingAll, setSyncingAll] = useState(false)
@@ -589,8 +590,12 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       config.ghlLocationId.trim() || null,
   config.crmType === 'aurelia' ? null : config.ghlToken.trim() || null,
   )
-
-    setSaving(prev => ({ ...prev, [clientId]: false }))
+  const crmResult = config.crmType === 'aurelia'
+    ? await replaceClientCrmAccounts(clientId, crmAccountDrafts[clientId] ?? [config.ghlLocationId])
+    : { success: true }
+  
+  setSaving(prev => ({ ...prev, [clientId]: false }))
+  if (crmResult.error && !result.error) result.error = crmResult.error
     if (result.error) {
       setErrors(prev => ({ ...prev, [clientId]: result.error! }))
     } else {
@@ -983,13 +988,25 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                 {config.crmType === 'aurelia' && (
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">ID de cuenta en Aurelia CRM</Label>
-                    <Input
-                      placeholder="ID de cuenta o cliente en Aurelia..."
-                      value={config.ghlLocationId}
-                      onChange={e => updateField(client.id, 'ghlLocationId', e.target.value)}
-                      className="h-9 font-mono text-sm"
-                    />
-                    <p className="text-[11px] text-muted-foreground">Este ID se usa para asociar los webhooks del CRM con este cliente interno. No se requiere token.</p>
+                    <div className="flex flex-col gap-2">
+                      {(crmAccountDrafts[client.id] ?? [config.ghlLocationId].filter(Boolean)).map((accountId, index) => (
+                        <div key={`${client.id}-${index}`} className="flex items-center gap-2">
+                          <Input
+                            placeholder="ID de cuenta o cliente en Aurelia..."
+                            value={accountId}
+                            onChange={e => setCrmAccountDrafts(prev => ({ ...prev, [client.id]: (prev[client.id] ?? [config.ghlLocationId]).map((value, i) => i === index ? e.target.value : value) }))}
+                            className="h-9 font-mono text-sm"
+                          />
+                          <Button type="button" variant="ghost" size="icon" onClick={() => setCrmAccountDrafts(prev => ({ ...prev, [client.id]: (prev[client.id] ?? [config.ghlLocationId]).filter((_, i) => i !== index) }))} aria-label="Quitar cuenta CRM">
+                            <Unlink className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button type="button" variant="outline" size="sm" onClick={() => setCrmAccountDrafts(prev => ({ ...prev, [client.id]: [...(prev[client.id] ?? [config.ghlLocationId].filter(Boolean)), ''] }))}>
+                        Agregar cuenta CRM
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">Podés asociar varias cuentas de Aurelia CRM al mismo cliente interno.</p>
                   </div>
                 )}
               </div>

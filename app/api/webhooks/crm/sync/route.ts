@@ -85,6 +85,10 @@ export async function POST(request: Request) {
       .maybeSingle()
     internalClientId = accountMapping?.client_id ?? internalClientId
   }
+  // Compatibilidad: algunos emisores ya envían directamente el UUID del cliente interno.
+  if (!internalClientId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(aureliaAccountId ?? '')) {
+    internalClientId = aureliaAccountId
+  }
   if (!internalClientId) {
     await supabase.from('crm_sync_events').update({ status: 'failed', processed_at: new Date().toISOString(), error_message: 'No client mapping found' }).eq('event_id', eventId)
     return NextResponse.json({ error: 'No client mapping found' }, { status: 422 })
@@ -103,7 +107,7 @@ export async function POST(request: Request) {
     : table === 'conversations'
       ? { ...common, contact_external_id: text(record, 'contact_id', 'contactId', 'contact_external_id'), conversation_data: record, channel: text(record, 'channel', 'canal'), status: text(record, 'status', 'estado') }
       : table === 'messages'
-        ? { ...common, conversation_external_id: text(record, 'conversation_id', 'conversationId', 'converation_id', 'converationId'), contact_external_id: text(record, 'contact_id', 'contactId'), message_data: record, source_id: extractSourceId(record), referral_metadata: extractReferralMetadata(record), direction: text(record, 'direction', 'direccion'), author: text(record, 'author', 'sender', 'remetente') }
+        ? { ...common, conversation_external_id: text(record, 'conversation_id', 'conversationId', 'converation_id', 'converationId'), contact_external_id: text(record, 'contact_id', 'contactId'), message_data: record, source_id: extractSourceId(record), referral_metadata: extractReferralMetadata(record), direction: text(record, 'direction', 'direccion'), author: text(record, 'author', 'sender', 'remetente'), message_type: text(record, 'message_type', 'messageType', 'type'), delivered_at: timestamp(record, 'delivered_at', 'deliveredAt') }
         : { ...common, contact_external_id: text(record, 'contact_id', 'contactId'), opportunity_data: record, stage: text(record, 'stage', 'pipeline_stage', 'etapa'), status: text(record, 'status', 'estado'), value: Number(record.value ?? record.amount ?? record.monto ?? 0) || null, source: text(record, 'source', 'lead_source', 'origen') }
 
   const { error } = await supabase.from(TABLES[table]).upsert(data, { onConflict: 'external_id' })
