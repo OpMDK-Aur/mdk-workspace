@@ -56,21 +56,29 @@ export function ServiceMapMilestoneEditor() {
     }>
   >([]);
   const [loadingCurrent, setLoadingCurrent] = useState(false);
+  const [assignedHitoIds, setAssignedHitoIds] = useState<Set<string>>(new Set());
 
   const loadCurrentMilestones = useCallback(
     async (id: string) => {
       setLoadingCurrent(true);
       const now = new Date();
-      const { data } = await supabase
-        .from("mapa_servicio_instancias")
-        .select(
-          "id, hito_id, tarea_id, mes, anio, estado, hito:hitos_catalogo(id, nombre, frecuencia, tipo_servicio)",
-        )
-        .eq("cliente_id", id)
-        .eq("mes", now.getMonth() + 1)
-        .eq("anio", now.getFullYear())
-        .order("mes");
+      const [{ data }, { data: assigned }] = await Promise.all([
+        supabase
+          .from("mapa_servicio_instancias")
+          .select(
+            "id, hito_id, tarea_id, mes, anio, estado, hito:hitos_catalogo(id, nombre, frecuencia, tipo_servicio)",
+          )
+          .eq("cliente_id", id)
+          .eq("mes", now.getMonth() + 1)
+          .eq("anio", now.getFullYear())
+          .order("mes"),
+        supabase
+          .from("mapa_servicio_instancias")
+          .select("hito_id")
+          .eq("cliente_id", id),
+      ]);
       setCurrentMilestones((data ?? []) as unknown as typeof currentMilestones);
+      setAssignedHitoIds(new Set((assigned ?? []).map((item) => item.hito_id).filter(Boolean)));
       setLoadingCurrent(false);
     },
     [supabase],
@@ -78,7 +86,10 @@ export function ServiceMapMilestoneEditor() {
 
   useEffect(() => {
     if (clientId) void loadCurrentMilestones(clientId);
-    else setCurrentMilestones([]);
+    else {
+      setCurrentMilestones([]);
+      setAssignedHitoIds(new Set());
+    }
   }, [clientId, loadCurrentMilestones]);
 
   const load = useCallback(async () => {
@@ -121,7 +132,7 @@ export function ServiceMapMilestoneEditor() {
     return true;
   };
   const planHitos = items.filter(
-    (item) => isClientPlanHito(item) && !currentHitoIds.has(item.id),
+    (item) => isClientPlanHito(item) && !assignedHitoIds.has(item.id),
   );
   const addBaseHito = async (item: HitoCatalogo) => {
     if (!clientId) return;
