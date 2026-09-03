@@ -28,6 +28,10 @@ function timestamp(record: Record<string, unknown>, ...keys: string[]) {
 }
 
 function extractReferralMetadata(record: Record<string, unknown>) {
+  const directReferral = record.referral
+  if (directReferral && typeof directReferral === 'object' && !Array.isArray(directReferral)) {
+    return directReferral as Record<string, unknown>
+  }
   const metadata = record.metadata
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {}
   const referral = (metadata as Record<string, unknown>).referral
@@ -88,6 +92,7 @@ export async function POST(request: Request) {
   const common = {
     external_id: externalId,
     client_id: internalClientId,
+    created_at: timestamp(record, 'created_at', 'createdAt', 'creado_en'),
     crm_created_at: timestamp(record, 'created_at', 'createdAt', 'creado_en'),
     crm_updated_at: timestamp(record, 'updated_at', 'updatedAt', 'actualizado_en'),
     synced_at: new Date().toISOString(),
@@ -97,7 +102,7 @@ export async function POST(request: Request) {
     : table === 'conversations'
       ? { ...common, contact_external_id: text(record, 'contact_id', 'contactId', 'contact_external_id'), conversation_data: record, channel: text(record, 'channel', 'canal'), status: text(record, 'status', 'estado') }
       : table === 'messages'
-        ? { ...common, conversation_external_id: text(record, 'conversation_id', 'conversationId'), contact_external_id: text(record, 'contact_id', 'contactId'), message_data: record, source_id: extractSourceId(record), referral_metadata: extractReferralMetadata(record), direction: text(record, 'direction', 'direccion'), author: text(record, 'author', 'sender', 'remetente') }
+        ? { ...common, conversation_external_id: text(record, 'conversation_id', 'conversationId', 'converation_id', 'converationId'), contact_external_id: text(record, 'contact_id', 'contactId'), message_data: record, source_id: extractSourceId(record), referral_metadata: extractReferralMetadata(record), direction: text(record, 'direction', 'direccion'), author: text(record, 'author', 'sender', 'remetente') }
         : { ...common, contact_external_id: text(record, 'contact_id', 'contactId'), opportunity_data: record, stage: text(record, 'stage', 'pipeline_stage', 'etapa'), status: text(record, 'status', 'estado'), value: Number(record.value ?? record.amount ?? record.monto ?? 0) || null, source: text(record, 'source', 'lead_source', 'origen') }
 
   const { error } = await supabase.from(TABLES[table]).upsert(data, { onConflict: 'external_id' })

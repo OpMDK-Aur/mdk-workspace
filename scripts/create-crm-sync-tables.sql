@@ -15,6 +15,7 @@ create table if not exists public.crm_contacts (
   contact_data jsonb not null default '{}'::jsonb,
   source text,
   status text,
+  created_at timestamptz,
   crm_created_at timestamptz,
   crm_updated_at timestamptz,
   synced_at timestamptz not null default now()
@@ -27,6 +28,7 @@ create table if not exists public.crm_conversations (
   conversation_data jsonb not null default '{}'::jsonb,
   channel text,
   status text,
+  created_at timestamptz,
   crm_created_at timestamptz,
   crm_updated_at timestamptz,
   synced_at timestamptz not null default now()
@@ -40,6 +42,7 @@ create table if not exists public.crm_messages (
   message_data jsonb not null default '{}'::jsonb,
   source_id text,
   referral_metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz,
   direction text,
   author text,
   crm_created_at timestamptz,
@@ -52,6 +55,7 @@ create table if not exists public.crm_opportunities (
   client_id uuid,
   contact_external_id text,
   opportunity_data jsonb not null default '{}'::jsonb,
+  created_at timestamptz,
   stage text,
   status text,
   value numeric,
