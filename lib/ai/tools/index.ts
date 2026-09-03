@@ -534,6 +534,34 @@ const runPerformanceAnalystTool: ToolDefinition = {
   },
 }
 
+const getCrmContext: ToolDefinition = {
+  key: 'get_crm_context',
+  description: 'Consulta ventas y contexto comercial sincronizado del CRM externo: contactos, conversaciones, mensajes y oportunidades del cliente activo dentro del período analizado.',
+  inputSchema: z.object({
+    from: z.string().optional(),
+    to: z.string().optional(),
+    contactId: z.string().optional(),
+    conversationId: z.string().optional(),
+  }),
+  async execute(input: { from?: string; to?: string; contactId?: string; conversationId?: string }, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, message: 'No hay cliente activo seleccionado.' }
+    const supabase = createClient()
+    const period = context.analysisRunState?.comparisonDefinition?.current
+    const from = input.from ?? period?.from
+    const to = input.to ?? period?.to
+    const dateFilter = (query: any, column = 'crm_created_at') => from && to
+      ? query.gte(column, `${from}T00:00:00.000Z`).lte(column, `${to}T23:59:59.999Z`)
+      : query
+    const [{ data: contacts, error: contactsError }, { data: conversations, error: conversationsError }, { data: messages, error: messagesError }, { data: opportunities, error: opportunitiesError }] = await Promise.all([
+      dateFilter(supabase.from('crm_contacts').select('external_id, client_id, contact_data, source, status, crm_created_at, crm_updated_at').eq('client_id', context.clientId).limit(100)),
+      dateFilter(supabase.from('crm_conversations').select('external_id, client_id, contact_external_id, conversation_data, channel, status, crm_created_at, crm_updated_at').eq('client_id', context.clientId).limit(100)),
+      dateFilter(supabase.from('crm_messages').select('external_id, client_id, conversation_external_id, contact_external_id, message_data, source_id, referral_metadata, direction, author, crm_created_at').eq('client_id', context.clientId).not('source_id', 'is', null).limit(250)),
+      dateFilter(supabase.from('crm_opportunities').select('external_id, client_id, contact_external_id, opportunity_data, stage, status, value, source, crm_created_at, crm_updated_at').eq('client_id', context.clientId).limit(100)),
+    ])
+    return { available: !(contactsError || conversationsError || messagesError || opportunitiesError), period: { from, to, start_time: '00:00:00', end_time: '23:59:59' }, contacts: compactRecords(contacts, CONTEXT_FIELD_LIMIT, 100), conversations: compactRecords(conversations, CONTEXT_FIELD_LIMIT, 100), messages: compactRecords(messages, CONTEXT_COMMENT_LIMIT, 250), opportunities: compactRecords(opportunities, CONTEXT_FIELD_LIMIT, 100), errors: [contactsError, conversationsError, messagesError, opportunitiesError].filter(Boolean).map((error) => error?.message) }
+  },
+}
+
 const getPreviousInsights: ToolDefinition = {
   key: 'get_previous_insights',
   description: 'Busca hallazgos previos de una cuenta.',
@@ -550,6 +578,7 @@ const getPreviousInsights: ToolDefinition = {
 
 const allTools: ToolDefinition[] = [
   getAccountContext,
+  getCrmContext,
   getClientMemory,
   saveClientProfile,
   getIndustryBenchmark,
