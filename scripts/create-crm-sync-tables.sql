@@ -38,6 +38,8 @@ create table if not exists public.crm_messages (
   conversation_external_id text,
   contact_external_id text,
   message_data jsonb not null default '{}'::jsonb,
+  source_id text,
+  referral_metadata jsonb not null default '{}'::jsonb,
   direction text,
   author text,
   crm_created_at timestamptz,
@@ -63,6 +65,7 @@ create index if not exists crm_contacts_client_idx on public.crm_contacts (clien
 create index if not exists crm_conversations_client_idx on public.crm_conversations (client_id, crm_updated_at desc);
 create index if not exists crm_messages_conversation_idx on public.crm_messages (conversation_external_id, crm_created_at asc);
 create index if not exists crm_messages_client_idx on public.crm_messages (client_id, crm_created_at desc);
+create index if not exists crm_messages_source_id_idx on public.crm_messages (client_id, source_id) where source_id is not null;
 create index if not exists crm_opportunities_client_idx on public.crm_opportunities (client_id, crm_created_at desc);
 
 alter table public.crm_sync_events enable row level security;
