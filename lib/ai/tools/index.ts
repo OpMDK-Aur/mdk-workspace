@@ -554,7 +554,7 @@ const getCrmContext: ToolDefinition = {
       : query
     const [{ data: contacts, error: contactsError }, { data: conversations, error: conversationsError }, { data: messages, error: messagesError }, { data: opportunities, error: opportunitiesError }] = await Promise.all([
       dateFilter(supabase.from('crm_contacts').select('external_id, client_id, contact_data, source, status, created_at, crm_created_at, crm_updated_at').eq('client_id', context.clientId).limit(100)),
-      dateFilter(supabase.from('crm_conversations').select('external_id, client_id, contact_external_id, conversation_data, channel, status, crm_created_at, crm_updated_at').eq('client_id', context.clientId).limit(100)),
+      dateFilter(supabase.from('crm_conversations').select('external_id, client_id, contact_external_id, conversation_data, channel, status, created_at, crm_created_at, crm_updated_at').eq('client_id', context.clientId).limit(100)),
       dateFilter(supabase.from('crm_messages').select('external_id, client_id, conversation_external_id, contact_external_id, message_data, source_id, referral_metadata, direction, author, created_at, crm_created_at').eq('client_id', context.clientId).not('source_id', 'is', null).limit(250)),
       dateFilter(supabase.from('crm_opportunities').select('external_id, client_id, contact_external_id, opportunity_data, stage, status, value, source, created_at, crm_created_at, crm_updated_at').eq('client_id', context.clientId).limit(100)),
     ])

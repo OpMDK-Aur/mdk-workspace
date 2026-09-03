@@ -73,16 +73,17 @@ export async function POST(request: Request) {
   if (eventError?.code === '23505') return NextResponse.json({ ok: true, duplicate: true })
   if (eventError) return NextResponse.json({ error: 'Could not register event' }, { status: 500 })
 
-  const aureliaAccountId = text(record, 'aurelia_account_id', 'aureliaAccountId', 'account_id', 'accountId', 'cliente_id')
-  let internalClientId = text(record, 'client_id', 'internal_client_id')
-  if (!internalClientId && aureliaAccountId) {
-    const { data: mappedClient } = await supabase
-      .from('clientes')
-      .select('id')
+  const aureliaAccountId = text(record, 'aurelia_account_id', 'aureliaAccountId', 'account_id', 'accountId', 'cliente_id', 'client_id')
+  let internalClientId = text(record, 'internal_client_id')
+  if (aureliaAccountId) {
+    const { data: accountMapping } = await supabase
+      .from('client_crm_accounts')
+      .select('client_id')
       .eq('crm_type', 'aurelia')
-      .eq('ghl_location_id', aureliaAccountId)
+      .eq('crm_account_id', aureliaAccountId)
+      .eq('active', true)
       .maybeSingle()
-    internalClientId = mappedClient?.id ?? null
+    internalClientId = accountMapping?.client_id ?? internalClientId
   }
   if (!internalClientId) {
     await supabase.from('crm_sync_events').update({ status: 'failed', processed_at: new Date().toISOString(), error_message: 'No client mapping found' }).eq('event_id', eventId)
