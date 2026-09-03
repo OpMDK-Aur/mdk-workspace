@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
@@ -15,12 +15,6 @@ type WebhookPayload = {
   table?: string
   record?: Record<string, unknown> | null
   old_record?: Record<string, unknown> | null
-}
-
-function secureEqual(actual: string, expected: string) {
-  const a = Buffer.from(actual)
-  const b = Buffer.from(expected)
-  return a.length === b.length && timingSafeEqual(a, b)
 }
 
 function text(record: Record<string, unknown>, ...keys: string[]) {
@@ -47,10 +41,6 @@ function extractSourceId(record: Record<string, unknown>) {
 }
 
 export async function POST(request: Request) {
-  const secret = process.env.CRM_WEBHOOK_SECRET
-  const provided = request.headers.get('x-crm-webhook-secret') ?? request.headers.get('x-supabase-webhook-secret') ?? ''
-  if (!secret || !secureEqual(provided, secret)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
   let payload: WebhookPayload
   try {
     payload = await request.json()
@@ -61,7 +51,9 @@ export async function POST(request: Request) {
   const table = payload.table as CrmTable
   const record = payload.record
   const type = String(payload.type ?? '').toUpperCase()
-  if (!record || !(table in TABLES) || !['INSERT', 'UPDATE'].includes(type)) {
+  const path = new URL(request.url).pathname
+  const expectedTable = path.endsWith('/contacts') ? 'contacts' : path.endsWith('/messages') ? 'messages' : null
+  if (!record || !(table in TABLES) || (expectedTable && table !== expectedTable) || !['INSERT', 'UPDATE'].includes(type)) {
     return NextResponse.json({ error: 'Unsupported webhook payload' }, { status: 400 })
   }
 
