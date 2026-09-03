@@ -45,3 +45,20 @@ export async function updateClientPlatformIds(
   revalidatePath('/dashboard/clients/config')
   return { success: true }
 }
+
+export async function replaceClientCrmAccounts(clientId: string, accountIds: string[]) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'No autorizado' }
+  const { data: colaborador } = await supabase.from('colaboradores').select('rol_id').eq('id', user.id).single()
+  if (!colaborador) return { error: 'Sin permiso' }
+  const normalized = [...new Set(accountIds.map(id => id.trim()).filter(Boolean))]
+  const { error: deleteError } = await supabase.from('client_crm_accounts').delete().eq('client_id', clientId).eq('crm_type', 'aurelia')
+  if (deleteError) return { error: deleteError.message }
+  if (normalized.length) {
+    const { error: insertError } = await supabase.from('client_crm_accounts').insert(normalized.map(crmAccountId => ({ client_id: clientId, crm_type: 'aurelia', crm_account_id: crmAccountId, active: true })))
+    if (insertError) return { error: insertError.message }
+  }
+  revalidatePath('/dashboard/platform')
+  return { success: true }
+}
