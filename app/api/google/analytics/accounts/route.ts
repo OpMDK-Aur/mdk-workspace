@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
 import { google } from 'googleapis'
 
+export const revalidate = 300
+let cachedAccounts: { expiresAt: number; accounts: Array<{ propertyId: string; propertyName: string; accountName: string; accountId: string }> } | null = null
+
 export async function GET() {
+  if (cachedAccounts && cachedAccounts.expiresAt > Date.now()) {
+    return Response.json({ accounts: cachedAccounts.accounts }, { headers: { 'Cache-Control': 'private, max-age=300' } })
+  }
   try {
     const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET)
     auth.setCredentials({ refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN })
@@ -15,7 +21,8 @@ export async function GET() {
         propertyName: property.displayName ?? 'Propiedad sin nombre',
       })),
     )
-    return NextResponse.json({ accounts: result })
+    cachedAccounts = { accounts: result, expiresAt: Date.now() + 300_000 }
+    return NextResponse.json({ accounts: result }, { headers: { 'Cache-Control': 'private, max-age=300' } })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudieron cargar propiedades de Analytics' }, { status: 500 })
   }
