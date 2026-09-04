@@ -433,6 +433,22 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [loadingGoogleAccounts, setLoadingGoogleAccounts] = useState(false)
   const [googleAccountsError, setGoogleAccountsError] = useState<string | null>(null)
   const [googleMatchResults, setGoogleMatchResults] = useState<Record<string, ClientMatchResult>>({})
+  const [analyticsProperties, setAnalyticsProperties] = useState<Array<{ propertyId: string; propertyName: string; accountName: string }>>([])
+  const [tagContainers, setTagContainers] = useState<Array<{ containerId: string; publicId: string; containerName: string; accountName: string }>>([])
+  const [analyticsSelection, setAnalyticsSelection] = useState<Record<string, string>>({})
+  const [tagSelection, setTagSelection] = useState<Record<string, string>>({})
+  const [googleResourcesError, setGoogleResourcesError] = useState<string | null>(null)
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/google/analytics/accounts').then(response => response.json()),
+      fetch('/api/google/tag-manager/accounts').then(response => response.json()),
+    ]).then(([analytics, tagManager]) => {
+      if (analytics.error || tagManager.error) throw new Error(analytics.error || tagManager.error)
+      setAnalyticsProperties(analytics.accounts ?? [])
+      setTagContainers(tagManager.accounts ?? [])
+    }).catch(error => setGoogleResourcesError(error instanceof Error ? error.message : 'No se pudieron cargar recursos de Google'))
+  }, [])
 
   // configs: meta = single ID string, google = comma-separated IDs string, crm fields
   const [configs, setConfigs] = useState<Record<string, { meta: string; google: string; crmType: string; ghlLocationId: string; ghlToken: string }>>(() =>
@@ -934,6 +950,24 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                     onChange={(ids) => handleGoogleIdsChange(client.id, ids)}
                     loading={loadingGoogleAccounts}
                   />
+                </div>
+              </div>
+
+              {googleResourcesError && <p className="text-xs text-amber-600">Google Analytics/Tag Manager: {googleResourcesError}</p>}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2 border-t border-border">
+                <div className="space-y-2">
+                  <Label className="text-sm flex items-center gap-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded bg-orange-500 text-white text-[10px] font-bold">GA</span> Google Analytics 4</Label>
+                  <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={analyticsSelection[client.id] ?? ''} onChange={event => setAnalyticsSelection(prev => ({ ...prev, [client.id]: event.target.value }))}>
+                    <option value="">Seleccionar propiedad...</option>
+                    {analyticsProperties.map(property => <option key={property.propertyId} value={property.propertyId}>{property.propertyName} · {property.accountName} · {property.propertyId}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm flex items-center gap-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded bg-blue-600 text-white text-[10px] font-bold">TM</span> Google Tag Manager</Label>
+                  <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={tagSelection[client.id] ?? ''} onChange={event => setTagSelection(prev => ({ ...prev, [client.id]: event.target.value }))}>
+                    <option value="">Seleccionar contenedor...</option>
+                    {tagContainers.map(container => <option key={container.containerId} value={container.containerId}>{container.containerName} · {container.publicId || container.containerId} · {container.accountName}</option>)}
+                  </select>
                 </div>
               </div>
 
