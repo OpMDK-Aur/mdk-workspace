@@ -438,16 +438,24 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [analyticsSelection, setAnalyticsSelection] = useState<Record<string, string>>({})
   const [tagSelection, setTagSelection] = useState<Record<string, string>>({})
   const [googleResourcesError, setGoogleResourcesError] = useState<string | null>(null)
+  const [tagManagerError, setTagManagerError] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([
-      fetch('/api/google/analytics/accounts').then(response => response.json()),
-      fetch('/api/google/tag-manager/accounts').then(response => response.json()),
-    ]).then(([analytics, tagManager]) => {
-      if (analytics.error || tagManager.error) throw new Error(analytics.error || tagManager.error)
-      setAnalyticsProperties(analytics.accounts ?? [])
-      setTagContainers(tagManager.accounts ?? [])
-    }).catch(error => setGoogleResourcesError(error instanceof Error ? error.message : 'No se pudieron cargar recursos de Google'))
+    fetch('/api/google/analytics/accounts')
+      .then(response => response.json())
+      .then(data => {
+        if (data.error) throw new Error(data.error)
+        setAnalyticsProperties(data.accounts ?? [])
+      })
+      .catch(error => setGoogleResourcesError(error instanceof Error ? error.message : 'No se pudieron cargar las propiedades de Analytics'))
+
+    fetch('/api/google/tag-manager/accounts')
+      .then(response => response.json())
+      .then(data => {
+        if (data.error) throw new Error(data.error)
+        setTagContainers(data.accounts ?? [])
+      })
+      .catch(error => setTagManagerError(error instanceof Error ? error.message : 'No se pudieron cargar los contenedores de Tag Manager'))
   }, [])
 
   // configs: meta = single ID string, google = comma-separated IDs string, crm fields
@@ -953,7 +961,8 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                 </div>
               </div>
 
-              {googleResourcesError && <p className="text-xs text-amber-600">Google Analytics/Tag Manager: {googleResourcesError}</p>}
+              {googleResourcesError && <p className="text-xs text-amber-600">Google Analytics: {googleResourcesError}</p>}
+              {tagManagerError && <p className="text-xs text-amber-600">Google Tag Manager: {tagManagerError}</p>}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2 border-t border-border">
                 <div className="space-y-2">
                   <Label className="text-sm flex items-center gap-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded bg-orange-500 text-white text-[10px] font-bold">GA</span> Google Analytics 4</Label>
