@@ -612,8 +612,10 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       config.google.trim() || null,
       config.crmType.trim() || null,
       config.ghlLocationId.trim() || null,
-  config.crmType === 'aurelia' ? null : config.ghlToken.trim() || null,
-  )
+          config.crmType === 'aurelia' ? null : config.ghlToken.trim() || null,
+          analyticsSelection[clientId] || null,
+          tagSelection[clientId] || null,
+          )
   const crmResult = config.crmType === 'aurelia'
     ? await replaceClientCrmAccounts(clientId, crmAccountDrafts[clientId] ?? [config.ghlLocationId])
     : { success: true }
@@ -851,7 +853,8 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
           config.google !== (client.google_ads_customer_id ?? '') ||
           config.crmType !== (client.crm_type ?? '') ||
           config.ghlLocationId !== (client.ghl_location_id ?? '') ||
-          config.ghlToken !== (client.ghl_token ?? '')
+          config.ghlToken !== (client.ghl_token ?? '') ||
+          Boolean(analyticsSelection[client.id]) || Boolean(tagSelection[client.id])
         const isConnected = Boolean(config.meta || config.google)
 
         const showAlert =

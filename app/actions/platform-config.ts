@@ -10,6 +10,8 @@ export async function updateClientPlatformIds(
   crmType?: string | null,
   ghlLocationId?: string | null,
   ghlToken?: string | null,
+  analyticsPropertyId?: string | null,
+  tagManagerContainerId?: string | null,
 ) {
   const supabase = await createClient()
 
@@ -33,6 +35,8 @@ export async function updateClientPlatformIds(
   if (crmType !== undefined) updates.crm_type = crmType || null
   if (ghlLocationId !== undefined) updates.ghl_location_id = ghlLocationId || null
   if (ghlToken !== undefined) updates.ghl_token = ghlToken || null
+  if (analyticsPropertyId !== undefined) updates.analytics_property_id = analyticsPropertyId || null
+  if (tagManagerContainerId !== undefined) updates.tag_manager_container_id = tagManagerContainerId || null
 
   const { error } = await supabase
     .from('clientes')
