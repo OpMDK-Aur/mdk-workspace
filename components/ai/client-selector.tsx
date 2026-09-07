@@ -38,6 +38,9 @@ function platformLabel(plataforma: string | null) {
   const key = (plataforma ?? '').toLowerCase()
   if (key === 'google') return 'Google Ads'
   if (key === 'meta') return 'Meta Ads'
+  if (key === 'analytics') return 'Google Analytics'
+  if (key === 'tag_manager') return 'Tag Manager'
+  if (key === 'crm') return 'CRM'
   return plataforma ?? 'Plataforma'
 }
 
@@ -115,7 +118,13 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAccounts])
 
-  const accounts = (resolvedAccounts.length > 0 ? resolvedAccounts : value?.cuentas_publicitarias ?? [])
+  const integrationAccounts: ClientAccount[] = value ? [
+    ...(value.analytics_property_id ? [{ id_cuenta: value.analytics_property_id, nombre_cuenta: 'Google Analytics 4', plataforma: 'analytics', activo: true }] : []),
+    ...(value.tag_manager_container_id ? [{ id_cuenta: value.tag_manager_container_id, nombre_cuenta: 'Google Tag Manager', plataforma: 'tag_manager', activo: true }] : []),
+    ...(value.crm_type ? [{ id_cuenta: value.crm_type, nombre_cuenta: 'CRM conectado', plataforma: 'crm', activo: true }] : []),
+  ] : []
+
+  const accounts = [...(resolvedAccounts.length > 0 ? resolvedAccounts : value?.cuentas_publicitarias ?? []), ...integrationAccounts]
     .filter((account) => account.id_cuenta)
     .filter((account) => selectedPlatforms.length === 0 || selectedPlatforms.includes(platformLabel(account.plataforma)))
 
@@ -185,7 +194,7 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
           <Popover open={accountOpen} onOpenChange={setAccountOpen}>
             <PopoverTrigger asChild>
               <Button variant="outline" role="combobox" aria-expanded={accountOpen} className="w-full justify-between sm:w-[360px]" disabled={accounts.length === 0}>
-                {selectedAccounts.length ? `${selectedAccounts.length} cuenta${selectedAccounts.length === 1 ? '' : 's'} seleccionada${selectedAccounts.length === 1 ? '' : 's'}` : accounts.length ? 'Seleccionar cuentas publicitarias…' : 'Sin cuentas publicitarias'}
+                {selectedAccounts.length ? `${selectedAccounts.length} plataforma${selectedAccounts.length === 1 ? '' : 's'} seleccionada${selectedAccounts.length === 1 ? '' : 's'}` : accounts.length ? 'Seleccionar cuentas y plataformas…' : 'Sin cuentas o plataformas configuradas'}
                 <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" aria-hidden="true" />
               </Button>
             </PopoverTrigger>
