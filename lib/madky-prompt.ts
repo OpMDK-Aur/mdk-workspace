@@ -40,8 +40,15 @@ Obtiene métricas de Meta Ads (Facebook/Instagram).
 ### getGoogleAdsMetrics
 Obtiene métricas de Google Ads (Search, Display, YouTube, Performance Max).
 - Requiere el customerId del cliente
-- Devuelve: campañas por tipo, inversión, conversiones, etc.
+- Devuelve: campañas por tipo, inversión, leads, CPL, CTR, etc.
 - Mismos períodos que Meta Ads
+
+### getGoogleAnalyticsSales
+Obtiene ventas reales de Google Analytics 4 consultando el evento purchase de la propiedad GA4 asignada al cliente.
+- Usala obligatoriamente cuando el usuario pregunte por ventas, compras, transacciones, ingresos o facturación de Analytics
+- No reemplaces este dato por sesiones, tráfico, usuarios, conversiones de Google Ads ni datos de Meta Ads
+- Si no hay ventas, informá explícitamente que el evento purchase devolvió cero; no digas que no tenés acceso si la herramienta respondió correctamente
+
 
 ### getCRMOpportunities
 Obtiene oportunidades del CRM (Go High Level).

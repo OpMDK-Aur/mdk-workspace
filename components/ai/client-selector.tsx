@@ -27,12 +27,20 @@ export interface AnalyzableClient {
   id: string
   nombre_del_negocio: string
   cuentas_publicitarias: ClientAccount[]
+  meta_ads_account_id?: string | null
+  google_ads_customer_id?: string | null
+  analytics_property_id?: string | null
+  tag_manager_container_id?: string | null
+  crm_type?: string | null
 }
 
 function platformLabel(plataforma: string | null) {
   const key = (plataforma ?? '').toLowerCase()
   if (key === 'google') return 'Google Ads'
   if (key === 'meta') return 'Meta Ads'
+  if (key === 'analytics') return 'Google Analytics'
+  if (key === 'tag_manager') return 'Tag Manager'
+  if (key === 'crm') return 'CRM'
   return plataforma ?? 'Plataforma'
 }
 
@@ -57,7 +65,7 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
       // Only clients with at least one row in cuentas_publicitarias (INNER JOIN via embed).
       const { data, error } = await supabase
         .from('clientes')
-        .select('id, nombre_del_negocio, cuentas_publicitarias!inner(id_cuenta, nombre_cuenta, plataforma, activo)')
+        .select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, analytics_property_id, tag_manager_container_id, crm_type, cuentas_publicitarias!inner(id_cuenta, nombre_cuenta, plataforma, activo)')
         .order('nombre_del_negocio')
 
       if (!isMounted) return
@@ -81,12 +89,20 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
 
   const [resolvedAccounts, setResolvedAccounts] = useState<ClientAccount[]>([])
   const [selectedAccounts, setSelectedAccounts] = useState<ClientAccount[]>([])
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
   const [accountOpen, setAccountOpen] = useState(false)
 
   useEffect(() => {
     let active = true
     setSelectedAccounts([])
     setResolvedAccounts([])
+    setSelectedPlatforms(value ? [
+      ...(value.meta_ads_account_id ? ['Meta Ads'] : []),
+      ...(value.google_ads_customer_id ? ['Google Ads'] : []),
+      ...(value.analytics_property_id ? ['Google Analytics'] : []),
+      ...(value.tag_manager_container_id ? ['Tag Manager'] : []),
+      ...(value.crm_type ? ['CRM'] : []),
+    ] : [])
     if (!value?.id) return () => { active = false }
     fetch(`/api/agentes/analista/cuentas?clientId=${encodeURIComponent(value.id)}`)
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron cargar las cuentas')))
@@ -102,11 +118,25 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAccounts])
 
-  const accounts = (resolvedAccounts.length > 0 ? resolvedAccounts : value?.cuentas_publicitarias ?? []).filter((account) => account.id_cuenta)
+  const integrationAccounts: ClientAccount[] = value ? [
+    ...(value.analytics_property_id ? [{ id_cuenta: value.analytics_property_id, nombre_cuenta: 'Google Analytics 4', plataforma: 'analytics', activo: true }] : []),
+    ...(value.tag_manager_container_id ? [{ id_cuenta: value.tag_manager_container_id, nombre_cuenta: 'Google Tag Manager', plataforma: 'tag_manager', activo: true }] : []),
+    ...(value.crm_type ? [{ id_cuenta: value.crm_type, nombre_cuenta: 'CRM conectado', plataforma: 'crm', activo: true }] : []),
+  ] : []
 
-  const platforms = value
-    ? Array.from(new Set(value.cuentas_publicitarias.map((account) => account.plataforma).filter(Boolean)))
-    : []
+  const accounts = [...(resolvedAccounts.length > 0 ? resolvedAccounts : value?.cuentas_publicitarias ?? []), ...integrationAccounts]
+    .filter((account) => account.id_cuenta)
+    .filter((account) => selectedPlatforms.length === 0 || selectedPlatforms.includes(platformLabel(account.plataforma)))
+
+  const togglePlatform = (label: string) => {
+    setSelectedPlatforms((current) => {
+      const next = current.includes(label) ? current.filter((item) => item !== label) : [...current, label]
+      if (!next.includes(label)) {
+        setSelectedAccounts((accounts) => accounts.filter((account) => platformLabel(account.plataforma) !== label))
+      }
+      return next
+    })
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -164,7 +194,7 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
           <Popover open={accountOpen} onOpenChange={setAccountOpen}>
             <PopoverTrigger asChild>
               <Button variant="outline" role="combobox" aria-expanded={accountOpen} className="w-full justify-between sm:w-[360px]" disabled={accounts.length === 0}>
-                {selectedAccounts.length ? `${selectedAccounts.length} cuenta${selectedAccounts.length === 1 ? '' : 's'} seleccionada${selectedAccounts.length === 1 ? '' : 's'}` : accounts.length ? 'Seleccionar cuentas publicitarias…' : 'Sin cuentas publicitarias'}
+                {selectedAccounts.length ? `${selectedAccounts.length} plataforma${selectedAccounts.length === 1 ? '' : 's'} seleccionada${selectedAccounts.length === 1 ? '' : 's'}` : accounts.length ? 'Seleccionar cuentas y plataformas…' : 'Sin cuentas o plataformas configuradas'}
                 <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" aria-hidden="true" />
               </Button>
             </PopoverTrigger>
@@ -184,16 +214,39 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
             </PopoverContent>
           </Popover>
           <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-muted-foreground">{value.nombre_del_negocio}</span>
-          {platforms.length > 0 ? (
-            platforms.map((platform) => (
-              <Badge key={platform} variant="secondary">
-                {platformLabel(platform)}
-              </Badge>
-            ))
-          ) : (
-            <Badge variant="outline">Sin plataformas activas</Badge>
-          )}
+            <span className="text-sm text-muted-foreground">{value.nombre_del_negocio}</span>
+            {[
+              { label: 'Meta Ads', connected: Boolean(value.meta_ads_account_id) },
+              { label: 'Google Ads', connected: Boolean(value.google_ads_customer_id) },
+              { label: 'Google Analytics', connected: Boolean(value.analytics_property_id) },
+              { label: 'Tag Manager', connected: Boolean(value.tag_manager_container_id) },
+              { label: 'CRM', connected: Boolean(value.crm_type) },
+            ].map((platform) => (
+              <button
+                key={platform.label}
+                type="button"
+                onClick={() => platform.connected && togglePlatform(platform.label)}
+                disabled={!platform.connected}
+                aria-pressed={platform.connected && selectedPlatforms.includes(platform.label)}
+                aria-label={`${platform.label}: ${platform.connected && selectedPlatforms.includes(platform.label) ? 'seleccionada' : 'no seleccionada'}`}
+                className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
+              >
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'cursor-pointer transition-colors',
+                    platform.connected && selectedPlatforms.includes(platform.label)
+                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                      : platform.connected
+                        ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                        : 'border-muted-foreground/20 text-muted-foreground opacity-60',
+                  )}
+                >
+                  <span className={cn('mr-1.5 size-1.5 rounded-full', platform.connected && selectedPlatforms.includes(platform.label) ? 'bg-emerald-500' : platform.connected ? 'bg-amber-500' : 'bg-muted-foreground/40')} aria-hidden="true" />
+                  {platform.label}
+                </Badge>
+              </button>
+            ))}
           </div>
         </div>
       )}

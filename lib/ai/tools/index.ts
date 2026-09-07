@@ -7,6 +7,7 @@ import { buildCampaignComparisons, compareMetric, upsertChangeHistory, upsertPai
 import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 import { contextFromEvents, mergeWorkingContext } from '@/lib/ai/conversation-context'
 import { buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeIndustry, type MetricRow } from '@/lib/ai/client-memory'
+import { getGoogleAnalyticsSales } from '@/lib/google-analytics/service'
 
 const noInput = z.object({})
 
@@ -418,6 +419,33 @@ const getGoogleMetrics: ToolDefinition = {
   },
 }
 
+const getGoogleAnalyticsSalesTool: ToolDefinition = {
+  key: 'get_google_analytics_sales',
+  description: 'Consulta ventas reales de Google Analytics 4 usando el evento purchase de la propiedad GA4 asignada al cliente. Usala cuando el usuario pregunte por ventas, compras, transacciones o ingresos de Analytics.',
+  inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional() }),
+  async execute(input: { dateFrom?: string; dateTo?: string }, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const today = new Date()
+    const dateTo = input.dateTo ?? today.toISOString().slice(0, 10)
+    const fallbackFrom = new Date(today)
+    fallbackFrom.setUTCDate(fallbackFrom.getUTCDate() - 6)
+    const dateFrom = input.dateFrom ?? fallbackFrom.toISOString().slice(0, 10)
+    const supabase = await createClient()
+    const { data: client, error } = await supabase.from('clientes').select('analytics_property_id').eq('id', context.clientId).single()
+    if (error || !client?.analytics_property_id) return { available: false, message: 'El cliente no tiene una propiedad de Google Analytics 4 asignada en la configuración de plataforma.' }
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_sales', status: 'running', label: 'Consultando ventas de Google Analytics 4...' })
+    try {
+      const sales = await getGoogleAnalyticsSales(client.analytics_property_id, dateFrom, dateTo)
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_sales', status: 'completed', label: 'Ventas de Google Analytics 4 recibidas' })
+      return { available: true, source: 'Google Analytics 4', event: 'purchase', ...sales }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'No se pudieron consultar las ventas de Google Analytics 4.'
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_sales', status: 'error', label: 'No se pudieron consultar las ventas de Google Analytics 4' })
+      return { available: false, message }
+    }
+  },
+}
+
 const getAccountChangeHistory: ToolDefinition = {
   key: 'get_account_change_history',
   description: 'Lee el historial persistido de cambios de paid media del cliente. Filtra por plataforma, cuenta, período, entidad, categorías o actor; nunca reemplaza las métricas.',
@@ -584,6 +612,7 @@ const allTools: ToolDefinition[] = [
   getIndustryBenchmark,
   getMetaMetrics,
   getGoogleMetrics,
+  getGoogleAnalyticsSalesTool,
   getAccountChangeHistory,
   getGoogleChangeHistoryTool,
   runPerformanceAnalystTool,
