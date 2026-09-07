@@ -27,6 +27,11 @@ export interface AnalyzableClient {
   id: string
   nombre_del_negocio: string
   cuentas_publicitarias: ClientAccount[]
+  meta_ads_account_id?: string | null
+  google_ads_customer_id?: string | null
+  analytics_property_id?: string | null
+  tag_manager_container_id?: string | null
+  crm_type?: string | null
 }
 
 function platformLabel(plataforma: string | null) {
@@ -57,7 +62,7 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
       // Only clients with at least one row in cuentas_publicitarias (INNER JOIN via embed).
       const { data, error } = await supabase
         .from('clientes')
-        .select('id, nombre_del_negocio, cuentas_publicitarias!inner(id_cuenta, nombre_cuenta, plataforma, activo)')
+        .select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, analytics_property_id, tag_manager_container_id, crm_type, cuentas_publicitarias!inner(id_cuenta, nombre_cuenta, plataforma, activo)')
         .order('nombre_del_negocio')
 
       if (!isMounted) return
@@ -103,10 +108,6 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
   }, [selectedAccounts])
 
   const accounts = (resolvedAccounts.length > 0 ? resolvedAccounts : value?.cuentas_publicitarias ?? []).filter((account) => account.id_cuenta)
-
-  const platforms = value
-    ? Array.from(new Set(value.cuentas_publicitarias.map((account) => account.plataforma).filter(Boolean)))
-    : []
 
   return (
     <div className="flex flex-col gap-3">
@@ -184,16 +185,28 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
             </PopoverContent>
           </Popover>
           <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-muted-foreground">{value.nombre_del_negocio}</span>
-          {platforms.length > 0 ? (
-            platforms.map((platform) => (
-              <Badge key={platform} variant="secondary">
-                {platformLabel(platform)}
+            <span className="text-sm text-muted-foreground">{value.nombre_del_negocio}</span>
+            {[
+              { label: 'Meta Ads', connected: Boolean(value.meta_ads_account_id) },
+              { label: 'Google Ads', connected: Boolean(value.google_ads_customer_id) },
+              { label: 'Google Analytics', connected: Boolean(value.analytics_property_id) },
+              { label: 'Tag Manager', connected: Boolean(value.tag_manager_container_id) },
+              { label: 'CRM', connected: Boolean(value.crm_type) },
+            ].map((platform) => (
+              <Badge
+                key={platform.label}
+                variant="outline"
+                className={cn(
+                  'transition-colors',
+                  platform.connected
+                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                    : 'border-muted-foreground/20 text-muted-foreground',
+                )}
+              >
+                <span className={cn('mr-1.5 size-1.5 rounded-full', platform.connected ? 'bg-emerald-500' : 'bg-muted-foreground/40')} aria-hidden="true" />
+                {platform.label}
               </Badge>
-            ))
-          ) : (
-            <Badge variant="outline">Sin plataformas activas</Badge>
-          )}
+            ))}
           </div>
         </div>
       )}
