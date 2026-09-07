@@ -441,7 +441,12 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [tagManagerError, setTagManagerError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/google/analytics/accounts')
+  setAnalyticsSelection(Object.fromEntries(clients.filter(client => client.analytics_property_id).map(client => [client.id, client.analytics_property_id!])))
+  setTagSelection(Object.fromEntries(clients.filter(client => client.tag_manager_container_id).map(client => [client.id, client.tag_manager_container_id!])))
+  }, [clients])
+
+  useEffect(() => {
+  fetch('/api/google/analytics/accounts')
       .then(response => response.json())
       .then(data => {
         if (data.error) throw new Error(data.error)
@@ -600,6 +605,14 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     }
   }
 
+  function configAnalyticsPropertyId(clientId: string) {
+    return clients.find(client => client.id === clientId)?.analytics_property_id ?? null
+  }
+
+  function configTagManagerContainerId(clientId: string) {
+    return clients.find(client => client.id === clientId)?.tag_manager_container_id ?? null
+  }
+
   async function handleSave(clientId: string) {
     setSaving(prev => ({ ...prev, [clientId]: true }))
     setErrors(prev => ({ ...prev, [clientId]: '' }))
@@ -613,8 +626,8 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       config.crmType.trim() || null,
       config.ghlLocationId.trim() || null,
           config.crmType === 'aurelia' ? null : config.ghlToken.trim() || null,
-          analyticsSelection[clientId] || null,
-          tagSelection[clientId] || null,
+          analyticsSelection[clientId] ?? configAnalyticsPropertyId(clientId),
+          tagSelection[clientId] ?? configTagManagerContainerId(clientId),
           )
   const crmResult = config.crmType === 'aurelia'
     ? await replaceClientCrmAccounts(clientId, crmAccountDrafts[clientId] ?? [config.ghlLocationId])
