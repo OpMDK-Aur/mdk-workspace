@@ -86,12 +86,20 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
 
   const [resolvedAccounts, setResolvedAccounts] = useState<ClientAccount[]>([])
   const [selectedAccounts, setSelectedAccounts] = useState<ClientAccount[]>([])
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
   const [accountOpen, setAccountOpen] = useState(false)
 
   useEffect(() => {
     let active = true
     setSelectedAccounts([])
     setResolvedAccounts([])
+    setSelectedPlatforms(value ? [
+      ...(value.meta_ads_account_id ? ['Meta Ads'] : []),
+      ...(value.google_ads_customer_id ? ['Google Ads'] : []),
+      ...(value.analytics_property_id ? ['Google Analytics'] : []),
+      ...(value.tag_manager_container_id ? ['Tag Manager'] : []),
+      ...(value.crm_type ? ['CRM'] : []),
+    ] : [])
     if (!value?.id) return () => { active = false }
     fetch(`/api/agentes/analista/cuentas?clientId=${encodeURIComponent(value.id)}`)
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron cargar las cuentas')))
@@ -107,7 +115,19 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAccounts])
 
-  const accounts = (resolvedAccounts.length > 0 ? resolvedAccounts : value?.cuentas_publicitarias ?? []).filter((account) => account.id_cuenta)
+  const accounts = (resolvedAccounts.length > 0 ? resolvedAccounts : value?.cuentas_publicitarias ?? [])
+    .filter((account) => account.id_cuenta)
+    .filter((account) => selectedPlatforms.length === 0 || selectedPlatforms.includes(platformLabel(account.plataforma)))
+
+  const togglePlatform = (label: string) => {
+    setSelectedPlatforms((current) => {
+      const next = current.includes(label) ? current.filter((item) => item !== label) : [...current, label]
+      if (!next.includes(label)) {
+        setSelectedAccounts((accounts) => accounts.filter((account) => platformLabel(account.plataforma) !== label))
+      }
+      return next
+    })
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -193,19 +213,30 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
               { label: 'Tag Manager', connected: Boolean(value.tag_manager_container_id) },
               { label: 'CRM', connected: Boolean(value.crm_type) },
             ].map((platform) => (
-              <Badge
+              <button
                 key={platform.label}
-                variant="outline"
-                className={cn(
-                  'transition-colors',
-                  platform.connected
-                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                    : 'border-muted-foreground/20 text-muted-foreground',
-                )}
+                type="button"
+                onClick={() => platform.connected && togglePlatform(platform.label)}
+                disabled={!platform.connected}
+                aria-pressed={platform.connected && selectedPlatforms.includes(platform.label)}
+                aria-label={`${platform.label}: ${platform.connected && selectedPlatforms.includes(platform.label) ? 'seleccionada' : 'no seleccionada'}`}
+                className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
               >
-                <span className={cn('mr-1.5 size-1.5 rounded-full', platform.connected ? 'bg-emerald-500' : 'bg-muted-foreground/40')} aria-hidden="true" />
-                {platform.label}
-              </Badge>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'cursor-pointer transition-colors',
+                    platform.connected && selectedPlatforms.includes(platform.label)
+                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                      : platform.connected
+                        ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                        : 'border-muted-foreground/20 text-muted-foreground opacity-60',
+                  )}
+                >
+                  <span className={cn('mr-1.5 size-1.5 rounded-full', platform.connected && selectedPlatforms.includes(platform.label) ? 'bg-emerald-500' : platform.connected ? 'bg-amber-500' : 'bg-muted-foreground/40')} aria-hidden="true" />
+                  {platform.label}
+                </Badge>
+              </button>
             ))}
           </div>
         </div>
