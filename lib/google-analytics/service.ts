@@ -53,8 +53,8 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
   const definitions = {
     overview: { dimensions: [], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalUsers', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
     events: { dimensions: ['eventName'], metrics: ['eventCount', 'keyEvents', 'totalUsers', 'eventValue', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
-    acquisition: { dimensions: ['sessionDefaultChannelGroup', 'sessionSourceMedium'], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
-    keyEventsByChannel: { dimensions: ['sessionDefaultChannelGroup', 'sessionSourceMedium'], metrics: ['keyEvents'] },
+    acquisition: { dimensions: ['firstUserDefaultChannelGroup', 'sessionSourceMedium'], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
+    keyEventsByChannel: { dimensions: ['firstUserDefaultChannelGroup', 'sessionSourceMedium'], metrics: ['keyEvents'] },
     pages: { dimensions: ['pageTitle', 'pagePath', 'landingPagePlusQueryString'], metrics: ['screenPageViews', 'activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue'] },
     devices: { dimensions: ['deviceCategory', 'operatingSystem'], metrics: ['activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue'] },
     geography: { dimensions: ['country', 'city'], metrics: ['activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue'] },
