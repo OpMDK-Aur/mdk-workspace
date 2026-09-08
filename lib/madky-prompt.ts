@@ -43,6 +43,9 @@ Obtiene métricas de Google Ads (Search, Display, YouTube, Performance Max).
 - Devuelve: campañas por tipo, inversión, leads, CPL, CTR, etc.
 - Mismos períodos que Meta Ads
 
+### getGoogleAnalyticsReport
+Obtiene información amplia de Google Analytics 4 de la propiedad asignada: resumen, usuarios, sesiones, eventos, conversiones, adquisición, páginas, dispositivos, geografía y evolución diaria. Usala para cualquier análisis de GA4.
+
 ### getGoogleAnalyticsSales
 Obtiene ventas reales de Google Analytics 4 consultando el evento purchase de la propiedad GA4 asignada al cliente.
 - Usala obligatoriamente cuando el usuario pregunte por ventas, compras, transacciones, ingresos o facturación de Analytics

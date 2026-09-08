@@ -16,6 +16,66 @@ function createAuth() {
   return auth
 }
 
+export type GoogleAnalyticsReport = {
+  propertyId: string
+  dateRange: { start: string; end: string }
+  reports: {
+    overview: Array<Record<string, string | number>>
+    events: Array<Record<string, string | number>>
+    acquisition: Array<Record<string, string | number>>
+    pages: Array<Record<string, string | number>>
+    devices: Array<Record<string, string | number>>
+    geography: Array<Record<string, string | number>>
+    byDay: Array<Record<string, string | number>>
+  }
+  errors: Array<{ report: string; message: string }>
+}
+
+function rowsToRecords(response: { data: { dimensionHeaders?: Array<{ name?: string | null }>; metricHeaders?: Array<{ name?: string | null }>; rows?: Array<{ dimensionValues?: Array<{ value?: string | null }>; metricValues?: Array<{ value?: string | null }> }> } }) {
+  const dimensions = (response.data.dimensionHeaders ?? []).map((header) => header.name ?? 'dimension')
+  const metrics = (response.data.metricHeaders ?? []).map((header) => header.name ?? 'metric')
+  return (response.data.rows ?? []).map((row) => Object.fromEntries([
+    ...dimensions.map((name, index) => [name, row.dimensionValues?.[index]?.value ?? '']),
+    ...metrics.map((name, index) => {
+      const value = row.metricValues?.[index]?.value ?? '0'
+      const numeric = Number(value)
+      return [name, Number.isNaN(numeric) ? value : numeric]
+    }),
+  ]))
+}
+
+export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: string, dateTo: string): Promise<GoogleAnalyticsReport> {
+  const normalizedProperty = propertyId.replace(/^properties\//, '')
+  if (!/^\d+$/.test(normalizedProperty)) throw new Error('La propiedad de Google Analytics no tiene un ID válido.')
+  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: createAuth() })
+  const base = { dateRanges: [{ startDate: dateFrom, endDate: dateTo }] }
+  const definitions = {
+    overview: { dimensions: [], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagementRate', 'eventCount', 'conversions', 'totalRevenue'] },
+    events: { dimensions: ['eventName'], metrics: ['eventCount', 'conversions', 'totalUsers', 'eventValue'] },
+    acquisition: { dimensions: ['sessionDefaultChannelGroup', 'sessionSourceMedium'], metrics: ['activeUsers', 'sessions', 'engagementRate', 'conversions', 'totalRevenue'] },
+    pages: { dimensions: ['pageTitle', 'pagePath'], metrics: ['screenPageViews', 'activeUsers', 'engagementRate', 'conversions', 'totalRevenue'] },
+    devices: { dimensions: ['deviceCategory', 'operatingSystem'], metrics: ['activeUsers', 'sessions', 'engagementRate', 'conversions'] },
+    geography: { dimensions: ['country', 'city'], metrics: ['activeUsers', 'sessions', 'conversions', 'totalRevenue'] },
+    byDay: { dimensions: ['date'], metrics: ['activeUsers', 'sessions', 'eventCount', 'conversions', 'totalRevenue'] },
+  } as const
+  const entries = Object.entries(definitions)
+  const results = await Promise.allSettled(entries.map(async ([name, definition]) => {
+    const response = await analyticsData.properties.runReport({
+      property: `properties/${normalizedProperty}`,
+      requestBody: { ...base, dimensions: definition.dimensions.map((dimension) => ({ name: dimension })), metrics: definition.metrics.map((metric) => ({ name: metric })), limit: '10000' },
+    })
+    return [name, rowsToRecords(response)] as const
+  }))
+  const reports: GoogleAnalyticsReport['reports'] = { overview: [], events: [], acquisition: [], pages: [], devices: [], geography: [], byDay: [] }
+  const errors: GoogleAnalyticsReport['errors'] = []
+  results.forEach((result, index) => {
+    const name = entries[index][0] as keyof GoogleAnalyticsReport['reports']
+    if (result.status === 'fulfilled') reports[name] = result.value[1]
+    else errors.push({ report: name, message: result.reason instanceof Error ? result.reason.message : 'No se pudo consultar este reporte de GA4.' })
+  })
+  return { propertyId: normalizedProperty, dateRange: { start: dateFrom, end: dateTo }, reports, errors }
+}
+
 export async function getGoogleAnalyticsSales(propertyId: string, dateFrom: string, dateTo: string): Promise<GoogleAnalyticsSales> {
   const normalizedProperty = propertyId.replace(/^properties\//, '')
   if (!/^\d+$/.test(normalizedProperty)) throw new Error('La propiedad de Google Analytics no tiene un ID válido.')
