@@ -99,6 +99,7 @@ interface SupervisorChatProps {
   metaAccountId?: string
   /** Id(s) de cuenta de Google Ads seleccionados en la UI (separados por coma si son varios). Restringe el análisis a esas cuentas. */
   googleCustomerId?: string
+  analyticsPropertyId?: string
   selectedAccountSummary?: Array<{ id: string | null; name: string; platform: string | null }>
   selectedAccountReading?: string
   scoreConfig?: { objective: string }
@@ -261,6 +262,7 @@ function SupervisorChatSession({
   clientId,
   metaAccountId,
   googleCustomerId,
+  analyticsPropertyId,
   selectedAccountSummary = [],
   selectedAccountReading,
   scoreConfig,
@@ -304,7 +306,7 @@ function SupervisorChatSession({
       api: '/api/ai/chat',
       body: {
         context: clientId
-          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
+          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(analyticsPropertyId ? { analyticsPropertyId } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
           : {},
       },
     }),
@@ -434,7 +436,7 @@ function SupervisorChatSession({
     await sendMessage({ text, files: fileParts }, {
       body: {
         context: clientId
-          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
+          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(analyticsPropertyId ? { analyticsPropertyId } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
           : {},
       },
     })
