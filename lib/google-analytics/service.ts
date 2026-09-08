@@ -50,10 +50,10 @@ export type GoogleAnalyticsReport = {
   errors: Array<{ report: string; message: string }>
 }
 
-function rowsToRecords(response: { data: { dimensionHeaders?: Array<{ name?: string | null }>; metricHeaders?: Array<{ name?: string | null }>; rows?: Array<{ dimensionValues?: Array<{ value?: string | null }>; metricValues?: Array<{ value?: string | null }> }> } }) {
+function rowsToRecords(response: { data: { dimensionHeaders?: Array<{ name?: string | null }>; metricHeaders?: Array<{ name?: string | null }>; rows?: Array<{ dimensionValues?: Array<{ value?: string | null }>; metricValues?: Array<{ value?: string | null }> }> } }, maxRows = 100) {
   const dimensions = (response.data.dimensionHeaders ?? []).map((header) => header.name ?? 'dimension')
   const metrics = (response.data.metricHeaders ?? []).map((header) => header.name ?? 'metric')
-  return (response.data.rows ?? []).slice(0, 100).map((row) => Object.fromEntries([
+  return (response.data.rows ?? []).slice(0, maxRows).map((row) => Object.fromEntries([
     ...dimensions.map((name, index) => [name, row.dimensionValues?.[index]?.value ?? '']),
     ...metrics.map((name, index) => {
       const value = row.metricValues?.[index]?.value ?? '0'
@@ -82,9 +82,9 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
   const results = await Promise.allSettled(entries.map(async ([name, definition]) => {
     const response = await analyticsData.properties.runReport({
       property: `properties/${normalizedProperty}`,
-      requestBody: { ...base, dimensions: definition.dimensions.map((dimension) => ({ name: dimension })), metrics: definition.metrics.map((metric) => ({ name: metric })), limit: '100' },
+      requestBody: { ...base, dimensions: definition.dimensions.map((dimension) => ({ name: dimension })), metrics: definition.metrics.map((metric) => ({ name: metric })), limit: name === 'keyEventsByChannel' ? '1000' : '100' },
     })
-    return [name, rowsToRecords(response)] as const
+    return [name, rowsToRecords(response, name === 'keyEventsByChannel' ? 1000 : 100)] as const
   }))
   const reports: GoogleAnalyticsReport['reports'] = { overview: [], events: [], acquisition: [], pages: [], devices: [], geography: [], keyEventsByChannel: [], byDay: [] }
   const errors: GoogleAnalyticsReport['errors'] = []
