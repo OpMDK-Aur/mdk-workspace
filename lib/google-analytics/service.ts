@@ -10,6 +10,22 @@ export type GoogleAnalyticsSales = {
   byDay: Array<{ date: string; purchases: number; transactions: number; revenue: number }>
 }
 
+export function getBuenosAiresLastSevenDays() {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  const parts = formatter.formatToParts(new Date())
+  const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]))
+  const today = `${values.year}-${values.month}-${values.day}`
+  const [year, month, day] = today.split('-').map(Number)
+  const start = new Date(Date.UTC(year, month - 1, day - 6))
+  const dateFrom = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}-${String(start.getUTCDate()).padStart(2, '0')}`
+  return { dateFrom, dateTo: today, timeZone: 'America/Argentina/Buenos_Aires' }
+}
+
 function createAuth() {
   const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET)
   auth.setCredentials({ refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN })

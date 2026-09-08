@@ -7,7 +7,7 @@ import { buildCampaignComparisons, compareMetric, upsertChangeHistory, upsertPai
 import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 import { contextFromEvents, mergeWorkingContext } from '@/lib/ai/conversation-context'
 import { buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeIndustry, type MetricRow } from '@/lib/ai/client-memory'
-import { getGoogleAnalyticsReport, getGoogleAnalyticsSales } from '@/lib/google-analytics/service'
+import { getBuenosAiresLastSevenDays, getGoogleAnalyticsReport, getGoogleAnalyticsSales } from '@/lib/google-analytics/service'
 
 const noInput = z.object({})
 
@@ -426,11 +426,9 @@ const getGoogleAnalyticsReportTool: ToolDefinition = {
   inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional() }),
   async execute(input: { dateFrom?: string; dateTo?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
-    const today = new Date()
-    const dateTo = input.dateTo ?? today.toISOString().slice(0, 10)
-    const fallbackFrom = new Date(today)
-    fallbackFrom.setUTCDate(fallbackFrom.getUTCDate() - 6)
-    const dateFrom = input.dateFrom ?? fallbackFrom.toISOString().slice(0, 10)
+    const argentinaRange = getBuenosAiresLastSevenDays()
+    const dateTo = input.dateTo ?? argentinaRange.dateTo
+    const dateFrom = input.dateFrom ?? argentinaRange.dateFrom
     const supabase = await createClient()
     const { data: client, error } = await supabase.from('clientes').select('analytics_property_id').eq('id', context.clientId).single()
     if (error || !client?.analytics_property_id) return { available: false, message: 'El cliente no tiene una propiedad de Google Analytics 4 asignada en la configuración de plataforma.' }
@@ -438,7 +436,7 @@ const getGoogleAnalyticsReportTool: ToolDefinition = {
     try {
       const report = await getGoogleAnalyticsReport(client.analytics_property_id, dateFrom, dateTo)
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_report', status: 'completed', label: 'Información de Google Analytics 4 recibida' })
-      return { available: true, source: 'Google Analytics 4', ...report }
+      return { available: true, source: 'Google Analytics 4', timeZone: argentinaRange.timeZone, ...report }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'No se pudo consultar Google Analytics 4.'
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_report', status: 'error', label: 'No se pudo consultar Google Analytics 4' })
@@ -453,11 +451,9 @@ const getGoogleAnalyticsSalesTool: ToolDefinition = {
   inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional() }),
   async execute(input: { dateFrom?: string; dateTo?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
-    const today = new Date()
-    const dateTo = input.dateTo ?? today.toISOString().slice(0, 10)
-    const fallbackFrom = new Date(today)
-    fallbackFrom.setUTCDate(fallbackFrom.getUTCDate() - 6)
-    const dateFrom = input.dateFrom ?? fallbackFrom.toISOString().slice(0, 10)
+    const argentinaRange = getBuenosAiresLastSevenDays()
+    const dateTo = input.dateTo ?? argentinaRange.dateTo
+    const dateFrom = input.dateFrom ?? argentinaRange.dateFrom
     const supabase = await createClient()
     const { data: client, error } = await supabase.from('clientes').select('analytics_property_id').eq('id', context.clientId).single()
     if (error || !client?.analytics_property_id) return { available: false, message: 'El cliente no tiene una propiedad de Google Analytics 4 asignada en la configuración de plataforma.' }
