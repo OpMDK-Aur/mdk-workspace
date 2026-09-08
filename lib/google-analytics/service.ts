@@ -26,6 +26,7 @@ export type GoogleAnalyticsReport = {
     pages: Array<Record<string, string | number>>
     devices: Array<Record<string, string | number>>
     geography: Array<Record<string, string | number>>
+    keyEventsByChannel: Array<Record<string, string | number>>
     byDay: Array<Record<string, string | number>>
   }
   errors: Array<{ report: string; message: string }>
@@ -53,6 +54,7 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
     overview: { dimensions: [], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalUsers', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
     events: { dimensions: ['eventName'], metrics: ['eventCount', 'keyEvents', 'totalUsers', 'eventValue', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
     acquisition: { dimensions: ['sessionDefaultChannelGroup', 'sessionSourceMedium'], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
+    keyEventsByChannel: { dimensions: ['sessionDefaultChannelGroup', 'sessionSourceMedium'], metrics: ['keyEvents'] },
     pages: { dimensions: ['pageTitle', 'pagePath', 'landingPagePlusQueryString'], metrics: ['screenPageViews', 'activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue'] },
     devices: { dimensions: ['deviceCategory', 'operatingSystem'], metrics: ['activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue'] },
     geography: { dimensions: ['country', 'city'], metrics: ['activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue'] },
@@ -66,7 +68,7 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
     })
     return [name, rowsToRecords(response)] as const
   }))
-  const reports: GoogleAnalyticsReport['reports'] = { overview: [], events: [], acquisition: [], pages: [], devices: [], geography: [], byDay: [] }
+  const reports: GoogleAnalyticsReport['reports'] = { overview: [], events: [], acquisition: [], pages: [], devices: [], geography: [], keyEventsByChannel: [], byDay: [] }
   const errors: GoogleAnalyticsReport['errors'] = []
   results.forEach((result, index) => {
     const name = entries[index][0] as keyof GoogleAnalyticsReport['reports']
