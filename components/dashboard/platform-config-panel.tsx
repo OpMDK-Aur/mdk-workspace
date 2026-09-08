@@ -42,6 +42,8 @@ interface ClientItem {
   business_name: string
   meta_ads_account_id: string | null
   google_ads_customer_id: string | null
+  analytics_property_id: string | null
+  tag_manager_container_id: string | null
   crm_type: string | null
   ghl_location_id: string | null
   ghl_token: string | null
