@@ -50,13 +50,13 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
   const analyticsData = google.analyticsdata({ version: 'v1beta', auth: createAuth() })
   const base = { dateRanges: [{ startDate: dateFrom, endDate: dateTo }] }
   const definitions = {
-    overview: { dimensions: [], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagementRate', 'eventCount', 'conversions', 'totalRevenue'] },
-    events: { dimensions: ['eventName'], metrics: ['eventCount', 'conversions', 'totalUsers', 'eventValue'] },
-    acquisition: { dimensions: ['sessionDefaultChannelGroup', 'sessionSourceMedium'], metrics: ['activeUsers', 'sessions', 'engagementRate', 'conversions', 'totalRevenue'] },
-    pages: { dimensions: ['pageTitle', 'pagePath'], metrics: ['screenPageViews', 'activeUsers', 'engagementRate', 'conversions', 'totalRevenue'] },
-    devices: { dimensions: ['deviceCategory', 'operatingSystem'], metrics: ['activeUsers', 'sessions', 'engagementRate', 'conversions'] },
-    geography: { dimensions: ['country', 'city'], metrics: ['activeUsers', 'sessions', 'conversions', 'totalRevenue'] },
-    byDay: { dimensions: ['date'], metrics: ['activeUsers', 'sessions', 'eventCount', 'conversions', 'totalRevenue'] },
+    overview: { dimensions: [], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalUsers', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
+    events: { dimensions: ['eventName'], metrics: ['eventCount', 'keyEvents', 'totalUsers', 'eventValue', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
+    acquisition: { dimensions: ['firstUserDefaultChannelGroup', 'sessionDefaultChannelGroup', 'sessionSourceMedium'], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
+    pages: { dimensions: ['pageTitle', 'pagePath', 'landingPagePlusQueryString'], metrics: ['screenPageViews', 'activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue'] },
+    devices: { dimensions: ['deviceCategory', 'operatingSystem'], metrics: ['activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue'] },
+    geography: { dimensions: ['country', 'city'], metrics: ['activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue'] },
+    byDay: { dimensions: ['date'], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
   } as const
   const entries = Object.entries(definitions)
   const results = await Promise.allSettled(entries.map(async ([name, definition]) => {
