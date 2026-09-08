@@ -20,12 +20,22 @@ export async function GET() {
     auth.setCredentials({ refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN })
     const tagmanager = google.tagmanager({ version: 'v2', auth })
     pendingRequest = (async () => {
-      const accounts = await tagmanager.accounts.list({})
       const result: Array<{ accountId: string; accountName: string; containerId: string; containerName: string; publicId: string }> = []
-      for (const account of accounts.data.account ?? []) {
-        const containers = await tagmanager.accounts.containers.list({ parent: account.path ?? '' })
-        for (const container of containers.data.container ?? []) result.push({ accountId: account.accountId ?? '', accountName: account.name ?? '', containerId: container.containerId ?? '', containerName: container.name ?? '', publicId: container.publicId ?? '' })
-      }
+      let accountPageToken: string | undefined
+      do {
+        const accounts = await tagmanager.accounts.list({ pageToken: accountPageToken })
+        for (const account of accounts.data.account ?? []) {
+          let containerPageToken: string | undefined
+          do {
+            const containers = await tagmanager.accounts.containers.list({ parent: account.path ?? '', pageToken: containerPageToken })
+            for (const container of containers.data.container ?? []) {
+              result.push({ accountId: account.accountId ?? '', accountName: account.name ?? '', containerId: container.containerId ?? '', containerName: container.name ?? '', publicId: container.publicId ?? '' })
+            }
+            containerPageToken = containers.data.nextPageToken ?? undefined
+          } while (containerPageToken)
+        }
+        accountPageToken = accounts.data.nextPageToken ?? undefined
+      } while (accountPageToken)
       return result
     })()
     const result = await pendingRequest
