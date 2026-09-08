@@ -34,7 +34,7 @@ export type GoogleAnalyticsReport = {
 function rowsToRecords(response: { data: { dimensionHeaders?: Array<{ name?: string | null }>; metricHeaders?: Array<{ name?: string | null }>; rows?: Array<{ dimensionValues?: Array<{ value?: string | null }>; metricValues?: Array<{ value?: string | null }> }> } }) {
   const dimensions = (response.data.dimensionHeaders ?? []).map((header) => header.name ?? 'dimension')
   const metrics = (response.data.metricHeaders ?? []).map((header) => header.name ?? 'metric')
-  return (response.data.rows ?? []).map((row) => Object.fromEntries([
+  return (response.data.rows ?? []).slice(0, 100).map((row) => Object.fromEntries([
     ...dimensions.map((name, index) => [name, row.dimensionValues?.[index]?.value ?? '']),
     ...metrics.map((name, index) => {
       const value = row.metricValues?.[index]?.value ?? '0'
@@ -52,7 +52,7 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
   const definitions = {
     overview: { dimensions: [], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalUsers', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
     events: { dimensions: ['eventName'], metrics: ['eventCount', 'keyEvents', 'totalUsers', 'eventValue', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
-    acquisition: { dimensions: ['firstUserDefaultChannelGroup', 'sessionDefaultChannelGroup', 'sessionSourceMedium'], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
+    acquisition: { dimensions: ['sessionDefaultChannelGroup', 'sessionSourceMedium'], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
     pages: { dimensions: ['pageTitle', 'pagePath', 'landingPagePlusQueryString'], metrics: ['screenPageViews', 'activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue'] },
     devices: { dimensions: ['deviceCategory', 'operatingSystem'], metrics: ['activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue'] },
     geography: { dimensions: ['country', 'city'], metrics: ['activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue'] },
@@ -62,7 +62,7 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
   const results = await Promise.allSettled(entries.map(async ([name, definition]) => {
     const response = await analyticsData.properties.runReport({
       property: `properties/${normalizedProperty}`,
-      requestBody: { ...base, dimensions: definition.dimensions.map((dimension) => ({ name: dimension })), metrics: definition.metrics.map((metric) => ({ name: metric })), limit: '10000' },
+      requestBody: { ...base, dimensions: definition.dimensions.map((dimension) => ({ name: dimension })), metrics: definition.metrics.map((metric) => ({ name: metric })), limit: '100' },
     })
     return [name, rowsToRecords(response)] as const
   }))

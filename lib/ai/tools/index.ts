@@ -422,7 +422,7 @@ const getGoogleMetrics: ToolDefinition = {
 
 const getGoogleAnalyticsReportTool: ToolDefinition = {
   key: 'get_google_analytics_report',
-  description: 'Obtiene un reporte amplio de Google Analytics 4 para la propiedad del cliente: resumen, eventos, adquisición, páginas, dispositivos, geografía y evolución diaria. Usala para cualquier análisis de GA4.',
+  description: 'Obtiene un reporte resumido de Google Analytics 4 para la propiedad del cliente: resumen, hasta 100 filas relevantes de eventos, adquisición, páginas, dispositivos, geografía y evolución diaria. Usala para cualquier análisis de GA4; si se necesita un detalle específico, consultá la pregunta del usuario y profundizá con la herramienta adecuada.',
   inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional() }),
   async execute(input: { dateFrom?: string; dateTo?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
