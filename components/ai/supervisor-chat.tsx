@@ -99,6 +99,7 @@ interface SupervisorChatProps {
   metaAccountId?: string
   /** Id(s) de cuenta de Google Ads seleccionados en la UI (separados por coma si son varios). Restringe el análisis a esas cuentas. */
   googleCustomerId?: string
+  analyticsPropertyId?: string
   selectedAccountSummary?: Array<{ id: string | null; name: string; platform: string | null }>
   selectedAccountReading?: string
   scoreConfig?: { objective: string }
@@ -261,6 +262,7 @@ function SupervisorChatSession({
   clientId,
   metaAccountId,
   googleCustomerId,
+  analyticsPropertyId,
   selectedAccountSummary = [],
   selectedAccountReading,
   scoreConfig,
@@ -304,7 +306,7 @@ function SupervisorChatSession({
       api: '/api/ai/chat',
       body: {
         context: clientId
-          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
+          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(analyticsPropertyId ? { analyticsPropertyId } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
           : {},
       },
     }),
@@ -434,7 +436,7 @@ function SupervisorChatSession({
     await sendMessage({ text, files: fileParts }, {
       body: {
         context: clientId
-          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
+          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(analyticsPropertyId ? { analyticsPropertyId } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
           : {},
       },
     })
@@ -449,7 +451,7 @@ function SupervisorChatSession({
           {selectedAccountSummary.length > 0 ? (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs" aria-label="Cuentas seleccionadas para el análisis">
               <span className="font-semibold text-emerald-700 dark:text-emerald-300">Analizando exclusivamente:</span>
-              {selectedAccountSummary.map((account) => <span key={`${account.platform}-${account.id}`} className="rounded bg-emerald-500/10 px-2 py-1 text-foreground">{account.name} · {account.platform === 'meta' ? 'Meta Ads' : account.platform === 'google' ? 'Google Ads' : account.platform || 'Plataforma'}</span>)}
+              {selectedAccountSummary.map((account) => <span key={`${account.platform}-${account.id}`} className="rounded bg-emerald-500/10 px-2 py-1 text-foreground">{account.name} · {account.platform === 'meta' ? 'Meta Ads' : account.platform === 'google' ? 'Google Ads' : account.platform === 'analytics' ? 'Google Analytics 4' : account.platform === 'tag_manager' ? 'Tag Manager' : account.platform === 'crm' ? 'CRM' : account.platform || 'Plataforma'}</span>)}
             </div>
           ) : (
             <p className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">Seleccioná al menos una cuenta publicitaria para iniciar el análisis.</p>

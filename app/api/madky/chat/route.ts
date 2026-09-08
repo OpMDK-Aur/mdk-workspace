@@ -16,6 +16,7 @@ interface ClientContext {
   // Platform IDs for tools to use
   metaAdsId?: string
   googleAdsId?: string
+  analyticsPropertyId?: string
 }
 
 /**
@@ -42,6 +43,12 @@ No hay un cliente seleccionado. Pedile al usuario que seleccione un cliente para
     platformInfo.push(`- **Google Ads:** Conectado (Customer ID: ${clientContext.googleAdsId})`)
   } else {
     platformInfo.push(`- **Google Ads:** No conectado`)
+  }
+
+  if (clientContext.analyticsPropertyId) {
+    platformInfo.push(`- **Google Analytics 4:** Conectado (Property ID: ${clientContext.analyticsPropertyId})`)
+  } else {
+    platformInfo.push(`- **Google Analytics 4:** No conectado`)
   }
 
   return MADKY_SYSTEM_PROMPT + `

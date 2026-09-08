@@ -37,6 +37,7 @@ export interface ExecutionContext {
   accountId?: string
   metaAccountId?: string
   googleCustomerId?: string
+  analyticsPropertyId?: string
   scoreConfig?: { objective: string }
   /** Run-scoped only: never persisted; conversation memory is separate. */
   analysisRunState?: AnalysisRunState

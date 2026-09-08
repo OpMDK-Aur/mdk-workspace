@@ -87,6 +87,7 @@ export const chatRequestSchema = z.object({
       accountId: z.string().max(200).optional(),
       metaAccountId: z.string().max(200).optional(),
       googleCustomerId: z.string().max(200).optional(),
+      analyticsPropertyId: z.string().max(200).optional(),
       // .catch(undefined): si el cliente manda un scoreConfig incompleto o
       // corrupto (p. ej. porque /api/ai/score-config falló), lo descartamos
       // en vez de invalidar toda la request. El Supervisor cae a sus

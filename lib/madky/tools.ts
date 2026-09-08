@@ -1,6 +1,7 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { getGoogleAnalyticsSales } from '@/lib/google-analytics/service'
 
 // ---------------------------------------------------------------------------
 // Types for tool responses
@@ -327,6 +328,32 @@ export const madkyTools = {
         return await res.json()
       } catch (error) {
         return { error: `Error al consultar Google Ads: ${error}` } as GoogleAdsResponse
+      }
+    },
+  }),
+
+  /**
+   * Get Google Analytics 4 purchase events for a client
+   */
+  getGoogleAnalyticsSales: tool({
+    description: 'Consulta ventas reales de Google Analytics 4 usando el evento purchase de la propiedad GA4 asignada. Usala obligatoriamente cuando el usuario pregunte por ventas, compras, transacciones o ingresos de Analytics.',
+    parameters: z.object({
+      clientId: z.string().describe('ID del cliente en el sistema'),
+      startDate: z.string().optional().describe('Fecha inicial YYYY-MM-DD'),
+      endDate: z.string().optional().describe('Fecha final YYYY-MM-DD'),
+    }),
+    execute: async ({ clientId, startDate, endDate }) => {
+      const today = new Date()
+      const end = endDate ?? today.toISOString().slice(0, 10)
+      const start = startDate ?? new Date(today.getTime() - 6 * 86400000).toISOString().slice(0, 10)
+      const supabase = await createClient()
+      const { data: client, error } = await supabase.from('clientes').select('analytics_property_id').eq('id', clientId).single()
+      if (error || !client?.analytics_property_id) return { available: false, message: 'El cliente no tiene una propiedad de Google Analytics 4 asignada.' }
+      try {
+        const sales = await getGoogleAnalyticsSales(client.analytics_property_id, start, end)
+        return { available: true, source: 'Google Analytics 4', event: 'purchase', date_range: { start, end }, ...sales }
+      } catch (error) {
+        return { available: false, message: error instanceof Error ? error.message : 'No se pudieron consultar las ventas de Google Analytics 4.' }
       }
     },
   }),

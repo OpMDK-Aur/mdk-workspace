@@ -42,7 +42,7 @@ export function MultiagenteWorkspace() {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('clientes')
-      .select('id, nombre_del_negocio, cuentas_publicitarias(id_cuenta, nombre_cuenta, plataforma, activo)')
+      .select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, analytics_property_id, tag_manager_container_id, crm_type, cuentas_publicitarias(id_cuenta, nombre_cuenta, plataforma, activo)')
       .eq('id', conversation.clientId)
       .maybeSingle()
 
@@ -96,13 +96,15 @@ export function MultiagenteWorkspace() {
     .filter((account) => account.plataforma?.toLowerCase() === 'google' && account.id_cuenta)
     .map((account) => account.id_cuenta as string)
     .join(',') || undefined
+  const selectedAnalyticsPropertyId = selectedAccounts
+    .find((account) => account.plataforma?.toLowerCase() === 'analytics')?.id_cuenta || undefined
   const selectedAccountSummary = selectedAccounts.map((account) => ({
     id: account.id_cuenta,
     name: account.nombre_cuenta || account.id_cuenta || 'Cuenta sin nombre',
     platform: account.plataforma,
   }))
   const selectedAccountReading = selectedAccountSummary.length > 0
-    ? `Lectura de contexto: analizá exclusivamente ${selectedAccountSummary.map((account) => `${account.name} (${account.platform === 'meta' ? 'Meta Ads' : account.platform === 'google' ? 'Google Ads' : account.platform || 'plataforma'})`).join(', ')}. No uses datos de otras cuentas.`
+    ? `Lectura de contexto: analizá exclusivamente ${selectedAccountSummary.map((account) => `${account.name} (${account.platform === 'meta' ? 'Meta Ads' : account.platform === 'google' ? 'Google Ads' : account.platform === 'analytics' ? 'Google Analytics 4' : account.platform === 'tag_manager' ? 'Tag Manager' : account.platform === 'crm' ? 'CRM' : account.platform || 'plataforma'})`).join(', ')}. No uses datos de otras cuentas.`
     : 'Lectura de contexto: no hay una cuenta publicitaria seleccionada. Pedí al usuario que seleccione una antes de analizar.'
 
   return (
@@ -188,6 +190,7 @@ export function MultiagenteWorkspace() {
                 clientId={selectedClient?.id ?? null}
                 metaAccountId={selectedMetaAccountId}
                 googleCustomerId={selectedGoogleCustomerId}
+                analyticsPropertyId={selectedAnalyticsPropertyId}
                 selectedAccountSummary={selectedAccountSummary}
                 selectedAccountReading={selectedAccountReading}
                 disabled={!selectedClient}
