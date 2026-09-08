@@ -161,8 +161,9 @@ const getAccountContext: ToolDefinition = {
     // del cliente.
     const metaSelection = parseSelectedAccountIds(context.metaAccountId, normalizeMetaAccountId)
     const googleSelection = parseSelectedAccountIds(context.googleCustomerId, normalizeCustomerId)
-    if (!metaSelection && !googleSelection) {
-      return { available: false, message: 'Seleccioná al menos una cuenta publicitaria antes de iniciar el análisis.' }
+    const analyticsSelection = context.analyticsPropertyId?.trim() || null
+    if (!metaSelection && !googleSelection && !analyticsSelection) {
+      return { available: false, message: 'Seleccioná al menos una cuenta o plataforma conectada antes de iniciar el análisis.' }
     }
     const safeAccounts = allAccounts.filter((account) => {
       const platform = account.plataforma?.toLowerCase()
