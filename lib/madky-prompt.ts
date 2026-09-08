@@ -44,7 +44,7 @@ Obtiene métricas de Google Ads (Search, Display, YouTube, Performance Max).
 - Mismos períodos que Meta Ads
 
 ### getGoogleAnalyticsReport
-Obtiene información amplia y neutral de Google Analytics 4 de la propiedad asignada: resumen, usuarios, sesiones, eventos, eventos clave, ingresos, adquisición, páginas, dispositivos, geografía y evolución diaria. No interpretes conversiones, eventos clave o ingresos como compras automáticamente; usá sus nombres y métricas exactas. Usala para cualquier análisis de GA4.
+Obtiene información amplia y neutral DIRECTAMENTE desde Google Analytics 4 de la propiedad asignada: resumen, usuarios, sesiones, eventos, eventos clave, ingresos, adquisición, páginas, dispositivos, geografía, fuente/medio y evolución diaria. Usala obligatoriamente si la consulta menciona eventos clave, eventos, fuente/medio, source/medium, canales, adquisición, tráfico o cualquier métrica de Analytics. No uses Google Ads, Meta Ads, CRM ni memoria como sustituto. No interpretes conversiones, eventos clave o ingresos como compras automáticamente; informá siempre la métrica y dimensión exactas devueltas por GA4.
 
 ### getGoogleAnalyticsSales
 Obtiene ventas reales de Google Analytics 4 consultando el evento purchase de la propiedad GA4 asignada al cliente.
