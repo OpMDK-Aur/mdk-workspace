@@ -21,9 +21,11 @@ export function getBuenosAiresLastSevenDays() {
   const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]))
   const today = `${values.year}-${values.month}-${values.day}`
   const [year, month, day] = today.split('-').map(Number)
-  const start = new Date(Date.UTC(year, month - 1, day - 6))
+  const start = new Date(Date.UTC(year, month - 1, day - 7))
+  const end = new Date(Date.UTC(year, month - 1, day - 1))
   const dateFrom = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}-${String(start.getUTCDate()).padStart(2, '0')}`
-  return { dateFrom, dateTo: today, timeZone: 'America/Argentina/Buenos_Aires' }
+  const dateTo = `${end.getUTCFullYear()}-${String(end.getUTCMonth() + 1).padStart(2, '0')}-${String(end.getUTCDate()).padStart(2, '0')}`
+  return { dateFrom, dateTo, timeZone: 'America/Argentina/Buenos_Aires' }
 }
 
 function createAuth() {
