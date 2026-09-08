@@ -21,6 +21,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ clients: data ?? [], page, pageSize: PAGE_SIZE, total: count ?? 0, hasMore: (count ?? 0) > page * PAGE_SIZE })
   } catch (error) {
     console.error('[CRM clients] Error de conexión:', error)
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudieron cargar los clientes del CRM' }, { status: 500 })
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'No se pudieron cargar los clientes del CRM' },
+      { status: 500, headers: { 'Cache-Control': 'no-store' } },
+    )
   }
 }

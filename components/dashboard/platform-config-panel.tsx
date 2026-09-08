@@ -463,9 +463,10 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     setCrmClientsLoading(true)
     setCrmClientsError(null)
     try {
-      const response = await fetch(`/api/crm/clients?page=${page}`)
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los clientes del CRM')
+      const response = await fetch(`/api/crm/clients?page=${page}`, { cache: 'no-store' })
+      const contentType = response.headers.get('content-type') ?? ''
+      const data = contentType.includes('application/json') ? await response.json() : null
+      if (!response.ok) throw new Error(data?.error || `El endpoint CRM respondió ${response.status} sin JSON`)
       setCrmClients(data.clients ?? [])
       setCrmClientsPage(data.page ?? page)
       setCrmClientsHasMore(Boolean(data.hasMore))
