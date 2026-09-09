@@ -484,9 +484,10 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      setCrmClientSearch(crmClientSearchInput.trim())
+      const nextSearch = crmClientSearchInput.trim()
+      setCrmClientSearch(nextSearch)
       setCrmClientsPage(1)
-      fetchCrmClients(1)
+      fetchCrmClients(1, nextSearch)
     }, 300)
     return () => window.clearTimeout(timeout)
   }, [crmClientSearchInput])
