@@ -72,6 +72,13 @@ interface GoogleAccount {
   is_test: boolean
 }
 
+interface CrmClient {
+  id: string
+  name?: string | null
+  business_name?: string | null
+  [key: string]: unknown
+}
+
 type MatchStatus =
   | 'matched'
   | 'multiple'
@@ -441,13 +448,37 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [tagSelection, setTagSelection] = useState<Record<string, string>>({})
   const [googleResourcesError, setGoogleResourcesError] = useState<string | null>(null)
   const [tagManagerError, setTagManagerError] = useState<string | null>(null)
+  const [crmClients, setCrmClients] = useState<CrmClient[]>([])
+  const [crmClientsPage, setCrmClientsPage] = useState(1)
+  const [crmClientsHasMore, setCrmClientsHasMore] = useState(false)
+  const [crmClientsLoading, setCrmClientsLoading] = useState(false)
+  const [crmClientsError, setCrmClientsError] = useState<string | null>(null)
 
   useEffect(() => {
   setAnalyticsSelection(Object.fromEntries(clients.filter(client => client.analytics_property_id).map(client => [client.id, client.analytics_property_id!])))
   setTagSelection(Object.fromEntries(clients.filter(client => client.tag_manager_container_id).map(client => [client.id, client.tag_manager_container_id!])))
   }, [clients])
 
+  async function fetchCrmClients(page = 1) {
+    setCrmClientsLoading(true)
+    setCrmClientsError(null)
+    try {
+      const response = await fetch(`/api/crm/clients?page=${page}`, { cache: 'no-store' })
+      const contentType = response.headers.get('content-type') ?? ''
+      const data = contentType.includes('application/json') ? await response.json() : null
+      if (!response.ok) throw new Error(data?.error || `El endpoint CRM respondió ${response.status} sin JSON`)
+      setCrmClients(data.clients ?? [])
+      setCrmClientsPage(data.page ?? page)
+      setCrmClientsHasMore(Boolean(data.hasMore))
+    } catch (error) {
+      setCrmClientsError(error instanceof Error ? error.message : 'No se pudieron cargar los clientes del CRM')
+    } finally {
+      setCrmClientsLoading(false)
+    }
+  }
+
   useEffect(() => {
+  fetchCrmClients()
   fetch('/api/google/analytics/accounts')
       .then(response => response.json())
       .then(data => {
@@ -1048,7 +1079,29 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
 
                 {config.crmType === 'aurelia' && (
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">ID de cuenta en Aurelia CRM</Label>
+                      <Label className="text-xs text-muted-foreground">Cliente en Aurelia CRM</Label>
+                    <div className="flex flex-col gap-2">
+                      <select
+                        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        value={(crmAccountDrafts[client.id] ?? [config.ghlLocationId].filter(Boolean))[0] ?? ''}
+                        onChange={event => setCrmAccountDrafts(prev => ({ ...prev, [client.id]: [event.target.value] }))}
+                        disabled={crmClientsLoading}
+                      >
+                        <option value="">{crmClientsLoading ? 'Cargando clientes...' : 'Seleccionar cliente CRM...'}</option>
+                        {crmClients.map(crmClient => {
+                          const label = crmClient.name || crmClient.business_name || crmClient.id
+                          return <option key={crmClient.id} value={crmClient.id}>{label} · {crmClient.id}</option>
+                        })}
+                      </select>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{crmClients.length ? `Mostrando ${crmClients.length} clientes` : crmClientsError || 'Sin clientes disponibles'}</span>
+                        <div className="flex items-center gap-2">
+                          <button type="button" className="hover:text-foreground disabled:opacity-40" disabled={crmClientsPage <= 1 || crmClientsLoading} onClick={() => fetchCrmClients(crmClientsPage - 1)}>Anterior</button>
+                          <span>Página {crmClientsPage}</span>
+                          <button type="button" className="hover:text-foreground disabled:opacity-40" disabled={!crmClientsHasMore || crmClientsLoading} onClick={() => fetchCrmClients(crmClientsPage + 1)}>Siguiente</button>
+                        </div>
+                      </div>
+                    </div>
                     <div className="flex flex-col gap-2">
                       {(crmAccountDrafts[client.id] ?? [config.ghlLocationId].filter(Boolean)).map((accountId, index) => (
                         <div key={`${client.id}-${index}`} className="flex items-center gap-2">
