@@ -667,21 +667,22 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     setSaved(prev => ({ ...prev, [clientId]: false }))
 
     const config = configs[clientId]
+  try {
     const result = await updateClientPlatformIds(
       clientId,
       config.meta.trim() || null,
       config.google.trim() || null,
       config.crmType.trim() || null,
       config.ghlLocationId.trim() || null,
-          config.crmType === 'aurelia' ? null : config.ghlToken.trim() || null,
-          analyticsSelection[clientId] ?? configAnalyticsPropertyId(clientId),
-          tagSelection[clientId] ?? configTagManagerContainerId(clientId),
-          )
-  const crmResult = config.crmType === 'aurelia'
-    ? await replaceClientCrmAccounts(clientId, crmAccountDrafts[clientId] ?? [config.ghlLocationId])
-    : { success: true }
-  
-  setSaving(prev => ({ ...prev, [clientId]: false }))
+      config.crmType === 'aurelia' ? null : config.ghlToken.trim() || null,
+      analyticsSelection[clientId] ?? configAnalyticsPropertyId(clientId),
+      tagSelection[clientId] ?? configTagManagerContainerId(clientId),
+    )
+    const crmResult = config.crmType === 'aurelia'
+      ? await replaceClientCrmAccounts(clientId, crmAccountDrafts[clientId] ?? [])
+      : { success: true }
+
+    setSaving(prev => ({ ...prev, [clientId]: false }))
   if (crmResult.error && !result.error) result.error = crmResult.error
     if (result.error) {
       setErrors(prev => ({ ...prev, [clientId]: result.error! }))
@@ -691,6 +692,10 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       setGoogleMatchResults(prev => ({ ...prev, [clientId]: { status: 'saved', candidates: [] } }))
       setTimeout(() => setSaved(prev => ({ ...prev, [clientId]: false })), 3000)
     }
+  } catch (error) {
+    setSaving(prev => ({ ...prev, [clientId]: false }))
+    setErrors(prev => ({ ...prev, [clientId]: error instanceof Error ? error.message : 'No se pudo guardar la configuración' }))
+  }
   }
 
   function updateField(clientId: string, field: 'meta' | 'google' | 'crmType' | 'ghlLocationId' | 'ghlToken', value: string) {
@@ -915,6 +920,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
           config.crmType !== (client.crm_type ?? '') ||
           config.ghlLocationId !== (client.ghl_location_id ?? '') ||
           config.ghlToken !== (client.ghl_token ?? '') ||
+          JSON.stringify(crmAccountDrafts[client.id] ?? []) !== JSON.stringify([]) ||
           Boolean(analyticsSelection[client.id]) || Boolean(tagSelection[client.id])
         const isConnected = Boolean(config.meta || config.google)
 
