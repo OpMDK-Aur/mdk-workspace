@@ -667,21 +667,22 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     setSaved(prev => ({ ...prev, [clientId]: false }))
 
     const config = configs[clientId]
+  try {
     const result = await updateClientPlatformIds(
       clientId,
       config.meta.trim() || null,
       config.google.trim() || null,
       config.crmType.trim() || null,
       config.ghlLocationId.trim() || null,
-          config.crmType === 'aurelia' ? null : config.ghlToken.trim() || null,
-          analyticsSelection[clientId] ?? configAnalyticsPropertyId(clientId),
-          tagSelection[clientId] ?? configTagManagerContainerId(clientId),
-          )
-  const crmResult = config.crmType === 'aurelia'
-    ? await replaceClientCrmAccounts(clientId, crmAccountDrafts[clientId] ?? [config.ghlLocationId])
-    : { success: true }
-  
-  setSaving(prev => ({ ...prev, [clientId]: false }))
+      config.crmType === 'aurelia' ? null : config.ghlToken.trim() || null,
+      analyticsSelection[clientId] ?? configAnalyticsPropertyId(clientId),
+      tagSelection[clientId] ?? configTagManagerContainerId(clientId),
+    )
+    const crmResult = config.crmType === 'aurelia'
+      ? await replaceClientCrmAccounts(clientId, crmAccountDrafts[clientId] ?? [])
+      : { success: true }
+
+    setSaving(prev => ({ ...prev, [clientId]: false }))
   if (crmResult.error && !result.error) result.error = crmResult.error
     if (result.error) {
       setErrors(prev => ({ ...prev, [clientId]: result.error! }))
@@ -691,6 +692,10 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       setGoogleMatchResults(prev => ({ ...prev, [clientId]: { status: 'saved', candidates: [] } }))
       setTimeout(() => setSaved(prev => ({ ...prev, [clientId]: false })), 3000)
     }
+  } catch (error) {
+    setSaving(prev => ({ ...prev, [clientId]: false }))
+    setErrors(prev => ({ ...prev, [clientId]: error instanceof Error ? error.message : 'No se pudo guardar la configuración' }))
+  }
   }
 
   function updateField(clientId: string, field: 'meta' | 'google' | 'crmType' | 'ghlLocationId' | 'ghlToken', value: string) {
@@ -915,6 +920,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
           config.crmType !== (client.crm_type ?? '') ||
           config.ghlLocationId !== (client.ghl_location_id ?? '') ||
           config.ghlToken !== (client.ghl_token ?? '') ||
+          JSON.stringify(crmAccountDrafts[client.id] ?? []) !== JSON.stringify([]) ||
           Boolean(analyticsSelection[client.id]) || Boolean(tagSelection[client.id])
         const isConnected = Boolean(config.meta || config.google)
 
@@ -1096,46 +1102,38 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                   <div className="space-y-1.5">
                       <Label className="text-xs text-muted-foreground">Cliente en Aurelia CRM</Label>
                     <div className="relative flex flex-col gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        {(crmAccountDrafts[client.id] ?? [config.ghlLocationId].filter(Boolean)).filter(Boolean).map(accountId => {
+                          const selectedClient = crmClients.find(item => item.id === accountId)
+                          const label = selectedClient?.name || selectedClient?.business_name || accountId
+                          return (
+                            <span key={accountId} className="inline-flex items-center gap-1 rounded-full border bg-muted px-3 py-1 text-xs">
+                              {label}
+                              <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setCrmAccountDrafts(prev => ({ ...prev, [client.id]: (prev[client.id] ?? []).filter(id => id !== accountId) }))} aria-label={`Quitar ${label}`}>
+                                ×
+                              </button>
+                            </span>
+                          )
+                        })}
+                      </div>
                       <Input
-                        placeholder="Buscar cliente CRM por nombre..."
-                        value={crmClientDropdown === client.id ? crmClientSearchInput : ((crmAccountDrafts[client.id] ?? [config.ghlLocationId].filter(Boolean))[0] ? crmClients.find(item => item.id === (crmAccountDrafts[client.id] ?? [config.ghlLocationId])[0])?.name || crmClients.find(item => item.id === (crmAccountDrafts[client.id] ?? [config.ghlLocationId])[0])?.business_name || 'Cliente CRM seleccionado' : '')}
+                        placeholder="Buscar y agregar clientes CRM..."
+                        value={crmClientSearchInput}
                         onFocus={() => setCrmClientDropdown(client.id)}
                         onChange={event => { setCrmClientDropdown(client.id); setCrmClientSearchInput(event.target.value) }}
                         disabled={crmClientsLoading && crmClients.length === 0}
                       />
                       {crmClientDropdown === client.id && (
-                        <div className="absolute left-0 right-0 top-10 z-20 max-h-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
-                          {crmClients.map(crmClient => {
+                        <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
+                          {crmClients.filter(crmClient => !(crmAccountDrafts[client.id] ?? [config.ghlLocationId].filter(Boolean)).includes(crmClient.id)).map(crmClient => {
                             const label = crmClient.name || crmClient.business_name || 'Cliente sin nombre'
-                            return <button key={crmClient.id} type="button" className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setCrmAccountDrafts(prev => ({ ...prev, [client.id]: [crmClient.id] })); setCrmClientSearchInput(label); setCrmClientDropdown(null) }}>{label}</button>
+                            return <button key={crmClient.id} type="button" className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setCrmAccountDrafts(prev => ({ ...prev, [client.id]: [...(prev[client.id] ?? [config.ghlLocationId].filter(Boolean)), crmClient.id] })); setCrmClientSearchInput('') }}>{label}</button>
                           })}
                           {crmClientsLoading && <p className="px-3 py-2 text-xs text-muted-foreground">Cargando clientes...</p>}
-                          {!crmClientsLoading && crmClientsHasMore && (
-                            <button type="button" className="w-full rounded-sm px-3 py-2 text-left text-sm font-medium text-primary hover:bg-accent" onClick={() => fetchCrmClients(crmClientsPage + 1)}>
-                              Ver más
-                            </button>
-                          )}
+                          {!crmClientsLoading && crmClientsHasMore && <button type="button" className="w-full rounded-sm px-3 py-2 text-left text-sm font-medium text-primary hover:bg-accent" onClick={() => fetchCrmClients(crmClientsPage + 1)}>Ver más</button>}
                           {!crmClientsLoading && crmClients.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">{crmClientsError || 'No se encontraron clientes'}</p>}
                         </div>
                       )}
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      {(crmAccountDrafts[client.id] ?? [config.ghlLocationId].filter(Boolean)).map((accountId, index) => (
-                        <div key={`${client.id}-${index}`} className="flex items-center gap-2">
-                          <Input
-                            placeholder="ID de cuenta o cliente en Aurelia..."
-                            value={accountId}
-                            onChange={e => setCrmAccountDrafts(prev => ({ ...prev, [client.id]: (prev[client.id] ?? [config.ghlLocationId]).map((value, i) => i === index ? e.target.value : value) }))}
-                            className="h-9 font-mono text-sm"
-                          />
-                          <Button type="button" variant="ghost" size="icon" onClick={() => setCrmAccountDrafts(prev => ({ ...prev, [client.id]: (prev[client.id] ?? [config.ghlLocationId]).filter((_, i) => i !== index) }))} aria-label="Quitar cuenta CRM">
-                            <Unlink className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
-                      <Button type="button" variant="outline" size="sm" onClick={() => setCrmAccountDrafts(prev => ({ ...prev, [client.id]: [...(prev[client.id] ?? [config.ghlLocationId].filter(Boolean)), ''] }))}>
-                        Agregar cuenta CRM
-                      </Button>
                     </div>
                     <p className="text-[11px] text-muted-foreground">Podés asociar varias cuentas de Aurelia CRM al mismo cliente interno.</p>
                   </div>
