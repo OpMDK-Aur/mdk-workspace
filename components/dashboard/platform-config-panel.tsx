@@ -1104,15 +1104,17 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                         disabled={crmClientsLoading && crmClients.length === 0}
                       />
                       {crmClientDropdown === client.id && (
-                        <div className="absolute left-0 right-0 top-10 z-20 max-h-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md" onScroll={event => {
-                          const element = event.currentTarget
-                          if (element.scrollTop + element.clientHeight >= element.scrollHeight - 24 && crmClientsHasMore && !crmClientsLoading) fetchCrmClients(crmClientsPage + 1)
-                        }}>
+                        <div className="absolute left-0 right-0 top-10 z-20 max-h-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
                           {crmClients.map(crmClient => {
                             const label = crmClient.name || crmClient.business_name || 'Cliente sin nombre'
                             return <button key={crmClient.id} type="button" className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setCrmAccountDrafts(prev => ({ ...prev, [client.id]: [crmClient.id] })); setCrmClientSearchInput(label); setCrmClientDropdown(null) }}>{label}</button>
                           })}
-                          {crmClientsLoading && <p className="px-3 py-2 text-xs text-muted-foreground">Cargando más clientes...</p>}
+                          {crmClientsLoading && <p className="px-3 py-2 text-xs text-muted-foreground">Cargando clientes...</p>}
+                          {!crmClientsLoading && crmClientsHasMore && (
+                            <button type="button" className="w-full rounded-sm px-3 py-2 text-left text-sm font-medium text-primary hover:bg-accent" onClick={() => fetchCrmClients(crmClientsPage + 1)}>
+                              Ver más
+                            </button>
+                          )}
                           {!crmClientsLoading && crmClients.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">{crmClientsError || 'No se encontraron clientes'}</p>}
                         </div>
                       )}
