@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { replaceClientCrmAccounts, updateClientPlatformIds } from '@/app/actions/platform-config'
+import { getClientCrmAccounts, replaceClientCrmAccounts, updateClientPlatformIds } from '@/app/actions/platform-config'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -528,6 +528,12 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   }
 
   useEffect(() => {
+    getClientCrmAccounts(clients.map(client => client.id)).then(result => {
+      if (!result.error) setCrmAccountDrafts(result.accounts)
+    })
+  }, [clients])
+
+  useEffect(() => {
   fetchCrmClients()
   fetch('/api/google/analytics/accounts')
       .then(response => response.json())
@@ -709,7 +715,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       tagSelection[clientId] ?? configTagManagerContainerId(clientId),
     )
     const crmResult = config.crmType === 'aurelia'
-      ? await replaceClientCrmAccounts(clientId, crmAccountDrafts[clientId] ?? [])
+      ? await replaceClientCrmAccounts(clientId, crmAccountDrafts[clientId] ?? [config.ghlLocationId].filter(Boolean))
       : { success: true }
 
     setSaving(prev => ({ ...prev, [clientId]: false }))
