@@ -632,7 +632,7 @@ const getPreviousInsights: ToolDefinition = {
 const crmSalesAttribution: ToolDefinition = {
   key: 'crm_sales_attribution',
   description: 'Relaciona oportunidades ganadas del CRM externo de Aurelia con contactos, mensajes inbound con referral/source_id y conversaciones asignadas. Usala para responder ventas por campaña o anuncio.',
-  inputSchema: z.object({ dateFrom: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/), dateTo: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/) }),
+  inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     const crm = createCrmClient()
