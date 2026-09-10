@@ -8,7 +8,7 @@ const messageColumns = 'id,created_at,client_id,contact_id,conversation_id,messa
 const contactColumns = 'id,created_at,client_id,name,email,phone'
 const opportunityColumns = 'id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency'
 const stageColumns = 'id,client_id,pipeline_id,name,description'
-const conversationColumns = 'id,client_id,contact_id,assigned_agent,assigned_user,importance,unread_count,sub_channel_id,pipeline_id,name,description,created_at,updated_at'
+const conversationColumns = 'id,client_id,contact_id,assigned_agent,assigned_user,importance,unread_count,sub_channel_id,assigned_team_id,created_at,updated_at'
 
 function isDate(value: string | null): value is string {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)))
