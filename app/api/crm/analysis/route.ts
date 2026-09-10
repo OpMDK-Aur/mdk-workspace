@@ -33,11 +33,11 @@ export async function GET(request: NextRequest) {
     const end = `${dateTo}T23:59:59.999Z`
 
     const [messagesResult, contactsResult, opportunitiesResult, stagesResult, conversationsResult] = await Promise.all([
-      crm.from('messages').select(messageColumns).eq('client_id', clientId).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end).not('metadata->referral', 'is', null).order('created_at', { ascending: true }).limit(5000),
-      crm.from('contacts').select(contactColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).order('created_at', { ascending: true }).limit(5000),
-      crm.from('opportunities').select(opportunityColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).order('created_at', { ascending: false }).limit(5000),
-      crm.from('pipeline_stages').select(stageColumns).eq('client_id', clientId).limit(1000),
-      crm.from('conversations').select(conversationColumns).eq('client_id', clientId).lte('created_at', end).or(`created_at.gte.${start},updated_at.gte.${start}`).limit(5000),
+      crm.from('messages').select(messageColumns).eq('client_id', clientId).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end).not('metadata->referral', 'is', null).order('created_at', { ascending: true }).limit(2000),
+      crm.from('contacts').select(contactColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).order('created_at', { ascending: true }).limit(2000),
+      crm.from('opportunities').select(opportunityColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).order('created_at', { ascending: false }).limit(2000),
+      crm.from('pipeline_stages').select(stageColumns).eq('client_id', clientId).limit(500),
+      crm.from('conversations').select(conversationColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).order('created_at', { ascending: false }).limit(2000),
     ])
 
     const failed = [messagesResult, contactsResult, opportunitiesResult, stagesResult, conversationsResult].find(result => result.error)
