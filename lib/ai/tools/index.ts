@@ -8,6 +8,7 @@ import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 import { contextFromEvents, mergeWorkingContext } from '@/lib/ai/conversation-context'
 import { buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeIndustry, type MetricRow } from '@/lib/ai/client-memory'
 import { getBuenosAiresLastSevenDays, getGoogleAnalyticsReport, getGoogleAnalyticsSales } from '@/lib/google-analytics/service'
+import { createCrmClient } from '@/lib/supabase/crm'
 
 const noInput = z.object({})
 
@@ -628,7 +629,63 @@ const getPreviousInsights: ToolDefinition = {
   },
 }
 
+const crmSalesAttribution: ToolDefinition = {
+  key: 'crm_sales_attribution',
+  description: 'Relaciona oportunidades ganadas del CRM externo de Aurelia con contactos, mensajes inbound con referral/source_id y conversaciones asignadas. Usala para responder ventas por campaña o anuncio.',
+  inputSchema: z.object({ dateFrom: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/), dateTo: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/) }),
+  async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const crm = createCrmClient()
+    const start = `${input.dateFrom}T00:00:00.000Z`
+    const end = `${input.dateTo}T23:59:59.999Z`
+    const batch = async (table: string, columns: string, filters: (query: any) => any) => {
+      const rows: any[] = []
+      for (let offset = 0; offset < 10000; offset += 100) {
+        let query = filters(crm.from(table).select(columns))
+        const { data, error } = await query.range(offset, offset + 99)
+        if (error) throw new Error(`${table}: ${error.message}`)
+        rows.push(...(data ?? []))
+        if ((data ?? []).length < 100) break
+      }
+      return rows
+    }
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'running', label: 'Analizando ventas y atribución del CRM...' })
+    try {
+      const [opportunities, contacts, messages, conversations, stages] = await Promise.all([
+        batch('opportunities', 'id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency', query => query.eq('client_id', context.clientId).gte('created_at', start).lte('created_at', end)),
+        batch('contacts', 'id,created_at,client_id,name,email,phone', query => query.eq('client_id', context.clientId)),
+        batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.eq('client_id', context.clientId).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end)),
+        batch('conversations', 'id,client_id,contact_id,assigned_agent,assigned_user,importance,unread_count,sub_channel_id,assigned_team_id', query => query.eq('client_id', context.clientId)),
+        batch('pipeline_stages', 'id,client_id,pipeline_id,name,description', query => query.eq('client_id', context.clientId)),
+      ])
+      const contactsById = new Map(contacts.map(row => [row.id, row]))
+      const stagesById = new Map(stages.map(row => [row.id, row]))
+      const conversationsById = new Map(conversations.map(row => [row.id, row]))
+      const referralsByContact = new Map<string, any>()
+      for (const message of messages) {
+        const referral = message.metadata?.referral
+        if (message.contact_id && referral && !referralsByContact.has(message.contact_id)) referralsByContact.set(message.contact_id, { ...message, referral, ad_id: referral.source_id ?? referral.ad_id ?? null, ad_title: referral.ad_title ?? null })
+      }
+      const won = opportunities.filter(row => String(row.status ?? '').toLowerCase() === 'won' || String(row.status ?? '').toLowerCase() === 'ganado')
+      const attributed = won.map(opportunity => {
+        const referral = referralsByContact.get(opportunity.contact_id)
+        const conversation = conversationsById.get(opportunity.conversation_id ?? referral?.conversation_id)
+        return { opportunity, contact: contactsById.get(opportunity.contact_id) ?? null, stage: stagesById.get(opportunity.stage_id) ?? null, referral: referral ?? null, conversation: conversation ?? null }
+      })
+      const byCampaign = new Map<string, any>()
+      for (const sale of attributed) { const key = sale.referral?.ad_id ?? 'unattributed'; const current = byCampaign.get(key) ?? { ad_id: key === 'unattributed' ? null : key, ad_title: sale.referral?.ad_title ?? null, sales: 0, amount: 0 }; current.sales += 1; current.amount += Number(sale.opportunity.amount ?? 0) || 0; byCampaign.set(key, current) }
+      const result = { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo }, totals: { won_sales: won.length, attributed_sales: attributed.filter(sale => sale.referral?.ad_id).length, unattributed_sales: attributed.filter(sale => !sale.referral?.ad_id).length, amount: won.reduce((sum, row) => sum + (Number(row.amount ?? 0) || 0), 0) }, by_campaign: [...byCampaign.values()], sales: attributed.slice(0, 500) }
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'completed', label: `${won.length} ventas ganadas analizadas` })
+      return result
+    } catch (error) {
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'error', label: 'No se pudo analizar el CRM' })
+      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar Aurelia CRM.' }
+    }
+  },
+}
+
 const allTools: ToolDefinition[] = [
+  crmSalesAttribution,
   getAccountContext,
   getCrmContext,
   getClientMemory,

@@ -29,7 +29,8 @@ export async function streamSupervisorResponse(
   const crmToolRequired = 'get_crm_context'
   const analyticsReportToolRequired = 'get_google_analytics_report'
   const analyticsSalesToolRequired = 'get_google_analytics_sales'
-  const enabledToolKeys = [...new Set([...config.enabledTools, benchmarkToolRequired, crmToolRequired, analyticsReportToolRequired, analyticsSalesToolRequired])]
+  const crmSalesAttributionToolRequired = 'crm_sales_attribution'
+  const enabledToolKeys = [...new Set([...config.enabledTools, benchmarkToolRequired, crmToolRequired, analyticsReportToolRequired, analyticsSalesToolRequired, crmSalesAttributionToolRequired])]
   const definitions = getToolDefinitions(enabledToolKeys)
   const exposedToolKeys = definitions.map((definition) => definition.key)
   console.log('[multiagent-tools]', {
