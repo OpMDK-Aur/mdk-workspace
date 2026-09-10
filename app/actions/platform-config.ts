@@ -50,6 +50,26 @@ export async function updateClientPlatformIds(
   return { success: true }
 }
 
+export async function getClientCrmAccounts(clientIds: string[]) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'No autorizado', accounts: {} as Record<string, string[]> }
+  const { data: colaborador } = await supabase.from('colaboradores').select('rol_id').eq('id', user.id).single()
+  if (!colaborador) return { error: 'Sin permiso', accounts: {} as Record<string, string[]> }
+  const { data, error } = await supabase
+    .from('client_crm_accounts')
+    .select('client_id, crm_account_id')
+    .eq('crm_type', 'aurelia')
+    .eq('active', true)
+    .in('client_id', clientIds)
+  if (error) return { error: error.message, accounts: {} as Record<string, string[]> }
+  const accounts = (data ?? []).reduce<Record<string, string[]>>((result, row) => {
+    result[row.client_id] = [...(result[row.client_id] ?? []), row.crm_account_id]
+    return result
+  }, {})
+  return { accounts }
+}
+
 export async function replaceClientCrmAccounts(clientId: string, accountIds: string[]) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

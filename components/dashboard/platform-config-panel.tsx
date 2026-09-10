@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { replaceClientCrmAccounts, updateClientPlatformIds } from '@/app/actions/platform-config'
+import { getClientCrmAccounts, replaceClientCrmAccounts, updateClientPlatformIds } from '@/app/actions/platform-config'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -510,8 +510,12 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   async function fetchTagContainers(page = 1) {
     setTagLoading(true)
     try {
-      const response = await fetch(`/api/google/tag-manager/accounts?page=${page}`, { cache: 'no-store' })
+      const response = await fetch(`/api/google/tag-manager/accounts?page=${page}`, { cache: 'force-cache' })
       const data = await response.json()
+      if (response.status === 429) {
+        setTagManagerError(data.error || 'Google Tag Manager está temporalmente limitado por cuota')
+        return
+      }
       if (!response.ok || data.error) throw new Error(data.error || 'No se pudieron cargar los contenedores de Tag Manager')
       setTagContainers(previous => page === 1 ? (data.accounts ?? []) : [...previous, ...(data.accounts ?? [])])
       setTagPage(data.page ?? page)
@@ -522,6 +526,12 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       setTagLoading(false)
     }
   }
+
+  useEffect(() => {
+    getClientCrmAccounts(clients.map(client => client.id)).then(result => {
+      if (!result.error) setCrmAccountDrafts(result.accounts)
+    })
+  }, [clients])
 
   useEffect(() => {
   fetchCrmClients()
@@ -705,7 +715,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       tagSelection[clientId] ?? configTagManagerContainerId(clientId),
     )
     const crmResult = config.crmType === 'aurelia'
-      ? await replaceClientCrmAccounts(clientId, crmAccountDrafts[clientId] ?? [])
+      ? await replaceClientCrmAccounts(clientId, crmAccountDrafts[clientId] ?? [config.ghlLocationId].filter(Boolean))
       : { success: true }
 
     setSaving(prev => ({ ...prev, [clientId]: false }))
