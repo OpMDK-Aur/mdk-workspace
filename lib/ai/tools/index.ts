@@ -638,9 +638,9 @@ const crmSalesAttribution: ToolDefinition = {
     const crm = createCrmClient()
     const start = `${input.dateFrom}T00:00:00.000Z`
     const end = `${input.dateTo}T23:59:59.999Z`
-    const batch = async (table: string, columns: string, filters: (query: any) => any) => {
+    const batch = async (table: string, columns: string, filters: (query: any) => any, maxRows = 2000) => {
       const rows: any[] = []
-      for (let offset = 0; offset < 10000; offset += 100) {
+      for (let offset = 0; offset < maxRows; offset += 100) {
         let query = filters(crm.from(table).select(columns))
         const { data, error } = await query.range(offset, offset + 99)
         if (error) throw new Error(`${table}: ${error.message}`)
@@ -651,12 +651,15 @@ const crmSalesAttribution: ToolDefinition = {
     }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'running', label: 'Analizando ventas y atribución del CRM...' })
     try {
-      const [opportunities, contacts, messages, conversations, stages] = await Promise.all([
-        batch('opportunities', 'id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency', query => query.eq('client_id', context.clientId).gte('created_at', start).lte('created_at', end)),
-        batch('contacts', 'id,created_at,client_id,name,email,phone', query => query.eq('client_id', context.clientId)),
-        batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.eq('client_id', context.clientId).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end)),
-        batch('conversations', 'id,client_id,contact_id,assigned_agent,assigned_user,importance,unread_count,sub_channel_id,assigned_team_id', query => query.eq('client_id', context.clientId)),
-        batch('pipeline_stages', 'id,client_id,pipeline_id,name,description', query => query.eq('client_id', context.clientId)),
+      const opportunities = await batch('opportunities', 'id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency', query => query.eq('client_id', context.clientId).gte('created_at', start).lte('created_at', end), 5000)
+      const contactIds = [...new Set(opportunities.map(row => row.contact_id).filter(Boolean))]
+      const conversationIds = [...new Set(opportunities.map(row => row.conversation_id).filter(Boolean))]
+      const pipelineIds = [...new Set(opportunities.map(row => row.pipeline_id).filter(Boolean))]
+      const [contacts, messages, conversations, stages] = await Promise.all([
+        contactIds.length ? batch('contacts', 'id,created_at,client_id,name,email,phone', query => query.eq('client_id', context.clientId).in('id', contactIds)) : Promise.resolve([]),
+        contactIds.length ? batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.eq('client_id', context.clientId).in('contact_id', contactIds).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end)) : Promise.resolve([]),
+        conversationIds.length ? batch('conversations', 'id,client_id,contact_id,assigned_agent,assigned_user,importance,unread_count,sub_channel_id,assigned_team_id', query => query.eq('client_id', context.clientId).in('id', conversationIds)) : Promise.resolve([]),
+        pipelineIds.length ? batch('pipeline_stages', 'id,client_id,pipeline_id,name,description', query => query.eq('client_id', context.clientId).in('pipeline_id', pipelineIds)) : Promise.resolve([]),
       ])
       const contactsById = new Map(contacts.map(row => [row.id, row]))
       const stagesById = new Map(stages.map(row => [row.id, row]))
@@ -674,7 +677,7 @@ const crmSalesAttribution: ToolDefinition = {
       })
       const byCampaign = new Map<string, any>()
       for (const sale of attributed) { const key = sale.referral?.ad_id ?? 'unattributed'; const current = byCampaign.get(key) ?? { ad_id: key === 'unattributed' ? null : key, ad_title: sale.referral?.ad_title ?? null, sales: 0, amount: 0 }; current.sales += 1; current.amount += Number(sale.opportunity.amount ?? 0) || 0; byCampaign.set(key, current) }
-      const result = { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo }, totals: { won_sales: won.length, attributed_sales: attributed.filter(sale => sale.referral?.ad_id).length, unattributed_sales: attributed.filter(sale => !sale.referral?.ad_id).length, amount: won.reduce((sum, row) => sum + (Number(row.amount ?? 0) || 0), 0) }, by_campaign: [...byCampaign.values()], sales: attributed.slice(0, 500) }
+      const result = { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo }, totals: { won_sales: won.length, attributed_sales: attributed.filter(sale => sale.referral?.ad_id).length, unattributed_sales: attributed.filter(sale => !sale.referral?.ad_id).length, amount: won.reduce((sum, row) => sum + (Number(row.amount ?? 0) || 0), 0) }, by_campaign: [...byCampaign.values()], sales: attributed.slice(0, 100), truncated: attributed.length > 100 }
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'completed', label: `${won.length} ventas ganadas analizadas` })
       return result
     } catch (error) {
