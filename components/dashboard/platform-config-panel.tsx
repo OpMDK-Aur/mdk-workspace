@@ -444,8 +444,10 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [googleMatchResults, setGoogleMatchResults] = useState<Record<string, ClientMatchResult>>({})
   const [analyticsProperties, setAnalyticsProperties] = useState<Array<{ propertyId: string; propertyName: string; accountName: string }>>([])
   const [tagContainers, setTagContainers] = useState<Array<{ containerId: string; publicId: string; containerName: string; accountName: string }>>([])
-  const [analyticsSelection, setAnalyticsSelection] = useState<Record<string, string>>({})
-  const [tagSelection, setTagSelection] = useState<Record<string, string>>({})
+  const [analyticsSelection, setAnalyticsSelection] = useState<Record<string, string[]>>({})
+  const [tagSelection, setTagSelection] = useState<Record<string, string[]>>({})
+  const [analyticsSearch, setAnalyticsSearch] = useState('')
+  const [analyticsDropdown, setAnalyticsDropdown] = useState<string | null>(null)
   const [tagSearch, setTagSearch] = useState('')
   const [tagDropdown, setTagDropdown] = useState<string | null>(null)
   const [tagPage, setTagPage] = useState(1)
@@ -463,8 +465,8 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [crmClientDropdown, setCrmClientDropdown] = useState<string | null>(null)
 
   useEffect(() => {
-  setAnalyticsSelection(Object.fromEntries(clients.filter(client => client.analytics_property_id).map(client => [client.id, client.analytics_property_id!])))
-  setTagSelection(Object.fromEntries(clients.filter(client => client.tag_manager_container_id).map(client => [client.id, client.tag_manager_container_id!])))
+  setAnalyticsSelection(Object.fromEntries(clients.filter(client => client.analytics_property_id).map(client => [client.id, client.analytics_property_id!.split(',').map(id => id.trim()).filter(Boolean)])))
+  setTagSelection(Object.fromEntries(clients.filter(client => client.tag_manager_container_id).map(client => [client.id, client.tag_manager_container_id!.split(',').map(id => id.trim()).filter(Boolean)])))
   }, [clients])
 
   async function fetchCrmClients(page = 1, searchOverride = crmClientSearch) {
@@ -492,6 +494,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       const target = event.target as HTMLElement
       if (!target.closest('[data-crm-selector]')) setCrmClientDropdown(null)
       if (!target.closest('[data-gtm-selector]')) setTagDropdown(null)
+      if (!target.closest('[data-ga4-selector]')) setAnalyticsDropdown(null)
     }
     document.addEventListener('mousedown', handleOutsideClick)
     return () => document.removeEventListener('mousedown', handleOutsideClick)
@@ -711,8 +714,8 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       config.crmType.trim() || null,
       config.ghlLocationId.trim() || null,
       config.crmType === 'aurelia' ? null : config.ghlToken.trim() || null,
-      analyticsSelection[clientId] ?? configAnalyticsPropertyId(clientId),
-      tagSelection[clientId] ?? configTagManagerContainerId(clientId),
+      (analyticsSelection[clientId] ?? [configAnalyticsPropertyId(clientId)].filter(Boolean)).join(',') || null,
+      (tagSelection[clientId] ?? [configTagManagerContainerId(clientId)].filter(Boolean)).join(',') || null,
     )
     const crmResult = config.crmType === 'aurelia'
       ? await replaceClientCrmAccounts(clientId, crmAccountDrafts[clientId] ?? [config.ghlLocationId].filter(Boolean))
@@ -957,7 +960,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
           config.ghlLocationId !== (client.ghl_location_id ?? '') ||
           config.ghlToken !== (client.ghl_token ?? '') ||
           (crmAccountDrafts[client.id] ?? []).length > 0 ||
-          Boolean(analyticsSelection[client.id]) || Boolean(tagSelection[client.id])
+          (analyticsSelection[client.id]?.length ?? 0) > 0 || (tagSelection[client.id]?.length ?? 0) > 0
         const isConnected = Boolean(config.meta || config.google)
 
         const showAlert =
@@ -1072,25 +1075,29 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2 border-t border-border">
                 <div className="space-y-2">
                   <Label className="text-sm flex items-center gap-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded bg-orange-500 text-white text-[10px] font-bold">GA</span> Google Analytics 4</Label>
-                  <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={analyticsSelection[client.id] ?? ''} onChange={event => setAnalyticsSelection(prev => ({ ...prev, [client.id]: event.target.value }))}>
-                    <option value="">Seleccionar propiedad...</option>
-                    {analyticsProperties.map(property => <option key={property.propertyId} value={property.propertyId}>{property.propertyName} · {property.accountName} · {property.propertyId}</option>)}
-                  </select>
+                  <div className="relative" data-ga4-selector>
+                    <div className="flex flex-wrap gap-1 mb-1">
+                      {(analyticsSelection[client.id] ?? []).map(propertyId => <Badge key={propertyId} variant="secondary" className="gap-1">{analyticsProperties.find(property => property.propertyId === propertyId)?.propertyName ?? propertyId}<button type="button" onClick={() => setAnalyticsSelection(prev => ({ ...prev, [client.id]: (prev[client.id] ?? []).filter(id => id !== propertyId) }))} aria-label="Quitar propiedad GA4">×</button></Badge>)}
+                    </div>
+                    <Input className="h-9" placeholder="Buscar propiedad GA4..." value={analyticsDropdown === client.id ? analyticsSearch : ''} onFocus={() => setAnalyticsDropdown(client.id)} onChange={event => { setAnalyticsDropdown(client.id); setAnalyticsSearch(event.target.value) }} />
+                    {analyticsDropdown === client.id && <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">{analyticsProperties.filter(property => !(analyticsSelection[client.id] ?? []).includes(property.propertyId)).filter(property => `${property.propertyName} ${property.accountName} ${property.propertyId}`.toLocaleLowerCase().includes(analyticsSearch.toLocaleLowerCase())).map(property => <button key={property.propertyId} type="button" className="flex w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setAnalyticsSelection(prev => ({ ...prev, [client.id]: [...(prev[client.id] ?? []), property.propertyId] })); setAnalyticsSearch('') }}>{property.propertyName} · {property.accountName}</button>)}{analyticsProperties.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">No se encontraron propiedades</p>}</div>}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm flex items-center gap-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded bg-blue-600 text-white text-[10px] font-bold">TM</span> Google Tag Manager</Label>
                   <div className="relative" data-gtm-selector>
+                    <div className="flex flex-wrap gap-1 mb-1">{(tagSelection[client.id] ?? []).map(containerId => <Badge key={containerId} variant="secondary" className="gap-1">{tagContainers.find(container => container.containerId === containerId)?.containerName ?? containerId}<button type="button" onClick={() => setTagSelection(prev => ({ ...prev, [client.id]: (prev[client.id] ?? []).filter(id => id !== containerId) }))} aria-label="Quitar contenedor GTM">×</button></Badge>)}</div>
                     <Input
                       className="h-9"
                       placeholder="Buscar contenedor GTM..."
-                      value={tagDropdown === client.id ? tagSearch : (tagContainers.find(container => container.containerId === (tagSelection[client.id] ?? client.tag_manager_container_id))?.containerName ?? '')}
+                      value={tagDropdown === client.id ? tagSearch : ''}
                       onFocus={() => setTagDropdown(client.id)}
                       onChange={event => { setTagDropdown(client.id); setTagSearch(event.target.value) }}
                     />
                     {tagDropdown === client.id && (
                       <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
-                        {tagContainers.filter(container => `${container.containerName} ${container.publicId} ${container.accountName}`.toLocaleLowerCase().includes(tagSearch.toLocaleLowerCase())).slice(0, 50).map(container => (
-                          <button key={container.containerId} type="button" className="flex w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setTagSelection(prev => ({ ...prev, [client.id]: container.containerId })); setTagSearch(''); setTagDropdown(null) }}>
+                        {tagContainers.filter(container => !(tagSelection[client.id] ?? []).includes(container.containerId)).filter(container => `${container.containerName} ${container.publicId} ${container.accountName}`.toLocaleLowerCase().includes(tagSearch.toLocaleLowerCase())).slice(0, 50).map(container => (
+                          <button key={container.containerId} type="button" className="flex w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setTagSelection(prev => ({ ...prev, [client.id]: [...(prev[client.id] ?? []), container.containerId] })); setTagSearch(''); }}>
                             <span>{container.containerName} · {container.publicId || container.containerId} · {container.accountName}</span>
                           </button>
                         ))}
