@@ -483,6 +483,15 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   }
 
   useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (!target.closest('[data-crm-selector]')) setCrmClientDropdown(null)
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
+
+  useEffect(() => {
     const timeout = window.setTimeout(() => {
       const nextSearch = crmClientSearchInput.trim()
       setCrmClientSearch(nextSearch)
@@ -920,7 +929,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
           config.crmType !== (client.crm_type ?? '') ||
           config.ghlLocationId !== (client.ghl_location_id ?? '') ||
           config.ghlToken !== (client.ghl_token ?? '') ||
-          JSON.stringify(crmAccountDrafts[client.id] ?? []) !== JSON.stringify([]) ||
+          (crmAccountDrafts[client.id] ?? []).length > 0 ||
           Boolean(analyticsSelection[client.id]) || Boolean(tagSelection[client.id])
         const isConnected = Boolean(config.meta || config.google)
 
@@ -1101,7 +1110,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                 {config.crmType === 'aurelia' && (
                   <div className="space-y-1.5">
                       <Label className="text-xs text-muted-foreground">Cliente en Aurelia CRM</Label>
-                    <div className="relative flex flex-col gap-2">
+                    <div className="relative flex flex-col gap-2" data-crm-selector>
                       <div className="flex flex-wrap gap-2">
                         {(crmAccountDrafts[client.id] ?? [config.ghlLocationId].filter(Boolean)).filter(Boolean).map(accountId => {
                           const selectedClient = crmClients.find(item => item.id === accountId)
@@ -1149,7 +1158,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
               <div className="flex justify-end">
                 <Button
                   size="sm"
-                  onClick={() => handleSave(client.id)}
+                  onClick={() => { setCrmClientDropdown(null); handleSave(client.id) }}
                   disabled={saving[client.id] || !hasChanges}
                   className="h-8 gap-2"
                 >
