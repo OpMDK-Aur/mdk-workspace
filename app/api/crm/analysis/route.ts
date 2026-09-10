@@ -8,7 +8,7 @@ const messageColumns = 'id,created_at,client_id,contact_id,conversation_id,messa
 const contactColumns = 'id,created_at,client_id,name,email,phone'
 const opportunityColumns = 'id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency'
 const stageColumns = 'id,client_id,pipeline_id,name,description'
-const conversationColumns = 'id,client_id,contact_id,assigned_agent,assigned_user,importance,unread_count,sub_channel_id,pipeline_id,name,description,created_at,updated_at'
+const conversationColumns = 'id,client_id,contact_id,assigned_agent,assigned_user,importance,unread_count,sub_channel_id,assigned_team_id,created_at,updated_at'
 
 function isDate(value: string | null): value is string {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)))
@@ -27,17 +27,24 @@ export async function GET(request: NextRequest) {
   }
   if (dateFrom > dateTo) return NextResponse.json({ error: 'date_from no puede ser posterior a date_to' }, { status: 400 })
 
+  const rangeStart = Date.parse(`${dateFrom}T00:00:00.000Z`)
+  const rangeEnd = Date.parse(`${dateTo}T23:59:59.999Z`)
+  const maxRangeDays = 31
+  if ((rangeEnd - rangeStart) / 86_400_000 > maxRangeDays) {
+    return NextResponse.json({ error: `El período máximo por consulta es de ${maxRangeDays} días. Dividí el análisis en períodos más cortos.` }, { status: 400 })
+  }
+
   try {
     const crm = createCrmClient()
     const start = `${dateFrom}T00:00:00.000Z`
     const end = `${dateTo}T23:59:59.999Z`
 
     const [messagesResult, contactsResult, opportunitiesResult, stagesResult, conversationsResult] = await Promise.all([
-      crm.from('messages').select(messageColumns).eq('client_id', clientId).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end).not('metadata->referral', 'is', null).order('created_at', { ascending: true }).limit(2000),
-      crm.from('contacts').select(contactColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).order('created_at', { ascending: true }).limit(2000),
-      crm.from('opportunities').select(opportunityColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).order('created_at', { ascending: false }).limit(2000),
-      crm.from('pipeline_stages').select(stageColumns).eq('client_id', clientId).limit(500),
-      crm.from('conversations').select(conversationColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).order('created_at', { ascending: false }).limit(2000),
+      crm.from('messages').select(messageColumns).eq('client_id', clientId).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end).limit(500),
+      crm.from('contacts').select(contactColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).limit(500),
+      crm.from('opportunities').select(opportunityColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).limit(500),
+      crm.from('pipeline_stages').select(stageColumns).eq('client_id', clientId).limit(200),
+      crm.from('conversations').select(conversationColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).limit(500),
     ])
 
     const failed = [messagesResult, contactsResult, opportunitiesResult, stagesResult, conversationsResult].find(result => result.error)
@@ -83,6 +90,8 @@ export async function GET(request: NextRequest) {
     }, { headers: { 'Cache-Control': 'private, max-age=60' } })
   } catch (error) {
     console.error('[CRM analysis] Error consultando Aurelia CRM:', error)
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo consultar Aurelia CRM' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'No se pudo consultar Aurelia CRM'
+    const isTimeout = /statement timeout|canceling statement|timeout/i.test(message)
+    return NextResponse.json({ error: isTimeout ? 'El período o volumen solicitado es demasiado grande para la base CRM. Consultá un rango de hasta 31 días.' : message }, { status: isTimeout ? 504 : 500 })
   }
 }
