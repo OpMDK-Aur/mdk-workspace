@@ -448,6 +448,9 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [tagSelection, setTagSelection] = useState<Record<string, string>>({})
   const [tagSearch, setTagSearch] = useState('')
   const [tagDropdown, setTagDropdown] = useState<string | null>(null)
+  const [tagPage, setTagPage] = useState(1)
+  const [tagHasMore, setTagHasMore] = useState(false)
+  const [tagLoading, setTagLoading] = useState(false)
   const [googleResourcesError, setGoogleResourcesError] = useState<string | null>(null)
   const [tagManagerError, setTagManagerError] = useState<string | null>(null)
   const [crmClients, setCrmClients] = useState<CrmClient[]>([])
@@ -504,6 +507,22 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     return () => window.clearTimeout(timeout)
   }, [crmClientSearchInput])
 
+  async function fetchTagContainers(page = 1) {
+    setTagLoading(true)
+    try {
+      const response = await fetch(`/api/google/tag-manager/accounts?page=${page}`, { cache: 'no-store' })
+      const data = await response.json()
+      if (!response.ok || data.error) throw new Error(data.error || 'No se pudieron cargar los contenedores de Tag Manager')
+      setTagContainers(previous => page === 1 ? (data.accounts ?? []) : [...previous, ...(data.accounts ?? [])])
+      setTagPage(data.page ?? page)
+      setTagHasMore(Boolean(data.hasMore))
+    } catch (error) {
+      setTagManagerError(error instanceof Error ? error.message : 'No se pudieron cargar los contenedores de Tag Manager')
+    } finally {
+      setTagLoading(false)
+    }
+  }
+
   useEffect(() => {
   fetchCrmClients()
   fetch('/api/google/analytics/accounts')
@@ -514,13 +533,8 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       })
       .catch(error => setGoogleResourcesError(error instanceof Error ? error.message : 'No se pudieron cargar las propiedades de Analytics'))
 
-    fetch('/api/google/tag-manager/accounts')
-      .then(response => response.json())
-      .then(data => {
-        if (data.error) throw new Error(data.error)
-        setTagContainers(data.accounts ?? [])
-      })
-      .catch(error => setTagManagerError(error instanceof Error ? error.message : 'No se pudieron cargar los contenedores de Tag Manager'))
+    fetchTagContainers(1)
+
   }, [])
 
   // configs: meta = single ID string, google = comma-separated IDs string, crm fields
@@ -1070,10 +1084,9 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                             <span>{container.containerName} · {container.publicId || container.containerId} · {container.accountName}</span>
                           </button>
                         ))}
-                        {tagContainers.filter(container => `${container.containerName} ${container.publicId} ${container.accountName}`.toLocaleLowerCase().includes(tagSearch.toLocaleLowerCase())).length > 50 && (
-                          <p className="px-3 py-2 text-xs text-muted-foreground">Refiná la búsqueda para ver más resultados</p>
-                        )}
-                        {tagContainers.filter(container => `${container.containerName} ${container.publicId} ${container.accountName}`.toLocaleLowerCase().includes(tagSearch.toLocaleLowerCase())).length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">No se encontraron contenedores</p>}
+                        {tagLoading && <p className="px-3 py-2 text-xs text-muted-foreground">Cargando contenedores...</p>}
+                        {!tagLoading && tagHasMore && <button type="button" className="w-full rounded-sm px-3 py-2 text-left text-sm font-medium text-primary hover:bg-accent" onClick={() => fetchTagContainers(tagPage + 1)}>Ver más</button>}
+                        {!tagLoading && tagContainers.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">{tagManagerError || 'No se encontraron contenedores'}</p>}
                       </div>
                     )}
                   </div>
