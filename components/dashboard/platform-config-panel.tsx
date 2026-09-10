@@ -446,6 +446,11 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [tagContainers, setTagContainers] = useState<Array<{ containerId: string; publicId: string; containerName: string; accountName: string }>>([])
   const [analyticsSelection, setAnalyticsSelection] = useState<Record<string, string>>({})
   const [tagSelection, setTagSelection] = useState<Record<string, string>>({})
+  const [tagSearch, setTagSearch] = useState('')
+  const [tagDropdown, setTagDropdown] = useState<string | null>(null)
+  const [tagPage, setTagPage] = useState(1)
+  const [tagHasMore, setTagHasMore] = useState(false)
+  const [tagLoading, setTagLoading] = useState(false)
   const [googleResourcesError, setGoogleResourcesError] = useState<string | null>(null)
   const [tagManagerError, setTagManagerError] = useState<string | null>(null)
   const [crmClients, setCrmClients] = useState<CrmClient[]>([])
@@ -483,6 +488,16 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   }
 
   useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (!target.closest('[data-crm-selector]')) setCrmClientDropdown(null)
+      if (!target.closest('[data-gtm-selector]')) setTagDropdown(null)
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
+
+  useEffect(() => {
     const timeout = window.setTimeout(() => {
       const nextSearch = crmClientSearchInput.trim()
       setCrmClientSearch(nextSearch)
@@ -491,6 +506,22 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     }, 300)
     return () => window.clearTimeout(timeout)
   }, [crmClientSearchInput])
+
+  async function fetchTagContainers(page = 1) {
+    setTagLoading(true)
+    try {
+      const response = await fetch(`/api/google/tag-manager/accounts?page=${page}`, { cache: 'no-store' })
+      const data = await response.json()
+      if (!response.ok || data.error) throw new Error(data.error || 'No se pudieron cargar los contenedores de Tag Manager')
+      setTagContainers(previous => page === 1 ? (data.accounts ?? []) : [...previous, ...(data.accounts ?? [])])
+      setTagPage(data.page ?? page)
+      setTagHasMore(Boolean(data.hasMore))
+    } catch (error) {
+      setTagManagerError(error instanceof Error ? error.message : 'No se pudieron cargar los contenedores de Tag Manager')
+    } finally {
+      setTagLoading(false)
+    }
+  }
 
   useEffect(() => {
   fetchCrmClients()
@@ -502,13 +533,8 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       })
       .catch(error => setGoogleResourcesError(error instanceof Error ? error.message : 'No se pudieron cargar las propiedades de Analytics'))
 
-    fetch('/api/google/tag-manager/accounts')
-      .then(response => response.json())
-      .then(data => {
-        if (data.error) throw new Error(data.error)
-        setTagContainers(data.accounts ?? [])
-      })
-      .catch(error => setTagManagerError(error instanceof Error ? error.message : 'No se pudieron cargar los contenedores de Tag Manager'))
+    fetchTagContainers(1)
+
   }, [])
 
   // configs: meta = single ID string, google = comma-separated IDs string, crm fields
@@ -920,7 +946,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
           config.crmType !== (client.crm_type ?? '') ||
           config.ghlLocationId !== (client.ghl_location_id ?? '') ||
           config.ghlToken !== (client.ghl_token ?? '') ||
-          JSON.stringify(crmAccountDrafts[client.id] ?? []) !== JSON.stringify([]) ||
+          (crmAccountDrafts[client.id] ?? []).length > 0 ||
           Boolean(analyticsSelection[client.id]) || Boolean(tagSelection[client.id])
         const isConnected = Boolean(config.meta || config.google)
 
@@ -1043,10 +1069,27 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm flex items-center gap-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded bg-blue-600 text-white text-[10px] font-bold">TM</span> Google Tag Manager</Label>
-                  <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={tagSelection[client.id] ?? ''} onChange={event => setTagSelection(prev => ({ ...prev, [client.id]: event.target.value }))}>
-                    <option value="">Seleccionar contenedor...</option>
-                    {tagContainers.map(container => <option key={container.containerId} value={container.containerId}>{container.containerName} · {container.publicId || container.containerId} · {container.accountName}</option>)}
-                  </select>
+                  <div className="relative" data-gtm-selector>
+                    <Input
+                      className="h-9"
+                      placeholder="Buscar contenedor GTM..."
+                      value={tagDropdown === client.id ? tagSearch : (tagContainers.find(container => container.containerId === (tagSelection[client.id] ?? client.tag_manager_container_id))?.containerName ?? '')}
+                      onFocus={() => setTagDropdown(client.id)}
+                      onChange={event => { setTagDropdown(client.id); setTagSearch(event.target.value) }}
+                    />
+                    {tagDropdown === client.id && (
+                      <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
+                        {tagContainers.filter(container => `${container.containerName} ${container.publicId} ${container.accountName}`.toLocaleLowerCase().includes(tagSearch.toLocaleLowerCase())).slice(0, 50).map(container => (
+                          <button key={container.containerId} type="button" className="flex w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setTagSelection(prev => ({ ...prev, [client.id]: container.containerId })); setTagSearch(''); setTagDropdown(null) }}>
+                            <span>{container.containerName} · {container.publicId || container.containerId} · {container.accountName}</span>
+                          </button>
+                        ))}
+                        {tagLoading && <p className="px-3 py-2 text-xs text-muted-foreground">Cargando contenedores...</p>}
+                        {!tagLoading && tagHasMore && <button type="button" className="w-full rounded-sm px-3 py-2 text-left text-sm font-medium text-primary hover:bg-accent" onClick={() => fetchTagContainers(tagPage + 1)}>Ver más</button>}
+                        {!tagLoading && tagContainers.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">{tagManagerError || 'No se encontraron contenedores'}</p>}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1101,7 +1144,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                 {config.crmType === 'aurelia' && (
                   <div className="space-y-1.5">
                       <Label className="text-xs text-muted-foreground">Cliente en Aurelia CRM</Label>
-                    <div className="relative flex flex-col gap-2">
+                    <div className="relative flex flex-col gap-2" data-crm-selector>
                       <div className="flex flex-wrap gap-2">
                         {(crmAccountDrafts[client.id] ?? [config.ghlLocationId].filter(Boolean)).filter(Boolean).map(accountId => {
                           const selectedClient = crmClients.find(item => item.id === accountId)
@@ -1149,7 +1192,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
               <div className="flex justify-end">
                 <Button
                   size="sm"
-                  onClick={() => handleSave(client.id)}
+                  onClick={() => { setCrmClientDropdown(null); setTagDropdown(null); handleSave(client.id) }}
                   disabled={saving[client.id] || !hasChanges}
                   className="h-8 gap-2"
                 >
