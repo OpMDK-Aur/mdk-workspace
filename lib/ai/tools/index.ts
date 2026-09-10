@@ -636,12 +636,14 @@ const crmOpportunities: ToolDefinition = {
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     const crm = createCrmClient()
-    const start = `${input.dateFrom}T00:00:00.000Z`
-    const end = `${input.dateTo}T23:59:59.999Z`
+    const start = new Date(`${input.dateFrom}T00:00:00-03:00`).toISOString()
+    const endExclusive = new Date(`${input.dateTo}T00:00:00-03:00`)
+    endExclusive.setUTCDate(endExclusive.getUTCDate() + 1)
+    const end = endExclusive.toISOString()
     const opportunities: any[] = []
     try {
       for (let offset = 0; offset < 10000; offset += 100) {
-        const { data, error } = await crm.from('opportunities').select('id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency').eq('client_id', context.clientId).gte('created_at', start).lte('created_at', end).range(offset, offset + 99)
+        const { data, error } = await crm.from('opportunities').select('id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency').eq('client_id', context.clientId).gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
         if (error) throw new Error(`opportunities: ${error.message}`)
         opportunities.push(...(data ?? []))
         if ((data ?? []).length < 100) break
@@ -659,7 +661,7 @@ const crmOpportunities: ToolDefinition = {
       const rows = opportunities.map(opportunity => ({ ...opportunity, contact: contactsById.get(opportunity.contact_id) ?? null, stage: stagesById.get(opportunity.stage_id) ?? null }))
       const byStatus = rows.reduce<Record<string, number>>((summary, row) => { const status = String(row.status ?? 'sin_estado'); summary[status] = (summary[status] ?? 0) + 1; return summary }, {})
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_opportunities', status: 'completed', label: `${rows.length} oportunidades consultadas` })
-      return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo }, totals: { opportunities: rows.length, by_status: byStatus, amount: rows.reduce((sum, row) => sum + (Number(row.amount ?? 0) || 0), 0) }, opportunities: rows.slice(0, 500), truncated: rows.length > 500 }
+      return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end }, totals: { opportunities: rows.length, by_status: byStatus, amount: rows.reduce((sum, row) => sum + (Number(row.amount ?? 0) || 0), 0) }, opportunities: rows.slice(0, 500), truncated: rows.length > 500 }
     } catch (error) {
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_opportunities', status: 'error', label: 'No se pudieron consultar las oportunidades' })
       return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar Aurelia CRM.' }
