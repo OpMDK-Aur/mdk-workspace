@@ -510,8 +510,12 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   async function fetchTagContainers(page = 1) {
     setTagLoading(true)
     try {
-      const response = await fetch(`/api/google/tag-manager/accounts?page=${page}`, { cache: 'no-store' })
+      const response = await fetch(`/api/google/tag-manager/accounts?page=${page}`, { cache: 'force-cache' })
       const data = await response.json()
+      if (response.status === 429) {
+        setTagManagerError(data.error || 'Google Tag Manager está temporalmente limitado por cuota')
+        return
+      }
       if (!response.ok || data.error) throw new Error(data.error || 'No se pudieron cargar los contenedores de Tag Manager')
       setTagContainers(previous => page === 1 ? (data.accounts ?? []) : [...previous, ...(data.accounts ?? [])])
       setTagPage(data.page ?? page)
