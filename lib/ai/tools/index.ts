@@ -629,6 +629,44 @@ const getPreviousInsights: ToolDefinition = {
   },
 }
 
+const crmOpportunities: ToolDefinition = {
+  key: 'crm_opportunities',
+  description: 'Lista todas las oportunidades del CRM externo de Aurelia dentro de un período, incluyendo estado, etapa, vendedor, contacto y monto.',
+  inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
+  async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const crm = createCrmClient()
+    const start = `${input.dateFrom}T00:00:00.000Z`
+    const end = `${input.dateTo}T23:59:59.999Z`
+    const opportunities: any[] = []
+    try {
+      for (let offset = 0; offset < 10000; offset += 100) {
+        const { data, error } = await crm.from('opportunities').select('id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency').eq('client_id', context.clientId).gte('created_at', start).lte('created_at', end).range(offset, offset + 99)
+        if (error) throw new Error(`opportunities: ${error.message}`)
+        opportunities.push(...(data ?? []))
+        if ((data ?? []).length < 100) break
+      }
+      const contactIds = [...new Set(opportunities.map(row => row.contact_id).filter(Boolean))]
+      const pipelineIds = [...new Set(opportunities.map(row => row.pipeline_id).filter(Boolean))]
+      const [contactsResult, stagesResult] = await Promise.all([
+        contactIds.length ? crm.from('contacts').select('id,name,email,phone').eq('client_id', context.clientId).in('id', contactIds) : Promise.resolve({ data: [], error: null }),
+        pipelineIds.length ? crm.from('pipeline_stages').select('id,pipeline_id,name,description').eq('client_id', context.clientId).in('pipeline_id', pipelineIds) : Promise.resolve({ data: [], error: null }),
+      ])
+      if (contactsResult.error) throw new Error(`contacts: ${contactsResult.error.message}`)
+      if (stagesResult.error) throw new Error(`pipeline_stages: ${stagesResult.error.message}`)
+      const contactsById = new Map((contactsResult.data ?? []).map(row => [row.id, row]))
+      const stagesById = new Map((stagesResult.data ?? []).map(row => [row.id, row]))
+      const rows = opportunities.map(opportunity => ({ ...opportunity, contact: contactsById.get(opportunity.contact_id) ?? null, stage: stagesById.get(opportunity.stage_id) ?? null }))
+      const byStatus = rows.reduce<Record<string, number>>((summary, row) => { const status = String(row.status ?? 'sin_estado'); summary[status] = (summary[status] ?? 0) + 1; return summary }, {})
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_opportunities', status: 'completed', label: `${rows.length} oportunidades consultadas` })
+      return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo }, totals: { opportunities: rows.length, by_status: byStatus, amount: rows.reduce((sum, row) => sum + (Number(row.amount ?? 0) || 0), 0) }, opportunities: rows.slice(0, 500), truncated: rows.length > 500 }
+    } catch (error) {
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_opportunities', status: 'error', label: 'No se pudieron consultar las oportunidades' })
+      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar Aurelia CRM.' }
+    }
+  },
+}
+
 const crmSalesAttribution: ToolDefinition = {
   key: 'crm_sales_attribution',
   description: 'Relaciona oportunidades ganadas del CRM externo de Aurelia con contactos, mensajes inbound con referral/source_id y conversaciones asignadas. Usala para responder ventas por campaña o anuncio.',
@@ -688,6 +726,7 @@ const crmSalesAttribution: ToolDefinition = {
 }
 
 const allTools: ToolDefinition[] = [
+  crmOpportunities,
   crmSalesAttribution,
   getAccountContext,
   getCrmContext,
