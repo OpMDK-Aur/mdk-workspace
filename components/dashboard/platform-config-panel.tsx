@@ -446,6 +446,8 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [tagContainers, setTagContainers] = useState<Array<{ containerId: string; publicId: string; containerName: string; accountName: string }>>([])
   const [analyticsSelection, setAnalyticsSelection] = useState<Record<string, string>>({})
   const [tagSelection, setTagSelection] = useState<Record<string, string>>({})
+  const [tagSearch, setTagSearch] = useState('')
+  const [tagDropdown, setTagDropdown] = useState<string | null>(null)
   const [googleResourcesError, setGoogleResourcesError] = useState<string | null>(null)
   const [tagManagerError, setTagManagerError] = useState<string | null>(null)
   const [crmClients, setCrmClients] = useState<CrmClient[]>([])
@@ -486,6 +488,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     const handleOutsideClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement
       if (!target.closest('[data-crm-selector]')) setCrmClientDropdown(null)
+      if (!target.closest('[data-gtm-selector]')) setTagDropdown(null)
     }
     document.addEventListener('mousedown', handleOutsideClick)
     return () => document.removeEventListener('mousedown', handleOutsideClick)
@@ -1052,10 +1055,28 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm flex items-center gap-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded bg-blue-600 text-white text-[10px] font-bold">TM</span> Google Tag Manager</Label>
-                  <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={tagSelection[client.id] ?? ''} onChange={event => setTagSelection(prev => ({ ...prev, [client.id]: event.target.value }))}>
-                    <option value="">Seleccionar contenedor...</option>
-                    {tagContainers.map(container => <option key={container.containerId} value={container.containerId}>{container.containerName} · {container.publicId || container.containerId} · {container.accountName}</option>)}
-                  </select>
+                  <div className="relative" data-gtm-selector>
+                    <Input
+                      className="h-9"
+                      placeholder="Buscar contenedor GTM..."
+                      value={tagDropdown === client.id ? tagSearch : (tagContainers.find(container => container.containerId === (tagSelection[client.id] ?? client.tag_manager_container_id))?.containerName ?? '')}
+                      onFocus={() => setTagDropdown(client.id)}
+                      onChange={event => { setTagDropdown(client.id); setTagSearch(event.target.value) }}
+                    />
+                    {tagDropdown === client.id && (
+                      <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
+                        {tagContainers.filter(container => `${container.containerName} ${container.publicId} ${container.accountName}`.toLocaleLowerCase().includes(tagSearch.toLocaleLowerCase())).slice(0, 50).map(container => (
+                          <button key={container.containerId} type="button" className="flex w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setTagSelection(prev => ({ ...prev, [client.id]: container.containerId })); setTagSearch(''); setTagDropdown(null) }}>
+                            <span>{container.containerName} · {container.publicId || container.containerId} · {container.accountName}</span>
+                          </button>
+                        ))}
+                        {tagContainers.filter(container => `${container.containerName} ${container.publicId} ${container.accountName}`.toLocaleLowerCase().includes(tagSearch.toLocaleLowerCase())).length > 50 && (
+                          <p className="px-3 py-2 text-xs text-muted-foreground">Refiná la búsqueda para ver más resultados</p>
+                        )}
+                        {tagContainers.filter(container => `${container.containerName} ${container.publicId} ${container.accountName}`.toLocaleLowerCase().includes(tagSearch.toLocaleLowerCase())).length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">No se encontraron contenedores</p>}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1158,7 +1179,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
               <div className="flex justify-end">
                 <Button
                   size="sm"
-                  onClick={() => { setCrmClientDropdown(null); handleSave(client.id) }}
+                  onClick={() => { setCrmClientDropdown(null); setTagDropdown(null); handleSave(client.id) }}
                   disabled={saving[client.id] || !hasChanges}
                   className="h-8 gap-2"
                 >
