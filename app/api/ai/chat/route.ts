@@ -408,6 +408,7 @@ export async function POST(request: Request) {
     const resultStream = createUIMessageStream({
       execute: async ({ writer }) => {
         writeActivity = (event) => writer.write({ type: 'data-activity', id: 'activity-status', data: event, transient: true })
+        writeActivity?.({ eventId: crypto.randomUUID(), agentSlug: 'supervisor', status: 'running', label: 'Preparando respuesta...', timestamp: new Date().toISOString() })
         const supervisorTimeout = setTimeout(() => writeActivity?.({ eventId: crypto.randomUUID(), agentSlug: 'supervisor', status: 'error', label: 'La respuesta tardó demasiado. Probá nuevamente.', timestamp: new Date().toISOString() }), SUPERVISOR_TIMEOUT_MS)
         let result
         try {
@@ -426,7 +427,6 @@ export async function POST(request: Request) {
         } finally {
           clearTimeout(supervisorTimeout)
         }
-        writeActivity?.({ eventId: crypto.randomUUID(), agentSlug: 'supervisor', status: 'running', label: 'Preparando respuesta...', timestamp: new Date().toISOString() })
         writer.merge(result.toUIMessageStream())
       },
       onError: (error) => {
