@@ -14,6 +14,24 @@ function isDate(value: string | null): value is string {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)))
 }
 
+const BATCH_SIZE = 100
+const MAX_ROWS_PER_TABLE = 10000
+
+async function fetchInBatches<T>(
+  queryFactory: (from: number, to: number) => any,
+  tableName: string,
+): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; from < MAX_ROWS_PER_TABLE; from += BATCH_SIZE) {
+    const { data, error } = await queryFactory(from, from + BATCH_SIZE - 1)
+    if (error) throw new Error(`${tableName}: ${error.message}`)
+    const batch = (data ?? []) as T[]
+    rows.push(...batch)
+    if (batch.length < BATCH_SIZE) return rows
+  }
+  return rows
+}
+
 export async function GET(request: NextRequest) {
   const appSupabase = await createClient()
   const { data: { user } } = await appSupabase.auth.getUser()
@@ -29,32 +47,18 @@ export async function GET(request: NextRequest) {
 
   const rangeStart = Date.parse(`${dateFrom}T00:00:00.000Z`)
   const rangeEnd = Date.parse(`${dateTo}T23:59:59.999Z`)
-  const maxRangeDays = 31
-  if ((rangeEnd - rangeStart) / 86_400_000 > maxRangeDays) {
-    return NextResponse.json({ error: `El período máximo por consulta es de ${maxRangeDays} días. Dividí el análisis en períodos más cortos.` }, { status: 400 })
-  }
-
   try {
     const crm = createCrmClient()
     const start = `${dateFrom}T00:00:00.000Z`
     const end = `${dateTo}T23:59:59.999Z`
 
-    const [messagesResult, contactsResult, opportunitiesResult, stagesResult, conversationsResult] = await Promise.all([
-      crm.from('messages').select(messageColumns).eq('client_id', clientId).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end).limit(500),
-      crm.from('contacts').select(contactColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).limit(500),
-      crm.from('opportunities').select(opportunityColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).limit(500),
-      crm.from('pipeline_stages').select(stageColumns).eq('client_id', clientId).limit(200),
-      crm.from('conversations').select(conversationColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).limit(500),
+    const [messages, contacts, opportunities, stages, conversations] = await Promise.all([
+      fetchInBatches<any>((from, to) => crm.from('messages').select(messageColumns).eq('client_id', clientId).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end).range(from, to), 'messages'),
+      fetchInBatches<any>((from, to) => crm.from('contacts').select(contactColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).range(from, to), 'contacts'),
+      fetchInBatches<any>((from, to) => crm.from('opportunities').select(opportunityColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).range(from, to), 'opportunities'),
+      fetchInBatches<any>((from, to) => crm.from('pipeline_stages').select(stageColumns).eq('client_id', clientId).range(from, to), 'pipeline_stages'),
+      fetchInBatches<any>((from, to) => crm.from('conversations').select(conversationColumns).eq('client_id', clientId).gte('created_at', start).lte('created_at', end).range(from, to), 'conversations'),
     ])
-
-    const failed = [messagesResult, contactsResult, opportunitiesResult, stagesResult, conversationsResult].find(result => result.error)
-    if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 502 })
-
-    const messages = messagesResult.data ?? []
-    const contacts = contactsResult.data ?? []
-    const opportunities = opportunitiesResult.data ?? []
-    const stages = stagesResult.data ?? []
-    const conversations = conversationsResult.data ?? []
     const stageById = new Map(stages.map(stage => [stage.id, stage]))
     const contactById = new Map(contacts.map(contact => [contact.id, contact]))
     const conversationById = new Map(conversations.map(conversation => [conversation.id, conversation]))
