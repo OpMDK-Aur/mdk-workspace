@@ -721,6 +721,58 @@ const crmContacts: ToolDefinition = {
   },
 }
 
+const crmContactAds: ToolDefinition = {
+  key: 'crm_contact_ads',
+  description: 'Cuenta los contactos creados en Aurelia CRM durante un período que tienen al menos un mensaje inbound con referral de anuncio Meta: referred AD ID, ad_id o source_id dentro de metadata/referral. Usala para preguntas sobre contactos de pauta, anuncios o campañas, no ventas ganadas.',
+  inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
+  async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const crmAccountIds = await resolveCrmAccountIds(context.clientId)
+    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de Aurelia CRM vinculada.' }
+    const crm = createCrmClient()
+    const start = new Date(`${input.dateFrom}T00:00:00-03:00`).toISOString()
+    const endExclusive = new Date(`${input.dateTo}T00:00:00-03:00`)
+    endExclusive.setUTCDate(endExclusive.getUTCDate() + 1)
+    const end = endExclusive.toISOString()
+    const getAdId = (message: any) => {
+      const metadata = message.metadata ?? message.referral_metadata ?? {}
+      const referral = metadata.referral ?? metadata
+      return referral.referred_ad_id ?? referral.referredAdId ?? referral.ad_id ?? referral.adId ?? referral.source_id ?? referral.sourceId ?? null
+    }
+    try {
+      const contacts: any[] = []
+      for (let offset = 0; offset < 10000; offset += 100) {
+        const { data, error } = await crm.from('contacts').select('id,created_at,client_id,name,email,phone').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
+        if (error) throw new Error(`contacts: ${error.message}`)
+        contacts.push(...(data ?? []))
+        if ((data ?? []).length < 100) break
+      }
+      const contactIds = contacts.map(contact => contact.id).filter(Boolean)
+      const messages: any[] = []
+      for (let offset = 0; contactIds.length > 0 && offset < 10000; offset += 100) {
+        const { data, error } = await crm.from('messages').select('id,created_at,client_id,contact_id,conversation_id,metadata,source').in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound').gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
+        if (error) throw new Error(`messages: ${error.message}`)
+        messages.push(...(data ?? []))
+        if ((data ?? []).length < 100) break
+      }
+      const referralsByContact = new Map<string, any[]>()
+      for (const message of messages) {
+        const adId = getAdId(message)
+        if (!adId || !message.contact_id) continue
+        const rows = referralsByContact.get(message.contact_id) ?? []
+        rows.push({ ad_id: String(adId), message_id: message.id, created_at: message.created_at })
+        referralsByContact.set(message.contact_id, rows)
+      }
+      const attributedContacts = contacts.filter(contact => referralsByContact.has(contact.id)).map(contact => ({ ...contact, referrals: referralsByContact.get(contact.id) }))
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contact_ads', status: 'completed', label: `${attributedContacts.length} contactos de pauta` })
+      return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end }, totals: { contacts_created: contacts.length, contacts_with_ad_referral: attributedContacts.length, messages_scanned: messages.length }, contacts: attributedContacts.slice(0, 500), truncated: attributedContacts.length > 500 }
+    } catch (error) {
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contact_ads', status: 'error', label: 'No se pudo analizar la pauta de contactos' })
+      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar la atribución de contactos en Aurelia CRM.' }
+    }
+  },
+}
+
 const crmSalesAttribution: ToolDefinition = {
   key: 'crm_sales_attribution',
   description: 'Relaciona oportunidades ganadas del CRM externo de Aurelia con contactos, mensajes inbound con referral/source_id y conversaciones asignadas. Usala para responder ventas por campaña o anuncio. NO usar para contar el total de contactos creados: para eso usar crm_contacts.',
@@ -784,6 +836,7 @@ const crmSalesAttribution: ToolDefinition = {
 const allTools: ToolDefinition[] = [
   crmOpportunities,
   crmContacts,
+  crmContactAds,
   crmSalesAttribution,
   getAccountContext,
   getCrmContext,
