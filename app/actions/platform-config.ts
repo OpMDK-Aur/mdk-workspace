@@ -59,6 +59,26 @@ export async function updateClientPlatformIds(
   return { success: true }
 }
 
+export async function saveClientAureliaAccount(clientId: string, accountId: string | null) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'No autorizado' }
+  const { data: colaborador } = await supabase.from('colaboradores').select('rol_id').eq('id', user.id).single()
+  if (!colaborador) return { error: 'Sin permiso' }
+  const normalized = accountId?.trim() || null
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('clientes')
+    .update({ crm_location_id: normalized, ghl_location_id: normalized, updated_at: new Date().toISOString() })
+    .eq('id', clientId)
+    .select('id, crm_location_id, ghl_location_id')
+    .single()
+  if (error) return { error: error.message }
+  if (!data) return { error: 'No se encontró el cliente para guardar el ID de Aurelia.' }
+  revalidatePath('/dashboard/platform')
+  return { success: true, client: data }
+}
+
 export async function getClientCrmAccounts(clientIds: string[]) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
