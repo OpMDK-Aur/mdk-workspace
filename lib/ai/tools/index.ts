@@ -669,9 +669,37 @@ const crmOpportunities: ToolDefinition = {
   },
 }
 
+const crmContacts: ToolDefinition = {
+  key: 'crm_contacts',
+  description: 'Lista y cuenta todos los contactos creados en el CRM externo de Aurelia dentro de un período, sin filtrar por ventas u oportunidades. Usala para responder cuántos contactos se crearon o registraron en un rango de fechas.',
+  inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
+  async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const crm = createCrmClient()
+    const start = new Date(`${input.dateFrom}T00:00:00-03:00`).toISOString()
+    const endExclusive = new Date(`${input.dateTo}T00:00:00-03:00`)
+    endExclusive.setUTCDate(endExclusive.getUTCDate() + 1)
+    const end = endExclusive.toISOString()
+    const contacts: any[] = []
+    try {
+      for (let offset = 0; offset < 10000; offset += 100) {
+        const { data, error } = await crm.from('contacts').select('id,created_at,client_id,name,email,phone').eq('client_id', context.clientId).gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
+        if (error) throw new Error(`contacts: ${error.message}`)
+        contacts.push(...(data ?? []))
+        if ((data ?? []).length < 100) break
+      }
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contacts', status: 'completed', label: `${contacts.length} contactos consultados` })
+      return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end }, totals: { contacts: contacts.length }, contacts: contacts.slice(0, 500), truncated: contacts.length > 500 }
+    } catch (error) {
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contacts', status: 'error', label: 'No se pudieron consultar los contactos' })
+      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar Aurelia CRM.' }
+    }
+  },
+}
+
 const crmSalesAttribution: ToolDefinition = {
   key: 'crm_sales_attribution',
-  description: 'Relaciona oportunidades ganadas del CRM externo de Aurelia con contactos, mensajes inbound con referral/source_id y conversaciones asignadas. Usala para responder ventas por campaña o anuncio.',
+  description: 'Relaciona oportunidades ganadas del CRM externo de Aurelia con contactos, mensajes inbound con referral/source_id y conversaciones asignadas. Usala para responder ventas por campaña o anuncio. NO usar para contar el total de contactos creados: para eso usar crm_contacts.',
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
@@ -729,6 +757,7 @@ const crmSalesAttribution: ToolDefinition = {
 
 const allTools: ToolDefinition[] = [
   crmOpportunities,
+  crmContacts,
   crmSalesAttribution,
   getAccountContext,
   getCrmContext,
