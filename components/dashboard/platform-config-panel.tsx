@@ -706,13 +706,14 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     setSaved(prev => ({ ...prev, [clientId]: false }))
 
     const config = configs[clientId]
+    const selectedCrmAccountId = crmAccountDrafts[clientId]?.[0]?.trim() || config.ghlLocationId.trim()
   try {
     const result = await updateClientPlatformIds(
       clientId,
       config.meta.trim() || null,
       config.google.trim() || null,
       config.crmType.trim() || null,
-      ((config.crmType ?? '').toLowerCase().includes('aurelia') ? (crmAccountDrafts[clientId]?.[0] ?? config.ghlLocationId).trim() : config.ghlLocationId.trim()) || null,
+      selectedCrmAccountId || null,
       config.crmType === 'aurelia' ? null : config.ghlToken.trim() || null,
       (analyticsSelection[clientId] ?? [configAnalyticsPropertyId(clientId)].filter(Boolean)).join(',') || null,
       (tagSelection[clientId] ?? [configTagManagerContainerId(clientId)].filter(Boolean)).join(',') || null,

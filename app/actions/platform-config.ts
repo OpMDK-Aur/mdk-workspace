@@ -35,9 +35,9 @@ export async function updateClientPlatformIds(
   if (googleAdsCustomerId !== undefined) updates.google_ads_customer_id = googleAdsCustomerId || null
   if (crmType !== undefined) updates.crm_type = crmType || null
   if (ghlLocationId !== undefined) {
-    const normalizedCrmAccountId = ghlLocationId?.trim() || null
-    updates.ghl_location_id = normalizedCrmAccountId
+    const normalizedCrmAccountId = typeof ghlLocationId === 'string' ? ghlLocationId.trim() || null : null
     updates.crm_location_id = normalizedCrmAccountId
+    updates.ghl_location_id = normalizedCrmAccountId
   }
   if (ghlToken !== undefined) updates.ghl_token = ghlToken || null
   if (analyticsPropertyId !== undefined) updates.analytics_property_id = analyticsPropertyId || null
