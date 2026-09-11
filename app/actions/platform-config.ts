@@ -34,7 +34,11 @@ export async function updateClientPlatformIds(
   if (metaAdsAccountId !== undefined) updates.meta_ads_account_id = metaAdsAccountId || null
   if (googleAdsCustomerId !== undefined) updates.google_ads_customer_id = googleAdsCustomerId || null
   if (crmType !== undefined) updates.crm_type = crmType || null
-  if (ghlLocationId !== undefined) updates.ghl_location_id = ghlLocationId || null
+  if (ghlLocationId !== undefined) {
+    const normalizedCrmAccountId = ghlLocationId?.trim() || null
+    updates.ghl_location_id = normalizedCrmAccountId
+    if (crmType === 'aurelia') updates.crm_location_id = normalizedCrmAccountId
+  }
   if (ghlToken !== undefined) updates.ghl_token = ghlToken || null
   if (analyticsPropertyId !== undefined) updates.analytics_property_id = analyticsPropertyId || null
   if (tagManagerContainerId !== undefined) updates.tag_manager_container_id = tagManagerContainerId || null
