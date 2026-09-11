@@ -45,6 +45,7 @@ interface ClientItem {
   analytics_property_id: string | null
   tag_manager_container_id: string | null
   crm_type: string | null
+  crm_location_id?: string | null
   ghl_location_id: string | null
   ghl_token: string | null
   project_manager_id?: string | null
@@ -532,7 +533,16 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
 
   useEffect(() => {
     getClientCrmAccounts(clients.map(client => client.id)).then(result => {
-      if (!result.error) setCrmAccountDrafts(result.accounts)
+      if (result.error) return
+      setCrmAccountDrafts(prev => {
+        const merged: Record<string, string[]> = { ...prev }
+        for (const client of clients) {
+          const primaryId = client.crm_location_id ?? client.ghl_location_id
+          const extraIds = result.accounts[client.id] ?? []
+          merged[client.id] = [...new Set([primaryId, ...extraIds].filter(Boolean) as string[])]
+        }
+        return merged
+      })
     })
   }, [clients])
 
@@ -1171,7 +1181,11 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                           return (
                             <span key={accountId} className="inline-flex items-center gap-1 rounded-full border bg-muted px-3 py-1 text-xs">
                               {label}
-                              <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setCrmAccountDrafts(prev => ({ ...prev, [client.id]: (prev[client.id] ?? []).filter(id => id !== accountId) }))} aria-label={`Quitar ${label}`}>
+                              <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => {
+                    const nextIds = (crmAccountDrafts[client.id] ?? []).filter(id => id !== accountId)
+                    setCrmAccountDrafts(prev => ({ ...prev, [client.id]: nextIds }))
+                    updateField(client.id, 'ghlLocationId', nextIds[0] ?? '')
+                  }} aria-label={`Quitar ${label}`}>
                                 ×
                               </button>
                             </span>
@@ -1189,7 +1203,12 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                         <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
                           {crmClients.filter(crmClient => !(crmAccountDrafts[client.id] ?? [config.ghlLocationId].filter(Boolean)).includes(crmClient.id)).map(crmClient => {
                             const label = crmClient.name || crmClient.business_name || 'Cliente sin nombre'
-                            return <button key={crmClient.id} type="button" className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setCrmAccountDrafts(prev => ({ ...prev, [client.id]: [...(prev[client.id] ?? [config.ghlLocationId].filter(Boolean)), crmClient.id] })); setCrmClientSearchInput('') }}>{label}</button>
+                            return <button key={crmClient.id} type="button" className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => {
+                  const nextIds = [...(crmAccountDrafts[client.id] ?? [config.ghlLocationId].filter(Boolean)), crmClient.id]
+                  setCrmAccountDrafts(prev => ({ ...prev, [client.id]: nextIds }))
+                  updateField(client.id, 'ghlLocationId', nextIds[0] ?? '')
+                  setCrmClientSearchInput('')
+                }}>{label}</button>
                           })}
                           {crmClientsLoading && <p className="px-3 py-2 text-xs text-muted-foreground">Cargando clientes...</p>}
                           {!crmClientsLoading && crmClientsHasMore && <button type="button" className="w-full rounded-sm px-3 py-2 text-left text-sm font-medium text-primary hover:bg-accent" onClick={() => fetchCrmClients(crmClientsPage + 1)}>Ver más</button>}
