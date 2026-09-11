@@ -559,7 +559,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
           meta: c.meta_ads_account_id ?? '',
           google: c.google_ads_customer_id ?? '',
           crmType: c.crm_type ?? '',
-          ghlLocationId: c.ghl_location_id ?? '',
+          ghlLocationId: c.crm_location_id ?? c.ghl_location_id ?? '',
           ghlToken: c.ghl_token ?? '',
         },
       ])
@@ -712,7 +712,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       config.meta.trim() || null,
       config.google.trim() || null,
       config.crmType.trim() || null,
-      (config.crmType === 'aurelia' ? (crmAccountDrafts[clientId]?.[0] ?? config.ghlLocationId).trim() : config.ghlLocationId.trim()) || null,
+      ((config.crmType ?? '').toLowerCase().includes('aurelia') ? (crmAccountDrafts[clientId]?.[0] ?? config.ghlLocationId).trim() : config.ghlLocationId.trim()) || null,
       config.crmType === 'aurelia' ? null : config.ghlToken.trim() || null,
       (analyticsSelection[clientId] ?? [configAnalyticsPropertyId(clientId)].filter(Boolean)).join(',') || null,
       (tagSelection[clientId] ?? [configTagManagerContainerId(clientId)].filter(Boolean)).join(',') || null,

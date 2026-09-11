@@ -37,18 +37,22 @@ export async function updateClientPlatformIds(
   if (ghlLocationId !== undefined) {
     const normalizedCrmAccountId = ghlLocationId?.trim() || null
     updates.ghl_location_id = normalizedCrmAccountId
-    if (crmType === 'aurelia') updates.crm_location_id = normalizedCrmAccountId
+    updates.crm_location_id = normalizedCrmAccountId
   }
   if (ghlToken !== undefined) updates.ghl_token = ghlToken || null
   if (analyticsPropertyId !== undefined) updates.analytics_property_id = analyticsPropertyId || null
   if (tagManagerContainerId !== undefined) updates.tag_manager_container_id = tagManagerContainerId || null
 
-  const { error } = await supabase
+  const admin = createAdminClient()
+  const { data: updatedClient, error } = await admin
     .from('clientes')
     .update(updates)
     .eq('id', clientId)
+    .select('id, crm_type, crm_location_id, ghl_location_id')
+    .maybeSingle()
 
   if (error) return { error: error.message }
+  if (!updatedClient) return { error: 'No se actualizó el cliente: no se encontró el ID del cliente o la fila no es accesible.' }
 
   revalidatePath('/dashboard')
   revalidatePath('/dashboard/clients/config')
