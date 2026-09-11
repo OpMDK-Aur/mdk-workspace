@@ -9,8 +9,28 @@ import { contextFromEvents, mergeWorkingContext } from '@/lib/ai/conversation-co
 import { buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeIndustry, type MetricRow } from '@/lib/ai/client-memory'
 import { getBuenosAiresLastSevenDays, getGoogleAnalyticsReport, getGoogleAnalyticsSales } from '@/lib/google-analytics/service'
 import { createCrmClient } from '@/lib/supabase/crm'
+import { createClient as createAdminClient } from '@/lib/supabase/admin'
 
 const noInput = z.object({})
+
+/**
+ * El CRM externo de Aurelia identifica a cada cliente con su propio UUID de
+ * cuenta/location (columna `client_id` en sus tablas remotas), que NO es
+ * igual a nuestro `clientId` interno. Un mismo cliente interno puede tener
+ * además varias cuentas de Aurelia vinculadas (ver `client_crm_accounts`).
+ * Esta función resuelve el/los UUID(s) reales del CRM para poder filtrar
+ * correctamente las consultas remotas.
+ */
+async function resolveCrmAccountIds(clientId: string): Promise<string[]> {
+  const admin = createAdminClient()
+  const [{ data: clienteRow }, { data: extraAccounts }] = await Promise.all([
+    admin.from('clientes').select('crm_location_id, ghl_location_id').eq('id', clientId).maybeSingle(),
+    admin.from('client_crm_accounts').select('crm_account_id').eq('client_id', clientId).eq('crm_type', 'aurelia').eq('active', true),
+  ])
+  const primaryId = clienteRow?.crm_location_id ?? clienteRow?.ghl_location_id ?? null
+  const extraIds = (extraAccounts ?? []).map((row: { crm_account_id: string }) => row.crm_account_id)
+  return [...new Set([primaryId, ...extraIds].filter(Boolean) as string[])]
+}
 
 const CONTEXT_FIELD_LIMIT = 1200
 const CONTEXT_COMMENT_LIMIT = 1800
@@ -635,6 +655,8 @@ const crmOpportunities: ToolDefinition = {
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const crmAccountIds = await resolveCrmAccountIds(context.clientId)
+    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de Aurelia CRM vinculada.' }
     const crm = createCrmClient()
     const start = new Date(`${input.dateFrom}T00:00:00-03:00`).toISOString()
     const endExclusive = new Date(`${input.dateTo}T00:00:00-03:00`)
@@ -643,7 +665,7 @@ const crmOpportunities: ToolDefinition = {
     const opportunities: any[] = []
     try {
       for (let offset = 0; offset < 10000; offset += 100) {
-        const { data, error } = await crm.from('opportunities').select('id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency').eq('client_id', context.clientId).gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
+        const { data, error } = await crm.from('opportunities').select('id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
         if (error) throw new Error(`opportunities: ${error.message}`)
         opportunities.push(...(data ?? []))
         if ((data ?? []).length < 100) break
@@ -651,8 +673,8 @@ const crmOpportunities: ToolDefinition = {
       const contactIds = [...new Set(opportunities.map(row => row.contact_id).filter(Boolean))]
       const pipelineIds = [...new Set(opportunities.map(row => row.pipeline_id).filter(Boolean))]
       const [contactsResult, stagesResult] = await Promise.all([
-        contactIds.length ? crm.from('contacts').select('id,name,email,phone').eq('client_id', context.clientId).in('id', contactIds) : Promise.resolve({ data: [], error: null }),
-        pipelineIds.length ? crm.from('pipeline_stages').select('id,pipeline_id,name,description').eq('client_id', context.clientId).in('pipeline_id', pipelineIds) : Promise.resolve({ data: [], error: null }),
+        contactIds.length ? crm.from('contacts').select('id,name,email,phone').in('client_id', crmAccountIds).in('id', contactIds) : Promise.resolve({ data: [], error: null }),
+        pipelineIds.length ? crm.from('pipeline_stages').select('id,pipeline_id,name,description').in('client_id', crmAccountIds).in('pipeline_id', pipelineIds) : Promise.resolve({ data: [], error: null }),
       ])
       if (contactsResult.error) throw new Error(`contacts: ${contactsResult.error.message}`)
       if (stagesResult.error) throw new Error(`pipeline_stages: ${stagesResult.error.message}`)
@@ -675,6 +697,8 @@ const crmContacts: ToolDefinition = {
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const crmAccountIds = await resolveCrmAccountIds(context.clientId)
+    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de Aurelia CRM vinculada.' }
     const crm = createCrmClient()
     const start = new Date(`${input.dateFrom}T00:00:00-03:00`).toISOString()
     const endExclusive = new Date(`${input.dateTo}T00:00:00-03:00`)
@@ -683,7 +707,7 @@ const crmContacts: ToolDefinition = {
     const contacts: any[] = []
     try {
       for (let offset = 0; offset < 10000; offset += 100) {
-        const { data, error } = await crm.from('contacts').select('id,created_at,client_id,name,email,phone').eq('client_id', context.clientId).gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
+        const { data, error } = await crm.from('contacts').select('id,created_at,client_id,name,email,phone').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
         if (error) throw new Error(`contacts: ${error.message}`)
         contacts.push(...(data ?? []))
         if ((data ?? []).length < 100) break
@@ -703,6 +727,8 @@ const crmSalesAttribution: ToolDefinition = {
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const crmAccountIds = await resolveCrmAccountIds(context.clientId)
+    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de Aurelia CRM vinculada.' }
     const crm = createCrmClient()
     const start = `${input.dateFrom}T00:00:00.000Z`
     const end = `${input.dateTo}T23:59:59.999Z`
@@ -719,15 +745,15 @@ const crmSalesAttribution: ToolDefinition = {
     }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'running', label: 'Analizando ventas y atribución del CRM...' })
     try {
-      const opportunities = await batch('opportunities', 'id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency', query => query.eq('client_id', context.clientId).gte('created_at', start).lte('created_at', end), 5000)
+      const opportunities = await batch('opportunities', 'id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency', query => query.in('client_id', crmAccountIds).gte('created_at', start).lte('created_at', end), 5000)
       const contactIds = [...new Set(opportunities.map(row => row.contact_id).filter(Boolean))]
       const conversationIds = [...new Set(opportunities.map(row => row.conversation_id).filter(Boolean))]
       const pipelineIds = [...new Set(opportunities.map(row => row.pipeline_id).filter(Boolean))]
       const [contacts, messages, conversations, stages] = await Promise.all([
-        contactIds.length ? batch('contacts', 'id,created_at,client_id,name,email,phone', query => query.eq('client_id', context.clientId).in('id', contactIds)) : Promise.resolve([]),
-        contactIds.length ? batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.eq('client_id', context.clientId).in('contact_id', contactIds).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end)) : Promise.resolve([]),
-        conversationIds.length ? batch('conversations', 'id,client_id,contact_id,assigned_agent,assigned_user,importance,unread_count,sub_channel_id,assigned_team_id', query => query.eq('client_id', context.clientId).in('id', conversationIds)) : Promise.resolve([]),
-        pipelineIds.length ? batch('pipeline_stages', 'id,client_id,pipeline_id,name,description', query => query.eq('client_id', context.clientId).in('pipeline_id', pipelineIds)) : Promise.resolve([]),
+        contactIds.length ? batch('contacts', 'id,created_at,client_id,name,email,phone', query => query.in('client_id', crmAccountIds).in('id', contactIds)) : Promise.resolve([]),
+        contactIds.length ? batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end)) : Promise.resolve([]),
+        conversationIds.length ? batch('conversations', 'id,client_id,contact_id,assigned_agent,assigned_user,importance,unread_count,sub_channel_id,assigned_team_id', query => query.in('client_id', crmAccountIds).in('id', conversationIds)) : Promise.resolve([]),
+        pipelineIds.length ? batch('pipeline_stages', 'id,client_id,pipeline_id,name,description', query => query.in('client_id', crmAccountIds).in('pipeline_id', pipelineIds)) : Promise.resolve([]),
       ])
       const contactsById = new Map(contacts.map(row => [row.id, row]))
       const stagesById = new Map(stages.map(row => [row.id, row]))
