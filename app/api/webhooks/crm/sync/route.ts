@@ -96,6 +96,10 @@ export async function POST(request: Request) {
       .eq('active', true)
       .maybeSingle()
     internalClientId = accountMapping?.client_id ?? internalClientId
+    if (!internalClientId) {
+      const { data: legacyClient } = await supabase.from('clientes').select('id').eq('ghl_location_id', aureliaAccountId).maybeSingle()
+      internalClientId = legacyClient?.id ?? internalClientId
+    }
   }
   // Compatibilidad: algunos emisores ya envían directamente el UUID del cliente interno.
   if (!internalClientId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(aureliaAccountId ?? '')) {
