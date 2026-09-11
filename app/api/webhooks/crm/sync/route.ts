@@ -54,18 +54,30 @@ export async function POST(request: Request) {
   }
 
   const path = new URL(request.url).pathname
-  const expectedTable = path.endsWith('/contacts') ? 'contacts' : path.endsWith('/messages') ? 'messages' : null
+  const pathTable = path.endsWith('/contacts') ? 'contacts' : path.endsWith('/conversations') ? 'conversations' : path.endsWith('/messages') ? 'messages' : path.endsWith('/opportunities') ? 'opportunities' : null
   const eventName = String(payload.event ?? '').toLowerCase()
-  const inferredTable = eventName.startsWith('contact_') ? 'contacts' : eventName.startsWith('message_') ? 'messages' : null
-  const table = (payload.table ?? expectedTable ?? inferredTable) as CrmTable
+  const rawTable = String(payload.table ?? '')
+  const tableAliases: Record<string, CrmTable> = {
+    contacts: 'contacts', crm_contacts: 'contacts',
+    conversations: 'conversations', crm_conversations: 'conversations',
+    messages: 'messages', crm_messages: 'messages',
+    opportunities: 'opportunities', crm_opportunities: 'opportunities',
+  }
+  const inferredTable = eventName.startsWith('contact_') ? 'contacts' : eventName.startsWith('conversation_') ? 'conversations' : eventName.startsWith('message_') ? 'messages' : eventName.startsWith('opportunit') ? 'opportunities' : null
+  const table = tableAliases[rawTable] ?? pathTable ?? inferredTable
   const record = payload.record ?? payload
   const type = String(payload.type ?? (eventName.endsWith('_insert') ? 'INSERT' : eventName.endsWith('_update') ? 'UPDATE' : '')).toUpperCase()
-  if (!record || !(table in TABLES) || (expectedTable && table !== expectedTable) || !['INSERT', 'UPDATE'].includes(type)) {
+  if (!record || !table || !TABLES[table] || (pathTable && table !== pathTable) || !['INSERT', 'UPDATE'].includes(type)) {
     return NextResponse.json({ error: 'Unsupported webhook payload' }, { status: 400 })
   }
 
-  const externalId = text(record, 'id', 'external_id')
+  const externalId = text(record, 'external_id', 'externalId', 'id', 'uuid')
   if (!externalId) return NextResponse.json({ error: 'Missing record id' }, { status: 400 })
+  const webhookSecret = process.env.CRM_WEBHOOK_SECRET
+  if (webhookSecret) {
+    const providedSecret = request.headers.get('x-crm-webhook-secret')
+    if (providedSecret !== webhookSecret) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   const eventId = request.headers.get('x-supabase-event-id') ?? createHash('sha256').update(JSON.stringify({ type, table, record })).digest('hex')
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
@@ -84,6 +96,10 @@ export async function POST(request: Request) {
       .eq('active', true)
       .maybeSingle()
     internalClientId = accountMapping?.client_id ?? internalClientId
+    if (!internalClientId) {
+      const { data: legacyClient } = await supabase.from('clientes').select('id').eq('ghl_location_id', aureliaAccountId).maybeSingle()
+      internalClientId = legacyClient?.id ?? internalClientId
+    }
   }
   // Compatibilidad: algunos emisores ya envían directamente el UUID del cliente interno.
   if (!internalClientId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(aureliaAccountId ?? '')) {
@@ -111,6 +127,7 @@ export async function POST(request: Request) {
         : { ...common, contact_external_id: text(record, 'contact_id', 'contactId'), opportunity_data: record, stage: text(record, 'stage', 'pipeline_stage', 'etapa'), status: text(record, 'status', 'estado'), value: Number(record.value ?? record.amount ?? record.monto ?? 0) || null, source: text(record, 'source', 'lead_source', 'origen') }
 
   const { error } = await supabase.from(TABLES[table]).upsert(data, { onConflict: 'external_id' })
+  console.log('[v0] CRM sync upsert', { table, internalTable: TABLES[table], clientId: internalClientId, externalId, ok: !error, error: error?.message ?? null })
   await supabase.from('crm_sync_events').update({ status: error ? 'failed' : 'processed', processed_at: new Date().toISOString(), error_message: error?.message ?? null }).eq('event_id', eventId)
   if (error) return NextResponse.json({ error: 'CRM sync failed' }, { status: 500 })
   return NextResponse.json({ ok: true, table, external_id: externalId })

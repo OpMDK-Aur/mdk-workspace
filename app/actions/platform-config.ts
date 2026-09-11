@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 
 export async function updateClientPlatformIds(
@@ -33,7 +34,11 @@ export async function updateClientPlatformIds(
   if (metaAdsAccountId !== undefined) updates.meta_ads_account_id = metaAdsAccountId || null
   if (googleAdsCustomerId !== undefined) updates.google_ads_customer_id = googleAdsCustomerId || null
   if (crmType !== undefined) updates.crm_type = crmType || null
-  if (ghlLocationId !== undefined) updates.ghl_location_id = ghlLocationId || null
+  if (ghlLocationId !== undefined) {
+    const normalizedCrmAccountId = ghlLocationId?.trim() || null
+    updates.ghl_location_id = normalizedCrmAccountId
+    if (crmType === 'aurelia') updates.crm_location_id = normalizedCrmAccountId
+  }
   if (ghlToken !== undefined) updates.ghl_token = ghlToken || null
   if (analyticsPropertyId !== undefined) updates.analytics_property_id = analyticsPropertyId || null
   if (tagManagerContainerId !== undefined) updates.tag_manager_container_id = tagManagerContainerId || null
@@ -56,7 +61,8 @@ export async function getClientCrmAccounts(clientIds: string[]) {
   if (!user) return { error: 'No autorizado', accounts: {} as Record<string, string[]> }
   const { data: colaborador } = await supabase.from('colaboradores').select('rol_id').eq('id', user.id).single()
   if (!colaborador) return { error: 'Sin permiso', accounts: {} as Record<string, string[]> }
-  const { data, error } = await supabase
+  const admin = createAdminClient()
+  const { data, error } = await admin
     .from('client_crm_accounts')
     .select('client_id, crm_account_id')
     .eq('crm_type', 'aurelia')
@@ -77,10 +83,11 @@ export async function replaceClientCrmAccounts(clientId: string, accountIds: str
   const { data: colaborador } = await supabase.from('colaboradores').select('rol_id').eq('id', user.id).single()
   if (!colaborador) return { error: 'Sin permiso' }
   const normalized = [...new Set(accountIds.map(id => id.trim()).filter(Boolean))]
-  const { error: deleteError } = await supabase.from('client_crm_accounts').delete().eq('client_id', clientId).eq('crm_type', 'aurelia')
+  const admin = createAdminClient()
+  const { error: deleteError } = await admin.from('client_crm_accounts').delete().eq('client_id', clientId).eq('crm_type', 'aurelia')
   if (deleteError) return { error: deleteError.message }
   if (normalized.length) {
-    const { error: insertError } = await supabase.from('client_crm_accounts').insert(normalized.map(crmAccountId => ({ client_id: clientId, crm_type: 'aurelia', crm_account_id: crmAccountId, active: true })))
+    const { error: insertError } = await admin.from('client_crm_accounts').insert(normalized.map(crmAccountId => ({ client_id: clientId, crm_type: 'aurelia', crm_account_id: crmAccountId, active: true })))
     if (insertError) return { error: insertError.message }
   }
   revalidatePath('/dashboard/platform')

@@ -712,7 +712,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       config.meta.trim() || null,
       config.google.trim() || null,
       config.crmType.trim() || null,
-      config.ghlLocationId.trim() || null,
+      (config.crmType === 'aurelia' ? (crmAccountDrafts[clientId]?.[0] ?? config.ghlLocationId).trim() : config.ghlLocationId.trim()) || null,
       config.crmType === 'aurelia' ? null : config.ghlToken.trim() || null,
       (analyticsSelection[clientId] ?? [configAnalyticsPropertyId(clientId)].filter(Boolean)).join(',') || null,
       (tagSelection[clientId] ?? [configTagManagerContainerId(clientId)].filter(Boolean)).join(',') || null,
