@@ -47,7 +47,7 @@ export function ConexaWorkspace() {
 
   const connected = platforms.filter((item) => item.connected).length
 
-  return <div className="flex h-screen w-full overflow-hidden bg-[#f5f5f3] text-[#101010]" style={{ fontFamily: 'Neue Montreal, sans-serif' }}>
+  return <div className="conexa-brand flex h-screen w-full overflow-hidden bg-[#f5f5f3] text-[#101010]">
     <aside className={cn('flex shrink-0 flex-col border-r border-[#e6e6e3] bg-white transition-[width] duration-200', sidebarOpen ? 'w-[158px]' : 'w-[44px]')}>
       <div className={cn('flex h-[60px] shrink-0 items-center gap-2 border-b border-[#f0f0ee] px-[18px]', !sidebarOpen && 'justify-center px-0')}>
         <span className="flex size-[16px] shrink-0 items-center justify-center rounded-[5px] bg-[#5b5fe8] text-[10px] text-white">✦</span>

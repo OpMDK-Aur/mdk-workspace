@@ -41,6 +41,14 @@
   font-display: swap;
 }
 
+.conexa-brand {
+  font-family: 'Neue Montreal', sans-serif;
+}
+
+.conexa-brand .font-display {
+  font-family: 'Monument Extended', sans-serif;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 /* ─── LIGHT MODE ───────────────────────────────────────────────────────────── */
@@ -173,9 +181,8 @@
 }
 
 @theme inline {
-  --font-sans: 'Neue Montreal', sans-serif;
-  --font-mono: 'Neue Montreal', monospace;
-  --font-display: 'Monument Extended', sans-serif;
+  --font-sans: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
