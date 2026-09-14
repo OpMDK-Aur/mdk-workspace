@@ -768,11 +768,20 @@ const crmContactAds: ToolDefinition = {
       }
       const contactIds = contacts.map(contact => contact.id).filter(Boolean)
       const messages: any[] = []
-      for (let offset = 0; contactIds.length > 0 && offset < 10000; offset += 100) {
-        const { data, error } = await crm.from('messages').select('id,created_at,client_id,contact_id,conversation_id,metadata,source').in('client_id', crmAccountIds).in('contact_id', contactIds).range(offset, offset + 99)
+      // The question is about contacts created in this period. Restricting the
+      // referral lookup to the same period avoids scanning the full message history.
+      for (let batchStart = 0; batchStart < contactIds.length; batchStart += 25) {
+        const batchContactIds = contactIds.slice(batchStart, batchStart + 25)
+        const { data, error } = await crm
+          .from('messages')
+          .select('id,created_at,client_id,contact_id,conversation_id,metadata,source')
+          .in('client_id', crmAccountIds)
+          .in('contact_id', batchContactIds)
+          .gte('created_at', start)
+          .lt('created_at', end)
+          .limit(250)
         if (error) throw new Error(`messages: ${error.message}`)
         messages.push(...(data ?? []))
-        if ((data ?? []).length < 100) break
       }
       const referralsByContact = new Map<string, any[]>()
       for (const message of messages) {
