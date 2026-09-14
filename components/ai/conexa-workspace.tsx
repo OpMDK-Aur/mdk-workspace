@@ -259,7 +259,7 @@ function formatReportNumber(value: number, currency = 'ARS') {
 }
 
 function ConexaChat({ client, period, clients, onSelectClient, onNavigate, onReportCreated }: { client: Client | null; period: string; clients: Client[]; onSelectClient: (client: Client) => void; onNavigate: (destination: string) => void; onReportCreated: (report: GeneratedReport) => void }) {
-  const [model, setModel] = useState('anthropic/claude-sonnet-4.5')
+  const [model, setModel] = useState('openai/gpt-5.5')
   const [showReport, setShowReport] = useState(false)
   const [reportContent, setReportContent] = useState('')
   const [reportData, setReportData] = useState<PaidMediaReportData>()
@@ -273,7 +273,7 @@ function getMessageText(message: { parts?: Array<{ type: string; text?: string }
 }
 
 function ChatAI({ question, setQuestion, client }: { question: string; setQuestion: (value: string) => void; client: Client | null }) {
-  const [model, setModel] = useState('anthropic/claude-sonnet-4.5')
+  const [model, setModel] = useState('openai/gpt-5.5')
   const { messages, sendMessage, status, error } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/ai/chat',
