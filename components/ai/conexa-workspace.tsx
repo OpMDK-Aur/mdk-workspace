@@ -9,9 +9,12 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { MessageContent } from '@/components/chat/message-content'
 
-type Client = { id: string; nombre_del_negocio: string; meta_ads_account_id?: string | null; google_ads_customer_id?: string | null; analytics_property_id?: string | null; tag_manager_container_id?: string | null; crm_type?: string | null }
+type Client = { id: string; nombre_del_negocio: string; meta_ads_account_id?: string | null; google_ads_customer_id?: string | null; meta_ads_account_ids?: string[] | null; google_ads_customer_ids?: string[] | null; analytics_property_id?: string | null; tag_manager_container_id?: string | null; crm_type?: string | null }
 
 type Platform = { name: string; key: string; icon: typeof BarChart3; color: string; iconUrl: string | null; connected: boolean; detail: string }
+type ConexaData = { accounts: Record<string, unknown>[]; metrics: Record<string, unknown>[]; reports: Record<string, unknown>[]; approvals: Record<string, unknown>[]; profile: Record<string, unknown> | null; memory: Record<string, unknown>[] }
+const emptyConexaData: ConexaData = { accounts: [], metrics: [], reports: [], approvals: [], profile: null, memory: [] }
+const asNumber = (row: Record<string, unknown>, keys: string[]) => keys.reduce<number | null>((value, key) => value ?? (typeof row[key] === 'number' ? row[key] as number : Number(row[key]) || null), null) ?? 0
 
 const baseNav = [
   { label: 'Inicio', icon: LayoutDashboard },
@@ -31,15 +34,31 @@ export function ConexaWorkspace() {
   const [periodMenu, setPeriodMenu] = useState(false)
   const [customRange, setCustomRange] = useState({ from: '', to: '' })
   const [platformTab, setPlatformTab] = useState<string | undefined>(undefined)
+  const [data, setData] = useState<ConexaData>(emptyConexaData)
 
   useEffect(() => {
     const supabase = createClient()
-    supabase.from('clientes').select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, analytics_property_id, tag_manager_container_id, crm_type').order('nombre_del_negocio').then(({ data }) => {
+    supabase.from('clientes').select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids, analytics_property_id, tag_manager_container_id, crm_type').order('nombre_del_negocio').then(({ data }) => {
       const rows = (data ?? []) as Client[]
       setClients(rows)
-      setClient(rows[0] ?? null)
+      setClient(rows.sort((a, b) => Number(Boolean(b.meta_ads_account_id || b.meta_ads_account_ids?.length || b.google_ads_customer_id || b.google_ads_customer_ids?.length || b.analytics_property_id || b.tag_manager_container_id || b.crm_type)) - Number(Boolean(a.meta_ads_account_id || a.meta_ads_account_ids?.length || a.google_ads_customer_id || a.google_ads_customer_ids?.length || a.analytics_property_id || a.tag_manager_container_id || a.crm_type)))[0] ?? null)
     })
   }, [])
+
+  useEffect(() => {
+    if (!client?.id) return
+    const supabase = createClient()
+    Promise.all([
+      supabase.from('cuentas_publicitarias').select('*').eq('cliente_id', client.id).eq('activo', true),
+      supabase.from('paid_media_daily_metrics').select('*').eq('client_id', client.id).order('date', { ascending: false }).limit(90),
+      supabase.from('reports').select('*').eq('client_id', client.id).order('updated_at', { ascending: false }).limit(20),
+      supabase.from('paid_media_change_events').select('*').eq('client_id', client.id).order('created_at', { ascending: false }).limit(20),
+      supabase.from('ai_client_profile').select('*').eq('client_id', client.id).maybeSingle(),
+      supabase.from('ai_client_memory').select('*').eq('client_id', client.id).eq('is_active', true).order('updated_at', { ascending: false }).limit(10),
+    ]).then(([accounts, metrics, reports, approvals, profile, memory]) => setData({
+      accounts: accounts.data ?? [], metrics: metrics.data ?? [], reports: reports.data ?? [], approvals: approvals.data ?? [], profile: profile.data ?? null, memory: memory.data ?? [],
+    }))
+  }, [client?.id])
 
   const platforms = useMemo<Platform[]>(() => [
     { name: 'Meta Ads', key: 'meta', icon: BarChart3, color: '#1877F2', iconUrl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Facebook_Logo_%282019%29-8hLkShXu9caNijxaYTMKGdv1bWipbV.png', connected: Boolean(client?.meta_ads_account_id), detail: client?.meta_ads_account_id ? `Cuenta ${client.meta_ads_account_id}` : 'Sin cuenta conectada' },
@@ -89,26 +108,30 @@ export function ConexaWorkspace() {
       </header>
 
       <main className="flex-1 overflow-y-auto bg-white">
-        {active === 'Inicio' ? <Home client={client} platforms={platforms} connected={connected} onAsk={() => setActive('Chat / Análisis')} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} /> : active === 'Informes' ? <ReportsView client={client} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} /> : <PlatformView platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} />}
+        {active === 'Inicio' ? <Home client={client} platforms={platforms} connected={connected} data={data} onAsk={() => setActive('Chat / Análisis')} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} /> : active === 'Informes' ? <ReportsView client={client} reports={data.reports} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} />}
       </main>
     </section>
   </div>
 }
 
-function ReportsView({ client }: { client: Client | null }) {
-  const reports = [['Informe semanal', 'Soy Aurelia · 07–13 Sep · Generado por Conexa · Última edición hace 2 h'], ['Performance Agosto', 'Cliente B · 01–31 Ago · Generado por Conexa · Última edición hace 6 d']]
-  return <div className="mx-auto max-w-4xl p-6 md:p-10"><div className="mb-5 flex items-start justify-between"><div><h1 className="text-xl font-bold">Informes</h1><p className="text-xs text-[#8b8b8b]">Biblioteca de informes generados por Conexa</p></div><Button className="h-8 rounded-md bg-[#5b5fe8] px-3 text-[11px] text-white">✦ Nuevo informe con Conexa</Button></div><div className="space-y-3">{reports.map(([title, meta], index) => <div key={title} className="flex items-center justify-between rounded-xl border border-[#dededb] bg-white px-4 py-3"><div><p className="text-xs font-bold">{title}</p><p className="mt-1 text-[10px] text-[#888]">{meta}</p></div><div className="flex gap-2"><Button variant="outline" className="h-7 rounded-full px-3 text-[10px]">Abrir</Button>{index === 0 && <Button variant="outline" className="h-7 rounded-full px-3 text-[10px]">Editar con Conexa</Button>}<Button variant="outline" className="h-7 rounded-full px-3 text-[10px]">Duplicar</Button><Button variant="outline" className="h-7 rounded-full px-3 text-[10px]">Exportar</Button></div></div>)}</div></div>
+function ReportsView({ client, reports }: { client: Client | null; reports: Record<string, unknown>[] }) {
+  const visibleReports = reports.map((report) => [String(report.title ?? report.name ?? 'Informe sin título'), `${String(report.type ?? 'análisis')} · ${String(report.status ?? 'sin estado')} · ${report.updated_at ? new Date(String(report.updated_at)).toLocaleDateString('es-AR') : 'sin fecha'}`])
+  return <div className="mx-auto max-w-4xl p-6 md:p-10"><div className="mb-5 flex items-start justify-between"><div><h1 className="text-xl font-bold">Informes</h1><p className="text-xs text-[#8b8b8b]">Biblioteca de informes generados por Conexa</p></div><Button className="h-8 rounded-md bg-[#5b5fe8] px-3 text-[11px] text-white">✦ Nuevo informe con Conexa</Button></div><div className="space-y-3">{visibleReports.map(([title, meta], index) => <div key={title} className="flex items-center justify-between rounded-xl border border-[#dededb] bg-white px-4 py-3"><div><p className="text-xs font-bold">{title}</p><p className="mt-1 text-[10px] text-[#888]">{meta}</p></div><div className="flex gap-2"><Button variant="outline" className="h-7 rounded-full px-3 text-[10px]">Abrir</Button>{index === 0 && <Button variant="outline" className="h-7 rounded-full px-3 text-[10px]">Editar con Conexa</Button>}<Button variant="outline" className="h-7 rounded-full px-3 text-[10px]">Duplicar</Button><Button variant="outline" className="h-7 rounded-full px-3 text-[10px]">Exportar</Button></div></div>)}</div></div>
 }
 
-function ApprovalsView({ client }: { client: Client | null }) {
+function ApprovalsView({ client, approvals }: { client: Client | null; approvals: Record<string, unknown>[] }) {
   const [status, setStatus] = useState('Pendientes')
-  const approvals = [['Hoy', 'Meta Ads', 'Reducir presupuesto', 'Meta Prospecting Córdoba'], ['Hoy', 'Google Ads', 'Modificar presupuesto', 'Campaña Search Marca'], ['Ayer', 'Meta Ads', 'Pausar anuncio', 'Anuncio “Testimonio Cliente”']]
-  return <div className="p-6 md:p-10"><div className="mb-5"><h1 className="text-xl font-bold">Aprobaciones</h1><p className="text-xs text-[#888]">Ninguna acción se ejecuta en las plataformas sin tu aprobación explícita.</p></div><div className="mb-4 flex gap-6 border-b border-[#dededb] text-[10px] font-semibold text-[#999]">{['Pendientes', 'Aprobadas', 'Ejecutadas', 'Rechazadas', 'Fallidas'].map((item) => <button key={item} type="button" onClick={() => setStatus(item)} className={cn('border-b-2 px-1 pb-2', status === item ? 'border-[#5b5fe8] text-[#5b5fe8]' : 'border-transparent')}>{item}</button>)}</div><div className="overflow-hidden rounded-xl border border-[#dededb] bg-white"><table className="w-full text-left text-[10px]"><thead className="bg-[#fafaf8] text-[#888]"><tr><th className="p-3">Fecha</th><th>Plataforma</th><th>Acción</th><th>Entidad</th><th>Cambio</th><th>Estado</th><th></th></tr></thead><tbody>{approvals.map((row) => <tr key={row[0] + row[1]} className="border-t border-[#eee]"><td className="p-3">{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td>—</td><td><span className="rounded-full bg-[#fff0df] px-2 py-1 text-[9px] font-bold text-[#c87519]">PENDIENTE</span></td><td><Button variant="outline" className="mr-3 h-7 rounded-full px-3 text-[10px]">Ver detalle</Button></td></tr>)}</tbody></table></div></div>
+  const rows = approvals.map((item) => [item.created_at ? new Date(String(item.created_at)).toLocaleDateString('es-AR') : 'Sin fecha', String(item.platform ?? item.plataforma ?? 'Plataforma'), String(item.action ?? item.accion ?? item.change_type ?? 'Acción'), String(item.entity_name ?? item.campaign_name ?? item.entity_id ?? 'Entidad')])
+  return <div className="p-6 md:p-10"><div className="mb-5"><h1 className="text-xl font-bold">Aprobaciones</h1><p className="text-xs text-[#888]">Ninguna acción se ejecuta en las plataformas sin tu aprobación explícita.</p></div><div className="mb-4 flex gap-6 border-b border-[#dededb] text-[10px] font-semibold text-[#999]">{['Pendientes', 'Aprobadas', 'Ejecutadas', 'Rechazadas', 'Fallidas'].map((item) => <button key={item} type="button" onClick={() => setStatus(item)} className={cn('border-b-2 px-1 pb-2', status === item ? 'border-[#5b5fe8] text-[#5b5fe8]' : 'border-transparent')}>{item}</button>)}</div><div className="overflow-hidden rounded-xl border border-[#dededb] bg-white"><table className="w-full text-left text-[10px]"><thead className="bg-[#fafaf8] text-[#888]"><tr><th className="p-3">Fecha</th><th>Plataforma</th><th>Acción</th><th>Entidad</th><th>Cambio</th><th>Estado</th><th></th></tr></thead><tbody>{rows.map((row) => <tr key={row[0] + row[1]} className="border-t border-[#eee]"><td className="p-3">{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td>—</td><td><span className="rounded-full bg-[#fff0df] px-2 py-1 text-[9px] font-bold text-[#c87519]">PENDIENTE</span></td><td><Button variant="outline" className="mr-3 h-7 rounded-full px-3 text-[10px]">Ver detalle</Button></td></tr>)}</tbody></table></div></div>
 }
 
-function Home({ client, platforms, connected, onAsk }: { client: Client | null; platforms: Platform[]; connected: number; onAsk: () => void }) {
+function Home({ client, platforms, connected, data, onAsk }: { client: Client | null; platforms: Platform[]; connected: number; data: ConexaData; onAsk: () => void }) {
   const [expanded, setExpanded] = useState(false)
-  const business = [['Inversión total', '$ 84.230'], ['Ingresos', '$ 312.400'], ['ROAS', '3,71x'], ['Conversiones', '248'], ['Sesiones', '12.430'], ['Leads', '186']]
+  const spend = data.metrics.reduce((sum, row) => sum + asNumber(row, ['spend', 'investment', 'inversion']), 0)
+  const conversions = data.metrics.reduce((sum, row) => sum + asNumber(row, ['conversions', 'leads', 'results']), 0)
+  const revenue = data.metrics.reduce((sum, row) => sum + asNumber(row, ['revenue', 'value', 'conversion_value']), 0)
+  const clicks = data.metrics.reduce((sum, row) => sum + asNumber(row, ['clicks', 'sessions']), 0)
+  const business = [['Inversión total', spend ? `$ ${spend.toLocaleString('es-AR')}` : 'Sin datos'], ['Ingresos', revenue ? `$ ${revenue.toLocaleString('es-AR')}` : 'Sin datos'], ['ROAS', spend && revenue ? `${(revenue / spend).toFixed(2).replace('.', ',')}x` : 'Sin datos'], ['Conversiones', conversions ? conversions.toLocaleString('es-AR') : 'Sin datos'], ['Sesiones', clicks ? clicks.toLocaleString('es-AR') : 'Sin datos'], ['Leads', conversions ? conversions.toLocaleString('es-AR') : 'Sin datos']]
   const attention = platforms.filter((item) => !item.connected)
   return <div className="mx-auto max-w-[1180px] px-6 py-5">
     <div className="mb-5"><p className="mb-1 text-[11px] text-[#9a9a9a]">Últimos 30 días</p><h1 className="text-[20px] font-bold tracking-[-.02em]">{client?.nombre_del_negocio ?? 'Soy Aurelia'}</h1><p className="mt-0.5 text-[11px] text-[#9a9a9a]">Conexiones, tracking y alertas</p></div>
