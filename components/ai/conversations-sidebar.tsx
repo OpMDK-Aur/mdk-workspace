@@ -60,10 +60,11 @@ const ARCHIVED_SWR_KEY = '/api/ai/conversations?includeArchived=1'
 interface ConversationsSidebarProps {
   /** Hay un único chat por cliente, así que resaltamos por clientId en vez de conversationId. */
   activeClientId: string | null
+  clientFilterId?: string | null
   onSelect: (conversation: ConversationSummary) => void
 }
 
-export function ConversationsSidebar({ activeClientId, onSelect }: ConversationsSidebarProps) {
+export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect }: ConversationsSidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [unidadFilter, setUnidadFilter] = useState<string>('all')
@@ -72,7 +73,8 @@ export function ConversationsSidebar({ activeClientId, onSelect }: Conversations
   const [semaforoFilter, setSemaforoFilter] = useState<string>('all')
   const [pendingId, setPendingId] = useState<string | null>(null)
 
-  const swrKey = showArchived ? ARCHIVED_SWR_KEY : CONVERSATIONS_SWR_KEY
+  const baseKey = showArchived ? ARCHIVED_SWR_KEY : CONVERSATIONS_SWR_KEY
+  const swrKey = clientFilterId ? `${baseKey}${baseKey.includes('?') ? '&' : '?'}clientId=${encodeURIComponent(clientFilterId)}` : baseKey
   const { data, error, isLoading } = useSWR(swrKey, fetcher, { refreshInterval: 30000 })
   const { mutate } = useSWRConfig()
 

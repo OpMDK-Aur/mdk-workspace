@@ -100,7 +100,7 @@ interface SupervisorChatProps {
   googleCustomerId?: string
   analyticsPropertyId?: string
   model?: string
-  onAction?: (action: 'report' | 'diagnosis') => void
+  onAction?: (action: 'report' | 'diagnosis', content: string) => void
   selectedAccountSummary?: Array<{ id: string | null; name: string; platform: string | null }>
   selectedAccountReading?: string
   scoreConfig?: { objective: string }
@@ -557,7 +557,7 @@ function SupervisorChatSession({
                     ) : message.role === 'assistant' ? (
                       <span className="text-muted-foreground">Preparando respuesta…</span>
   ) : null}
-  {message.role === 'assistant' && index === messages.length - 1 && !isBusy && <div className="mt-3 flex flex-wrap gap-2 border-t pt-3"><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('report')}>Crear informe</Button><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('diagnosis')}>Generar diagnóstico</Button></div>}
+  {message.role === 'assistant' && index === messages.length - 1 && !isBusy && <div className="mt-3 flex flex-wrap gap-2 border-t pt-3"><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('report', messageText(message))}>Crear informe</Button><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('diagnosis', messageText(message))}>Generar diagnóstico</Button></div>}
   </div>
   {message.role === 'user' && (
                     <User className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
