@@ -13,7 +13,7 @@ type Platform = { name: string; key: string; icon: typeof BarChart3; color: stri
 const baseNav = [
   { label: 'Inicio', icon: LayoutDashboard },
   { label: 'Chat / Análisis', icon: MessageCircle },
-  { label: 'Reportes', icon: BarChart3 },
+  { label: 'Informes', icon: BarChart3 },
   { label: 'Aprobaciones', icon: WalletCards, badge: '3' },
   { label: 'Alertas', icon: CircleHelp, badge: '5' },
   { label: 'Actividad', icon: GitBranch },
@@ -76,10 +76,21 @@ export function ConexaWorkspace() {
       </header>
 
       <main className="flex-1 overflow-y-auto">
-        {active === 'Inicio' ? <Home client={client} platforms={platforms} connected={connected} onAsk={() => setActive('Chat / Análisis')} /> : active === 'Chat / Análisis' ? <Chat question={question} setQuestion={setQuestion} client={client} onNavigate={(destination, tab) => { setPlatformTab(tab); setActive(destination) }} /> : <PlatformView platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} />}
+        {active === 'Inicio' ? <Home client={client} platforms={platforms} connected={connected} onAsk={() => setActive('Chat / Análisis')} /> : active === 'Chat / Análisis' ? <Chat question={question} setQuestion={setQuestion} client={client} onNavigate={(destination, tab) => { setPlatformTab(tab); setActive(destination) }} /> : active === 'Informes' ? <ReportsView client={client} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} /> : <PlatformView platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} />}
       </main>
     </section>
   </div>
+}
+
+function ReportsView({ client }: { client: Client | null }) {
+  const reports = [['Informe semanal', 'Soy Aurelia · 07–13 Sep · Generado por Conexa · Última edición hace 2 h'], ['Performance Agosto', 'Cliente B · 01–31 Ago · Generado por Conexa · Última edición hace 6 d']]
+  return <div className="mx-auto max-w-4xl p-6 md:p-10"><div className="mb-5 flex items-start justify-between"><div><h1 className="text-xl font-bold">Informes</h1><p className="text-xs text-[#8b8b8b]">Biblioteca de informes generados por Conexa</p></div><Button className="h-8 rounded-md bg-[#5b5fe8] px-3 text-[11px] text-white">✦ Nuevo informe con Conexa</Button></div><div className="space-y-3">{reports.map(([title, meta], index) => <div key={title} className="flex items-center justify-between rounded-xl border border-[#dededb] bg-white px-4 py-3"><div><p className="text-xs font-bold">{title}</p><p className="mt-1 text-[10px] text-[#888]">{meta}</p></div><div className="flex gap-2"><Button variant="outline" className="h-7 rounded-full px-3 text-[10px]">Abrir</Button>{index === 0 && <Button variant="outline" className="h-7 rounded-full px-3 text-[10px]">Editar con Conexa</Button>}<Button variant="outline" className="h-7 rounded-full px-3 text-[10px]">Duplicar</Button><Button variant="outline" className="h-7 rounded-full px-3 text-[10px]">Exportar</Button></div></div>)}</div></div>
+}
+
+function ApprovalsView({ client }: { client: Client | null }) {
+  const [status, setStatus] = useState('Pendientes')
+  const approvals = [['Hoy', 'Meta Ads', 'Reducir presupuesto', 'Meta Prospecting Córdoba'], ['Hoy', 'Google Ads', 'Modificar presupuesto', 'Campaña Search Marca'], ['Ayer', 'Meta Ads', 'Pausar anuncio', 'Anuncio “Testimonio Cliente”']]
+  return <div className="p-6 md:p-10"><div className="mb-5"><h1 className="text-xl font-bold">Aprobaciones</h1><p className="text-xs text-[#888]">Ninguna acción se ejecuta en las plataformas sin tu aprobación explícita.</p></div><div className="mb-4 flex gap-6 border-b border-[#dededb] text-[10px] font-semibold text-[#999]">{['Pendientes', 'Aprobadas', 'Ejecutadas', 'Rechazadas', 'Fallidas'].map((item) => <button key={item} type="button" onClick={() => setStatus(item)} className={cn('border-b-2 px-1 pb-2', status === item ? 'border-[#5b5fe8] text-[#5b5fe8]' : 'border-transparent')}>{item}</button>)}</div><div className="overflow-hidden rounded-xl border border-[#dededb] bg-white"><table className="w-full text-left text-[10px]"><thead className="bg-[#fafaf8] text-[#888]"><tr><th className="p-3">Fecha</th><th>Plataforma</th><th>Acción</th><th>Entidad</th><th>Cambio</th><th>Estado</th><th></th></tr></thead><tbody>{approvals.map((row) => <tr key={row[0] + row[1]} className="border-t border-[#eee]"><td className="p-3">{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td>—</td><td><span className="rounded-full bg-[#fff0df] px-2 py-1 text-[9px] font-bold text-[#c87519]">PENDIENTE</span></td><td><Button variant="outline" className="mr-3 h-7 rounded-full px-3 text-[10px]">Ver detalle</Button></td></tr>)}</tbody></table></div></div>
 }
 
 function Home({ client, platforms, connected, onAsk }: { client: Client | null; platforms: Platform[]; connected: number; onAsk: () => void }) {
