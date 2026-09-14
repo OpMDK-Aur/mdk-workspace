@@ -100,6 +100,8 @@ interface SupervisorChatProps {
   /** Id(s) de cuenta de Google Ads seleccionados en la UI (separados por coma si son varios). Restringe el análisis a esas cuentas. */
   googleCustomerId?: string
   analyticsPropertyId?: string
+  model?: string
+  onAction?: (action: 'report' | 'diagnosis') => void
   selectedAccountSummary?: Array<{ id: string | null; name: string; platform: string | null }>
   selectedAccountReading?: string
   scoreConfig?: { objective: string }
@@ -263,6 +265,8 @@ function SupervisorChatSession({
   metaAccountId,
   googleCustomerId,
   analyticsPropertyId,
+  model,
+  onAction,
   selectedAccountSummary = [],
   selectedAccountReading,
   scoreConfig,
@@ -306,7 +310,7 @@ function SupervisorChatSession({
       api: '/api/ai/chat',
       body: {
         context: clientId
-          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(analyticsPropertyId ? { analyticsPropertyId } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
+          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(analyticsPropertyId ? { analyticsPropertyId } : {}), ...(model ? { model } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
           : {},
       },
     }),
@@ -436,7 +440,7 @@ function SupervisorChatSession({
     await sendMessage({ text, files: fileParts }, {
       body: {
         context: clientId
-          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(analyticsPropertyId ? { analyticsPropertyId } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
+          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(analyticsPropertyId ? { analyticsPropertyId } : {}), ...(model ? { model } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
           : {},
       },
     })
@@ -656,6 +660,7 @@ function SupervisorChatSession({
         </div>
           </div>
           <AIAnalysisPanel content={lastMessage?.role === 'assistant' ? messageText(lastMessage) : ''} analysis={latestAnalysis} />
+          {lastMessage?.role === 'assistant' && !isBusy && <div className="flex flex-wrap gap-2 border-t px-4 py-3"><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('report')}>Crear informe</Button><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('diagnosis')}>Generar diagnóstico</Button></div>}
         </div>
       </CardContent>
     </Card>
