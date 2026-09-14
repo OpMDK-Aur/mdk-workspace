@@ -701,8 +701,6 @@ const crmOpportunities: ToolDefinition = {
         contactIds.length ? crm.from('contacts').select('id,name,email,phone').in('client_id', crmAccountIds).in('id', contactIds) : Promise.resolve({ data: [], error: null }),
         pipelineIds.length ? crm.from('pipeline_stages').select('id,pipeline_id,name,description').in('client_id', crmAccountIds).in('pipeline_id', pipelineIds) : Promise.resolve({ data: [], error: null }),
       ])
-      if (contactsResult.error) throw new Error(`contacts: ${contactsResult.error.message}`)
-      if (stagesResult.error) throw new Error(`pipeline_stages: ${stagesResult.error.message}`)
       const contactsById = new Map((contactsResult.data ?? []).map(row => [row.id, row]))
       const stagesById = new Map((stagesResult.data ?? []).map(row => [row.id, row]))
       const rows = opportunities.map(opportunity => ({ ...opportunity, contact: contactsById.get(opportunity.contact_id) ?? null, stage: stagesById.get(opportunity.stage_id) ?? null }))
