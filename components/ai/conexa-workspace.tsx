@@ -15,6 +15,9 @@ type Platform = { name: string; key: string; icon: typeof BarChart3; color: stri
 type ConexaData = { accounts: Record<string, unknown>[]; metrics: Record<string, unknown>[]; reports: Record<string, unknown>[]; approvals: Record<string, unknown>[]; profile: Record<string, unknown> | null; memory: Record<string, unknown>[] }
 const emptyConexaData: ConexaData = { accounts: [], metrics: [], reports: [], approvals: [], profile: null, memory: [] }
 const asNumber = (row: Record<string, unknown>, keys: string[]) => keys.reduce<number | null>((value, key) => value ?? (typeof row[key] === 'number' ? row[key] as number : Number(row[key]) || null), null) ?? 0
+const periodStart = (period: string) => { const days = period.includes('7') ? 7 : period.includes('90') ? 90 : 30; const date = new Date(); date.setDate(date.getDate() - days + 1); return date.toISOString().slice(0, 10) }
+const periodEnd = () => new Date().toISOString().slice(0, 10)
+const formatMetric = (value: number, currency = false) => value ? `${currency ? '$ ' : ''}${value.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : 'Sin datos'
 
 const baseNav = [
   { label: 'Inicio', icon: LayoutDashboard },
@@ -50,15 +53,15 @@ export function ConexaWorkspace() {
     const supabase = createClient()
     Promise.all([
       supabase.from('cuentas_publicitarias').select('*').eq('cliente_id', client.id).eq('activo', true),
-      supabase.from('paid_media_daily_metrics').select('*').eq('client_id', client.id).order('date', { ascending: false }).limit(90),
+      supabase.from('paid_media_daily_metrics').select('*').eq('client_id', client.id).gte('metric_date', periodStart(period)).lte('metric_date', periodEnd()).order('metric_date', { ascending: false }).limit(90),
       supabase.from('reports').select('*').eq('client_id', client.id).order('updated_at', { ascending: false }).limit(20),
       supabase.from('paid_media_change_events').select('*').eq('client_id', client.id).order('created_at', { ascending: false }).limit(20),
       supabase.from('ai_client_profile').select('*').eq('client_id', client.id).maybeSingle(),
       supabase.from('ai_client_memory').select('*').eq('client_id', client.id).eq('is_active', true).order('updated_at', { ascending: false }).limit(10),
-    ]).then(([accounts, metrics, reports, approvals, profile, memory]) => setData({
-      accounts: accounts.data ?? [], metrics: metrics.data ?? [], reports: reports.data ?? [], approvals: approvals.data ?? [], profile: profile.data ?? null, memory: memory.data ?? [],
-    }))
-  }, [client?.id])
+  ]).then(([accounts, metrics, reports, approvals, profile, memory]) => setData({
+  accounts: accounts.data ?? [], metrics: metrics.data ?? [], reports: reports.data ?? [], approvals: approvals.data ?? [], profile: profile.data ?? null, memory: memory.data ?? [],
+  }))
+  }, [client?.id, period])
 
   const platforms = useMemo<Platform[]>(() => [
     { name: 'Meta Ads', key: 'meta', icon: BarChart3, color: '#1877F2', iconUrl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Facebook_Logo_%282019%29-8hLkShXu9caNijxaYTMKGdv1bWipbV.png', connected: Boolean(client?.meta_ads_account_id), detail: client?.meta_ads_account_id ? `Cuenta ${client.meta_ads_account_id}` : 'Sin cuenta conectada' },
@@ -108,7 +111,7 @@ export function ConexaWorkspace() {
       </header>
 
       <main className="flex-1 overflow-y-auto bg-white">
-        {active === 'Inicio' ? <Home client={client} platforms={platforms} connected={connected} data={data} onAsk={() => setActive('Chat / Análisis')} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} /> : active === 'Informes' ? <ReportsView client={client} reports={data.reports} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} />}
+        {active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => setActive('Chat / Análisis')} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} /> : active === 'Informes' ? <ReportsView client={client} reports={data.reports} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} />}
       </main>
     </section>
   </div>
@@ -125,21 +128,28 @@ function ApprovalsView({ client, approvals }: { client: Client | null; approvals
   return <div className="p-6 md:p-10"><div className="mb-5"><h1 className="text-xl font-bold">Aprobaciones</h1><p className="text-xs text-[#888]">Ninguna acción se ejecuta en las plataformas sin tu aprobación explícita.</p></div><div className="mb-4 flex gap-6 border-b border-[#dededb] text-[10px] font-semibold text-[#999]">{['Pendientes', 'Aprobadas', 'Ejecutadas', 'Rechazadas', 'Fallidas'].map((item) => <button key={item} type="button" onClick={() => setStatus(item)} className={cn('border-b-2 px-1 pb-2', status === item ? 'border-[#5b5fe8] text-[#5b5fe8]' : 'border-transparent')}>{item}</button>)}</div><div className="overflow-hidden rounded-xl border border-[#dededb] bg-white"><table className="w-full text-left text-[10px]"><thead className="bg-[#fafaf8] text-[#888]"><tr><th className="p-3">Fecha</th><th>Plataforma</th><th>Acción</th><th>Entidad</th><th>Cambio</th><th>Estado</th><th></th></tr></thead><tbody>{rows.length === 0 ? <tr><td colSpan={7} className="p-8 text-center text-xs text-[#9a9a9a]">No hay planes de acción generados por la IA.</td></tr> : rows.map((row) => <tr key={row[0] + row[1]} className="border-t border-[#eee]"><td className="p-3">{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td>—</td><td><span className="rounded-full bg-[#fff0df] px-2 py-1 text-[9px] font-bold text-[#c87519]">PENDIENTE</span></td><td><Button variant="outline" className="mr-3 h-7 rounded-full px-3 text-[10px]">Ver detalle</Button></td></tr>)}</tbody></table></div></div>
 }
 
-function Home({ client, platforms, connected, data, onAsk }: { client: Client | null; platforms: Platform[]; connected: number; data: ConexaData; onAsk: () => void }) {
+function Home({ client, period, platforms, connected, data, onAsk }: { client: Client | null; period: string; platforms: Platform[]; connected: number; data: ConexaData; onAsk: () => void }) {
   const [expanded, setExpanded] = useState(false)
-  const spend = data.metrics.reduce((sum, row) => sum + asNumber(row, ['spend', 'investment', 'inversion']), 0)
-  const conversions = data.metrics.reduce((sum, row) => sum + asNumber(row, ['conversions', 'leads', 'results']), 0)
-  const revenue = data.metrics.reduce((sum, row) => sum + asNumber(row, ['revenue', 'value', 'conversion_value']), 0)
-  const clicks = data.metrics.reduce((sum, row) => sum + asNumber(row, ['clicks', 'sessions']), 0)
-  const business = [['Inversión total', spend ? `$ ${spend.toLocaleString('es-AR')}` : 'Sin datos'], ['Ingresos', revenue ? `$ ${revenue.toLocaleString('es-AR')}` : 'Sin datos'], ['ROAS', spend && revenue ? `${(revenue / spend).toFixed(2).replace('.', ',')}x` : 'Sin datos'], ['Conversiones', conversions ? conversions.toLocaleString('es-AR') : 'Sin datos'], ['Sesiones', clicks ? clicks.toLocaleString('es-AR') : 'Sin datos'], ['Leads', conversions ? conversions.toLocaleString('es-AR') : 'Sin datos']]
+  const sum = (keys: string[]) => data.metrics.reduce((total, row) => total + asNumber(row, keys), 0)
+  const spend = sum(['spend', 'investment', 'inversion'])
+  const impressions = sum(['impressions', 'reach'])
+  const clicks = sum(['clicks'])
+  const visits = sum(['visits', 'sessions'])
+  const contacts = sum(['contacts', 'leads'])
+  const opportunities = sum(['opportunities'])
+  const sales = sum(['sales', 'conversions', 'results'])
+  const costPerSale = sales ? spend / sales : 0
+  const business = [['Inversión', formatMetric(spend, true)], ['Sesiones', formatMetric(visits)], ['Contactos', formatMetric(contacts)], ['Oportunidades', formatMetric(opportunities)], ['Ventas', formatMetric(sales)], ['Costo por venta', formatMetric(costPerSale, true)]]
+  const funnel = [['Impresiones', impressions], ['Clicks', clicks], ['Visitas', visits], ['Contactos', contacts], ['Oportunidades', opportunities], ['Ventas', sales]]
+  const insights = data.reports.flatMap((report) => String(report.content ?? report.summary ?? report.description ?? '').split(/[\n•]/).map((item) => item.trim()).filter(Boolean)).slice(0, 3)
   const attention = platforms.filter((item) => !item.connected)
   return <div className="mx-auto max-w-[1180px] px-6 py-5">
-    <div className="mb-5"><p className="mb-1 text-[11px] text-[#9a9a9a]">Últimos 30 días</p><h1 className="text-[20px] font-bold tracking-[-.02em]">{client?.nombre_del_negocio ?? 'Soy Aurelia'}</h1><p className="mt-0.5 text-[11px] text-[#9a9a9a]">Conexiones, tracking y alertas</p></div>
-    <div className="mb-6 grid grid-cols-[220px_1fr] gap-4"><div className="rounded-2xl bg-[#141414] p-5 text-white"><p className="text-[11px] text-white/60">SCORE GENERAL</p><div className="font-display mt-3 text-[38px] font-bold leading-none tracking-[-.05em]">{data.metrics.length ? `${Math.round((connected / Math.max(platforms.length, 1)) * 100)}` : 'Sin datos'}{data.metrics.length && <span className="font-sans text-[20px]">/100</span>}</div><p className="mt-2 text-xs text-white/60">Conexiones, tracking y alertas</p></div><div className="rounded-2xl border border-[#e6e6e3] bg-white p-[18px_22px]">{platforms.map((item) => <div key={item.key} className="flex items-center justify-between py-1 text-[13.5px]"><span className="flex items-center gap-2 font-medium"><span className="flex size-6 items-center justify-center overflow-hidden rounded-md bg-white">{item.iconUrl ? <img src={item.iconUrl} alt="" className="size-full object-contain" /> : <Globe2 className="size-5 text-[#11A683]" />}</span>{item.name}</span><span className={cn('flex items-center gap-1.5 font-medium', item.connected ? 'text-[#1e9e6b]' : 'text-[#9a9a9a]')}><span className={cn('size-1.5 rounded-full', item.connected ? 'bg-[#1e9e6b]' : 'bg-[#d6d6d6]')} />{item.connected ? 'Conectado' : 'Pendiente'}</span></div>)}</div></div>
+    <div className="mb-5"><p className="mb-1 text-[11px] text-[#9a9a9a]">{period}</p><h1 className="text-[20px] font-bold tracking-[-.02em]">{client?.nombre_del_negocio ?? 'Soy Aurelia'}</h1><p className="mt-0.5 text-[11px] text-[#9a9a9a]">Conexiones, tracking y alertas</p></div>
+    <div className="mb-6 rounded-2xl border border-[#e6e6e3] bg-white p-[18px_22px]">{platforms.map((item) => <div key={item.key} className="flex items-center justify-between py-1 text-[13.5px]"><span className="flex items-center gap-2 font-medium"><span className="flex size-6 items-center justify-center overflow-hidden rounded-md bg-white">{item.iconUrl ? <img src={item.iconUrl} alt="" className="size-full object-contain" /> : <Globe2 className="size-5 text-[#11A683]" />}</span>{item.name}</span><span className={cn('flex items-center gap-1.5 font-medium', item.connected ? 'text-[#1e9e6b]' : 'text-[#9a9a9a]')}><span className={cn('size-1.5 rounded-full', item.connected ? 'bg-[#1e9e6b]' : 'bg-[#d6d6d6]')} />{item.connected ? 'Conectado' : 'Pendiente'}</span></div>)}</div>
     <div className="mb-6 grid grid-cols-2 gap-4"><InfoCard title="Cuentas que requieren atención">{attention.length ? attention.map((item) => <Row key={item.key} text={item.name} value="Conectar" />) : <EmptyState text="No hay cuentas pendientes." />}</InfoCard><InfoCard title="Trabajo pendiente"><EmptyState text="No hay tareas disponibles." /></InfoCard></div>
     <p className="mb-3 text-[11px] uppercase tracking-[.08em] text-[#9a9a9a]">Resumen del negocio</p><div className="mb-7 grid grid-cols-6 gap-3">{business.map(([label, value]) => <div key={label} className="rounded-xl border border-[#e6e6e3] bg-white p-4"><p className="mb-2 text-[11.5px] text-[#9a9a9a]">{label}</p><p className="text-[19px] font-bold">{value}</p></div>)}</div>
-    <div className="grid grid-cols-[1.3fr_1fr] gap-4"><InfoCard title="Funnel"><EmptyState text="No hay métricas de funnel disponibles." /></InfoCard><InfoCard title="Alertas"><EmptyState text="No hay alertas disponibles." /></InfoCard></div>
-    <div className="mt-7 rounded-[18px] border border-[#e6e6e3] bg-white p-[26px_28px]"><div className="mb-3 flex items-center gap-2 text-[13px] font-bold text-[#5b5fe8]">✦ Insights de Conexa</div><EmptyState text="Todavía no hay insights generados por la IA." /></div>
+    <div className="grid grid-cols-[1.3fr_1fr] gap-4"><InfoCard title="Funnel"><div className="grid grid-cols-6 gap-2">{funnel.map(([label, value], index) => <div key={label} className="text-center"><div className="flex h-24 items-end justify-center"><div className="w-full max-w-12 rounded-t-md bg-[#5b5fe8]" style={{ height: `${value ? Math.max(18, Math.min(96, Number(value) / Math.max(...funnel.map(([, item]) => Number(item) || 1)) * 96)) : 0}px` }} /></div><p className="mt-2 text-xs font-semibold">{formatMetric(Number(value))}</p><p className="text-[10px] text-[#888]">{label}</p>{index < funnel.length - 1 && <span className="text-[#aaa]">→</span>}</div>)}</div></InfoCard><InfoCard title="Alertas"><EmptyState text="No hay alertas disponibles." /></InfoCard></div>
+    <div className="mt-7 rounded-[18px] bg-gradient-to-br from-[#5b5fe8] to-[#3f43c4] p-[26px_28px] text-white"><div className="mb-3 flex items-center gap-2 text-[13px] font-bold">✦ Insights de Conexa</div>{insights.length ? insights.map((insight, index) => <p key={`${insight}-${index}`} className="border-b border-white/15 py-2.5 text-sm">{index + 1}　{insight}</p>) : <p className="text-sm text-white/70">Todavía no hay insights generados por la IA.</p>}<Button onClick={onAsk} variant="ghost" className="mt-3 h-auto p-0 text-sm font-semibold text-white hover:bg-transparent">Ver análisis completo →</Button></div>
   </div>
 }
 
