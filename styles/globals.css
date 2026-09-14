@@ -49,6 +49,30 @@
   font-family: 'Monument Extended', sans-serif;
 }
 
+/* Conexa owns its surfaces even when the app preview is in dark mode. */
+.conexa-brand .bg-card,
+.conexa-brand .bg-background {
+  background-color: #ffffff !important;
+}
+
+.conexa-brand .text-foreground {
+  color: #101010 !important;
+}
+
+.conexa-brand .text-muted-foreground {
+  color: #888888 !important;
+}
+
+.conexa-brand .border-border {
+  border-color: #e6e6e3 !important;
+}
+
+.conexa-brand [data-slot='card'] {
+  background-color: #ffffff !important;
+  color: #101010 !important;
+  border-color: #e6e6e3 !important;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 /* ─── LIGHT MODE ───────────────────────────────────────────────────────────── */
