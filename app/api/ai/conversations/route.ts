@@ -31,6 +31,10 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (body.newDiagnostic === true) {
+      const current = await getOrCreateConversation(supabase, user.id, body.clientId)
+      await archiveConversation(supabase, user.id, current.id)
+    }
     const conversation = await getOrCreateConversation(supabase, user.id, body.clientId)
     const messages = await listConversationMessages(supabase, user.id, conversation.id)
     return NextResponse.json({ conversation, messages })

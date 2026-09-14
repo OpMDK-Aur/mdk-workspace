@@ -110,6 +110,7 @@ interface SupervisorChatProps {
   title?: string
   description?: string
   emptyStateMessage?: string
+  newDiagnostic?: boolean
 }
 
 type PersistedPerformanceAnalysis = {
@@ -134,7 +135,7 @@ type PersistedMessage = {
 }
 
 export function SupervisorChat(props: SupervisorChatProps) {
-  const { clientId, disabled = false } = props
+  const { clientId, disabled = false, newDiagnostic = false } = props
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [history, setHistory] = useState<PersistedMessage[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
@@ -157,10 +158,10 @@ export function SupervisorChat(props: SupervisorChatProps) {
     // backend siempre resuelve/crea ese único chat, nunca uno nuevo.
     fetch('/api/ai/conversations', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ clientId }),
-    })
-      .then(async (response) => {
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ clientId, newDiagnostic }),
+  })
+  .then(async (response) => {
         if (!response.ok) throw new Error('No se pudo cargar la conversación.')
         return response.json() as Promise<{ conversation: { id: string }; messages: PersistedMessage[] }>
       })
@@ -335,9 +336,9 @@ function SupervisorChatSession({
         fetch('/api/ai/conversations', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ clientId }),
-        })
-          .then((response) => (response.ok ? response.json() : null))
+  body: JSON.stringify({ clientId }),
+  })
+  .then((response) => (response.ok ? response.json() : null))
           .then((data: { messages: PersistedMessage[] } | null) => {
             const latest = data?.messages.findLast((message) => message.role === 'assistant')
             const analysis = latest?.message_data?.performance_analysis

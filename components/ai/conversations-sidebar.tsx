@@ -171,7 +171,7 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
             variant="outline"
             size="sm"
             className="h-7 shrink-0 border-primary/30 px-2 text-xs text-primary"
-            onClick={onNewDiagnostic}
+            onClick={() => { onNewDiagnostic(); void mutate(CONVERSATIONS_SWR_KEY); void mutate(ARCHIVED_SWR_KEY) }}
           >
             + Nuevo diagnóstico
           </Button>
