@@ -63,7 +63,7 @@ export function ConexaWorkspace() {
         {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Cliente</p>}
         {sidebarOpen && <button type="button" className="mb-0.5 flex w-full items-center rounded-md px-2 py-1.5 text-left text-[10.5px] text-[#222]">Contexto del cliente</button>}
         {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Configuración</p>}
-        {sidebarOpen && <button type="button" className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-[10.5px] text-[#222]">Conexiones</button>}
+        {sidebarOpen && <button type="button" onClick={() => window.location.assign('/dashboard/platform')} className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-[10.5px] text-[#222] hover:bg-[#f5f5f8]">Conexiones</button>}
       </nav>
       <button type="button" onClick={() => setSidebarOpen((value) => !value)} className="flex items-center gap-2 border-t border-[#f0f0ee] px-[18px] py-3 text-left text-xs text-[#9a9a9a]">{sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}{sidebarOpen && 'Colapsar menú'}</button>
     </aside>
