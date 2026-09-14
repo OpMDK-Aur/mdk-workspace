@@ -723,7 +723,7 @@ const crmContacts: ToolDefinition = {
 
 const crmContactAds: ToolDefinition = {
   key: 'crm_contact_ads',
-  description: 'Cuenta los contactos creados en Aurelia CRM durante un período que tienen al menos un mensaje inbound con referral de anuncio Meta: referred AD ID, ad_id o source_id dentro de metadata/referral. Usala para preguntas sobre contactos de pauta, anuncios o campañas, no ventas ganadas.',
+  description: 'Cuenta los contactos creados en Aurelia CRM durante un período que tienen al menos un mensaje con utm_id dentro de metadata, referral o message_data. Usala para preguntas sobre contactos de pauta, anuncios o campañas, no ventas ganadas.',
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
@@ -750,7 +750,7 @@ const crmContactAds: ToolDefinition = {
         const object = value as Record<string, unknown>
         for (const [key, entry] of Object.entries(object)) {
           const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
-          if (['referred_ad_id', 'referredadid', 'ad_id', 'adid', 'source_id', 'sourceid', 'referred_ad'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
+          if (['utm_id', 'utmid', 'utm_identifier', 'utmid_value'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
           const result = find(entry)
           if (result) return result
         }
@@ -802,24 +802,24 @@ const crmContactAds: ToolDefinition = {
       }
       const referralsByContact = new Map<string, any[]>()
       for (const message of messages) {
-        const adId = getAdId(message)
-        if (!adId || !message.contact_id) continue
+        const utmId = getAdId(message)
+        if (!utmId || !message.contact_id) continue
         const rows = referralsByContact.get(message.contact_id) ?? []
-        rows.push({ ad_id: String(adId), campaign: getCampaign(message), message_id: message.id, created_at: message.created_at })
+        rows.push({ utm_id: String(utmId), campaign: getCampaign(message), message_id: message.id, created_at: message.created_at })
         referralsByContact.set(message.contact_id, rows)
       }
       const attributedContacts = contacts.filter(contact => referralsByContact.has(contact.id)).map(contact => ({ ...contact, referrals: referralsByContact.get(contact.id) }))
-      const campaignSummary = new Map<string, { campaign: string; contacts: Set<string>; ad_ids: Set<string> }>()
+      const campaignSummary = new Map<string, { campaign: string; contacts: Set<string>; utm_ids: Set<string> }>()
       for (const contact of attributedContacts) {
         for (const referral of referralsByContact.get(contact.id) ?? []) {
-          const campaign = referral.campaign ?? `Ad ID ${referral.ad_id}`
-          const current = campaignSummary.get(campaign) ?? { campaign, contacts: new Set<string>(), ad_ids: new Set<string>() }
+          const campaign = referral.campaign ?? `UTM ID ${referral.utm_id}`
+          const current = campaignSummary.get(campaign) ?? { campaign, contacts: new Set<string>(), utm_ids: new Set<string>() }
           current.contacts.add(contact.id)
-          current.ad_ids.add(referral.ad_id)
+          current.utm_ids.add(referral.utm_id)
           campaignSummary.set(campaign, current)
         }
       }
-      const campaigns = [...campaignSummary.values()].map(item => ({ campaign: item.campaign, contacts: item.contacts.size, ad_ids: [...item.ad_ids] })).sort((a, b) => b.contacts - a.contacts)
+      const campaigns = [...campaignSummary.values()].map(item => ({ campaign: item.campaign, contacts: item.contacts.size, utm_ids: [...item.utm_ids] })).sort((a, b) => b.contacts - a.contacts)
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contact_ads', status: 'completed', label: `${attributedContacts.length} contactos de pauta` })
       return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end }, totals: { contacts_created: contacts.length, contacts_with_ad_referral: attributedContacts.length, messages_scanned: messages.length, campaigns: campaigns.length }, campaigns, contacts: attributedContacts.slice(0, 100), truncated: attributedContacts.length > 100 }
     } catch (error) {
