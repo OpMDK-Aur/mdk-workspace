@@ -96,6 +96,24 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
   return { propertyId: normalizedProperty, dateRange: { start: dateFrom, end: dateTo }, reports, errors }
 }
 
+export async function getGoogleAnalyticsPageMetrics(propertyId: string, dateFrom: string, dateTo: string, pagePath: string) {
+  const normalizedProperty = propertyId.replace(/^properties\//, '')
+  if (!/^\d+$/.test(normalizedProperty)) throw new Error('La propiedad de Google Analytics no tiene un ID válido.')
+  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: createAuth() })
+  const response = await analyticsData.properties.runReport({
+    property: `properties/${normalizedProperty}`,
+    requestBody: {
+      dateRanges: [{ startDate: dateFrom, endDate: dateTo }],
+      dimensions: [{ name: 'pagePath' }, { name: 'pageTitle' }],
+      metrics: [{ name: 'screenPageViews' }, { name: 'activeUsers' }, { name: 'sessions' }, { name: 'engagedSessions' }],
+      dimensionFilter: { filter: { fieldName: 'pagePath', stringFilter: { matchType: 'EXACT', value: pagePath } } },
+      limit: '10',
+    },
+  })
+  const rows = rowsToRecords(response, 10)
+  return { propertyId: normalizedProperty, dateRange: { start: dateFrom, end: dateTo }, pagePath, rows, totals: rows.reduce((total, row) => ({ screenPageViews: total.screenPageViews + Number(row.screenPageViews ?? 0), activeUsers: total.activeUsers + Number(row.activeUsers ?? 0), sessions: total.sessions + Number(row.sessions ?? 0), engagedSessions: total.engagedSessions + Number(row.engagedSessions ?? 0) }), { screenPageViews: 0, activeUsers: 0, sessions: 0, engagedSessions: 0 }) }
+}
+
 export async function getGoogleAnalyticsSales(propertyId: string, dateFrom: string, dateTo: string): Promise<GoogleAnalyticsSales> {
   const normalizedProperty = propertyId.replace(/^properties\//, '')
   if (!/^\d+$/.test(normalizedProperty)) throw new Error('La propiedad de Google Analytics no tiene un ID válido.')
