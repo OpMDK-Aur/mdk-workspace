@@ -468,7 +468,7 @@ const getGoogleAnalyticsReportTool: ToolDefinition = {
 
   const getGoogleAnalyticsPageTool: ToolDefinition = {
   key: 'get_google_analytics_page_metrics',
-  description: 'Consulta métricas agregadas de una página exacta de GA4 usando pagePath. Usala cuando el usuario pregunte vistas, usuarios o sesiones de una URL específica; no uses la tabla general pages porque puede truncar o duplicar filas por dimensiones adicionales.',
+  description: 'Consulta un conjunto amplio de métricas agregadas de una página exacta de GA4 usando pagePath: vistas, usuarios, sesiones, engagement, eventos, conversiones e ingresos cuando la propiedad los tenga disponibles. Usala para preguntas naturales sobre una URL; no requiere que el usuario conozca los nombres técnicos.',
   inputSchema: z.object({ pagePath: z.string().min(1).max(500), dateFrom: z.string().optional(), dateTo: z.string().optional() }),
   async execute(input: { pagePath: string; dateFrom?: string; dateTo?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
