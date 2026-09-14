@@ -50,17 +50,15 @@ export function ConexaWorkspace() {
 
   useEffect(() => {
     if (!client?.id) return
-    const supabase = createClient()
-    Promise.all([
-      supabase.from('cuentas_publicitarias').select('*').eq('cliente_id', client.id).eq('activo', true),
-      supabase.from('paid_media_daily_metrics').select('*').eq('client_id', client.id).gte('metric_date', periodStart(period)).lte('metric_date', periodEnd()).order('metric_date', { ascending: false }).limit(90),
-      supabase.from('reports').select('*').eq('client_id', client.id).order('updated_at', { ascending: false }).limit(20),
-      supabase.from('paid_media_change_events').select('*').eq('client_id', client.id).order('created_at', { ascending: false }).limit(20),
-      supabase.from('ai_client_profile').select('*').eq('client_id', client.id).maybeSingle(),
-      supabase.from('ai_client_memory').select('*').eq('client_id', client.id).eq('is_active', true).order('updated_at', { ascending: false }).limit(10),
-  ]).then(([accounts, metrics, reports, approvals, profile, memory]) => setData({
-  accounts: accounts.data ?? [], metrics: metrics.data ?? [], reports: reports.data ?? [], approvals: approvals.data ?? [], profile: profile.data ?? null, memory: memory.data ?? [],
-  }))
+    let cancelled = false
+    fetch('/api/conexa/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client.id, period }) })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron consultar las tools de Conexa.')))
+      .then((result) => {
+        if (cancelled) return
+        setData({ accounts: [], metrics: result.metrics ?? [], reports: result.analytics?.reports ?? [], approvals: [], profile: null, memory: result.memory?.items ?? [] })
+      })
+      .catch(() => { if (!cancelled) setData(emptyConexaData) })
+    return () => { cancelled = true }
   }, [client?.id, period])
 
   const platforms = useMemo<Platform[]>(() => [

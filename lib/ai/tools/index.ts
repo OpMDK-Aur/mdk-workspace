@@ -328,7 +328,7 @@ const getMetaMetrics: ToolDefinition = {
     if ((input.dateFrom && !input.dateTo) || (!input.dateFrom && input.dateTo)) return { available: false, message: 'Debes indicar dateFrom y dateTo juntos.' }
 
     const { dateFrom, dateTo } = input.dateFrom && input.dateTo ? input : defaultMetaDateRange()
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: accounts, error } = await supabase
       .from('cuentas_publicitarias')
       .select('id_cuenta, nombre_cuenta, moneda, zona_horaria')
@@ -404,7 +404,7 @@ const getGoogleMetrics: ToolDefinition = {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     if ((input.dateFrom && !input.dateTo) || (!input.dateFrom && input.dateTo)) return { available: false, message: 'Debes indicar dateFrom y dateTo juntos.' }
     const { dateFrom, dateTo } = input.dateFrom && input.dateTo ? input : defaultGoogleDateRange()
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: accounts, error } = await supabase.from('cuentas_publicitarias').select('id_cuenta, nombre_cuenta, moneda, zona_horaria').eq('cliente_id', context.clientId).eq('plataforma', 'google').eq('activo', true)
     if (error) return { available: false, message: 'No se pudieron consultar las cuentas activas de Google Ads.' }
     const availableAccounts = (accounts ?? []).flatMap((account) => splitCustomerIds(account.id_cuenta).map((id_cuenta) => ({ ...account, id_cuenta })))
@@ -450,7 +450,7 @@ const getGoogleAnalyticsReportTool: ToolDefinition = {
     const argentinaRange = getBuenosAiresLastSevenDays()
     const dateTo = input.dateTo ?? argentinaRange.dateTo
     const dateFrom = input.dateFrom ?? argentinaRange.dateFrom
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: client, error } = await supabase.from('clientes').select('analytics_property_id').eq('id', context.clientId).single()
     if (error || !client?.analytics_property_id) return { available: false, message: 'El cliente no tiene una propiedad de Google Analytics 4 asignada en la configuración de plataforma.' }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_report', status: 'running', label: 'Consultando información completa de Google Analytics 4...' })
@@ -475,7 +475,7 @@ const getGoogleAnalyticsReportTool: ToolDefinition = {
     const range = getBuenosAiresLastSevenDays()
     const dateFrom = input.dateFrom ?? range.dateFrom
     const dateTo = input.dateTo ?? range.dateTo
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: client, error } = await supabase.from('clientes').select('analytics_property_id').eq('id', context.clientId).single()
     if (error || !client?.analytics_property_id) return { available: false, message: 'El cliente no tiene una propiedad de Google Analytics 4 asignada en la configuración de plataforma.' }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_page_metrics', status: 'running', label: `Consultando métricas de ${input.pagePath} en GA4...` })
@@ -500,7 +500,7 @@ const getGoogleAnalyticsReportTool: ToolDefinition = {
     const argentinaRange = getBuenosAiresLastSevenDays()
     const dateTo = input.dateTo ?? argentinaRange.dateTo
     const dateFrom = input.dateFrom ?? argentinaRange.dateFrom
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: client, error } = await supabase.from('clientes').select('analytics_property_id').eq('id', context.clientId).single()
     if (error || !client?.analytics_property_id) return { available: false, message: 'El cliente no tiene una propiedad de Google Analytics 4 asignada en la configuración de plataforma.' }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_sales', status: 'running', label: 'Consultando ventas de Google Analytics 4...' })
