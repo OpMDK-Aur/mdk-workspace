@@ -69,7 +69,10 @@ export async function streamSupervisorResponse(
     system: [
       config.systemPrompt,
       'No expongas secretos, tokens, claves ni credenciales. El contexto de ejecución ya fue provisto por el backend.',
-      'EJECUCIÓN INMEDIATA: si la consulta pide un dato, métrica, cantidad o estado verificable, no escribas una explicación previa ni anuncies lo que vas a hacer. Ejecutá primero las herramientas necesarias y respondé después con el resultado. En particular, ante preguntas sobre leads/contactos/oportunidades ejecutá crm_contacts o crm_opportunities directamente; no digas que vas a cargar contexto. El usuario solo debe ver la respuesta final y, durante la ejecución, las actividades de las herramientas.',
+      'EJECUCIÓN INMEDIATA: si la consulta pide un dato, métrica, cantidad o estado verificable, no escribas una explicación previa ni anuncies lo que vas a hacer. Ejecutá las herramientas necesarias y respondé después con el resultado. El usuario solo debe ver la respuesta final y, durante la ejecución, las actividades de las herramientas.',
+      'PROTOCOLO DE ORQUESTACIÓN ADAPTATIVA Y CRUCE: primero clasificá la intención de la consulta y elegí la fuente de verdad inicial. Para ventas, cierres, oportunidades ganadas o “cuántas ventas”, comenzá con crm_opportunities para obtener las oportunidades con estado won y sus contactos; después ejecutá crm_contact_ads o crm_sales_attribution para extraer utm_id/source_id de esos contactos; finalmente consultá la herramienta de la plataforma correspondiente (Meta Ads o Google Ads) para obtener gasto, campañas, anuncios y leads, y cruzá los IDs/UTM antes de redactar. Para leads de pauta comenzá por la plataforma y luego contrastá con crm_contacts/crm_contact_ads. Para contactos CRM comenzá por crm_contacts. Para gasto comenzá por la plataforma. Nunca uses una secuencia fija si la intención exige otra, pero siempre completá todos los nodos necesarios para responder la pregunta.',
+      'CONTRATO DE CRUCE: cada resultado de una tool es evidencia para las siguientes. Conservá cliente, cuentas, período y zona horaria; no cruces resultados de otro cliente o período. Compará utm_id, source_id, campaign_id y ad_id con normalización estricta y reportá coincidencias y no coincidencias. El informe debe separar claramente: gasto de plataforma, leads/conversiones reportados por plataforma, contactos totales del CRM, contactos CRM con UTM, oportunidades won/ventas y ventas atribuibles. Si una fuente no está disponible o no existe una coincidencia, informalo como “no disponible” o “sin coincidencias”; nunca lo conviertas en cero ni inventes nombres, importes o atribuciones.',
+      'RESPUESTA FINAL: redactá un informe concreto basado únicamente en los tool results del turno. Incluí período exacto y zona horaria, fuente de cada cifra, fórmula o criterio de cruce, diferencias entre plataformas y CRM, y una sección de datos faltantes. No respondas hasta ejecutar las tools necesarias ni presentes una hipótesis como hecho.',
       'ATRIBUCIÓN TEMPORAL: cuando informes un período, indicá siempre fecha y hora de inicio y fin. Interpretá el período como desde las 00:00:00 hasta las 23:59:59 en la zona horaria de la cuenta seleccionada; para GA4 usá siempre America/Argentina/Buenos_Aires y calculá últimos 7 días como los siete días completos anteriores, desde hace 7 días hasta ayer, sin incluir el día corriente. Si hay varias cuentas con distintas zonas horarias, aclaralo por cuenta y no mezcles horas como si fueran una sola zona. Diferenciá la fecha/hora del período analizado de la fecha/hora actual de ejecución.',
       'FORMATO DE TABLAS MARKDOWN: los nombres de campaña, conjunto de anuncios o anuncio suelen incluir el carácter "|" como separador (ej. "MDK | Buenos Aires | Formulario"). Ese carácter literal rompe las columnas de una tabla markdown. Antes de insertar cualquier valor en una celda de tabla, reemplazá cada "|" por " - " (nunca lo dejes tal cual). Además, cada fila debe tener exactamente el mismo número de columnas que el encabezado.',
       `Herramientas disponibles: ${definitions.map((definition) => definition.key).join(', ') || 'ninguna'}.`,
@@ -92,8 +95,8 @@ export async function streamSupervisorResponse(
     ].join('\n\n'),
     messages,
     tools,
-    stopWhen: stepCountIs(4),
+    stopWhen: stepCountIs(8),
     temperature: 0.2,
-    maxOutputTokens: 1200,
+    maxOutputTokens: 2200,
   })
 }

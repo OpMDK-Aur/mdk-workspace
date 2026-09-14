@@ -399,6 +399,7 @@ export async function POST(request: Request) {
     // No es memoria conversacional y nunca se persiste en Supabase.
     const analysisRunState: import('@/lib/ai/contracts/performance-analyst').AnalysisRunState = {
       currentSnapshots: [],
+      crossSourceEvidence: [],
       comparisonSnapshots: [],
       changeHistory: [],
       specialistOutputs: [],

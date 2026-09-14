@@ -321,7 +321,7 @@ const getIndustryBenchmark: ToolDefinition = {
 
 const getMetaMetrics: ToolDefinition = {
   key: 'get_meta_metrics',
-  description: 'Consulta métricas reales de Meta Ads de las cuentas activas del cliente seleccionado.',
+  description: 'Consulta métricas reales de Meta Ads de las cuentas activas del cliente seleccionado, incluyendo gasto, leads/resultados, campañas, anuncios e IDs necesarios para cruzar utm_id o source_id del CRM.',
   inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional(), accountId: z.string().optional() }),
   async execute(input: { dateFrom?: string; dateTo?: string; accountId?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
@@ -398,7 +398,7 @@ const getMetaMetrics: ToolDefinition = {
 
 const getGoogleMetrics: ToolDefinition = {
   key: 'get_google_metrics',
-  description: 'Consulta métricas reales de Google Ads de las cuentas activas del cliente seleccionado. Cada cuenta incluye conversion_actions con el nombre exacto de la acción de conversión, conversiones, valor y campañas relacionadas; totals.leads es únicamente el total agregado.',
+  description: 'Consulta métricas reales de Google Ads de las cuentas activas del cliente seleccionado, incluyendo gasto, leads/conversiones, campañas, anuncios e IDs necesarios para cruzar utm_id o source_id del CRM. Cada cuenta incluye conversion_actions con el nombre exacto de la acción de conversión, conversiones, valor y campañas relacionadas; totals.leads es únicamente el total agregado.',
   inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional(), accountId: z.string().optional() }),
   async execute(input: { dateFrom?: string; dateTo?: string; accountId?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
@@ -676,9 +676,9 @@ const getPreviousInsights: ToolDefinition = {
 
 const crmOpportunities: ToolDefinition = {
   key: 'crm_opportunities',
-  description: 'Lista todas las oportunidades del CRM externo de Aurelia dentro de un período, incluyendo estado, etapa, vendedor, contacto y monto.',
-  inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
-  async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
+  description: 'Lista oportunidades del CRM dentro de un período, incluyendo estado, etapa, vendedor, contacto y monto. Para ventas, pasá status=won y usá los contact_id devueltos para el siguiente cruce.',
+  inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), status: z.string().optional() }),
+  async execute(input: { dateFrom: string; dateTo: string; status?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     const crmAccountIds = await resolveCrmAccountIds(context.clientId)
     if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
@@ -690,7 +690,9 @@ const crmOpportunities: ToolDefinition = {
     const opportunities: any[] = []
     try {
       for (let offset = 0; offset < 10000; offset += 100) {
-        const { data, error } = await crm.from('opportunities').select('id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
+        let query = crm.from('opportunities').select('id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end)
+        if (input.status) query = query.eq('status', input.status)
+        const { data, error } = await query.range(offset, offset + 99)
         if (error) throw new Error(`opportunities: ${error.message}`)
         opportunities.push(...(data ?? []))
         if ((data ?? []).length < 100) break
@@ -746,9 +748,9 @@ const crmContacts: ToolDefinition = {
 
 const crmContactAds: ToolDefinition = {
   key: 'crm_contact_ads',
-  description: 'Cuenta los contactos creados en CRM durante un período que tienen al menos un mensaje con utm_id dentro de metadata, referral o message_data. Usala para preguntas sobre contactos de pauta, anuncios o campañas, no ventas ganadas.',
-  inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
-  async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
+  description: 'Cuenta contactos CRM con utm_id/referral/source_id. Si ya obtuviste oportunidades won, pasá sus contactIds para cruzar únicamente esos contactos; si no, analiza todos los contactos creados en el período.',
+  inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), contactIds: z.array(z.string()).optional() }),
+  async execute(input: { dateFrom: string; dateTo: string; contactIds?: string[] }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     const crmAccountIds = await resolveCrmAccountIds(context.clientId)
     if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
@@ -801,7 +803,9 @@ const crmContactAds: ToolDefinition = {
     try {
       const contacts: any[] = []
       for (let offset = 0; offset < 10000; offset += 100) {
-        const { data, error } = await crm.from('contacts').select('id,created_at,client_id,name,email,phone').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
+        let query = crm.from('contacts').select('id,created_at,client_id,name,email,phone').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end)
+        if (input.contactIds?.length) query = query.in('id', input.contactIds)
+        const { data, error } = await query.range(offset, offset + 99)
         if (error) throw new Error(`contacts: ${error.message}`)
         contacts.push(...(data ?? []))
         if ((data ?? []).length < 100) break
@@ -854,7 +858,7 @@ const crmContactAds: ToolDefinition = {
 
 const crmSalesAttribution: ToolDefinition = {
   key: 'crm_sales_attribution',
-  description: 'Relaciona oportunidades ganadas del CRM externo de Aurelia con contactos, mensajes inbound con referral/source_id y conversaciones asignadas. Usala para responder ventas por campaña o anuncio. NO usar para contar el total de contactos creados: para eso usar crm_contacts.',
+  description: 'Relaciona oportunidades ganadas del CRM con contactos y mensajes inbound con utm_id/referral/source_id para atribución de ventas. Usala después de identificar las oportunidades won cuando la consulta pide ventas por campaña o anuncio. Su resultado es evidencia CRM; debe cruzarse con Meta Ads o Google Ads para validar gasto, leads y nombres de campaña. NO usar para contar el total de contactos creados: para eso usar crm_contacts.',
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
