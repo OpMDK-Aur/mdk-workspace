@@ -1,4 +1,4 @@
-import { MultiagenteWorkspace } from '@/components/ai/multiagente-workspace'
+import { ConexaWorkspace } from '@/components/ai/conexa-workspace'
 
 export const metadata = {
   title: 'Conexa | MDK Workspace',
@@ -6,5 +6,5 @@ export const metadata = {
 }
 
 export default function ConexaPage() {
-  return <MultiagenteWorkspace />
+  return <ConexaWorkspace />
 }
