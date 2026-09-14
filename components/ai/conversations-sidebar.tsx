@@ -62,9 +62,10 @@ interface ConversationsSidebarProps {
   activeClientId: string | null
   clientFilterId?: string | null
   onSelect: (conversation: ConversationSummary) => void
+  onNewDiagnostic?: () => void
 }
 
-export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect }: ConversationsSidebarProps) {
+export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect, onNewDiagnostic }: ConversationsSidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [unidadFilter, setUnidadFilter] = useState<string>('all')
@@ -165,6 +166,16 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect 
           <MessagesSquare className="size-4 text-primary" aria-hidden="true" />
           {showArchived ? 'Chats archivados' : 'Chats activos'}
         </div>
+        {!showArchived && onNewDiagnostic && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 border-primary/30 px-2 text-xs text-primary"
+            onClick={onNewDiagnostic}
+          >
+            + Nuevo diagnóstico
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
