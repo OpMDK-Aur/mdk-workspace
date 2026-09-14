@@ -454,8 +454,8 @@ function SupervisorChatSession({
   }
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+      <CardHeader className="shrink-0 flex flex-row items-start justify-between gap-4">
         <div className="min-w-0">
           <CardTitle>{title}</CardTitle>
           <CardDescription>{description}</CardDescription>
@@ -489,7 +489,7 @@ function SupervisorChatSession({
           </AlertDialog>
         )}
       </CardHeader>
-      <CardContent className="flex flex-col gap-4 p-0">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-0">
         {/* El panel de Análisis IA se apila debajo recién a partir de xl:
             con el sidebar de chats también presente, mantenerlo al costado
             desde lg dejaba la columna del chat demasiado angosta. */}
