@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { BarChart3, ChevronDown, CircleHelp, Database, Gauge, GitBranch, Globe2, LayoutDashboard, MessageCircle, PanelLeftClose, PanelLeftOpen, Search, Settings2, Sparkles, Tags, Users, WalletCards, X } from 'lucide-react'
+import { BarChart3, ChevronDown, CircleHelp, Database, Gauge, Globe2, LayoutDashboard, MessageCircle, PanelLeftClose, PanelLeftOpen, Search, Settings2, Sparkles, Tags, Users, WalletCards, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -15,8 +15,6 @@ const baseNav = [
   { label: 'Chat / Análisis', icon: MessageCircle },
   { label: 'Informes', icon: BarChart3 },
   { label: 'Aprobaciones', icon: WalletCards, badge: '3' },
-  { label: 'Alertas', icon: CircleHelp, badge: '5' },
-  { label: 'Actividad', icon: GitBranch },
 ]
 
 export function ConexaWorkspace() {
