@@ -67,6 +67,9 @@ export interface MetaAccountMetrics {
   }
   results_by_type: Record<string, { results: number; spend: number; cost_per_result: number }>
   campaigns: MetaCampaignMetrics[]
+  adsets?: MetaCampaignMetrics[]
+  ads?: MetaCampaignMetrics[]
+  creatives?: MetaCampaignMetrics[]
 }
 
 export type MetaResultType =
@@ -177,11 +180,12 @@ async function fetchJson(url: string) {
   return payload as MetaApiErrorPayload & { data?: MetaInsightRow[]; paging?: { next?: string } }
 }
 
-async function fetchInsightRows(accountId: string, accessToken: string, dateFrom: string, dateTo: string) {
-  const fields = 'campaign_id,campaign_name,objective,impressions,clicks,spend,ctr,cpc,actions'
+async function fetchInsightRows(accountId: string, accessToken: string, dateFrom: string, dateTo: string, level: 'campaign' | 'adset' | 'ad' = 'campaign') {
+  const identity = level === 'campaign' ? 'campaign_id,campaign_name,objective' : level === 'adset' ? 'campaign_id,campaign_name,adset_id,adset_name' : 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name'
+  const fields = `${identity},impressions,clicks,spend,ctr,cpc,actions`
   let url: string | null = `${META_BASE_URL}/act_${accountId}/insights?${new URLSearchParams({
     access_token: accessToken,
-    level: 'campaign',
+    level,
     fields,
     time_range: JSON.stringify({ since: dateFrom, until: dateTo }),
     limit: '500',
@@ -270,6 +274,16 @@ function legacyLabel(resultType: MetaResultType) {
   } satisfies Record<MetaResultType, string>)[resultType]
 }
 
+function normalizeEntityRows(rows: MetaInsightRow[], level: 'campaign' | 'adset' | 'ad') {
+  return rows.map((row) => {
+    const id = level === 'campaign' ? row.campaign_id : level === 'adset' ? (row as MetaInsightRow & { adset_id?: string }).adset_id : (row as MetaInsightRow & { ad_id?: string }).ad_id
+    const name = level === 'campaign' ? row.campaign_name : level === 'adset' ? (row as MetaInsightRow & { adset_name?: string }).adset_name : (row as MetaInsightRow & { ad_name?: string }).ad_name
+    const result = normalizeMetaResult(row.objective || '', row.actions)
+    const spend = toNumber(row.spend)
+    return { id: id || '', name: name || 'Sin nombre', objective: row.objective || 'UNKNOWN', impressions: toInt(row.impressions), clicks: toInt(row.clicks), spend, results: result.results, result_type: result.resultType, source_action_type: result.sourceActionType, ctr: toNumber(row.ctr), cpc: toNumber(row.cpc), cost_per_result: result.results > 0 ? spend / result.results : 0, leads: result.leads, cpl: result.leads > 0 ? spend / result.leads : 0, lead_type: legacyLabel(result.resultType) }
+  }).filter((row) => row.id)
+}
+
 export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Promise<MetaAccountMetrics> {
   const accountId = normalizeMetaAccountId(input.accountId)
   if (!/^\d{1,20}$/.test(accountId)) throw createMetaError('La cuenta de Meta Ads no tiene un ID válido.', 'ACCOUNT_ERROR')
@@ -277,9 +291,11 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
   const accessToken = process.env.META_ADS_ACCESS_TOKEN
   if (!accessToken) throw createMetaError('META_ADS_ACCESS_TOKEN no está configurado.', 'AUTHENTICATION_ERROR')
 
-  const rowsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo)
+  const rowsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'campaign')
+  const adsetsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'adset')
+  const adsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'ad')
   const activeIdsPromise = input.onlyActiveCampaigns ? fetchActiveCampaignIds(accountId, accessToken) : Promise.resolve<Set<string> | null>(null)
-  const [rows, activeIds] = await Promise.all([rowsPromise, activeIdsPromise])
+  const [rows, adsetRows, adRows, activeIds] = await Promise.all([rowsPromise, adsetsPromise, adsPromise, activeIdsPromise])
   const campaigns = rows.filter((row) => !activeIds || activeIds.has(row.campaign_id || '')).map((row) => {
     const spend = toNumber(row.spend)
     const result = normalizeMetaResult(row.objective || '', row.actions)
@@ -292,6 +308,9 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
       leads: result.leads, cpl: result.leads > 0 ? spend / result.leads : 0, lead_type: legacyLabel(result.resultType),
     }
   }).filter((campaign) => campaign.id)
+  const adsets = normalizeEntityRows(adsetRows, 'adset')
+  const ads = normalizeEntityRows(adRows, 'ad')
+  const creatives = ads.map((ad) => ({ ...ad, creative_id: ad.id, creative_name: ad.name }))
 
   const totals = campaigns.reduce((acc, campaign) => ({
     impressions: acc.impressions + campaign.impressions, clicks: acc.clicks + campaign.clicks,
@@ -313,7 +332,7 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
     account_id: accountId, account_name: input.accountName ?? null, moneda: input.moneda ?? null, zona_horaria: input.zonaHoraria ?? null,
     api_rows_received: rows.length,
     raw_rows: rows.slice(0, 3),
-    date_range: { start: input.dateFrom, end: input.dateTo }, totals, results_by_type: resultsByType, campaigns,
+    date_range: { start: input.dateFrom, end: input.dateTo }, totals, results_by_type: resultsByType, campaigns, adsets, ads, creatives,
   }
 }
 
