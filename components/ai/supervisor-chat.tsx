@@ -100,7 +100,7 @@ interface SupervisorChatProps {
   googleCustomerId?: string
   analyticsPropertyId?: string
   model?: string
-  onAction?: (action: 'report' | 'diagnosis', content: string) => void
+  onAction?: (action: 'report' | 'diagnosis', content: string, reportData?: PaidMediaReportData) => void
   selectedAccountSummary?: Array<{ id: string | null; name: string; platform: string | null }>
   selectedAccountReading?: string
   scoreConfig?: { objective: string }
@@ -120,12 +120,17 @@ type PersistedPerformanceAnalysis = {
   entity?: { platform?: 'google' | 'meta' | 'mixed'; account_ids?: string[] }
 }
 
+type PaidMediaReportData = {
+  currentSnapshots?: Array<{ platform?: string; currency?: string | null; metrics?: Record<string, unknown>; campaigns?: Array<Record<string, unknown>> }>
+  comparisonSnapshots?: Array<{ platform?: string; metrics?: Record<string, unknown> }>
+}
+
 type PersistedMessage = {
   id: string
   role: 'user' | 'assistant'
   content: string
   created_at: string
-  message_data?: { performance_analysis?: PersistedPerformanceAnalysis } | null
+  message_data?: { performance_analysis?: PersistedPerformanceAnalysis; paid_media?: PaidMediaReportData } | null
 }
 
 export function SupervisorChat(props: SupervisorChatProps) {
@@ -294,6 +299,7 @@ function SupervisorChatSession({
   // del Supervisor, pero recién queda persistido en message_data cuando el
   // stream termina (onFinish del backend). Lo reflejamos acá apenas termina
   // cada turno, sin esperar a que el usuario recargue o cambie de cliente.
+  const [latestReportData, setLatestReportData] = useState<PaidMediaReportData | undefined>(initialMessages.findLast((message) => message.role === 'assistant')?.message_data?.paid_media)
   const [latestAnalysis, setLatestAnalysis] = useState(
     initialMessages.findLast((message) => message.role === 'assistant')?.message_data?.performance_analysis ?? null,
   )
@@ -333,8 +339,10 @@ function SupervisorChatSession({
         })
           .then((response) => (response.ok ? response.json() : null))
           .then((data: { messages: PersistedMessage[] } | null) => {
-            const analysis = data?.messages.findLast((message) => message.role === 'assistant')?.message_data?.performance_analysis
+            const latest = data?.messages.findLast((message) => message.role === 'assistant')
+            const analysis = latest?.message_data?.performance_analysis
             if (analysis) setLatestAnalysis(analysis)
+            if (latest?.message_data?.paid_media) setLatestReportData(latest.message_data.paid_media)
           })
           .catch(() => {})
       }
@@ -557,7 +565,7 @@ function SupervisorChatSession({
                     ) : message.role === 'assistant' ? (
                       <span className="text-muted-foreground">Preparando respuesta…</span>
   ) : null}
-  {message.role === 'assistant' && index === messages.length - 1 && !isBusy && <div className="mt-3 flex flex-wrap gap-2 border-t pt-3"><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('report', messageText(message))}>Crear informe</Button><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('diagnosis', messageText(message))}>Generar diagnóstico</Button></div>}
+  {message.role === 'assistant' && index === messages.length - 1 && !isBusy && <div className="mt-3 flex flex-wrap gap-2 border-t pt-3"><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('report', messageText(message), latestReportData)}>Crear informe</Button><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('diagnosis', messageText(message))}>Generar diagnóstico</Button></div>}
   </div>
   {message.role === 'user' && (
                     <User className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />

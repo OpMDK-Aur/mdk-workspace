@@ -448,6 +448,10 @@ export async function POST(request: Request) {
           messageData: {
             ...(workingContext ? { context_snapshot: workingContext } : {}),
             ...(analysisRunState.specialistOutputs.at(-1) ? { performance_analysis: analysisRunState.specialistOutputs.at(-1) } : {}),
+            paid_media: {
+              currentSnapshots: analysisRunState.currentSnapshots,
+              comparisonSnapshots: analysisRunState.comparisonSnapshots,
+            },
           },
         })
       },
