@@ -735,9 +735,28 @@ const crmContactAds: ToolDefinition = {
     endExclusive.setUTCDate(endExclusive.getUTCDate() + 1)
     const end = endExclusive.toISOString()
     const getAdId = (message: any) => {
-      const metadata = message.metadata ?? message.referral_metadata ?? {}
-      const referral = metadata.referral ?? metadata
-      return referral.referred_ad_id ?? referral.referredAdId ?? referral.ad_id ?? referral.adId ?? referral.source_id ?? referral.sourceId ?? null
+      const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
+      const visited = new Set<object>()
+      const find = (value: unknown): string | null => {
+        if (!value || typeof value !== 'object' || visited.has(value as object)) return null
+        visited.add(value as object)
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            const result = find(item)
+            if (result) return result
+          }
+          return null
+        }
+        const object = value as Record<string, unknown>
+        for (const [key, entry] of Object.entries(object)) {
+          const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
+          if (['referred_ad_id', 'referredadid', 'ad_id', 'adid', 'source_id', 'sourceid', 'referred_ad'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
+          const result = find(entry)
+          if (result) return result
+        }
+        return null
+      }
+      return find(candidates) ?? (message.source ? String(message.source) : null)
     }
     try {
       const contacts: any[] = []
@@ -750,7 +769,7 @@ const crmContactAds: ToolDefinition = {
       const contactIds = contacts.map(contact => contact.id).filter(Boolean)
       const messages: any[] = []
       for (let offset = 0; contactIds.length > 0 && offset < 10000; offset += 100) {
-        const { data, error } = await crm.from('messages').select('id,created_at,client_id,contact_id,conversation_id,metadata,source').in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound').gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
+        const { data, error } = await crm.from('messages').select('id,created_at,client_id,contact_id,conversation_id,metadata,source').in('client_id', crmAccountIds).in('contact_id', contactIds).range(offset, offset + 99)
         if (error) throw new Error(`messages: ${error.message}`)
         messages.push(...(data ?? []))
         if ((data ?? []).length < 100) break
