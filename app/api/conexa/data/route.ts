@@ -49,14 +49,19 @@ export async function POST(request: Request) {
     visit(source)
     return result
   }
+  const crmTotals = (source: unknown, key: string) => {
+    if (!source || typeof source !== 'object') return 0
+    const totals = (source as { totals?: Record<string, unknown> }).totals
+    return number(totals?.[key])
+  }
   const metrics = [{
     spend: total(meta, ['spend', 'cost', 'investment']) + total(google, ['spend', 'cost', 'investment']),
     impressions: total(meta, ['impressions']) + total(google, ['impressions']),
     clicks: total(meta, ['clicks']) + total(google, ['clicks']),
     visits: total(analytics, ['sessions', 'visits']),
-    contacts: total(contacts, ['count', 'contacts', 'leads']) + total(google, ['leads']),
-    opportunities: total(opportunities, ['count', 'opportunities']),
-    sales: total(sales, ['won_sales', 'sales', 'conversions']),
+    contacts: crmTotals(contacts, 'contacts'),
+    opportunities: crmTotals(opportunities, 'opportunities'),
+    sales: crmTotals(sales, 'won_sales'),
   }]
   return NextResponse.json({ range, metrics, meta, google, analytics, contacts, opportunities, sales, memory })
 }
