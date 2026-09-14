@@ -1,9 +1,13 @@
 import type { Metadata, Viewport } from 'next'
+import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { GoogleTagManager } from '@next/third-parties/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 import '../styles/globals.css'
+
+const geist = Geist({ subsets: ['latin'], variable: '--font-sans' })
+const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-mono' })
 
 export const metadata: Metadata = {
   title: 'MDK Workspace',
@@ -21,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="es" suppressHydrationWarning className="bg-background">
+    <html lang="es" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable} bg-background`}>
       <GoogleTagManager gtmId="GTM-W2LWLQ2P" />
       <body className="font-sans antialiased">
         <ThemeProvider
