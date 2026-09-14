@@ -24,7 +24,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { MessageContent } from '@/components/chat/message-content'
-import { AIAnalysisPanel } from './ai-analysis-panel'
 import { CONVERSATIONS_SWR_KEY } from './conversations-sidebar'
 
 function messageText(message: UIMessage) {
@@ -557,9 +556,10 @@ function SupervisorChatSession({
                       <span className="whitespace-pre-wrap">{messageText(message)}</span>
                     ) : message.role === 'assistant' ? (
                       <span className="text-muted-foreground">Preparando respuesta…</span>
-                    ) : null}
-                  </div>
-                  {message.role === 'user' && (
+  ) : null}
+  {message.role === 'assistant' && index === messages.length - 1 && !isBusy && <div className="mt-3 flex flex-wrap gap-2 border-t pt-3"><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('report')}>Crear informe</Button><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('diagnosis')}>Generar diagnóstico</Button></div>}
+  </div>
+  {message.role === 'user' && (
                     <User className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   )}
                 </div>
@@ -659,8 +659,6 @@ function SupervisorChatSession({
           </form>
         </div>
           </div>
-          <AIAnalysisPanel content={lastMessage?.role === 'assistant' ? messageText(lastMessage) : ''} analysis={latestAnalysis} />
-          {lastMessage?.role === 'assistant' && !isBusy && <div className="flex flex-wrap gap-2 border-t px-4 py-3"><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('report')}>Crear informe</Button><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('diagnosis')}>Generar diagnóstico</Button></div>}
         </div>
       </CardContent>
     </Card>
