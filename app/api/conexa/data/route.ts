@@ -26,8 +26,8 @@ export async function POST(request: Request) {
     admin.from('clientes').select('meta_ads_account_id, google_ads_customer_id, analytics_property_id').eq('id', body.clientId).maybeSingle(),
     admin.from('cuentas_publicitarias').select('id_cuenta, plataforma').eq('cliente_id', body.clientId).eq('activo', true),
   ])
-  const accountIds = (accounts ?? []).filter((account) => account.plataforma === 'meta').map((account) => account.id_cuenta).join(',')
-  const customerIds = (accounts ?? []).filter((account) => account.plataforma === 'google').map((account) => account.id_cuenta).join(',')
+  const accountIds = (accounts ?? []).filter((account) => account.plataforma === 'meta').map((account) => account.id_cuenta).filter(Boolean).join(',')
+  const customerIds = (accounts ?? []).filter((account) => account.plataforma === 'google').map((account) => account.id_cuenta).filter(Boolean).join(',')
   const context: ExecutionContext = { userId: user?.id ?? 'conexa-prototype', userEmail: user?.email ?? undefined, clientId: body.clientId, metaAccountId: accountIds || client?.meta_ads_account_id || undefined, googleCustomerId: customerIds || client?.google_ads_customer_id || undefined, analyticsPropertyId: client?.analytics_property_id || undefined }
   const tools = getToolDefinitions(['get_meta_metrics', 'get_google_metrics', 'get_google_analytics_report', 'crm_contacts', 'crm_opportunities', 'crm_sales_attribution', 'get_client_memory'])
   const byKey = new Map(tools.map((tool) => [tool.key, tool]))
@@ -63,5 +63,11 @@ export async function POST(request: Request) {
     opportunities: crmTotals(opportunities, 'opportunities'),
     sales: crmTotals(sales, 'won_sales'),
   }]
-  return NextResponse.json({ range, metrics, meta, google, analytics, contacts, opportunities, sales, memory })
+  const platformMetrics = {
+    meta: [{ label: 'Inversión', value: total(meta, ['spend', 'cost', 'investment']) }, { label: 'Impresiones', value: total(meta, ['impressions']) }, { label: 'Clicks', value: total(meta, ['clicks']) }, { label: 'Resultados', value: total(meta, ['results', 'conversions', 'leads']) }],
+    google: [{ label: 'Inversión', value: total(google, ['spend', 'cost', 'investment']) }, { label: 'Impresiones', value: total(google, ['impressions']) }, { label: 'Clicks', value: total(google, ['clicks']) }, { label: 'Conversiones', value: total(google, ['conversions', 'results']) }],
+    analytics: [{ label: 'Usuarios', value: total(analytics, ['users', 'activeUsers']) }, { label: 'Sesiones', value: total(analytics, ['sessions']) }, { label: 'Eventos', value: total(analytics, ['eventCount', 'events']) }, { label: 'Conversiones', value: total(analytics, ['conversions']) }],
+    crm: [{ label: 'Contactos', value: crmTotals(contacts, 'contacts') }, { label: 'Oportunidades', value: crmTotals(opportunities, 'opportunities') }, { label: 'Ventas', value: crmTotals(sales, 'won_sales') }],
+  }
+  return NextResponse.json({ range, metrics, platformMetrics, meta, google, analytics, contacts, opportunities, sales, memory })
 }
