@@ -63,6 +63,34 @@
   color: #888888 !important;
 }
 
+.conexa-brand .text-primary {
+  color: #5B5FE8 !important;
+}
+
+.conexa-brand .bg-primary {
+  background-color: #5B5FE8 !important;
+}
+
+.conexa-brand .border-primary {
+  border-color: #5B5FE8 !important;
+}
+
+.conexa-brand .text-destructive {
+  color: #DC2626 !important;
+}
+
+.conexa-brand .bg-destructive {
+  background-color: #DC2626 !important;
+}
+
+.conexa-brand .border-destructive\/40 {
+  border-color: rgb(220 38 38 / 40%) !important;
+}
+
+.conexa-brand .bg-destructive\/10 {
+  background-color: rgb(220 38 38 / 10%) !important;
+}
+
 .conexa-brand .border-border {
   border-color: #e6e6e3 !important;
 }
