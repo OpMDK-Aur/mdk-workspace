@@ -55,7 +55,7 @@ export function ConexaWorkspace() {
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron consultar las tools de Conexa.')))
       .then((result) => {
         if (cancelled) return
-        setData({ accounts: [], metrics: result.metrics ?? [], reports: result.analytics?.reports ?? [], approvals: [], profile: null, memory: result.memory?.items ?? [] })
+        setData({ accounts: [], metrics: Array.isArray(result.metrics) ? result.metrics : [], reports: Array.isArray(result.analytics?.reports) ? result.analytics.reports : [], approvals: [], profile: null, memory: Array.isArray(result.memory?.items) ? result.memory.items : [] })
       })
       .catch(() => { if (!cancelled) setData(emptyConexaData) })
     return () => { cancelled = true }
@@ -139,7 +139,8 @@ function Home({ client, period, platforms, connected, data, onAsk }: { client: C
   const costPerSale = sales ? spend / sales : 0
   const business = [['Inversión', formatMetric(spend, true)], ['Sesiones', formatMetric(visits)], ['Contactos', formatMetric(contacts)], ['Oportunidades', formatMetric(opportunities)], ['Ventas', formatMetric(sales)], ['Costo por venta', formatMetric(costPerSale, true)]]
   const funnel = [['Impresiones', impressions], ['Clicks', clicks], ['Visitas', visits], ['Contactos', contacts], ['Oportunidades', opportunities], ['Ventas', sales]]
-  const insights = data.reports.flatMap((report) => String(report.content ?? report.summary ?? report.description ?? '').split(/[\n•]/).map((item) => item.trim()).filter(Boolean)).slice(0, 3)
+  const reportRows = Array.isArray(data.reports) ? data.reports : []
+  const insights = reportRows.flatMap((report) => String(report.content ?? report.summary ?? report.description ?? '').split(/[\n•]/).map((item) => item.trim()).filter(Boolean)).slice(0, 3)
   const attention = platforms.filter((item) => !item.connected)
   return <div className="mx-auto max-w-[1180px] px-6 py-5">
     <div className="mb-5"><p className="mb-1 text-[11px] text-[#9a9a9a]">{period}</p><h1 className="text-[20px] font-bold tracking-[-.02em]">{client?.nombre_del_negocio ?? 'Soy Aurelia'}</h1><p className="mt-0.5 text-[11px] text-[#9a9a9a]">Conexiones, tracking y alertas</p></div>
