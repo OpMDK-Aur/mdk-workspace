@@ -112,6 +112,7 @@ export function MultiagenteWorkspace() {
     { name: 'Google Ads', key: 'google', description: 'Inversión, keywords y conversiones', color: 'bg-[#4285f4]', connected: Boolean(selectedClient?.google_ads_customer_id) },
     { name: 'Google Analytics', key: 'analytics', description: 'Tráfico y comportamiento web', color: 'bg-[#f9ab00]', connected: Boolean(selectedClient?.analytics_property_id) },
     { name: 'CRM Aurelia', key: 'crm', description: 'Contactos, ventas y atribución', color: 'bg-[#2dd4bf]', connected: Boolean(selectedClient?.crm_type) },
+    { name: 'Tag Manager', key: 'tag_manager', description: 'Etiquetas, eventos y medición', color: 'bg-[#246fdb]', connected: Boolean(selectedClient?.tag_manager_container_id) },
   ]
 
   return (
@@ -124,7 +125,7 @@ export function MultiagenteWorkspace() {
           </div>
           <nav className="mt-10 flex flex-col gap-1 text-sm">
             <div className="flex items-center gap-3 rounded-xl bg-[#eeefff] px-3 py-2.5 font-medium text-[#ff0049] dark:bg-[#292a50] dark:text-[#b9bbff]"><WandSparkles className="size-4" /> Multiagente</div>
-            <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[#7d818d]"><Globe2 className="size-4" /> Conexiones <span className="ml-auto text-xs">{integrations.filter((item) => item.connected).length}/4</span></div>
+            <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[#7d818d]"><Globe2 className="size-4" /> Conexiones <span className="ml-auto text-xs">{integrations.filter((item) => item.connected).length}/{integrations.length}</span></div>
             <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[#7d818d]"><Settings2 className="size-4" /> Configuración</div>
           </nav>
           <div className="mt-auto rounded-2xl border border-[#e6e8ee] bg-[#fafafd] p-3 dark:border-white/10 dark:bg-white/[0.03]">
@@ -142,7 +143,7 @@ export function MultiagenteWorkspace() {
 
           <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-6 px-5 py-7 md:px-8 md:py-9">
             <section className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
-              <div><p className="text-sm font-medium text-[#5b5fe8]">Tu espacio de trabajo</p><h2 className="mt-1 text-3xl font-semibold tracking-[-0.04em] md:text-4xl">Todo conectado. Todo aprendido.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-[#858996]">El multiagente reúne tus plataformas, aprende el contexto de cada cliente y convierte los datos en respuestas accionables.</p></div>
+              <div><p className="text-sm font-medium text-[#ff0049]">Tu espacio de trabajo</p><h2 className="mt-1 text-3xl font-semibold tracking-[-0.04em] md:text-4xl">Todo conectado. Todo aprendido.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-[#858996]">El multiagente reúne tus plataformas, aprende el contexto de cada cliente y convierte los datos en respuestas accionables.</p></div>
               <Button variant="outline" className="w-fit rounded-xl border-[#dedfe8] bg-white"><ChevronDown className="mr-2 size-4" /> Cliente actual</Button>
             </section>
 
