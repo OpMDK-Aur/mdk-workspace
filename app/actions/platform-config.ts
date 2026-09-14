@@ -74,7 +74,7 @@ export async function saveClientAureliaAccount(clientId: string, accountId: stri
     .select('id, crm_location_id, ghl_location_id')
     .single()
   if (error) return { error: error.message }
-  if (!data) return { error: 'No se encontró el cliente para guardar el ID de Aurelia.' }
+  if (!data) return { error: 'No se encontró el cliente para guardar el ID de CRM.' }
   revalidatePath('/dashboard/platform')
   return { success: true, client: data }
 }

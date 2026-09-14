@@ -1141,7 +1141,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                         <span className="text-muted-foreground">Sin CRM</span>
                       </SelectItem>
                       <SelectItem value="ghl">Go High Level</SelectItem>
-                      <SelectItem value="aurelia">Aurelia CRM</SelectItem>
+                      <SelectItem value="aurelia">CRM</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1172,7 +1172,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
 
                 {config.crmType === 'aurelia' && (
                   <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Cliente en Aurelia CRM</Label>
+                      <Label className="text-xs text-muted-foreground">Cliente en CRM</Label>
                     <div className="relative flex flex-col gap-2" data-crm-selector>
                       <div className="flex flex-wrap gap-2">
                         {(crmAccountDrafts[client.id] ?? [config.ghlLocationId].filter(Boolean)).filter(Boolean).map(accountId => {
@@ -1216,7 +1216,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                         </div>
                       )}
                     </div>
-                    <p className="text-[11px] text-muted-foreground">Podés asociar varias cuentas de Aurelia CRM al mismo cliente interno.</p>
+                    <p className="text-[11px] text-muted-foreground">Podés asociar varias cuentas de CRM al mismo cliente interno.</p>
                   </div>
                 )}
               </div>

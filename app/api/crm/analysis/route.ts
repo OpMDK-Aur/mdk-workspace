@@ -93,8 +93,8 @@ export async function GET(request: NextRequest) {
       totals: { contacts: contacts.length, opportunities: opportunities.length, won_opportunities: sales.length, referral_messages: referrals.length },
     }, { headers: { 'Cache-Control': 'private, max-age=60' } })
   } catch (error) {
-    console.error('[CRM analysis] Error consultando Aurelia CRM:', error)
-    const message = error instanceof Error ? error.message : 'No se pudo consultar Aurelia CRM'
+    console.error('[CRM analysis] Error consultando CRM:', error)
+    const message = error instanceof Error ? error.message : 'No se pudo consultar CRM'
     const isTimeout = /statement timeout|canceling statement|timeout/i.test(message)
     return NextResponse.json({ error: isTimeout ? 'El período o volumen solicitado es demasiado grande para la base CRM. Consultá un rango de hasta 31 días.' : message }, { status: isTimeout ? 504 : 500 })
   }

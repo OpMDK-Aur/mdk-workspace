@@ -111,7 +111,7 @@ export function MultiagenteWorkspace() {
     { name: 'Meta Ads', key: 'meta', description: 'Campañas, anuncios y audiencias', color: 'bg-[#1877f2]', connected: Boolean(selectedClient?.meta_ads_account_id) },
     { name: 'Google Ads', key: 'google', description: 'Inversión, keywords y conversiones', color: 'bg-[#4285f4]', connected: Boolean(selectedClient?.google_ads_customer_id) },
     { name: 'Google Analytics', key: 'analytics', description: 'Tráfico y comportamiento web', color: 'bg-[#f9ab00]', connected: Boolean(selectedClient?.analytics_property_id) },
-    { name: 'CRM Aurelia', key: 'crm', description: 'Contactos, ventas y atribución', color: 'bg-[#2dd4bf]', connected: Boolean(selectedClient?.crm_type) },
+    { name: 'CRM', key: 'crm', description: 'Contactos, ventas y atribución', color: 'bg-[#2dd4bf]', connected: Boolean(selectedClient?.crm_type) },
     { name: 'Tag Manager', key: 'tag_manager', description: 'Etiquetas, eventos y medición', color: 'bg-[#246fdb]', connected: Boolean(selectedClient?.tag_manager_container_id) },
   ]
 

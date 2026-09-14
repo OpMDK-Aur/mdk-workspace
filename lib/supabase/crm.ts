@@ -1,7 +1,7 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 /**
- * Creates a client for the Aurelia CRM Supabase project.
+ * Creates a client for the CRM Supabase project.
  * Keep this client server-side and rely on the CRM project's RLS policies.
  */
 export function createCrmClient() {

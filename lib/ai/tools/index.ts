@@ -681,7 +681,7 @@ const crmOpportunities: ToolDefinition = {
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     const crmAccountIds = await resolveCrmAccountIds(context.clientId)
-    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de Aurelia CRM vinculada.' }
+    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
     const crm = createCrmClient()
     const start = new Date(`${input.dateFrom}T00:00:00-03:00`).toISOString()
     const endExclusive = new Date(`${input.dateTo}T00:00:00-03:00`)
@@ -709,7 +709,7 @@ const crmOpportunities: ToolDefinition = {
       return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end }, totals: { opportunities: rows.length, by_status: byStatus, amount: rows.reduce((sum, row) => sum + (Number(row.amount ?? 0) || 0), 0) }, opportunities: rows.slice(0, 500), truncated: rows.length > 500 }
     } catch (error) {
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_opportunities', status: 'error', label: 'No se pudieron consultar las oportunidades' })
-      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar Aurelia CRM.' }
+      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar CRM.' }
     }
   },
 }
@@ -721,7 +721,7 @@ const crmContacts: ToolDefinition = {
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     const crmAccountIds = await resolveCrmAccountIds(context.clientId)
-    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de Aurelia CRM vinculada.' }
+    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
     const crm = createCrmClient()
     const start = new Date(`${input.dateFrom}T00:00:00-03:00`).toISOString()
     const endExclusive = new Date(`${input.dateTo}T00:00:00-03:00`)
@@ -739,19 +739,19 @@ const crmContacts: ToolDefinition = {
       return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end }, totals: { contacts: contacts.length }, contacts: contacts.slice(0, 500), truncated: contacts.length > 500 }
     } catch (error) {
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contacts', status: 'error', label: 'No se pudieron consultar los contactos' })
-      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar Aurelia CRM.' }
+      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar CRM.' }
     }
   },
 }
 
 const crmContactAds: ToolDefinition = {
   key: 'crm_contact_ads',
-  description: 'Cuenta los contactos creados en Aurelia CRM durante un período que tienen al menos un mensaje con utm_id dentro de metadata, referral o message_data. Usala para preguntas sobre contactos de pauta, anuncios o campañas, no ventas ganadas.',
+  description: 'Cuenta los contactos creados en CRM durante un período que tienen al menos un mensaje con utm_id dentro de metadata, referral o message_data. Usala para preguntas sobre contactos de pauta, anuncios o campañas, no ventas ganadas.',
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     const crmAccountIds = await resolveCrmAccountIds(context.clientId)
-    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de Aurelia CRM vinculada.' }
+    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
     const crm = createCrmClient()
     const start = new Date(`${input.dateFrom}T00:00:00-03:00`).toISOString()
     const endExclusive = new Date(`${input.dateTo}T00:00:00-03:00`)
@@ -847,7 +847,7 @@ const crmContactAds: ToolDefinition = {
       return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end }, totals: { contacts_created: contacts.length, contacts_with_ad_referral: attributedContacts.length, messages_scanned: messages.length, campaigns: campaigns.length }, campaigns, contacts: attributedContacts.slice(0, 100), truncated: attributedContacts.length > 100 }
     } catch (error) {
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contact_ads', status: 'error', label: 'No se pudo analizar la pauta de contactos' })
-      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar la atribución de contactos en Aurelia CRM.' }
+      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar la atribución de contactos en CRM.' }
     }
   },
 }
@@ -859,7 +859,7 @@ const crmSalesAttribution: ToolDefinition = {
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     const crmAccountIds = await resolveCrmAccountIds(context.clientId)
-    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de Aurelia CRM vinculada.' }
+    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
     const crm = createCrmClient()
     const start = `${input.dateFrom}T00:00:00.000Z`
     const end = `${input.dateTo}T23:59:59.999Z`
@@ -907,7 +907,7 @@ const crmSalesAttribution: ToolDefinition = {
       return result
     } catch (error) {
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'error', label: 'No se pudo analizar el CRM' })
-      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar Aurelia CRM.' }
+      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar CRM.' }
     }
   },
 }
