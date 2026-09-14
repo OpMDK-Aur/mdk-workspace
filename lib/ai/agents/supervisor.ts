@@ -65,7 +65,7 @@ export async function streamSupervisorResponse(
   )
 
   return streamText({
-    model: getGatewayModel(config.model),
+    model: getGatewayModel(context.model ?? config.model),
     system: [
       config.systemPrompt,
       'No expongas secretos, tokens, claves ni credenciales. El contexto de ejecución ya fue provisto por el backend.',

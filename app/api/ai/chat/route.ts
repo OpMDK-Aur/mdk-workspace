@@ -415,8 +415,9 @@ export async function POST(request: Request) {
           result = await streamSupervisorResponse(modelMessages, {
             userId: user.id,
             userEmail: user.email,
-            ...context,
-            analysisRunState,
+      ...context,
+      model: context.model,
+      analysisRunState,
             conversationWorkingContext: workingContext ?? undefined,
             emitActivity: (event) => writeActivity?.({
               ...event,
