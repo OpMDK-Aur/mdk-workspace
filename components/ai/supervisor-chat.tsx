@@ -464,9 +464,7 @@ function SupervisorChatSession({
               <span className="font-semibold text-[#1E9E6B]">Analizando exclusivamente:</span>
               {selectedAccountSummary.map((account) => <span key={`${account.platform}-${account.id}`} className="rounded bg-[#1E9E6B]/10 px-2 py-1 text-foreground">{account.name} · {account.platform === 'meta' ? 'Meta Ads' : account.platform === 'google' ? 'Google Ads' : account.platform === 'analytics' ? 'Google Analytics 4' : account.platform === 'tag_manager' ? 'Tag Manager' : account.platform === 'crm' ? 'CRM' : account.platform || 'Plataforma'}</span>)}
             </div>
-          ) : (
-            <p className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">Seleccioná al menos una cuenta publicitaria para iniciar el análisis.</p>
-          )}
+          ) : null}
         </div>
         {!disabled && onReset && messages.length > 0 && (
           <AlertDialog>

@@ -157,7 +157,7 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect 
         // hace scroll del contenido principal, con su propio scroll interno
         // si la lista de chats no entra en la altura disponible. En mobile
         // sigue el flujo normal de la página (position: static).
-        'lg:sticky lg:top-8 lg:w-72 lg:max-h-[calc(100vh-4rem)] lg:self-start lg:overflow-y-auto',
+        'lg:sticky lg:top-8 lg:w-full lg:max-h-[calc(100vh-4rem)] lg:self-start lg:overflow-y-auto',
       )}
     >
       <div className="flex items-center justify-between gap-2">
