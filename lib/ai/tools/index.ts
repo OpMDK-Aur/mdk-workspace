@@ -758,6 +758,23 @@ const crmContactAds: ToolDefinition = {
       }
       return find(candidates) ?? (message.source ? String(message.source) : null)
     }
+    const getCampaign = (message: any) => {
+      const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
+      const visited = new Set<object>()
+      const find = (value: unknown): string | null => {
+        if (!value || typeof value !== 'object' || visited.has(value as object)) return null
+        visited.add(value as object)
+        if (Array.isArray(value)) return value.map(find).find(Boolean) ?? null
+        for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+          const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
+          if (['campaign_name', 'campaignname', 'campaign', 'campaign_id', 'campaignid'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
+          const result = find(entry)
+          if (result) return result
+        }
+        return null
+      }
+      return find(candidates)
+    }
     try {
       const contacts: any[] = []
       for (let offset = 0; offset < 10000; offset += 100) {
@@ -788,12 +805,23 @@ const crmContactAds: ToolDefinition = {
         const adId = getAdId(message)
         if (!adId || !message.contact_id) continue
         const rows = referralsByContact.get(message.contact_id) ?? []
-        rows.push({ ad_id: String(adId), message_id: message.id, created_at: message.created_at })
+        rows.push({ ad_id: String(adId), campaign: getCampaign(message), message_id: message.id, created_at: message.created_at })
         referralsByContact.set(message.contact_id, rows)
       }
       const attributedContacts = contacts.filter(contact => referralsByContact.has(contact.id)).map(contact => ({ ...contact, referrals: referralsByContact.get(contact.id) }))
+      const campaignSummary = new Map<string, { campaign: string; contacts: Set<string>; ad_ids: Set<string> }>()
+      for (const contact of attributedContacts) {
+        for (const referral of referralsByContact.get(contact.id) ?? []) {
+          const campaign = referral.campaign ?? `Ad ID ${referral.ad_id}`
+          const current = campaignSummary.get(campaign) ?? { campaign, contacts: new Set<string>(), ad_ids: new Set<string>() }
+          current.contacts.add(contact.id)
+          current.ad_ids.add(referral.ad_id)
+          campaignSummary.set(campaign, current)
+        }
+      }
+      const campaigns = [...campaignSummary.values()].map(item => ({ campaign: item.campaign, contacts: item.contacts.size, ad_ids: [...item.ad_ids] })).sort((a, b) => b.contacts - a.contacts)
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contact_ads', status: 'completed', label: `${attributedContacts.length} contactos de pauta` })
-      return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end }, totals: { contacts_created: contacts.length, contacts_with_ad_referral: attributedContacts.length, messages_scanned: messages.length }, contacts: attributedContacts.slice(0, 500), truncated: attributedContacts.length > 500 }
+      return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end }, totals: { contacts_created: contacts.length, contacts_with_ad_referral: attributedContacts.length, messages_scanned: messages.length, campaigns: campaigns.length }, campaigns, contacts: attributedContacts.slice(0, 100), truncated: attributedContacts.length > 100 }
     } catch (error) {
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contact_ads', status: 'error', label: 'No se pudo analizar la pauta de contactos' })
       return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar la atribución de contactos en Aurelia CRM.' }
