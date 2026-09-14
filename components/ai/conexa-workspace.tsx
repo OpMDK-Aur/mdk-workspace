@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 
 type Client = { id: string; nombre_del_negocio: string; meta_ads_account_id?: string | null; google_ads_customer_id?: string | null; analytics_property_id?: string | null; tag_manager_container_id?: string | null; crm_type?: string | null }
 
-type Platform = { name: string; key: string; icon: typeof BarChart3; color: string; iconUrl: string; connected: boolean; detail: string }
+type Platform = { name: string; key: string; icon: typeof BarChart3; color: string; iconUrl: string | null; connected: boolean; detail: string }
 
 const baseNav = [
   { label: 'Inicio', icon: LayoutDashboard },
@@ -40,7 +40,7 @@ export function ConexaWorkspace() {
     { name: 'Google Ads', key: 'google', icon: Search, color: '#4285F4', iconUrl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/google_ads_logo_icon_171064-I8kGtiPKqG0TZoeHB7Lb1GwQziRNBX.webp', connected: Boolean(client?.google_ads_customer_id), detail: client?.google_ads_customer_id ? `Cuenta ${client.google_ads_customer_id}` : 'Sin cuenta conectada' },
     { name: 'Google Analytics', key: 'analytics', icon: Gauge, color: '#F9AB00', iconUrl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/google-analytics-icon-VuL4g3NfPdL5bzHIQRZacQjTq6Vcfk.webp', connected: Boolean(client?.analytics_property_id), detail: client?.analytics_property_id ? `Propiedad ${client.analytics_property_id}` : 'Sin propiedad conectada' },
     { name: 'Tag Manager', key: 'tag_manager', icon: Tags, color: '#246FDB', iconUrl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/google-tag-manager-l5o0anuls2kqtf2xmhtl-ItmMvsOnhnmedg5kb6tJwJOQzpJ1uy.webp', connected: Boolean(client?.tag_manager_container_id), detail: client?.tag_manager_container_id ? `Contenedor ${client.tag_manager_container_id}` : 'Sin contenedor conectado' },
-    { name: 'CRM Aurelia', key: 'crm', icon: Users, color: '#11A683', iconUrl: '', connected: Boolean(client?.crm_type), detail: client?.crm_type ? `Conectado · ${client.crm_type}` : 'Sin CRM conectado' },
+    { name: 'CRM Aurelia', key: 'crm', icon: Users, color: '#11A683', iconUrl: null, connected: Boolean(client?.crm_type), detail: client?.crm_type ? `Conectado · ${client.crm_type}` : 'Sin CRM conectado' },
   ], [client])
 
   const connected = platforms.filter((item) => item.connected).length
