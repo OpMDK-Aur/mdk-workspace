@@ -7,7 +7,7 @@ import { buildCampaignComparisons, compareMetric, upsertChangeHistory, upsertPai
 import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 import { contextFromEvents, mergeWorkingContext } from '@/lib/ai/conversation-context'
 import { buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeIndustry, type MetricRow } from '@/lib/ai/client-memory'
-import { getBuenosAiresLastSevenDays, getGoogleAnalyticsReport, getGoogleAnalyticsSales } from '@/lib/google-analytics/service'
+import { getBuenosAiresLastSevenDays, getGoogleAnalyticsReport, getGoogleAnalyticsSales, getGoogleAnalyticsPageMetrics } from '@/lib/google-analytics/service'
 import { createCrmClient } from '@/lib/supabase/crm'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
 
@@ -466,7 +466,32 @@ const getGoogleAnalyticsReportTool: ToolDefinition = {
   },
 }
 
-const getGoogleAnalyticsSalesTool: ToolDefinition = {
+  const getGoogleAnalyticsPageTool: ToolDefinition = {
+  key: 'get_google_analytics_page_metrics',
+  description: 'Consulta un conjunto amplio de métricas agregadas de una página exacta de GA4 usando pagePath: vistas, usuarios, sesiones, engagement, eventos, conversiones e ingresos cuando la propiedad los tenga disponibles. Usala para preguntas naturales sobre una URL; no requiere que el usuario conozca los nombres técnicos.',
+  inputSchema: z.object({ pagePath: z.string().min(1).max(500), dateFrom: z.string().optional(), dateTo: z.string().optional() }),
+  async execute(input: { pagePath: string; dateFrom?: string; dateTo?: string }, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const range = getBuenosAiresLastSevenDays()
+    const dateFrom = input.dateFrom ?? range.dateFrom
+    const dateTo = input.dateTo ?? range.dateTo
+    const supabase = await createClient()
+    const { data: client, error } = await supabase.from('clientes').select('analytics_property_id').eq('id', context.clientId).single()
+    if (error || !client?.analytics_property_id) return { available: false, message: 'El cliente no tiene una propiedad de Google Analytics 4 asignada en la configuración de plataforma.' }
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_page_metrics', status: 'running', label: `Consultando métricas de ${input.pagePath} en GA4...` })
+    try {
+      const result = await getGoogleAnalyticsPageMetrics(client.analytics_property_id, dateFrom, dateTo, input.pagePath)
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_page_metrics', status: 'completed', label: `Métricas de ${input.pagePath} recibidas` })
+      return { available: true, source: 'Google Analytics 4', timeZone: range.timeZone, ...result }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'No se pudieron consultar las métricas de la página en Google Analytics 4.'
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_page_metrics', status: 'error', label: 'No se pudieron consultar las métricas de la página' })
+      return { available: false, message }
+    }
+  },
+  }
+
+  const getGoogleAnalyticsSalesTool: ToolDefinition = {
   key: 'get_google_analytics_sales',
   description: 'Consulta ventas reales de Google Analytics 4 usando el evento purchase de la propiedad GA4 asignada al cliente. Usala cuando el usuario pregunte por ventas, compras, transacciones o ingresos de Analytics.',
   inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional() }),
@@ -902,6 +927,7 @@ const allTools: ToolDefinition[] = [
   getMetaMetrics,
   getGoogleMetrics,
   getGoogleAnalyticsReportTool,
+  getGoogleAnalyticsPageTool,
   getGoogleAnalyticsSalesTool,
   getAccountChangeHistory,
   getGoogleChangeHistoryTool,

@@ -96,6 +96,40 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
   return { propertyId: normalizedProperty, dateRange: { start: dateFrom, end: dateTo }, reports, errors }
 }
 
+export async function getGoogleAnalyticsPageMetrics(propertyId: string, dateFrom: string, dateTo: string, pagePath: string) {
+  const normalizedProperty = propertyId.replace(/^properties\//, '')
+  if (!/^\d+$/.test(normalizedProperty)) throw new Error('La propiedad de Google Analytics no tiene un ID válido.')
+  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: createAuth() })
+  const baseMetrics = ['screenPageViews', 'activeUsers', 'sessions', 'engagedSessions']
+  const optionalMetrics = ['newUsers', 'engagementRate', 'averageSessionDuration', 'bounceRate', 'eventCount', 'keyEvents', 'ecommercePurchases', 'purchaseRevenue']
+  const request = (metrics: string[]) => analyticsData.properties.runReport({
+    property: `properties/${normalizedProperty}`,
+    requestBody: {
+      dateRanges: [{ startDate: dateFrom, endDate: dateTo }],
+      dimensions: [{ name: 'pagePath' }, { name: 'pageTitle' }],
+      metrics: metrics.map(name => ({ name })),
+      dimensionFilter: { filter: { fieldName: 'pagePath', stringFilter: { matchType: 'EXACT', value: pagePath } } },
+      limit: '10',
+    },
+  })
+  let response
+  let metricsUsed = [...baseMetrics, ...optionalMetrics]
+  const warnings: string[] = []
+  try {
+    response = await request(metricsUsed)
+  } catch (cause) {
+    warnings.push(`GA4 no aceptó todas las métricas opcionales: ${cause instanceof Error ? cause.message : 'respuesta inválida'}`)
+    metricsUsed = baseMetrics
+    response = await request(baseMetrics)
+  }
+  const rows = rowsToRecords(response, 10)
+  const totals = rows.reduce<Record<string, number>>((total, row) => {
+    for (const metric of metricsUsed) total[metric] = (total[metric] ?? 0) + Number(row[metric] ?? 0)
+    return total
+  }, {})
+  return { propertyId: normalizedProperty, dateRange: { start: dateFrom, end: dateTo }, pagePath, metricsUsed, warnings, rows, totals }
+}
+
 export async function getGoogleAnalyticsSales(propertyId: string, dateFrom: string, dateTo: string): Promise<GoogleAnalyticsSales> {
   const normalizedProperty = propertyId.replace(/^properties\//, '')
   if (!/^\d+$/.test(normalizedProperty)) throw new Error('La propiedad de Google Analytics no tiene un ID válido.')
