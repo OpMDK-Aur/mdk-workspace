@@ -53,6 +53,8 @@ export interface GoogleAccountMetrics {
   change_history_available: boolean
   change_history_error: string | null
   campaigns: Array<Record<string, unknown>>
+  ad_groups: Array<Record<string, unknown>>
+  ads: Array<Record<string, unknown>>
 }
 
 export function normalizeCustomerId(value: string) {
@@ -300,7 +302,30 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
     console.warn('[v0] Google Ads conversion action breakdown unavailable:', conversion_actions_error)
   }
 
-  return { account_id: customerId, account_name: input.accountName ?? null, api_rows_received: rows.length, raw_rows: rows.slice(0, 3), date_range: { start: input.dateFrom, end: input.dateTo }, totals, conversion_actions, conversion_actions_available, conversion_actions_error, change_history: [], change_history_available: false, change_history_error: null, campaigns }
+  const ad_groups: Array<Record<string, unknown>> = []
+  const ads: Array<Record<string, unknown>> = []
+  try {
+    const groupRows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, ad_group.id, ad_group.name, ad_group.status, ad_group.type, metrics.impressions, metrics.clicks, metrics.conversions, metrics.cost_micros FROM ad_group WHERE ${dateFilter} AND ad_group.status != 'REMOVED' ORDER BY metrics.cost_micros DESC`)
+    for (const row of groupRows) {
+      const group = row.adGroup ?? row.ad_group ?? {}
+      const campaign = row.campaign ?? {}
+      const metrics = row.metrics ?? {}
+      ad_groups.push({ id: String(group.id ?? ''), name: group.name ?? 'Sin nombre', campaign_id: String(campaign.id ?? ''), campaign_name: campaign.name ?? 'Sin campaña', status: group.status ?? 'UNKNOWN', type: group.type ?? 'UNKNOWN', impressions: Number(metrics.impressions ?? 0), clicks: Number(metrics.clicks ?? 0), conversions: Number(metrics.conversions ?? 0), spend: Number(metrics.costMicros ?? metrics.cost_micros ?? 0) / 1_000_000 })
+    }
+  } catch (cause) { console.warn('[v0] Google Ads ad groups unavailable:', cause instanceof Error ? cause.message : cause) }
+  try {
+    const adRows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, ad_group.id, ad_group.name, ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group_ad.ad.type, ad_group_ad.status, metrics.impressions, metrics.clicks, metrics.conversions, metrics.cost_micros FROM ad_group_ad WHERE ${dateFilter} AND ad_group_ad.status != 'REMOVED' ORDER BY metrics.cost_micros DESC`)
+    for (const row of adRows) {
+      const group = row.adGroup ?? row.ad_group ?? {}
+      const campaign = row.campaign ?? {}
+      const adGroupAd = row.adGroupAd ?? row.ad_group_ad ?? {}
+      const ad = adGroupAd.ad ?? {}
+      const metrics = row.metrics ?? {}
+      ads.push({ id: String(ad.id ?? ''), name: ad.name ?? 'Anuncio sin nombre', campaign_name: campaign.name ?? 'Sin campaña', ad_group_name: group.name ?? 'Sin grupo', status: adGroupAd.status ?? 'UNKNOWN', type: ad.type ?? 'UNKNOWN', impressions: Number(metrics.impressions ?? 0), clicks: Number(metrics.clicks ?? 0), conversions: Number(metrics.conversions ?? 0), spend: Number(metrics.costMicros ?? metrics.cost_micros ?? 0) / 1_000_000 })
+    }
+  } catch (cause) { console.warn('[v0] Google Ads ads unavailable:', cause instanceof Error ? cause.message : cause) }
+
+  return { account_id: customerId, account_name: input.accountName ?? null, api_rows_received: rows.length, raw_rows: rows.slice(0, 3), date_range: { start: input.dateFrom, end: input.dateTo }, totals, conversion_actions, conversion_actions_available, conversion_actions_error, change_history: [], change_history_available: false, change_history_error: null, campaigns, ad_groups, ads }
 }
 
 export function defaultGoogleDateRange() {
