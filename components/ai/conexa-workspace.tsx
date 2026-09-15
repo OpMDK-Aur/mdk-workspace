@@ -208,7 +208,7 @@ function GoogleAdsConexaView({ platform, onManage, data, client, selectedAccount
   const totals = accounts.reduce((acc, account) => { const metrics = account.totals ?? {}; return { clicks: acc.clicks + Number(metrics.clicks ?? 0), conversions: acc.conversions + Number(metrics.leads ?? metrics.conversions ?? 0), cost: acc.cost + Number(metrics.spend ?? 0) } }, { clicks: 0, conversions: 0, cost: 0 })
   const daily = accounts.flatMap((account) => (account.raw_rows ?? []).map((row: any) => ({ date: row.segments?.date ?? row.segments?.date, clicks: Number(row.metrics?.clicks ?? 0), conversions: Number(row.metrics?.conversions ?? 0) }))).reduce<Record<string, { date: string; clicks: number; conversions: number }>>((map, row) => { const current = map[row.date] ?? { date: row.date, clicks: 0, conversions: 0 }; current.clicks += row.clicks; current.conversions += row.conversions; map[row.date] = current; return map }, {})
   const chartData = Object.values(daily).sort((a, b) => a.date.localeCompare(b.date))
-  const conversionRows = accounts.flatMap((account) => (account.conversion_actions ?? []).map((action: any) => ({ ...action, account_name: account.account_name })))
+  const conversionRows = accounts.flatMap((account) => (account.conversion_actions ?? []).filter((action: any) => Number(action.conversions ?? 0) > 0).map((action: any) => ({ ...action, account_name: account.account_name })))
   const adGroups = accounts.flatMap((account) => (account.ad_groups ?? []).map((row: any) => ({ ...row, account_name: account.account_name })))
   const ads = accounts.flatMap((account) => (account.ads ?? []).map((row: any) => ({ ...row, account_name: account.account_name })))
   const nav = ['Resumen', 'Campañas', 'Grupos de anuncios', 'Anuncios']

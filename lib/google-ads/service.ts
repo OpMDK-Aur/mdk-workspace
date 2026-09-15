@@ -280,16 +280,15 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
   let conversion_actions_available = true
   let conversion_actions_error: string | null = null
   try {
-    const conversionRows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, segments.conversion_action_name, metrics.conversions, metrics.conversions_value FROM campaign WHERE ${dateFilter} AND campaign.status != 'REMOVED' ORDER BY metrics.conversions DESC`)
+    const conversionRows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, segments.conversion_action_name, segments.conversion_action, metrics.conversions, metrics.all_conversions, metrics.conversions_value FROM campaign WHERE ${dateFilter} AND campaign.status != 'REMOVED' AND metrics.all_conversions > 0 ORDER BY metrics.all_conversions DESC`)
     const actionMap = new Map<string, GoogleConversionAction>()
-    let unclassifiedConversions = 0
-    let unclassifiedValue = 0
     for (const row of conversionRows) {
       const action = row.segments?.conversionActionName ?? row.segments?.conversion_action_name
-      const name = typeof action === 'string' ? action.trim() : ''
-      const rowConversions = Number(row.metrics?.conversions ?? 0)
+      const name = typeof action === 'string' && action.trim() ? action.trim() : 'Conversiones sin clasificar'
+      const conversions = Number(row.metrics?.conversions ?? 0)
+      const allConversions = Number(row.metrics?.allConversions ?? row.metrics?.all_conversions ?? 0)
+      const rowConversions = conversions || allConversions
       const rowValue = Number(row.metrics?.conversionsValue ?? row.metrics?.conversions_value ?? 0)
-      if (!name) { unclassifiedConversions += rowConversions; unclassifiedValue += rowValue; continue }
       const campaign = row.campaign ?? {}
       const campaignId = String(campaign.id ?? '')
       const campaignName = String(campaign.name ?? '')
@@ -300,14 +299,7 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
       if (campaignName && !current.campaign_names.includes(campaignName)) current.campaign_names.push(campaignName)
       actionMap.set(name, current)
     }
-    const campaignConversionTotal = campaigns.reduce((sum, campaign) => sum + Number(campaign.leads ?? campaign.conversions ?? 0), 0)
-    const classifiedTotal = [...actionMap.values()].reduce((sum, action) => sum + action.conversions, 0) + unclassifiedConversions
-    const missingConversions = campaignConversionTotal - classifiedTotal
-    if (unclassifiedConversions > 0 || missingConversions > 0) {
-      const total = unclassifiedConversions + Math.max(0, missingConversions)
-      actionMap.set('__unclassified__', { name: 'Conversiones sin clasificación', conversions: total, conversion_value: unclassifiedValue, campaign_ids: [], campaign_names: [], unclassified: true })
-    }
-    conversion_actions = [...actionMap.values()].sort((a, b) => b.conversions - a.conversions)
+    conversion_actions = [...actionMap.values()].filter((action) => action.conversions > 0).sort((a, b) => b.conversions - a.conversions)
   } catch (cause) {
     conversion_actions_available = false
     conversion_actions_error = cause instanceof Error ? cause.message.slice(0, 240) : 'No se pudo obtener el desglose por acción de conversión.'
