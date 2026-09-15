@@ -19,15 +19,17 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const admin = createAdminClient()
   const { data: { user } } = await supabase.auth.getUser()
-  const body = await request.json() as { clientId?: string; period?: string }
+  const body = await request.json() as { clientId?: string; period?: string; selectedAccounts?: Record<string, string[]> }
   if (!body.clientId) return NextResponse.json({ error: 'Falta el cliente seleccionado.' }, { status: 400 })
   const range = dateRange(body.period ?? 'Últimos 30 días')
   const [{ data: client }, { data: accounts }] = await Promise.all([
     admin.from('clientes').select('meta_ads_account_id, google_ads_customer_id, analytics_property_id').eq('id', body.clientId).maybeSingle(),
     admin.from('cuentas_publicitarias').select('id_cuenta, plataforma').eq('cliente_id', body.clientId).eq('activo', true),
   ])
-  const accountIds = (accounts ?? []).filter((account) => account.plataforma === 'meta').map((account) => account.id_cuenta).filter(Boolean).join(',')
-  const customerIds = (accounts ?? []).filter((account) => account.plataforma === 'google').map((account) => account.id_cuenta).filter(Boolean).join(',')
+  const selectedMeta = body.selectedAccounts?.meta
+  const selectedGoogle = body.selectedAccounts?.google
+  const accountIds = (accounts ?? []).filter((account) => account.plataforma === 'meta' && (selectedMeta === undefined || selectedMeta.includes(account.id_cuenta))).map((account) => account.id_cuenta).filter(Boolean).join(',')
+  const customerIds = (accounts ?? []).filter((account) => account.plataforma === 'google' && (selectedGoogle === undefined || selectedGoogle.includes(account.id_cuenta))).map((account) => account.id_cuenta).filter(Boolean).join(',')
   const context: ExecutionContext = { userId: user?.id ?? 'conexa-prototype', userEmail: user?.email ?? undefined, clientId: body.clientId, metaAccountId: accountIds || client?.meta_ads_account_id || undefined, googleCustomerId: customerIds || client?.google_ads_customer_id || undefined, analyticsPropertyId: client?.analytics_property_id || undefined }
   const tools = getToolDefinitions(['get_meta_metrics', 'get_google_metrics', 'get_google_analytics_report', 'crm_contacts', 'crm_opportunities', 'crm_sales_attribution', 'get_client_memory'])
   const byKey = new Map(tools.map((tool) => [tool.key, tool]))
