@@ -129,14 +129,10 @@ function normalizeRows(rows: GoogleAdsConversionRow[]): ConversionResult[] {
       row.segments?.conversion_action ??
       ''
 
-    // Use allConversions when conversions is 0 or missing (e.g. view-through only)
-    const conversionsRaw = row.metrics?.conversions
-    const allConversionsRaw = row.metrics?.allConversions ?? row.metrics?.all_conversions
-    const count = parseFloat(String(conversionsRaw ?? 0)) || parseFloat(String(allConversionsRaw ?? 0))
+    // Match the campaign and customer totals: count only primary conversions.
+    const count = parseFloat(String(row.metrics?.conversions ?? 0))
 
-    if (name === 'Sin nombre') {
-      console.log('[v0] Row with no conversion name:', JSON.stringify(row))
-    }
+    if (count <= 0) continue
 
     const existing = map.get(name)
     if (existing) {

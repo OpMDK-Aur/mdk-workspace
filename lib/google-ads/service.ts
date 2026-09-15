@@ -280,14 +280,12 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
   let conversion_actions_available = true
   let conversion_actions_error: string | null = null
   try {
-    const conversionRows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, segments.conversion_action_name, segments.conversion_action, metrics.conversions, metrics.all_conversions, metrics.conversions_value FROM campaign WHERE ${dateFilter} AND campaign.status != 'REMOVED' AND metrics.all_conversions > 0 ORDER BY metrics.all_conversions DESC`)
+    const conversionRows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, segments.conversion_action_name, segments.conversion_action, metrics.conversions, metrics.conversions_value FROM campaign WHERE ${dateFilter} AND campaign.status != 'REMOVED' AND metrics.conversions > 0 ORDER BY metrics.conversions DESC`)
     const actionMap = new Map<string, GoogleConversionAction>()
     for (const row of conversionRows) {
       const action = row.segments?.conversionActionName ?? row.segments?.conversion_action_name
       const name = typeof action === 'string' && action.trim() ? action.trim() : 'Conversiones sin clasificar'
-      const conversions = Number(row.metrics?.conversions ?? 0)
-      const allConversions = Number(row.metrics?.allConversions ?? row.metrics?.all_conversions ?? 0)
-      const rowConversions = conversions || allConversions
+      const rowConversions = Number(row.metrics?.conversions ?? 0)
       const rowValue = Number(row.metrics?.conversionsValue ?? row.metrics?.conversions_value ?? 0)
       const campaign = row.campaign ?? {}
       const campaignId = String(campaign.id ?? '')
