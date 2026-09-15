@@ -44,6 +44,12 @@ export interface MetaCampaignMetrics {
   leads: number
   cpl: number
   lead_type: string
+  reach?: number
+  attribution_setting?: string
+  status?: string
+  campaign_name?: string
+  adset_name?: string
+  preview_url?: string | null
 }
 
 export interface MetaAccountMetrics {
@@ -56,6 +62,7 @@ export interface MetaAccountMetrics {
   date_range: { start: string; end: string }
   totals: {
     impressions: number
+    reach: number
     clicks: number
     spend: number
     results: number
@@ -182,7 +189,7 @@ async function fetchJson(url: string) {
 
 async function fetchInsightRows(accountId: string, accessToken: string, dateFrom: string, dateTo: string, level: 'campaign' | 'adset' | 'ad' = 'campaign') {
   const identity = level === 'campaign' ? 'campaign_id,campaign_name,objective' : level === 'adset' ? 'campaign_id,campaign_name,adset_id,adset_name' : 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name'
-  const fields = `${identity},impressions,clicks,spend,ctr,cpc,actions`
+  const fields = `${identity},impressions,reach,clicks,spend,ctr,cpc,actions`
   let url: string | null = `${META_BASE_URL}/act_${accountId}/insights?${new URLSearchParams({
     access_token: accessToken,
     level,
@@ -280,7 +287,7 @@ function normalizeEntityRows(rows: MetaInsightRow[], level: 'campaign' | 'adset'
     const name = level === 'campaign' ? row.campaign_name : level === 'adset' ? (row as MetaInsightRow & { adset_name?: string }).adset_name : (row as MetaInsightRow & { ad_name?: string }).ad_name
     const result = normalizeMetaResult(row.objective || '', row.actions)
     const spend = toNumber(row.spend)
-    return { id: id || '', name: name || 'Sin nombre', objective: row.objective || 'UNKNOWN', impressions: toInt(row.impressions), clicks: toInt(row.clicks), spend, results: result.results, result_type: result.resultType, source_action_type: result.sourceActionType, ctr: toNumber(row.ctr), cpc: toNumber(row.cpc), cost_per_result: result.results > 0 ? spend / result.results : 0, leads: result.leads, cpl: result.leads > 0 ? spend / result.leads : 0, lead_type: legacyLabel(result.resultType) }
+    return { id: id || '', name: name || 'Sin nombre', objective: row.objective || 'UNKNOWN', impressions: toInt(row.impressions), reach: toInt((row as MetaInsightRow & { reach?: string }).reach), clicks: toInt(row.clicks), spend, results: result.results, result_type: result.resultType, source_action_type: result.sourceActionType, ctr: toNumber(row.ctr), cpc: toNumber(row.cpc), cost_per_result: result.results > 0 ? spend / result.results : 0, leads: result.leads, cpl: result.leads > 0 ? spend / result.leads : 0, lead_type: legacyLabel(result.resultType) }
   }).filter((row) => row.id)
 }
 
@@ -302,7 +309,7 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
     const costPerResult = result.results > 0 ? spend / result.results : 0
     return {
       id: row.campaign_id || '', name: row.campaign_name || 'Sin nombre', objective: row.objective || 'UNKNOWN',
-      impressions: toInt(row.impressions), clicks: toInt(row.clicks), spend, results: result.results,
+      impressions: toInt(row.impressions), reach: toInt((row as MetaInsightRow & { reach?: string }).reach), clicks: toInt(row.clicks), spend, results: result.results,
       result_type: result.resultType, source_action_type: result.sourceActionType,
       ctr: toNumber(row.ctr), cpc: toNumber(row.cpc), cost_per_result: costPerResult,
       leads: result.leads, cpl: result.leads > 0 ? spend / result.leads : 0, lead_type: legacyLabel(result.resultType),
@@ -313,10 +320,10 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
   const creatives = ads.map((ad) => ({ ...ad, creative_id: ad.id, creative_name: ad.name }))
 
   const totals = campaigns.reduce((acc, campaign) => ({
-    impressions: acc.impressions + campaign.impressions, clicks: acc.clicks + campaign.clicks,
+    impressions: acc.impressions + campaign.impressions, reach: acc.reach + (campaign.reach ?? 0), clicks: acc.clicks + campaign.clicks,
     spend: acc.spend + campaign.spend, results: acc.results + campaign.results,
     ctr: 0, cpc: 0, cost_per_result: 0, leads: acc.leads + campaign.leads, cpl: 0,
-  }), { impressions: 0, clicks: 0, spend: 0, results: 0, ctr: 0, cpc: 0, cost_per_result: 0, leads: 0, cpl: 0 })
+  }), { impressions: 0, reach: 0, clicks: 0, spend: 0, results: 0, ctr: 0, cpc: 0, cost_per_result: 0, leads: 0, cpl: 0 })
   totals.ctr = totals.impressions ? (totals.clicks / totals.impressions) * 100 : 0
   totals.cpc = totals.clicks ? totals.spend / totals.clicks : 0
   totals.cost_per_result = totals.results ? totals.spend / totals.results : 0
