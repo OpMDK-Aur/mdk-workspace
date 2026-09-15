@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
     id: String(account.id),
     plataforma: account.plataforma === 'google' ? 'google' : 'meta',
     id_cuenta: String(account.id_cuenta),
-    nombre_cuenta: account.nombre_cuenta || String(account.id_cuenta),
+    nombre_cuenta: account.nombre_cuenta && account.nombre_cuenta !== String(account.id_cuenta) ? account.nombre_cuenta : String(account.id_cuenta),
     activo: account.activo,
   }))
   const known = new Set(cuentas.map((account) => `${account.plataforma}:${account.id_cuenta}`))
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
       const name = nombres[i]
       if (name) await updateAdvertisingAccountName(supabase, { clienteId: clientId, plataforma: 'meta', idCuenta: id, nombreCuenta: name })
     }))
-    metaIds.forEach((id, i) => addAccount({ id: `meta-${id}`, plataforma: 'meta', id_cuenta: id, nombre_cuenta: nombres[i] ?? id }))
+    metaIds.forEach((id, i) => addAccount({ id: `meta-${id}`, plataforma: 'meta', id_cuenta: id, nombre_cuenta: nombres[i] || `Cuenta Meta ${id}` }))
   } else {
     metaIds.forEach((id) => addAccount({ id: `meta-${id}`, plataforma: 'meta', id_cuenta: id, nombre_cuenta: id }))
   }
