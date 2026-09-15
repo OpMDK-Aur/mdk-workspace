@@ -7,8 +7,8 @@ import type { ExecutionContext } from '@/lib/ai/types'
 export const maxDuration = 60
 
 function dateRange(period: string) {
-  const match = period.match(/(7|30|90)/)
-  const days = match ? Number(match[1]) : 30
+  const match = period.match(/(1|7|30|90)/)
+  const days = period.toLowerCase().includes('hoy') ? 1 : match ? Number(match[1]) : 30
   const to = new Date()
   const from = new Date(to)
   from.setUTCDate(from.getUTCDate() - days + 1)
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   const selectedMeta = body.selectedAccounts?.meta
   const selectedGoogle = body.selectedAccounts?.google
   const accountIds = (accounts ?? []).filter((account) => account.plataforma === 'meta' && (selectedMeta === undefined || selectedMeta.includes(account.id_cuenta))).map((account) => account.id_cuenta).filter(Boolean).join(',')
-  const customerIds = (accounts ?? []).filter((account) => account.plataforma === 'google' && (selectedGoogle === undefined || selectedGoogle.includes(account.id_cuenta))).map((account) => account.id_cuenta).filter(Boolean).join(',')
+  const customerIds = [...new Set((accounts ?? []).filter((account) => account.plataforma === 'google' && (selectedGoogle === undefined || selectedGoogle.includes(account.id_cuenta))).map((account) => account.id_cuenta.replace(/-/g, '')).filter(Boolean))].join(',')
   const context: ExecutionContext = { userId: user?.id ?? 'conexa-prototype', userEmail: user?.email ?? undefined, clientId: body.clientId, metaAccountId: accountIds || client?.meta_ads_account_id || undefined, googleCustomerId: customerIds || client?.google_ads_customer_id || undefined, analyticsPropertyId: client?.analytics_property_id || undefined }
   const tools = getToolDefinitions(['get_meta_metrics', 'get_google_metrics', 'get_google_analytics_report', 'crm_contacts', 'crm_opportunities', 'crm_sales_attribution', 'get_client_memory'])
   const byKey = new Map(tools.map((tool) => [tool.key, tool]))
@@ -40,15 +40,21 @@ export async function POST(request: Request) {
   ])
   const number = (value: unknown) => typeof value === 'number' ? value : Number(value) || 0
   const total = (source: unknown, keys: string[]) => {
+    if (!source || typeof source !== 'object') return 0
+    const root = source as Record<string, unknown>
+    const totals = root.totals
+    if (totals && typeof totals === 'object') {
+      return keys.reduce((sum, key) => sum + number((totals as Record<string, unknown>)[key]), 0)
+    }
     let result = 0
-    const visit = (value: unknown) => {
+    const visit = (value: unknown, isRoot = false) => {
       if (!value || typeof value !== 'object') return
       for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-        if (keys.includes(key)) result += number(child)
-        if (child && typeof child === 'object') visit(child)
+        if (keys.includes(key) && (isRoot || !Array.isArray(value))) result += number(child)
+        if (child && typeof child === 'object' && !Array.isArray(child)) visit(child)
       }
     }
-    visit(source)
+    visit(source, true)
     return result
   }
   const crmTotals = (source: unknown, key: string) => {
