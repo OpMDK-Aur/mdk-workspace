@@ -818,21 +818,41 @@ const crmContactAds: ToolDefinition = {
         const batchContactIds = contactIds.slice(batchStart, batchStart + 25)
         const { data, error } = await crm
           .from('messages')
-          .select('id,created_at,client_id,contact_id,conversation_id,metadata,source')
+          .select('id,created_at,client_id,contact_id,conversation_id,content,source,direction,metadata,referral_metadata,referral,message_data,source_id')
           .in('client_id', crmAccountIds)
           .in('contact_id', batchContactIds)
-          .gte('created_at', start)
-          .lt('created_at', end)
-          .limit(250)
+          // When the supervisor already identified specific contacts (for example won sales),
+          // load their complete referral history instead of limiting it to the opportunity period.
+          .gte('created_at', input.contactIds?.length ? '1970-01-01T00:00:00.000Z' : start)
+          .lt('created_at', input.contactIds?.length ? new Date().toISOString() : end)
+          .limit(1000)
         if (error) throw new Error(`messages: ${error.message}`)
         messages.push(...(data ?? []))
       }
       const referralsByContact = new Map<string, any[]>()
+      const getReferral = (message: any) => {
+        const candidates = [message.metadata?.referral, message.referral_metadata, message.referral, message.message_data?.referral]
+        return candidates.find((value) => value && typeof value === 'object') ?? null
+      }
       for (const message of messages) {
         const utmId = getAdId(message)
         if (!utmId || !message.contact_id) continue
         const rows = referralsByContact.get(message.contact_id) ?? []
-        rows.push({ utm_id: String(utmId), campaign: getCampaign(message), message_id: message.id, created_at: message.created_at })
+        rows.push({
+          referral: getReferral(message),
+          utm_id: String(utmId),
+          campaign: getCampaign(message),
+          source_id: message.source_id ?? getReferral(message)?.source_id ?? null,
+          message_id: message.id,
+          conversation_id: message.conversation_id,
+          created_at: message.created_at,
+          source: message.source,
+          direction: message.direction,
+          content: message.content,
+          metadata: message.metadata,
+          referral_metadata: message.referral_metadata,
+          message_data: message.message_data,
+        })
         referralsByContact.set(message.contact_id, rows)
       }
       const attributedContacts = contacts.filter(contact => referralsByContact.has(contact.id)).map(contact => ({ ...contact, referrals: referralsByContact.get(contact.id) }))
@@ -848,7 +868,15 @@ const crmContactAds: ToolDefinition = {
       }
       const campaigns = [...campaignSummary.values()].map(item => ({ campaign: item.campaign, contacts: item.contacts.size, utm_ids: [...item.utm_ids] })).sort((a, b) => b.contacts - a.contacts)
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contact_ads', status: 'completed', label: `${attributedContacts.length} contactos de pauta` })
-      return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end }, totals: { contacts_created: contacts.length, contacts_with_ad_referral: attributedContacts.length, messages_scanned: messages.length, campaigns: campaigns.length }, campaigns, contacts: attributedContacts.slice(0, 100), truncated: attributedContacts.length > 100 }
+      return {
+        available: true,
+        period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end },
+        totals: { contacts_created: contacts.length, contacts_with_ad_referral: attributedContacts.length, messages_scanned: messages.length, campaigns: campaigns.length },
+        campaigns,
+        contacts: attributedContacts,
+        referral_context: attributedContacts.flatMap(contact => (contact.referrals ?? []).map((referral: any) => ({ contact_id: contact.id, contact_name: contact.name, ...referral }))),
+        truncated: false,
+      }
     } catch (error) {
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contact_ads', status: 'error', label: 'No se pudo analizar la pauta de contactos' })
       return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar la atribución de contactos en CRM.' }
