@@ -818,7 +818,7 @@ const crmContactAds: ToolDefinition = {
         const batchContactIds = contactIds.slice(batchStart, batchStart + 25)
         const { data, error } = await crm
           .from('messages')
-          .select('id,created_at,client_id,contact_id,conversation_id,content,source,direction,metadata,referral_metadata,referral,message_data,source_id')
+          .select('id,created_at,client_id,contact_id,conversation_id,content,source,direction,metadata')
           .in('client_id', crmAccountIds)
           .in('contact_id', batchContactIds)
           // When the supervisor already identified specific contacts (for example won sales),
@@ -831,7 +831,7 @@ const crmContactAds: ToolDefinition = {
       }
       const referralsByContact = new Map<string, any[]>()
       const getReferral = (message: any) => {
-        const candidates = [message.metadata?.referral, message.referral_metadata, message.referral, message.message_data?.referral]
+        const candidates = [message.metadata?.referral, message.metadata]
         return candidates.find((value) => value && typeof value === 'object') ?? null
       }
       for (const message of messages) {
@@ -842,7 +842,7 @@ const crmContactAds: ToolDefinition = {
           referral: getReferral(message),
           utm_id: String(utmId),
           campaign: getCampaign(message),
-          source_id: message.source_id ?? getReferral(message)?.source_id ?? null,
+          source_id: getReferral(message)?.source_id ?? null,
           message_id: message.id,
           conversation_id: message.conversation_id,
           created_at: message.created_at,
@@ -850,8 +850,6 @@ const crmContactAds: ToolDefinition = {
           direction: message.direction,
           content: message.content,
           metadata: message.metadata,
-          referral_metadata: message.referral_metadata,
-          message_data: message.message_data,
         })
         referralsByContact.set(message.contact_id, rows)
       }
