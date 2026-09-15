@@ -314,14 +314,19 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
     }
   } catch (cause) { console.warn('[v0] Google Ads ad groups unavailable:', cause instanceof Error ? cause.message : cause) }
   try {
-    const adRows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, ad_group.id, ad_group.name, ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group_ad.ad.type, ad_group_ad.status, metrics.impressions, metrics.clicks, metrics.conversions, metrics.cost_micros FROM ad_group_ad WHERE ${dateFilter} AND ad_group_ad.status != 'REMOVED' ORDER BY metrics.cost_micros DESC`)
+    const adRows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, ad_group.id, ad_group.name, ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group_ad.ad.type, ad_group_ad.ad.responsive_search_ad.headlines, ad_group_ad.ad.responsive_search_ad.descriptions, ad_group_ad.ad.text_ad.headline, ad_group_ad.status, metrics.impressions, metrics.clicks, metrics.conversions, metrics.cost_micros FROM ad_group_ad WHERE ${dateFilter} AND ad_group_ad.status != 'REMOVED' ORDER BY metrics.cost_micros DESC`)
     for (const row of adRows) {
       const group = row.adGroup ?? row.ad_group ?? {}
       const campaign = row.campaign ?? {}
       const adGroupAd = row.adGroupAd ?? row.ad_group_ad ?? {}
       const ad = adGroupAd.ad ?? {}
       const metrics = row.metrics ?? {}
-      ads.push({ id: String(ad.id ?? ''), name: ad.name ?? 'Anuncio sin nombre', campaign_name: campaign.name ?? 'Sin campaña', ad_group_name: group.name ?? 'Sin grupo', status: adGroupAd.status ?? 'UNKNOWN', type: ad.type ?? 'UNKNOWN', impressions: Number(metrics.impressions ?? 0), clicks: Number(metrics.clicks ?? 0), conversions: Number(metrics.conversions ?? 0), spend: Number(metrics.costMicros ?? metrics.cost_micros ?? 0) / 1_000_000 })
+      const responsiveSearchAd = ad.responsiveSearchAd ?? ad.responsive_search_ad ?? {}
+      const textAd = ad.textAd ?? ad.text_ad ?? {}
+      const headlines = Array.isArray(responsiveSearchAd.headlines) ? responsiveSearchAd.headlines.map((asset: any) => asset.text).filter(Boolean) : []
+      const descriptions = Array.isArray(responsiveSearchAd.descriptions) ? responsiveSearchAd.descriptions.map((asset: any) => asset.text).filter(Boolean) : []
+      const creativeName = String(ad.name ?? textAd.headline ?? headlines[0] ?? descriptions[0] ?? '').trim() || `Anuncio ${String(ad.id ?? '')}`
+      ads.push({ id: String(ad.id ?? ''), name: creativeName, headlines, descriptions, campaign_name: campaign.name ?? 'Sin campaña', ad_group_name: group.name ?? 'Sin grupo', status: adGroupAd.status ?? 'UNKNOWN', type: ad.type ?? 'UNKNOWN', impressions: Number(metrics.impressions ?? 0), clicks: Number(metrics.clicks ?? 0), conversions: Number(metrics.conversions ?? 0), spend: Number(metrics.costMicros ?? metrics.cost_micros ?? 0) / 1_000_000 })
     }
   } catch (cause) { console.warn('[v0] Google Ads ads unavailable:', cause instanceof Error ? cause.message : cause) }
 
