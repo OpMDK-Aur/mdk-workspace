@@ -3,11 +3,31 @@ import type { SupabaseClient, User } from '@supabase/supabase-js'
 
 let client: SupabaseClient | null = null
 
+function createSerializedAuthLock() {
+  let tail = Promise.resolve()
+  return async <T>(_name: string, _acquireTimeout: number, callback: () => Promise<T> | T) => {
+    const previous = tail
+    let release!: () => void
+    tail = new Promise<void>((resolve) => { release = resolve })
+    await previous
+    try {
+      return await callback()
+    } finally {
+      release()
+    }
+  }
+}
+
 export function createClient() {
   if (!client) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    client = createBrowserClient(url, key)
+    client = createBrowserClient(url, key, {
+      auth: {
+        // Serialize auth operations in this tab so concurrent requests never steal each other's lock.
+        lock: createSerializedAuthLock(),
+      },
+    })
   }
   return client
 }
