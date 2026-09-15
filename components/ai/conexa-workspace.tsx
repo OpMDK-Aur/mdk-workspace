@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { SupervisorChat } from './supervisor-chat'
 import { ConversationsSidebar, type ConversationSummary } from './conversations-sidebar'
-import { BarChart3, ChevronDown, CircleHelp, Database, Gauge, Globe2, LayoutDashboard, MessageCircle, PanelLeftClose, PanelLeftOpen, Search, Settings2, Sparkles, Tags, Users, WalletCards, X } from 'lucide-react'
+import { BarChart3, ChevronDown, CircleHelp, Database, LoaderCircle, Gauge, Globe2, LayoutDashboard, MessageCircle, PanelLeftClose, PanelLeftOpen, Search, Settings2, Sparkles, Tags, Users, WalletCards, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -41,6 +41,7 @@ export function ConexaWorkspace() {
   const [customRange, setCustomRange] = useState({ from: '', to: '' })
   const [platformTab, setPlatformTab] = useState<string | undefined>(undefined)
   const [data, setData] = useState<ConexaData>(emptyConexaData)
+  const [isLoading, setIsLoading] = useState(true)
   const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([])
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string[]>>({})
 
@@ -63,6 +64,7 @@ export function ConexaWorkspace() {
         setData({ accounts: [], metrics: Array.isArray(result.metrics) ? result.metrics : [], reports: Array.isArray(result.analytics?.reports) ? result.analytics.reports : [], approvals: [], profile: null, memory: Array.isArray(result.memory?.items) ? result.memory.items : [], platformMetrics: result.platformMetrics && typeof result.platformMetrics === 'object' ? result.platformMetrics : {}, platformData: { meta: result.meta, google: result.google, analytics: result.analytics, crm: { contacts: result.contacts, opportunities: result.opportunities, sales: result.sales } } })
       })
       .catch(() => { if (!cancelled) setData(emptyConexaData) })
+      .finally(() => { if (!cancelled) setIsLoading(false) })
     return () => { cancelled = true }
   }, [client?.id, period, selectedAccounts])
 
@@ -113,7 +115,8 @@ export function ConexaWorkspace() {
         <span className="ml-1.5 flex items-center gap-1.5 text-xs text-[#9a9a9a]"><span className="size-1.5 rounded-full bg-[#1e9e6b]" /> Actualizado hace 8 min</span><div className="flex-1" /><CircleHelp className="size-4 text-[#9a9a9a]" /><div className="flex size-6 items-center justify-center rounded-full bg-[#141414] text-[10px] font-semibold text-white">AP</div>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-hidden bg-white">
+      <main className="relative min-h-0 flex-1 overflow-hidden bg-white">
+        {isLoading && <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/90 backdrop-blur-[2px]"><div className="flex w-[min(92%,360px)] flex-col items-center rounded-2xl border border-[#e6e6e3] bg-white px-8 py-7 text-center shadow-lg" role="status" aria-live="polite"><div className="mb-4 flex size-11 items-center justify-center rounded-full bg-[#eeefff]"><LoaderCircle className="size-5 animate-spin text-[#5b5fe8]" /></div><p className="text-sm font-semibold text-[#202020]">Estamos cargando tus datos</p><p className="mt-1 text-xs leading-5 text-[#888]">Consultando las plataformas conectadas. Esto puede demorar unos segundos.</p><div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-[#eeefff]"><div className="h-full w-2/5 animate-pulse rounded-full bg-[#5b5fe8]" /></div></div></div>}
         {active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => setActive('Chat / Análisis')} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} onReportCreated={(report) => setGeneratedReports((current) => [report, ...current])} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} />}
       </main>
     </section>
