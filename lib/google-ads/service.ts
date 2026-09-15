@@ -16,6 +16,7 @@ export interface GoogleConversionAction {
   conversion_value: number
   campaign_ids: string[]
   campaign_names: string[]
+  unclassified?: boolean
 }
 
 export type GoogleChangeFieldCategory = 'budget' | 'status' | 'bidding' | 'targeting' | 'creative' | 'conversion' | 'schedule' | 'other'
@@ -281,19 +282,30 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
   try {
     const conversionRows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, segments.conversion_action_name, metrics.conversions, metrics.conversions_value FROM campaign WHERE ${dateFilter} AND campaign.status != 'REMOVED' ORDER BY metrics.conversions DESC`)
     const actionMap = new Map<string, GoogleConversionAction>()
+    let unclassifiedConversions = 0
+    let unclassifiedValue = 0
     for (const row of conversionRows) {
       const action = row.segments?.conversionActionName ?? row.segments?.conversion_action_name
       const name = typeof action === 'string' ? action.trim() : ''
-      if (!name) continue
+      const rowConversions = Number(row.metrics?.conversions ?? 0)
+      const rowValue = Number(row.metrics?.conversionsValue ?? row.metrics?.conversions_value ?? 0)
+      if (!name) { unclassifiedConversions += rowConversions; unclassifiedValue += rowValue; continue }
       const campaign = row.campaign ?? {}
       const campaignId = String(campaign.id ?? '')
       const campaignName = String(campaign.name ?? '')
       const current = actionMap.get(name) ?? { name, conversions: 0, conversion_value: 0, campaign_ids: [], campaign_names: [] }
-      current.conversions += Number(row.metrics?.conversions ?? 0)
-      current.conversion_value += Number(row.metrics?.conversionsValue ?? row.metrics?.conversions_value ?? 0)
+      current.conversions += rowConversions
+      current.conversion_value += rowValue
       if (campaignId && !current.campaign_ids.includes(campaignId)) current.campaign_ids.push(campaignId)
       if (campaignName && !current.campaign_names.includes(campaignName)) current.campaign_names.push(campaignName)
       actionMap.set(name, current)
+    }
+    const campaignConversionTotal = campaigns.reduce((sum, campaign) => sum + Number(campaign.leads ?? campaign.conversions ?? 0), 0)
+    const classifiedTotal = [...actionMap.values()].reduce((sum, action) => sum + action.conversions, 0) + unclassifiedConversions
+    const missingConversions = campaignConversionTotal - classifiedTotal
+    if (unclassifiedConversions > 0 || missingConversions > 0) {
+      const total = unclassifiedConversions + Math.max(0, missingConversions)
+      actionMap.set('__unclassified__', { name: 'Conversiones sin clasificación', conversions: total, conversion_value: unclassifiedValue, campaign_ids: [], campaign_names: [], unclassified: true })
     }
     conversion_actions = [...actionMap.values()].sort((a, b) => b.conversions - a.conversions)
   } catch (cause) {
