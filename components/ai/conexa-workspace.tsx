@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { SupervisorChat } from './supervisor-chat'
 import { ConversationsSidebar, type ConversationSummary } from './conversations-sidebar'
 import { BarChart3, ChevronDown, CircleHelp, Database, LoaderCircle, Gauge, Globe2, LayoutDashboard, MessageCircle, PanelLeftClose, PanelLeftOpen, Search, Settings2, Sparkles, Tags, Users, WalletCards, X } from 'lucide-react'
@@ -41,7 +41,8 @@ export function ConexaWorkspace() {
   const [customRange, setCustomRange] = useState({ from: '', to: '' })
   const [platformTab, setPlatformTab] = useState<string | undefined>(undefined)
   const [data, setData] = useState<ConexaData>(emptyConexaData)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
+  const hasLoadedMetrics = useRef(false)
   const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([])
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string[]>>({})
 
@@ -56,7 +57,8 @@ export function ConexaWorkspace() {
 
   useEffect(() => {
     if (!client?.id) return
-    setIsLoading(true)
+    const shouldShowMetricsLoader = hasLoadedMetrics.current
+    if (shouldShowMetricsLoader) setIsLoading(true)
     let cancelled = false
     fetch('/api/conexa/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client.id, period, selectedAccounts }) })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron consultar las tools de Conexa.')))
@@ -65,7 +67,7 @@ export function ConexaWorkspace() {
         setData({ accounts: [], metrics: Array.isArray(result.metrics) ? result.metrics : [], reports: Array.isArray(result.analytics?.reports) ? result.analytics.reports : [], approvals: [], profile: null, memory: Array.isArray(result.memory?.items) ? result.memory.items : [], platformMetrics: result.platformMetrics && typeof result.platformMetrics === 'object' ? result.platformMetrics : {}, platformData: { meta: result.meta, google: result.google, analytics: result.analytics, crm: { contacts: result.contacts, opportunities: result.opportunities, sales: result.sales } } })
       })
       .catch(() => { if (!cancelled) setData(emptyConexaData) })
-      .finally(() => { if (!cancelled) setIsLoading(false) })
+      .finally(() => { if (!cancelled) { hasLoadedMetrics.current = true; if (shouldShowMetricsLoader) setIsLoading(false) } })
     return () => { cancelled = true }
   }, [client?.id, period, selectedAccounts])
 
@@ -258,7 +260,7 @@ function PlatformView({ platform, initialTab, onManage, data, client, selectedAc
   const view = { metrics: platformRows, rows: details, chart: platformRows.length ? 'Datos reales del período seleccionado' : 'Sin datos disponibles' }
   const [feedNetwork, setFeedNetwork] = useState<'facebook' | 'instagram' | null>(null)
   const feedItems = {
-    facebook: ['Conocé nuestro nuevo servicio de automatización comercial.', 'Testimonio: cómo ordenamos el CRM de un cliente en 30 días.', 'Tips para mejorar la conversión de tu funnel.', 'Detrás de escena: el equipo de Paid Media en acción.'],
+    facebook: ['Conocé nuestro nuevo servicio de automatización comercial.', 'Testimonio: cómo ordenamos el CRM de un cliente en 30 días.', 'Tips para mejorar la conversión de tu funnel.', 'Detr��s de escena: el equipo de Paid Media en acción.'],
     instagram: ['Nueva pieza gráfica de la campaña de octubre.', 'Reel: 3 errores comunes en campañas de Meta Ads.', 'Carrusel: antes y después de optimizar un funnel.', 'Historia destacada: casos de éxito de clientes.'],
   }
   if (false) return <div className="relative mx-auto max-w-[1180px] px-6 py-5"><div className="mb-3 flex items-start justify-between"><div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center overflow-hidden rounded-lg bg-white"><img src={platform.iconUrl ?? ''} alt="Meta" className="size-full object-contain" /></span><div><h1 className="text-[20px] font-bold">Meta Ads</h1><p className="text-[11px] text-[#777]">Aurelia · octubre 25 · <span className="text-[#1e9e6b]">● Conectado</span></p></div></div><Button variant="outline" onClick={onManage} className="h-8 rounded-full px-4 text-[11px]">Administrar conexión</Button></div><div className="mb-4 flex gap-7 border-b border-[#dededb] text-[10px] font-semibold text-[#777]">{tabs.map((tab) => <button type="button" key={tab} onClick={() => setSelectedTab(tab)} className={cn('border-b-2 px-1 pb-3', selectedTab === tab ? 'border-[#5b5fe8] text-[#5b5fe8]' : 'border-transparent')}>{tab}</button>)}</div><div className="grid grid-cols-2 gap-3"><FeedCard network="facebook" title="Fan Page" handle="@AureliaOficial" followers="12.400" reach="48.200" engagement="3,8%" posts="26" onOpen={() => setFeedNetwork('facebook')} /><FeedCard network="instagram" title="Instagram" handle="@aurelia.oficial" followers="21.800" reach="86.500" engagement="4,6%" posts="34" onOpen={() => setFeedNetwork('instagram')} /></div>{feedNetwork && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="dialog" aria-modal="true" aria-label={`Feed de ${feedNetwork}`}><div className="w-full max-w-[340px] rounded-2xl bg-white p-4 shadow-xl"><div className="mb-3 flex items-center justify-between border-b border-[#ededeb] pb-3"><div className="flex items-center gap-2"><span className="flex size-5 items-center justify-center overflow-hidden rounded-full bg-white"><img src={feedNetwork === 'facebook' ? 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Facebook_Logo_%282019%29-8hLkShXu9caNijxaYTMKGdv1bWipbV.png' : 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/instagram-logo-instagram-icon-transparent-free-png-Rg5Y4zK9sBURxJ2cnQ4oECUdYuqeYz.webp'} alt="" className="size-full object-contain" /></span><p className="text-[12px] font-bold">{feedNetwork === 'facebook' ? 'Fan Page — @AureliaOficial' : 'Instagram — @aurelia.oficial'}</p></div><button type="button" onClick={() => setFeedNetwork(null)} aria-label="Cerrar feed" className="text-xl text-[#aaa]">×</button></div>{feedItems[feedNetwork].map((item, index) => <div key={item} className="flex gap-2 border-b border-[#ededeb] py-2.5 last:border-0"><div className="size-10 shrink-0 rounded-md bg-[repeating-linear-gradient(45deg,#eee,#eee_5px,#f8f8f8_5px,#f8f8f8_10px)]" /><div><p className="text-[10px] font-medium leading-4">{item}</p><p className="mt-1 text-[9px] text-[#999]">{feedNetwork === 'facebook' ? [312, 480, 201, 158][index] : [890, 1240, 670, 412][index]} likes · {18 + index * 7} comentarios · Hace {index + 1} días</p></div></div>)}</div></div>}</div>
