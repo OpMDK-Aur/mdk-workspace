@@ -54,6 +54,34 @@ export async function updateClientPlatformIds(
   if (error) return { error: error.message }
   if (!updatedClient) return { error: 'No se actualizó el cliente: no se encontró el ID del cliente o la fila no es accesible.' }
 
+  const accountRows = [
+    ...(metaAdsAccountId ? metaAdsAccountId.split(',').map((id) => ({ plataforma: 'meta', id_cuenta: id.trim() })) : []),
+    ...(googleAdsCustomerId ? googleAdsCustomerId.split(',').map((id) => ({ plataforma: 'google', id_cuenta: id.trim() })) : []),
+  ].filter((account) => account.id_cuenta)
+
+  const selectedKeys = new Set(accountRows.map((account) => `${account.plataforma}:${account.id_cuenta}`))
+  const { data: existingAccounts, error: existingAccountsError } = await admin
+    .from('cuentas_publicitarias')
+    .select('id, plataforma, id_cuenta')
+    .eq('cliente_id', clientId)
+  if (existingAccountsError) return { error: existingAccountsError.message }
+
+  const staleIds = (existingAccounts ?? [])
+    .filter((account) => ['meta', 'google'].includes(account.plataforma) && !selectedKeys.has(`${account.plataforma}:${account.id_cuenta}`))
+    .map((account) => account.id)
+  if (staleIds.length) {
+    const { error: deleteError } = await admin.from('cuentas_publicitarias').delete().in('id', staleIds)
+    if (deleteError) return { error: deleteError.message }
+  }
+
+  if (accountRows.length) {
+    const { error: upsertError } = await admin.from('cuentas_publicitarias').upsert(
+      accountRows.map((account) => ({ cliente_id: clientId, plataforma: account.plataforma, id_cuenta: account.id_cuenta, nombre_cuenta: account.id_cuenta, activo: true })),
+      { onConflict: 'cliente_id,plataforma,id_cuenta', ignoreDuplicates: false },
+    )
+    if (upsertError) return { error: upsertError.message }
+  }
+
   revalidatePath('/dashboard')
   revalidatePath('/dashboard/clients/config')
   return { success: true }
