@@ -279,7 +279,7 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
   let conversion_actions_available = true
   let conversion_actions_error: string | null = null
   try {
-    const conversionRows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, segments.conversion_action_name, metrics.conversions, metrics.conversions_value FROM ad_group_ad WHERE ${dateFilter} AND campaign.status != 'REMOVED' ORDER BY metrics.conversions DESC`)
+    const conversionRows = await fetchRows(customerId, `SELECT campaign.id, campaign.name, segments.conversion_action_name, metrics.conversions, metrics.conversions_value FROM campaign WHERE ${dateFilter} AND campaign.status != 'REMOVED' ORDER BY metrics.conversions DESC`)
     const actionMap = new Map<string, GoogleConversionAction>()
     for (const row of conversionRows) {
       const action = row.segments?.conversionActionName ?? row.segments?.conversion_action_name
