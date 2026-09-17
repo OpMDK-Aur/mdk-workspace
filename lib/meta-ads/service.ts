@@ -150,6 +150,25 @@ const TRAFFIC_ACTIONS = [
   'omni_view_content',
   'reach',
 ]
+// El objetivo de la campaña (`objective`) determina qué familia de acciones
+// corresponde a su "Resultado" real. Cuando el objetivo apunta a una
+// conversión (leads, mensajes, ventas) y la campaña no generó ninguna acción
+// de ese tipo en el período, Meta Ads Manager muestra "—" en la columna
+// Resultados -- NUNCA sustituye por clics o visitas a landing. Si dejamos que
+// el código caiga al fallback de TRAFFIC_ACTIONS para estos objetivos, una
+// campaña de "Clientes Potenciales" sin leads reales termina mostrando sus
+// clics incidentales como si fueran resultados (bug: 265 clics mostrados como
+// 265 "Resultados" cuando Meta Ads Manager muestra "—").
+const CONVERSION_OBJECTIVES = [
+  'OUTCOME_LEADS',
+  'LEAD_GENERATION',
+  'OUTCOME_SALES',
+  'CONVERSIONS',
+  'PRODUCT_CATALOG_SALES',
+  'OUTCOME_ENGAGEMENT',
+  'MESSAGES',
+  'CONVERSATIONS',
+]
 
 export function normalizeMetaAccountId(value: string) {
   return value.replace(/^act_/, '').trim()
@@ -243,15 +262,19 @@ function pickByMagnitude(actions: MetaAction[] | undefined, candidateTypes: stri
   return best
 }
 
-export function normalizeMetaResult(_objective: string, actions: MetaAction[] | undefined) {
+export function normalizeMetaResult(objective: string, actions: MetaAction[] | undefined) {
   // 1) Entre las acciones de conversión real (leads, mensajes, compras)
   //    presentes en la campaña, gana la de mayor valor -- nunca la primera
   //    de una lista fija -- para que un action_type incidental con un valor
   //    chico nunca tape al resultado real de la campaña.
   const bestConversion = pickByMagnitude(actions, CONVERSION_ACTIONS)
-  // 2) Si no hay ninguna conversión real, se usa la acción de tráfico o
-  //    engagement de mayor valor como resultado (clics, visitas a landing, etc).
-  const best = bestConversion ?? pickByMagnitude(actions, TRAFFIC_ACTIONS)
+  // 2) Si no hay ninguna conversión real, sólo se recurre a tráfico/engagement
+  //    (clics, visitas a landing, etc.) cuando el objetivo de la campaña NO es
+  //    de conversión. Para campañas de leads/mensajes/ventas sin conversiones
+  //    reales, el resultado debe quedar en 0 -- igual que "—" en Meta Ads
+  //    Manager -- en vez de mostrar clics incidentales como "Resultados".
+  const isConversionObjective = CONVERSION_OBJECTIVES.includes(objective.toUpperCase())
+  const best = bestConversion ?? (isConversionObjective ? null : pickByMagnitude(actions, TRAFFIC_ACTIONS))
   if (!best) return { results: 0, resultType: 'unknown' as MetaResultType, sourceActionType: null, leads: 0, conversions: 0 }
 
   const actionType = best.type
