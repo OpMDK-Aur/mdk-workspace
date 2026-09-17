@@ -68,12 +68,12 @@ export async function POST(request: Request) {
   const accountIds = (selectedMeta === undefined ? metaIds : metaIds.filter((id) => selectedMeta.includes(id))).join(',')
   const customerIds = [...new Set(selectedGoogle === undefined ? googleIds : googleIds.filter((id) => selectedGoogle.includes(id)))].join(',')
   const context: ExecutionContext = { userId: user?.id ?? 'conexa-prototype', userEmail: user?.email ?? undefined, clientId: body.clientId, metaAccountId: accountIds || client?.meta_ads_account_id || undefined, googleCustomerId: customerIds || client?.google_ads_customer_id || undefined, analyticsPropertyId: client?.analytics_property_id || undefined }
-  const tools = getToolDefinitions(['get_meta_metrics', 'get_google_metrics', 'get_google_analytics_report', 'crm_contacts', 'crm_opportunities', 'crm_sales_attribution', 'get_client_memory'])
+  const tools = getToolDefinitions(['get_meta_metrics', 'get_google_metrics', 'get_google_analytics_report', 'get_google_tag_manager_report', 'crm_contacts', 'crm_opportunities', 'crm_sales_attribution', 'get_client_memory'])
   const byKey = new Map(tools.map((tool) => [tool.key, tool]))
   const run = (key: string, input: Record<string, string> = {}) => byKey.get(key)?.execute({ ...range, ...input }, context).catch((error) => ({ available: false, message: error instanceof Error ? error.message : `Falló la tool ${key}.` })) ?? Promise.resolve({ available: false, message: `Tool ${key} no disponible.` })
 
-  const [meta, google, analytics, contacts, opportunities, sales, memory] = await Promise.all([
-    run('get_meta_metrics'), run('get_google_metrics'), run('get_google_analytics_report'), run('crm_contacts'), run('crm_opportunities'), run('crm_sales_attribution'), run('get_client_memory'),
+  const [meta, google, analytics, tagManager, contacts, opportunities, sales, memory] = await Promise.all([
+    run('get_meta_metrics'), run('get_google_metrics'), run('get_google_analytics_report'), run('get_google_tag_manager_report'), run('crm_contacts'), run('crm_opportunities'), run('crm_sales_attribution'), run('get_client_memory'),
   ])
   const number = (value: unknown) => typeof value === 'number' ? value : Number(value) || 0
   const total = (source: unknown, keys: string[]) => {
@@ -108,11 +108,13 @@ export async function POST(request: Request) {
     opportunities: crmTotals(opportunities, 'opportunities'),
     sales: crmTotals(sales, 'won_sales'),
   }]
+  const tagManagerContainers = (tagManager && typeof tagManager === 'object' && Array.isArray((tagManager as { containers?: unknown }).containers) ? (tagManager as { containers: Array<Record<string, unknown>> }).containers : [])
   const platformMetrics = {
     meta: [{ label: 'Inversión', value: total(meta, ['spend', 'cost', 'investment']) }, { label: 'Impresiones', value: total(meta, ['impressions']) }, { label: 'Clicks', value: total(meta, ['clicks']) }, { label: 'Resultados', value: total(meta, ['results', 'conversions', 'leads']) }],
     google: [{ label: 'Inversión', value: total(google, ['spend', 'cost', 'investment']) }, { label: 'Impresiones', value: total(google, ['impressions']) }, { label: 'Clicks', value: total(google, ['clicks']) }, { label: 'Conversiones', value: total(google, ['conversions', 'results']) }],
     analytics: [{ label: 'Usuarios', value: total(analytics, ['users', 'activeUsers']) }, { label: 'Sesiones', value: total(analytics, ['sessions']) }, { label: 'Eventos', value: total(analytics, ['eventCount', 'events']) }, { label: 'Conversiones', value: total(analytics, ['conversions']) }],
+    tag_manager: [{ label: 'Etiquetas', value: tagManagerContainers.reduce((sum, container) => sum + Number((container.diagnostics as Record<string, unknown> | undefined)?.totalTags ?? 0), 0) }, { label: 'Activadores', value: tagManagerContainers.reduce((sum, container) => sum + Number((container.diagnostics as Record<string, unknown> | undefined)?.totalTriggers ?? 0), 0) }, { label: 'Variables', value: tagManagerContainers.reduce((sum, container) => sum + Number((container.diagnostics as Record<string, unknown> | undefined)?.totalVariables ?? 0), 0) }],
     crm: [{ label: 'Contactos', value: crmTotals(contacts, 'contacts') }, { label: 'Oportunidades', value: crmTotals(opportunities, 'opportunities') }, { label: 'Ventas', value: crmTotals(sales, 'won_sales') }],
   }
-  return NextResponse.json({ range, metrics, platformMetrics, meta, google, analytics, contacts, opportunities, sales, memory })
+  return NextResponse.json({ range, metrics, platformMetrics, meta, google, analytics, tagManager, contacts, opportunities, sales, memory })
 }

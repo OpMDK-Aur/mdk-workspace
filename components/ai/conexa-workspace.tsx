@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { MessageContent } from '@/components/chat/message-content'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import type { TagManagerTagRow, TagManagerTriggerRow, TagManagerVariableRow } from '@/lib/google-tag-manager/service'
 
 type ClientAccount = { id_cuenta: string | null; nombre_cuenta: string | null; plataforma: string | null; activo?: boolean | null }
 type Client = { id: string; nombre_del_negocio: string; meta_ads_account_id?: string | null; google_ads_customer_id?: string | null; meta_ads_account_ids?: string[] | null; google_ads_customer_ids?: string[] | null; analytics_property_id?: string | null; tag_manager_container_id?: string | null; crm_type?: string | null; cuentas_publicitarias?: ClientAccount[] | null }
@@ -62,7 +63,7 @@ export function ConexaWorkspace() {
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron consultar las tools de Conexa.')))
       .then((result) => {
         if (cancelled) return
-        setData({ accounts: [], metrics: Array.isArray(result.metrics) ? result.metrics : [], reports: Array.isArray(result.analytics?.reports) ? result.analytics.reports : [], approvals: [], profile: null, memory: Array.isArray(result.memory?.items) ? result.memory.items : [], platformMetrics: result.platformMetrics && typeof result.platformMetrics === 'object' ? result.platformMetrics : {}, platformData: { meta: result.meta, google: result.google, analytics: result.analytics, crm: { contacts: result.contacts, opportunities: result.opportunities, sales: result.sales } } })
+        setData({ accounts: [], metrics: Array.isArray(result.metrics) ? result.metrics : [], reports: Array.isArray(result.analytics?.reports) ? result.analytics.reports : [], approvals: [], profile: null, memory: Array.isArray(result.memory?.items) ? result.memory.items : [], platformMetrics: result.platformMetrics && typeof result.platformMetrics === 'object' ? result.platformMetrics : {}, platformData: { meta: result.meta, google: result.google, analytics: result.analytics, tagManager: result.tagManager, crm: { contacts: result.contacts, opportunities: result.opportunities, sales: result.sales } } })
       })
       .catch(() => { if (!cancelled) setData(emptyConexaData) })
       .finally(() => { if (!cancelled) setIsLoading(false) })
@@ -419,10 +420,87 @@ function GoogleAnalyticsConexaView({ platform, onManage, data }: { platform: Pla
   </div>
 }
 
+// La API de GTM no expone un puntaje de "Calidad del contenedor" como el
+// que muestra su interfaz (es un cálculo interno de Tag Assistant). Este
+// diagnóstico es un cálculo propio de Conexa a partir de datos reales de
+// tags/activadores, así que se etiqueta y explica como tal en vez de
+// imitar el puntaje "Excelente/Bueno/etc." de Google.
+function relativeTimeEs(iso: string | null) {
+  if (!iso) return '—'
+  const diffMs = Date.now() - new Date(iso).getTime()
+  if (diffMs < 0) return '—'
+  const days = Math.floor(diffMs / 86_400_000)
+  if (days < 1) return 'hoy'
+  if (days === 1) return 'hace 1 día'
+  if (days < 30) return `hace ${days} días`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `hace ${months} ${months === 1 ? 'mes' : 'meses'}`
+  const years = Math.floor(months / 12)
+  return `hace ${years} ${years === 1 ? 'año' : 'años'}`
+}
+
+function GoogleTagManagerConexaView({ platform, onManage, data }: { platform: Platform; onManage: () => void; data: ConexaData }) {
+  const [tab, setTab] = useState('Resumen')
+  const report = (data.platformData.tagManager ?? {}) as { containers?: Array<Record<string, any>>; errors?: Array<{ containerId: string; message: string }> }
+  const containers = report.containers ?? []
+  const [containerId, setContainerId] = useState<string | undefined>(undefined)
+  const container = containers.find((item) => item.containerId === containerId) ?? containers[0]
+
+  if (!containers.length) return <div className="mx-auto max-w-[1180px] px-6 py-5">
+    <div className="mb-4 flex items-start justify-between"><div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center overflow-hidden rounded-lg bg-white">{platform.iconUrl ? <img src={platform.iconUrl} alt="" className="size-full object-contain" /> : <Tags className="size-7 text-[#246FDB]" />}</span><div><h1 className="text-[20px] font-bold">Google Tag Manager</h1><p className="text-[11px] text-[#777]">{platform.detail}</p></div></div><Button variant="outline" onClick={onManage} className="h-8 rounded-full px-4 text-[11px]">Administrar conexión</Button></div>
+    <p className="rounded-xl border border-[#dcdcd8] bg-white p-8 text-center text-xs text-[#888]">{report.errors?.[0]?.message ?? 'Sin contenedores de Google Tag Manager conectados.'}</p>
+  </div>
+
+  const tags = (container.tags ?? []) as TagManagerTagRow[]
+  const triggers = (container.triggers ?? []) as TagManagerTriggerRow[]
+  const variables = (container.variables ?? []) as TagManagerVariableRow[]
+  const diagnostics = container.diagnostics ?? {}
+  const nav = ['Resumen', 'Etiquetas', 'Activadores', 'Variables']
+
+  return <div className="mx-auto h-full max-w-[1180px] overflow-y-auto px-6 py-5">
+    <div className="mb-4 flex items-start justify-between"><div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center overflow-hidden rounded-lg bg-white">{platform.iconUrl ? <img src={platform.iconUrl} alt="" className="size-full object-contain" /> : <Tags className="size-7 text-[#246FDB]" />}</span><div><h1 className="text-[20px] font-bold">Google Tag Manager</h1><p className="text-[11px] text-[#777]">Contenedor {container.publicId} · {container.containerName} <span className="ml-2 text-[#1e9e6b]">● Conectado</span></p></div></div><div className="flex items-center gap-3">{containers.length > 1 && <select value={container.containerId} onChange={(event) => setContainerId(event.target.value)} className="h-8 rounded-full border border-[#e2e2df] bg-white px-3 text-[11px]">{containers.map((item) => <option key={item.containerId} value={item.containerId}>{item.containerName}</option>)}</select>}<Button variant="outline" onClick={onManage} className="h-8 rounded-full px-4 text-[11px]">Administrar conexión</Button></div></div>
+    <div className="mb-4 flex gap-7 border-b border-[#dededb] text-[10px] font-semibold text-[#777]">{nav.map((item) => <button type="button" key={item} onClick={() => setTab(item)} className={cn('border-b-2 px-1 pb-3', tab === item ? 'border-[#246FDB] text-[#246FDB]' : 'border-transparent')}>{item}</button>)}</div>
+
+    {tab === 'Resumen' && <div>
+      <div className="mb-3 grid grid-cols-3 gap-3">
+        <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="text-[10px] font-semibold text-[#888]">Etiquetas totales</p><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{diagnostics.totalTags ?? 0}</p><p className="mt-1 text-[10px] text-[#888]">{diagnostics.activeTags ?? 0} activas · {diagnostics.pausedTags ?? 0} pausadas</p></div>
+        <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="text-[10px] font-semibold text-[#888]">Activadores</p><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{diagnostics.totalTriggers ?? 0}</p></div>
+        <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="text-[10px] font-semibold text-[#888]">Variables definidas por el usuario</p><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{diagnostics.totalVariables ?? 0}</p></div>
+      </div>
+      <div className="rounded-xl border border-[#dcdcd8] bg-white p-4">
+        <p className="text-[12px] font-bold">Diagnóstico del contenedor</p>
+        <p className="mb-3 text-[10px] text-[#888]">Cálculo propio de Conexa a partir de las etiquetas y activadores del contenedor — no es el puntaje &quot;Calidad del contenedor&quot; que muestra la interfaz de GTM (ese es interno de Tag Assistant y no está disponible por API).</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex items-center justify-between rounded-lg border border-[#f0f0ed] px-3 py-2"><span className="text-[11px] text-[#555]">Etiquetas pausadas</span><span className={cn('text-[12px] font-bold', (diagnostics.pausedTags ?? 0) > 0 ? 'text-[#c47a00]' : 'text-[#1e9e6b]')}>{diagnostics.pausedTags ?? 0}</span></div>
+          <div className="flex items-center justify-between rounded-lg border border-[#f0f0ed] px-3 py-2"><span className="text-[11px] text-[#555]">Etiquetas sin activador</span><span className={cn('text-[12px] font-bold', (diagnostics.tagsWithoutTrigger ?? 0) > 0 ? 'text-[#c47a00]' : 'text-[#1e9e6b]')}>{diagnostics.tagsWithoutTrigger ?? 0}</span></div>
+          <div className="flex items-center justify-between rounded-lg border border-[#f0f0ed] px-3 py-2"><span className="text-[11px] text-[#555]">Activadores sin etiquetas</span><span className={cn('text-[12px] font-bold', (diagnostics.triggersWithoutTags ?? 0) > 0 ? 'text-[#c47a00]' : 'text-[#1e9e6b]')}>{diagnostics.triggersWithoutTags ?? 0}</span></div>
+          <div className="flex items-center justify-between rounded-lg border border-[#f0f0ed] px-3 py-2"><span className="text-[11px] text-[#555]">Variables definidas por el usuario</span><span className="text-[12px] font-bold text-[#222]">{diagnostics.totalVariables ?? 0}</span></div>
+        </div>
+      </div>
+    </div>}
+
+    {tab === 'Etiquetas' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Etiquetas</p><span className="text-[10px] text-[#888]">{tags.length} etiquetas</span></div>
+      {tags.length ? <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Nombre</th><th className="px-3 py-3 font-semibold">Tipo</th><th className="px-3 py-3 font-semibold">Activadores de accionamiento</th><th className="px-3 py-3 font-semibold">Estado</th><th className="px-3 py-3 font-semibold">Última modificación</th></tr></thead><tbody>{tags.map((tag) => <tr key={tag.tagId} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{tag.name}</td><td className="px-3 py-3">{tag.typeLabel}</td><td className="px-3 py-3">{tag.firingTriggerNames.length ? tag.firingTriggerNames.join(', ') : '—'}</td><td className="px-3 py-3">{tag.paused ? <span className="text-[#c47a00]">Pausada</span> : <span className="text-[#1e9e6b]">Activa</span>}</td><td className="px-3 py-3 text-[#888]">{relativeTimeEs(tag.lastModifiedAt)}</td></tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin etiquetas en este contenedor.</p>}
+    </div>}
+
+    {tab === 'Activadores' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Activadores</p><span className="text-[10px] text-[#888]">{triggers.length} activadores</span></div>
+      {triggers.length ? <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Nombre</th><th className="px-3 py-3 font-semibold">Tipo de evento</th><th className="px-3 py-3 font-semibold">Filtrar</th><th className="px-3 py-3 font-semibold">Etiquetas</th><th className="px-3 py-3 font-semibold">Última modificación</th></tr></thead><tbody>{triggers.map((trigger) => <tr key={trigger.triggerId} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{trigger.name}</td><td className="px-3 py-3">{trigger.typeLabel}</td><td className="px-3 py-3">{trigger.filter ? <span>{trigger.filter.field && <span className="mr-1 rounded border border-[#e2e2df] bg-[#fafaf8] px-1.5 py-0.5 text-[10px]">{trigger.filter.field}</span>}{trigger.filter.operator} {trigger.filter.value}</span> : '—'}</td><td className="px-3 py-3">{trigger.tagCount}</td><td className="px-3 py-3 text-[#888]">{relativeTimeEs(trigger.lastModifiedAt)}</td></tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin activadores en este contenedor.</p>}
+    </div>}
+
+    {tab === 'Variables' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Variables definidas por el usuario</p><span className="text-[10px] text-[#888]">{variables.length} variables</span></div>
+      {variables.length ? <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Nombre</th><th className="px-3 py-3 font-semibold">Tipo</th><th className="px-3 py-3 font-semibold">Última modificación</th></tr></thead><tbody>{variables.map((variable) => <tr key={variable.variableId} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{variable.name}</td><td className="px-3 py-3">{variable.typeLabel}</td><td className="px-3 py-3 text-[#888]">{relativeTimeEs(variable.lastModifiedAt)}</td></tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin variables definidas por el usuario en este contenedor.</p>}
+    </div>}
+  </div>
+}
+
 function PlatformView({ platform, initialTab, onManage, data, client, selectedAccounts, onAccountsChange }: { platform: Platform; initialTab?: string; onManage: () => void; data: ConexaData; client: Client | null; selectedAccounts: Record<string, string[]>; onAccountsChange: (accounts: string[]) => void }) {
   if (platform.key === 'google') return <GoogleAdsConexaView platform={platform} onManage={onManage} data={data} client={client} selectedAccounts={selectedAccounts} onAccountsChange={onAccountsChange} />
   if (platform.key === 'meta') return <MetaAdsConexaView platform={platform} onManage={onManage} data={data} client={client} selectedAccounts={selectedAccounts} onAccountsChange={onAccountsChange} />
   if (platform.key === 'analytics') return <GoogleAnalyticsConexaView platform={platform} onManage={onManage} data={data} />
+  if (platform.key === 'tag_manager') return <GoogleTagManagerConexaView platform={platform} onManage={onManage} data={data} />
   const tabSets: Record<string, string[]> = {
     meta: ['Resumen', 'Campañas', 'Conjuntos', 'Anuncios', 'Creativos', 'Audiencias', 'Redes', 'Tracking'],
     google: ['Resumen', 'Campañas', 'Grupos de anuncios', 'Palabras clave', 'Conversiones'],

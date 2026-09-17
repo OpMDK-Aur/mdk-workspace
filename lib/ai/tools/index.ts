@@ -8,6 +8,7 @@ import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 import { contextFromEvents, mergeWorkingContext } from '@/lib/ai/conversation-context'
 import { buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeIndustry, type MetricRow } from '@/lib/ai/client-memory'
 import { getBuenosAiresLastSevenDays, getGoogleAnalyticsReport, getGoogleAnalyticsSales, getGoogleAnalyticsPageMetrics } from '@/lib/google-analytics/service'
+import { getGoogleTagManagerReport } from '@/lib/google-tag-manager/service'
 import { createCrmClient } from '@/lib/supabase/crm'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
 
@@ -461,6 +462,28 @@ const getGoogleAnalyticsReportTool: ToolDefinition = {
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'No se pudo consultar Google Analytics 4.'
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_report', status: 'error', label: 'No se pudo consultar Google Analytics 4' })
+      return { available: false, message }
+    }
+  },
+}
+
+const getGoogleTagManagerReportTool: ToolDefinition = {
+  key: 'get_google_tag_manager_report',
+  description: 'Obtiene un reporte de los contenedores de Google Tag Manager del cliente: etiquetas, activadores y variables definidas por el usuario, con diagnósticos básicos (etiquetas pausadas, etiquetas sin activador, activadores sin etiquetas).',
+  inputSchema: noInput,
+  async execute(_input, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const supabase = createAdminClient()
+    const { data: client, error } = await supabase.from('clientes').select('tag_manager_container_id').eq('id', context.clientId).single()
+    if (error || !client?.tag_manager_container_id) return { available: false, message: 'El cliente no tiene un contenedor de Google Tag Manager asignado en la configuración de plataforma.' }
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_tag_manager_report', status: 'running', label: 'Consultando Google Tag Manager...' })
+    try {
+      const report = await getGoogleTagManagerReport(client.tag_manager_container_id)
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_tag_manager_report', status: 'completed', label: 'Información de Google Tag Manager recibida' })
+      return { available: true, source: 'Google Tag Manager', ...report }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'No se pudo consultar Google Tag Manager.'
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_tag_manager_report', status: 'error', label: 'No se pudo consultar Google Tag Manager' })
       return { available: false, message }
     }
   },
@@ -957,6 +980,7 @@ const allTools: ToolDefinition[] = [
   getGoogleAnalyticsReportTool,
   getGoogleAnalyticsPageTool,
   getGoogleAnalyticsSalesTool,
+  getGoogleTagManagerReportTool,
   getAccountChangeHistory,
   getGoogleChangeHistoryTool,
   runPerformanceAnalystTool,
