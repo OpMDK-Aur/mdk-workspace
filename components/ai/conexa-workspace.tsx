@@ -272,7 +272,7 @@ function entityLabel(tab: string) { return tab === 'Campañas' ? 'Nombre de la c
 // evento (acquisitionByEvent / pagesByEvent) para poder filtrar "Número de
 // eventos" / "Eventos clave" por un evento específico en el cliente, sin
 // disparar un nuevo fetch por cada cambio de selector.
-function buildEventIndex(rows: Array<Record<string, any>>, dims: string[], eventName: string) {
+function buildEventIndex(rows: Array<Record<string, any>>, dims: readonly string[], eventName: string) {
   const map = new Map<string, { eventCount: number; keyEvents: number }>()
   for (const row of rows) {
     if (eventName !== 'all' && String(row.eventName ?? '') !== eventName) continue
@@ -290,7 +290,7 @@ function buildEventIndex(rows: Array<Record<string, any>>, dims: string[], event
 // es confiable cuando se combina con una dimensión de alcance de sesión
 // (puede superar a "totalUsers" en la misma fila), así que en vez de restar
 // totalUsers - newUsers usamos la dimensión real que reporta la UI de GA4.
-function buildAudienceIndex(rows: Array<Record<string, any>>, dims: string[]) {
+function buildAudienceIndex(rows: Array<Record<string, any>>, dims: readonly string[]) {
   const map = new Map<string, { new: number; returning: number }>()
   for (const row of rows) {
     const key = dims.map((dim) => String(row[dim] ?? '')).join('||')
@@ -307,11 +307,45 @@ function EventSelect({ value, onChange, options }: { value: string; onChange: (v
   return <select value={value} onChange={(event) => onChange(event.target.value)} className="rounded-md border border-[#e2e2df] bg-white px-1.5 py-1 text-[10px]"><option value="all">Todos los eventos</option>{options.map((name) => <option key={name} value={name}>{name}</option>)}</select>
 }
 
+// Opciones de agrupación de la tabla de Adquisición. "channel" agrupa solo
+// por el Primer grupo de canales predeterminado del usuario, "campaign" solo
+// por Campaña de la sesión, y "both" reproduce el desglose cruzado (canal x
+// campaña) que se veía por defecto.
+const acqDimOptions = [
+  { value: 'channel', label: 'Primer grupo de canales principal del usuario', dims: ['firstUserDefaultChannelGroup'] },
+  { value: 'campaign', label: 'Campaña de la sesión', dims: ['sessionCampaignName'] },
+  { value: 'both', label: 'Canal + Campaña de la sesión', dims: ['firstUserDefaultChannelGroup', 'sessionCampaignName'] },
+] as const
+const acqDimLabels: Record<string, string> = { firstUserDefaultChannelGroup: 'Primer grupo de canales', sessionCampaignName: 'Campaña de la sesión' }
+
+// Suma las métricas numéricas de "acquisition" para las filas que comparten
+// los valores de las dimensiones elegidas, de forma que agrupar solo por
+// canal (o solo por campaña) no repita el canal por cada combinación.
+function aggregateAcquisitionRows(rows: Array<Record<string, any>>, dims: readonly string[]) {
+  const map = new Map<string, Record<string, any>>()
+  for (const row of rows) {
+    const key = dims.map((dim) => String(row[dim] ?? '')).join('||')
+    const current = map.get(key) ?? Object.fromEntries([...dims.map((dim) => [dim, row[dim]]), ['totalUsers', 0], ['activeUsers', 0], ['userEngagementDuration', 0], ['eventCount', 0], ['keyEvents', 0]])
+    current.totalUsers += Number(row.totalUsers ?? 0)
+    current.activeUsers += Number(row.activeUsers ?? 0)
+    current.userEngagementDuration += Number(row.userEngagementDuration ?? 0)
+    current.eventCount += Number(row.eventCount ?? 0)
+    current.keyEvents += Number(row.keyEvents ?? 0)
+    map.set(key, current)
+  }
+  return [...map.values()]
+}
+
+function GroupBySelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return <select value={value} onChange={(event) => onChange(event.target.value)} className="rounded-md border border-[#e2e2df] bg-white px-1.5 py-1 text-[10px]">{acqDimOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+}
+
 function GoogleAnalyticsConexaView({ platform, onManage, data }: { platform: Platform; onManage: () => void; data: ConexaData }) {
   const [tab, setTab] = useState('Resumen')
   const [eventFilter, setEventFilter] = useState('all')
   const [keyEventFilter, setKeyEventFilter] = useState('all')
   const [acqEventFilter, setAcqEventFilter] = useState('all')
+  const [acqGroupBy, setAcqGroupBy] = useState<(typeof acqDimOptions)[number]['value']>('both')
   const [pageEventFilter, setPageEventFilter] = useState('all')
   const [pageKeyEventFilter, setPageKeyEventFilter] = useState('all')
 
@@ -322,7 +356,8 @@ function GoogleAnalyticsConexaView({ platform, onManage, data }: { platform: Pla
   const acquisitionByEvent = reports.acquisitionByEvent ?? []
   const acquisitionByAudience = reports.acquisitionByAudience ?? []
   const pagesByEvent = reports.pagesByEvent ?? []
-  const acquisitionRows = [...(reports.acquisition ?? [])].sort((a, b) => Number(b.totalUsers ?? 0) - Number(a.totalUsers ?? 0))
+  const acqDims = acqDimOptions.find((option) => option.value === acqGroupBy)?.dims ?? acqDimOptions[2].dims
+  const acquisitionRows = aggregateAcquisitionRows(reports.acquisition ?? [], acqDims).sort((a, b) => Number(b.totalUsers ?? 0) - Number(a.totalUsers ?? 0))
   const pageRows = [...(reports.pages ?? [])].sort((a, b) => Number(b.screenPageViews ?? 0) - Number(a.screenPageViews ?? 0))
   const eventRows = [...eventsReport].sort((a, b) => Number(b.eventCount ?? 0) - Number(a.eventCount ?? 0))
   const eventOptions = eventRows.map((row) => String(row.eventName ?? '')).filter(Boolean)
@@ -334,8 +369,8 @@ function GoogleAnalyticsConexaView({ platform, onManage, data }: { platform: Pla
 
   const eventTotal = eventFilter === 'all' ? eventRows.reduce((sum, row) => sum + Number(row.eventCount ?? 0), 0) : Number(eventRows.find((row) => row.eventName === eventFilter)?.eventCount ?? 0)
   const keyEventTotal = keyEventFilter === 'all' ? eventRows.reduce((sum, row) => sum + Number(row.keyEvents ?? 0), 0) : Number(eventRows.find((row) => row.eventName === keyEventFilter)?.keyEvents ?? 0)
-  const acquisitionEventIndex = buildEventIndex(acquisitionByEvent, ['firstUserDefaultChannelGroup', 'sessionCampaignName'], acqEventFilter)
-  const acquisitionAudienceIndex = buildAudienceIndex(acquisitionByAudience, ['firstUserDefaultChannelGroup', 'sessionCampaignName'])
+  const acquisitionEventIndex = buildEventIndex(acquisitionByEvent, acqDims, acqEventFilter)
+  const acquisitionAudienceIndex = buildAudienceIndex(acquisitionByAudience, acqDims)
   const pageEventIndex = buildEventIndex(pagesByEvent, ['unifiedPagePathScreen'], pageEventFilter)
   const pageKeyEventIndex = buildEventIndex(pagesByEvent, ['unifiedPagePathScreen'], pageKeyEventFilter)
 
@@ -352,9 +387,9 @@ function GoogleAnalyticsConexaView({ platform, onManage, data }: { platform: Pla
     </div>}
 
     {tab === 'Adquisición' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
-      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Primer grupo de canales principal del usuario (Grupo de canales predeterminado)</p><label className="flex items-center gap-1.5 text-[10px] text-[#888]">Número de eventos<EventSelect value={acqEventFilter} onChange={setAcqEventFilter} options={eventOptions} /></label></div>
-      {acquisitionRows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Primer grupo de canales</th><th className="px-3 py-3 font-semibold">Campaña de la sesión</th><th className="px-3 py-3 font-semibold">Total de usuarios</th><th className="px-3 py-3 font-semibold">Usuarios nuevos</th><th className="px-3 py-3 font-semibold">Usuarios recurrentes</th><th className="px-3 py-3 font-semibold">Tiempo de interacción medio por usuario activo</th><th className="px-3 py-3 font-semibold">Número de eventos</th><th className="px-3 py-3 font-semibold">Eventos clave</th></tr></thead><tbody>{acquisitionRows.map((row, index) => {
-        const key = [String(row.firstUserDefaultChannelGroup ?? ''), String(row.sessionCampaignName ?? '')].join('||')
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Adquisición de usuarios</p><div className="flex items-center gap-3"><label className="flex items-center gap-1.5 text-[10px] text-[#888]">Agrupar por<GroupBySelect value={acqGroupBy} onChange={(value) => setAcqGroupBy(value as (typeof acqDimOptions)[number]['value'])} /></label><label className="flex items-center gap-1.5 text-[10px] text-[#888]">Número de eventos<EventSelect value={acqEventFilter} onChange={setAcqEventFilter} options={eventOptions} /></label></div></div>
+      {acquisitionRows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr>{acqDims.map((dim) => <th key={dim} className="px-3 py-3 font-semibold">{acqDimLabels[dim]}</th>)}<th className="px-3 py-3 font-semibold">Total de usuarios</th><th className="px-3 py-3 font-semibold">Usuarios nuevos</th><th className="px-3 py-3 font-semibold">Usuarios recurrentes</th><th className="px-3 py-3 font-semibold">Tiempo de interacción medio por usuario activo</th><th className="px-3 py-3 font-semibold">Número de eventos</th><th className="px-3 py-3 font-semibold">Eventos clave</th></tr></thead><tbody>{acquisitionRows.map((row, index) => {
+        const key = acqDims.map((dim) => String(row[dim] ?? '')).join('||')
         const filtered = acquisitionEventIndex.get(key)
         const eventCount = acqEventFilter === 'all' ? Number(row.eventCount ?? 0) : filtered?.eventCount ?? 0
         const totalUsers = Number(row.totalUsers ?? 0)
@@ -363,7 +398,7 @@ function GoogleAnalyticsConexaView({ platform, onManage, data }: { platform: Pla
         const returning = audience?.returning ?? 0
         const activeUsers = Number(row.activeUsers ?? 0)
         const avgEngagement = activeUsers ? Number(row.userEngagementDuration ?? 0) / activeUsers : 0
-        return <tr key={index} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3">{String(row.firstUserDefaultChannelGroup ?? '(not set)')}</td><td className="px-3 py-3">{String(row.sessionCampaignName ?? '(not set)')}</td><td className="px-3 py-3">{number(totalUsers)}</td><td className="px-3 py-3">{number(newUsers)}</td><td className="px-3 py-3">{number(returning)}</td><td className="px-3 py-3">{duration(avgEngagement)}</td><td className="px-3 py-3">{number(eventCount)}</td><td className="px-3 py-3">{number(row.keyEvents)}</td></tr>
+        return <tr key={index} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]">{acqDims.map((dim) => <td key={dim} className="px-3 py-3">{String(row[dim] ?? '(not set)')}</td>)}<td className="px-3 py-3">{number(totalUsers)}</td><td className="px-3 py-3">{number(newUsers)}</td><td className="px-3 py-3">{number(returning)}</td><td className="px-3 py-3">{duration(avgEngagement)}</td><td className="px-3 py-3">{number(eventCount)}</td><td className="px-3 py-3">{number(row.keyEvents)}</td></tr>
       })}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin datos de adquisición en el período seleccionado.</p>}
     </div>}
 
