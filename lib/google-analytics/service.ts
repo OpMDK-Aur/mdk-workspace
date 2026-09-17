@@ -42,6 +42,7 @@ export type GoogleAnalyticsReport = {
     events: Array<Record<string, string | number>>
     acquisition: Array<Record<string, string | number>>
     acquisitionByEvent: Array<Record<string, string | number>>
+    acquisitionByAudience: Array<Record<string, string | number>>
     pages: Array<Record<string, string | number>>
     pagesByEvent: Array<Record<string, string | number>>
     devices: Array<Record<string, string | number>>
@@ -111,6 +112,14 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
     // clave" por un evento específico en el cliente, sin refetch por cada
     // cambio del selector.
     acquisitionByEvent: { dimensions: ['firstUserDefaultChannelGroup', 'sessionCampaignName', 'eventName'], metrics: ['eventCount', 'keyEvents'] },
+    // "newUsers" es una métrica de alcance de usuario que la Data API no
+    // reparte de forma confiable cuando se combina con la dimensión de
+    // alcance de sesión "sessionCampaignName" (puede superar a "totalUsers"
+    // en la misma fila). Para mostrar "Usuarios nuevos"/"Usuarios
+    // recurrentes" correctos por canal+campaña usamos la dimensión real
+    // "newVsReturning" en un desglose auxiliar en lugar de restar
+    // totalUsers - newUsers.
+    acquisitionByAudience: { dimensions: ['firstUserDefaultChannelGroup', 'sessionCampaignName', 'newVsReturning'], metrics: ['totalUsers'] },
     keyEventsByChannel: { dimensions: ['firstUserDefaultChannelGroup', 'firstUserSourceMedium'], metrics: ['keyEvents'] },
     pages: { dimensions: ['unifiedPagePathScreen'], metrics: ['screenPageViews', 'activeUsers', 'screenPageViewsPerUser', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue'] },
     pagesByEvent: { dimensions: ['unifiedPagePathScreen', 'eventName'], metrics: ['eventCount', 'keyEvents'] },
@@ -118,7 +127,7 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
     geography: { dimensions: ['country', 'city'], metrics: ['activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue'] },
     byDay: { dimensions: ['date'], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
   } as const
-  const highLimitReports = new Set(['keyEventsByChannel', 'acquisitionByEvent', 'pagesByEvent'])
+  const highLimitReports = new Set(['keyEventsByChannel', 'acquisitionByEvent', 'acquisitionByAudience', 'pagesByEvent'])
   const entries = Object.entries(definitions)
   const results = await Promise.allSettled(entries.map(async ([name, definition]) => {
     const limit = highLimitReports.has(name) ? 2000 : 100
@@ -131,7 +140,7 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
     const merged = metricChunks.length > 1 ? mergeRecordsByDimensions(chunkResults, [...definition.dimensions]) : chunkResults[0]
     return [name, merged] as const
   }))
-  const reports: GoogleAnalyticsReport['reports'] = { overview: [], events: [], acquisition: [], acquisitionByEvent: [], pages: [], pagesByEvent: [], devices: [], geography: [], keyEventsByChannel: [], byDay: [] }
+  const reports: GoogleAnalyticsReport['reports'] = { overview: [], events: [], acquisition: [], acquisitionByEvent: [], acquisitionByAudience: [], pages: [], pagesByEvent: [], devices: [], geography: [], keyEventsByChannel: [], byDay: [] }
   const errors: GoogleAnalyticsReport['errors'] = []
   results.forEach((result, index) => {
     const name = entries[index][0] as keyof GoogleAnalyticsReport['reports']

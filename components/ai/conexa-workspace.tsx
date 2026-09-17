@@ -285,6 +285,24 @@ function buildEventIndex(rows: Array<Record<string, any>>, dims: string[], event
   return map
 }
 
+// Índice dims->{new,returning} construido desde el desglose por
+// "newVsReturning" (acquisitionByAudience). La métrica "newUsers" de GA4 no
+// es confiable cuando se combina con una dimensión de alcance de sesión
+// (puede superar a "totalUsers" en la misma fila), así que en vez de restar
+// totalUsers - newUsers usamos la dimensión real que reporta la UI de GA4.
+function buildAudienceIndex(rows: Array<Record<string, any>>, dims: string[]) {
+  const map = new Map<string, { new: number; returning: number }>()
+  for (const row of rows) {
+    const key = dims.map((dim) => String(row[dim] ?? '')).join('||')
+    const current = map.get(key) ?? { new: 0, returning: 0 }
+    const audience = String(row.newVsReturning ?? '')
+    if (audience === 'new') current.new += Number(row.totalUsers ?? 0)
+    else if (audience === 'returning') current.returning += Number(row.totalUsers ?? 0)
+    map.set(key, current)
+  }
+  return map
+}
+
 function EventSelect({ value, onChange, options }: { value: string; onChange: (value: string) => void; options: string[] }) {
   return <select value={value} onChange={(event) => onChange(event.target.value)} className="rounded-md border border-[#e2e2df] bg-white px-1.5 py-1 text-[10px]"><option value="all">Todos los eventos</option>{options.map((name) => <option key={name} value={name}>{name}</option>)}</select>
 }
@@ -302,6 +320,7 @@ function GoogleAnalyticsConexaView({ platform, onManage, data }: { platform: Pla
   const overview = (reports.overview ?? [])[0] ?? {}
   const eventsReport = reports.events ?? []
   const acquisitionByEvent = reports.acquisitionByEvent ?? []
+  const acquisitionByAudience = reports.acquisitionByAudience ?? []
   const pagesByEvent = reports.pagesByEvent ?? []
   const acquisitionRows = [...(reports.acquisition ?? [])].sort((a, b) => Number(b.totalUsers ?? 0) - Number(a.totalUsers ?? 0))
   const pageRows = [...(reports.pages ?? [])].sort((a, b) => Number(b.screenPageViews ?? 0) - Number(a.screenPageViews ?? 0))
@@ -316,6 +335,7 @@ function GoogleAnalyticsConexaView({ platform, onManage, data }: { platform: Pla
   const eventTotal = eventFilter === 'all' ? eventRows.reduce((sum, row) => sum + Number(row.eventCount ?? 0), 0) : Number(eventRows.find((row) => row.eventName === eventFilter)?.eventCount ?? 0)
   const keyEventTotal = keyEventFilter === 'all' ? eventRows.reduce((sum, row) => sum + Number(row.keyEvents ?? 0), 0) : Number(eventRows.find((row) => row.eventName === keyEventFilter)?.keyEvents ?? 0)
   const acquisitionEventIndex = buildEventIndex(acquisitionByEvent, ['firstUserDefaultChannelGroup', 'sessionCampaignName'], acqEventFilter)
+  const acquisitionAudienceIndex = buildAudienceIndex(acquisitionByAudience, ['firstUserDefaultChannelGroup', 'sessionCampaignName'])
   const pageEventIndex = buildEventIndex(pagesByEvent, ['unifiedPagePathScreen'], pageEventFilter)
   const pageKeyEventIndex = buildEventIndex(pagesByEvent, ['unifiedPagePathScreen'], pageKeyEventFilter)
 
@@ -338,8 +358,9 @@ function GoogleAnalyticsConexaView({ platform, onManage, data }: { platform: Pla
         const filtered = acquisitionEventIndex.get(key)
         const eventCount = acqEventFilter === 'all' ? Number(row.eventCount ?? 0) : filtered?.eventCount ?? 0
         const totalUsers = Number(row.totalUsers ?? 0)
-        const newUsers = Number(row.newUsers ?? 0)
-        const returning = Math.max(totalUsers - newUsers, 0)
+        const audience = acquisitionAudienceIndex.get(key)
+        const newUsers = audience?.new ?? 0
+        const returning = audience?.returning ?? 0
         const activeUsers = Number(row.activeUsers ?? 0)
         const avgEngagement = activeUsers ? Number(row.userEngagementDuration ?? 0) / activeUsers : 0
         return <tr key={index} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3">{String(row.firstUserDefaultChannelGroup ?? '(not set)')}</td><td className="px-3 py-3">{String(row.sessionCampaignName ?? '(not set)')}</td><td className="px-3 py-3">{number(totalUsers)}</td><td className="px-3 py-3">{number(newUsers)}</td><td className="px-3 py-3">{number(returning)}</td><td className="px-3 py-3">{duration(avgEngagement)}</td><td className="px-3 py-3">{number(eventCount)}</td><td className="px-3 py-3">{number(row.keyEvents)}</td></tr>
