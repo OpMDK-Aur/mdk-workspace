@@ -91,7 +91,18 @@ export async function GET(req: NextRequest) {
     activo: account.activo,
   }))
   const known = new Set(cuentas.map((account) => `${account.plataforma}:${account.id_cuenta}`))
-  const addAccount = (account: typeof cuentas[number]) => { if (!known.has(`${account.plataforma}:${account.id_cuenta}`)) { cuentas.push(account); known.add(`${account.plataforma}:${account.id_cuenta}`) } }
+  const addAccount = (account: typeof cuentas[number]) => {
+    const key = `${account.plataforma}:${account.id_cuenta}`
+    const existingIndex = cuentas.findIndex((item) => `${item.plataforma}:${item.id_cuenta}` === key)
+    if (existingIndex >= 0) {
+      if (account.nombre_cuenta && account.nombre_cuenta !== account.id_cuenta) {
+        cuentas[existingIndex] = { ...cuentas[existingIndex], nombre_cuenta: account.nombre_cuenta }
+      }
+      return
+    }
+    cuentas.push(account)
+    known.add(key)
+  }
 
   const metaAccessToken = process.env.META_ADS_ACCESS_TOKEN
   if (metaIds.length > 0 && metaAccessToken) {
