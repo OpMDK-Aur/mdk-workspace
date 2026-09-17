@@ -58,7 +58,7 @@ export function ConexaWorkspace() {
     if (!client?.id || !period) return
     setIsLoading(true)
     let cancelled = false
-    fetch('/api/conexa/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client.id, period, selectedAccounts }) })
+    fetch('/api/conexa/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client.id, period, customRange, selectedAccounts }) })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron consultar las tools de Conexa.')))
       .then((result) => {
         if (cancelled) return
@@ -67,7 +67,7 @@ export function ConexaWorkspace() {
       .catch(() => { if (!cancelled) setData(emptyConexaData) })
       .finally(() => { if (!cancelled) setIsLoading(false) })
     return () => { cancelled = true }
-  }, [client?.id, period, selectedAccounts])
+  }, [client?.id, period, customRange, selectedAccounts])
 
   const platforms = useMemo<Platform[]>(() => [
     { name: 'Meta Ads', key: 'meta', icon: BarChart3, color: '#1877F2', iconUrl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Facebook_Logo_%282019%29-8hLkShXu9caNijxaYTMKGdv1bWipbV.png', connected: Boolean(client?.meta_ads_account_id || client?.meta_ads_account_ids?.length), detail: client?.meta_ads_account_id || client?.meta_ads_account_ids?.length ? `Cuenta ${client.meta_ads_account_id ?? client.meta_ads_account_ids?.[0]}` : 'Sin cuenta conectada' },

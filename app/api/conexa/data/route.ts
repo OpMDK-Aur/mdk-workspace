@@ -6,22 +6,51 @@ import type { ExecutionContext } from '@/lib/ai/types'
 
 export const maxDuration = 60
 
-function dateRange(period: string) {
-  const match = period.match(/(1|7|30|90)/)
-  const days = period.toLowerCase().includes('hoy') ? 1 : match ? Number(match[1]) : 30
-  const to = new Date()
-  const from = new Date(to)
+const toISODate = (date: Date) => date.toISOString().slice(0, 10)
+
+// El selector de período de la UI ofrece opciones de texto libre ("Hoy",
+// "Ayer", "Últimos 7 días", "Este mes", "Mes anterior", "Personalizado") que
+// no siempre contienen un número parseable. Antes, cualquier período sin un
+// dígito (p. ej. "Ayer") caía al default de 30 días, inflando las métricas
+// ~30x contra lo que se ve en Meta/Google Ads para ese mismo día.
+function dateRange(period: string, customRange?: { from?: string; to?: string }) {
+  const today = new Date()
+  const normalized = period.trim().toLowerCase()
+
+  if (normalized === 'personalizado' && customRange?.from && customRange?.to) {
+    return { dateFrom: customRange.from, dateTo: customRange.to }
+  }
+  if (normalized === 'hoy') {
+    return { dateFrom: toISODate(today), dateTo: toISODate(today) }
+  }
+  if (normalized === 'ayer') {
+    const yesterday = new Date(today)
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1)
+    return { dateFrom: toISODate(yesterday), dateTo: toISODate(yesterday) }
+  }
+  if (normalized === 'este mes') {
+    const from = new Date(today.getUTCFullYear(), today.getUTCMonth(), 1)
+    return { dateFrom: toISODate(from), dateTo: toISODate(today) }
+  }
+  if (normalized === 'mes anterior') {
+    const from = new Date(today.getUTCFullYear(), today.getUTCMonth() - 1, 1)
+    const to = new Date(today.getUTCFullYear(), today.getUTCMonth(), 0)
+    return { dateFrom: toISODate(from), dateTo: toISODate(to) }
+  }
+  const match = normalized.match(/(\d+)/)
+  const days = match ? Number(match[1]) : 30
+  const from = new Date(today)
   from.setUTCDate(from.getUTCDate() - days + 1)
-  return { dateFrom: from.toISOString().slice(0, 10), dateTo: to.toISOString().slice(0, 10) }
+  return { dateFrom: toISODate(from), dateTo: toISODate(today) }
 }
 
 export async function POST(request: Request) {
   const supabase = await createClient()
   const admin = createAdminClient()
   const { data: { user } } = await supabase.auth.getUser()
-  const body = await request.json() as { clientId?: string; period?: string; selectedAccounts?: Record<string, string[]> }
+  const body = await request.json() as { clientId?: string; period?: string; customRange?: { from?: string; to?: string }; selectedAccounts?: Record<string, string[]> }
   if (!body.clientId) return NextResponse.json({ error: 'Falta el cliente seleccionado.' }, { status: 400 })
-  const range = dateRange(body.period ?? 'Últimos 30 días')
+  const range = dateRange(body.period ?? 'Últimos 30 días', body.customRange)
   const [{ data: client }, { data: accounts }] = await Promise.all([
     admin.from('clientes').select('meta_ads_account_id, google_ads_customer_id, analytics_property_id').eq('id', body.clientId).maybeSingle(),
     admin.from('cuentas_publicitarias').select('id_cuenta, plataforma').eq('cliente_id', body.clientId).eq('activo', true),
