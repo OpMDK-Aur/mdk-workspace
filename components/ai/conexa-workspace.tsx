@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { MessageContent } from '@/components/chat/message-content'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import type { TagManagerTagRow, TagManagerTriggerRow, TagManagerVariableRow } from '@/lib/google-tag-manager/service'
+import type { TagManagerTagRow, TagManagerTriggerRow, TagManagerVariableRow, TagManagerFilterRow, TagManagerParameterRow } from '@/lib/google-tag-manager/service'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 
 type ClientAccount = { id_cuenta: string | null; nombre_cuenta: string | null; plataforma: string | null; activo?: boolean | null }
 type Client = { id: string; nombre_del_negocio: string; meta_ads_account_id?: string | null; google_ads_customer_id?: string | null; meta_ads_account_ids?: string[] | null; google_ads_customer_ids?: string[] | null; analytics_property_id?: string | null; tag_manager_container_id?: string | null; crm_type?: string | null; cuentas_publicitarias?: ClientAccount[] | null }
@@ -439,8 +440,86 @@ function relativeTimeEs(iso: string | null) {
   return `hace ${years} ${years === 1 ? 'año' : 'años'}`
 }
 
+type TagManagerSelection = { kind: 'tag'; item: TagManagerTagRow } | { kind: 'trigger'; item: TagManagerTriggerRow } | { kind: 'variable'; item: TagManagerVariableRow }
+
+function TagManagerConditionRow({ condition }: { condition: TagManagerFilterRow }) {
+  return <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-[#f0f0ed] bg-[#fafaf8] px-3 py-2 text-[11px] text-[#444]">
+    {condition.field && <span className="rounded border border-[#e2e2df] bg-white px-1.5 py-0.5 text-[10px] font-medium text-[#555]">{condition.field}</span>}
+    <span className="text-[#888]">{condition.operator}</span>
+    <span className="font-medium text-[#222]">{condition.value}</span>
+  </div>
+}
+
+function TagManagerParametersTable({ parameters }: { parameters: TagManagerParameterRow[] }) {
+  if (!parameters.length) return <p className="text-[11px] text-[#888]">Sin parámetros configurados.</p>
+  return <div className="overflow-hidden rounded-lg border border-[#eee]">
+    <table className="w-full text-left text-[11px]"><tbody>{parameters.map((param, index) => <tr key={`${param.key}-${index}`} className={cn('border-b border-[#f0f0ed] last:border-b-0', index % 2 === 1 && 'bg-[#fafaf8]')}><td className="w-2/5 px-3 py-2 align-top font-medium text-[#555]">{param.key}</td><td className="px-3 py-2 align-top text-[#222] break-all">{param.value || '—'}</td></tr>)}</tbody></table>
+  </div>
+}
+
+function TagManagerDetailSheet({ selection, onClose }: { selection: TagManagerSelection | null; onClose: () => void }) {
+  return <Sheet open={selection !== null} onOpenChange={(open) => { if (!open) onClose() }}>
+    <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-md">
+      {selection && <>
+        <SheetHeader className="border-b border-[#eee]">
+          <SheetTitle className="text-[16px]">{selection.item.name}</SheetTitle>
+          <SheetDescription className="text-[11px]">
+            {selection.kind === 'tag' ? selection.item.typeLabel : selection.kind === 'trigger' ? selection.item.typeLabel : selection.item.typeLabel}
+            {' · ID '}{selection.kind === 'tag' ? selection.item.tagId : selection.kind === 'trigger' ? selection.item.triggerId : selection.item.variableId}
+          </SheetDescription>
+        </SheetHeader>
+        <div className="flex flex-col gap-4 p-4">
+          <div className="flex items-center justify-between text-[11px] text-[#777]"><span>Última modificación</span><span className="font-medium text-[#222]">{relativeTimeEs(selection.item.lastModifiedAt)}</span></div>
+
+          {selection.kind === 'tag' && <>
+            <div className="flex items-center justify-between text-[11px] text-[#777]"><span>Estado</span>{selection.item.paused ? <span className="font-medium text-[#c47a00]">Pausada</span> : <span className="font-medium text-[#1e9e6b]">Activa</span>}</div>
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Activadores de accionamiento</p>
+              {selection.item.firingTriggerNames.length ? <div className="flex flex-wrap gap-1.5">{selection.item.firingTriggerNames.map((name) => <span key={name} className="rounded-full border border-[#e2e2df] bg-[#fafaf8] px-2 py-1 text-[10px] text-[#444]">{name}</span>)}</div> : <p className="text-[11px] text-[#888]">Sin activadores asignados.</p>}
+            </div>
+            {selection.item.blockingTriggerNames.length > 0 && <div>
+              <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Activadores de excepción</p>
+              <div className="flex flex-wrap gap-1.5">{selection.item.blockingTriggerNames.map((name) => <span key={name} className="rounded-full border border-[#e2e2df] bg-[#fafaf8] px-2 py-1 text-[10px] text-[#444]">{name}</span>)}</div>
+            </div>}
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Configuración de la etiqueta</p>
+              <TagManagerParametersTable parameters={selection.item.parameters} />
+            </div>
+          </>}
+
+          {selection.kind === 'trigger' && <>
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Este activador se activa en</p>
+              {selection.item.conditions.length ? <div className="flex flex-col gap-1.5">{selection.item.conditions.map((condition, index) => <TagManagerConditionRow key={index} condition={condition} />)}</div> : <p className="text-[11px] text-[#888]">Sin condiciones (se activa siempre que ocurre el evento).</p>}
+            </div>
+            {selection.item.additionalConditions.length > 0 && <div>
+              <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Condiciones adicionales</p>
+              <div className="flex flex-col gap-1.5">{selection.item.additionalConditions.map((condition, index) => <TagManagerConditionRow key={index} condition={condition} />)}</div>
+            </div>}
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Etiquetas que usan este activador ({selection.item.tagCount})</p>
+              {selection.item.firingTagNames.length ? <div className="flex flex-wrap gap-1.5">{selection.item.firingTagNames.map((name) => <span key={name} className="rounded-full border border-[#e2e2df] bg-[#fafaf8] px-2 py-1 text-[10px] text-[#444]">{name}</span>)}</div> : <p className="text-[11px] text-[#888]">Ninguna etiqueta usa este activador.</p>}
+            </div>
+          </>}
+
+          {selection.kind === 'variable' && <div>
+            <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Configuración de la variable</p>
+            <TagManagerParametersTable parameters={selection.item.parameters} />
+          </div>}
+
+          {selection.item.notes && <div>
+            <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Notas</p>
+            <p className="rounded-lg border border-[#f0f0ed] bg-[#fafaf8] p-3 text-[11px] text-[#555]">{selection.item.notes}</p>
+          </div>}
+        </div>
+      </>}
+    </SheetContent>
+  </Sheet>
+}
+
 function GoogleTagManagerConexaView({ platform, onManage, data }: { platform: Platform; onManage: () => void; data: ConexaData }) {
   const [tab, setTab] = useState('Resumen')
+  const [selection, setSelection] = useState<TagManagerSelection | null>(null)
   const report = (data.platformData.tagManager ?? {}) as { containers?: Array<Record<string, any>>; errors?: Array<{ containerId: string; message: string }> }
   const containers = report.containers ?? []
   const [containerId, setContainerId] = useState<string | undefined>(undefined)
@@ -480,19 +559,21 @@ function GoogleTagManagerConexaView({ platform, onManage, data }: { platform: Pl
     </div>}
 
     {tab === 'Etiquetas' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
-      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Etiquetas</p><span className="text-[10px] text-[#888]">{tags.length} etiquetas</span></div>
-      {tags.length ? <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Nombre</th><th className="px-3 py-3 font-semibold">Tipo</th><th className="px-3 py-3 font-semibold">Activadores de accionamiento</th><th className="px-3 py-3 font-semibold">Estado</th><th className="px-3 py-3 font-semibold">Última modificación</th></tr></thead><tbody>{tags.map((tag) => <tr key={tag.tagId} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{tag.name}</td><td className="px-3 py-3">{tag.typeLabel}</td><td className="px-3 py-3">{tag.firingTriggerNames.length ? tag.firingTriggerNames.join(', ') : '—'}</td><td className="px-3 py-3">{tag.paused ? <span className="text-[#c47a00]">Pausada</span> : <span className="text-[#1e9e6b]">Activa</span>}</td><td className="px-3 py-3 text-[#888]">{relativeTimeEs(tag.lastModifiedAt)}</td></tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin etiquetas en este contenedor.</p>}
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Etiquetas</p><span className="text-[10px] text-[#888]">{tags.length} etiquetas · hacé click en una fila para ver el detalle</span></div>
+      {tags.length ? <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Nombre</th><th className="px-3 py-3 font-semibold">Tipo</th><th className="px-3 py-3 font-semibold">Activadores de accionamiento</th><th className="px-3 py-3 font-semibold">Estado</th><th className="px-3 py-3 font-semibold">Última modificación</th></tr></thead><tbody>{tags.map((tag) => <tr key={tag.tagId} onClick={() => setSelection({ kind: 'tag', item: tag })} className="cursor-pointer border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{tag.name}</td><td className="px-3 py-3">{tag.typeLabel}</td><td className="px-3 py-3">{tag.firingTriggerNames.length ? tag.firingTriggerNames.join(', ') : '—'}</td><td className="px-3 py-3">{tag.paused ? <span className="text-[#c47a00]">Pausada</span> : <span className="text-[#1e9e6b]">Activa</span>}</td><td className="px-3 py-3 text-[#888]">{relativeTimeEs(tag.lastModifiedAt)}</td></tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin etiquetas en este contenedor.</p>}
     </div>}
 
     {tab === 'Activadores' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
-      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Activadores</p><span className="text-[10px] text-[#888]">{triggers.length} activadores</span></div>
-      {triggers.length ? <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Nombre</th><th className="px-3 py-3 font-semibold">Tipo de evento</th><th className="px-3 py-3 font-semibold">Filtrar</th><th className="px-3 py-3 font-semibold">Etiquetas</th><th className="px-3 py-3 font-semibold">Última modificación</th></tr></thead><tbody>{triggers.map((trigger) => <tr key={trigger.triggerId} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{trigger.name}</td><td className="px-3 py-3">{trigger.typeLabel}</td><td className="px-3 py-3">{trigger.filter ? <span>{trigger.filter.field && <span className="mr-1 rounded border border-[#e2e2df] bg-[#fafaf8] px-1.5 py-0.5 text-[10px]">{trigger.filter.field}</span>}{trigger.filter.operator} {trigger.filter.value}</span> : '—'}</td><td className="px-3 py-3">{trigger.tagCount}</td><td className="px-3 py-3 text-[#888]">{relativeTimeEs(trigger.lastModifiedAt)}</td></tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin activadores en este contenedor.</p>}
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Activadores</p><span className="text-[10px] text-[#888]">{triggers.length} activadores · hacé click en una fila para ver el detalle</span></div>
+      {triggers.length ? <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Nombre</th><th className="px-3 py-3 font-semibold">Tipo de evento</th><th className="px-3 py-3 font-semibold">Filtrar</th><th className="px-3 py-3 font-semibold">Etiquetas</th><th className="px-3 py-3 font-semibold">Última modificación</th></tr></thead><tbody>{triggers.map((trigger) => <tr key={trigger.triggerId} onClick={() => setSelection({ kind: 'trigger', item: trigger })} className="cursor-pointer border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{trigger.name}</td><td className="px-3 py-3">{trigger.typeLabel}</td><td className="px-3 py-3">{trigger.filter ? <span>{trigger.filter.field && <span className="mr-1 rounded border border-[#e2e2df] bg-[#fafaf8] px-1.5 py-0.5 text-[10px]">{trigger.filter.field}</span>}{trigger.filter.operator} {trigger.filter.value}</span> : '—'}</td><td className="px-3 py-3">{trigger.tagCount}</td><td className="px-3 py-3 text-[#888]">{relativeTimeEs(trigger.lastModifiedAt)}</td></tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin activadores en este contenedor.</p>}
     </div>}
 
     {tab === 'Variables' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
-      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Variables definidas por el usuario</p><span className="text-[10px] text-[#888]">{variables.length} variables</span></div>
-      {variables.length ? <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Nombre</th><th className="px-3 py-3 font-semibold">Tipo</th><th className="px-3 py-3 font-semibold">Última modificación</th></tr></thead><tbody>{variables.map((variable) => <tr key={variable.variableId} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{variable.name}</td><td className="px-3 py-3">{variable.typeLabel}</td><td className="px-3 py-3 text-[#888]">{relativeTimeEs(variable.lastModifiedAt)}</td></tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin variables definidas por el usuario en este contenedor.</p>}
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Variables definidas por el usuario</p><span className="text-[10px] text-[#888]">{variables.length} variables · hacé click en una fila para ver el detalle</span></div>
+      {variables.length ? <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Nombre</th><th className="px-3 py-3 font-semibold">Tipo</th><th className="px-3 py-3 font-semibold">Última modificación</th></tr></thead><tbody>{variables.map((variable) => <tr key={variable.variableId} onClick={() => setSelection({ kind: 'variable', item: variable })} className="cursor-pointer border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{variable.name}</td><td className="px-3 py-3">{variable.typeLabel}</td><td className="px-3 py-3 text-[#888]">{relativeTimeEs(variable.lastModifiedAt)}</td></tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin variables definidas por el usuario en este contenedor.</p>}
     </div>}
+
+    <TagManagerDetailSheet selection={selection} onClose={() => setSelection(null)} />
   </div>
 }
 

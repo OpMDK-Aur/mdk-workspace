@@ -185,20 +185,42 @@ const stripTemplate = (value?: string | null) => (value ?? '').replace(/^\{\{/, 
 const asEpochMs = (fingerprint?: string | null) => { const parsed = Number(fingerprint); return Number.isFinite(parsed) && parsed > 0 ? parsed : null }
 const asISO = (fingerprint?: string | null) => { const ms = asEpochMs(fingerprint); return ms ? new Date(ms).toISOString() : null }
 
-type GtmParameter = { type?: string | null; key?: string | null; value?: string | null }
+type GtmParameter = { type?: string | null; key?: string | null; value?: string | null; list?: GtmParameter[] | null; map?: GtmParameter[] | null }
+type GtmFilter = { type?: string | null; parameter?: GtmParameter[] | null }
 
-function summarizeFilter(filter?: Array<{ type?: string | null; parameter?: GtmParameter[] | null }> | null) {
-  const first = filter?.[0]
-  if (!first) return null
-  const field = stripTemplate(first.parameter?.find((param) => param.key === 'arg0')?.value)
-  const value = first.parameter?.find((param) => param.key === 'arg1')?.value ?? ''
-  const operator = FILTER_OPERATOR_LABELS[first.type ?? ''] ?? first.type ?? ''
+export type TagManagerParameterRow = { key: string; value: string }
+export type TagManagerFilterRow = { field: string | null; operator: string; value: string }
+
+function summarizeFilterCondition(entry: GtmFilter): TagManagerFilterRow {
+  const field = stripTemplate(entry.parameter?.find((param) => param.key === 'arg0')?.value)
+  const value = entry.parameter?.find((param) => param.key === 'arg1')?.value ?? ''
+  const operator = FILTER_OPERATOR_LABELS[entry.type ?? ''] ?? entry.type ?? ''
   return { field: field || null, operator, value }
 }
 
-export type TagManagerTagRow = { tagId: string; name: string; type: string; typeLabel: string; paused: boolean; firingTriggerNames: string[]; lastModifiedAt: string | null }
-export type TagManagerTriggerRow = { triggerId: string; name: string; type: string; typeLabel: string; filter: { field: string | null; operator: string; value: string } | null; tagCount: number; lastModifiedAt: string | null }
-export type TagManagerVariableRow = { variableId: string; name: string; type: string; typeLabel: string; lastModifiedAt: string | null }
+function summarizeFilter(filter?: GtmFilter[] | null) {
+  const first = filter?.[0]
+  return first ? summarizeFilterCondition(first) : null
+}
+
+// Los parámetros de la API pueden anidarse (una etiqueta de GA4 trae sus
+// "Parámetros del evento" como un `map` de pares clave/valor, por ejemplo).
+// Esta función los aplana en texto legible sin inventar ninguna etiqueta:
+// lo que no tiene traducción se muestra literal.
+function formatParameterValue(param: GtmParameter): string {
+  if (param.type === 'list') return (param.list ?? []).map((item) => formatParameterValue(item)).join(', ')
+  if (param.type === 'map') return (param.map ?? []).map((item) => `${item.key ?? ''}: ${formatParameterValue(item)}`).join(' · ')
+  if (param.type === 'boolean') return param.value === 'true' ? 'Sí' : 'No'
+  return param.value ?? ''
+}
+
+function formatParameters(parameters?: GtmParameter[] | null): TagManagerParameterRow[] {
+  return (parameters ?? []).filter((param) => param.key).map((param) => ({ key: param.key ?? '', value: formatParameterValue(param) }))
+}
+
+export type TagManagerTagRow = { tagId: string; name: string; type: string; typeLabel: string; paused: boolean; firingTriggerNames: string[]; blockingTriggerNames: string[]; parameters: TagManagerParameterRow[]; notes: string | null; lastModifiedAt: string | null }
+export type TagManagerTriggerRow = { triggerId: string; name: string; type: string; typeLabel: string; filter: TagManagerFilterRow | null; conditions: TagManagerFilterRow[]; additionalConditions: TagManagerFilterRow[]; tagCount: number; firingTagNames: string[]; notes: string | null; lastModifiedAt: string | null }
+export type TagManagerVariableRow = { variableId: string; name: string; type: string; typeLabel: string; parameters: TagManagerParameterRow[]; notes: string | null; lastModifiedAt: string | null }
 export type TagManagerContainerReport = {
   containerId: string
   accountId: string
@@ -246,8 +268,12 @@ export async function getGoogleTagManagerReport(containerIdsCsv?: string | null)
 
       const triggerNameById = new Map((triggersResponse.data.trigger ?? []).map((trigger) => [trigger.triggerId ?? '', trigger.name ?? '']))
       const tagCountByTriggerId = new Map<string, number>()
+      const tagNamesByTriggerId = new Map<string, string[]>()
       for (const tag of tagsResponse.data.tag ?? []) {
-        for (const triggerId of tag.firingTriggerId ?? []) tagCountByTriggerId.set(triggerId, (tagCountByTriggerId.get(triggerId) ?? 0) + 1)
+        for (const triggerId of tag.firingTriggerId ?? []) {
+          tagCountByTriggerId.set(triggerId, (tagCountByTriggerId.get(triggerId) ?? 0) + 1)
+          tagNamesByTriggerId.set(triggerId, [...(tagNamesByTriggerId.get(triggerId) ?? []), tag.name ?? ''])
+        }
       }
 
       const tags: TagManagerTagRow[] = (tagsResponse.data.tag ?? []).map((tag) => ({
@@ -257,6 +283,9 @@ export async function getGoogleTagManagerReport(containerIdsCsv?: string | null)
         typeLabel: TAG_TYPE_LABELS[tag.type ?? ''] ?? tag.type ?? 'Desconocido',
         paused: Boolean(tag.paused),
         firingTriggerNames: (tag.firingTriggerId ?? []).map((triggerId) => triggerNameById.get(triggerId) ?? triggerId),
+        blockingTriggerNames: (tag.blockingTriggerId ?? []).map((triggerId) => triggerNameById.get(triggerId) ?? triggerId),
+        parameters: formatParameters(tag.parameter),
+        notes: tag.notes ?? null,
         lastModifiedAt: asISO(tag.fingerprint),
       }))
       const triggers: TagManagerTriggerRow[] = (triggersResponse.data.trigger ?? []).map((trigger) => ({
@@ -265,7 +294,11 @@ export async function getGoogleTagManagerReport(containerIdsCsv?: string | null)
         type: trigger.type ?? '',
         typeLabel: TRIGGER_TYPE_LABELS[trigger.type ?? ''] ?? trigger.type ?? 'Desconocido',
         filter: summarizeFilter(trigger.filter),
+        conditions: (trigger.filter ?? []).map(summarizeFilterCondition),
+        additionalConditions: (trigger.autoEventFilter ?? []).map(summarizeFilterCondition),
         tagCount: tagCountByTriggerId.get(trigger.triggerId ?? '') ?? 0,
+        firingTagNames: tagNamesByTriggerId.get(trigger.triggerId ?? '') ?? [],
+        notes: trigger.notes ?? null,
         lastModifiedAt: asISO(trigger.fingerprint),
       }))
       const variables: TagManagerVariableRow[] = (variablesResponse.data.variable ?? []).map((variable) => ({
@@ -273,6 +306,8 @@ export async function getGoogleTagManagerReport(containerIdsCsv?: string | null)
         name: variable.name ?? '',
         type: variable.type ?? '',
         typeLabel: VARIABLE_TYPE_LABELS[variable.type ?? ''] ?? variable.type ?? 'Desconocido',
+        parameters: formatParameters(variable.parameter),
+        notes: variable.notes ?? null,
         lastModifiedAt: asISO(variable.fingerprint),
       }))
 
