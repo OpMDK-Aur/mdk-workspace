@@ -8,12 +8,54 @@ function getTagManagerClient() {
   return google.tagmanager({ version: 'v2', auth })
 }
 
-// La Tag Manager API aplica una cuota estricta de consultas por minuto sobre
-// accounts.list/containers.list. Esta caché en memoria de proceso es
-// compartida entre el endpoint de selección de contenedores
-// (app/api/google/tag-manager/accounts) y el reporte de Conexa para no
-// escanear todas las cuentas dos veces y agotar la cuota cuando ambos se
-// usan en la misma ventana de tiempo.
+// La Tag Manager API aplica una cuota MUY estricta de "Queries per minute
+// per user" (compartida por todos los métodos del servicio: accounts.list,
+// containers.list, workspaces.list, tags.list, triggers.list,
+// variables.list). Todas las llamadas a la API, sin importar desde qué
+// función se originen, pasan por `throttledTagManagerRequest`, que las
+// serializa con un espaciado mínimo entre sí y reintenta con backoff
+// exponencial si de todas formas llegamos a superar la cuota (429 /
+// RESOURCE_EXHAUSTED). Esto reemplaza cualquier `Promise.all` de llamadas
+// directas a la API: la concurrencia a nivel de código sigue existiendo,
+// pero las solicitudes reales a Google quedan en fila una por una.
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+let requestQueueTail: Promise<unknown> = Promise.resolve()
+let lastRequestAt = 0
+const MIN_REQUEST_INTERVAL_MS = 1500 // ~40 solicitudes/minuto como techo global, por debajo de la cuota por defecto de Google
+const MAX_RETRIES_ON_QUOTA_ERROR = 4
+
+function isQuotaError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  return /quota|rate limit|too many requests|429|RESOURCE_EXHAUSTED/i.test(message)
+}
+
+async function throttledTagManagerRequest<T>(fn: () => Promise<T>): Promise<T> {
+  // Encola esta llamada detrás de todas las anteriores para que las
+  // solicitudes a Google salgan de una en una, espaciadas.
+  const runAfterQueue = requestQueueTail.then(async () => {
+    const waitMs = Math.max(0, lastRequestAt + MIN_REQUEST_INTERVAL_MS - Date.now())
+    if (waitMs > 0) await sleep(waitMs)
+    lastRequestAt = Date.now()
+  })
+  requestQueueTail = runAfterQueue.catch(() => undefined)
+  await runAfterQueue
+
+  for (let attempt = 0; attempt <= MAX_RETRIES_ON_QUOTA_ERROR; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      if (attempt === MAX_RETRIES_ON_QUOTA_ERROR || !isQuotaError(error)) throw error
+      await sleep(2000 * (attempt + 1))
+      lastRequestAt = Date.now()
+    }
+  }
+  throw new Error('No se pudo completar la solicitud a Google Tag Manager.')
+}
+
+// Esta caché en memoria de proceso es compartida entre el endpoint de
+// selección de contenedores (app/api/google/tag-manager/accounts) y el
+// reporte de Conexa para no escanear todas las cuentas dos veces y agotar
+// la cuota cuando ambos se usan en la misma ventana de tiempo.
 let cachedAccounts: { expiresAt: number; accounts: TagManagerAccountSummary[] } | null = null
 let pendingAccountsRequest: Promise<TagManagerAccountSummary[]> | null = null
 let blockedUntil = 0
@@ -22,6 +64,12 @@ let lastSyncStartedAt = 0
 const ACCOUNTS_CACHE_TTL = 10 * 60_000
 const MIN_SYNC_INTERVAL = 60_000
 const MAX_GOOGLE_REQUESTS_PER_SYNC = 20
+
+// Reporte por contenedor cacheado brevemente: si el dashboard vuelve a pedir
+// el mismo contenedor (cambio de rango de fechas, recarga de pestaña, etc.)
+// dentro de esta ventana, se reutiliza en vez de golpear la API de nuevo.
+const CONTAINER_REPORT_CACHE_TTL = 3 * 60_000
+const cachedContainerReports = new Map<string, { expiresAt: number; report: TagManagerContainerReport }>()
 
 type TagManagerAccountsResult = { ok: true; accounts: TagManagerAccountSummary[] } | { ok: false; error: string; retryAfterSeconds: number }
 
@@ -40,13 +88,13 @@ export async function listAllTagManagerAccounts(): Promise<TagManagerAccountsRes
     do {
       googleRequestCount += 1
       if (googleRequestCount > MAX_GOOGLE_REQUESTS_PER_SYNC) break
-      const accounts = await tagmanager.accounts.list({ pageToken: accountPageToken })
+      const accounts = await throttledTagManagerRequest(() => tagmanager.accounts.list({ pageToken: accountPageToken }))
       for (const account of accounts.data.account ?? []) {
         let containerPageToken: string | undefined
         do {
           googleRequestCount += 1
           if (googleRequestCount > MAX_GOOGLE_REQUESTS_PER_SYNC) break
-          const containers = await tagmanager.accounts.containers.list({ parent: account.path ?? '', pageToken: containerPageToken })
+          const containers = await throttledTagManagerRequest(() => tagmanager.accounts.containers.list({ parent: account.path ?? '', pageToken: containerPageToken }))
           for (const container of containers.data.container ?? []) {
             result.push({ accountId: account.accountId ?? '', accountName: account.name ?? '', containerId: container.containerId ?? '', containerName: container.name ?? '', publicId: container.publicId ?? '' })
           }
@@ -173,19 +221,27 @@ export async function getGoogleTagManagerReport(containerIdsCsv?: string | null)
 
   const tagmanager = getTagManagerClient()
   const errors: Array<{ containerId: string; message: string }> = []
-  const containers = await Promise.all(requestedIds.map(async (containerId): Promise<TagManagerContainerReport | null> => {
+  // Se procesa un contenedor a la vez (no Promise.all) para que, si un
+  // cliente tiene varios contenedores, no se disparen todas sus llamadas
+  // en simultáneo: el throttle interno ya serializa las solicitudes a
+  // Google, pero recorrerlas en orden evita encolar de golpe decenas de
+  // llamadas cuando alcanza con reutilizar la caché por contenedor.
+  const containers: Array<TagManagerContainerReport | null> = []
+  for (const containerId of requestedIds) {
+    const cached = cachedContainerReports.get(containerId)
+    if (cached && cached.expiresAt > Date.now()) { containers.push(cached.report); continue }
     const summary = accountsByContainerId.get(containerId)
-    if (!summary) { errors.push({ containerId, message: 'No se encontró este contenedor en las cuentas de Google Tag Manager conectadas.' }); return null }
+    if (!summary) { errors.push({ containerId, message: 'No se encontró este contenedor en las cuentas de Google Tag Manager conectadas.' }); containers.push(null); continue }
     try {
       const containerPath = `accounts/${summary.accountId}/containers/${containerId}`
-      const workspaces = await tagmanager.accounts.containers.workspaces.list({ parent: containerPath })
+      const workspaces = await throttledTagManagerRequest(() => tagmanager.accounts.containers.workspaces.list({ parent: containerPath }))
       const workspace = workspaces.data.workspace?.find((item) => item.name === 'Default Workspace') ?? workspaces.data.workspace?.[0]
-      if (!workspace?.path) { errors.push({ containerId, message: 'El contenedor no tiene un espacio de trabajo disponible.' }); return null }
+      if (!workspace?.path) { errors.push({ containerId, message: 'El contenedor no tiene un espacio de trabajo disponible.' }); containers.push(null); continue }
 
       const [tagsResponse, triggersResponse, variablesResponse] = await Promise.all([
-        tagmanager.accounts.containers.workspaces.tags.list({ parent: workspace.path }),
-        tagmanager.accounts.containers.workspaces.triggers.list({ parent: workspace.path }),
-        tagmanager.accounts.containers.workspaces.variables.list({ parent: workspace.path }),
+        throttledTagManagerRequest(() => tagmanager.accounts.containers.workspaces.tags.list({ parent: workspace.path! })),
+        throttledTagManagerRequest(() => tagmanager.accounts.containers.workspaces.triggers.list({ parent: workspace.path! })),
+        throttledTagManagerRequest(() => tagmanager.accounts.containers.workspaces.variables.list({ parent: workspace.path! })),
       ])
 
       const triggerNameById = new Map((triggersResponse.data.trigger ?? []).map((trigger) => [trigger.triggerId ?? '', trigger.name ?? '']))
@@ -231,12 +287,15 @@ export async function getGoogleTagManagerReport(containerIdsCsv?: string | null)
         triggersWithoutTags: triggers.filter((trigger) => trigger.tagCount === 0).length,
       }
 
-      return { containerId, accountId: summary.accountId, containerName: summary.containerName, publicId: summary.publicId, tags, triggers, variables, diagnostics }
+      const report: TagManagerContainerReport = { containerId, accountId: summary.accountId, containerName: summary.containerName, publicId: summary.publicId, tags, triggers, variables, diagnostics }
+      cachedContainerReports.set(containerId, { expiresAt: Date.now() + CONTAINER_REPORT_CACHE_TTL, report })
+      containers.push(report)
     } catch (cause) {
-      errors.push({ containerId, message: cause instanceof Error ? cause.message : 'No se pudo consultar este contenedor de Google Tag Manager.' })
-      return null
+      const message = cause instanceof Error ? cause.message : 'No se pudo consultar este contenedor de Google Tag Manager.'
+      errors.push({ containerId, message: isQuotaError(cause) ? 'Google Tag Manager alcanzó el límite de consultas para este contenedor. Se reintentará en la próxima carga.' : message })
+      containers.push(null)
     }
-  }))
+  }
 
   return { containers: containers.filter((container): container is TagManagerContainerReport => container !== null), errors }
 }
