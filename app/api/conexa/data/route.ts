@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { getToolDefinitions } from '@/lib/ai/tools'
 import type { ExecutionContext } from '@/lib/ai/types'
+import { getCrmAcquisitionReport, type CrmAcquisitionFilters } from '@/lib/crm/service'
 
 export const maxDuration = 60
 
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const admin = createAdminClient()
   const { data: { user } } = await supabase.auth.getUser()
-  const body = await request.json() as { clientId?: string; period?: string; customRange?: { from?: string; to?: string }; selectedAccounts?: Record<string, string[]> }
+  const body = await request.json() as { clientId?: string; period?: string; customRange?: { from?: string; to?: string }; selectedAccounts?: Record<string, string[]>; crmFilters?: CrmAcquisitionFilters }
   if (!body.clientId) return NextResponse.json({ error: 'Falta el cliente seleccionado.' }, { status: 400 })
   const range = dateRange(body.period ?? 'Últimos 30 días', body.customRange)
   const [{ data: client }, { data: accounts }] = await Promise.all([
@@ -72,8 +73,9 @@ export async function POST(request: Request) {
   const byKey = new Map(tools.map((tool) => [tool.key, tool]))
   const run = (key: string, input: Record<string, string> = {}) => byKey.get(key)?.execute({ ...range, ...input }, context).catch((error) => ({ available: false, message: error instanceof Error ? error.message : `Falló la tool ${key}.` })) ?? Promise.resolve({ available: false, message: `Tool ${key} no disponible.` })
 
-  const [meta, google, analytics, tagManager, contacts, opportunities, sales, memory] = await Promise.all([
+  const [meta, google, analytics, tagManager, contacts, opportunities, sales, memory, crmAcquisition] = await Promise.all([
     run('get_meta_metrics'), run('get_google_metrics'), run('get_google_analytics_report'), run('get_google_tag_manager_report'), run('crm_contacts'), run('crm_opportunities'), run('crm_sales_attribution'), run('get_client_memory'),
+    getCrmAcquisitionReport(body.clientId, range.dateFrom, range.dateTo, body.crmFilters).catch((error) => ({ available: false, message: error instanceof Error ? error.message : 'No se pudo consultar la adquisición del CRM.' })),
   ])
   const number = (value: unknown) => typeof value === 'number' ? value : Number(value) || 0
   const total = (source: unknown, keys: string[]) => {
@@ -116,5 +118,5 @@ export async function POST(request: Request) {
     tag_manager: [{ label: 'Etiquetas', value: tagManagerContainers.reduce((sum, container) => sum + Number((container.diagnostics as Record<string, unknown> | undefined)?.totalTags ?? 0), 0) }, { label: 'Activadores', value: tagManagerContainers.reduce((sum, container) => sum + Number((container.diagnostics as Record<string, unknown> | undefined)?.totalTriggers ?? 0), 0) }, { label: 'Variables', value: tagManagerContainers.reduce((sum, container) => sum + Number((container.diagnostics as Record<string, unknown> | undefined)?.totalVariables ?? 0), 0) }],
     crm: [{ label: 'Contactos', value: crmTotals(contacts, 'contacts') }, { label: 'Oportunidades', value: crmTotals(opportunities, 'opportunities') }, { label: 'Ventas', value: crmTotals(sales, 'won_sales') }],
   }
-  return NextResponse.json({ range, metrics, platformMetrics, meta, google, analytics, tagManager, contacts, opportunities, sales, memory })
+  return NextResponse.json({ range, metrics, platformMetrics, meta, google, analytics, tagManager, contacts, opportunities, sales, memory, crmAcquisition })
 }

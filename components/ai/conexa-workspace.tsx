@@ -11,6 +11,7 @@ import { MessageContent } from '@/components/chat/message-content'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { TagManagerTagRow, TagManagerTriggerRow, TagManagerVariableRow, TagManagerFilterRow, TagManagerParameterRow } from '@/lib/google-tag-manager/service'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import type { CrmAcquisitionFilters, CrmAcquisitionReport, CrmBreakdownRow } from '@/lib/crm/service'
 
 type ClientAccount = { id_cuenta: string | null; nombre_cuenta: string | null; plataforma: string | null; activo?: boolean | null }
 type Client = { id: string; nombre_del_negocio: string; meta_ads_account_id?: string | null; google_ads_customer_id?: string | null; meta_ads_account_ids?: string[] | null; google_ads_customer_ids?: string[] | null; analytics_property_id?: string | null; tag_manager_container_id?: string | null; crm_type?: string | null; cuentas_publicitarias?: ClientAccount[] | null }
@@ -46,6 +47,7 @@ export function ConexaWorkspace() {
   const [isLoading, setIsLoading] = useState(false)
   const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([])
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string[]>>({})
+  const [crmFilters, setCrmFilters] = useState<CrmAcquisitionFilters>({})
 
   useEffect(() => {
     const supabase = createClient()
@@ -60,16 +62,16 @@ export function ConexaWorkspace() {
     if (!client?.id || !period) return
     setIsLoading(true)
     let cancelled = false
-    fetch('/api/conexa/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client.id, period, customRange, selectedAccounts }) })
+    fetch('/api/conexa/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client.id, period, customRange, selectedAccounts, crmFilters }) })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron consultar las tools de Conexa.')))
       .then((result) => {
         if (cancelled) return
-        setData({ accounts: [], metrics: Array.isArray(result.metrics) ? result.metrics : [], reports: Array.isArray(result.analytics?.reports) ? result.analytics.reports : [], approvals: [], profile: null, memory: Array.isArray(result.memory?.items) ? result.memory.items : [], platformMetrics: result.platformMetrics && typeof result.platformMetrics === 'object' ? result.platformMetrics : {}, platformData: { meta: result.meta, google: result.google, analytics: result.analytics, tagManager: result.tagManager, crm: { contacts: result.contacts, opportunities: result.opportunities, sales: result.sales } } })
+        setData({ accounts: [], metrics: Array.isArray(result.metrics) ? result.metrics : [], reports: Array.isArray(result.analytics?.reports) ? result.analytics.reports : [], approvals: [], profile: null, memory: Array.isArray(result.memory?.items) ? result.memory.items : [], platformMetrics: result.platformMetrics && typeof result.platformMetrics === 'object' ? result.platformMetrics : {}, platformData: { meta: result.meta, google: result.google, analytics: result.analytics, tagManager: result.tagManager, crm: { contacts: result.contacts, opportunities: result.opportunities, sales: result.sales, acquisition: result.crmAcquisition } } })
       })
       .catch(() => { if (!cancelled) setData(emptyConexaData) })
       .finally(() => { if (!cancelled) setIsLoading(false) })
     return () => { cancelled = true }
-  }, [client?.id, period, customRange, selectedAccounts])
+  }, [client?.id, period, customRange, selectedAccounts, crmFilters])
 
   const platforms = useMemo<Platform[]>(() => [
     { name: 'Meta Ads', key: 'meta', icon: BarChart3, color: '#1877F2', iconUrl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Facebook_Logo_%282019%29-8hLkShXu9caNijxaYTMKGdv1bWipbV.png', connected: Boolean(client?.meta_ads_account_id || client?.meta_ads_account_ids?.length), detail: client?.meta_ads_account_id || client?.meta_ads_account_ids?.length ? `Cuenta ${client.meta_ads_account_id ?? client.meta_ads_account_ids?.[0]}` : 'Sin cuenta conectada' },
@@ -120,7 +122,7 @@ export function ConexaWorkspace() {
 
       <main className="relative min-h-0 flex-1 overflow-hidden bg-white">
         {isLoading && <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/90 backdrop-blur-[2px]"><div className="flex w-[min(92%,360px)] flex-col items-center rounded-2xl border border-[#e6e6e3] bg-white px-8 py-7 text-center shadow-lg" role="status" aria-live="polite"><div className="mb-4 flex size-11 items-center justify-center rounded-full bg-[#eeefff]"><LoaderCircle className="size-5 animate-spin text-[#5b5fe8]" /></div><p className="text-sm font-semibold text-[#202020]">Procesando métricas</p><p className="mt-1 text-xs leading-5 text-[#888]">Estamos consultando y preparando los datos de tus plataformas.</p><div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-[#eeefff]"><div className="h-full w-2/5 animate-pulse rounded-full bg-[#5b5fe8]" /></div></div></div>}
-        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => setActive('Chat / Análisis')} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} onReportCreated={(report) => setGeneratedReports((current) => [report, ...current])} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} />}
+        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => setActive('Chat / Análisis')} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} onReportCreated={(report) => setGeneratedReports((current) => [report, ...current])} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} crmFilters={crmFilters} onCrmFiltersChange={setCrmFilters} />}
       </main>
     </section>
   </div>
@@ -577,11 +579,84 @@ function GoogleTagManagerConexaView({ platform, onManage, data }: { platform: Pl
   </div>
 }
 
-function PlatformView({ platform, initialTab, onManage, data, client, selectedAccounts, onAccountsChange }: { platform: Platform; initialTab?: string; onManage: () => void; data: ConexaData; client: Client | null; selectedAccounts: Record<string, string[]>; onAccountsChange: (accounts: string[]) => void }) {
+function MultiSelectFilter({ label, options, selected, onChange }: { label: string; options: string[]; selected: string[]; onChange: (values: string[]) => void }) {
+  const [open, setOpen] = useState(false)
+  const toggle = (value: string) => onChange(selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value])
+  return <div className="relative">
+    <button type="button" onClick={() => setOpen((value) => !value)} className={cn('flex max-w-[190px] items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-medium', selected.length ? 'border-[#5b5fe8] bg-[#eeefff] text-[#5b5fe8]' : 'border-[#e2e2df] bg-white text-[#555]')}>
+      <span className="truncate">{label}{selected.length ? ` · ${selected.length}` : ''}</span>
+      <ChevronDown className="size-3 shrink-0" />
+    </button>
+    {open && <div className="absolute left-0 top-9 z-40 max-h-64 min-w-[220px] overflow-y-auto rounded-lg border border-[#dededb] bg-white p-1.5 shadow-xl">
+      {options.length ? options.map((option) => <label key={option} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-[11px] hover:bg-[#f5f5f3]"><input type="checkbox" checked={selected.includes(option)} onChange={() => toggle(option)} className="accent-[#5b5fe8]" /><span className="truncate">{option}</span></label>) : <p className="px-2 py-2 text-[11px] text-[#888]">Sin opciones disponibles</p>}
+      {selected.length > 0 && <button type="button" onClick={() => onChange([])} className="mt-1 w-full border-t border-[#eee] px-2 py-2 text-left text-[10px] font-semibold text-[#5b5fe8]">Limpiar filtro</button>}
+    </div>}
+  </div>
+}
+
+function CrmBreakdownTable({ title, rows, labelHeader }: { title: string; rows: CrmBreakdownRow[]; labelHeader: string }) {
+  return <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+    <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">{title}</p><span className="text-[10px] text-[#888]">{rows.length} registros</span></div>
+    {rows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[480px] text-left text-[11px]">
+      <thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">{labelHeader}</th><th className="px-3 py-3 font-semibold">Total de contactos</th><th className="px-3 py-3 font-semibold">Total de ventas</th></tr></thead>
+      <tbody>{rows.map((row) => <tr key={row.label} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#222]">{row.label}</td><td className="px-3 py-3">{row.contacts.toLocaleString('es-AR')}</td><td className="px-3 py-3 font-semibold text-[#1e9e6b]">{row.sales.toLocaleString('es-AR')}</td></tr>)}</tbody>
+    </table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin datos en el período seleccionado.</p>}
+  </div>
+}
+
+function CrmConexaView({ platform, onManage, data, client, filters, onFiltersChange }: { platform: Platform; onManage: () => void; data: ConexaData; client: Client | null; filters: CrmAcquisitionFilters; onFiltersChange: (filters: CrmAcquisitionFilters) => void }) {
+  const [tab, setTab] = useState('Adquisición')
+  const crm = (data.platformData.crm ?? {}) as { acquisition?: CrmAcquisitionReport }
+  const report = crm.acquisition
+
+  const header = <div className="mb-4 flex items-start justify-between">
+    <div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center overflow-hidden rounded-lg bg-white"><Users className="size-7 text-[#11A683]" /></span><div><h1 className="text-[20px] font-bold">CRM</h1><p className="text-[11px] text-[#777]">{platform.detail} {client?.crm_type && <span className="ml-2 text-[#1e9e6b]">● Conectado</span>}</p></div></div>
+    <Button variant="outline" onClick={onManage} className="h-8 rounded-full px-4 text-[11px]">Administrar conexión</Button>
+  </div>
+
+  if (!client?.crm_type) return <div className="mx-auto max-w-[1180px] px-6 py-5">{header}<p className="rounded-xl border border-[#dcdcd8] bg-white p-8 text-center text-xs text-[#888]">Sin CRM conectado para este cliente.</p></div>
+  if (!report || !report.available) return <div className="mx-auto max-w-[1180px] px-6 py-5">{header}<p className="rounded-xl border border-[#dcdcd8] bg-white p-8 text-center text-xs text-[#888]">{report && 'message' in report ? report.message : 'No se pudo consultar el CRM para el período seleccionado.'}</p></div>
+
+  const filterSetters: Array<{ key: keyof CrmAcquisitionFilters; label: string; options: string[] }> = [
+    { key: 'campaigns', label: 'Campaña', options: report.filterOptions.campaigns },
+    { key: 'tags', label: 'Etiqueta', options: report.filterOptions.tags },
+    { key: 'vendors', label: 'Vendedor', options: report.filterOptions.vendors },
+    { key: 'channels', label: 'Canal', options: report.filterOptions.channels },
+    { key: 'teams', label: 'Equipo de ventas', options: report.filterOptions.teams },
+    { key: 'statuses', label: 'Estado de oportunidad', options: report.filterOptions.statuses },
+  ]
+  const activeFilterCount = filterSetters.reduce((sum, item) => sum + (filters[item.key]?.length ?? 0), 0)
+
+  return <div className="mx-auto h-full max-w-[1180px] overflow-y-auto px-6 py-5">
+    {header}
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      {filterSetters.map((item) => <MultiSelectFilter key={item.key} label={item.label} options={item.options} selected={filters[item.key] ?? []} onChange={(values) => onFiltersChange({ ...filters, [item.key]: values })} />)}
+      {activeFilterCount > 0 && <button type="button" onClick={() => onFiltersChange({})} className="text-[11px] font-medium text-[#888] underline">Limpiar todos los filtros</button>}
+    </div>
+
+    <div className="mb-4 grid grid-cols-2 gap-3">
+      <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="text-[10px] font-semibold text-[#888]">Total de contactos</p><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{report.totals.contacts.toLocaleString('es-AR')}</p></div>
+      <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="text-[10px] font-semibold text-[#888]">Total de ventas</p><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#1e9e6b]">{report.totals.sales.toLocaleString('es-AR')}</p></div>
+    </div>
+
+    <div className="mb-4 flex gap-7 border-b border-[#dededb] text-[10px] font-semibold text-[#777]">{['Adquisición', 'Etiquetas'].map((item) => <button type="button" key={item} onClick={() => setTab(item)} className={cn('border-b-2 px-1 pb-3', tab === item ? 'border-[#11A683] text-[#11A683]' : 'border-transparent')}>{item}</button>)}</div>
+
+    {tab === 'Adquisición' && <div className="flex flex-col gap-4">
+      <CrmBreakdownTable title="Nombre de campaña" rows={report.campaignRows} labelHeader="Campaña" />
+      <CrmBreakdownTable title="Vendedor" rows={report.vendorRows} labelHeader="Vendedor" />
+      <CrmBreakdownTable title="Equipo de ventas" rows={report.teamRows} labelHeader="Equipo" />
+    </div>}
+
+    {tab === 'Etiquetas' && <CrmBreakdownTable title="Etiquetas" rows={report.tagRows} labelHeader="Etiqueta" />}
+  </div>
+}
+
+function PlatformView({ platform, initialTab, onManage, data, client, selectedAccounts, onAccountsChange, crmFilters, onCrmFiltersChange }: { platform: Platform; initialTab?: string; onManage: () => void; data: ConexaData; client: Client | null; selectedAccounts: Record<string, string[]>; onAccountsChange: (accounts: string[]) => void; crmFilters: CrmAcquisitionFilters; onCrmFiltersChange: (filters: CrmAcquisitionFilters) => void }) {
   if (platform.key === 'google') return <GoogleAdsConexaView platform={platform} onManage={onManage} data={data} client={client} selectedAccounts={selectedAccounts} onAccountsChange={onAccountsChange} />
   if (platform.key === 'meta') return <MetaAdsConexaView platform={platform} onManage={onManage} data={data} client={client} selectedAccounts={selectedAccounts} onAccountsChange={onAccountsChange} />
   if (platform.key === 'analytics') return <GoogleAnalyticsConexaView platform={platform} onManage={onManage} data={data} />
   if (platform.key === 'tag_manager') return <GoogleTagManagerConexaView platform={platform} onManage={onManage} data={data} />
+  if (platform.key === 'crm') return <CrmConexaView platform={platform} onManage={onManage} data={data} client={client} filters={crmFilters} onFiltersChange={onCrmFiltersChange} />
   const tabSets: Record<string, string[]> = {
     meta: ['Resumen', 'Campañas', 'Conjuntos', 'Anuncios', 'Creativos', 'Audiencias', 'Redes', 'Tracking'],
     google: ['Resumen', 'Campañas', 'Grupos de anuncios', 'Palabras clave', 'Conversiones'],
