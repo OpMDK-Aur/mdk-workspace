@@ -229,10 +229,20 @@ function GoogleAdsTable({ title, headers, rows, conversionRows, empty }: { title
 
 function AccountSelector({ platform, client, selected, onChange }: { platform: Platform; client: Client | null; selected: string[]; onChange: (accounts: string[]) => void }) {
   const platformKey = platform.key === 'google' ? 'google' : platform.key === 'meta' ? 'meta' : platform.key
-  const linkedAccounts = (client?.cuentas_publicitarias ?? []).filter((account) => account.activo !== false && account.plataforma === platformKey && account.id_cuenta)
+  const [resolvedAccounts, setResolvedAccounts] = useState<ClientAccount[]>([])
+  useEffect(() => {
+    let active = true
+    if (!client?.id) { setResolvedAccounts([]); return }
+    fetch(`/api/agentes/analista/cuentas?clientId=${encodeURIComponent(client.id)}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron cargar las cuentas')))
+      .then((payload) => { if (active) setResolvedAccounts(payload.cuentas ?? []) })
+      .catch((error) => console.error('[v0] AccountSelector accounts fetch failed:', error))
+    return () => { active = false }
+  }, [client?.id])
+  const linkedAccounts = (resolvedAccounts.length > 0 ? resolvedAccounts : client?.cuentas_publicitarias ?? []).filter((account) => account.activo !== false && account.plataforma === platformKey && account.id_cuenta)
   const accountValues = platform.key === 'meta' ? [...(client?.meta_ads_account_ids ?? []), ...(client?.meta_ads_account_id ? [client.meta_ads_account_id] : [])] : platform.key === 'google' ? [...(client?.google_ads_customer_ids ?? []), ...(client?.google_ads_customer_id ? [client.google_ads_customer_id] : [])] : platform.key === 'analytics' ? (client?.analytics_property_id ? [client.analytics_property_id] : []) : platform.key === 'tag_manager' ? (client?.tag_manager_container_id ? [client.tag_manager_container_id] : []) : platform.key === 'crm' ? (client?.crm_type ? [client.crm_type] : []) : []
   const accountIds = [...new Set([...linkedAccounts.map((account) => account.id_cuenta as string), ...accountValues.flatMap((value) => String(value).split(',').map((account) => account.trim()).filter(Boolean))])]
-  const accounts = accountIds.map((id) => ({ id, name: linkedAccounts.find((account) => account.id_cuenta === id)?.nombre_cuenta || id }))
+  const accounts = accountIds.map((id) => { const name = linkedAccounts.find((account) => account.id_cuenta === id)?.nombre_cuenta; return { id, name: name && name !== id ? name : `Cuenta ${id}` } })
   const normalizedSelected = selected.flatMap((value) => String(value).split(',').map((account) => account.trim()).filter(Boolean))
   const active = normalizedSelected.length ? normalizedSelected : accounts.map((account) => account.id)
   const [open, setOpen] = useState(false)
