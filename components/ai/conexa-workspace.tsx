@@ -268,9 +268,105 @@ function MetaAdsConexaView({ platform, onManage, data, client, selectedAccounts,
 
 function entityLabel(tab: string) { return tab === 'Campañas' ? 'Nombre de la campaña' : tab === 'Conjuntos' ? 'Nombre del conjunto de anuncios' : 'Nombre del anuncio' }
 
+// Índice dims->{eventCount,keyEvents} construido a partir de un desglose por
+// evento (acquisitionByEvent / pagesByEvent) para poder filtrar "Número de
+// eventos" / "Eventos clave" por un evento específico en el cliente, sin
+// disparar un nuevo fetch por cada cambio de selector.
+function buildEventIndex(rows: Array<Record<string, any>>, dims: string[], eventName: string) {
+  const map = new Map<string, { eventCount: number; keyEvents: number }>()
+  for (const row of rows) {
+    if (eventName !== 'all' && String(row.eventName ?? '') !== eventName) continue
+    const key = dims.map((dim) => String(row[dim] ?? '')).join('||')
+    const current = map.get(key) ?? { eventCount: 0, keyEvents: 0 }
+    current.eventCount += Number(row.eventCount ?? 0)
+    current.keyEvents += Number(row.keyEvents ?? 0)
+    map.set(key, current)
+  }
+  return map
+}
+
+function EventSelect({ value, onChange, options }: { value: string; onChange: (value: string) => void; options: string[] }) {
+  return <select value={value} onChange={(event) => onChange(event.target.value)} className="rounded-md border border-[#e2e2df] bg-white px-1.5 py-1 text-[10px]"><option value="all">Todos los eventos</option>{options.map((name) => <option key={name} value={name}>{name}</option>)}</select>
+}
+
+function GoogleAnalyticsConexaView({ platform, onManage, data }: { platform: Platform; onManage: () => void; data: ConexaData }) {
+  const [tab, setTab] = useState('Resumen')
+  const [eventFilter, setEventFilter] = useState('all')
+  const [keyEventFilter, setKeyEventFilter] = useState('all')
+  const [acqEventFilter, setAcqEventFilter] = useState('all')
+  const [pageEventFilter, setPageEventFilter] = useState('all')
+  const [pageKeyEventFilter, setPageKeyEventFilter] = useState('all')
+
+  const analytics = (data.platformData.analytics ?? {}) as { reports?: Record<string, Array<Record<string, any>>> }
+  const reports = analytics.reports ?? {}
+  const overview = (reports.overview ?? [])[0] ?? {}
+  const eventsReport = reports.events ?? []
+  const acquisitionByEvent = reports.acquisitionByEvent ?? []
+  const pagesByEvent = reports.pagesByEvent ?? []
+  const acquisitionRows = [...(reports.acquisition ?? [])].sort((a, b) => Number(b.totalUsers ?? 0) - Number(a.totalUsers ?? 0))
+  const pageRows = [...(reports.pages ?? [])].sort((a, b) => Number(b.screenPageViews ?? 0) - Number(a.screenPageViews ?? 0))
+  const eventRows = [...eventsReport].sort((a, b) => Number(b.eventCount ?? 0) - Number(a.eventCount ?? 0))
+  const eventOptions = eventRows.map((row) => String(row.eventName ?? '')).filter(Boolean)
+
+  const number = (value: unknown) => Number(value ?? 0).toLocaleString('es-AR')
+  const money = (value: unknown) => Number(value ?? 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
+  const decimal = (value: unknown) => Number(value ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })
+  const duration = (seconds: unknown) => { const total = Math.max(0, Number(seconds ?? 0)); const minutes = Math.floor(total / 60); const rest = Math.round(total % 60); return `${minutes}m ${String(rest).padStart(2, '0')}s` }
+
+  const eventTotal = eventFilter === 'all' ? eventRows.reduce((sum, row) => sum + Number(row.eventCount ?? 0), 0) : Number(eventRows.find((row) => row.eventName === eventFilter)?.eventCount ?? 0)
+  const keyEventTotal = keyEventFilter === 'all' ? eventRows.reduce((sum, row) => sum + Number(row.keyEvents ?? 0), 0) : Number(eventRows.find((row) => row.eventName === keyEventFilter)?.keyEvents ?? 0)
+  const acquisitionEventIndex = buildEventIndex(acquisitionByEvent, ['firstUserDefaultChannelGroup', 'sessionCampaignName'], acqEventFilter)
+  const pageEventIndex = buildEventIndex(pagesByEvent, ['unifiedPagePathScreen'], pageEventFilter)
+  const pageKeyEventIndex = buildEventIndex(pagesByEvent, ['unifiedPagePathScreen'], pageKeyEventFilter)
+
+  const nav = ['Resumen', 'Adquisición', 'Interacción', 'Páginas y pantallas']
+
+  return <div className="mx-auto h-full max-w-[1180px] overflow-y-auto px-6 py-5">
+    <div className="mb-4 flex items-start justify-between"><div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center overflow-hidden rounded-lg bg-white">{platform.iconUrl ? <img src={platform.iconUrl} alt="" className="size-full object-contain" /> : <Gauge className="size-7 text-[#F9AB00]" />}</span><div><h1 className="text-[20px] font-bold">Google Analytics</h1><p className="text-[11px] text-[#777]">{platform.detail} <span className="ml-2 text-[#1e9e6b]">● Conectado</span></p></div></div><Button variant="outline" onClick={onManage} className="h-8 rounded-full px-4 text-[11px]">Administrar conexión</Button></div>
+    <div className="mb-4 flex gap-7 border-b border-[#dededb] text-[10px] font-semibold text-[#777]">{nav.map((item) => <button type="button" key={item} onClick={() => setTab(item)} className={cn('border-b-2 px-1 pb-3', tab === item ? 'border-[#e08900] text-[#e08900]' : 'border-transparent')}>{item}</button>)}</div>
+
+    {tab === 'Resumen' && <div className="grid grid-cols-3 gap-3">
+      <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="text-[10px] font-semibold text-[#888]">Usuarios activos</p><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{number(overview.activeUsers)}</p></div>
+      <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><div className="flex items-center justify-between gap-2"><p className="text-[10px] font-semibold text-[#888]">Número de eventos</p><EventSelect value={eventFilter} onChange={setEventFilter} options={eventOptions} /></div><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{number(eventTotal)}</p></div>
+      <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><div className="flex items-center justify-between gap-2"><p className="text-[10px] font-semibold text-[#888]">Eventos clave</p><EventSelect value={keyEventFilter} onChange={setKeyEventFilter} options={eventOptions} /></div><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{number(keyEventTotal)}</p></div>
+    </div>}
+
+    {tab === 'Adquisición' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Primer grupo de canales principal del usuario (Grupo de canales predeterminado)</p><label className="flex items-center gap-1.5 text-[10px] text-[#888]">Número de eventos<EventSelect value={acqEventFilter} onChange={setAcqEventFilter} options={eventOptions} /></label></div>
+      {acquisitionRows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Primer grupo de canales</th><th className="px-3 py-3 font-semibold">Campaña de la sesión</th><th className="px-3 py-3 font-semibold">Total de usuarios</th><th className="px-3 py-3 font-semibold">Usuarios nuevos</th><th className="px-3 py-3 font-semibold">Usuarios recurrentes</th><th className="px-3 py-3 font-semibold">Tiempo de interacción medio por usuario activo</th><th className="px-3 py-3 font-semibold">Número de eventos</th><th className="px-3 py-3 font-semibold">Eventos clave</th></tr></thead><tbody>{acquisitionRows.map((row, index) => {
+        const key = [String(row.firstUserDefaultChannelGroup ?? ''), String(row.sessionCampaignName ?? '')].join('||')
+        const filtered = acquisitionEventIndex.get(key)
+        const eventCount = acqEventFilter === 'all' ? Number(row.eventCount ?? 0) : filtered?.eventCount ?? 0
+        const totalUsers = Number(row.totalUsers ?? 0)
+        const newUsers = Number(row.newUsers ?? 0)
+        const returning = Math.max(totalUsers - newUsers, 0)
+        const activeUsers = Number(row.activeUsers ?? 0)
+        const avgEngagement = activeUsers ? Number(row.userEngagementDuration ?? 0) / activeUsers : 0
+        return <tr key={index} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3">{String(row.firstUserDefaultChannelGroup ?? '(not set)')}</td><td className="px-3 py-3">{String(row.sessionCampaignName ?? '(not set)')}</td><td className="px-3 py-3">{number(totalUsers)}</td><td className="px-3 py-3">{number(newUsers)}</td><td className="px-3 py-3">{number(returning)}</td><td className="px-3 py-3">{duration(avgEngagement)}</td><td className="px-3 py-3">{number(eventCount)}</td><td className="px-3 py-3">{number(row.keyEvents)}</td></tr>
+      })}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin datos de adquisición en el período seleccionado.</p>}
+    </div>}
+
+    {tab === 'Interacción' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Eventos: Nombre del evento</p><span className="text-[10px] text-[#888]">{eventRows.length} eventos</span></div>
+      {eventRows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Nombre del evento</th><th className="px-3 py-3 font-semibold">Número de eventos</th><th className="px-3 py-3 font-semibold">Total de usuarios</th><th className="px-3 py-3 font-semibold">Número de eventos por usuario activo</th><th className="px-3 py-3 font-semibold">Total de ingresos</th></tr></thead><tbody>{eventRows.map((row, index) => <tr key={index} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{String(row.eventName ?? '')}</td><td className="px-3 py-3">{number(row.eventCount)}</td><td className="px-3 py-3">{number(row.totalUsers)}</td><td className="px-3 py-3">{decimal(row.eventCountPerUser)}</td><td className="px-3 py-3">{money(row.totalRevenue)}</td></tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin eventos en el período seleccionado.</p>}
+    </div>}
+
+    {tab === 'Páginas y pantallas' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Páginas y pantallas: Ruta de página y clase de pantalla</p><div className="flex items-center gap-3"><label className="flex items-center gap-1.5 text-[10px] text-[#888]">Número de eventos<EventSelect value={pageEventFilter} onChange={setPageEventFilter} options={eventOptions} /></label><label className="flex items-center gap-1.5 text-[10px] text-[#888]">Eventos clave<EventSelect value={pageKeyEventFilter} onChange={setPageKeyEventFilter} options={eventOptions} /></label></div></div>
+      {pageRows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[920px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Ruta de página y clase de pantalla</th><th className="px-3 py-3 font-semibold">Vistas</th><th className="px-3 py-3 font-semibold">Usuarios activos</th><th className="px-3 py-3 font-semibold">Vistas por usuario activo</th><th className="px-3 py-3 font-semibold">Número de eventos</th><th className="px-3 py-3 font-semibold">Eventos clave</th><th className="px-3 py-3 font-semibold">Total de ingresos</th></tr></thead><tbody>{pageRows.map((row, index) => {
+        const key = String(row.unifiedPagePathScreen ?? '')
+        const eventCount = pageEventFilter === 'all' ? Number(row.eventCount ?? 0) : pageEventIndex.get(key)?.eventCount ?? 0
+        const keyEvents = pageKeyEventFilter === 'all' ? Number(row.keyEvents ?? 0) : pageKeyEventIndex.get(key)?.keyEvents ?? 0
+        return <tr key={index} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{key || '/'}</td><td className="px-3 py-3">{number(row.screenPageViews)}</td><td className="px-3 py-3">{number(row.activeUsers)}</td><td className="px-3 py-3">{decimal(row.screenPageViewsPerUser)}</td><td className="px-3 py-3">{number(eventCount)}</td><td className="px-3 py-3">{number(keyEvents)}</td><td className="px-3 py-3">{money(row.totalRevenue)}</td></tr>
+      })}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin datos de páginas en el período seleccionado.</p>}
+    </div>}
+  </div>
+}
+
 function PlatformView({ platform, initialTab, onManage, data, client, selectedAccounts, onAccountsChange }: { platform: Platform; initialTab?: string; onManage: () => void; data: ConexaData; client: Client | null; selectedAccounts: Record<string, string[]>; onAccountsChange: (accounts: string[]) => void }) {
   if (platform.key === 'google') return <GoogleAdsConexaView platform={platform} onManage={onManage} data={data} client={client} selectedAccounts={selectedAccounts} onAccountsChange={onAccountsChange} />
   if (platform.key === 'meta') return <MetaAdsConexaView platform={platform} onManage={onManage} data={data} client={client} selectedAccounts={selectedAccounts} onAccountsChange={onAccountsChange} />
+  if (platform.key === 'analytics') return <GoogleAnalyticsConexaView platform={platform} onManage={onManage} data={data} />
   const tabSets: Record<string, string[]> = {
     meta: ['Resumen', 'Campañas', 'Conjuntos', 'Anuncios', 'Creativos', 'Audiencias', 'Redes', 'Tracking'],
     google: ['Resumen', 'Campañas', 'Grupos de anuncios', 'Palabras clave', 'Conversiones'],

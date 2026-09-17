@@ -41,7 +41,9 @@ export type GoogleAnalyticsReport = {
     overview: Array<Record<string, string | number>>
     events: Array<Record<string, string | number>>
     acquisition: Array<Record<string, string | number>>
+    acquisitionByEvent: Array<Record<string, string | number>>
     pages: Array<Record<string, string | number>>
+    pagesByEvent: Array<Record<string, string | number>>
     devices: Array<Record<string, string | number>>
     geography: Array<Record<string, string | number>>
     keyEventsByChannel: Array<Record<string, string | number>>
@@ -68,25 +70,42 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
   if (!/^\d+$/.test(normalizedProperty)) throw new Error('La propiedad de Google Analytics no tiene un ID válido.')
   const analyticsData = google.analyticsdata({ version: 'v1beta', auth: createAuth() })
   const base = { dateRanges: [{ startDate: dateFrom, endDate: dateTo }] }
+  // Nota sobre dimensiones/métricas: "sessionCampaignName" (Campaña de la
+  // sesión), "unifiedPagePathScreen" (Ruta de página y clase de pantalla),
+  // "eventCountPerUser" (Número de eventos por usuario activo) y
+  // "screenPageViewsPerUser" (Vistas por usuario activo) son los nombres
+  // exactos de la Data API v1 que corresponden a las columnas nativas de la
+  // UI de GA4 solicitadas para Adquisición, Interacción y Páginas/pantallas.
+  // "userEngagementDuration" (segundos totales) se combina con "activeUsers"
+  // en el cliente para reproducir la columna nativa "Tiempo de interacción
+  // medio por usuario activo", que la Data API no expone como métrica única.
   const definitions = {
     overview: { dimensions: [], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalUsers', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
-    events: { dimensions: ['eventName'], metrics: ['eventCount', 'keyEvents', 'totalUsers', 'eventValue', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
-    acquisition: { dimensions: ['firstUserDefaultChannelGroup', 'firstUserSourceMedium'], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
+    events: { dimensions: ['eventName'], metrics: ['eventCount', 'keyEvents', 'totalUsers', 'eventCountPerUser', 'eventValue', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
+    acquisition: { dimensions: ['firstUserDefaultChannelGroup', 'sessionCampaignName'], metrics: ['totalUsers', 'newUsers', 'activeUsers', 'userEngagementDuration', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
+    // Desgloses auxiliares por evento (mismas dimensiones que Adquisición/
+    // Páginas + eventName) para poder filtrar "Número de eventos"/"Eventos
+    // clave" por un evento específico en el cliente, sin refetch por cada
+    // cambio del selector.
+    acquisitionByEvent: { dimensions: ['firstUserDefaultChannelGroup', 'sessionCampaignName', 'eventName'], metrics: ['eventCount', 'keyEvents'] },
     keyEventsByChannel: { dimensions: ['firstUserDefaultChannelGroup', 'firstUserSourceMedium'], metrics: ['keyEvents'] },
-    pages: { dimensions: ['pageTitle', 'pagePath', 'landingPagePlusQueryString'], metrics: ['screenPageViews', 'activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue'] },
+    pages: { dimensions: ['unifiedPagePathScreen'], metrics: ['screenPageViews', 'activeUsers', 'screenPageViewsPerUser', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue'] },
+    pagesByEvent: { dimensions: ['unifiedPagePathScreen', 'eventName'], metrics: ['eventCount', 'keyEvents'] },
     devices: { dimensions: ['deviceCategory', 'operatingSystem'], metrics: ['activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue'] },
     geography: { dimensions: ['country', 'city'], metrics: ['activeUsers', 'sessions', 'engagedSessions', 'engagementRate', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue'] },
     byDay: { dimensions: ['date'], metrics: ['activeUsers', 'newUsers', 'sessions', 'engagedSessions', 'eventCount', 'keyEvents', 'totalRevenue', 'purchaseRevenue', 'ecommercePurchases'] },
   } as const
+  const highLimitReports = new Set(['keyEventsByChannel', 'acquisitionByEvent', 'pagesByEvent'])
   const entries = Object.entries(definitions)
   const results = await Promise.allSettled(entries.map(async ([name, definition]) => {
+    const limit = highLimitReports.has(name) ? 2000 : 100
     const response = await analyticsData.properties.runReport({
       property: `properties/${normalizedProperty}`,
-      requestBody: { ...base, dimensions: definition.dimensions.map((dimension) => ({ name: dimension })), metrics: definition.metrics.map((metric) => ({ name: metric })), limit: name === 'keyEventsByChannel' ? '1000' : '100' },
+      requestBody: { ...base, dimensions: definition.dimensions.map((dimension) => ({ name: dimension })), metrics: definition.metrics.map((metric) => ({ name: metric })), limit: String(limit) },
     })
-    return [name, rowsToRecords(response, name === 'keyEventsByChannel' ? 1000 : 100)] as const
+    return [name, rowsToRecords(response, limit)] as const
   }))
-  const reports: GoogleAnalyticsReport['reports'] = { overview: [], events: [], acquisition: [], pages: [], devices: [], geography: [], keyEventsByChannel: [], byDay: [] }
+  const reports: GoogleAnalyticsReport['reports'] = { overview: [], events: [], acquisition: [], acquisitionByEvent: [], pages: [], pagesByEvent: [], devices: [], geography: [], keyEventsByChannel: [], byDay: [] }
   const errors: GoogleAnalyticsReport['errors'] = []
   results.forEach((result, index) => {
     const name = entries[index][0] as keyof GoogleAnalyticsReport['reports']
