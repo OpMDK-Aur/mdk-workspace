@@ -65,6 +65,29 @@ function rowsToRecords(response: { data: { dimensionHeaders?: Array<{ name?: str
   ]))
 }
 
+// La GA4 Data API rechaza requests con más de 10 métricas ("Requests are
+// limited to 10 metrics within a nested request"). Como varios de nuestros
+// reportes combinan más de 10 métricas para cubrir todas las columnas
+// nativas solicitadas, dividimos en múltiples requests con las mismas
+// dimensiones y fusionamos las filas por clave de dimensión, en vez de
+// recortar métricas y perder datos.
+const GA4_METRIC_CHUNK_SIZE = 10
+function chunk<T>(items: T[], size: number) {
+  const chunks: T[][] = []
+  for (let index = 0; index < items.length; index += size) chunks.push(items.slice(index, index + size))
+  return chunks
+}
+function mergeRecordsByDimensions(chunks: Array<Array<Record<string, string | number>>>, dimensions: string[]) {
+  const merged = new Map<string, Record<string, string | number>>()
+  for (const rows of chunks) {
+    for (const row of rows) {
+      const key = dimensions.map((dimension) => String(row[dimension] ?? '')).join('||')
+      merged.set(key, { ...(merged.get(key) ?? {}), ...row })
+    }
+  }
+  return [...merged.values()]
+}
+
 export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: string, dateTo: string): Promise<GoogleAnalyticsReport> {
   const normalizedProperty = propertyId.replace(/^properties\//, '')
   if (!/^\d+$/.test(normalizedProperty)) throw new Error('La propiedad de Google Analytics no tiene un ID válido.')
@@ -99,11 +122,14 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
   const entries = Object.entries(definitions)
   const results = await Promise.allSettled(entries.map(async ([name, definition]) => {
     const limit = highLimitReports.has(name) ? 2000 : 100
-    const response = await analyticsData.properties.runReport({
+    const dimensions = definition.dimensions.map((dimension) => ({ name: dimension }))
+    const metricChunks = chunk([...definition.metrics], GA4_METRIC_CHUNK_SIZE)
+    const chunkResults = await Promise.all(metricChunks.map((metrics) => analyticsData.properties.runReport({
       property: `properties/${normalizedProperty}`,
-      requestBody: { ...base, dimensions: definition.dimensions.map((dimension) => ({ name: dimension })), metrics: definition.metrics.map((metric) => ({ name: metric })), limit: String(limit) },
-    })
-    return [name, rowsToRecords(response, limit)] as const
+      requestBody: { ...base, dimensions, metrics: metrics.map((metric) => ({ name: metric })), limit: String(limit) },
+    }).then((response) => rowsToRecords(response, limit))))
+    const merged = metricChunks.length > 1 ? mergeRecordsByDimensions(chunkResults, [...definition.dimensions]) : chunkResults[0]
+    return [name, merged] as const
   }))
   const reports: GoogleAnalyticsReport['reports'] = { overview: [], events: [], acquisition: [], acquisitionByEvent: [], pages: [], pagesByEvent: [], devices: [], geography: [], keyEventsByChannel: [], byDay: [] }
   const errors: GoogleAnalyticsReport['errors'] = []
