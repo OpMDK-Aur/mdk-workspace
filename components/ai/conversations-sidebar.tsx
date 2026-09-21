@@ -35,7 +35,7 @@ const fetcher = (url: string) =>
     return response.json() as Promise<{ conversations: ConversationSummary[] }>
   })
 
-const NEW_CHAT_ICON_URL = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/add_9055016-cjAlxQfNx6R3sEweu5KPBrVSWtPBzk.png'
+const NEW_CHAT_ICON_URL = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/plus_icon_128414-RNLf1weOOYxLOGCkJdJ1CODuCAn3Wp.png'
 
 function chatSummary(preview: string | null) {
   const words = (preview ?? '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean)
