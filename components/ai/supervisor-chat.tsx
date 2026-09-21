@@ -652,7 +652,7 @@ function SupervisorChatSession({
               aria-label="Consulta para el Supervisor"
               disabled={isInputDisabled}
               rows={1}
-              className="min-h-9 flex-1 resize-none py-2 leading-6"
+              className="min-h-9 flex-1 resize-none border-[#dcdcd8] py-2 leading-6 outline-none focus-visible:border-[#dcdcd8] focus-visible:ring-0 focus-visible:ring-offset-0"
             />
             <Button
               type="submit"

@@ -160,7 +160,7 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
           <Button
             variant="outline"
             size="sm"
-            className="size-8 shrink-0 border-primary/30 bg-transparent p-1.5 text-primary shadow-none hover:border-primary/30 hover:bg-transparent hover:text-primary focus-visible:border-primary/30 focus-visible:ring-0"
+            className="size-8 shrink-0 border-[#dcdcd8] bg-transparent p-1.5 text-[#5b5fe8] shadow-none outline-none hover:border-[#dcdcd8] hover:bg-transparent hover:text-[#5b5fe8] focus-visible:border-[#dcdcd8] focus-visible:ring-0 focus-visible:ring-offset-0"
             onClick={() => { onNewDiagnostic(); void mutate(CONVERSATIONS_SWR_KEY); void mutate(ARCHIVED_SWR_KEY) }}
             aria-label="Iniciar nuevo chat"
             title="Iniciar nuevo chat"
