@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { SupervisorChat } from './supervisor-chat'
 import { ConversationsSidebar, type ConversationSummary } from './conversations-sidebar'
-import { BarChart3, ChevronDown, CircleHelp, Database, LoaderCircle, Gauge, Globe2, LayoutDashboard, MessageCircle, PanelLeftClose, PanelLeftOpen, Search, Settings2, Sparkles, Tags, Users, WalletCards, X } from 'lucide-react'
+import { BarChart3, ChevronDown, CircleHelp, Database, LoaderCircle, Gauge, Globe2, LayoutDashboard, PanelLeftClose, PanelLeftOpen, Search, Settings2, Sparkles, Tags, Users, WalletCards, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -25,12 +25,14 @@ const periodStart = (period: string) => { const days = period.includes('7') ? 7 
 const periodEnd = () => new Date().toISOString().slice(0, 10)
 const formatMetric = (value: number, currency = false) => value ? `${currency ? '$ ' : ''}${value.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : 'Sin datos'
 
+const CHAT_ICON_URL = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/comment-alt-edit_12356167-0oouizd6dU7hMTS7sq4GbfQZy89qU8.png'
+
 const baseNav = [
   { label: 'Inicio', icon: LayoutDashboard },
-  { label: 'Chat / Análisis', icon: MessageCircle },
+  { label: 'Chat / Análisis', icon: null },
   { label: 'Informes', icon: BarChart3 },
   { label: 'Aprobaciones', icon: WalletCards },
-]
+] as const
 
 export function ConexaWorkspace() {
   const [clients, setClients] = useState<Client[]>([])
@@ -102,7 +104,7 @@ export function ConexaWorkspace() {
       </div>
       <nav className="flex-1 overflow-y-auto px-1.5 py-3">
         <p className={cn('mb-1.5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]', !sidebarOpen && 'sr-only')}>Trabajo</p>
-        {baseNav.map((item) => <button key={item.label} type="button" onClick={() => setActive(item.label)} className={cn('mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[10.5px] font-medium', active === item.label ? 'bg-[#eeefff] text-[#5b5fe8]' : 'text-[#5c5c5c] hover:bg-[#f5f5f8]', !sidebarOpen && 'justify-center px-0')}><item.icon className="size-[17px] shrink-0" />{sidebarOpen && <span className="flex-1">{item.label}</span>}{sidebarOpen && item.badge && <span className="rounded-full bg-[#D97706] px-1.5 text-[10px] font-bold text-white">{item.badge}</span>}</button>)}
+        {baseNav.map((item) => <button key={item.label} type="button" onClick={() => { setActive(item.label); if (item.label === 'Chat / Análisis') setSidebarOpen(false) }} className={cn('mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[10.5px] font-medium', active === item.label ? 'bg-[#eeefff] text-[#5b5fe8]' : 'text-[#5c5c5c] hover:bg-[#f5f5f8]', !sidebarOpen && 'justify-center px-0')}>{item.label === 'Chat / Análisis' ? <img src={CHAT_ICON_URL} alt="" className="size-[17px] shrink-0 object-contain" /> : item.icon && <item.icon className="size-[17px] shrink-0" />}{sidebarOpen && <span className="flex-1">{item.label}</span>}{sidebarOpen && item.badge && <span className="rounded-full bg-[#D97706] px-1.5 text-[10px] font-bold text-white">{item.badge}</span>}</button>)}
         {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Plataformas</p>}
         {platforms.map((item) => <button key={item.key} type="button" onClick={() => setActive(item.name)} className={cn('mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[10.5px]', active === item.name ? 'bg-[#eeefff] text-[#5b5fe8]' : 'text-[#5c5c5c] hover:bg-[#f5f5f8]', !sidebarOpen && 'justify-center px-0')}><span className="flex size-[18px] items-center justify-center overflow-hidden rounded-[5px] bg-white">{item.iconUrl ? <img src={item.iconUrl} alt="" className="size-full object-contain" /> : <Globe2 className="size-[15px] text-[#11A683]" />}</span>{sidebarOpen && <span className="flex-1 truncate">{item.name}</span>}{sidebarOpen && <span className={cn('size-1.5 rounded-full', item.connected ? 'bg-[#1e9e6b]' : 'bg-[#d6d6d6]')} />}</button>)}
         {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Cliente</p>}
@@ -122,7 +124,7 @@ export function ConexaWorkspace() {
 
       <main className="relative min-h-0 flex-1 overflow-hidden bg-white">
         {isLoading && <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/90 backdrop-blur-[2px]"><div className="flex w-[min(92%,360px)] flex-col items-center rounded-2xl border border-[#e6e6e3] bg-white px-8 py-7 text-center shadow-lg" role="status" aria-live="polite"><div className="mb-4 flex size-11 items-center justify-center rounded-full bg-[#eeefff]"><LoaderCircle className="size-5 animate-spin text-[#5b5fe8]" /></div><p className="text-sm font-semibold text-[#202020]">Procesando métricas</p><p className="mt-1 text-xs leading-5 text-[#888]">Estamos consultando y preparando los datos de tus plataformas.</p><div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-[#eeefff]"><div className="h-full w-2/5 animate-pulse rounded-full bg-[#5b5fe8]" /></div></div></div>}
-        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => setActive('Chat / Análisis')} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} onReportCreated={(report) => setGeneratedReports((current) => [report, ...current])} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} crmFilters={crmFilters} onCrmFiltersChange={setCrmFilters} />}
+        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => { setActive('Chat / Análisis'); setSidebarOpen(false) }} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} onReportCreated={(report) => setGeneratedReports((current) => [report, ...current])} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} crmFilters={crmFilters} onCrmFiltersChange={setCrmFilters} />}
       </main>
     </section>
   </div>
