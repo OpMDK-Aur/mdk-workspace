@@ -71,7 +71,7 @@ interface ConversationsSidebarProps {
   activeClientId: string | null
   clientFilterId?: string | null
   onSelect: (conversation: ConversationSummary) => void
-  onNewDiagnostic?: () => void
+  onNewDiagnostic?: () => void | Promise<void>
 }
 
 export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect, onNewDiagnostic }: ConversationsSidebarProps) {
@@ -161,7 +161,7 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
             variant="outline"
             size="sm"
             className="size-8 shrink-0 border-[#dcdcd8] bg-transparent p-1.5 text-[#5b5fe8] shadow-none outline-none hover:border-[#dcdcd8] hover:bg-transparent hover:text-[#5b5fe8] focus-visible:border-[#dcdcd8] focus-visible:ring-0 focus-visible:ring-offset-0"
-            onClick={() => { onNewDiagnostic(); void mutate(CONVERSATIONS_SWR_KEY); void mutate(ARCHIVED_SWR_KEY) }}
+            onClick={async () => { await onNewDiagnostic(); await mutate(CONVERSATIONS_SWR_KEY); await mutate(ARCHIVED_SWR_KEY) }}
             aria-label="Iniciar nuevo chat"
             title="Iniciar nuevo chat"
           >
