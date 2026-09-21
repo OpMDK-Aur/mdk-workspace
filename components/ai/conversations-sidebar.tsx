@@ -205,8 +205,8 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
                 onClick={() => onSelect(conversation)}
                 aria-current={isActive ? 'true' : undefined}
                 className={cn(
-                  'group flex flex-col gap-1 rounded-lg border-0 px-3 py-2 text-left transition-colors',
-                  isActive ? 'bg-[#eef0fe] text-[#5b5fe8]' : 'bg-transparent hover:bg-[#f4f4f1]',
+                  'group flex flex-col gap-1 rounded-lg border-0 bg-transparent px-3 py-2 text-left text-[#141414] transition-colors',
+                  isActive ? 'bg-[#eef0fe] text-[#5b5fe8]' : 'hover:bg-[#f4f4f1]',
                 )}
               >
                 <div className="flex items-center justify-between gap-2">
