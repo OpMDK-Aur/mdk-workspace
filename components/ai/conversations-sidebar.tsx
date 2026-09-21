@@ -160,64 +160,17 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
           <Button
             variant="outline"
             size="sm"
-            className="size-8 shrink-0 border-[#dcdcd8] bg-transparent p-1.5 text-[#5b5fe8] shadow-none outline-none hover:border-[#dcdcd8] hover:bg-transparent hover:text-[#5b5fe8] focus-visible:border-[#dcdcd8] focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="h-8 w-full justify-start gap-2 rounded-full border-[#dcdcd8] bg-transparent px-3 text-xs font-medium text-[#141414] shadow-none hover:border-[#dcdcd8] hover:bg-[#f4f4f1] hover:text-[#141414] focus-visible:border-[#dcdcd8] focus-visible:ring-0"
             onClick={async () => { await onNewDiagnostic(); await mutate(CONVERSATIONS_SWR_KEY); await mutate(ARCHIVED_SWR_KEY) }}
-            aria-label="Iniciar nuevo chat"
-            title="Iniciar nuevo chat"
           >
-            <img src={NEW_CHAT_ICON_URL} alt="" className="size-full object-contain" />
+            <img src={NEW_CHAT_ICON_URL} alt="" className="size-3.5 object-contain" />
+            Nuevo análisis
           </Button>
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-2">
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs">
-              <Filter className="size-3.5" aria-hidden="true" />
-              Filtros
-              {hasActiveFilters && <Badge variant="secondary" className="h-4 min-w-4 rounded-full px-1 text-[10px]">{activeFilterCount}</Badge>}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="flex w-64 flex-col gap-1.5">
-            <FilterSelect placeholder="Unidad de negocio" value={unidadFilter} onChange={setUnidadFilter} options={unidadOptions.map((u) => ({ value: u, label: u }))} />
-            <FilterSelect placeholder="Project Manager" value={pmFilter} onChange={setPmFilter} options={pmOptions.map(([id, name]) => ({ value: id, label: name }))} />
-            <FilterSelect placeholder="Account Manager" value={amFilter} onChange={setAmFilter} options={amOptions.map(([id, name]) => ({ value: id, label: name }))} />
-            <FilterSelect
-              placeholder="Semáforo"
-              value={semaforoFilter}
-              onChange={setSemaforoFilter}
-              options={Object.entries(SEMAFORO_LABEL).map(([value, label]) => ({ value, label }))}
-              renderOption={(opt) => (
-                <span className="flex items-center gap-1.5">
-                  <span className={cn('size-2 rounded-full', SEMAFORO_DOT[opt.value])} aria-hidden="true" />
-                  {opt.label}
-                </span>
-              )}
-            />
-            {hasActiveFilters && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 self-start px-1.5 text-xs text-muted-foreground"
-                onClick={() => {
-                  setUnidadFilter('all')
-                  setPmFilter('all')
-                  setAmFilter('all')
-                  setSemaforoFilter('all')
-                }}
-              >
-                Limpiar filtros
-              </Button>
-            )}
-          </PopoverContent>
-        </Popover>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 text-xs text-muted-foreground"
-          onClick={() => setShowArchived((v) => !v)}
-        >
+      <div className="flex items-center justify-end">
+        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-[#9a9a9a]" onClick={() => setShowArchived((v) => !v)}>
           {showArchived ? 'Ver activos' : 'Ver archivados'}
         </Button>
       </div>
@@ -252,8 +205,8 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
                 onClick={() => onSelect(conversation)}
                 aria-current={isActive ? 'true' : undefined}
                 className={cn(
-                  'group flex flex-col gap-1 rounded-md border px-3 py-2 text-left transition-colors',
-                  isActive ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-accent',
+                  'group flex flex-col gap-1 rounded-lg border-0 px-3 py-2 text-left transition-colors',
+                  isActive ? 'bg-[#eef0fe] text-[#5b5fe8]' : 'bg-transparent hover:bg-[#f4f4f1]',
                 )}
               >
                 <div className="flex items-center justify-between gap-2">

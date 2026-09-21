@@ -648,7 +648,7 @@ function SupervisorChatSession({
                 el.style.height = `${Math.min(el.scrollHeight, 160)}px`
               }}
               onKeyDown={handleTextareaKeyDown}
-              placeholder={disabled ? disabledMessage : 'Escribí una consulta para el Supervisor… (Enter para enviar, Shift+Enter para salto de línea)'}
+              placeholder={disabled ? disabledMessage : 'Preguntale algo a Conexa...'}
               aria-label="Consulta para el Supervisor"
               disabled={isInputDisabled}
               rows={1}
