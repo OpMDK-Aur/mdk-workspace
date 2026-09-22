@@ -55,8 +55,8 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks
 }
 
-// Extrae el nombre de campaña/anuncio de la metadata de referral que GHL
-// adjunta a los mensajes inbound originados en pauta (Meta/Google). La
+// Extrae el nombre de campaña/anuncio o utm_campaign de la metadata de
+// referral que GHL adjunta a los mensajes inbound originados en pauta (Meta/Google). La
 // mayoría de los contactos orgánicos no tienen esta metadata: quedan bajo
 // el bucket "Sin campaña asignada" en vez de descartarse.
 function extractCampaignFromMessage(message: { metadata?: Record<string, unknown> | null }): string | null {
@@ -66,6 +66,8 @@ function extractCampaignFromMessage(message: { metadata?: Record<string, unknown
   if (typeof adTitle === 'string' && adTitle.trim()) return adTitle.trim()
   const campaignName = referral.campaign_name ?? referral.campaignName
   if (typeof campaignName === 'string' && campaignName.trim()) return campaignName.trim()
+  const utmCampaign = referral.utm_campaign ?? referral.utmCampaign
+  if (typeof utmCampaign === 'string' && utmCampaign.trim()) return utmCampaign.trim()
   const sourceId = referral.source_id ?? referral.sourceId ?? referral.ad_id ?? referral.adId
   if (sourceId != null && String(sourceId).trim()) return `Anuncio ${sourceId}`
   return null
