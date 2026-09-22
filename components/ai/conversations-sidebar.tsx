@@ -82,9 +82,10 @@ interface ConversationsSidebarProps {
   clientFilterId?: string | null
   onSelect: (conversation: ConversationSummary) => void
   onNewDiagnostic?: () => void | Promise<void>
+  onCollapsedChange?: (collapsed: boolean) => void
 }
 
-export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect, onNewDiagnostic }: ConversationsSidebarProps) {
+export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect, onNewDiagnostic, onCollapsedChange }: ConversationsSidebarProps) {
   const [showArchived, setShowArchived] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [unidadFilter, setUnidadFilter] = useState<string>('all')
@@ -173,7 +174,7 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
           <span className="text-lg font-semibold leading-none text-[#5b5fe8]">✦</span>
           {!collapsed && <span className="text-sm font-semibold tracking-wide text-[#141414]">CONEXA</span>}
         </div>
-        <Button variant="ghost" size="sm" className="h-6 min-w-0 px-1.5 text-xs text-[#777] hover:bg-[#f4f4f1] hover:text-[#5b5fe8]" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}>
+        <Button variant="ghost" size="sm" className="h-6 min-w-0 px-1.5 text-xs text-[#777] hover:bg-[#f4f4f1] hover:text-[#5b5fe8]" onClick={() => setCollapsed((value) => { const next = !value; onCollapsedChange?.(next); return next })} aria-label={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}>
           {collapsed ? '→' : '←'}
         </Button>
       </div>

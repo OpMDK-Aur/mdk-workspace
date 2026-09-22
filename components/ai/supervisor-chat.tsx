@@ -494,12 +494,12 @@ function SupervisorChatSession({
         {/* El panel de Análisis IA se apila debajo recién a partir de xl:
             con el sidebar de chats también presente, mantenerlo al costado
             desde lg dejaba la columna del chat demasiado angosta. */}
-        <div className="flex flex-col xl:flex-row">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden xl:flex-row">
           {/* Altura acotada a la ventana: así el input queda siempre dentro
               del área visible de la columna y solo la lista de mensajes
               scrollea por dentro, en vez de que el input se desplace junto
               con el contenido y termine fuera de pantalla. */}
-          <div className="flex h-[calc(100vh-14rem)] min-h-[480px] min-w-0 flex-1 flex-col gap-4 p-4">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden p-4">
         <div ref={scrollContainerRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-lg border bg-muted/30 p-4" aria-live="polite">
           {disabled ? (
             <div className="m-auto flex max-w-sm flex-col items-center gap-3 text-center text-muted-foreground">
