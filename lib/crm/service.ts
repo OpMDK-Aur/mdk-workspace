@@ -55,21 +55,19 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks
 }
 
-// Extrae el nombre de campaña/anuncio o utm_campaign de la metadata de
-// referral que GHL adjunta a los mensajes inbound originados en pauta (Meta/Google). La
-// mayoría de los contactos orgánicos no tienen esta metadata: quedan bajo
-// el bucket "Sin campaña asignada" en vez de descartarse.
-function extractCampaignFromMessage(message: { metadata?: Record<string, unknown> | null }): string | null {
+// Devuelve únicamente el origen de pauta que queremos mostrar en CRM.
+// Los referrals de búsqueda orgánica de WhatsApp no se consideran adquisición.
+function extractCampaignFromMessage(message: { metadata?: Record<string, unknown> | null }): 'Google' | 'Meta' | null {
   const referral = message.metadata?.referral as Record<string, unknown> | undefined
   if (!referral || typeof referral !== 'object') return null
-  const adTitle = referral.ad_title ?? referral.adTitle
-  if (typeof adTitle === 'string' && adTitle.trim()) return adTitle.trim()
-  const campaignName = referral.campaign_name ?? referral.campaignName
-  if (typeof campaignName === 'string' && campaignName.trim()) return campaignName.trim()
-  const utmCampaign = referral.utm_campaign ?? referral.utmCampaign
-  if (typeof utmCampaign === 'string' && utmCampaign.trim()) return utmCampaign.trim()
-  const sourceId = referral.source_id ?? referral.sourceId ?? referral.ad_id ?? referral.adId
-  if (sourceId != null && String(sourceId).trim()) return `Anuncio ${sourceId}`
+  const sourceApp = String(referral.source_app ?? referral.sourceApp ?? '').toLowerCase()
+  const source = String(referral.utm_source ?? referral.utmSource ?? '').toLowerCase()
+  const conversionSource = String(referral.conversion_source ?? referral.conversionSource ?? '').toLowerCase()
+  const entryPoint = String(referral.entry_point_conversion_source ?? referral.entryPointConversionSource ?? '').toLowerCase()
+  const isOrganic = entryPoint === 'global_search_new_chat' || entryPoint === 'global_search'
+  if (isOrganic) return null
+  if (source === 'google' || sourceApp === 'google' || referral.gclid || referral.gbraid || referral.wbraid) return 'Google'
+  if (sourceApp === 'facebook' || sourceApp === 'instagram' || conversionSource.includes('fb_') || referral.ctwa_clid || entryPoint === 'ctwa_ad') return 'Meta'
   return null
 }
 
@@ -176,8 +174,9 @@ export async function getCrmAcquisitionReport(clientId: string, dateFrom: string
       if (campaign) campaignByContact.set(message.contact_id, campaign)
     }
 
+    const attributedContactIds = contactIds.filter((id) => campaignByContact.has(id))
     const contactRecords = new Map<string, ContactRecord>()
-    for (const id of contactIds) contactRecords.set(id, { contactId: id, tagNames: tagNamesByContact.get(id) ?? [], channelName: channelByContact.get(id) ?? null, campaign: campaignByContact.get(id) ?? null })
+    for (const id of attributedContactIds) contactRecords.set(id, { contactId: id, tagNames: tagNamesByContact.get(id) ?? [], channelName: channelByContact.get(id) ?? null, campaign: campaignByContact.get(id) ?? null })
 
     const opportunityRecords: OpportunityRecord[] = opportunitiesRaw.filter((row) => row.contact_id).map((row) => ({
       contactId: row.contact_id,
@@ -191,9 +190,9 @@ export async function getCrmAcquisitionReport(clientId: string, dateFrom: string
     // período (sin aplicar los filtros ya seleccionados) para que el
     // usuario siempre pueda ampliar la selección.
     const filterOptions = {
-      campaigns: [...new Set(contactIds.map((id) => contactRecords.get(id)?.campaign ?? UNASSIGNED_CAMPAIGN))].sort(),
-      tags: [...new Set(contactIds.flatMap((id) => contactRecords.get(id)?.tagNames.length ? contactRecords.get(id)!.tagNames : [UNASSIGNED_TAG]))].sort(),
-      channels: [...new Set(contactIds.map((id) => contactRecords.get(id)?.channelName ?? UNASSIGNED_CHANNEL))].sort(),
+      campaigns: [...new Set(attributedContactIds.map((id) => contactRecords.get(id)?.campaign ?? UNASSIGNED_CAMPAIGN))].sort(),
+      tags: [...new Set(attributedContactIds.flatMap((id) => contactRecords.get(id)?.tagNames.length ? contactRecords.get(id)!.tagNames : [UNASSIGNED_TAG]))].sort(),
+      channels: [...new Set(attributedContactIds.map((id) => contactRecords.get(id)?.channelName ?? UNASSIGNED_CHANNEL))].sort(),
       vendors: [...new Set(opportunityRecords.map((row) => row.vendorName))].sort(),
       teams: [...new Set(opportunityRecords.map((row) => row.teamName))].sort(),
       statuses: [...new Set(opportunityRecords.map((row) => row.statusLabel))].sort(),
