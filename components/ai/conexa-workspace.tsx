@@ -42,6 +42,8 @@ export function ConexaWorkspace() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [active, setActive] = useState('Inicio')
   const [period, setPeriod] = useState('Últimos 30 días')
+  const [periodByPlatform, setPeriodByPlatform] = useState<Record<string, string>>({})
+  const [customRangeByPlatform, setCustomRangeByPlatform] = useState<Record<string, { from: string; to: string }>>({})
   const [clientMenu, setClientMenu] = useState(false)
   const [clientSearch, setClientSearch] = useState('')
   const [periodMenu, setPeriodMenu] = useState(false)
@@ -66,11 +68,15 @@ export function ConexaWorkspace() {
   }).finally(() => setClientsLoading(false))
   }, [])
 
+  const dataPlatformKey = ({ 'Meta Ads': 'meta', 'Google Ads': 'google', 'Google Analytics': 'analytics', 'Tag Manager': 'tag_manager', CRM: 'crm' } as Record<string, string>)[active]
+  const dataPeriod = dataPlatformKey ? periodByPlatform[dataPlatformKey] ?? period : period
+  const dataCustomRange = dataPlatformKey ? customRangeByPlatform[dataPlatformKey] ?? customRange : customRange
+
   useEffect(() => {
-    if (!client?.id || !period) return
+    if (!client?.id || !dataPeriod) return
     if (clientLoadPending) setIsLoading(true)
     let cancelled = false
-    fetch('/api/conexa/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client.id, period, customRange, selectedAccounts, crmFilters }) })
+    fetch('/api/conexa/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client.id, period: dataPeriod, customRange: dataCustomRange, selectedAccounts, crmFilters }) })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron consultar las tools de Conexa.')))
       .then((result) => {
         if (cancelled) return
@@ -79,7 +85,7 @@ export function ConexaWorkspace() {
       .catch(() => { if (!cancelled) setData(emptyConexaData) })
       .finally(() => { if (!cancelled && clientLoadPending) { setIsLoading(false); setClientLoadPending(false) } })
     return () => { cancelled = true }
-  }, [client?.id, period, customRange, selectedAccounts, crmFilters])
+  }, [client?.id, dataPeriod, dataCustomRange, selectedAccounts, crmFilters])
 
   const platforms = useMemo<Platform[]>(() => [
     { name: 'Meta Ads', key: 'meta', icon: BarChart3, color: '#1877F2', iconUrl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Facebook_Logo_%282019%29-8hLkShXu9caNijxaYTMKGdv1bWipbV.png', connected: Boolean(client?.meta_ads_account_id || client?.meta_ads_account_ids?.length), detail: client?.meta_ads_account_id || client?.meta_ads_account_ids?.length ? `Cuenta ${client.meta_ads_account_id ?? client.meta_ads_account_ids?.[0]}` : 'Sin cuenta conectada' },
@@ -90,6 +96,9 @@ export function ConexaWorkspace() {
   ], [client])
 
   const connected = platforms.filter((item) => item.connected).length
+  const activePlatformKey = platforms.find((item) => item.name === active)?.key
+  const activePeriod = activePlatformKey ? periodByPlatform[activePlatformKey] ?? period : period
+  const activeCustomRange = activePlatformKey ? customRangeByPlatform[activePlatformKey] ?? customRange : customRange
 
   useEffect(() => {
     if (!client?.id) return
@@ -130,7 +139,8 @@ export function ConexaWorkspace() {
 
       <main className="relative min-h-0 flex-1 overflow-hidden bg-white">
         {isLoading && <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/90 backdrop-blur-[2px]"><div className="flex w-[min(92%,360px)] flex-col items-center rounded-2xl border border-[#e6e6e3] bg-white px-8 py-7 text-center shadow-lg" role="status" aria-live="polite"><div className="mb-4 flex size-11 items-center justify-center rounded-full bg-[#eeefff]"><LoaderCircle className="size-5 animate-spin text-[#5b5fe8]" /></div><p className="text-sm font-semibold text-[#202020]">Procesando métricas</p><p className="mt-1 text-xs leading-5 text-[#888]">Estamos consultando y preparando los datos de tus plataformas.</p><div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-[#eeefff]"><div className="h-full w-2/5 animate-pulse rounded-full bg-[#5b5fe8]" /></div></div></div>}
-        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => { setActive('Chat / Análisis'); setSidebarOpen(false) }} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} onReportCreated={(report) => setGeneratedReports((current) => [report, ...current])} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} onNavigate={(destination) => { setActive(destination); setSidebarOpen(false) }} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} crmFilters={crmFilters} onCrmFiltersChange={setCrmFilters} />}
+        {activePlatformKey && <div className="absolute right-4 top-3 z-30 flex items-center gap-2"><span className="text-[10px] font-semibold uppercase tracking-[.08em] text-[#999]">Período</span><PeriodSelector period={activePeriod} customRange={activeCustomRange} onChange={(nextPeriod, range) => { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) }} /></div>}
+        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => { setActive('Chat / Análisis'); setSidebarOpen(false) }} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} onReportCreated={(report) => setGeneratedReports((current) => [report, ...current])} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} onNavigate={(destination) => { setActive(destination); setSidebarOpen(false) }} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} crmFilters={crmFilters} onCrmFiltersChange={setCrmFilters} period={activePeriod} customRange={activeCustomRange} onPeriodChange={(nextPeriod, range) => { if (activePlatformKey) { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) } }} />}
       </main>
     </section>
   </div>
@@ -612,7 +622,7 @@ function CrmBreakdownTable({ title, rows, labelHeader }: { title: string; rows: 
   </div>
 }
 
-function CrmConexaView({ platform, onManage, onNavigate, data, client, filters, onFiltersChange }: { platform: Platform; onManage: () => void; onNavigate: (destination: string) => void; data: ConexaData; client: Client | null; filters: CrmAcquisitionFilters; onFiltersChange: (filters: CrmAcquisitionFilters) => void }) {
+function CrmConexaView({ platform, onManage, onNavigate, data, client, filters, onFiltersChange, period, customRange, onPeriodChange }: { platform: Platform; onManage: () => void; onNavigate: (destination: string) => void; data: ConexaData; client: Client | null; filters: CrmAcquisitionFilters; onFiltersChange: (filters: CrmAcquisitionFilters) => void; period: string; customRange: { from: string; to: string }; onPeriodChange: (period: string, range?: { from: string; to: string }) => void }) {
   const [tab, setTab] = useState('Adquisición')
   const crm = (data.platformData.crm ?? {}) as { acquisition?: CrmAcquisitionReport }
   const report = crm.acquisition
@@ -664,12 +674,18 @@ function CrmConexaView({ platform, onManage, onNavigate, data, client, filters, 
   </div>
 }
 
-function PlatformView({ platform, initialTab, onManage, onNavigate, data, client, selectedAccounts, onAccountsChange, crmFilters, onCrmFiltersChange }: { platform: Platform; initialTab?: string; onManage: () => void; onNavigate: (destination: string) => void; data: ConexaData; client: Client | null; selectedAccounts: Record<string, string[]>; onAccountsChange: (accounts: string[]) => void; crmFilters: CrmAcquisitionFilters; onCrmFiltersChange: (filters: CrmAcquisitionFilters) => void }) {
+function PeriodSelector({ period, customRange, onChange }: { period: string; customRange: { from: string; to: string }; onChange: (period: string, range?: { from: string; to: string }) => void }) {
+  const [open, setOpen] = useState(false)
+  const options = ['Hoy', 'Ayer', 'Últimos 7 días', 'Últimos 30 días', 'Este mes', 'Mes anterior']
+  return <div className="relative"><button type="button" onClick={() => setOpen((value) => !value)} className="flex items-center gap-1.5 rounded-lg border border-[#e6e6e3] bg-white px-3 py-1.5 text-[12px] font-medium text-[#5c5c5c]">{period}<ChevronDown className="size-3 text-[#9a9a9a]" /></button>{open && <div className="absolute right-0 top-10 z-30 min-w-[190px] rounded-[10px] border border-[#e6e6e3] bg-white p-1.5 shadow-lg">{options.map((item) => <button type="button" key={item} onClick={() => { onChange(item); setOpen(false) }} className="block w-full rounded-md px-2.5 py-2 text-left text-[12px] hover:bg-[#f5f5f5]">{item}</button>)}<button type="button" onClick={() => onChange('Personalizado', customRange)} className="block w-full rounded-md px-2.5 py-2 text-left text-[12px] hover:bg-[#f5f5f5]">Personalizado</button>{period === 'Personalizado' && <div className="border-t border-[#eee] px-2.5 py-2"><label className="block text-[10px] text-[#888]">Desde<input type="date" value={customRange.from} onChange={(event) => onChange('Personalizado', { ...customRange, from: event.target.value })} className="mt-1 block w-full rounded-md border border-[#e6e6e3] px-2 py-1.5 text-[11px]" /></label><label className="mt-2 block text-[10px] text-[#888]">Hasta<input type="date" value={customRange.to} onChange={(event) => onChange('Personalizado', { ...customRange, to: event.target.value })} className="mt-1 block w-full rounded-md border border-[#e6e6e3] px-2 py-1.5 text-[11px]" /></label></div>}</div>}</div>
+}
+
+function PlatformView({ platform, initialTab, onManage, onNavigate, data, client, selectedAccounts, onAccountsChange, crmFilters, onCrmFiltersChange, period, customRange, onPeriodChange }: { platform: Platform; initialTab?: string; onManage: () => void; onNavigate: (destination: string) => void; data: ConexaData; client: Client | null; selectedAccounts: Record<string, string[]>; onAccountsChange: (accounts: string[]) => void; crmFilters: CrmAcquisitionFilters; onCrmFiltersChange: (filters: CrmAcquisitionFilters) => void; period: string; customRange: { from: string; to: string }; onPeriodChange: (period: string, range?: { from: string; to: string }) => void }) {
   if (platform.key === 'google') return <GoogleAdsConexaView platform={platform} onManage={onManage} data={data} client={client} selectedAccounts={selectedAccounts} onAccountsChange={onAccountsChange} />
   if (platform.key === 'meta') return <MetaAdsConexaView platform={platform} onManage={onManage} data={data} client={client} selectedAccounts={selectedAccounts} onAccountsChange={onAccountsChange} />
   if (platform.key === 'analytics') return <GoogleAnalyticsConexaView platform={platform} onManage={onManage} data={data} />
   if (platform.key === 'tag_manager') return <GoogleTagManagerConexaView platform={platform} onManage={onManage} data={data} />
-  if (platform.key === 'crm') return <CrmConexaView platform={platform} onManage={onManage} onNavigate={onNavigate} data={data} client={client} filters={crmFilters} onFiltersChange={onCrmFiltersChange} />
+  if (platform.key === 'crm') return <CrmConexaView platform={platform} onManage={onManage} onNavigate={onNavigate} data={data} client={client} filters={crmFilters} onFiltersChange={onCrmFiltersChange} period={period} customRange={customRange} onPeriodChange={onPeriodChange} />
   const tabSets: Record<string, string[]> = {
     meta: ['Resumen', 'Campañas', 'Conjuntos', 'Anuncios', 'Creativos', 'Audiencias', 'Redes', 'Tracking'],
     google: ['Resumen', 'Campañas', 'Grupos de anuncios', 'Palabras clave', 'Conversiones'],
