@@ -224,8 +224,9 @@ export async function getCrmAcquisitionReport(clientId: string, dateFrom: string
     // atribución vive del lado del contacto); Vendedor/Equipo se basan en
     // oportunidades (esos campos solo existen ahí). Todas respetan el
     // resto de los filtros seleccionados por el usuario.
-    const eligibleContactIds = contactIds.filter((id) => {
-      const record = contactRecords.get(id)!
+    const eligibleContactIds = attributedContactIds.filter((id) => {
+      const record = contactRecords.get(id)
+      if (!record) return false
       if (!passesContactFilters(record, normalizedFilters)) return false
       if (!normalizedFilters.vendors.length && !normalizedFilters.teams.length && !normalizedFilters.statuses.length) return true
       return opportunityRecords.some((opportunity) => opportunity.contactId === id && passesOpportunityFilters(opportunity, normalizedFilters))
