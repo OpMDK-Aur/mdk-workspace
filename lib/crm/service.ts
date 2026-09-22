@@ -17,6 +17,7 @@ export async function resolveCrmAccountIds(clientId: string): Promise<string[]> 
 }
 
 export type CrmAcquisitionFilters = {
+  sources?: string[]
   campaigns?: string[]
   tags?: string[]
   vendors?: string[]
@@ -32,7 +33,7 @@ export type CrmAcquisitionReport =
   | {
       available: true
       totals: { contacts: number; sales: number }
-      filterOptions: { campaigns: string[]; tags: string[]; vendors: string[]; channels: string[]; teams: string[]; statuses: string[] }
+      filterOptions: { sources: string[]; campaigns: string[]; tags: string[]; vendors: string[]; channels: string[]; teams: string[]; statuses: string[] }
       campaignRows: CrmBreakdownRow[]
       vendorRows: CrmBreakdownRow[]
       teamRows: CrmBreakdownRow[]
@@ -97,6 +98,7 @@ type ContactRecord = { contactId: string; tagNames: string[]; channelName: strin
 type OpportunityRecord = { contactId: string; vendorName: string; teamName: string; statusLabel: string; isWon: boolean }
 
 function passesContactFilters(record: ContactRecord, filters: Required<CrmAcquisitionFilters>): boolean {
+  if (filters.sources.length && !filters.sources.some((source) => (record.campaign ?? '').startsWith(`${source} ·`))) return false
   if (filters.campaigns.length && !filters.campaigns.includes(record.campaign ?? UNASSIGNED_CAMPAIGN)) return false
   if (filters.tags.length && !record.tagNames.some((tag) => filters.tags.includes(tag)) && !(filters.tags.includes(UNASSIGNED_TAG) && record.tagNames.length === 0)) return false
   if (filters.channels.length && !filters.channels.includes(record.channelName ?? UNASSIGNED_CHANNEL)) return false
@@ -114,7 +116,7 @@ export async function getCrmAcquisitionReport(clientId: string, dateFrom: string
   const crmAccountIds = await resolveCrmAccountIds(clientId)
   if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
 
-  const normalizedFilters: Required<CrmAcquisitionFilters> = { campaigns: filters.campaigns ?? [], tags: filters.tags ?? [], vendors: filters.vendors ?? [], channels: filters.channels ?? [], teams: filters.teams ?? [], statuses: filters.statuses ?? [] }
+  const normalizedFilters: Required<CrmAcquisitionFilters> = { sources: filters.sources ?? [], campaigns: filters.campaigns ?? [], tags: filters.tags ?? [], vendors: filters.vendors ?? [], channels: filters.channels ?? [], teams: filters.teams ?? [], statuses: filters.statuses ?? [] }
   const crm = createCrmClient()
   const start = new Date(`${dateFrom}T00:00:00-03:00`).toISOString()
   const endExclusive = new Date(`${dateTo}T00:00:00-03:00`)
@@ -212,11 +214,12 @@ export async function getCrmAcquisitionReport(clientId: string, dateFrom: string
     // período (sin aplicar los filtros ya seleccionados) para que el
     // usuario siempre pueda ampliar la selección.
     const filterOptions = {
+      sources: ['Google', 'Meta WhatsApp', 'Meta Formulario'],
       campaigns: [...new Set(attributedContactIds.map((id) => contactRecords.get(id)?.campaign ?? UNASSIGNED_CAMPAIGN))].sort(),
       tags: [...new Set(attributedContactIds.flatMap((id) => contactRecords.get(id)?.tagNames.length ? contactRecords.get(id)!.tagNames : [UNASSIGNED_TAG]))].sort(),
       channels: [...new Set(attributedContactIds.map((id) => contactRecords.get(id)?.channelName ?? UNASSIGNED_CHANNEL))].sort(),
       vendors: [...new Set(opportunityRecords.map((row) => row.vendorName))].sort(),
-      teams: [...new Set(opportunityRecords.map((row) => row.teamName))].sort(),
+      teams: [...new Set(opportunityRecords.map((row) => row.teamName).filter((name) => name !== UNASSIGNED_TEAM))].sort().length ? [...new Set(opportunityRecords.map((row) => row.teamName).filter((name) => name !== UNASSIGNED_TEAM))].sort() : ['Equipo Comercial', 'Equipo Paid Media'],
       statuses: [...new Set(opportunityRecords.map((row) => row.statusLabel))].sort(),
     }
 

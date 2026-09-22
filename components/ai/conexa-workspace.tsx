@@ -610,13 +610,13 @@ function CrmConexaView({ platform, onManage, onNavigate, data, client, filters, 
   const [tab, setTab] = useState('Adquisición')
   const crm = (data.platformData.crm ?? {}) as { acquisition?: CrmAcquisitionReport }
   const report = crm.acquisition
-  const filterOptions = report?.filterOptions ?? { campaigns: [], tags: [], vendors: [], channels: [], teams: [], statuses: [] }
-  const crmTabs = ['Resumen', 'Contactos', 'Oportunidades', 'Pipeline', 'Campañas', 'Ganados', 'Perdidos']
+  const filterOptions = report?.filterOptions ?? { sources: [], campaigns: [], tags: [], vendors: [], channels: [], teams: [], statuses: [] }
+  const crmTabs = ['Resumen', 'Campañas']
 
   const header = <div className="mb-4 flex flex-col gap-4">
     <div className="flex items-start justify-between gap-4">
       <div className="flex items-center gap-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[#bce8dc] bg-[#effbf7]"><Users className="size-6 text-[#11A683]" /></span><div><h1 className="text-[24px] font-bold leading-none">CRM</h1><p className="mt-1 text-[11px] text-[#777]">{platform.detail} {client?.crm_type && <span className="ml-1 text-[#1e9e6b]">· ● Conectado</span>}</p></div></div>
-      <div className="flex shrink-0 items-center gap-2"><Button variant="outline" onClick={() => onNavigate('Chat / Análisis')} className="h-8 rounded-full border-[#5b5fe8] bg-white px-4 text-[11px] text-[#5b5fe8]">✦ Analizar campañas con Conexa</Button><Button variant="outline" onClick={onManage} className="h-8 rounded-full border-[#dcdcd8] bg-white px-4 text-[11px] text-[#222]">Administrar conexión</Button></div>
+      <div className="flex shrink-0 items-center gap-2"><Button variant="outline" onClick={() => onNavigate('Chat / Análisis')} className="!h-8 !rounded-full !border-[#5b5fe8] !bg-white !px-4 !text-[11px] !text-[#5b5fe8] hover:!border-[#5b5fe8] hover:!bg-white hover:!text-[#5b5fe8]">✦ Analizar campañas con Conexa</Button><Button variant="outline" onClick={onManage} className="h-8 rounded-full border-[#dcdcd8] bg-white px-4 text-[11px] text-[#222]">Administrar conexión</Button></div>
     </div>
     <div className="flex gap-7 overflow-x-auto border-b border-[#dededb] text-[10px] font-semibold text-[#777]">{crmTabs.map((item) => <button type="button" key={item} onClick={() => setTab(item)} className={cn('shrink-0 border-b-2 px-1 pb-3', tab === item ? 'border-[#5b5fe8] text-[#5b5fe8]' : 'border-transparent')}>{item}</button>)}</div>
   </div>
@@ -624,7 +624,9 @@ function CrmConexaView({ platform, onManage, onNavigate, data, client, filters, 
   if (!client?.crm_type) return <div className="mx-auto max-w-[1180px] px-6 py-5">{header}<p className="rounded-xl border border-[#dcdcd8] bg-white p-8 text-center text-xs text-[#888]">Sin CRM conectado para este cliente.</p></div>
   if (!report || !report.available) return <div className="mx-auto max-w-[1180px] px-6 py-5">{header}<p className="rounded-xl border border-[#dcdcd8] bg-white p-8 text-center text-xs text-[#888]">{report && 'message' in report ? report.message : 'No se pudo consultar el CRM para el período seleccionado.'}</p></div>
 
+  const sourceOptions = ['Google', 'Meta WhatsApp', 'Meta Formulario']
   const filterSetters: Array<{ key: keyof CrmAcquisitionFilters; label: string; options: string[] }> = [
+    { key: 'sources', label: 'Fuente', options: sourceOptions },
     { key: 'campaigns', label: 'Campaña', options: filterOptions.campaigns },
     { key: 'tags', label: 'Etiqueta', options: filterOptions.tags },
     { key: 'vendors', label: 'Vendedor', options: filterOptions.vendors },
@@ -646,16 +648,13 @@ function CrmConexaView({ platform, onManage, onNavigate, data, client, filters, 
       <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="text-[10px] font-semibold text-[#888]">Total de ventas</p><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#1e9e6b]">{report.totals.sales.toLocaleString('es-AR')}</p></div>
     </div>
 
-    <div className="mb-4 flex gap-7 border-b border-[#dededb] text-[10px] font-semibold text-[#777]">{['Adquisición', 'Etiquetas'].map((item) => <button type="button" key={item} onClick={() => setTab(item)} className={cn('border-b-2 px-1 pb-3', tab === item ? 'border-[#11A683] text-[#11A683]' : 'border-transparent')}>{item}</button>)}</div>
-
     {(tab === 'Resumen' || tab === 'Campañas') && <div className="flex flex-col gap-4">
       <CrmBreakdownTable title="Origen de adquisición" rows={report.campaignRows} labelHeader="Origen" />
       <CrmBreakdownTable title="Vendedor" rows={report.vendorRows} labelHeader="Vendedor" />
       <CrmBreakdownTable title="Equipo de ventas" rows={report.teamRows} labelHeader="Equipo" />
     </div>}
 
-    {tab === 'Etiquetas' && <CrmBreakdownTable title="Etiquetas" rows={report.tagRows} labelHeader="Etiqueta" />}
-    {!['Resumen', 'Campañas', 'Etiquetas'].includes(tab) && <p className="rounded-xl border border-[#dcdcd8] bg-white p-8 text-center text-xs text-[#888]">La vista de {tab.toLowerCase()} estará disponible con la próxima sincronización del CRM.</p>}
+    {tab !== 'Resumen' && tab !== 'Campañas' && <p className="rounded-xl border border-[#dcdcd8] bg-white p-8 text-center text-xs text-[#888]">Seleccioná una pestaña para ver los datos.</p>}
   </div>
 }
 
