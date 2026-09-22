@@ -521,13 +521,13 @@ function SupervisorChatSession({
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Podés empezar preguntando</p>
                 <div className="flex flex-wrap gap-2">
                   {[
-                    '¿Cómo fue el rendimiento de mis campañas en los últimos 90 días?',
-                    '¿Qué campañas debería optimizar primero y por qué?',
-                    'Compará Meta Ads y Google Ads y señalá las diferencias.',
-                    '¿Qué acciones concretas recomendás para mejorar las conversiones?',
+'¿Cuántos leads se convirtieron en venta en [período]?',
+  'Dame un desglose por campaña de la cantidad de leads que ingresaron al CRM y cuántas ventas tuve por campaña.',
+  'Cruzá la información de CRM con Meta Ads para verificar si existen discrepancias y sobre qué campañas.',
+  'Cruzá la información de CRM con Google Ads para verificar si existen discrepancias y sobre qué campañas.',
                   ].map((suggestion) => (
-                    <button key={suggestion} type="button" className="group flex items-center gap-2 rounded-full border border-[#dcdcd8] bg-white px-3 py-1.5 text-left text-xs text-[#141414] transition-colors hover:border-[#5b5fe8] hover:bg-[#f4f4f1]" onClick={() => setInput(suggestion)}>
-                      <span>{suggestion}</span>
+                    <button key={suggestion} type="button" className="group flex items-center gap-2 rounded-full border border-[#dcdcd8] bg-white px-3 py-1.5 text-left text-xs text-[#141414] transition-colors hover:border-[#5b5fe8] hover:bg-[#f4f4f1]" onClick={() => { setInput(suggestion); requestAnimationFrame(() => { const field = textareaRef.current; if (!field) return; const cursor = suggestion.indexOf('[período]'); field.focus(); field.setSelectionRange(cursor, cursor + '[período]'.length) }) }}>
+                      <span>{suggestion.includes('[período]') ? <>{suggestion.split('[período]')[0]}<span className="rounded bg-[#eeefff] px-1.5 py-0.5 font-semibold text-[#5b5fe8]">[período]</span>{suggestion.split('[período]')[1]}</> : suggestion}</span>
                       <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
                     </button>
                   ))}

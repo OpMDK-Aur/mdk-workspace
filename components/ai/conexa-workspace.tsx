@@ -39,7 +39,7 @@ export function ConexaWorkspace() {
   const [client, setClient] = useState<Client | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [active, setActive] = useState('Inicio')
-  const [period, setPeriod] = useState('')
+  const [period, setPeriod] = useState('Últimos 30 días')
   const [clientMenu, setClientMenu] = useState(false)
   const [clientSearch, setClientSearch] = useState('')
   const [periodMenu, setPeriodMenu] = useState(false)
@@ -47,6 +47,7 @@ export function ConexaWorkspace() {
   const [platformTab, setPlatformTab] = useState<string | undefined>(undefined)
   const [data, setData] = useState<ConexaData>(emptyConexaData)
   const [isLoading, setIsLoading] = useState(false)
+  const [clientLoadPending, setClientLoadPending] = useState(false)
   const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([])
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string[]>>({})
   const [crmFilters, setCrmFilters] = useState<CrmAcquisitionFilters>({})
@@ -56,13 +57,15 @@ export function ConexaWorkspace() {
     supabase.from('clientes').select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids, analytics_property_id, tag_manager_container_id, crm_type, cuentas_publicitarias(id_cuenta, nombre_cuenta, plataforma, activo)').order('nombre_del_negocio').then(({ data }) => {
       const rows = (data ?? []) as Client[]
       setClients(rows)
-      setClient(rows.sort((a, b) => Number(Boolean(b.meta_ads_account_id || b.meta_ads_account_ids?.length || b.google_ads_customer_id || b.google_ads_customer_ids?.length || b.analytics_property_id || b.tag_manager_container_id || b.crm_type)) - Number(Boolean(a.meta_ads_account_id || a.meta_ads_account_ids?.length || a.google_ads_customer_id || a.google_ads_customer_ids?.length || a.analytics_property_id || a.tag_manager_container_id || a.crm_type)))[0] ?? null)
+      const initialClient = rows.sort((a, b) => Number(Boolean(b.meta_ads_account_id || b.meta_ads_account_ids?.length || b.google_ads_customer_id || b.google_ads_customer_ids?.length || b.analytics_property_id || b.tag_manager_container_id || b.crm_type)) - Number(Boolean(a.meta_ads_account_id || a.meta_ads_account_ids?.length || a.google_ads_customer_id || a.google_ads_customer_ids?.length || a.analytics_property_id || a.tag_manager_container_id || a.crm_type)))[0] ?? null
+      setClientLoadPending(Boolean(initialClient))
+      setClient(initialClient)
     })
   }, [])
 
   useEffect(() => {
     if (!client?.id || !period) return
-    setIsLoading(true)
+    if (clientLoadPending) setIsLoading(true)
     let cancelled = false
     fetch('/api/conexa/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client.id, period, customRange, selectedAccounts, crmFilters }) })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron consultar las tools de Conexa.')))
@@ -71,7 +74,7 @@ export function ConexaWorkspace() {
         setData({ accounts: [], metrics: Array.isArray(result.metrics) ? result.metrics : [], reports: Array.isArray(result.analytics?.reports) ? result.analytics.reports : [], approvals: [], profile: null, memory: Array.isArray(result.memory?.items) ? result.memory.items : [], platformMetrics: result.platformMetrics && typeof result.platformMetrics === 'object' ? result.platformMetrics : {}, platformData: { meta: result.meta, google: result.google, analytics: result.analytics, tagManager: result.tagManager, crm: { contacts: result.contacts, opportunities: result.opportunities, sales: result.sales, acquisition: result.crmAcquisition } } })
       })
       .catch(() => { if (!cancelled) setData(emptyConexaData) })
-      .finally(() => { if (!cancelled) setIsLoading(false) })
+      .finally(() => { if (!cancelled && clientLoadPending) { setIsLoading(false); setClientLoadPending(false) } })
     return () => { cancelled = true }
   }, [client?.id, period, customRange, selectedAccounts, crmFilters])
 
@@ -116,8 +119,8 @@ export function ConexaWorkspace() {
     </aside>
 
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className="flex h-[41px] shrink-0 items-center gap-2.5 border-b border-[#dededb] bg-white px-[16px]">
-        <div className="relative"><button type="button" onClick={() => setClientMenu((value) => !value)} className="flex items-center gap-1.5 rounded-lg border border-[#e6e6e3] px-3 py-1.5 text-[13px] font-medium">{client?.nombre_del_negocio ?? 'Seleccionar cliente'} <ChevronDown className="size-3 text-[#9a9a9a]" /></button>{clientMenu && <div className="absolute left-0 top-10 z-30 w-[250px] rounded-[10px] border border-[#e6e6e3] bg-white p-1.5 shadow-lg"><input autoFocus value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Buscar cliente..." aria-label="Buscar cliente" className="mb-1.5 w-full rounded-md border border-[#e6e6e3] bg-[#fafaf8] px-2.5 py-2 text-[12px] outline-none focus:border-[#5b5fe8]" /><div className="max-h-[min(60vh,420px)] overflow-y-auto overscroll-contain pr-0.5">{clients.filter((item) => item.nombre_del_negocio.toLowerCase().includes(clientSearch.toLowerCase().trim())).map((item) => <button type="button" key={item.id} onClick={() => { setClient(item); setClientMenu(false); setClientSearch('') }} className="block w-full rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f5f5f5]">{item.nombre_del_negocio}</button>)}{clients.filter((item) => item.nombre_del_negocio.toLowerCase().includes(clientSearch.toLowerCase().trim())).length === 0 && <p className="px-2.5 py-3 text-[12px] text-[#9a9a9a]">No se encontraron clientes</p>}</div></div>}</div>
+      <header className="[&>div:nth-child(2)]:hidden flex h-[41px] shrink-0 items-center gap-2.5 border-b border-[#dededb] bg-white px-[16px]">
+        <div className="relative"><button type="button" onClick={() => setClientMenu((value) => !value)} className="flex items-center gap-1.5 rounded-lg border border-[#e6e6e3] px-3 py-1.5 text-[13px] font-medium">{client?.nombre_del_negocio ?? 'Seleccionar cliente'} <ChevronDown className="size-3 text-[#9a9a9a]" /></button>{clientMenu && <div className="absolute left-0 top-10 z-30 w-[250px] rounded-[10px] border border-[#e6e6e3] bg-white p-1.5 shadow-lg"><input autoFocus value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Buscar cliente..." aria-label="Buscar cliente" className="mb-1.5 w-full rounded-md border border-[#e6e6e3] bg-[#fafaf8] px-2.5 py-2 text-[12px] outline-none focus:border-[#5b5fe8]" /><div className="max-h-[min(60vh,420px)] overflow-y-auto overscroll-contain pr-0.5">{clients.filter((item) => item.nombre_del_negocio.toLowerCase().includes(clientSearch.toLowerCase().trim())).map((item) => <button type="button" key={item.id} onClick={() => { setClientLoadPending(true); setClient(item); setClientMenu(false); setClientSearch('') }} className="block w-full rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f5f5f5]">{item.nombre_del_negocio}</button>)}{clients.filter((item) => item.nombre_del_negocio.toLowerCase().includes(clientSearch.toLowerCase().trim())).length === 0 && <p className="px-2.5 py-3 text-[12px] text-[#9a9a9a]">No se encontraron clientes</p>}</div></div>}</div>
         <div className="relative"><button type="button" onClick={() => setPeriodMenu((value) => !value)} className="flex items-center gap-1.5 rounded-lg border border-[#e6e6e3] px-3 py-1.5 text-[13px] font-medium text-[#5c5c5c]">{period || 'Seleccionar período'} <ChevronDown className="size-3 text-[#9a9a9a]" /></button>{periodMenu && <div className="absolute left-0 top-10 z-20 min-w-[190px] rounded-[10px] border border-[#e6e6e3] bg-white p-1.5 shadow-lg">{['Hoy', 'Ayer', 'Últimos 7 días', 'Últimos 30 días', 'Este mes', 'Mes anterior'].map((item) => <button type="button" key={item} onClick={() => { setPeriod(item); setPeriodMenu(false) }} className="block w-full rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f5f5f5]">{item}</button>)}<button type="button" onClick={() => setPeriod('Personalizado')} className={cn('block w-full rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f5f5f5]', period === 'Personalizado' && 'bg-[#f5f5f3]')}>Personalizado</button>{period === 'Personalizado' && <div className="mt-1 border-t border-[#eee] px-2.5 py-2.5"><p className="mb-2 text-[11px] font-semibold text-[#555]">Elegí un rango</p><label className="mb-2 block text-[10px] text-[#888]">Desde<input type="date" value={customRange.from} onChange={(event) => setCustomRange((range) => ({ ...range, from: event.target.value }))} className="mt-1 block w-full rounded-md border border-[#e6e6e3] px-2 py-1.5 text-[11px]" /></label><label className="block text-[10px] text-[#888]">Hasta<input type="date" value={customRange.to} onChange={(event) => setCustomRange((range) => ({ ...range, to: event.target.value }))} className="mt-1 block w-full rounded-md border border-[#e6e6e3] px-2 py-1.5 text-[11px]" /></label><button type="button" disabled={!customRange.from || !customRange.to} onClick={() => setPeriodMenu(false)} className="mt-3 w-full rounded-md bg-[#5b5fe8] px-2 py-1.5 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Aplicar rango</button></div>}</div>}</div>
         <span className="ml-1.5 flex items-center gap-1.5 text-xs text-[#9a9a9a]"><span className="size-1.5 rounded-full bg-[#1e9e6b]" /> Actualizado hace 8 min</span><div className="flex-1" /><CircleHelp className="size-4 text-[#9a9a9a]" /><div className="flex size-6 items-center justify-center rounded-full bg-[#141414] text-[10px] font-semibold text-white">AP</div>
       </header>
