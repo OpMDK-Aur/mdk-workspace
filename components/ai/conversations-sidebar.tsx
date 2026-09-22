@@ -55,6 +55,16 @@ function relativeTime(iso: string) {
   return `hace ${diffDays} d`
 }
 
+function dateSectionLabel(iso: string) {
+  const date = new Date(iso)
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  if (date.toDateString() === today.toDateString()) return 'Hoy'
+  if (date.toDateString() === yesterday.toDateString()) return 'Ayer'
+  return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'long' })
+}
+
 const SEMAFORO_LABEL: Record<string, string> = { verde: 'Verde', amarillo: 'Amarillo', naranja: 'Naranja', rojo: 'Rojo' }
 const SEMAFORO_DOT: Record<string, string> = {
   verde: 'bg-emerald-500',
@@ -76,6 +86,7 @@ interface ConversationsSidebarProps {
 
 export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect, onNewDiagnostic }: ConversationsSidebarProps) {
   const [showArchived, setShowArchived] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
   const [unidadFilter, setUnidadFilter] = useState<string>('all')
   const [pmFilter, setPmFilter] = useState<string>('all')
   const [amFilter, setAmFilter] = useState<string>('all')
@@ -118,6 +129,11 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
 
   const activeFilterCount = [unidadFilter, pmFilter, amFilter, semaforoFilter].filter((f) => f !== 'all').length
   const hasActiveFilters = activeFilterCount > 0
+  const conversationGroups = conversations.reduce<Record<string, ConversationSummary[]>>((groups, conversation) => {
+    const label = dateSectionLabel(conversation.updatedAt)
+    ;(groups[label] ??= []).push(conversation)
+    return groups
+  }, {})
 
   async function handleArchiveToggle(conversation: ConversationSummary, event: MouseEvent | KeyboardEvent) {
     event.stopPropagation()
@@ -148,9 +164,19 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
         // hace scroll del contenido principal, con su propio scroll interno
         // si la lista de chats no entra en la altura disponible. En mobile
         // sigue el flujo normal de la página (position: static).
-        'lg:sticky lg:top-8 lg:w-full lg:max-h-[calc(100vh-4rem)] lg:self-start lg:overflow-y-auto',
+        collapsed ? 'lg:w-14 lg:min-w-14' : 'lg:w-[260px] lg:min-w-[260px]',
+        'lg:sticky lg:top-8 lg:max-h-[calc(100vh-4rem)] lg:self-start lg:overflow-x-hidden lg:overflow-y-auto',
       )}
     >
+      <div className="flex items-center justify-between border-b border-[#ecece8] pb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-lg font-semibold text-[#5b5fe8]">✦</span>
+          {!collapsed && <span className="text-sm font-semibold tracking-wide text-[#141414]">CONEXA</span>}
+        </div>
+        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-[#777]" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}>
+          {collapsed ? '→' : '←'}
+        </Button>
+      </div>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <MessagesSquare className="size-4 text-primary" aria-hidden="true" />
@@ -175,6 +201,7 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
         </Button>
       </div>
 
+      {!collapsed && <>
       {isLoading && (
         <div className="flex flex-col gap-2">
           <Skeleton className="h-14 w-full" />
@@ -195,7 +222,10 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
 
       {!isLoading && conversations.length > 0 && (
         <nav aria-label={showArchived ? 'Chats archivados' : 'Chats activos'} className="flex flex-col gap-1">
-          {conversations.map((conversation) => {
+          {Object.entries(conversationGroups).map(([section, sectionConversations]) => (
+            <section key={section} className="flex flex-col gap-1">
+              <h3 className="px-3 pt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9a9a9a]">{section}</h3>
+              {sectionConversations.map((conversation) => {
             const isActive = !conversation.archived && conversation.clientId === activeClientId
             const isPending = pendingId === conversation.id
             return (
@@ -260,9 +290,12 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
                 </div>
               </button>
             )
-          })}
+              })}
+            </section>
+          ))}
         </nav>
       )}
+      </>}
     </aside>
   )
 }
