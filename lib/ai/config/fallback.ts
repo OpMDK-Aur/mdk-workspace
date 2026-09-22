@@ -6,7 +6,7 @@ import type { AgentConfig, SupervisorConfig } from '../types'
  * Keep this isolated so it can be replaced by the repository without changing
  * Supervisor or UI code.
  */
-export const FALLBACK_MODEL = 'openai/gpt-5.5'
+export const FALLBACK_MODEL = 'anthropic/claude-sonnet-5'
 
 export const FALLBACK_SUPERVISOR: SupervisorConfig = {
   id: 'fallback-supervisor',
@@ -88,7 +88,7 @@ export const chatRequestSchema = z.object({
       metaAccountId: z.string().max(200).optional(),
       googleCustomerId: z.string().max(200).optional(),
       analyticsPropertyId: z.string().max(200).optional(),
-      model: z.enum(['openai/gpt-5.5', 'anthropic/claude-sonnet-4.5', 'google/gemini-2.5-pro']).optional(),
+      model: z.enum(['anthropic/claude-sonnet-5', 'openai/o4-mini', 'openai/gpt-5.6-luna-fast', 'spacexai/grok-4.6', 'inception/mercury-2.5', 'openai/gpt-6-sol']).optional(),
       // .catch(undefined): si el cliente manda un scoreConfig incompleto o
       // corrupto (p. ej. porque /api/ai/score-config falló), lo descartamos
       // en vez de invalidar toda la request. El Supervisor cae a sus
