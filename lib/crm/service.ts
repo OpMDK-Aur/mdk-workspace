@@ -55,19 +55,41 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks
 }
 
-// Devuelve únicamente el origen de pauta que queremos mostrar en CRM.
-// Los referrals de búsqueda orgánica de WhatsApp no se consideran adquisición.
-function extractCampaignFromMessage(message: { metadata?: Record<string, unknown> | null }): 'Google' | 'Meta' | null {
+function referralValue(referral: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = referral[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  }
+  return null
+}
+
+// Clasifica referrals de pauta sin exponer el JSON de tracking en el CRM.
+// El valor devuelto combina origen y nombre: "Google · campaña".
+function extractCampaignFromMessage(message: { metadata?: Record<string, unknown> | null }): string | null {
   const referral = message.metadata?.referral as Record<string, unknown> | undefined
   if (!referral || typeof referral !== 'object') return null
-  const sourceApp = String(referral.source_app ?? referral.sourceApp ?? '').toLowerCase()
-  const source = String(referral.utm_source ?? referral.utmSource ?? '').toLowerCase()
-  const conversionSource = String(referral.conversion_source ?? referral.conversionSource ?? '').toLowerCase()
-  const entryPoint = String(referral.entry_point_conversion_source ?? referral.entryPointConversionSource ?? '').toLowerCase()
-  const isOrganic = entryPoint === 'global_search_new_chat' || entryPoint === 'global_search'
-  if (isOrganic) return null
-  if (source === 'google' || sourceApp === 'google' || referral.gclid || referral.gbraid || referral.wbraid) return 'Google'
-  if (sourceApp === 'facebook' || sourceApp === 'instagram' || conversionSource.includes('fb_') || referral.ctwa_clid || entryPoint === 'ctwa_ad') return 'Meta'
+  const entryPoint = referralValue(referral, 'entry_point_conversion_source')?.toLowerCase()
+  const utmSource = referralValue(referral, 'utm_source')?.toLowerCase()
+  const sourceType = referralValue(referral, 'source_type')?.toLowerCase()
+  const conversionApp = referralValue(referral, 'entry_point_conversion_app')?.toLowerCase()
+  const hasClickId = ['gclid', 'gbraid', 'wbraid', 'gad_campaignid', 'ctwa_clid', 'ad_id'].some((key) => referralValue(referral, key) !== null)
+  const hasUtm = Object.keys(referral).some((key) => key.startsWith('utm_') && referralValue(referral, key) !== null)
+
+  if (entryPoint === 'global_search_new_chat' || entryPoint === 'global_search' || (!hasClickId && !hasUtm)) return null
+
+  if (utmSource === 'google' || ['gclid', 'gbraid', 'wbraid', 'gad_campaignid'].some((key) => referralValue(referral, key) !== null)) {
+    return `Google · ${referralValue(referral, 'utm_campaign') ?? 'Google Ads'}`
+  }
+
+  if (sourceType === 'ad' && conversionApp === 'facebook' && referralValue(referral, 'form_id', 'form_name') === null) {
+    return `Meta WhatsApp · ${referralValue(referral, 'ad_title') ?? 'Meta WhatsApp Ads'}`
+  }
+
+  if (sourceType === 'facebook' && referralValue(referral, 'form_id', 'form_name') !== null) {
+    return `Meta Formulario · ${referralValue(referral, 'utm_campaign', 'form_name') ?? 'Meta Lead Ads'}`
+  }
+
   return null
 }
 
