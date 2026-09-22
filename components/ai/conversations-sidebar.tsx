@@ -164,19 +164,20 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
         // hace scroll del contenido principal, con su propio scroll interno
         // si la lista de chats no entra en la altura disponible. En mobile
         // sigue el flujo normal de la página (position: static).
-        collapsed ? 'lg:w-14 lg:min-w-14' : 'lg:w-[260px] lg:min-w-[260px]',
-        'lg:sticky lg:top-8 lg:max-h-[calc(100vh-4rem)] lg:self-start lg:overflow-x-hidden lg:overflow-y-auto',
+        collapsed ? 'lg:w-16 lg:min-w-16' : 'lg:w-[260px] lg:min-w-[260px]',
+        'transition-all duration-200 ease-out lg:sticky lg:top-8 lg:max-h-[calc(100vh-4rem)] lg:self-start lg:overflow-x-hidden lg:overflow-y-auto',
       )}
     >
-      <div className="flex items-center justify-between border-b border-[#ecece8] pb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-lg font-semibold text-[#5b5fe8]">✦</span>
+      <div className={cn('flex border-b border-[#ecece8] pb-3', collapsed ? 'flex-col items-center gap-2' : 'items-center justify-between')}>
+        <div className={cn('flex items-center gap-2', collapsed && 'justify-center')}>
+          <span className="text-lg font-semibold leading-none text-[#5b5fe8]">✦</span>
           {!collapsed && <span className="text-sm font-semibold tracking-wide text-[#141414]">CONEXA</span>}
         </div>
-        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-[#777]" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}>
+        <Button variant="ghost" size="sm" className="h-6 min-w-0 px-1.5 text-xs text-[#777] hover:bg-[#f4f4f1] hover:text-[#5b5fe8]" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}>
           {collapsed ? '→' : '←'}
         </Button>
       </div>
+      {!collapsed && <>
       <div className="flex flex-col items-stretch gap-2">
         <p className="text-sm font-semibold text-[#141414]">{showArchived ? 'Chats archivados' : 'Chats activos'}</p>
         {!showArchived && onNewDiagnostic && (
@@ -198,7 +199,6 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
         </Button>
       </div>
 
-      {!collapsed && <>
       {isLoading && (
         <div className="flex flex-col gap-2">
           <Skeleton className="h-14 w-full" />
