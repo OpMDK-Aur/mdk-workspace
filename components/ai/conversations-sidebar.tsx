@@ -3,7 +3,7 @@
 import { useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
 import { toast } from 'sonner'
-import { Archive, ArchiveRestore, Filter, MessageSquare, MessagesSquare } from 'lucide-react'
+import { Archive, ArchiveRestore, Filter, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
@@ -159,7 +159,7 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
   return (
     <aside
       className={cn(
-        'flex w-full shrink-0 flex-col gap-3 rounded-lg border bg-card p-4',
+        'flex w-full shrink-0 flex-col gap-3 bg-transparent p-0',
         // Sticky solo desde lg: en desktop el panel queda fijo mientras se
         // hace scroll del contenido principal, con su propio scroll interno
         // si la lista de chats no entra en la altura disponible. En mobile
@@ -177,11 +177,8 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
           {collapsed ? '→' : '←'}
         </Button>
       </div>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <MessagesSquare className="size-4 text-primary" aria-hidden="true" />
-          {showArchived ? 'Chats archivados' : 'Chats activos'}
-        </div>
+      <div className="flex flex-col items-stretch gap-2">
+        <p className="text-sm font-semibold text-[#141414]">{showArchived ? 'Chats archivados' : 'Chats activos'}</p>
         {!showArchived && onNewDiagnostic && (
           <Button
             variant="outline"
@@ -195,8 +192,8 @@ export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect,
         )}
       </div>
 
-      <div className="flex items-center justify-end">
-        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-[#9a9a9a]" onClick={() => setShowArchived((v) => !v)}>
+      <div className="flex items-center justify-start">
+        <Button variant="ghost" size="sm" className="h-7 px-0 text-xs text-[#777] hover:bg-transparent hover:text-[#5b5fe8]" onClick={() => setShowArchived((v) => !v)}>
           {showArchived ? 'Ver activos' : 'Ver archivados'}
         </Button>
       </div>
