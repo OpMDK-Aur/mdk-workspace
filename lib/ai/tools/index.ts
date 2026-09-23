@@ -33,6 +33,29 @@ async function resolveCrmAccountIds(clientId: string): Promise<string[]> {
   return [...new Set([primaryId, ...extraIds].filter(Boolean) as string[])]
 }
 
+/**
+ * El CRM externo de Aurelia corre en un proyecto Supabase aparte. Bajo
+ * consultas concurrentes (paginación + Promise.all) esa API a veces devuelve
+ * un fallo de red puntual ("TypeError: fetch failed") que no refleja un
+ * problema real de datos. Reintenta esos errores transitorios antes de
+ * abortar la herramienta completa.
+ */
+async function withCrmRetry<T>(
+  run: () => PromiseLike<{ data: T | null; error: { message: string } | null }>,
+  maxAttempts = 3,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  let lastError: { message: string } | null = null
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const { data, error } = await run()
+    if (!error) return { data, error: null }
+    lastError = error
+    const transient = /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i.test(error.message ?? '')
+    if (!transient || attempt === maxAttempts) return { data, error }
+    await new Promise((resolve) => setTimeout(resolve, attempt * 300))
+  }
+  return { data: null, error: lastError }
+}
+
 const CONTEXT_FIELD_LIMIT = 1200
 const CONTEXT_COMMENT_LIMIT = 1800
 
@@ -715,7 +738,7 @@ const crmOpportunities: ToolDefinition = {
       for (let offset = 0; offset < 10000; offset += 100) {
         let query = crm.from('opportunities').select('id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end)
         if (input.status) query = query.eq('status', input.status)
-        const { data, error } = await query.range(offset, offset + 99)
+        const { data, error } = await withCrmRetry(() => query.range(offset, offset + 99))
         if (error) throw new Error(`opportunities: ${error.message}`)
         opportunities.push(...(data ?? []))
         if ((data ?? []).length < 100) break
@@ -723,8 +746,8 @@ const crmOpportunities: ToolDefinition = {
       const contactIds = [...new Set(opportunities.map(row => row.contact_id).filter(Boolean))]
       const pipelineIds = [...new Set(opportunities.map(row => row.pipeline_id).filter(Boolean))]
       const [contactsResult, stagesResult] = await Promise.all([
-        contactIds.length ? crm.from('contacts').select('id,name,email,phone').in('client_id', crmAccountIds).in('id', contactIds) : Promise.resolve({ data: [], error: null }),
-        pipelineIds.length ? crm.from('pipeline_stages').select('id,pipeline_id,name,description').in('client_id', crmAccountIds).in('pipeline_id', pipelineIds) : Promise.resolve({ data: [], error: null }),
+        contactIds.length ? withCrmRetry(() => crm.from('contacts').select('id,name,email,phone').in('client_id', crmAccountIds).in('id', contactIds)) : Promise.resolve({ data: [], error: null }),
+        pipelineIds.length ? withCrmRetry(() => crm.from('pipeline_stages').select('id,pipeline_id,name,description').in('client_id', crmAccountIds).in('pipeline_id', pipelineIds)) : Promise.resolve({ data: [], error: null }),
       ])
       const contactsById = new Map((contactsResult.data ?? []).map(row => [row.id, row]))
       const stagesById = new Map((stagesResult.data ?? []).map(row => [row.id, row]))
@@ -755,7 +778,7 @@ const crmContacts: ToolDefinition = {
     const contacts: any[] = []
     try {
       for (let offset = 0; offset < 10000; offset += 100) {
-        const { data, error } = await crm.from('contacts').select('id,created_at,client_id,name,email,phone').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
+        const { data, error } = await withCrmRetry(() => crm.from('contacts').select('id,created_at,client_id,name,email,phone').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end).range(offset, offset + 99))
         if (error) throw new Error(`contacts: ${error.message}`)
         contacts.push(...(data ?? []))
         if ((data ?? []).length < 100) break
@@ -828,7 +851,7 @@ const crmContactAds: ToolDefinition = {
       for (let offset = 0; offset < 10000; offset += 100) {
         let query = crm.from('contacts').select('id,created_at,client_id,name,email,phone').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end)
         if (input.contactIds?.length) query = query.in('id', input.contactIds)
-        const { data, error } = await query.range(offset, offset + 99)
+        const { data, error } = await withCrmRetry(() => query.range(offset, offset + 99))
         if (error) throw new Error(`contacts: ${error.message}`)
         contacts.push(...(data ?? []))
         if ((data ?? []).length < 100) break
@@ -840,7 +863,7 @@ const crmContactAds: ToolDefinition = {
       for (let batchStart = 0; batchStart < contactIds.length; batchStart += 25) {
         const batchContactIds = contactIds.slice(batchStart, batchStart + 25)
         for (let offset = 0; offset < 10000; offset += 100) {
-          const { data, error } = await crm
+          const { data, error } = await withCrmRetry(() => crm
             .from('messages')
             .select('id,created_at,client_id,contact_id,conversation_id,content,source,direction,metadata')
             .in('client_id', crmAccountIds)
@@ -849,7 +872,7 @@ const crmContactAds: ToolDefinition = {
             // load their complete referral history instead of limiting it to the opportunity period.
             .gte('created_at', input.contactIds?.length ? '1970-01-01T00:00:00.000Z' : start)
             .lt('created_at', input.contactIds?.length ? new Date().toISOString() : end)
-            .range(offset, offset + 99)
+            .range(offset, offset + 99))
           if (error) throw new Error(`messages: ${error.message}`)
           messages.push(...(data ?? []))
           if ((data ?? []).length < 100) break
@@ -931,7 +954,7 @@ const crmSalesAttribution: ToolDefinition = {
       const rows: any[] = []
       for (let offset = 0; offset < maxRows; offset += 100) {
         let query = filters(crm.from(table).select(columns))
-        const { data, error } = await query.range(offset, offset + 99)
+        const { data, error } = await withCrmRetry<any[]>(() => query.range(offset, offset + 99))
         if (error) throw new Error(`${table}: ${error.message}`)
         rows.push(...(data ?? []))
         if ((data ?? []).length < 100) break
