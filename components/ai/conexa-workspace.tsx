@@ -816,6 +816,9 @@ function ChatAI({ question, setQuestion, client }: { question: string; setQuesti
     return () => { cancelled = true }
   }, [])
   const { messages, sendMessage, status, error } = useChat({
+    onError: (chatError) => {
+      console.error('[v0] Conexa chat failed:', chatError)
+    },
     transport: new DefaultChatTransport({
       api: '/api/ai/chat',
       body: { context: client ? { clientId: client.id, metaAccountId: client.meta_ads_account_id ?? undefined, googleCustomerId: client.google_ads_customer_id ?? undefined, analyticsPropertyId: client.analytics_property_id ?? undefined, model } : { model } },
