@@ -56,6 +56,55 @@ async function withCrmRetry<T>(
   return { data: null, error: lastError }
 }
 
+/**
+ * El referral de una campaña puede venir anidado en distintas claves según el
+ * canal (metadata, referral_metadata, referral, message_data). Estas
+ * búsquedas recursivas se comparten entre crm_contact_ads y
+ * crm_sales_attribution para que ambas resuelvan el mismo utm_id y, sobre
+ * todo, el mismo NOMBRE de campaña en lugar de mostrarle al usuario el id.
+ */
+function extractUtmId(message: any): string | null {
+  const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
+  const visited = new Set<object>()
+  const find = (value: unknown): string | null => {
+    if (!value || typeof value !== 'object' || visited.has(value as object)) return null
+    visited.add(value as object)
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const result = find(item)
+        if (result) return result
+      }
+      return null
+    }
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
+      if (['utm_id', 'utmid', 'utm_identifier', 'utmid_value'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
+      const result = find(entry)
+      if (result) return result
+    }
+    return null
+  }
+  return find(candidates) ?? (message.source ? String(message.source) : null)
+}
+
+function extractCampaignName(message: any): string | null {
+  const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
+  const visited = new Set<object>()
+  const find = (value: unknown): string | null => {
+    if (!value || typeof value !== 'object' || visited.has(value as object)) return null
+    visited.add(value as object)
+    if (Array.isArray(value)) return value.map(find).find(Boolean) ?? null
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
+      if (['campaign_name', 'campaignname', 'campaign', 'ad_title', 'adtitle'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
+      const result = find(entry)
+      if (result) return result
+    }
+    return null
+  }
+  return find(candidates)
+}
+
 const CONTEXT_FIELD_LIMIT = 1200
 const CONTEXT_COMMENT_LIMIT = 1800
 
@@ -805,47 +854,8 @@ const crmContactAds: ToolDefinition = {
     const endExclusive = new Date(`${input.dateTo}T00:00:00-03:00`)
     endExclusive.setUTCDate(endExclusive.getUTCDate() + 1)
     const end = endExclusive.toISOString()
-    const getAdId = (message: any) => {
-      const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
-      const visited = new Set<object>()
-      const find = (value: unknown): string | null => {
-        if (!value || typeof value !== 'object' || visited.has(value as object)) return null
-        visited.add(value as object)
-        if (Array.isArray(value)) {
-          for (const item of value) {
-            const result = find(item)
-            if (result) return result
-          }
-          return null
-        }
-        const object = value as Record<string, unknown>
-        for (const [key, entry] of Object.entries(object)) {
-          const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
-          if (['utm_id', 'utmid', 'utm_identifier', 'utmid_value'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
-          const result = find(entry)
-          if (result) return result
-        }
-        return null
-      }
-      return find(candidates) ?? (message.source ? String(message.source) : null)
-    }
-    const getCampaign = (message: any) => {
-      const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
-      const visited = new Set<object>()
-      const find = (value: unknown): string | null => {
-        if (!value || typeof value !== 'object' || visited.has(value as object)) return null
-        visited.add(value as object)
-        if (Array.isArray(value)) return value.map(find).find(Boolean) ?? null
-        for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-          const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
-          if (['campaign_name', 'campaignname', 'campaign', 'campaign_id', 'campaignid'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
-          const result = find(entry)
-          if (result) return result
-        }
-        return null
-      }
-      return find(candidates)
-    }
+    const getAdId = extractUtmId
+    const getCampaign = extractCampaignName
     try {
       const contacts: any[] = []
       for (let offset = 0; offset < 10000; offset += 100) {
@@ -941,7 +951,7 @@ const crmContactAds: ToolDefinition = {
 
 const crmSalesAttribution: ToolDefinition = {
   key: 'crm_sales_attribution',
-  description: 'Relaciona oportunidades ganadas del CRM con contactos y mensajes inbound con utm_id/referral/source_id para atribución de ventas. Usala después de identificar las oportunidades won cuando la consulta pide ventas por campaña o anuncio. Su resultado es evidencia CRM; debe cruzarse con Meta Ads o Google Ads para validar gasto, leads y nombres de campaña. NO usar para contar el total de contactos creados: para eso usar crm_contacts.',
+  description: 'Relaciona oportunidades ganadas del CRM con contactos y mensajes inbound con utm_id/referral/source_id para atribución de ventas. Usala después de identificar las oportunidades won cuando la consulta pide ventas por campaña o anuncio. by_campaign.campaign es el NOMBRE de campaña resuelto: usá siempre ese campo para mostrarle la campaña al usuario, nunca el utm_id/ad_id (que solo sirve como referencia interna). Su resultado es evidencia CRM; debe cruzarse con Meta Ads o Google Ads para validar gasto, leads y nombres de campaña. NO usar para contar el total de contactos creados: para eso usar crm_contacts.',
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
@@ -980,8 +990,13 @@ const crmSalesAttribution: ToolDefinition = {
       for (const message of messages) {
         const referral = message.metadata?.referral ?? message.metadata
         if (message.contact_id && referral && typeof referral === 'object' && !referralsByContact.has(message.contact_id)) {
-          const adId = referral.utm_id ?? referral.source_id ?? referral.ad_id ?? null
-          referralsByContact.set(message.contact_id, { ...message, referral, ad_id: adId, ad_title: referral.ad_title ?? referral.campaign_name ?? null })
+          // Buscamos el utm_id y el NOMBRE de campaña con la misma búsqueda
+          // recursiva que usa crm_contact_ads: el nombre suele venir anidado
+          // más adentro del metadata que el ad_title/campaign_name de nivel
+          // superior, y sin esto el usuario terminaba viendo el utm_id.
+          const adId = extractUtmId(message) ?? referral.source_id ?? referral.ad_id ?? null
+          const campaignName = extractCampaignName(message)
+          referralsByContact.set(message.contact_id, { ...message, referral, ad_id: adId, ad_title: campaignName, campaign: campaignName ?? (adId ? `UTM ID ${adId}` : null) })
         }
       }
       const won = opportunities.filter(row => String(row.status ?? '').toLowerCase() === 'won' || String(row.status ?? '').toLowerCase() === 'ganado')
@@ -990,9 +1005,19 @@ const crmSalesAttribution: ToolDefinition = {
         const conversation = conversationsById.get(opportunity.conversation_id ?? referral?.conversation_id)
         return { opportunity, contact: contactsById.get(opportunity.contact_id) ?? null, stage: stagesById.get(opportunity.stage_id) ?? null, referral: referral ?? null, conversation: conversation ?? null }
       })
+      // Se agrupa por NOMBRE de campaña (no por utm_id) para que el usuario
+      // vea "Campaña X" en vez de un identificador. Cuando no hay nombre
+      // resuelto, mostramos "UTM ID {id}" como último recurso en lugar de
+      // dejar la fila vacía.
       const byCampaign = new Map<string, any>()
-      for (const sale of attributed) { const key = sale.referral?.ad_id ?? 'unattributed'; const current = byCampaign.get(key) ?? { ad_id: key === 'unattributed' ? null : key, ad_title: sale.referral?.ad_title ?? null, sales: 0, amount: 0 }; current.sales += 1; current.amount += Number(sale.opportunity.amount ?? 0) || 0; byCampaign.set(key, current) }
-      const result = { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo }, totals: { won_sales: won.length, attributed_sales: attributed.filter(sale => sale.referral?.ad_id).length, unattributed_sales: attributed.filter(sale => !sale.referral?.ad_id).length, amount: won.reduce((sum, row) => sum + (Number(row.amount ?? 0) || 0), 0) }, by_campaign: [...byCampaign.values()], sales: attributed.slice(0, 100), truncated: attributed.length > 100 }
+      for (const sale of attributed) {
+        const key = sale.referral?.campaign ?? 'unattributed'
+        const current = byCampaign.get(key) ?? { campaign: key === 'unattributed' ? null : key, ad_id: key === 'unattributed' ? null : sale.referral?.ad_id ?? null, sales: 0, amount: 0 }
+        current.sales += 1
+        current.amount += Number(sale.opportunity.amount ?? 0) || 0
+        byCampaign.set(key, current)
+      }
+      const result = { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo }, totals: { won_sales: won.length, attributed_sales: attributed.filter(sale => sale.referral?.campaign).length, unattributed_sales: attributed.filter(sale => !sale.referral?.campaign).length, amount: won.reduce((sum, row) => sum + (Number(row.amount ?? 0) || 0), 0) }, by_campaign: [...byCampaign.values()].sort((a, b) => b.sales - a.sales), sales: attributed.slice(0, 100), truncated: attributed.length > 100 }
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'completed', label: `${won.length} ventas ganadas analizadas` })
       return result
     } catch (error) {
