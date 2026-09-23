@@ -975,20 +975,20 @@ const crmSalesAttribution: ToolDefinition = {
     try {
       const opportunities = await batch('opportunities', 'id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency', query => query.in('client_id', crmAccountIds).gte('created_at', start).lte('created_at', end), 5000)
       const contactIds = [...new Set(opportunities.map(row => row.contact_id).filter(Boolean))]
-      const conversationIds = [...new Set(opportunities.map(row => row.conversation_id).filter(Boolean))]
       const pipelineIds = [...new Set(opportunities.map(row => row.pipeline_id).filter(Boolean))]
-      const [contacts, messages, conversations, stages] = await Promise.all([
+      // Las conversaciones no son necesarias para determinar una venta WON ni
+      // para atribuirla por UTM. No hacemos esta consulta porque una falla del
+      // endpoint conversations no debe invalidar todas las ventas.
+      const [contacts, messages, stages] = await Promise.all([
         // Los datos de contacto son enriquecimiento opcional: si el endpoint
         // contacts falla, la atribución todavía puede resolverse con mensajes,
         // oportunidades y sus referencias UTM.
         contactIds.length ? batch('contacts', 'id,created_at,client_id,name,email,phone', query => query.in('client_id', crmAccountIds).in('id', contactIds)).catch(() => []) : Promise.resolve([]),
         contactIds.length ? batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end)) : Promise.resolve([]),
-        conversationIds.length ? batch('conversations', 'id,client_id,contact_id,assigned_agent,assigned_user,importance,unread_count,sub_channel_id,assigned_team_id', query => query.in('client_id', crmAccountIds).in('id', conversationIds)) : Promise.resolve([]),
         pipelineIds.length ? batch('pipeline_stages', 'id,client_id,pipeline_id,name,description', query => query.in('client_id', crmAccountIds).in('pipeline_id', pipelineIds)) : Promise.resolve([]),
       ])
       const contactsById = new Map(contacts.map(row => [row.id, row]))
       const stagesById = new Map(stages.map(row => [row.id, row]))
-      const conversationsById = new Map(conversations.map(row => [row.id, row]))
       const referralsByContact = new Map<string, any>()
       for (const message of messages) {
         const referral = message.metadata?.referral ?? message.metadata
@@ -1005,8 +1005,7 @@ const crmSalesAttribution: ToolDefinition = {
       const won = opportunities.filter(row => String(row.status ?? '').toLowerCase() === 'won' || String(row.status ?? '').toLowerCase() === 'ganado')
       const attributed = won.map(opportunity => {
         const referral = referralsByContact.get(opportunity.contact_id)
-        const conversation = conversationsById.get(opportunity.conversation_id ?? referral?.conversation_id)
-        return { opportunity, contact: contactsById.get(opportunity.contact_id) ?? null, stage: stagesById.get(opportunity.stage_id) ?? null, referral: referral ?? null, conversation: conversation ?? null }
+        return { opportunity, contact: contactsById.get(opportunity.contact_id) ?? null, stage: stagesById.get(opportunity.stage_id) ?? null, referral: referral ?? null }
       })
       // Se agrupa por NOMBRE de campaña (no por utm_id) para que el usuario
       // vea "Campaña X" en vez de un identificador. Cuando no hay nombre
