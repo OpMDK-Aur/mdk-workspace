@@ -59,15 +59,14 @@ export async function updateClientPlatformIds(
     ...(googleAdsCustomerId ? googleAdsCustomerId.split(',').map((id) => ({ plataforma: 'google', id_cuenta: id.trim() })) : []),
   ].filter((account) => account.id_cuenta)
 
-  const selectedKeys = new Set(accountRows.map((account) => `${account.plataforma}:${account.id_cuenta}`))
   const { data: existingAccounts, error: existingAccountsError } = await admin
     .from('cuentas_publicitarias')
-    .select('id, plataforma, id_cuenta')
+    .select('id, plataforma')
     .eq('cliente_id', clientId)
   if (existingAccountsError) return { error: existingAccountsError.message }
 
   const staleIds = (existingAccounts ?? [])
-    .filter((account) => ['meta', 'google'].includes(account.plataforma) && !selectedKeys.has(`${account.plataforma}:${account.id_cuenta}`))
+    .filter((account) => ['meta', 'google'].includes(account.plataforma))
     .map((account) => account.id)
   if (staleIds.length) {
     const { error: deleteError } = await admin.from('cuentas_publicitarias').delete().in('id', staleIds)
@@ -75,11 +74,13 @@ export async function updateClientPlatformIds(
   }
 
   if (accountRows.length) {
-    const { error: upsertError } = await admin.from('cuentas_publicitarias').upsert(
+    // La base existente no siempre tiene una restricción UNIQUE sobre
+    // cliente_id/plataforma/id_cuenta, por lo que no podemos depender de
+    // ON CONFLICT. Los registros anteriores ya fueron sincronizados arriba.
+    const { error: insertError } = await admin.from('cuentas_publicitarias').insert(
       accountRows.map((account) => ({ cliente_id: clientId, plataforma: account.plataforma, id_cuenta: account.id_cuenta, nombre_cuenta: account.id_cuenta, activo: true })),
-      { onConflict: 'cliente_id,plataforma,id_cuenta', ignoreDuplicates: false },
     )
-    if (upsertError) return { error: upsertError.message }
+    if (insertError) return { error: insertError.message }
   }
 
   revalidatePath('/dashboard')

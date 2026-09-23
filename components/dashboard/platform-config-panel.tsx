@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getClientCrmAccounts, saveClientAureliaAccount, updateClientPlatformIds } from '@/app/actions/platform-config'
+import { getClientCrmAccounts, replaceClientCrmAccounts, updateClientPlatformIds } from '@/app/actions/platform-config'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -730,7 +730,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     )
     const crmAccountIds = crmAccountDrafts[clientId] ?? [config.ghlLocationId].filter(Boolean)
     const crmResult = config.crmType === 'aurelia'
-      ? await saveClientAureliaAccount(clientId, crmAccountIds[0] ?? null)
+      ? await replaceClientCrmAccounts(clientId, crmAccountIds)
       : { success: true }
 
     setSaving(prev => ({ ...prev, [clientId]: false }))
