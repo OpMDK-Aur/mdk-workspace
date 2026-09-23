@@ -11,6 +11,7 @@ import { MessageContent } from '@/components/chat/message-content'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { TagManagerTagRow, TagManagerTriggerRow, TagManagerVariableRow, TagManagerFilterRow, TagManagerParameterRow } from '@/lib/google-tag-manager/service'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { AnalyzeWithConexaButton } from '@/components/conexa/analyze-button'
 import type { CrmAcquisitionFilters, CrmAcquisitionReport, CrmBreakdownRow } from '@/lib/crm/service'
 
 type ClientAccount = { id_cuenta: string | null; nombre_cuenta: string | null; plataforma: string | null; activo?: boolean | null }
@@ -632,7 +633,7 @@ function CrmConexaView({ platform, onManage, onNavigate, data, client, filters, 
   const header = <div className="mb-4 flex flex-col gap-4">
     <div className="flex items-start justify-between gap-4">
       <div className="flex items-center gap-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[#bce8dc] bg-[#effbf7]"><Users className="size-6 text-[#11A683]" /></span><div><h1 className="text-[24px] font-bold leading-none">CRM</h1><p className="mt-1 text-[11px] text-[#777]">{platform.detail} {client?.crm_type && <span className="ml-1 text-[#1e9e6b]">· ● Conectado</span>}</p></div></div>
-      <div className="flex shrink-0 items-center gap-2"><Button variant="outline" onClick={() => onNavigate('Chat / Análisis')} className="!h-8 !rounded-full !border-[#5b5fe8] !bg-white !px-4 !text-[11px] !text-[#5b5fe8] hover:!border-[#5b5fe8] hover:!bg-white hover:!text-[#5b5fe8]">✦ Analizar campañas con Conexa</Button><Button variant="outline" onClick={onManage} className="h-8 rounded-full border-[#dcdcd8] bg-white px-4 text-[11px] text-[#222]">Administrar conexión</Button></div>
+      <div className="flex shrink-0 items-center gap-2"><AnalyzeWithConexaButton context={`CRM · ${platform.detail}`} onClick={() => onNavigate('Chat / Análisis')} /><Button variant="outline" onClick={onManage} className="h-8 rounded-full border-[#dcdcd8] bg-white px-4 text-[11px] text-[#222]">Administrar conexión</Button></div>
     </div>
     <div className="flex gap-7 overflow-x-auto border-b border-[#dededb] text-[10px] font-semibold text-[#777]">{crmTabs.map((item) => <button type="button" key={item} onClick={() => setTab(item)} className={cn('shrink-0 border-b-2 px-1 pb-3', tab === item ? 'border-[#5b5fe8] text-[#5b5fe8]' : 'border-transparent')}>{item}</button>)}</div>
   </div>

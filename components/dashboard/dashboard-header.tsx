@@ -31,11 +31,15 @@ export function DashboardHeader({
   onSelectClient,
 }: DashboardHeaderProps) {
   const [open, setOpen] = useState(false)
+  const enabledClients = useMemo(
+    () => clients.filter((client) => client.enabled ?? ['ICS Salud', 'VN Global'].includes(client.nombre_del_negocio)),
+    [clients],
+  )
 
   const selectedClient = useMemo(() => {
     if (!selectedClientId) return null
-    return clients.find(c => c.id === selectedClientId)
-  }, [selectedClientId, clients])
+    return enabledClients.find(c => c.id === selectedClientId)
+  }, [selectedClientId, enabledClients])
 
   return (
     <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
@@ -62,8 +66,8 @@ export function DashboardHeader({
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Seleccionar cliente</p>
               </div>
               <Command>
-                <CommandInput placeholder="Buscar cliente..." className="h-8 text-sm" />
-                <CommandList className="max-h-64 overflow-y-auto">
+                {enabledClients.length > 6 && <CommandInput placeholder="Buscar cliente..." className="h-8 text-sm" />}
+                <CommandList className={cn(enabledClients.length > 6 ? 'max-h-64 overflow-y-auto' : 'overflow-hidden')}>
                   <CommandEmpty className="text-xs text-muted-foreground py-4 text-center">
                     Sin resultados
                   </CommandEmpty>
@@ -84,7 +88,7 @@ export function DashboardHeader({
                       </div>
                       <span className="flex-1">Todos los clientes</span>
                     </CommandItem>
-                    {clients.map((client) => {
+                    {enabledClients.map((client) => {
                       const selected = selectedClientId === client.id
                       return (
                         <CommandItem

@@ -37,7 +37,7 @@ export function MultiagenteWorkspace() {
     // el selector de cliente y el chat queden 100% equivalentes a haberlo
     // elegido desde el combobox. Como hay un único chat por cliente, elegir
     // un chat del sidebar es exactamente lo mismo que elegir su cliente.
-    setSelectedClient({ id: conversation.clientId, nombre_del_negocio: conversation.clientName, cuentas_publicitarias: [] })
+    setSelectedClient({ id: conversation.clientId, nombre_del_negocio: conversation.clientName, enabled: true, cuentas_publicitarias: [] })
 
     const supabase = createClient()
     const { data, error } = await supabase

@@ -121,9 +121,10 @@ export interface SemaforoUnidad {
   semaforo: SemaforoStatus
 }
 
-export interface Client {
+  export interface Client {
   id: string
   nombre_del_negocio: string
+  enabled?: boolean
   // Alias for compatibility
   business_name?: string
   // Contact fields - DB uses nombre/apellido/telefono

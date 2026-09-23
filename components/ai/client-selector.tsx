@@ -26,6 +26,7 @@ export interface ClientAccount {
 export interface AnalyzableClient {
   id: string
   nombre_del_negocio: string
+  enabled: boolean
   cuentas_publicitarias: ClientAccount[]
   meta_ads_account_id?: string | null
   google_ads_customer_id?: string | null
@@ -57,6 +58,8 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
   const [loadError, setLoadError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
 
+  const enabledClients = clients.filter((client) => client.enabled)
+
   useEffect(() => {
     let isMounted = true
 
@@ -77,7 +80,16 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
         return
       }
 
-      setClients((data ?? []) as unknown as AnalyzableClient[])
+      const enabledNames = new Set(['ICS Salud', 'VN Global'])
+      const loadedClients = (data ?? []).map((client) => ({
+        ...(client as unknown as AnalyzableClient),
+        enabled: enabledNames.has(client.nombre_del_negocio),
+      }))
+      setClients(loadedClients)
+      const defaultClient = loadedClients.find((client) => client.nombre_del_negocio === 'ICS Salud')
+      if ((!value || !loadedClients.some((client) => client.enabled && client.id === value.id)) && defaultClient) {
+        onChange(defaultClient)
+      }
       setLoading(false)
     }
 
@@ -161,12 +173,12 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[360px] p-0">
-          <Command>
-            <CommandInput placeholder="Buscar cliente…" />
-            <CommandList>
+              <Command>
+                {enabledClients.length > 6 && <CommandInput placeholder="Buscar cliente…" />}
+                <CommandList>
               <CommandEmpty>{loadError || 'No se encontraron clientes con cuentas publicitarias.'}</CommandEmpty>
               <CommandGroup>
-                {clients.map((client) => (
+                {enabledClients.map((client) => (
                   <CommandItem
                     key={client.id}
                     value={client.nombre_del_negocio}
