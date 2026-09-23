@@ -839,22 +839,31 @@ const crmContactAds: ToolDefinition = {
       // referral lookup to the same period avoids scanning the full message history.
       for (let batchStart = 0; batchStart < contactIds.length; batchStart += 25) {
         const batchContactIds = contactIds.slice(batchStart, batchStart + 25)
-        const { data, error } = await crm
-          .from('messages')
-          .select('id,created_at,client_id,contact_id,conversation_id,content,source,direction,metadata')
-          .in('client_id', crmAccountIds)
-          .in('contact_id', batchContactIds)
-          // When the supervisor already identified specific contacts (for example won sales),
-          // load their complete referral history instead of limiting it to the opportunity period.
-          .gte('created_at', input.contactIds?.length ? '1970-01-01T00:00:00.000Z' : start)
-          .lt('created_at', input.contactIds?.length ? new Date().toISOString() : end)
-          .limit(1000)
-        if (error) throw new Error(`messages: ${error.message}`)
-        messages.push(...(data ?? []))
+        for (let offset = 0; offset < 10000; offset += 100) {
+          const { data, error } = await crm
+            .from('messages')
+            .select('id,created_at,client_id,contact_id,conversation_id,content,source,direction,metadata,referral,referral_metadata')
+            .in('client_id', crmAccountIds)
+            .in('contact_id', batchContactIds)
+            // When the supervisor already identified specific contacts (for example won sales),
+            // load their complete referral history instead of limiting it to the opportunity period.
+            .gte('created_at', input.contactIds?.length ? '1970-01-01T00:00:00.000Z' : start)
+            .lt('created_at', input.contactIds?.length ? new Date().toISOString() : end)
+            .range(offset, offset + 99)
+          if (error) throw new Error(`messages: ${error.message}`)
+          messages.push(...(data ?? []))
+          if ((data ?? []).length < 100) break
+        }
       }
       const referralsByContact = new Map<string, any[]>()
       const getReferral = (message: any) => {
-        const candidates = [message.metadata?.referral, message.metadata]
+        const candidates = [
+          message.referral,
+          message.referral_metadata,
+          message.metadata?.referral,
+          message.metadata,
+          message.message_data,
+        ]
         return candidates.find((value) => value && typeof value === 'object') ?? null
       }
       for (const message of messages) {
@@ -873,6 +882,10 @@ const crmContactAds: ToolDefinition = {
           direction: message.direction,
           content: message.content,
           metadata: message.metadata,
+          referral_metadata: message.referral_metadata ?? null,
+          referral_source: getReferral(message)?.source ?? getReferral(message)?.source_id ?? null,
+          referral_ad_id: getReferral(message)?.ad_id ?? getReferral(message)?.source_id ?? null,
+          referral_ad_title: getReferral(message)?.ad_title ?? getReferral(message)?.campaign_name ?? null,
         })
         referralsByContact.set(message.contact_id, rows)
       }
