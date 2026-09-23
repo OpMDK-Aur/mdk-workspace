@@ -95,8 +95,10 @@ export async function streamSupervisorResponse(
     ].join('\n\n'),
     messages,
     tools,
-    stopWhen: stepCountIs(8),
-    temperature: 0.2,
+  // Sonnet puede necesitar varios turnos de herramientas para cruzar CRM,
+  // atribución y plataformas antes de redactar la respuesta final.
+  stopWhen: stepCountIs(20),
+  temperature: 0.2,
     maxOutputTokens: 2200,
   })
 }
