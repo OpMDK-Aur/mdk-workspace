@@ -5,6 +5,36 @@ import { agentConfigRepository } from '../repositories/agent-repository'
 import { getCatalogToolKeys, getToolDefinitions } from '../tools'
 import type { ExecutionContext } from '../types'
 
+const MAX_TOOL_OUTPUT_BYTES = 8_500_000
+
+function limitToolOutput(value: unknown) {
+  const serialized = JSON.stringify(value)
+  if (serialized.length <= MAX_TOOL_OUTPUT_BYTES) return value
+
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>
+    const compact: Record<string, unknown> = {
+      available: record.available,
+      period: record.period,
+      totals: record.totals,
+      truncated: true,
+      truncation_notice: 'La salida original superó el límite de 8.5 MB. Usá los totales y solicitá un desglose más acotado si hace falta.',
+    }
+
+    for (const key of ['campaigns', 'accounts', 'summary', 'errors', 'message']) {
+      if (key in record) compact[key] = record[key]
+    }
+
+    return compact
+  }
+
+  return {
+    available: false,
+    truncated: true,
+    message: 'La herramienta devolvió demasiados datos. Repetí la consulta con un período, cuenta o filtro más acotado.',
+  }
+}
+
 function getGatewayModel(model: string) {
   const gateway = createOpenAI({
     apiKey: process.env.AI_GATEWAY_API_KEY,
@@ -59,7 +89,7 @@ export async function streamSupervisorResponse(
       tool({
         description: definition.description,
         inputSchema: definition.inputSchema,
-        execute: (input) => definition.execute(input, context),
+        execute: async (input) => limitToolOutput(await definition.execute(input, context)),
       }),
     ]),
   )
