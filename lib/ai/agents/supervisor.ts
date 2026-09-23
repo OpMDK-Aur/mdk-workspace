@@ -82,7 +82,12 @@ export async function streamSupervisorResponse(
     fallback_used: config.fallbackUsed ?? false,
     ...(config.fallbackReason ? { fallback_reason: config.fallbackReason } : {}),
   })
-  console.log('[v0] Supervisor model selected:', config.model)
+  const requestedModel = context.model ?? config.model
+  // El selector de Conexa solo expone o4-mini. Ignoramos valores antiguos o
+  // inválidos que todavía puedan existir en ai_agents.model para que una
+  // configuración histórica no deje el stream sin respuesta.
+  const selectedModel = requestedModel === 'openai/o4-mini' ? requestedModel : 'openai/o4-mini'
+  console.log('[v0] Supervisor model selected:', { requestedModel, selectedModel })
   const tools = Object.fromEntries(
     definitions.map((definition) => [
       definition.key,
@@ -95,7 +100,7 @@ export async function streamSupervisorResponse(
   )
 
   return streamText({
-    model: getGatewayModel(context.model ?? config.model),
+    model: getGatewayModel(selectedModel),
     system: [
       config.systemPrompt,
       'No expongas secretos, tokens, claves ni credenciales. El contexto de ejecución ya fue provisto por el backend.',

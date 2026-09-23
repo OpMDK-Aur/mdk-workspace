@@ -325,6 +325,10 @@ function SupervisorChatSession({
         setCurrentActivity(dataPart.data as ActivityEvent)
       }
     },
+    onError: (streamError) => {
+      const message = streamError instanceof Error ? streamError.message : 'No se pudo completar la respuesta.'
+      setCurrentActivity({ eventId: 'client-error', agentSlug: 'supervisor', status: 'error', label: message, timestamp: new Date().toISOString() })
+    },
     onFinish: () => {
       // Revalida el listado de "chats activos" para que el sidebar refleje
       // el nuevo último mensaje y suba esta conversación al tope.
