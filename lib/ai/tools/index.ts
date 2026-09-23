@@ -842,7 +842,7 @@ const crmContactAds: ToolDefinition = {
         for (let offset = 0; offset < 10000; offset += 100) {
           const { data, error } = await crm
             .from('messages')
-            .select('id,created_at,client_id,contact_id,conversation_id,content,source,direction,metadata,referral,referral_metadata')
+            .select('id,created_at,client_id,contact_id,conversation_id,content,source,direction,metadata')
             .in('client_id', crmAccountIds)
             .in('contact_id', batchContactIds)
             // When the supervisor already identified specific contacts (for example won sales),
@@ -858,8 +858,6 @@ const crmContactAds: ToolDefinition = {
       const referralsByContact = new Map<string, any[]>()
       const getReferral = (message: any) => {
         const candidates = [
-          message.referral,
-          message.referral_metadata,
           message.metadata?.referral,
           message.metadata,
           message.message_data,
@@ -957,8 +955,11 @@ const crmSalesAttribution: ToolDefinition = {
       const conversationsById = new Map(conversations.map(row => [row.id, row]))
       const referralsByContact = new Map<string, any>()
       for (const message of messages) {
-        const referral = message.metadata?.referral
-        if (message.contact_id && referral && !referralsByContact.has(message.contact_id)) referralsByContact.set(message.contact_id, { ...message, referral, ad_id: referral.source_id ?? referral.ad_id ?? null, ad_title: referral.ad_title ?? null })
+        const referral = message.metadata?.referral ?? message.metadata
+        if (message.contact_id && referral && typeof referral === 'object' && !referralsByContact.has(message.contact_id)) {
+          const adId = referral.utm_id ?? referral.source_id ?? referral.ad_id ?? null
+          referralsByContact.set(message.contact_id, { ...message, referral, ad_id: adId, ad_title: referral.ad_title ?? referral.campaign_name ?? null })
+        }
       }
       const won = opportunities.filter(row => String(row.status ?? '').toLowerCase() === 'won' || String(row.status ?? '').toLowerCase() === 'ganado')
       const attributed = won.map(opportunity => {
