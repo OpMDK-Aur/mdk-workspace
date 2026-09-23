@@ -96,7 +96,7 @@ function extractCampaignName(message: any): string | null {
     if (Array.isArray(value)) return value.map(find).find(Boolean) ?? null
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
       const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
-      if (['campaign_name', 'campaignname', 'campaign', 'ad_title', 'adtitle'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
+      if (['campaign_name', 'campaignname', 'campaign', 'campaign_title', 'campaigntitle', 'utm_campaign', 'utmcampaign', 'ad_name', 'adname', 'ad_title', 'adtitle', 'name'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
       const result = find(entry)
       if (result) return result
     }
@@ -978,7 +978,10 @@ const crmSalesAttribution: ToolDefinition = {
       const conversationIds = [...new Set(opportunities.map(row => row.conversation_id).filter(Boolean))]
       const pipelineIds = [...new Set(opportunities.map(row => row.pipeline_id).filter(Boolean))]
       const [contacts, messages, conversations, stages] = await Promise.all([
-        contactIds.length ? batch('contacts', 'id,created_at,client_id,name,email,phone', query => query.in('client_id', crmAccountIds).in('id', contactIds)) : Promise.resolve([]),
+        // Los datos de contacto son enriquecimiento opcional: si el endpoint
+        // contacts falla, la atribución todavía puede resolverse con mensajes,
+        // oportunidades y sus referencias UTM.
+        contactIds.length ? batch('contacts', 'id,created_at,client_id,name,email,phone', query => query.in('client_id', crmAccountIds).in('id', contactIds)).catch(() => []) : Promise.resolve([]),
         contactIds.length ? batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end)) : Promise.resolve([]),
         conversationIds.length ? batch('conversations', 'id,client_id,contact_id,assigned_agent,assigned_user,importance,unread_count,sub_channel_id,assigned_team_id', query => query.in('client_id', crmAccountIds).in('id', conversationIds)) : Promise.resolve([]),
         pipelineIds.length ? batch('pipeline_stages', 'id,client_id,pipeline_id,name,description', query => query.in('client_id', crmAccountIds).in('pipeline_id', pipelineIds)) : Promise.resolve([]),
