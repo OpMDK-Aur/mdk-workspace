@@ -1,10 +1,17 @@
 'use client'
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Send } from 'lucide-react'
+import { ChevronRight, Send } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MessageContent } from '@/components/chat/message-content'
 import { dateGroupLabel, useMockChats, type MockChat, type MockChatMessage } from '@/lib/mock/chats'
+
+const SUGGESTED_QUESTIONS = [
+  '¿Cuántos leads se convirtieron en venta en [período]?',
+  'Dame un desglose por campaña de la cantidad de leads que ingresaron al CRM y cuántas ventas tuve por campaña en [período].',
+  '¿Cuál fue la inversión en Meta Ads y Google Ads durante [período]?',
+  '¿Qué campañas tuvieron el mejor y el peor desempeño en [período]?',
+]
 
 interface ConexaMockChatProps {
   clientId: string | null
@@ -58,6 +65,19 @@ export function ConexaMockChat({ clientId, clientName, resetSignal, onCreateRepo
     sendMessage(text)
   }
 
+  function handleSuggestionClick(suggestion: string) {
+    setInput(suggestion)
+    requestAnimationFrame(() => {
+      const field = textareaRef.current
+      if (!field) return
+      field.style.height = 'auto'
+      field.style.height = `${Math.min(field.scrollHeight, 160)}px`
+      const cursor = suggestion.indexOf('[período]')
+      field.focus()
+      if (cursor >= 0) field.setSelectionRange(cursor, cursor + '[período]'.length)
+    })
+  }
+
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden">
       <aside className="flex w-64 shrink-0 flex-col gap-3 border-r border-[#E6E6E1] bg-white p-3">
@@ -98,8 +118,37 @@ export function ConexaMockChat({ clientId, clientName, resetSignal, onCreateRepo
       <div className="flex min-h-0 flex-1 flex-col bg-white">
         <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-white p-4">
           {!activeChat || activeChat.messages.length === 0 ? (
-            <div className="m-auto max-w-md text-center text-sm text-[#9a9a9a]">
-              Preguntale a Conexa por leads, inversión, conversiones, campañas o ventas del cliente seleccionado.
+            <div className="m-auto flex max-w-md flex-col gap-4 text-center">
+              <p className="text-sm text-[#9a9a9a]">
+                Preguntale a Conexa por leads, inversión, conversiones, campañas o ventas del cliente seleccionado. Indicá el período dentro de tu pregunta (por ejemplo, &quot;esta semana&quot; o &quot;el mes pasado&quot;); si no lo indicás, te lo va a pedir antes de responder.
+              </p>
+              <div className="flex flex-col gap-2 text-left">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9a9a9a]">Podés empezar preguntando</p>
+                <div className="flex flex-col gap-2">
+                  {SUGGESTED_QUESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      disabled={!clientId}
+                      onClick={() => handleSuggestionClick(suggestion)}
+                      className="group flex items-center gap-2 rounded-full border border-[#E6E6E1] bg-white px-3 py-1.5 text-left text-xs text-[#141414] transition-colors hover:border-[#5B5FE8] hover:bg-[#f4f4f1] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <span>
+                        {suggestion.includes('[período]') ? (
+                          <>
+                            {suggestion.split('[período]')[0]}
+                            <span className="rounded bg-[#eeefff] px-1.5 py-0.5 font-semibold text-[#5B5FE8]">[período]</span>
+                            {suggestion.split('[período]')[1]}
+                          </>
+                        ) : (
+                          suggestion
+                        )}
+                      </span>
+                      <ChevronRight className="size-4 shrink-0 text-[#9a9a9a] transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : (
             activeChat.messages.map((message, index) => (

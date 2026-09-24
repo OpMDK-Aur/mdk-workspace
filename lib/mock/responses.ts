@@ -29,8 +29,31 @@ const RULES: MockResponseRule[] = [
 const GENERIC_RESPONSE =
   'Todavía no tengo datos suficientes para responder eso con precisión. Probá preguntando por leads, campañas, ventas o tracking del cliente seleccionado.'
 
+const PERIOD_KEYWORDS = [
+  'hoy',
+  'ayer',
+  'semana',
+  'mes',
+  'año',
+  'anio',
+  'trimestre',
+  'período',
+  'periodo',
+  'desde',
+  'entre',
+  'último',
+  'ultimo',
+  'últimos',
+  'ultimos',
+]
+
+const ASK_PERIOD_RESPONSE =
+  '¿Para qué período querés que revise esa información? Por ejemplo, podés decirme "esta semana", "el mes pasado" o un rango de fechas puntual.'
+
 export function getMockResponse(question: string): string {
   const normalized = question.toLowerCase()
   const rule = RULES.find((item) => item.keywords.some((keyword) => normalized.includes(keyword)))
-  return rule ? rule.response : GENERIC_RESPONSE
+  if (!rule) return GENERIC_RESPONSE
+  const hasPeriod = PERIOD_KEYWORDS.some((keyword) => normalized.includes(keyword))
+  return hasPeriod ? rule.response : ASK_PERIOD_RESPONSE
 }
