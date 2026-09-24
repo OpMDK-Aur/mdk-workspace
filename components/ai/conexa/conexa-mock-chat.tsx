@@ -5,6 +5,7 @@ import { ChevronRight, Send } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MessageContent } from '@/components/chat/message-content'
 import { dateGroupLabel, useMockChats, type MockChat, type MockChatMessage } from '@/lib/mock/chats'
+import type { AccountsContext } from '@/lib/mock/responses'
 
 const SUGGESTED_QUESTIONS = [
   '¿Cuántos leads se convirtieron en venta en [período]?',
@@ -19,10 +20,12 @@ interface ConexaMockChatProps {
   /** Se incrementa desde afuera para forzar el reset del chat activo. */
   resetSignal: number
   onCreateReport?: (content: string) => void
+  /** Cuentas publicitarias/analíticas conectadas del cliente seleccionado. */
+  accounts?: AccountsContext
 }
 
-export function ConexaMockChat({ clientId, clientName, resetSignal, onCreateReport }: ConexaMockChatProps) {
-  const { chats, activeChat, isSending, selectChat, createChat, resetActiveChat, sendMessage } = useMockChats(clientId, clientName)
+export function ConexaMockChat({ clientId, clientName, resetSignal, onCreateReport, accounts }: ConexaMockChatProps) {
+  const { chats, activeChat, isSending, selectChat, createChat, resetActiveChat, sendMessage } = useMockChats(clientId, clientName, accounts)
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)

@@ -1,7 +1,41 @@
 // Respuestas simuladas para el chat de demo de Conexa. Se elige por
 // coincidencia de palabra clave sobre la pregunta del usuario; si no hay
 // coincidencia, se devuelve una respuesta genérica.
-type MockResponseRule = { keywords: string[]; response: string }
+export type AccountsContext = {
+  metaAccountIds?: (string | null | undefined)[]
+  googleAccountIds?: (string | null | undefined)[]
+  analyticsPropertyId?: string | null
+  tagManagerContainerId?: string | null
+}
+
+type MockResponseRule = {
+  keywords: string[]
+  /** Algunas respuestas (cuentas conectadas) no dependen de un período. */
+  requiresPeriod?: boolean
+  response: string | ((accounts?: AccountsContext) => string)
+}
+
+// Algunos campos de cuentas conectadas guardan varios IDs en un solo string
+// separado por comas (p. ej. "197...,990...,205..."), en línea con la misma
+// normalización que ya usa el resto de la vista de Conexa.
+function normalizeAccountIds(values: (string | null | undefined)[]) {
+  return [...new Set(values.filter(Boolean).flatMap((value) => String(value).split(',').map((id) => id.trim()).filter(Boolean)))]
+}
+
+function buildAccountsResponse(accounts?: AccountsContext): string {
+  const meta = normalizeAccountIds(accounts?.metaAccountIds ?? [])
+  const google = normalizeAccountIds(accounts?.googleAccountIds ?? [])
+  if (meta.length === 0 && google.length === 0) {
+    return 'Todavía no tengo ninguna cuenta publicitaria conectada para este cliente. Podés vincularla desde la sección Conexiones.'
+  }
+  const lines = [
+    `- **Meta Ads**: ${meta.length > 0 ? `cuenta ${meta.join(', ')}` : 'sin cuenta conectada'}`,
+    `- **Google Ads**: ${google.length > 0 ? `cuenta ${google.join(', ')}` : 'sin cuenta conectada'}`,
+  ]
+  if (accounts?.analyticsPropertyId) lines.push(`- **Google Analytics**: propiedad ${accounts.analyticsPropertyId}`)
+  if (accounts?.tagManagerContainerId) lines.push(`- **Tag Manager**: contenedor ${accounts.tagManagerContainerId}`)
+  return `Las cuentas conectadas para este cliente son:\n\n${lines.join('\n')}`
+}
 
 // El orden importa: se evalúan de arriba hacia abajo y se usa la primera que
 // matchea. Las reglas combinadas (que requieren varias palabras clave a la
@@ -9,6 +43,11 @@ type MockResponseRule = { keywords: string[]; response: string }
 // término (p. ej. "leads por campaña y ventas" no debe caer en la regla
 // genérica de "lead").
 const RULES: MockResponseRule[] = [
+  {
+    keywords: ['cuenta publicitaria', 'cuenta de meta', 'cuenta de google', 'cuenta de anuncios', 'qué cuenta', 'que cuenta', 'cuál cuenta', 'cual cuenta', 'id de cuenta', 'account id'],
+    requiresPeriod: false,
+    response: buildAccountsResponse,
+  },
   {
     keywords: ['campaña', 'campana'],
     response:
@@ -64,10 +103,14 @@ const PERIOD_KEYWORDS = [
 const ASK_PERIOD_RESPONSE =
   '¿Para qué período querés que revise esa información? Por ejemplo, podés decirme "esta semana", "el mes pasado" o un rango de fechas puntual.'
 
-export function getMockResponse(question: string): string {
+export function getMockResponse(question: string, accounts?: AccountsContext): string {
   const normalized = question.toLowerCase()
   const rule = RULES.find((item) => item.keywords.some((keyword) => normalized.includes(keyword)))
   if (!rule) return GENERIC_RESPONSE
-  const hasPeriod = PERIOD_KEYWORDS.some((keyword) => normalized.includes(keyword))
-  return hasPeriod ? rule.response : ASK_PERIOD_RESPONSE
+  const requiresPeriod = rule.requiresPeriod ?? true
+  if (requiresPeriod) {
+    const hasPeriod = PERIOD_KEYWORDS.some((keyword) => normalized.includes(keyword))
+    if (!hasPeriod) return ASK_PERIOD_RESPONSE
+  }
+  return typeof rule.response === 'function' ? rule.response(accounts) : rule.response
 }
