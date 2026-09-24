@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { usePathname } from 'next/navigation'
 import { Building2, ChevronDown, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,16 +31,17 @@ export function DashboardHeader({
   selectedClientId,
   onSelectClient,
 }: DashboardHeaderProps) {
+  const pathname = usePathname()
   const [open, setOpen] = useState(false)
-  const enabledClients = useMemo(
-    () => clients.filter((client) => client.enabled ?? ['ICS Salud', 'VN Global'].includes(client.nombre_del_negocio)),
-    [clients],
-  )
+  const visibleClients = useMemo(() => {
+    if (!pathname.startsWith('/conexa')) return clients
+    return clients.filter((client) => ['ICS Salud', 'VN Global'].includes(client.nombre_del_negocio))
+  }, [clients, pathname])
 
   const selectedClient = useMemo(() => {
     if (!selectedClientId) return null
-    return enabledClients.find(c => c.id === selectedClientId)
-  }, [selectedClientId, enabledClients])
+    return visibleClients.find((client) => client.id === selectedClientId)
+  }, [selectedClientId, visibleClients])
 
   return (
     <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
@@ -66,13 +68,25 @@ export function DashboardHeader({
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Seleccionar cliente</p>
               </div>
               <Command>
-                {enabledClients.length > 6 && <CommandInput placeholder="Buscar cliente..." className="h-8 text-sm" />}
-                <CommandList className={cn(enabledClients.length > 6 ? 'max-h-64 overflow-y-auto' : 'overflow-hidden')}>
+                {visibleClients.length > 6 && <CommandInput placeholder="Buscar cliente..." className="h-8 text-sm" />}
+                <CommandList className={cn(visibleClients.length > 6 ? 'max-h-64 overflow-y-auto' : 'overflow-hidden')}>
                   <CommandEmpty className="text-xs text-muted-foreground py-4 text-center">
                     Sin resultados
                   </CommandEmpty>
                   <CommandGroup>
-                    {enabledClients.map((client) => {
+                    {!pathname.startsWith('/conexa') && (
+                      <CommandItem
+                        value="todos los clientes"
+                        onSelect={() => {
+                          onSelectClient(null)
+                          setOpen(false)
+                        }}
+                        className="text-sm flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer"
+                      >
+                        <span className="flex-1">Todos los clientes</span>
+                      </CommandItem>
+                    )}
+                    {visibleClients.map((client) => {
                       const selected = selectedClientId === client.id
                       return (
                         <CommandItem
