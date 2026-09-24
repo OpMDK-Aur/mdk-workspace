@@ -54,6 +54,35 @@ export async function updateClientPlatformIds(
   if (error) return { error: error.message }
   if (!updatedClient) return { error: 'No se actualizó el cliente: no se encontró el ID del cliente o la fila no es accesible.' }
 
+  const accountRows = [
+    ...(metaAdsAccountId ? metaAdsAccountId.split(',').map((id) => ({ plataforma: 'meta', id_cuenta: id.trim() })) : []),
+    ...(googleAdsCustomerId ? googleAdsCustomerId.split(',').map((id) => ({ plataforma: 'google', id_cuenta: id.trim() })) : []),
+  ].filter((account) => account.id_cuenta)
+
+  const { data: existingAccounts, error: existingAccountsError } = await admin
+    .from('cuentas_publicitarias')
+    .select('id, plataforma')
+    .eq('cliente_id', clientId)
+  if (existingAccountsError) return { error: existingAccountsError.message }
+
+  const staleIds = (existingAccounts ?? [])
+    .filter((account) => ['meta', 'google'].includes(account.plataforma))
+    .map((account) => account.id)
+  if (staleIds.length) {
+    const { error: deleteError } = await admin.from('cuentas_publicitarias').delete().in('id', staleIds)
+    if (deleteError) return { error: deleteError.message }
+  }
+
+  if (accountRows.length) {
+    // La base existente no siempre tiene una restricción UNIQUE sobre
+    // cliente_id/plataforma/id_cuenta, por lo que no podemos depender de
+    // ON CONFLICT. Los registros anteriores ya fueron sincronizados arriba.
+    const { error: insertError } = await admin.from('cuentas_publicitarias').insert(
+      accountRows.map((account) => ({ cliente_id: clientId, plataforma: account.plataforma, id_cuenta: account.id_cuenta, nombre_cuenta: account.id_cuenta, activo: true })),
+    )
+    if (insertError) return { error: insertError.message }
+  }
+
   revalidatePath('/dashboard')
   revalidatePath('/dashboard/clients/config')
   return { success: true }
@@ -74,7 +103,7 @@ export async function saveClientAureliaAccount(clientId: string, accountId: stri
     .select('id, crm_location_id, ghl_location_id')
     .single()
   if (error) return { error: error.message }
-  if (!data) return { error: 'No se encontró el cliente para guardar el ID de Aurelia.' }
+  if (!data) return { error: 'No se encontró el cliente para guardar el ID de CRM.' }
   revalidatePath('/dashboard/platform')
   return { success: true, client: data }
 }

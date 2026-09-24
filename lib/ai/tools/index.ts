@@ -8,6 +8,7 @@ import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 import { contextFromEvents, mergeWorkingContext } from '@/lib/ai/conversation-context'
 import { buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeIndustry, type MetricRow } from '@/lib/ai/client-memory'
 import { getBuenosAiresLastSevenDays, getGoogleAnalyticsReport, getGoogleAnalyticsSales, getGoogleAnalyticsPageMetrics } from '@/lib/google-analytics/service'
+import { getGoogleTagManagerReport } from '@/lib/google-tag-manager/service'
 import { createCrmClient } from '@/lib/supabase/crm'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
 
@@ -30,6 +31,78 @@ async function resolveCrmAccountIds(clientId: string): Promise<string[]> {
   const primaryId = clienteRow?.crm_location_id ?? clienteRow?.ghl_location_id ?? null
   const extraIds = (extraAccounts ?? []).map((row: { crm_account_id: string }) => row.crm_account_id)
   return [...new Set([primaryId, ...extraIds].filter(Boolean) as string[])]
+}
+
+/**
+ * El CRM externo de Aurelia corre en un proyecto Supabase aparte. Bajo
+ * consultas concurrentes (paginación + Promise.all) esa API a veces devuelve
+ * un fallo de red puntual ("TypeError: fetch failed") que no refleja un
+ * problema real de datos. Reintenta esos errores transitorios antes de
+ * abortar la herramienta completa.
+ */
+async function withCrmRetry<T>(
+  run: () => PromiseLike<{ data: T | null; error: { message: string } | null }>,
+  maxAttempts = 3,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  let lastError: { message: string } | null = null
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const { data, error } = await run()
+    if (!error) return { data, error: null }
+    lastError = error
+    const transient = /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i.test(error.message ?? '')
+    if (!transient || attempt === maxAttempts) return { data, error }
+    await new Promise((resolve) => setTimeout(resolve, attempt * 300))
+  }
+  return { data: null, error: lastError }
+}
+
+/**
+ * El referral de una campaña puede venir anidado en distintas claves según el
+ * canal (metadata, referral_metadata, referral, message_data). Estas
+ * búsquedas recursivas se comparten entre crm_contact_ads y
+ * crm_sales_attribution para que ambas resuelvan el mismo utm_id y, sobre
+ * todo, el mismo NOMBRE de campaña en lugar de mostrarle al usuario el id.
+ */
+function extractUtmId(message: any): string | null {
+  const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
+  const visited = new Set<object>()
+  const find = (value: unknown): string | null => {
+    if (!value || typeof value !== 'object' || visited.has(value as object)) return null
+    visited.add(value as object)
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const result = find(item)
+        if (result) return result
+      }
+      return null
+    }
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
+      if (['utm_id', 'utmid', 'utm_identifier', 'utmid_value'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
+      const result = find(entry)
+      if (result) return result
+    }
+    return null
+  }
+  return find(candidates) ?? (message.source ? String(message.source) : null)
+}
+
+function extractCampaignName(message: any): string | null {
+  const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
+  const visited = new Set<object>()
+  const find = (value: unknown): string | null => {
+    if (!value || typeof value !== 'object' || visited.has(value as object)) return null
+    visited.add(value as object)
+    if (Array.isArray(value)) return value.map(find).find(Boolean) ?? null
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
+      if (['campaign_name', 'campaignname', 'campaign', 'campaign_title', 'campaigntitle', 'utm_campaign', 'utmcampaign', 'ad_name', 'adname', 'ad_title', 'adtitle', 'name'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
+      const result = find(entry)
+      if (result) return result
+    }
+    return null
+  }
+  return find(candidates)
 }
 
 const CONTEXT_FIELD_LIMIT = 1200
@@ -321,14 +394,14 @@ const getIndustryBenchmark: ToolDefinition = {
 
 const getMetaMetrics: ToolDefinition = {
   key: 'get_meta_metrics',
-  description: 'Consulta métricas reales de Meta Ads de las cuentas activas del cliente seleccionado.',
+  description: 'Consulta métricas reales de Meta Ads de las cuentas activas del cliente seleccionado, incluyendo gasto, leads/resultados, campañas, anuncios e IDs necesarios para cruzar utm_id o source_id del CRM.',
   inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional(), accountId: z.string().optional() }),
   async execute(input: { dateFrom?: string; dateTo?: string; accountId?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     if ((input.dateFrom && !input.dateTo) || (!input.dateFrom && input.dateTo)) return { available: false, message: 'Debes indicar dateFrom y dateTo juntos.' }
 
     const { dateFrom, dateTo } = input.dateFrom && input.dateTo ? input : defaultMetaDateRange()
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: accounts, error } = await supabase
       .from('cuentas_publicitarias')
       .select('id_cuenta, nombre_cuenta, moneda, zona_horaria')
@@ -398,13 +471,13 @@ const getMetaMetrics: ToolDefinition = {
 
 const getGoogleMetrics: ToolDefinition = {
   key: 'get_google_metrics',
-  description: 'Consulta métricas reales de Google Ads de las cuentas activas del cliente seleccionado. Cada cuenta incluye conversion_actions con el nombre exacto de la acción de conversión, conversiones, valor y campañas relacionadas; totals.leads es únicamente el total agregado.',
+  description: 'Consulta métricas reales de Google Ads de las cuentas activas del cliente seleccionado, incluyendo gasto, leads/conversiones, campañas, anuncios e IDs necesarios para cruzar utm_id o source_id del CRM. Cada cuenta incluye conversion_actions con el nombre exacto de la acción de conversión, conversiones, valor y campañas relacionadas; totals.leads es únicamente el total agregado.',
   inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional(), accountId: z.string().optional() }),
   async execute(input: { dateFrom?: string; dateTo?: string; accountId?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     if ((input.dateFrom && !input.dateTo) || (!input.dateFrom && input.dateTo)) return { available: false, message: 'Debes indicar dateFrom y dateTo juntos.' }
     const { dateFrom, dateTo } = input.dateFrom && input.dateTo ? input : defaultGoogleDateRange()
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: accounts, error } = await supabase.from('cuentas_publicitarias').select('id_cuenta, nombre_cuenta, moneda, zona_horaria').eq('cliente_id', context.clientId).eq('plataforma', 'google').eq('activo', true)
     if (error) return { available: false, message: 'No se pudieron consultar las cuentas activas de Google Ads.' }
     const availableAccounts = (accounts ?? []).flatMap((account) => splitCustomerIds(account.id_cuenta).map((id_cuenta) => ({ ...account, id_cuenta })))
@@ -450,7 +523,7 @@ const getGoogleAnalyticsReportTool: ToolDefinition = {
     const argentinaRange = getBuenosAiresLastSevenDays()
     const dateTo = input.dateTo ?? argentinaRange.dateTo
     const dateFrom = input.dateFrom ?? argentinaRange.dateFrom
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: client, error } = await supabase.from('clientes').select('analytics_property_id').eq('id', context.clientId).single()
     if (error || !client?.analytics_property_id) return { available: false, message: 'El cliente no tiene una propiedad de Google Analytics 4 asignada en la configuración de plataforma.' }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_report', status: 'running', label: 'Consultando información completa de Google Analytics 4...' })
@@ -466,6 +539,28 @@ const getGoogleAnalyticsReportTool: ToolDefinition = {
   },
 }
 
+const getGoogleTagManagerReportTool: ToolDefinition = {
+  key: 'get_google_tag_manager_report',
+  description: 'Obtiene un reporte de los contenedores de Google Tag Manager del cliente: etiquetas, activadores y variables definidas por el usuario, con diagnósticos básicos (etiquetas pausadas, etiquetas sin activador, activadores sin etiquetas).',
+  inputSchema: noInput,
+  async execute(_input, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const supabase = createAdminClient()
+    const { data: client, error } = await supabase.from('clientes').select('tag_manager_container_id').eq('id', context.clientId).single()
+    if (error || !client?.tag_manager_container_id) return { available: false, message: 'El cliente no tiene un contenedor de Google Tag Manager asignado en la configuración de plataforma.' }
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_tag_manager_report', status: 'running', label: 'Consultando Google Tag Manager...' })
+    try {
+      const report = await getGoogleTagManagerReport(client.tag_manager_container_id)
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_tag_manager_report', status: 'completed', label: 'Información de Google Tag Manager recibida' })
+      return { available: true, source: 'Google Tag Manager', ...report }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'No se pudo consultar Google Tag Manager.'
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_tag_manager_report', status: 'error', label: 'No se pudo consultar Google Tag Manager' })
+      return { available: false, message }
+    }
+  },
+}
+
   const getGoogleAnalyticsPageTool: ToolDefinition = {
   key: 'get_google_analytics_page_metrics',
   description: 'Consulta un conjunto amplio de métricas agregadas de una página exacta de GA4 usando pagePath: vistas, usuarios, sesiones, engagement, eventos, conversiones e ingresos cuando la propiedad los tenga disponibles. Usala para preguntas naturales sobre una URL; no requiere que el usuario conozca los nombres técnicos.',
@@ -475,7 +570,7 @@ const getGoogleAnalyticsReportTool: ToolDefinition = {
     const range = getBuenosAiresLastSevenDays()
     const dateFrom = input.dateFrom ?? range.dateFrom
     const dateTo = input.dateTo ?? range.dateTo
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: client, error } = await supabase.from('clientes').select('analytics_property_id').eq('id', context.clientId).single()
     if (error || !client?.analytics_property_id) return { available: false, message: 'El cliente no tiene una propiedad de Google Analytics 4 asignada en la configuración de plataforma.' }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_page_metrics', status: 'running', label: `Consultando métricas de ${input.pagePath} en GA4...` })
@@ -500,7 +595,7 @@ const getGoogleAnalyticsReportTool: ToolDefinition = {
     const argentinaRange = getBuenosAiresLastSevenDays()
     const dateTo = input.dateTo ?? argentinaRange.dateTo
     const dateFrom = input.dateFrom ?? argentinaRange.dateFrom
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: client, error } = await supabase.from('clientes').select('analytics_property_id').eq('id', context.clientId).single()
     if (error || !client?.analytics_property_id) return { available: false, message: 'El cliente no tiene una propiedad de Google Analytics 4 asignada en la configuración de plataforma.' }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_sales', status: 'running', label: 'Consultando ventas de Google Analytics 4...' })
@@ -676,12 +771,12 @@ const getPreviousInsights: ToolDefinition = {
 
 const crmOpportunities: ToolDefinition = {
   key: 'crm_opportunities',
-  description: 'Lista todas las oportunidades del CRM externo de Aurelia dentro de un período, incluyendo estado, etapa, vendedor, contacto y monto.',
-  inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
-  async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
+  description: 'Lista oportunidades del CRM dentro de un período, incluyendo estado, etapa, vendedor, contacto y monto. Para ventas, pasá status=won y usá los contact_id devueltos para el siguiente cruce.',
+  inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), status: z.string().optional() }),
+  async execute(input: { dateFrom: string; dateTo: string; status?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     const crmAccountIds = await resolveCrmAccountIds(context.clientId)
-    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de Aurelia CRM vinculada.' }
+    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
     const crm = createCrmClient()
     const start = new Date(`${input.dateFrom}T00:00:00-03:00`).toISOString()
     const endExclusive = new Date(`${input.dateTo}T00:00:00-03:00`)
@@ -690,7 +785,9 @@ const crmOpportunities: ToolDefinition = {
     const opportunities: any[] = []
     try {
       for (let offset = 0; offset < 10000; offset += 100) {
-        const { data, error } = await crm.from('opportunities').select('id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
+        let query = crm.from('opportunities').select('id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end)
+        if (input.status) query = query.eq('status', input.status)
+        const { data, error } = await withCrmRetry(() => query.range(offset, offset + 99))
         if (error) throw new Error(`opportunities: ${error.message}`)
         opportunities.push(...(data ?? []))
         if ((data ?? []).length < 100) break
@@ -698,11 +795,9 @@ const crmOpportunities: ToolDefinition = {
       const contactIds = [...new Set(opportunities.map(row => row.contact_id).filter(Boolean))]
       const pipelineIds = [...new Set(opportunities.map(row => row.pipeline_id).filter(Boolean))]
       const [contactsResult, stagesResult] = await Promise.all([
-        contactIds.length ? crm.from('contacts').select('id,name,email,phone').in('client_id', crmAccountIds).in('id', contactIds) : Promise.resolve({ data: [], error: null }),
-        pipelineIds.length ? crm.from('pipeline_stages').select('id,pipeline_id,name,description').in('client_id', crmAccountIds).in('pipeline_id', pipelineIds) : Promise.resolve({ data: [], error: null }),
+        contactIds.length ? withCrmRetry(() => crm.from('contacts').select('id,name,email,phone').in('client_id', crmAccountIds).in('id', contactIds)) : Promise.resolve({ data: [], error: null }),
+        pipelineIds.length ? withCrmRetry(() => crm.from('pipeline_stages').select('id,pipeline_id,name,description').in('client_id', crmAccountIds).in('pipeline_id', pipelineIds)) : Promise.resolve({ data: [], error: null }),
       ])
-      if (contactsResult.error) throw new Error(`contacts: ${contactsResult.error.message}`)
-      if (stagesResult.error) throw new Error(`pipeline_stages: ${stagesResult.error.message}`)
       const contactsById = new Map((contactsResult.data ?? []).map(row => [row.id, row]))
       const stagesById = new Map((stagesResult.data ?? []).map(row => [row.id, row]))
       const rows = opportunities.map(opportunity => ({ ...opportunity, contact: contactsById.get(opportunity.contact_id) ?? null, stage: stagesById.get(opportunity.stage_id) ?? null }))
@@ -711,7 +806,7 @@ const crmOpportunities: ToolDefinition = {
       return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end }, totals: { opportunities: rows.length, by_status: byStatus, amount: rows.reduce((sum, row) => sum + (Number(row.amount ?? 0) || 0), 0) }, opportunities: rows.slice(0, 500), truncated: rows.length > 500 }
     } catch (error) {
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_opportunities', status: 'error', label: 'No se pudieron consultar las oportunidades' })
-      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar Aurelia CRM.' }
+      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar CRM.' }
     }
   },
 }
@@ -723,7 +818,7 @@ const crmContacts: ToolDefinition = {
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     const crmAccountIds = await resolveCrmAccountIds(context.clientId)
-    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de Aurelia CRM vinculada.' }
+    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
     const crm = createCrmClient()
     const start = new Date(`${input.dateFrom}T00:00:00-03:00`).toISOString()
     const endExclusive = new Date(`${input.dateTo}T00:00:00-03:00`)
@@ -732,7 +827,7 @@ const crmContacts: ToolDefinition = {
     const contacts: any[] = []
     try {
       for (let offset = 0; offset < 10000; offset += 100) {
-        const { data, error } = await crm.from('contacts').select('id,created_at,client_id,name,email,phone').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
+        const { data, error } = await withCrmRetry(() => crm.from('contacts').select('id,created_at,client_id,name,email,phone').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end).range(offset, offset + 99))
         if (error) throw new Error(`contacts: ${error.message}`)
         contacts.push(...(data ?? []))
         if ((data ?? []).length < 100) break
@@ -741,69 +836,32 @@ const crmContacts: ToolDefinition = {
       return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end }, totals: { contacts: contacts.length }, contacts: contacts.slice(0, 500), truncated: contacts.length > 500 }
     } catch (error) {
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contacts', status: 'error', label: 'No se pudieron consultar los contactos' })
-      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar Aurelia CRM.' }
+      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar CRM.' }
     }
   },
 }
 
 const crmContactAds: ToolDefinition = {
   key: 'crm_contact_ads',
-  description: 'Cuenta los contactos creados en Aurelia CRM durante un período que tienen al menos un mensaje con utm_id dentro de metadata, referral o message_data. Usala para preguntas sobre contactos de pauta, anuncios o campañas, no ventas ganadas.',
-  inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
-  async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
+  description: 'Cuenta contactos CRM con utm_id/referral/source_id. Si ya obtuviste oportunidades won, pasá sus contactIds para cruzar únicamente esos contactos; si no, analiza todos los contactos creados en el período.',
+  inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), contactIds: z.array(z.string()).optional() }),
+  async execute(input: { dateFrom: string; dateTo: string; contactIds?: string[] }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     const crmAccountIds = await resolveCrmAccountIds(context.clientId)
-    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de Aurelia CRM vinculada.' }
+    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
     const crm = createCrmClient()
     const start = new Date(`${input.dateFrom}T00:00:00-03:00`).toISOString()
     const endExclusive = new Date(`${input.dateTo}T00:00:00-03:00`)
     endExclusive.setUTCDate(endExclusive.getUTCDate() + 1)
     const end = endExclusive.toISOString()
-    const getAdId = (message: any) => {
-      const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
-      const visited = new Set<object>()
-      const find = (value: unknown): string | null => {
-        if (!value || typeof value !== 'object' || visited.has(value as object)) return null
-        visited.add(value as object)
-        if (Array.isArray(value)) {
-          for (const item of value) {
-            const result = find(item)
-            if (result) return result
-          }
-          return null
-        }
-        const object = value as Record<string, unknown>
-        for (const [key, entry] of Object.entries(object)) {
-          const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
-          if (['utm_id', 'utmid', 'utm_identifier', 'utmid_value'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
-          const result = find(entry)
-          if (result) return result
-        }
-        return null
-      }
-      return find(candidates) ?? (message.source ? String(message.source) : null)
-    }
-    const getCampaign = (message: any) => {
-      const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
-      const visited = new Set<object>()
-      const find = (value: unknown): string | null => {
-        if (!value || typeof value !== 'object' || visited.has(value as object)) return null
-        visited.add(value as object)
-        if (Array.isArray(value)) return value.map(find).find(Boolean) ?? null
-        for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-          const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
-          if (['campaign_name', 'campaignname', 'campaign', 'campaign_id', 'campaignid'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
-          const result = find(entry)
-          if (result) return result
-        }
-        return null
-      }
-      return find(candidates)
-    }
+    const getAdId = extractUtmId
+    const getCampaign = extractCampaignName
     try {
       const contacts: any[] = []
       for (let offset = 0; offset < 10000; offset += 100) {
-        const { data, error } = await crm.from('contacts').select('id,created_at,client_id,name,email,phone').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end).range(offset, offset + 99)
+        let query = crm.from('contacts').select('id,created_at,client_id,name,email,phone').in('client_id', crmAccountIds).gte('created_at', start).lt('created_at', end)
+        if (input.contactIds?.length) query = query.in('id', input.contactIds)
+        const { data, error } = await withCrmRetry(() => query.range(offset, offset + 99))
         if (error) throw new Error(`contacts: ${error.message}`)
         contacts.push(...(data ?? []))
         if ((data ?? []).length < 100) break
@@ -814,23 +872,52 @@ const crmContactAds: ToolDefinition = {
       // referral lookup to the same period avoids scanning the full message history.
       for (let batchStart = 0; batchStart < contactIds.length; batchStart += 25) {
         const batchContactIds = contactIds.slice(batchStart, batchStart + 25)
-        const { data, error } = await crm
-          .from('messages')
-          .select('id,created_at,client_id,contact_id,conversation_id,metadata,source')
-          .in('client_id', crmAccountIds)
-          .in('contact_id', batchContactIds)
-          .gte('created_at', start)
-          .lt('created_at', end)
-          .limit(250)
-        if (error) throw new Error(`messages: ${error.message}`)
-        messages.push(...(data ?? []))
+        for (let offset = 0; offset < 10000; offset += 100) {
+          const { data, error } = await withCrmRetry(() => crm
+            .from('messages')
+            .select('id,created_at,client_id,contact_id,conversation_id,content,source,direction,metadata')
+            .in('client_id', crmAccountIds)
+            .in('contact_id', batchContactIds)
+            // When the supervisor already identified specific contacts (for example won sales),
+            // load their complete referral history instead of limiting it to the opportunity period.
+            .gte('created_at', input.contactIds?.length ? '1970-01-01T00:00:00.000Z' : start)
+            .lt('created_at', input.contactIds?.length ? new Date().toISOString() : end)
+            .range(offset, offset + 99))
+          if (error) throw new Error(`messages: ${error.message}`)
+          messages.push(...(data ?? []))
+          if ((data ?? []).length < 100) break
+        }
       }
       const referralsByContact = new Map<string, any[]>()
+      const getReferral = (message: any) => {
+        const candidates = [
+          message.metadata?.referral,
+          message.metadata,
+          message.message_data,
+        ]
+        return candidates.find((value) => value && typeof value === 'object') ?? null
+      }
       for (const message of messages) {
         const utmId = getAdId(message)
         if (!utmId || !message.contact_id) continue
         const rows = referralsByContact.get(message.contact_id) ?? []
-        rows.push({ utm_id: String(utmId), campaign: getCampaign(message), message_id: message.id, created_at: message.created_at })
+        rows.push({
+          referral: getReferral(message),
+          utm_id: String(utmId),
+          campaign: getCampaign(message),
+          source_id: getReferral(message)?.source_id ?? null,
+          message_id: message.id,
+          conversation_id: message.conversation_id,
+          created_at: message.created_at,
+          source: message.source,
+          direction: message.direction,
+          content: message.content,
+          metadata: message.metadata,
+          referral_metadata: message.referral_metadata ?? null,
+          referral_source: getReferral(message)?.source ?? getReferral(message)?.source_id ?? null,
+          referral_ad_id: getReferral(message)?.ad_id ?? getReferral(message)?.source_id ?? null,
+          referral_ad_title: getReferral(message)?.ad_title ?? getReferral(message)?.campaign_name ?? null,
+        })
         referralsByContact.set(message.contact_id, rows)
       }
       const attributedContacts = contacts.filter(contact => referralsByContact.has(contact.id)).map(contact => ({ ...contact, referrals: referralsByContact.get(contact.id) }))
@@ -846,22 +933,30 @@ const crmContactAds: ToolDefinition = {
       }
       const campaigns = [...campaignSummary.values()].map(item => ({ campaign: item.campaign, contacts: item.contacts.size, utm_ids: [...item.utm_ids] })).sort((a, b) => b.contacts - a.contacts)
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contact_ads', status: 'completed', label: `${attributedContacts.length} contactos de pauta` })
-      return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end }, totals: { contacts_created: contacts.length, contacts_with_ad_referral: attributedContacts.length, messages_scanned: messages.length, campaigns: campaigns.length }, campaigns, contacts: attributedContacts.slice(0, 100), truncated: attributedContacts.length > 100 }
+      return {
+        available: true,
+        period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', query_start_utc: start, query_end_exclusive_utc: end },
+        totals: { contacts_created: contacts.length, contacts_with_ad_referral: attributedContacts.length, messages_scanned: messages.length, campaigns: campaigns.length },
+        campaigns,
+        contacts: attributedContacts,
+        referral_context: attributedContacts.flatMap(contact => (contact.referrals ?? []).map((referral: any) => ({ contact_id: contact.id, contact_name: contact.name, ...referral }))),
+        truncated: false,
+      }
     } catch (error) {
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contact_ads', status: 'error', label: 'No se pudo analizar la pauta de contactos' })
-      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar la atribución de contactos en Aurelia CRM.' }
+      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar la atribución de contactos en CRM.' }
     }
   },
 }
 
 const crmSalesAttribution: ToolDefinition = {
   key: 'crm_sales_attribution',
-  description: 'Relaciona oportunidades ganadas del CRM externo de Aurelia con contactos, mensajes inbound con referral/source_id y conversaciones asignadas. Usala para responder ventas por campaña o anuncio. NO usar para contar el total de contactos creados: para eso usar crm_contacts.',
+  description: 'Relaciona oportunidades ganadas del CRM con contactos y mensajes inbound con utm_id/referral/source_id para atribución de ventas. Usala después de identificar las oportunidades won cuando la consulta pide ventas por campaña o anuncio. by_campaign.campaign es el NOMBRE de campaña resuelto: usá siempre ese campo para mostrarle la campaña al usuario, nunca el utm_id/ad_id (que solo sirve como referencia interna). Su resultado es evidencia CRM; debe cruzarse con Meta Ads o Google Ads para validar gasto, leads y nombres de campaña. NO usar para contar el total de contactos creados: para eso usar crm_contacts.',
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     const crmAccountIds = await resolveCrmAccountIds(context.clientId)
-    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de Aurelia CRM vinculada.' }
+    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
     const crm = createCrmClient()
     const start = `${input.dateFrom}T00:00:00.000Z`
     const end = `${input.dateTo}T23:59:59.999Z`
@@ -869,7 +964,7 @@ const crmSalesAttribution: ToolDefinition = {
       const rows: any[] = []
       for (let offset = 0; offset < maxRows; offset += 100) {
         let query = filters(crm.from(table).select(columns))
-        const { data, error } = await query.range(offset, offset + 99)
+        const { data, error } = await withCrmRetry<any[]>(() => query.range(offset, offset + 99))
         if (error) throw new Error(`${table}: ${error.message}`)
         rows.push(...(data ?? []))
         if ((data ?? []).length < 100) break
@@ -880,36 +975,56 @@ const crmSalesAttribution: ToolDefinition = {
     try {
       const opportunities = await batch('opportunities', 'id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency', query => query.in('client_id', crmAccountIds).gte('created_at', start).lte('created_at', end), 5000)
       const contactIds = [...new Set(opportunities.map(row => row.contact_id).filter(Boolean))]
-      const conversationIds = [...new Set(opportunities.map(row => row.conversation_id).filter(Boolean))]
       const pipelineIds = [...new Set(opportunities.map(row => row.pipeline_id).filter(Boolean))]
-      const [contacts, messages, conversations, stages] = await Promise.all([
-        contactIds.length ? batch('contacts', 'id,created_at,client_id,name,email,phone', query => query.in('client_id', crmAccountIds).in('id', contactIds)) : Promise.resolve([]),
+      // Las conversaciones no son necesarias para determinar una venta WON ni
+      // para atribuirla por UTM. No hacemos esta consulta porque una falla del
+      // endpoint conversations no debe invalidar todas las ventas.
+      const [contacts, messages, stages] = await Promise.all([
+        // Los datos de contacto son enriquecimiento opcional: si el endpoint
+        // contacts falla, la atribución todavía puede resolverse con mensajes,
+        // oportunidades y sus referencias UTM.
+        contactIds.length ? batch('contacts', 'id,created_at,client_id,name,email,phone', query => query.in('client_id', crmAccountIds).in('id', contactIds)).catch(() => []) : Promise.resolve([]),
         contactIds.length ? batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end)) : Promise.resolve([]),
-        conversationIds.length ? batch('conversations', 'id,client_id,contact_id,assigned_agent,assigned_user,importance,unread_count,sub_channel_id,assigned_team_id', query => query.in('client_id', crmAccountIds).in('id', conversationIds)) : Promise.resolve([]),
         pipelineIds.length ? batch('pipeline_stages', 'id,client_id,pipeline_id,name,description', query => query.in('client_id', crmAccountIds).in('pipeline_id', pipelineIds)) : Promise.resolve([]),
       ])
       const contactsById = new Map(contacts.map(row => [row.id, row]))
       const stagesById = new Map(stages.map(row => [row.id, row]))
-      const conversationsById = new Map(conversations.map(row => [row.id, row]))
       const referralsByContact = new Map<string, any>()
       for (const message of messages) {
-        const referral = message.metadata?.referral
-        if (message.contact_id && referral && !referralsByContact.has(message.contact_id)) referralsByContact.set(message.contact_id, { ...message, referral, ad_id: referral.source_id ?? referral.ad_id ?? null, ad_title: referral.ad_title ?? null })
+        const referral = message.metadata?.referral ?? message.metadata
+        if (message.contact_id && referral && typeof referral === 'object' && !referralsByContact.has(message.contact_id)) {
+          // Buscamos el utm_id y el NOMBRE de campaña con la misma búsqueda
+          // recursiva que usa crm_contact_ads: el nombre suele venir anidado
+          // más adentro del metadata que el ad_title/campaign_name de nivel
+          // superior, y sin esto el usuario terminaba viendo el utm_id.
+          const adId = extractUtmId(message) ?? referral.source_id ?? referral.ad_id ?? null
+          const campaignName = extractCampaignName(message)
+          referralsByContact.set(message.contact_id, { ...message, referral, ad_id: adId, ad_title: campaignName, campaign: campaignName ?? (adId ? `UTM ID ${adId}` : null) })
+        }
       }
       const won = opportunities.filter(row => String(row.status ?? '').toLowerCase() === 'won' || String(row.status ?? '').toLowerCase() === 'ganado')
       const attributed = won.map(opportunity => {
         const referral = referralsByContact.get(opportunity.contact_id)
-        const conversation = conversationsById.get(opportunity.conversation_id ?? referral?.conversation_id)
-        return { opportunity, contact: contactsById.get(opportunity.contact_id) ?? null, stage: stagesById.get(opportunity.stage_id) ?? null, referral: referral ?? null, conversation: conversation ?? null }
+        return { opportunity, contact: contactsById.get(opportunity.contact_id) ?? null, stage: stagesById.get(opportunity.stage_id) ?? null, referral: referral ?? null }
       })
+      // Se agrupa por NOMBRE de campaña (no por utm_id) para que el usuario
+      // vea "Campaña X" en vez de un identificador. Cuando no hay nombre
+      // resuelto, mostramos "UTM ID {id}" como último recurso en lugar de
+      // dejar la fila vacía.
       const byCampaign = new Map<string, any>()
-      for (const sale of attributed) { const key = sale.referral?.ad_id ?? 'unattributed'; const current = byCampaign.get(key) ?? { ad_id: key === 'unattributed' ? null : key, ad_title: sale.referral?.ad_title ?? null, sales: 0, amount: 0 }; current.sales += 1; current.amount += Number(sale.opportunity.amount ?? 0) || 0; byCampaign.set(key, current) }
-      const result = { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo }, totals: { won_sales: won.length, attributed_sales: attributed.filter(sale => sale.referral?.ad_id).length, unattributed_sales: attributed.filter(sale => !sale.referral?.ad_id).length, amount: won.reduce((sum, row) => sum + (Number(row.amount ?? 0) || 0), 0) }, by_campaign: [...byCampaign.values()], sales: attributed.slice(0, 100), truncated: attributed.length > 100 }
+      for (const sale of attributed) {
+        const key = sale.referral?.campaign ?? 'unattributed'
+        const current = byCampaign.get(key) ?? { campaign: key === 'unattributed' ? null : key, ad_id: key === 'unattributed' ? null : sale.referral?.ad_id ?? null, sales: 0, amount: 0 }
+        current.sales += 1
+        current.amount += Number(sale.opportunity.amount ?? 0) || 0
+        byCampaign.set(key, current)
+      }
+      const result = { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo }, totals: { won_sales: won.length, attributed_sales: attributed.filter(sale => sale.referral?.campaign).length, unattributed_sales: attributed.filter(sale => !sale.referral?.campaign).length, amount: won.reduce((sum, row) => sum + (Number(row.amount ?? 0) || 0), 0) }, by_campaign: [...byCampaign.values()].sort((a, b) => b.sales - a.sales), sales: attributed.slice(0, 100), truncated: attributed.length > 100 }
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'completed', label: `${won.length} ventas ganadas analizadas` })
       return result
     } catch (error) {
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'error', label: 'No se pudo analizar el CRM' })
-      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar Aurelia CRM.' }
+      return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar CRM.' }
     }
   },
 }
@@ -929,6 +1044,7 @@ const allTools: ToolDefinition[] = [
   getGoogleAnalyticsReportTool,
   getGoogleAnalyticsPageTool,
   getGoogleAnalyticsSalesTool,
+  getGoogleTagManagerReportTool,
   getAccountChangeHistory,
   getGoogleChangeHistoryTool,
   runPerformanceAnalystTool,

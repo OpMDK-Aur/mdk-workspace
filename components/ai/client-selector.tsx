@@ -26,6 +26,7 @@ export interface ClientAccount {
 export interface AnalyzableClient {
   id: string
   nombre_del_negocio: string
+  enabled: boolean
   cuentas_publicitarias: ClientAccount[]
   meta_ads_account_id?: string | null
   google_ads_customer_id?: string | null
@@ -57,6 +58,8 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
   const [loadError, setLoadError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
 
+  const enabledClients = clients.filter((client) => client.enabled)
+
   useEffect(() => {
     let isMounted = true
 
@@ -77,7 +80,18 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
         return
       }
 
-      setClients((data ?? []) as unknown as AnalyzableClient[])
+      const enabledNames = new Set(['ICS Salud', 'VN Global'])
+      const loadedClients = (data ?? [])
+        .filter((client) => enabledNames.has(client.nombre_del_negocio))
+        .map((client) => ({
+          ...(client as unknown as AnalyzableClient),
+          enabled: true,
+        }))
+      setClients(loadedClients)
+      const defaultClient = loadedClients.find((client) => client.nombre_del_negocio === 'ICS Salud')
+      if ((!value || !loadedClients.some((client) => client.enabled && client.id === value.id)) && defaultClient) {
+        onChange(defaultClient)
+      }
       setLoading(false)
     }
 
@@ -161,12 +175,12 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[360px] p-0">
-          <Command>
-            <CommandInput placeholder="Buscar cliente…" />
-            <CommandList>
+              <Command>
+                {enabledClients.length > 6 && <CommandInput placeholder="Buscar cliente…" />}
+                <CommandList>
               <CommandEmpty>{loadError || 'No se encontraron clientes con cuentas publicitarias.'}</CommandEmpty>
               <CommandGroup>
-                {clients.map((client) => (
+                {enabledClients.map((client) => (
                   <CommandItem
                     key={client.id}
                     value={client.nombre_del_negocio}
@@ -206,7 +220,7 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
                   <CommandGroup>
                     {accounts.map((account) => {
                       const label = `${account.nombre_cuenta || 'Sin nombre'} ${account.id_cuenta}`
-                      return <CommandItem key={`${account.plataforma}-${account.id_cuenta}`} value={label} onSelect={() => { setSelectedAccounts((current) => current.some((item) => item.id_cuenta === account.id_cuenta && item.plataforma === account.plataforma) ? current.filter((item) => !(item.id_cuenta === account.id_cuenta && item.plataforma === account.plataforma)) : [...current, account]) }}><Check className={cn('mr-2 size-4', selectedAccounts.some((item) => item.id_cuenta === account.id_cuenta && item.plataforma === account.plataforma) ? 'opacity-100' : 'opacity-0')} aria-hidden="true" /><span className="flex flex-col"><span>{account.nombre_cuenta || 'Sin nombre'}</span><span className="font-mono text-xs text-muted-foreground">{account.id_cuenta} · {platformLabel(account.plataforma)}</span></span></CommandItem>
+                      return <CommandItem key={`${account.plataforma}-${account.id_cuenta}`} value={label} onSelect={() => { setSelectedAccounts((current) => current.some((item) => item.id_cuenta === account.id_cuenta && item.plataforma === account.plataforma) ? current.filter((item) => !(item.id_cuenta === account.id_cuenta && item.plataforma === account.plataforma)) : [...current, account]) }}><Check className={cn('mr-2 size-4', selectedAccounts.some((item) => item.id_cuenta === account.id_cuenta && item.plataforma === account.plataforma) ? 'opacity-100' : 'opacity-0')} aria-hidden="true" /><span className="flex min-w-0 flex-col"><span className="truncate">{account.nombre_cuenta || `Cuenta Meta ${account.id_cuenta}`}</span><span className="font-mono text-xs text-muted-foreground">{account.id_cuenta} · {platformLabel(account.plataforma)}</span></span></CommandItem>
                     })}
                   </CommandGroup>
                 </CommandList>

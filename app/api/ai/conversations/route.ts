@@ -9,9 +9,10 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const includeArchived = searchParams.get('includeArchived') === '1'
+  const clientId = searchParams.get('clientId') || undefined
 
   try {
-    const conversations = await listConversations(supabase, user.id, { includeArchived })
+    const conversations = await listConversations(supabase, user.id, { includeArchived, clientId })
     return NextResponse.json({ conversations })
   } catch (error) {
     console.error('[v0] Conversations list failed:', error instanceof Error ? error.message : error)
@@ -30,6 +31,10 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (body.newDiagnostic === true) {
+      const current = await getOrCreateConversation(supabase, user.id, body.clientId)
+      await archiveConversation(supabase, user.id, current.id)
+    }
     const conversation = await getOrCreateConversation(supabase, user.id, body.clientId)
     const messages = await listConversationMessages(supabase, user.id, conversation.id)
     return NextResponse.json({ conversation, messages })

@@ -24,3 +24,22 @@ for (const [name, objective, actions, resultType, results, leads, conversions] o
 }
 
 test('sin resultado produce unknown y cero', () => assert.deepEqual(normalizeMetaResult('OUTCOME_AWARENESS', []), { results: 0, resultType: 'unknown', sourceActionType: null, leads: 0, conversions: 0 }))
+
+// Regresión: campaña de leads sin conversiones reales en el período no debe
+// mostrar sus clics/visitas a landing incidentales como "Resultados" -- debe
+// quedar en 0, igual que el "—" que muestra Meta Ads Manager.
+test('campaña de leads sin conversiones reales no cae a clics/landing como resultado', () => {
+  const actions = [
+    { action_type: 'link_click', value: '265' },
+    { action_type: 'landing_page_view', value: '180' },
+  ]
+  assert.deepEqual(normalizeMetaResult('OUTCOME_LEADS', actions), {
+    results: 0, resultType: 'unknown', sourceActionType: null, leads: 0, conversions: 0,
+  })
+})
+
+test('campaña de tráfico sin conversiones reales sí usa clics como resultado', () => {
+  const result = normalizeMetaResult('OUTCOME_TRAFFIC', [{ action_type: 'link_click', value: '265' }])
+  assert.equal(result.results, 265)
+  assert.equal(result.resultType, 'link_click')
+})

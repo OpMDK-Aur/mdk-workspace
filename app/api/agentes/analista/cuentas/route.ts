@@ -83,15 +83,35 @@ export async function GET(req: NextRequest) {
   const metaIds = parseIds(client.meta_ads_account_id, client.meta_ads_account_ids)
   const googleIds = parseIds(client.google_ads_customer_id, client.google_ads_customer_ids)
 
-  const cuentas: Array<{ id: string; plataforma: 'meta' | 'google'; id_cuenta: string; nombre_cuenta: string; activo?: boolean | null }> = stored.map((account) => ({
-    id: String(account.id),
-    plataforma: account.plataforma === 'google' ? 'google' : 'meta',
-    id_cuenta: String(account.id_cuenta),
-    nombre_cuenta: account.nombre_cuenta || String(account.id_cuenta),
-    activo: account.activo,
-  }))
+  // Un mismo registro de `cuentas_publicitarias` puede guardar varias cuentas
+  // como un string separado por comas (id_cuenta: "111,222,333"). Hay que
+  // separarlas en cuentas individuales -- si no, el selector muestra un solo
+  // ítem combinado con esos 3 IDs juntos, y además esos IDs individuales
+  // vuelven a aparecer sin nombre porque también están en
+  // meta_ads_account_ids/google_ads_customer_ids del cliente.
+  const cuentas: Array<{ id: string; plataforma: 'meta' | 'google'; id_cuenta: string; nombre_cuenta: string; activo?: boolean | null }> = stored.flatMap((account) => {
+    const ids = String(account.id_cuenta).split(',').map((id) => id.trim()).filter(Boolean)
+    return ids.map((id) => ({
+      id: ids.length > 1 ? `${account.id}-${id}` : String(account.id),
+      plataforma: account.plataforma === 'google' ? 'google' : 'meta',
+      id_cuenta: id,
+      nombre_cuenta: account.nombre_cuenta && account.nombre_cuenta !== String(account.id_cuenta) ? account.nombre_cuenta : id,
+      activo: account.activo,
+    }))
+  })
   const known = new Set(cuentas.map((account) => `${account.plataforma}:${account.id_cuenta}`))
-  const addAccount = (account: typeof cuentas[number]) => { if (!known.has(`${account.plataforma}:${account.id_cuenta}`)) { cuentas.push(account); known.add(`${account.plataforma}:${account.id_cuenta}`) } }
+  const addAccount = (account: typeof cuentas[number]) => {
+    const key = `${account.plataforma}:${account.id_cuenta}`
+    const existingIndex = cuentas.findIndex((item) => `${item.plataforma}:${item.id_cuenta}` === key)
+    if (existingIndex >= 0) {
+      if (account.nombre_cuenta && account.nombre_cuenta !== account.id_cuenta) {
+        cuentas[existingIndex] = { ...cuentas[existingIndex], nombre_cuenta: account.nombre_cuenta }
+      }
+      return
+    }
+    cuentas.push(account)
+    known.add(key)
+  }
 
   const metaAccessToken = process.env.META_ADS_ACCESS_TOKEN
   if (metaIds.length > 0 && metaAccessToken) {
@@ -100,7 +120,7 @@ export async function GET(req: NextRequest) {
       const name = nombres[i]
       if (name) await updateAdvertisingAccountName(supabase, { clienteId: clientId, plataforma: 'meta', idCuenta: id, nombreCuenta: name })
     }))
-    metaIds.forEach((id, i) => addAccount({ id: `meta-${id}`, plataforma: 'meta', id_cuenta: id, nombre_cuenta: nombres[i] ?? id }))
+    metaIds.forEach((id, i) => addAccount({ id: `meta-${id}`, plataforma: 'meta', id_cuenta: id, nombre_cuenta: nombres[i] || `Cuenta Meta ${id}` }))
   } else {
     metaIds.forEach((id) => addAccount({ id: `meta-${id}`, plataforma: 'meta', id_cuenta: id, nombre_cuenta: id }))
   }

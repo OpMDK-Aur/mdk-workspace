@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Fraunces } from 'next/font/google'
-import { Eye, Info, Pencil, Sparkles } from 'lucide-react'
+import { ArrowRight, Check, ChevronDown, Eye, Globe2, Info, Pencil, Plus, Settings2, Sparkles, WandSparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -37,7 +37,7 @@ export function MultiagenteWorkspace() {
     // el selector de cliente y el chat queden 100% equivalentes a haberlo
     // elegido desde el combobox. Como hay un único chat por cliente, elegir
     // un chat del sidebar es exactamente lo mismo que elegir su cliente.
-    setSelectedClient({ id: conversation.clientId, nombre_del_negocio: conversation.clientName, cuentas_publicitarias: [] })
+    setSelectedClient({ id: conversation.clientId, nombre_del_negocio: conversation.clientName, enabled: true, cuentas_publicitarias: [] })
 
     const supabase = createClient()
     const { data, error } = await supabase
@@ -107,26 +107,54 @@ export function MultiagenteWorkspace() {
     ? `Lectura de contexto: analizá exclusivamente ${selectedAccountSummary.map((account) => `${account.name} (${account.platform === 'meta' ? 'Meta Ads' : account.platform === 'google' ? 'Google Ads' : account.platform === 'analytics' ? 'Google Analytics 4' : account.platform === 'tag_manager' ? 'Tag Manager' : account.platform === 'crm' ? 'CRM' : account.platform || 'plataforma'})`).join(', ')}. No uses datos de otras cuentas.`
     : 'Lectura de contexto: no hay una cuenta publicitaria seleccionada. Pedí al usuario que seleccione una antes de analizar.'
 
+  const integrations = [
+    { name: 'Meta Ads', key: 'meta', description: 'Campañas, anuncios y audiencias', color: 'bg-[#1877f2]', connected: Boolean(selectedClient?.meta_ads_account_id) },
+    { name: 'Google Ads', key: 'google', description: 'Inversión, keywords y conversiones', color: 'bg-[#4285f4]', connected: Boolean(selectedClient?.google_ads_customer_id) },
+    { name: 'Google Analytics', key: 'analytics', description: 'Tráfico y comportamiento web', color: 'bg-[#f9ab00]', connected: Boolean(selectedClient?.analytics_property_id) },
+    { name: 'CRM', key: 'crm', description: 'Contactos, ventas y atribución', color: 'bg-[#2dd4bf]', connected: Boolean(selectedClient?.crm_type) },
+    { name: 'Tag Manager', key: 'tag_manager', description: 'Etiquetas, eventos y medición', color: 'bg-[#246fdb]', connected: Boolean(selectedClient?.tag_manager_container_id) },
+  ]
+
   return (
-    <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">
-      <div className="mx-auto flex w-full flex-col gap-6">
-        <header className="flex flex-col gap-2 border-b pb-6">
-          <div className="flex items-center gap-2 text-primary">
-            <Sparkles className="size-5" aria-hidden="true" />
-            <span className="font-mono text-xs uppercase tracking-[0.18em]">AI WORKSPACE - QA VERSION</span>
+    <main className="min-h-screen bg-white text-[#141414] dark:bg-[#141414] dark:text-white">
+      <div className="flex min-h-screen">
+        <aside className="hidden w-[248px] shrink-0 flex-col border-r border-[#e6e8ee] bg-white px-4 py-5 dark:border-white/10 dark:bg-[#17181c] lg:flex">
+          <div className="flex items-center gap-2 px-2">
+            <div className="flex size-8 items-center justify-center rounded-[10px] bg-[#ff7f00] text-white"><Sparkles className="size-4" /></div>
+            <span className="text-[17px] font-semibold tracking-[-0.02em]">conexa</span>
           </div>
-          <h1 className={cn(displayFont.className, 'text-balance text-4xl italic tracking-tight text-foreground md:text-5xl')}>
-            Paid Media Assistant
-          </h1>
-          <p className="max-w-2xl text-pretty text-muted-foreground">
-            Elegí un cliente para que el sistema analice sus cuentas publicitarias y responda tus consultas.
-          </p>
-        </header>
+          <nav className="mt-10 flex flex-col gap-1 text-sm">
+            <div className="flex items-center gap-3 rounded-xl bg-[#eeefff] px-3 py-2.5 font-medium text-[#ff0049] dark:bg-[#292a50] dark:text-[#b9bbff]"><WandSparkles className="size-4" /> Multiagente</div>
+            <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[#7d818d]"><Globe2 className="size-4" /> Conexiones <span className="ml-auto text-xs">{integrations.filter((item) => item.connected).length}/{integrations.length}</span></div>
+            <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[#7d818d]"><Settings2 className="size-4" /> Configuración</div>
+          </nav>
+          <div className="mt-auto rounded-2xl border border-[#e6e8ee] bg-[#fafafd] p-3 dark:border-white/10 dark:bg-white/[0.03]">
+            <p className="text-xs font-semibold">Tu inteligencia conectada</p>
+            <p className="mt-1 text-xs leading-5 text-[#8b8f9b]">Conectá una fuente y dejá que el agente aprenda de tus datos.</p>
+            <Button size="sm" className="mt-3 w-full rounded-lg bg-[#ff7f00] text-white hover:bg-[#4f53d5]"><Plus className="mr-1 size-3.5" /> Agregar conexión</Button>
+          </div>
+        </aside>
 
-        <div className="flex flex-col gap-6 lg:flex-row">
-          <ConversationsSidebar activeClientId={selectedClient?.id ?? null} onSelect={handleSelectConversation} />
+        <div className="min-w-0 flex-1">
+          <header className="flex items-center justify-between border-b border-[#e6e8ee] bg-white/85 px-5 py-4 backdrop-blur dark:border-white/10 dark:bg-[#101114]/85 md:px-8">
+            <div><p className="text-xs text-[#9296a3]">Workspace / <span className="text-[#555966] dark:text-[#c8cad1]">Multiagente</span></p><h1 className="mt-1 text-lg font-semibold tracking-[-0.02em]">Conexa</h1></div>
+            <div className="flex items-center gap-3"><Button variant="outline" size="sm" className="hidden rounded-lg border-[#e2e4ea] bg-white md:flex"><Plus className="mr-1.5 size-4" /> Agregar plataforma</Button><div className="flex size-8 items-center justify-center rounded-full bg-[#e7e8ff] text-xs font-semibold text-[#ff0049]">MD</div></div>
+          </header>
 
-          <div className="flex min-w-0 flex-1 flex-col gap-6">
+          <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-6 px-5 py-7 md:px-8 md:py-9">
+            <section className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
+              <div><p className="text-sm font-medium text-[#ff0049]">Tu espacio de trabajo</p><h2 className="mt-1 text-3xl font-semibold tracking-[-0.04em] md:text-4xl">Todo conectado. Todo aprendido.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-[#858996]">El multiagente reúne tus plataformas, aprende el contexto de cada cliente y convierte los datos en respuestas accionables.</p></div>
+              <Button variant="outline" className="w-fit rounded-xl border-[#dedfe8] bg-white"><ChevronDown className="mr-2 size-4" /> Cliente actual</Button>
+            </section>
+
+            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Conexiones del cliente">
+              {integrations.map((integration) => <div key={integration.key} className="group rounded-2xl border border-[#e4e6ed] bg-white p-4 shadow-[0_2px_10px_rgba(32,34,45,0.03)] transition hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#17181c]"><div className="flex items-start justify-between"><div className={cn('flex size-9 items-center justify-center rounded-xl text-sm font-bold text-white', integration.color)}>{integration.name.slice(0, 1)}</div>{integration.connected ? <span className="flex items-center gap-1 rounded-full bg-[#e9faf3] px-2 py-1 text-[10px] font-semibold text-[#1b9b65]"><Check className="size-3" /> Conectado</span> : <span className="rounded-full bg-[#f2f3f6] px-2 py-1 text-[10px] font-semibold text-[#858996]">Pendiente</span>}</div><p className="mt-4 text-sm font-semibold">{integration.name}</p><p className="mt-1 text-xs text-[#9094a1]">{integration.description}</p><button type="button" className="mt-4 flex items-center gap-1 text-xs font-medium text-[#5b5fe8]">{integration.connected ? 'Administrar' : 'Conectar'} <ArrowRight className="size-3.5" /></button></div>)}
+            </section>
+
+            <div className="flex flex-col gap-6 xl:flex-row">
+              <ConversationsSidebar activeClientId={selectedClient?.id ?? null} onSelect={handleSelectConversation} />
+
+              <div className="flex min-w-0 flex-1 flex-col gap-6">
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-sm font-medium text-foreground">Cliente a analizar</span>
@@ -201,6 +229,8 @@ export function MultiagenteWorkspace() {
               />
             )}
           </div>
+        </div>
+      </div>
         </div>
       </div>
     </main>

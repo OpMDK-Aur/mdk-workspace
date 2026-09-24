@@ -1,0 +1,773 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import { ConexaMockChat } from './conexa/conexa-mock-chat'
+import { BarChart3, ChevronDown, CircleHelp, Database, LoaderCircle, Gauge, Globe2, LayoutDashboard, PanelLeftClose, PanelLeftOpen, RotateCcw, Search, Settings2, Sparkles, Tags, Users, WalletCards, X } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import { MessageContent } from '@/components/chat/message-content'
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import type { TagManagerTagRow, TagManagerTriggerRow, TagManagerVariableRow, TagManagerFilterRow, TagManagerParameterRow } from '@/lib/google-tag-manager/service'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { AnalyzeWithConexaButton } from '@/components/conexa/analyze-button'
+import type { CrmAcquisitionFilters, CrmAcquisitionReport, CrmBreakdownRow } from '@/lib/crm/service'
+
+type ClientAccount = { id_cuenta: string | null; nombre_cuenta: string | null; plataforma: string | null; activo?: boolean | null }
+type Client = { id: string; nombre_del_negocio: string; meta_ads_account_id?: string | null; google_ads_customer_id?: string | null; meta_ads_account_ids?: string[] | null; google_ads_customer_ids?: string[] | null; analytics_property_id?: string | null; tag_manager_container_id?: string | null; crm_type?: string | null; cuentas_publicitarias?: ClientAccount[] | null }
+
+type Platform = { name: string; key: string; icon: typeof BarChart3; color: string; iconUrl: string | null; connected: boolean; detail: string }
+type ConexaData = { accounts: Record<string, unknown>[]; metrics: Record<string, unknown>[]; reports: Record<string, unknown>[]; approvals: Record<string, unknown>[]; profile: Record<string, unknown> | null; memory: Record<string, unknown>[]; platformMetrics: Record<string, { label: string; value: number }[]>; platformData: Record<string, unknown> }
+type GeneratedReport = { id: string; title: string; content: string; clientName: string; createdAt: string }
+const emptyConexaData: ConexaData = { accounts: [], metrics: [], reports: [], approvals: [], profile: null, memory: [], platformMetrics: {}, platformData: {} }
+const asNumber = (row: Record<string, unknown>, keys: string[]) => keys.reduce<number | null>((value, key) => value ?? (typeof row[key] === 'number' ? row[key] as number : Number(row[key]) || null), null) ?? 0
+const periodStart = (period: string) => { const days = period.includes('7') ? 7 : period.includes('90') ? 90 : 30; const date = new Date(); date.setDate(date.getDate() - days + 1); return date.toISOString().slice(0, 10) }
+const periodEnd = () => new Date().toISOString().slice(0, 10)
+const formatMetric = (value: number, currency = false) => value ? `${currency ? '$ ' : ''}${value.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : 'Sin datos'
+
+const CHAT_ICON_URL = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/comment-alt-edit_12356167-0oouizd6dU7hMTS7sq4GbfQZy89qU8.png'
+
+const baseNav = [
+  { label: 'Inicio', icon: LayoutDashboard },
+  { label: 'Chat / Análisis', icon: null },
+  { label: 'Informes', icon: BarChart3 },
+  { label: 'Aprobaciones', icon: WalletCards },
+] as const
+
+export function ConexaWorkspace() {
+  const [clients, setClients] = useState<Client[]>([])
+  const [clientsLoading, setClientsLoading] = useState(true)
+  const [clientsError, setClientsError] = useState<string | null>(null)
+  const [client, setClient] = useState<Client | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [active, setActive] = useState('Inicio')
+  const [period, setPeriod] = useState('Últimos 30 días')
+  const [periodByPlatform, setPeriodByPlatform] = useState<Record<string, string>>({})
+  const [customRangeByPlatform, setCustomRangeByPlatform] = useState<Record<string, { from: string; to: string }>>({})
+  const [clientMenu, setClientMenu] = useState(false)
+  const [clientSearch, setClientSearch] = useState('')
+  const [periodMenu, setPeriodMenu] = useState(false)
+  const [customRange, setCustomRange] = useState({ from: '', to: '' })
+  const [platformTab, setPlatformTab] = useState<string | undefined>(undefined)
+  const [data, setData] = useState<ConexaData>(emptyConexaData)
+  const [isLoading, setIsLoading] = useState(false)
+  const [clientLoadPending, setClientLoadPending] = useState(false)
+  const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([])
+  const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string[]>>({})
+  const [crmFilters, setCrmFilters] = useState<CrmAcquisitionFilters>({})
+
+  useEffect(() => {
+    const supabase = createClient()
+  supabase.from('clientes').select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids, analytics_property_id, tag_manager_container_id, crm_type, cuentas_publicitarias(id_cuenta, nombre_cuenta, plataforma, activo)').order('nombre_del_negocio').then(({ data, error }) => {
+  if (error) { setClientsError('No se pudieron cargar los clientes'); return }
+  const allowedClients = new Set(['ICS Salud', 'VN Global'])
+  const rows = ((data ?? []) as Client[]).filter((item) => allowedClients.has(item.nombre_del_negocio))
+  setClients(rows)
+      const initialClient = rows.sort((a, b) => Number(Boolean(b.meta_ads_account_id || b.meta_ads_account_ids?.length || b.google_ads_customer_id || b.google_ads_customer_ids?.length || b.analytics_property_id || b.tag_manager_container_id || b.crm_type)) - Number(Boolean(a.meta_ads_account_id || a.meta_ads_account_ids?.length || a.google_ads_customer_id || a.google_ads_customer_ids?.length || a.analytics_property_id || a.tag_manager_container_id || a.crm_type)))[0] ?? null
+      setClientLoadPending(Boolean(initialClient))
+  setClient(initialClient)
+  }).finally(() => setClientsLoading(false))
+  }, [])
+
+  const dataPlatformKey = ({ 'Meta Ads': 'meta', 'Google Ads': 'google', 'Google Analytics': 'analytics', 'Tag Manager': 'tag_manager', CRM: 'crm' } as Record<string, string>)[active]
+  const dataPeriod = dataPlatformKey ? periodByPlatform[dataPlatformKey] ?? period : period
+  const dataCustomRange = dataPlatformKey ? customRangeByPlatform[dataPlatformKey] ?? customRange : customRange
+
+  useEffect(() => {
+    if (!client?.id || !dataPeriod) return
+    if (clientLoadPending) setIsLoading(true)
+    let cancelled = false
+    fetch('/api/conexa/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client.id, period: dataPeriod, customRange: dataCustomRange, selectedAccounts, crmFilters }) })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron consultar las tools de Conexa.')))
+      .then((result) => {
+        if (cancelled) return
+        setData({ accounts: [], metrics: Array.isArray(result.metrics) ? result.metrics : [], reports: Array.isArray(result.analytics?.reports) ? result.analytics.reports : [], approvals: [], profile: null, memory: Array.isArray(result.memory?.items) ? result.memory.items : [], platformMetrics: result.platformMetrics && typeof result.platformMetrics === 'object' ? result.platformMetrics : {}, platformData: { meta: result.meta, google: result.google, analytics: result.analytics, tagManager: result.tagManager, crm: { contacts: result.contacts, opportunities: result.opportunities, sales: result.sales, acquisition: result.crmAcquisition } } })
+      })
+      .catch(() => { if (!cancelled) setData(emptyConexaData) })
+      .finally(() => { if (!cancelled && clientLoadPending) { setIsLoading(false); setClientLoadPending(false) } })
+    return () => { cancelled = true }
+  }, [client?.id, dataPeriod, dataCustomRange, selectedAccounts, crmFilters])
+
+  const platforms = useMemo<Platform[]>(() => [
+    { name: 'Meta Ads', key: 'meta', icon: BarChart3, color: '#1877F2', iconUrl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Facebook_Logo_%282019%29-8hLkShXu9caNijxaYTMKGdv1bWipbV.png', connected: Boolean(client?.meta_ads_account_id || client?.meta_ads_account_ids?.length), detail: client?.meta_ads_account_id || client?.meta_ads_account_ids?.length ? `Cuenta ${client.meta_ads_account_id ?? client.meta_ads_account_ids?.[0]}` : 'Sin cuenta conectada' },
+    { name: 'Google Ads', key: 'google', icon: Search, color: '#4285F4', iconUrl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/google_ads_logo_icon_171064-I8kGtiPKqG0TZoeHB7Lb1GwQziRNBX.webp', connected: Boolean(client?.google_ads_customer_id || client?.google_ads_customer_ids?.length), detail: client?.google_ads_customer_id || client?.google_ads_customer_ids?.length ? `Cuenta ${client.google_ads_customer_id ?? client.google_ads_customer_ids?.[0]}` : 'Sin cuenta conectada' },
+    { name: 'Google Analytics', key: 'analytics', icon: Gauge, color: '#F9AB00', iconUrl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/google-analytics-icon-VuL4g3NfPdL5bzHIQRZacQjTq6Vcfk.webp', connected: Boolean(client?.analytics_property_id), detail: client?.analytics_property_id ? `Propiedad ${client.analytics_property_id}` : 'Sin propiedad conectada' },
+    { name: 'Tag Manager', key: 'tag_manager', icon: Tags, color: '#246FDB', iconUrl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/google-tag-manager-l5o0anuls2kqtf2xmhtl-ItmMvsOnhnmedg5kb6tJwJOQzpJ1uy.webp', connected: Boolean(client?.tag_manager_container_id), detail: client?.tag_manager_container_id ? `Contenedor ${client.tag_manager_container_id}` : 'Sin contenedor conectado' },
+    { name: 'CRM', key: 'crm', icon: Users, color: '#11A683', iconUrl: null, connected: Boolean(client?.crm_type), detail: client?.crm_type ? `Conectado · ${client.crm_type}` : 'Sin CRM conectado' },
+  ], [client])
+
+  const connected = platforms.filter((item) => item.connected).length
+  const activePlatformKey = platforms.find((item) => item.name === active)?.key
+  const activePeriod = activePlatformKey ? periodByPlatform[activePlatformKey] ?? period : period
+  const activeCustomRange = activePlatformKey ? customRangeByPlatform[activePlatformKey] ?? customRange : customRange
+
+  useEffect(() => {
+    if (!client?.id) return
+    const supabase = createClient()
+    const channel = supabase.channel(`conexa-client-${client.id}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'clientes', filter: `id=eq.${client.id}` }, (payload) => {
+      setClient((current) => current ? { ...current, ...(payload.new as Partial<Client>) } : current)
+    }).subscribe()
+    return () => { void supabase.removeChannel(channel) }
+  }, [client?.id])
+
+  const openConnections = () => window.location.assign('/dashboard/platform')
+
+  return <div className="conexa-brand flex h-screen w-full overflow-hidden bg-white text-[#101010]">
+    <aside className={cn('flex shrink-0 flex-col border-r border-[#e6e6e3] bg-white transition-[width] duration-200', sidebarOpen ? 'w-[158px]' : 'w-[44px]')}>
+      <div className={cn('flex h-[60px] shrink-0 items-center gap-2 border-b border-[#f0f0ee] px-[18px]', !sidebarOpen && 'justify-center px-0')}>
+        <span className="flex size-[16px] shrink-0 items-center justify-center rounded-[5px] bg-[#5b5fe8] text-[10px] text-white">✦</span>
+        {sidebarOpen && <span className="font-display text-[16px] font-bold tracking-[-.02em]">CONEXA</span>}
+      </div>
+      <nav className="flex-1 overflow-y-auto px-1.5 py-3">
+        <p className={cn('mb-1.5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]', !sidebarOpen && 'sr-only')}>Trabajo</p>
+        {baseNav.map((item) => <button key={item.label} type="button" onClick={() => { setActive(item.label); if (item.label === 'Chat / Análisis') setSidebarOpen(false) }} className={cn('mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[10.5px] font-medium', active === item.label ? 'bg-[#eeefff] text-[#5b5fe8]' : 'text-[#5c5c5c] hover:bg-[#f5f5f8]', !sidebarOpen && 'justify-center px-0')}>{item.label === 'Chat / Análisis' ? <img src={CHAT_ICON_URL} alt="" className="size-[17px] shrink-0 object-contain" /> : item.icon && <item.icon className="size-[17px] shrink-0" />}{sidebarOpen && <span className="flex-1">{item.label}</span>}{sidebarOpen && item.badge && <span className="rounded-full bg-[#D97706] px-1.5 text-[10px] font-bold text-white">{item.badge}</span>}</button>)}
+        {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Plataformas</p>}
+        {platforms.map((item) => <button key={item.key} type="button" onClick={() => setActive(item.name)} className={cn('mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[10.5px]', active === item.name ? 'bg-[#eeefff] text-[#5b5fe8]' : 'text-[#5c5c5c] hover:bg-[#f5f5f8]', !sidebarOpen && 'justify-center px-0')}><span className="flex size-[18px] items-center justify-center overflow-hidden rounded-[5px] bg-white">{item.iconUrl ? <img src={item.iconUrl} alt="" className="size-full object-contain" /> : <Globe2 className="size-[15px] text-[#11A683]" />}</span>{sidebarOpen && <span className="flex-1 truncate">{item.name}</span>}{sidebarOpen && <span className={cn('size-1.5 rounded-full', item.connected ? 'bg-[#1e9e6b]' : 'bg-[#d6d6d6]')} />}</button>)}
+        {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Cliente</p>}
+        {sidebarOpen && <button type="button" className="mb-0.5 flex w-full items-center rounded-md px-2 py-1.5 text-left text-[10.5px] text-[#222]">Contexto del cliente</button>}
+        {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Configuración</p>}
+        {sidebarOpen && <button type="button" onClick={() => window.location.assign('/dashboard/platform')} className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-[10.5px] text-[#222] hover:bg-[#f5f5f8]">Conexiones</button>}
+      </nav>
+      <button type="button" onClick={() => setSidebarOpen((value) => !value)} className="flex items-center gap-2 border-t border-[#f0f0ee] px-[18px] py-3 text-left text-xs text-[#9a9a9a]">{sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}{sidebarOpen && 'Colapsar menú'}</button>
+    </aside>
+
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <header className="[&>div:nth-child(2)]:hidden flex h-[41px] shrink-0 items-center gap-2.5 border-b border-[#dededb] bg-white px-[16px]">
+        <div className="relative"><button type="button" onClick={() => setClientMenu((value) => !value)} className="flex items-center gap-1.5 rounded-lg border border-[#e6e6e3] px-3 py-1.5 text-[13px] font-medium">{client?.nombre_del_negocio ?? 'Seleccionar cliente'} <ChevronDown className="size-3 text-[#9a9a9a]" /></button>{clientMenu && <div className="absolute left-0 top-10 z-30 w-[250px] rounded-[10px] border border-[#e6e6e3] bg-white p-1.5 shadow-lg"><input autoFocus value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Buscar cliente..." aria-label="Buscar cliente" className="mb-1.5 w-full rounded-md border border-[#e6e6e3] bg-[#fafaf8] px-2.5 py-2 text-[12px] outline-none focus:border-[#5b5fe8]" /><div className="max-h-[min(60vh,420px)] overflow-y-auto overscroll-contain pr-0.5">{clientsLoading ? <p className="px-2.5 py-3 text-[12px] text-[#9a9a9a]">Cargando clientes...</p> : clientsError ? <p className="px-2.5 py-3 text-[12px] text-[#b42318]">{clientsError}</p> : (() => { const query = clientSearch.trim().toLowerCase(); const visibleClients = clients.filter((item) => String(item.nombre_del_negocio ?? '').toLowerCase().includes(query)); return visibleClients.length ? visibleClients.map((item) => <button type="button" key={item.id} onClick={() => { setClientLoadPending(true); setClient(item); setClientMenu(false); setClientSearch('') }} className="block w-full rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f5f5f5]">{item.nombre_del_negocio ?? 'Cliente sin nombre'}</button>) : <p className="px-2.5 py-3 text-[12px] text-[#9a9a9a]">No se encontraron clientes</p> })()}</div></div>}</div>
+        <div className="relative"><button type="button" onClick={() => setPeriodMenu((value) => !value)} className="flex items-center gap-1.5 rounded-lg border border-[#e6e6e3] px-3 py-1.5 text-[13px] font-medium text-[#5c5c5c]">{period || 'Seleccionar período'} <ChevronDown className="size-3 text-[#9a9a9a]" /></button>{periodMenu && <div className="absolute left-0 top-10 z-20 min-w-[190px] rounded-[10px] border border-[#e6e6e3] bg-white p-1.5 shadow-lg">{['Hoy', 'Ayer', 'Últimos 7 días', 'Últimos 30 días', 'Este mes', 'Mes anterior'].map((item) => <button type="button" key={item} onClick={() => { setPeriod(item); setPeriodMenu(false) }} className="block w-full rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f5f5f5]">{item}</button>)}<button type="button" onClick={() => setPeriod('Personalizado')} className={cn('block w-full rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f5f5f5]', period === 'Personalizado' && 'bg-[#f5f5f3]')}>Personalizado</button>{period === 'Personalizado' && <div className="mt-1 border-t border-[#eee] px-2.5 py-2.5"><p className="mb-2 text-[11px] font-semibold text-[#555]">Elegí un rango</p><label className="mb-2 block text-[10px] text-[#888]">Desde<input type="date" value={customRange.from} onChange={(event) => setCustomRange((range) => ({ ...range, from: event.target.value }))} className="mt-1 block w-full rounded-md border border-[#e6e6e3] px-2 py-1.5 text-[11px]" /></label><label className="block text-[10px] text-[#888]">Hasta<input type="date" value={customRange.to} onChange={(event) => setCustomRange((range) => ({ ...range, to: event.target.value }))} className="mt-1 block w-full rounded-md border border-[#e6e6e3] px-2 py-1.5 text-[11px]" /></label><button type="button" disabled={!customRange.from || !customRange.to} onClick={() => setPeriodMenu(false)} className="mt-3 w-full rounded-md bg-[#5b5fe8] px-2 py-1.5 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Aplicar rango</button></div>}</div>}</div>
+        <span className="ml-1.5 flex items-center gap-1.5 text-xs text-[#9a9a9a]"><span className="size-1.5 rounded-full bg-[#1e9e6b]" /> Actualizado hace 8 min</span><div className="flex-1" /><CircleHelp className="size-4 text-[#9a9a9a]" /><div className="flex size-6 items-center justify-center rounded-full bg-[#141414] text-[10px] font-semibold text-white">AP</div>
+      </header>
+
+      <main className="relative min-h-0 flex-1 overflow-hidden bg-white">
+        {isLoading && <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/90 backdrop-blur-[2px]"><div className="flex w-[min(92%,360px)] flex-col items-center rounded-2xl border border-[#e6e6e3] bg-white px-8 py-7 text-center shadow-lg" role="status" aria-live="polite"><div className="mb-4 flex size-11 items-center justify-center rounded-full bg-[#eeefff]"><LoaderCircle className="size-5 animate-spin text-[#5b5fe8]" /></div><p className="text-sm font-semibold text-[#202020]">Procesando métricas</p><p className="mt-1 text-xs leading-5 text-[#888]">Estamos consultando y preparando los datos de tus plataformas.</p><div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-[#eeefff]"><div className="h-full w-2/5 animate-pulse rounded-full bg-[#5b5fe8]" /></div></div></div>}
+        {activePlatformKey && <div className="absolute right-4 top-14 z-30 flex items-center gap-2"><span className="text-[10px] font-semibold uppercase tracking-[.08em] text-[#999]">Período</span><PeriodSelector period={activePeriod} customRange={activeCustomRange} onChange={(nextPeriod, range) => { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) }} /></div>}
+        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => { setActive('Chat / Análisis'); setSidebarOpen(false) }} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} onReportCreated={(report) => setGeneratedReports((current) => [report, ...current])} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} onNavigate={(destination) => { setActive(destination); setSidebarOpen(false) }} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} crmFilters={crmFilters} onCrmFiltersChange={setCrmFilters} period={activePeriod} customRange={activeCustomRange} onPeriodChange={(nextPeriod, range) => { if (activePlatformKey) { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) } }} />}
+      </main>
+    </section>
+  </div>
+}
+
+function ReportsView({ client, reports }: { client: Client | null; reports: Array<Record<string, unknown> | GeneratedReport> }) {
+  const [openReport, setOpenReport] = useState<GeneratedReport | null>(null)
+  const generated = reports.filter((report): report is GeneratedReport => typeof report.content === 'string')
+  const downloadHtml = (report: GeneratedReport) => { const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${report.title}</title><style>body{font-family:Arial,sans-serif;max-width:900px;margin:40px auto;line-height:1.6;color:#171717}h1{color:#5b5fe8}pre{white-space:pre-wrap;font:inherit}</style></head><body><h1>${report.title}</h1><p>${report.clientName} · ${new Date(report.createdAt).toLocaleString('es-AR')}</p><pre>${report.content}</pre></body></html>`; const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' })); const link = document.createElement('a'); link.href = url; link.download = `${report.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.html`; link.click(); URL.revokeObjectURL(url) }
+  const downloadPdf = (report: GeneratedReport) => { const popup = window.open('', '_blank', 'noopener,noreferrer'); if (!popup) return; popup.document.write(`<html><head><title>${report.title}</title><style>body{font-family:Arial,sans-serif;max-width:900px;margin:40px auto;line-height:1.6}pre{white-space:pre-wrap;font:inherit}</style></head><body><h1>${report.title}</h1><p>${report.clientName}</p><pre>${report.content.replace(/</g, '&lt;')}</pre><script>window.onload=()=>window.print()</script></body></html>`); popup.document.close() }
+  return <div className="h-full overflow-y-auto"><div className="mx-auto max-w-4xl p-6 md:p-10"><div className="mb-5 flex items-start justify-between"><div><h1 className="text-xl font-bold">Informes</h1><p className="text-xs text-[#8b8b8b]">Biblioteca de informes generados por Conexa</p></div></div>{generated.length === 0 ? <div className="rounded-xl border border-dashed border-[#dededb] p-10 text-center text-xs text-[#888]">Todavía no hay informes generados desde Chat / Análisis.</div> : <div className="space-y-3">{generated.map((report) => <div key={report.id} className="flex items-center justify-between gap-4 rounded-xl border border-[#dededb] bg-white px-4 py-3"><div><p className="text-xs font-bold">{report.title}</p><p className="mt-1 text-[10px] text-[#888]">{report.clientName} · {new Date(report.createdAt).toLocaleDateString('es-AR')}</p></div><div className="flex shrink-0 gap-2"><Button variant="outline" onClick={() => setOpenReport(report)} className="h-7 rounded-full px-3 text-[10px]">Abrir</Button><Button variant="outline" onClick={() => downloadHtml(report)} className="h-7 rounded-full px-3 text-[10px]">HTML</Button><Button variant="outline" onClick={() => downloadPdf(report)} className="h-7 rounded-full px-3 text-[10px]">PDF</Button></div></div>)}</div>}{openReport && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="dialog" aria-modal="true"><div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-xl bg-white p-5"><div className="mb-3 flex items-center justify-between"><h2 className="font-bold">{openReport.title}</h2><Button variant="ghost" onClick={() => setOpenReport(null)}>Cerrar</Button></div><pre className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap text-sm leading-6">{openReport.content}</pre></div></div>}</div></div>
+}
+
+function ApprovalsView({ client, approvals }: { client: Client | null; approvals: Record<string, unknown>[] }) {
+  const [status, setStatus] = useState('Pendientes')
+  const rows = approvals.filter((item) => Boolean(item.action_plan || item.recommendation || item.recommendation_id || item.source === 'ai' || item.created_by === 'ai')).map((item) => [item.created_at ? new Date(String(item.created_at)).toLocaleDateString('es-AR') : 'Sin fecha', String(item.platform ?? item.plataforma ?? 'Plataforma'), String(item.action_plan ?? item.recommendation ?? item.action ?? item.accion ?? 'Plan de acción'), String(item.entity_name ?? item.campaign_name ?? item.entity_id ?? 'Entidad')])
+  return <div className="h-full overflow-y-auto p-6 md:p-10"><div className="mb-5"><h1 className="text-xl font-bold">Aprobaciones</h1><p className="text-xs text-[#888]">Ninguna acción se ejecuta en las plataformas sin tu aprobación explícita.</p></div><div className="mb-4 flex gap-6 border-b border-[#dededb] text-[10px] font-semibold text-[#999]">{['Pendientes', 'Aprobadas', 'Ejecutadas', 'Rechazadas', 'Fallidas'].map((item) => <button key={item} type="button" onClick={() => setStatus(item)} className={cn('border-b-2 px-1 pb-2', status === item ? 'border-[#5b5fe8] text-[#5b5fe8]' : 'border-transparent')}>{item}</button>)}</div><div className="overflow-hidden rounded-xl border border-[#dededb] bg-white"><table className="w-full text-left text-[10px]"><thead className="bg-[#fafaf8] text-[#888]"><tr><th className="p-3">Fecha</th><th>Plataforma</th><th>Acción</th><th>Entidad</th><th>Cambio</th><th>Estado</th><th></th></tr></thead><tbody>{rows.length === 0 ? <tr><td colSpan={7} className="p-8 text-center text-xs text-[#9a9a9a]">No hay planes de acción generados por la IA.</td></tr> : rows.map((row) => <tr key={row[0] + row[1]} className="border-t border-[#eee]"><td className="p-3">{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td>—</td><td><span className="rounded-full bg-[#fff0df] px-2 py-1 text-[9px] font-bold text-[#c87519]">PENDIENTE</span></td><td><Button variant="outline" className="mr-3 h-7 rounded-full px-3 text-[10px]">Ver detalle</Button></td></tr>)}</tbody></table></div></div>
+}
+
+function Home({ client, period, platforms, connected, data, onAsk }: { client: Client | null; period: string; platforms: Platform[]; connected: number; data: ConexaData; onAsk: () => void }) {
+  const [expanded, setExpanded] = useState(false)
+  const sum = (keys: string[]) => data.metrics.reduce((total, row) => total + asNumber(row, keys), 0)
+  const spend = sum(['spend', 'investment', 'inversion'])
+  const impressions = sum(['impressions', 'reach'])
+  const clicks = sum(['clicks'])
+  const visits = sum(['visits', 'sessions'])
+  const contacts = sum(['contacts', 'leads'])
+  const opportunities = sum(['opportunities'])
+  const sales = sum(['sales', 'conversions', 'results'])
+  const costPerSale = sales ? spend / sales : 0
+  const business = [['Inversión', formatMetric(spend, true)], ['Sesiones', formatMetric(visits)], ['Contactos', formatMetric(contacts)], ['Oportunidades', formatMetric(opportunities)], ['Ventas', formatMetric(sales)], ['Costo por venta', formatMetric(costPerSale, true)]]
+  const funnel = [['Impresiones', impressions], ['Clicks', clicks], ['Visitas', visits], ['Contactos', contacts], ['Oportunidades', opportunities], ['Ventas', sales]]
+  const reportRows = Array.isArray(data.reports) ? data.reports : []
+  const insights = reportRows.flatMap((report) => String(report.content ?? report.summary ?? report.description ?? '').split(/[\n•]/).map((item) => item.trim()).filter(Boolean)).slice(0, 3)
+  const attention = platforms.filter((item) => !item.connected)
+  return <div className="mx-auto h-full max-w-[1180px] overflow-y-auto px-6 py-5">
+    <div className="mb-5"><p className="mb-1 text-[11px] text-[#9a9a9a]">{period}</p><h1 className="text-[20px] font-bold tracking-[-.02em]">{client?.nombre_del_negocio ?? 'Soy Aurelia'}</h1><p className="mt-0.5 text-[11px] text-[#9a9a9a]">Conexiones, tracking y alertas</p></div>
+    <div className="mb-6 rounded-2xl border border-[#e6e6e3] bg-white p-[18px_22px]">{platforms.map((item) => <div key={item.key} className="flex items-center justify-between py-1 text-[13.5px]"><span className="flex items-center gap-2 font-medium"><span className="flex size-6 items-center justify-center overflow-hidden rounded-md bg-white">{item.iconUrl ? <img src={item.iconUrl} alt="" className="size-full object-contain" /> : <Globe2 className="size-5 text-[#11A683]" />}</span>{item.name}</span><span className={cn('flex items-center gap-1.5 font-medium', item.connected ? 'text-[#1e9e6b]' : 'text-[#9a9a9a]')}><span className={cn('size-1.5 rounded-full', item.connected ? 'bg-[#1e9e6b]' : 'bg-[#d6d6d6]')} />{item.connected ? 'Conectado' : 'Pendiente'}</span></div>)}</div>
+    <div className="mb-6 grid grid-cols-2 gap-4"><InfoCard title="Cuentas que requieren atención">{attention.length ? attention.map((item) => <Row key={item.key} text={item.name} value="Conectar" />) : <EmptyState text="No hay cuentas pendientes." />}</InfoCard><InfoCard title="Trabajo pendiente"><EmptyState text="No hay tareas disponibles." /></InfoCard></div>
+    <p className="mb-3 text-[11px] uppercase tracking-[.08em] text-[#9a9a9a]">Resumen del negocio</p><div className="mb-7 grid grid-cols-6 gap-3">{business.map(([label, value]) => <div key={label} className="rounded-xl border border-[#e6e6e3] bg-white p-4"><p className="mb-2 text-[11.5px] text-[#9a9a9a]">{label}</p><p className="text-[19px] font-bold">{value}</p></div>)}</div>
+    <div className="grid grid-cols-[1.3fr_1fr] gap-4"><InfoCard title="Funnel"><div className="grid grid-cols-6 gap-2">{funnel.map(([label, value], index) => <div key={label} className="text-center"><div className="flex h-24 items-end justify-center"><div className="w-full max-w-12 rounded-t-md bg-[#5b5fe8]" style={{ height: `${value ? Math.max(18, Math.min(96, Number(value) / Math.max(...funnel.map(([, item]) => Number(item) || 1)) * 96)) : 0}px` }} /></div><p className="mt-2 text-xs font-semibold">{formatMetric(Number(value))}</p><p className="text-[10px] text-[#888]">{label}</p>{index < funnel.length - 1 && <span className="text-[#aaa]">→</span>}</div>)}</div></InfoCard><InfoCard title="Alertas"><EmptyState text="No hay alertas disponibles." /></InfoCard></div>
+    <div className="mt-7 rounded-[18px] bg-gradient-to-br from-[#5b5fe8] to-[#3f43c4] p-[26px_28px] text-white"><div className="mb-3 flex items-center gap-2 text-[13px] font-bold">✦ Insights de Conexa</div>{insights.length ? insights.map((insight, index) => <p key={`${insight}-${index}`} className="border-b border-white/15 py-2.5 text-sm">{index + 1}　{insight}</p>) : <p className="text-sm text-white/70">Todavía no hay insights generados por la IA.</p>}<Button onClick={onAsk} variant="ghost" className="mt-3 h-auto p-0 text-sm font-semibold text-white hover:bg-transparent">Ver análisis completo →</Button></div>
+  </div>
+}
+
+function EmptyState({ text }: { text: string }) { return <p className="py-3 text-xs text-[#9a9a9a]">{text}</p> }
+function InfoCard({ title, children }: { title: string; children: React.ReactNode }) { return <div className="rounded-2xl border border-[#e6e6e3] bg-white p-5"><p className="mb-3 text-[11px] uppercase tracking-[.08em] text-[#9a9a9a]">{title}</p>{children}</div> }
+function Row({ text, value }: { text: string; value: string }) { return <div className="flex items-center justify-between border-b border-[#f5f5f3] py-[9px] text-[13px]"><span>{text}</span><span className="font-semibold text-[#5b5fe8]">{value}</span></div> }
+
+function FeedCard({ network, title, handle, followers, reach, engagement, posts, onOpen }: { network: 'facebook' | 'instagram'; title: string; handle: string; followers: string; reach: string; engagement: string; posts: string; onOpen: () => void }) {
+  const logo = network === 'facebook' ? 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Facebook_Logo_%282019%29-8hLkShXu9caNijxaYTMKGdv1bWipbV.png' : 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/instagram-logo-instagram-icon-transparent-free-png-Rg5Y4zK9sBURxJ2cnQ4oECUdYuqeYz.webp'
+  return <div className="rounded-xl border border-[#dcdcd8] bg-white p-3 shadow-[0_2px_5px_rgba(0,0,0,.04)]"><div className="mb-2 flex items-start justify-between"><div className="flex items-center gap-2"><span className="flex size-5 items-center justify-center overflow-hidden rounded-full bg-white"><img src={logo} alt={`${title} logo`} className="size-full object-contain" /></span><div><p className="text-[11px] font-bold">{title}</p><p className="text-[9px] text-[#888]">{handle}</p></div></div><span className="text-[9px] font-semibold text-[#1e9e6b]">● Conectado</span></div><div className="mb-3 grid grid-cols-2 gap-x-8 gap-y-1"><p className="text-[15px] font-bold">{followers}<span className="block text-[9px] font-normal text-[#777]">Seguidores</span></p><p className="text-[15px] font-bold">{reach}<span className="block text-[9px] font-normal text-[#777]">Alcance</span></p><p className="text-[15px] font-bold">{engagement}<span className="block text-[9px] font-normal text-[#777]">Interacción</span></p><p className="text-[15px] font-bold">{posts}<span className="block text-[9px] font-normal text-[#777]">Publicaciones</span></p></div><div className="mb-3 grid grid-cols-5 gap-1">{Array.from({ length: 5 }, (_, index) => <div key={index} className="aspect-square rounded-md bg-[repeating-linear-gradient(45deg,#eee,#eee_5px,#f8f8f8_5px,#f8f8f8_10px)]" />)}</div><div className="flex gap-2"><Button variant="outline" onClick={onOpen} className="h-7 rounded-full border-[#5b5fe8] px-3 text-[10px] text-[#5b5fe8]">Ver feed</Button><Button variant="outline" className="h-7 rounded-full px-3 text-[10px]">Sincronizar feed</Button></div></div>
+}
+
+function detailRows(value: unknown, prefix = ''): [string, string][] {
+  if (!value || typeof value !== 'object') return []
+  return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) => {
+    const label = prefix ? `${prefix} · ${key}` : key
+    if (Array.isArray(child)) return child.slice(0, 40).flatMap((item, index) => typeof item === 'object' ? detailRows(item, `${label} ${index + 1}`) : [[label, String(item)] as [string, string]])
+    if (child && typeof child === 'object') return detailRows(child, label)
+    return child === null || child === undefined || child === '' ? [] : [[label, String(child)] as [string, string]]
+  })
+}
+
+function findRecords(value: unknown, names: string[]): Record<string, unknown>[] {
+  if (!value || typeof value !== 'object') return []
+  const source = value as Record<string, unknown>
+  const matches = Object.entries(source).flatMap(([key, child]) => names.includes(key.toLowerCase()) && Array.isArray(child) ? child.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object')) : [])
+  if (matches.length) return matches
+  return Object.values(source).flatMap((child) => child && typeof child === 'object' ? findRecords(child, names) : []).slice(0, 100)
+}
+
+function nativeHeaders(platform: string, tab: string) {
+  if (platform === 'meta') return tab === 'Campañas' ? ['Campaña', 'Estado', 'Objetivo', 'Presupuesto', 'Gasto', 'Resultados', 'CPL', 'CTR'] : ['Entidad', 'Estado', 'Gasto', 'Resultados', 'CTR']
+  if (platform === 'google') return tab === 'Campañas' ? ['Campaña', 'Tipo', 'Estado', 'Costo', 'Clicks', 'Conversiones', 'CPA'] : ['Entidad', 'Estado', 'Costo', 'Clicks', 'Conversiones']
+  if (platform === 'crm' && tab === 'Contactos') return ['Contacto', 'Source', 'Estado', 'Creado', 'Email', 'Teléfono', 'Campaña']
+  if (platform === 'crm') return ['Oportunidad', 'Etapa', 'Estado', 'Valor', 'Probabilidad', 'Contacto', 'Source']
+  return ['Fuente / medio', 'Usuarios', 'Sesiones', 'Eventos', 'Conversiones']
+}
+
+function GoogleAdsConexaView({ platform, onManage, data, client, selectedAccounts, onAccountsChange }: { platform: Platform; onManage: () => void; data: ConexaData; client: Client | null; selectedAccounts: Record<string, string[]>; onAccountsChange: (accounts: string[]) => void }) {
+  const [tab, setTab] = useState('Resumen')
+  const [chartKeys, setChartKeys] = useState<[string, string]>(['clicks', 'conversions'])
+  const google = (data.platformData.google ?? {}) as { accounts?: Array<Record<string, any>> }
+  const accounts = google.accounts ?? []
+  const campaigns = accounts.flatMap((account) => (account.campaigns ?? []).map((row: any) => ({ ...row, account_name: account.account_name, currency: account.currency ?? 'ARS', conversion_actions: account.conversion_actions ?? [] })))
+  const totals = accounts.reduce((acc, account) => { const metrics = account.totals ?? {}; return { clicks: acc.clicks + Number(metrics.clicks ?? 0), conversions: acc.conversions + Number(metrics.leads ?? metrics.conversions ?? 0), cost: acc.cost + Number(metrics.spend ?? 0) } }, { clicks: 0, conversions: 0, cost: 0 })
+  const daily = accounts.flatMap((account) => (account.raw_rows ?? []).map((row: any) => ({ date: row.segments?.date ?? row.segments?.date, clicks: Number(row.metrics?.clicks ?? 0), conversions: Number(row.metrics?.conversions ?? 0) }))).reduce<Record<string, { date: string; clicks: number; conversions: number }>>((map, row) => { const current = map[row.date] ?? { date: row.date, clicks: 0, conversions: 0 }; current.clicks += row.clicks; current.conversions += row.conversions; map[row.date] = current; return map }, {})
+  const chartData = Object.values(daily).sort((a, b) => a.date.localeCompare(b.date))
+  const conversionRows = accounts.flatMap((account) => (account.conversion_actions ?? []).filter((action: any) => Number(action.conversions ?? 0) > 0).map((action: any) => ({ ...action, account_name: account.account_name })))
+  const adGroups = accounts.flatMap((account) => (account.ad_groups ?? []).map((row: any) => ({ ...row, account_name: account.account_name })))
+  const ads = accounts.flatMap((account) => (account.ads ?? []).map((row: any) => ({ ...row, account_name: account.account_name })))
+  const nav = ['Resumen', 'Campañas', 'Grupos de anuncios', 'Anuncios']
+  const money = (value: number) => value.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
+  const metricValue = (key: string) => key === 'clicks' ? totals.clicks : totals.conversions
+  return <div className="mx-auto h-full max-w-[1180px] overflow-y-auto px-6 py-5">
+    <div className="mb-4 flex items-start justify-between"><div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center overflow-hidden rounded-lg bg-white"><img src={platform.iconUrl ?? ''} alt="Google Ads" className="size-full object-contain" /></span><div><h1 className="text-[20px] font-bold">Google Ads</h1><AccountSelector platform={platform} client={client} selected={selectedAccounts.google ?? []} onChange={onAccountsChange} /><p className="text-[11px] text-[#777]">{platform.detail} <span className="ml-2 text-[#1e9e6b]">● Conectado</span></p></div></div><Button variant="outline" onClick={onManage} className="h-8 rounded-full px-4 text-[11px]">Administrar conexión</Button></div>
+    <div className="mb-4 flex gap-7 border-b border-[#dededb] text-[10px] font-semibold text-[#777]">{nav.map((item) => <button type="button" key={item} onClick={() => setTab(item)} className={cn('border-b-2 px-1 pb-3', tab === item ? 'border-[#4285F4] text-[#4285F4]' : 'border-transparent')}>{item}</button>)}</div>
+    {tab === 'Resumen' && <><div className="grid grid-cols-4 overflow-hidden rounded-xl border border-[#dcdcd8] bg-white"><GoogleMetric label="Clics" value={totals.clicks.toLocaleString('es-AR')} color="#4285F4" /><GoogleMetric label="Conversiones" value={totals.conversions.toLocaleString('es-AR')} color="#DB4437" /><GoogleMetric label="Costo/conv." value={money(totals.conversions ? totals.cost / totals.conversions : 0)} /><GoogleMetric label="Costo" value={money(totals.cost)} /></div><div className="mt-4 rounded-xl border border-[#dcdcd8] bg-white p-4"><div className="mb-3 flex items-center justify-between"><p className="text-[11px] font-semibold text-[#555]">Rendimiento diario</p><div className="flex gap-2">{['clicks', 'conversions'].map((key) => <button type="button" key={key} onClick={() => setChartKeys((current) => current.includes(key) ? current : [current[1], key])} className={cn('rounded-full border px-2.5 py-1 text-[10px]', chartKeys.includes(key) ? 'border-[#4285F4] bg-[#eef5ff] text-[#2368c4]' : 'border-[#ddd] text-[#888]')}>{key === 'clicks' ? 'Clics' : 'Conversiones'}</button>)}</div></div><div className="h-[260px]">{chartData.length ? <ResponsiveContainer width="100%" height="100%"><LineChart data={chartData}><XAxis dataKey="date" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Line type="monotone" dataKey={chartKeys[0]} stroke="#4285F4" strokeWidth={2} dot={false} /><Line type="monotone" dataKey={chartKeys[1]} stroke="#DB4437" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer> : <div className="flex h-full items-center justify-center text-xs text-[#888]">Sin datos diarios disponibles</div>}</div></div></>}
+    {tab === 'Campañas' && <GoogleAdsTable title="Campañas" headers={['Campaña', 'Presupuesto', 'Estado', 'Identificador de campaña', 'Conversiones', 'Costo/conv.', 'Impresiones', 'Clics']} rows={campaigns.map((row: any) => [row.name, row.budget ? money(Number(row.budget)) : '—', row.status ?? 'UNKNOWN', row.id, Number(row.leads ?? row.conversions ?? 0).toLocaleString('es-AR'), row.leads ? money(Number(row.spend ?? 0) / Number(row.leads)) : '—', Number(row.impressions ?? 0).toLocaleString('es-AR'), Number(row.clicks ?? 0).toLocaleString('es-AR')])} conversionRows={conversionRows} />}
+    {tab === 'Grupos de anuncios' && <GoogleAdsTable title="Grupos de anuncios" headers={['Nombre de grupo de anuncio', 'Nombre de campaña', 'Tipo de grupo de anuncios', 'Estado', 'Impresiones', 'Clics', 'Conversiones', 'Costo/conv.']} rows={adGroups.map((row: any) => [row.name, row.campaign_name, row.type, row.status, Number(row.impressions ?? 0).toLocaleString('es-AR'), Number(row.clicks ?? 0).toLocaleString('es-AR'), Number(row.conversions ?? 0).toLocaleString('es-AR'), row.conversions ? money(Number(row.spend ?? 0) / Number(row.conversions)) : '—'])} conversionRows={conversionRows} empty="Los grupos de anuncios no tienen datos en el período seleccionado." />}
+    {tab === 'Anuncios' && <GoogleAdsTable title="Anuncios" headers={['Anuncio', 'Nombre de campaña', 'Grupo de anuncio', 'Estado', 'Tipo de anuncio', 'Clics', 'Impresiones', 'Conversiones', 'Costo/conv.']} rows={ads.map((row: any) => [row.name, row.campaign_name, row.ad_group_name, row.status, row.type, Number(row.clicks ?? 0).toLocaleString('es-AR'), Number(row.impressions ?? 0).toLocaleString('es-AR'), Number(row.conversions ?? 0).toLocaleString('es-AR'), row.conversions ? money(Number(row.spend ?? 0) / Number(row.conversions)) : '—'])} conversionRows={conversionRows} empty="Los anuncios no tienen datos en el período seleccionado." />}
+  </div>
+}
+
+function GoogleMetric({ label, value, color }: { label: string; value: string; color?: string }) { return <div className="border-r border-[#e5e5e2] p-4 last:border-0"><p className="text-[10px] font-semibold" style={{ color: color ?? '#555' }}>{label}</p><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{value}</p></div> }
+function GoogleAdsTable({ title, headers, rows, conversionRows, empty }: { title: string; headers: string[]; rows: string[][]; conversionRows: Array<Record<string, any>>; empty?: string }) { const conversionTotal = conversionRows.reduce((sum, row) => sum + Number(row.conversions ?? 0), 0); return <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white"><div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">{title}</p><span className="text-[10px] text-[#888]">{rows.length} registros</span></div>{rows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr>{headers.map((header) => <th key={header} className="px-3 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index} className="border-b border-[#f0f0ed] align-top hover:bg-[#fafaff]">{row.map((cell, cellIndex) => <td key={cellIndex} className="px-3 py-3">{cell}</td>)}</tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">{empty ?? 'Sin datos disponibles.'}</p>}{conversionRows.length > 0 && <div className="border-t border-[#eee] bg-[#fbfbfa] p-4"><div className="mb-2 flex items-center justify-between"><p className="text-[10px] font-bold uppercase tracking-wide text-[#777]">Conversiones por nombre</p><span className="text-[10px] font-semibold text-[#555]">Total: {conversionTotal.toLocaleString('es-AR')}</span></div><div className="flex flex-wrap gap-2">{conversionRows.map((row, index) => <span key={`${row.name}-${index}`} className="rounded-md border border-[#e3e3df] bg-white px-2.5 py-1.5 text-[10px]"><b>{row.name}</b> · {Number(row.conversions ?? 0).toLocaleString('es-AR')}</span>)}</div></div>}</div> }
+
+function AccountSelector({ platform, client, selected, onChange }: { platform: Platform; client: Client | null; selected: string[]; onChange: (accounts: string[]) => void }) {
+  const platformKey = platform.key === 'google' ? 'google' : platform.key === 'meta' ? 'meta' : platform.key
+  const [resolvedAccounts, setResolvedAccounts] = useState<ClientAccount[]>([])
+  useEffect(() => {
+    let active = true
+    if (!client?.id) { setResolvedAccounts([]); return }
+    fetch(`/api/agentes/analista/cuentas?clientId=${encodeURIComponent(client.id)}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron cargar las cuentas')))
+      .then((payload) => { if (active) setResolvedAccounts(payload.cuentas ?? []) })
+      .catch((error) => console.error('[v0] AccountSelector accounts fetch failed:', error))
+    return () => { active = false }
+  }, [client?.id])
+  const linkedAccounts = (resolvedAccounts.length > 0 ? resolvedAccounts : client?.cuentas_publicitarias ?? []).filter((account) => account.activo !== false && account.plataforma === platformKey && account.id_cuenta)
+  const accountValues = platform.key === 'meta' ? [...(client?.meta_ads_account_ids ?? []), ...(client?.meta_ads_account_id ? [client.meta_ads_account_id] : [])] : platform.key === 'google' ? [...(client?.google_ads_customer_ids ?? []), ...(client?.google_ads_customer_id ? [client.google_ads_customer_id] : [])] : platform.key === 'analytics' ? (client?.analytics_property_id ? [client.analytics_property_id] : []) : platform.key === 'tag_manager' ? (client?.tag_manager_container_id ? [client.tag_manager_container_id] : []) : platform.key === 'crm' ? (client?.crm_type ? [client.crm_type] : []) : []
+  const accountIds = [...new Set([...linkedAccounts.map((account) => account.id_cuenta as string), ...accountValues.flatMap((value) => String(value).split(',').map((account) => account.trim()).filter(Boolean))])]
+  const accounts = accountIds.map((id) => { const name = linkedAccounts.find((account) => account.id_cuenta === id)?.nombre_cuenta; return { id, name: name && name !== id ? name : `Cuenta ${id}` } })
+  const normalizedSelected = selected.flatMap((value) => String(value).split(',').map((account) => account.trim()).filter(Boolean))
+  const active = normalizedSelected.length ? normalizedSelected : accounts.map((account) => account.id)
+  const [open, setOpen] = useState(false)
+  const toggle = (id: string) => onChange(active.includes(id) ? active.filter((item) => item !== id) : [...active, id])
+  return <div className="relative mt-1"><button type="button" onClick={() => setOpen((value) => !value)} className="flex max-w-[320px] items-center gap-1.5 rounded-md border border-[#e2e2df] bg-white px-2 py-1 text-[10px] font-medium text-[#333] shadow-sm"><span className="truncate">{active.length ? `${active.length} cuenta${active.length === 1 ? '' : 's'} seleccionada${active.length === 1 ? '' : 's'}` : 'Sin cuentas seleccionadas'}</span><ChevronDown className="size-3 text-[#888]" /></button>{open && <div className="absolute left-0 top-8 z-40 min-w-[235px] rounded-lg border border-[#dededb] bg-white p-1.5 shadow-xl">{accounts.length ? accounts.map((account) => <label key={account.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-[11px] hover:bg-[#f5f5f3]"><input type="checkbox" checked={active.includes(account.id)} onChange={() => toggle(account.id)} className="accent-[#5b5fe8]" /><span className="truncate">{account.name}</span></label>) : <p className="px-2 py-2 text-[11px] text-[#888]">No hay cuentas conectadas</p>}<button type="button" onClick={() => setOpen(false)} className="mt-1 w-full border-t border-[#eee] px-2 py-2 text-left text-[10px] font-semibold text-[#5b5fe8]">Aplicar selección</button></div>}</div>
+}
+
+function MetaAdsConexaView({ platform, onManage, data, client, selectedAccounts, onAccountsChange }: { platform: Platform; onManage: () => void; data: ConexaData; client: Client | null; selectedAccounts: Record<string, string[]>; onAccountsChange: (accounts: string[]) => void }) {
+  const [tab, setTab] = useState('Resumen')
+  const meta = (data.platformData.meta ?? {}) as { accounts?: Array<Record<string, any>> }
+  const accounts = meta.accounts ?? []
+  const campaigns = accounts.flatMap((account) => (account.campaigns ?? []).map((row: any) => ({ ...row, account_name: account.account_name, account_id: account.account_id })))
+  const adsets = accounts.flatMap((account) => (account.adsets ?? []).map((row: any) => ({ ...row, account_name: account.account_name, account_id: account.account_id })))
+  const ads = accounts.flatMap((account) => (account.ads ?? []).map((row: any) => ({ ...row, account_name: account.account_name, account_id: account.account_id })))
+  const totals = accounts.reduce((sum, account) => { const value = account.totals ?? {}; return { results: sum.results + Number(value.results ?? 0), spend: sum.spend + Number(value.spend ?? 0), impressions: sum.impressions + Number(value.impressions ?? 0), reach: sum.reach + Number(value.reach ?? 0), clicks: sum.clicks + Number(value.clicks ?? 0) } }, { results: 0, spend: 0, impressions: 0, reach: 0, clicks: 0 })
+  const money = (value: number) => value.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
+  const number = (value: unknown) => Number(value ?? 0).toLocaleString('es-AR')
+  const row = (item: any, entity: string) => [item.status ?? item.effective_status ?? 'Activo', item.name ?? 'Sin nombre', item.delivery ?? 'Activa', number(item.results ?? item.leads), item.results ? money(Number(item.spend ?? 0) / Number(item.results)) : '—', money(Number(item.spend ?? 0)), number(item.impressions), number(item.reach), item.attribution_setting ?? '7 días tras clic / 1 día tras vista', item.id ?? '—']
+  const headers = ['Activa', entityLabel(tab), ...(tab === 'Campañas' || tab === 'Conjuntos' || tab === 'Anuncios' ? ['Entrega'] : []), 'Resultados', 'Costo por resultado', 'Importe gastado', 'Impresiones', 'Alcance', 'Configuración de atribución', `Identificador de ${tab === 'Campañas' ? 'campaña' : tab === 'Conjuntos' ? 'conjunto de anuncios' : 'anuncio'}`]
+  const records = tab === 'Campañas' ? campaigns : tab === 'Conjuntos' ? adsets : ads
+  return <div className="mx-auto h-full max-w-[1180px] overflow-y-auto px-6 py-5"><div className="mb-4 flex items-start justify-between"><div className="flex items-center gap-3"><span className="flex size-10 items-center justify-center overflow-hidden rounded-lg bg-white"><img src={platform.iconUrl ?? ''} alt="Meta Ads" className="size-full object-contain" /></span><div><h1 className="text-[20px] font-bold">Meta Ads</h1><AccountSelector platform={platform} client={client} selected={selectedAccounts.meta ?? []} onChange={onAccountsChange} /><p className="text-[11px] text-[#777]">{platform.detail} <span className="ml-2 text-[#1e9e6b]">● Conectado</span></p></div></div><Button variant="outline" onClick={onManage} className="h-8 rounded-full px-4 text-[11px]">Administrar conexión</Button></div><div className="mb-4 flex gap-7 border-b border-[#dededb] text-[10px] font-semibold text-[#777]">{['Resumen', 'Campañas', 'Conjuntos', 'Anuncios'].map((item) => <button type="button" key={item} onClick={() => setTab(item)} className={cn('border-b-2 px-1 pb-3', tab === item ? 'border-[#1877F2] text-[#1877F2]' : 'border-transparent')}>{item}</button>)}</div>{tab === 'Resumen' ? <><div className="grid grid-cols-5 overflow-hidden rounded-xl border border-[#dcdcd8] bg-white"><GoogleMetric label="Resultados" value={number(totals.results)} color="#1877F2" /><GoogleMetric label="Importe gastado" value={money(totals.spend)} /><GoogleMetric label="Impresiones" value={number(totals.impressions)} /><GoogleMetric label="Alcance" value={number(totals.reach)} /><GoogleMetric label="Clicks" value={number(totals.clicks)} /></div><div className="mt-4 rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="mb-3 text-[11px] font-semibold text-[#555]">Inversión y resultados</p><div className="h-[240px]"><ResponsiveContainer width="100%" height="100%"><LineChart data={campaigns.slice(0, 20).map((item: any) => ({ name: item.name, inversión: Number(item.spend ?? 0), resultados: Number(item.results ?? item.leads ?? 0) }))}><XAxis dataKey="name" hide /><YAxis yAxisId="left" tick={{ fontSize: 10 }} /><YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} /><Tooltip /><Line yAxisId="left" type="monotone" dataKey="inversión" stroke="#1877F2" strokeWidth={2} dot={false} /><Line yAxisId="right" type="monotone" dataKey="resultados" stroke="#16a085" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer></div></div></> : <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white"><div className="overflow-x-auto"><table className="w-full min-w-[1250px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr>{headers.map((header) => <th key={header} className="px-3 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{records.map((item: any, index: number) => <tr key={`${item.id}-${index}`} className="border-b border-[#f0f0ed] hover:bg-[#f7faff]">{row(item, tab === 'Campañas' ? 'Campaña' : tab === 'Conjuntos' ? 'Conjunto de anuncios' : 'Anuncio').map((cell, cellIndex) => <td key={cellIndex} className="px-3 py-3">{tab === 'Anuncios' && cellIndex === 1 && item.preview_url ? <div className="flex items-center gap-2"><img src={item.preview_url} alt="Preview del anuncio" className="size-9 rounded object-cover" /><span>{cell}</span></div> : cell}</td>)}</tr>)}</tbody></table></div>{!records.length && <p className="p-8 text-center text-xs text-[#888]">Sin datos disponibles para el período seleccionado.</p>}</div>}</div>
+}
+
+function entityLabel(tab: string) { return tab === 'Campañas' ? 'Nombre de la campaña' : tab === 'Conjuntos' ? 'Nombre del conjunto de anuncios' : 'Nombre del anuncio' }
+
+// Índice dims->{eventCount,keyEvents} construido a partir de un desglose por
+// evento (acquisitionByEvent / pagesByEvent) para poder filtrar "Número de
+// eventos" / "Eventos clave" por un evento específico en el cliente, sin
+// disparar un nuevo fetch por cada cambio de selector.
+function buildEventIndex(rows: Array<Record<string, any>>, dims: readonly string[], eventName: string) {
+  const map = new Map<string, { eventCount: number; keyEvents: number }>()
+  for (const row of rows) {
+    if (eventName !== 'all' && String(row.eventName ?? '') !== eventName) continue
+    const key = dims.map((dim) => String(row[dim] ?? '')).join('||')
+    const current = map.get(key) ?? { eventCount: 0, keyEvents: 0 }
+    current.eventCount += Number(row.eventCount ?? 0)
+    current.keyEvents += Number(row.keyEvents ?? 0)
+    map.set(key, current)
+  }
+  return map
+}
+
+// Índice dims->{new,returning} construido desde el desglose por
+// "newVsReturning" (acquisitionByAudience). La métrica "newUsers" de GA4 no
+// es confiable cuando se combina con una dimensión de alcance de sesión
+// (puede superar a "totalUsers" en la misma fila), así que en vez de restar
+// totalUsers - newUsers usamos la dimensión real que reporta la UI de GA4.
+function buildAudienceIndex(rows: Array<Record<string, any>>, dims: readonly string[]) {
+  const map = new Map<string, { new: number; returning: number }>()
+  for (const row of rows) {
+    const key = dims.map((dim) => String(row[dim] ?? '')).join('||')
+    const current = map.get(key) ?? { new: 0, returning: 0 }
+    const audience = String(row.newVsReturning ?? '')
+    if (audience === 'new') current.new += Number(row.totalUsers ?? 0)
+    else if (audience === 'returning') current.returning += Number(row.totalUsers ?? 0)
+    map.set(key, current)
+  }
+  return map
+}
+
+function EventSelect({ value, onChange, options }: { value: string; onChange: (value: string) => void; options: string[] }) {
+  return <select value={value} onChange={(event) => onChange(event.target.value)} className="rounded-md border border-[#e2e2df] bg-white px-1.5 py-1 text-[10px]"><option value="all">Todos los eventos</option>{options.map((name) => <option key={name} value={name}>{name}</option>)}</select>
+}
+
+// Opciones de agrupación de la tabla de Adquisición. "channel" agrupa solo
+// por el Primer grupo de canales predeterminado del usuario, "campaign" solo
+// por Campaña de la sesión, y "both" reproduce el desglose cruzado (canal x
+// campaña) que se veía por defecto.
+const acqDimOptions = [
+  { value: 'channel', label: 'Primer grupo de canales principal del usuario', dims: ['firstUserDefaultChannelGroup'] },
+  { value: 'campaign', label: 'Campaña de la sesión', dims: ['sessionCampaignName'] },
+  { value: 'both', label: 'Canal + Campaña de la sesión', dims: ['firstUserDefaultChannelGroup', 'sessionCampaignName'] },
+] as const
+const acqDimLabels: Record<string, string> = { firstUserDefaultChannelGroup: 'Primer grupo de canales', sessionCampaignName: 'Campaña de la sesión' }
+
+// Suma las métricas numéricas de "acquisition" para las filas que comparten
+// los valores de las dimensiones elegidas, de forma que agrupar solo por
+// canal (o solo por campaña) no repita el canal por cada combinación.
+function aggregateAcquisitionRows(rows: Array<Record<string, any>>, dims: readonly string[]) {
+  const map = new Map<string, Record<string, any>>()
+  for (const row of rows) {
+    const key = dims.map((dim) => String(row[dim] ?? '')).join('||')
+    const current = map.get(key) ?? Object.fromEntries([...dims.map((dim) => [dim, row[dim]]), ['totalUsers', 0], ['activeUsers', 0], ['userEngagementDuration', 0], ['eventCount', 0], ['keyEvents', 0]])
+    current.totalUsers += Number(row.totalUsers ?? 0)
+    current.activeUsers += Number(row.activeUsers ?? 0)
+    current.userEngagementDuration += Number(row.userEngagementDuration ?? 0)
+    current.eventCount += Number(row.eventCount ?? 0)
+    current.keyEvents += Number(row.keyEvents ?? 0)
+    map.set(key, current)
+  }
+  return [...map.values()]
+}
+
+function GroupBySelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return <select value={value} onChange={(event) => onChange(event.target.value)} className="rounded-md border border-[#e2e2df] bg-white px-1.5 py-1 text-[10px]">{acqDimOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+}
+
+function GoogleAnalyticsConexaView({ platform, onManage, data }: { platform: Platform; onManage: () => void; data: ConexaData }) {
+  const [tab, setTab] = useState('Resumen')
+  const [eventFilter, setEventFilter] = useState('all')
+  const [keyEventFilter, setKeyEventFilter] = useState('all')
+  const [acqEventFilter, setAcqEventFilter] = useState('all')
+  const [acqGroupBy, setAcqGroupBy] = useState<(typeof acqDimOptions)[number]['value']>('both')
+  const [pageEventFilter, setPageEventFilter] = useState('all')
+  const [pageKeyEventFilter, setPageKeyEventFilter] = useState('all')
+
+  const analytics = (data.platformData.analytics ?? {}) as { reports?: Record<string, Array<Record<string, any>>> }
+  const reports = analytics.reports ?? {}
+  const overview = (reports.overview ?? [])[0] ?? {}
+  const eventsReport = reports.events ?? []
+  const acquisitionByEvent = reports.acquisitionByEvent ?? []
+  const acquisitionByAudience = reports.acquisitionByAudience ?? []
+  const pagesByEvent = reports.pagesByEvent ?? []
+  const acqDims = acqDimOptions.find((option) => option.value === acqGroupBy)?.dims ?? acqDimOptions[2].dims
+  const acquisitionRows = aggregateAcquisitionRows(reports.acquisition ?? [], acqDims).sort((a, b) => Number(b.totalUsers ?? 0) - Number(a.totalUsers ?? 0))
+  const pageRows = [...(reports.pages ?? [])].sort((a, b) => Number(b.screenPageViews ?? 0) - Number(a.screenPageViews ?? 0))
+  const eventRows = [...eventsReport].sort((a, b) => Number(b.eventCount ?? 0) - Number(a.eventCount ?? 0))
+  const eventOptions = eventRows.map((row) => String(row.eventName ?? '')).filter(Boolean)
+
+  const number = (value: unknown) => Number(value ?? 0).toLocaleString('es-AR')
+  const money = (value: unknown) => Number(value ?? 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
+  const decimal = (value: unknown) => Number(value ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })
+  const duration = (seconds: unknown) => { const total = Math.max(0, Number(seconds ?? 0)); const minutes = Math.floor(total / 60); const rest = Math.round(total % 60); return `${minutes}m ${String(rest).padStart(2, '0')}s` }
+
+  const eventTotal = eventFilter === 'all' ? eventRows.reduce((sum, row) => sum + Number(row.eventCount ?? 0), 0) : Number(eventRows.find((row) => row.eventName === eventFilter)?.eventCount ?? 0)
+  const keyEventTotal = keyEventFilter === 'all' ? eventRows.reduce((sum, row) => sum + Number(row.keyEvents ?? 0), 0) : Number(eventRows.find((row) => row.eventName === keyEventFilter)?.keyEvents ?? 0)
+  const acquisitionEventIndex = buildEventIndex(acquisitionByEvent, acqDims, acqEventFilter)
+  const acquisitionAudienceIndex = buildAudienceIndex(acquisitionByAudience, acqDims)
+  const pageEventIndex = buildEventIndex(pagesByEvent, ['unifiedPagePathScreen'], pageEventFilter)
+  const pageKeyEventIndex = buildEventIndex(pagesByEvent, ['unifiedPagePathScreen'], pageKeyEventFilter)
+
+  const nav = ['Resumen', 'Adquisición', 'Interacción', 'Páginas y pantallas']
+
+  return <div className="mx-auto h-full max-w-[1180px] overflow-y-auto px-6 py-5">
+    <div className="mb-4 flex items-start justify-between"><div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center overflow-hidden rounded-lg bg-white">{platform.iconUrl ? <img src={platform.iconUrl} alt="" className="size-full object-contain" /> : <Gauge className="size-7 text-[#F9AB00]" />}</span><div><h1 className="text-[20px] font-bold">Google Analytics</h1><p className="text-[11px] text-[#777]">{platform.detail} <span className="ml-2 text-[#1e9e6b]">● Conectado</span></p></div></div><Button variant="outline" onClick={onManage} className="h-8 rounded-full px-4 text-[11px]">Administrar conexión</Button></div>
+    <div className="mb-4 flex gap-7 border-b border-[#dededb] text-[10px] font-semibold text-[#777]">{nav.map((item) => <button type="button" key={item} onClick={() => setTab(item)} className={cn('border-b-2 px-1 pb-3', tab === item ? 'border-[#e08900] text-[#e08900]' : 'border-transparent')}>{item}</button>)}</div>
+
+    {tab === 'Resumen' && <div className="grid grid-cols-3 gap-3">
+      <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="text-[10px] font-semibold text-[#888]">Usuarios activos</p><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{number(overview.activeUsers)}</p></div>
+      <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><div className="flex items-center justify-between gap-2"><p className="text-[10px] font-semibold text-[#888]">Número de eventos</p><EventSelect value={eventFilter} onChange={setEventFilter} options={eventOptions} /></div><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{number(eventTotal)}</p></div>
+      <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><div className="flex items-center justify-between gap-2"><p className="text-[10px] font-semibold text-[#888]">Eventos clave</p><EventSelect value={keyEventFilter} onChange={setKeyEventFilter} options={eventOptions} /></div><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{number(keyEventTotal)}</p></div>
+    </div>}
+
+    {tab === 'Adquisición' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Adquisición de usuarios</p><div className="flex items-center gap-3"><label className="flex items-center gap-1.5 text-[10px] text-[#888]">Agrupar por<GroupBySelect value={acqGroupBy} onChange={(value) => setAcqGroupBy(value as (typeof acqDimOptions)[number]['value'])} /></label><label className="flex items-center gap-1.5 text-[10px] text-[#888]">Número de eventos<EventSelect value={acqEventFilter} onChange={setAcqEventFilter} options={eventOptions} /></label></div></div>
+      {acquisitionRows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr>{acqDims.map((dim) => <th key={dim} className="px-3 py-3 font-semibold">{acqDimLabels[dim]}</th>)}<th className="px-3 py-3 font-semibold">Total de usuarios</th><th className="px-3 py-3 font-semibold">Usuarios nuevos</th><th className="px-3 py-3 font-semibold">Usuarios recurrentes</th><th className="px-3 py-3 font-semibold">Tiempo de interacción medio por usuario activo</th><th className="px-3 py-3 font-semibold">Número de eventos</th><th className="px-3 py-3 font-semibold">Eventos clave</th></tr></thead><tbody>{acquisitionRows.map((row, index) => {
+        const key = acqDims.map((dim) => String(row[dim] ?? '')).join('||')
+        const filtered = acquisitionEventIndex.get(key)
+        const eventCount = acqEventFilter === 'all' ? Number(row.eventCount ?? 0) : filtered?.eventCount ?? 0
+        const totalUsers = Number(row.totalUsers ?? 0)
+        const audience = acquisitionAudienceIndex.get(key)
+        const newUsers = audience?.new ?? 0
+        const returning = audience?.returning ?? 0
+        const activeUsers = Number(row.activeUsers ?? 0)
+        const avgEngagement = activeUsers ? Number(row.userEngagementDuration ?? 0) / activeUsers : 0
+        return <tr key={index} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]">{acqDims.map((dim) => <td key={dim} className="px-3 py-3">{String(row[dim] ?? '(not set)')}</td>)}<td className="px-3 py-3">{number(totalUsers)}</td><td className="px-3 py-3">{number(newUsers)}</td><td className="px-3 py-3">{number(returning)}</td><td className="px-3 py-3">{duration(avgEngagement)}</td><td className="px-3 py-3">{number(eventCount)}</td><td className="px-3 py-3">{number(row.keyEvents)}</td></tr>
+      })}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin datos de adquisición en el período seleccionado.</p>}
+    </div>}
+
+    {tab === 'Interacción' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Eventos: Nombre del evento</p><span className="text-[10px] text-[#888]">{eventRows.length} eventos</span></div>
+      {eventRows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Nombre del evento</th><th className="px-3 py-3 font-semibold">Número de eventos</th><th className="px-3 py-3 font-semibold">Total de usuarios</th><th className="px-3 py-3 font-semibold">Número de eventos por usuario activo</th><th className="px-3 py-3 font-semibold">Total de ingresos</th></tr></thead><tbody>{eventRows.map((row, index) => <tr key={index} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{String(row.eventName ?? '')}</td><td className="px-3 py-3">{number(row.eventCount)}</td><td className="px-3 py-3">{number(row.totalUsers)}</td><td className="px-3 py-3">{decimal(row.eventCountPerUser)}</td><td className="px-3 py-3">{money(row.totalRevenue)}</td></tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin eventos en el período seleccionado.</p>}
+    </div>}
+
+    {tab === 'Páginas y pantallas' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Páginas y pantallas: Ruta de página y clase de pantalla</p><div className="flex items-center gap-3"><label className="flex items-center gap-1.5 text-[10px] text-[#888]">Número de eventos<EventSelect value={pageEventFilter} onChange={setPageEventFilter} options={eventOptions} /></label><label className="flex items-center gap-1.5 text-[10px] text-[#888]">Eventos clave<EventSelect value={pageKeyEventFilter} onChange={setPageKeyEventFilter} options={eventOptions} /></label></div></div>
+      {pageRows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[920px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Ruta de página y clase de pantalla</th><th className="px-3 py-3 font-semibold">Vistas</th><th className="px-3 py-3 font-semibold">Usuarios activos</th><th className="px-3 py-3 font-semibold">Vistas por usuario activo</th><th className="px-3 py-3 font-semibold">Número de eventos</th><th className="px-3 py-3 font-semibold">Eventos clave</th><th className="px-3 py-3 font-semibold">Total de ingresos</th></tr></thead><tbody>{pageRows.map((row, index) => {
+        const key = String(row.unifiedPagePathScreen ?? '')
+        const eventCount = pageEventFilter === 'all' ? Number(row.eventCount ?? 0) : pageEventIndex.get(key)?.eventCount ?? 0
+        const keyEvents = pageKeyEventFilter === 'all' ? Number(row.keyEvents ?? 0) : pageKeyEventIndex.get(key)?.keyEvents ?? 0
+        return <tr key={index} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{key || '/'}</td><td className="px-3 py-3">{number(row.screenPageViews)}</td><td className="px-3 py-3">{number(row.activeUsers)}</td><td className="px-3 py-3">{decimal(row.screenPageViewsPerUser)}</td><td className="px-3 py-3">{number(eventCount)}</td><td className="px-3 py-3">{number(keyEvents)}</td><td className="px-3 py-3">{money(row.totalRevenue)}</td></tr>
+      })}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin datos de páginas en el período seleccionado.</p>}
+    </div>}
+  </div>
+}
+
+// La API de GTM no expone un puntaje de "Calidad del contenedor" como el
+// que muestra su interfaz (es un cálculo interno de Tag Assistant). Este
+// diagnóstico es un cálculo propio de Conexa a partir de datos reales de
+// tags/activadores, así que se etiqueta y explica como tal en vez de
+// imitar el puntaje "Excelente/Bueno/etc." de Google.
+function relativeTimeEs(iso: string | null) {
+  if (!iso) return '—'
+  const diffMs = Date.now() - new Date(iso).getTime()
+  if (diffMs < 0) return '—'
+  const days = Math.floor(diffMs / 86_400_000)
+  if (days < 1) return 'hoy'
+  if (days === 1) return 'hace 1 día'
+  if (days < 30) return `hace ${days} días`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `hace ${months} ${months === 1 ? 'mes' : 'meses'}`
+  const years = Math.floor(months / 12)
+  return `hace ${years} ${years === 1 ? 'año' : 'años'}`
+}
+
+type TagManagerSelection = { kind: 'tag'; item: TagManagerTagRow } | { kind: 'trigger'; item: TagManagerTriggerRow } | { kind: 'variable'; item: TagManagerVariableRow }
+
+function TagManagerConditionRow({ condition }: { condition: TagManagerFilterRow }) {
+  return <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-[#f0f0ed] bg-[#fafaf8] px-3 py-2 text-[11px] text-[#444]">
+    {condition.field && <span className="rounded border border-[#e2e2df] bg-white px-1.5 py-0.5 text-[10px] font-medium text-[#555]">{condition.field}</span>}
+    <span className="text-[#888]">{condition.operator}</span>
+    <span className="font-medium text-[#222]">{condition.value}</span>
+  </div>
+}
+
+function TagManagerParametersTable({ parameters }: { parameters: TagManagerParameterRow[] }) {
+  if (!parameters.length) return <p className="text-[11px] text-[#888]">Sin parámetros configurados.</p>
+  return <div className="overflow-hidden rounded-lg border border-[#eee]">
+    <table className="w-full text-left text-[11px]"><tbody>{parameters.map((param, index) => <tr key={`${param.key}-${index}`} className={cn('border-b border-[#f0f0ed] last:border-b-0', index % 2 === 1 && 'bg-[#fafaf8]')}><td className="w-2/5 px-3 py-2 align-top font-medium text-[#555]">{param.key}</td><td className="px-3 py-2 align-top text-[#222] break-all">{param.value || '—'}</td></tr>)}</tbody></table>
+  </div>
+}
+
+function TagManagerDetailSheet({ selection, onClose }: { selection: TagManagerSelection | null; onClose: () => void }) {
+  return <Sheet open={selection !== null} onOpenChange={(open) => { if (!open) onClose() }}>
+    <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-md">
+      {selection && <>
+        <SheetHeader className="border-b border-[#eee]">
+          <SheetTitle className="text-[16px]">{selection.item.name}</SheetTitle>
+          <SheetDescription className="text-[11px]">
+            {selection.kind === 'tag' ? selection.item.typeLabel : selection.kind === 'trigger' ? selection.item.typeLabel : selection.item.typeLabel}
+            {' · ID '}{selection.kind === 'tag' ? selection.item.tagId : selection.kind === 'trigger' ? selection.item.triggerId : selection.item.variableId}
+          </SheetDescription>
+        </SheetHeader>
+        <div className="flex flex-col gap-4 p-4">
+          <div className="flex items-center justify-between text-[11px] text-[#777]"><span>Última modificación</span><span className="font-medium text-[#222]">{relativeTimeEs(selection.item.lastModifiedAt)}</span></div>
+
+          {selection.kind === 'tag' && <>
+            <div className="flex items-center justify-between text-[11px] text-[#777]"><span>Estado</span>{selection.item.paused ? <span className="font-medium text-[#c47a00]">Pausada</span> : <span className="font-medium text-[#1e9e6b]">Activa</span>}</div>
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Activadores de accionamiento</p>
+              {selection.item.firingTriggerNames.length ? <div className="flex flex-wrap gap-1.5">{selection.item.firingTriggerNames.map((name) => <span key={name} className="rounded-full border border-[#e2e2df] bg-[#fafaf8] px-2 py-1 text-[10px] text-[#444]">{name}</span>)}</div> : <p className="text-[11px] text-[#888]">Sin activadores asignados.</p>}
+            </div>
+            {selection.item.blockingTriggerNames.length > 0 && <div>
+              <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Activadores de excepción</p>
+              <div className="flex flex-wrap gap-1.5">{selection.item.blockingTriggerNames.map((name) => <span key={name} className="rounded-full border border-[#e2e2df] bg-[#fafaf8] px-2 py-1 text-[10px] text-[#444]">{name}</span>)}</div>
+            </div>}
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Configuración de la etiqueta</p>
+              <TagManagerParametersTable parameters={selection.item.parameters} />
+            </div>
+          </>}
+
+          {selection.kind === 'trigger' && <>
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Este activador se activa en</p>
+              {selection.item.conditions.length ? <div className="flex flex-col gap-1.5">{selection.item.conditions.map((condition, index) => <TagManagerConditionRow key={index} condition={condition} />)}</div> : <p className="text-[11px] text-[#888]">Sin condiciones (se activa siempre que ocurre el evento).</p>}
+            </div>
+            {selection.item.additionalConditions.length > 0 && <div>
+              <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Condiciones adicionales</p>
+              <div className="flex flex-col gap-1.5">{selection.item.additionalConditions.map((condition, index) => <TagManagerConditionRow key={index} condition={condition} />)}</div>
+            </div>}
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Etiquetas que usan este activador ({selection.item.tagCount})</p>
+              {selection.item.firingTagNames.length ? <div className="flex flex-wrap gap-1.5">{selection.item.firingTagNames.map((name) => <span key={name} className="rounded-full border border-[#e2e2df] bg-[#fafaf8] px-2 py-1 text-[10px] text-[#444]">{name}</span>)}</div> : <p className="text-[11px] text-[#888]">Ninguna etiqueta usa este activador.</p>}
+            </div>
+          </>}
+
+          {selection.kind === 'variable' && <div>
+            <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Configuración de la variable</p>
+            <TagManagerParametersTable parameters={selection.item.parameters} />
+          </div>}
+
+          {selection.item.notes && <div>
+            <p className="mb-1.5 text-[11px] font-semibold text-[#555]">Notas</p>
+            <p className="rounded-lg border border-[#f0f0ed] bg-[#fafaf8] p-3 text-[11px] text-[#555]">{selection.item.notes}</p>
+          </div>}
+        </div>
+      </>}
+    </SheetContent>
+  </Sheet>
+}
+
+function GoogleTagManagerConexaView({ platform, onManage, data }: { platform: Platform; onManage: () => void; data: ConexaData }) {
+  const [tab, setTab] = useState('Resumen')
+  const [selection, setSelection] = useState<TagManagerSelection | null>(null)
+  const report = (data.platformData.tagManager ?? {}) as { containers?: Array<Record<string, any>>; errors?: Array<{ containerId: string; message: string }> }
+  const containers = report.containers ?? []
+  const [containerId, setContainerId] = useState<string | undefined>(undefined)
+  const container = containers.find((item) => item.containerId === containerId) ?? containers[0]
+
+  if (!containers.length) return <div className="mx-auto max-w-[1180px] px-6 py-5">
+    <div className="mb-4 flex items-start justify-between"><div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center overflow-hidden rounded-lg bg-white">{platform.iconUrl ? <img src={platform.iconUrl} alt="" className="size-full object-contain" /> : <Tags className="size-7 text-[#246FDB]" />}</span><div><h1 className="text-[20px] font-bold">Google Tag Manager</h1><p className="text-[11px] text-[#777]">{platform.detail}</p></div></div><Button variant="outline" onClick={onManage} className="h-8 rounded-full px-4 text-[11px]">Administrar conexión</Button></div>
+    <p className="rounded-xl border border-[#dcdcd8] bg-white p-8 text-center text-xs text-[#888]">{report.errors?.[0]?.message ?? 'Sin contenedores de Google Tag Manager conectados.'}</p>
+  </div>
+
+  const tags = (container.tags ?? []) as TagManagerTagRow[]
+  const triggers = (container.triggers ?? []) as TagManagerTriggerRow[]
+  const variables = (container.variables ?? []) as TagManagerVariableRow[]
+  const diagnostics = container.diagnostics ?? {}
+  const nav = ['Resumen', 'Etiquetas', 'Activadores', 'Variables']
+
+  return <div className="mx-auto h-full max-w-[1180px] overflow-y-auto px-6 py-5">
+    <div className="mb-4 flex items-start justify-between"><div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center overflow-hidden rounded-lg bg-white">{platform.iconUrl ? <img src={platform.iconUrl} alt="" className="size-full object-contain" /> : <Tags className="size-7 text-[#246FDB]" />}</span><div><h1 className="text-[20px] font-bold">Google Tag Manager</h1><p className="text-[11px] text-[#777]">Contenedor {container.publicId} · {container.containerName} <span className="ml-2 text-[#1e9e6b]">● Conectado</span></p></div></div><div className="flex items-center gap-3">{containers.length > 1 && <select value={container.containerId} onChange={(event) => setContainerId(event.target.value)} className="h-8 rounded-full border border-[#e2e2df] bg-white px-3 text-[11px]">{containers.map((item) => <option key={item.containerId} value={item.containerId}>{item.containerName}</option>)}</select>}<Button variant="outline" onClick={onManage} className="h-8 rounded-full px-4 text-[11px]">Administrar conexión</Button></div></div>
+    <div className="mb-4 flex gap-7 border-b border-[#dededb] text-[10px] font-semibold text-[#777]">{nav.map((item) => <button type="button" key={item} onClick={() => setTab(item)} className={cn('border-b-2 px-1 pb-3', tab === item ? 'border-[#246FDB] text-[#246FDB]' : 'border-transparent')}>{item}</button>)}</div>
+
+    {tab === 'Resumen' && <div>
+      <div className="mb-3 grid grid-cols-3 gap-3">
+        <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="text-[10px] font-semibold text-[#888]">Etiquetas totales</p><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{diagnostics.totalTags ?? 0}</p><p className="mt-1 text-[10px] text-[#888]">{diagnostics.activeTags ?? 0} activas · {diagnostics.pausedTags ?? 0} pausadas</p></div>
+        <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="text-[10px] font-semibold text-[#888]">Activadores</p><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{diagnostics.totalTriggers ?? 0}</p></div>
+        <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="text-[10px] font-semibold text-[#888]">Variables definidas por el usuario</p><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{diagnostics.totalVariables ?? 0}</p></div>
+      </div>
+      <div className="rounded-xl border border-[#dcdcd8] bg-white p-4">
+        <p className="text-[12px] font-bold">Diagnóstico del contenedor</p>
+        <p className="mb-3 text-[10px] text-[#888]">Cálculo propio de Conexa a partir de las etiquetas y activadores del contenedor — no es el puntaje &quot;Calidad del contenedor&quot; que muestra la interfaz de GTM (ese es interno de Tag Assistant y no está disponible por API).</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex items-center justify-between rounded-lg border border-[#f0f0ed] px-3 py-2"><span className="text-[11px] text-[#555]">Etiquetas pausadas</span><span className={cn('text-[12px] font-bold', (diagnostics.pausedTags ?? 0) > 0 ? 'text-[#c47a00]' : 'text-[#1e9e6b]')}>{diagnostics.pausedTags ?? 0}</span></div>
+          <div className="flex items-center justify-between rounded-lg border border-[#f0f0ed] px-3 py-2"><span className="text-[11px] text-[#555]">Etiquetas sin activador</span><span className={cn('text-[12px] font-bold', (diagnostics.tagsWithoutTrigger ?? 0) > 0 ? 'text-[#c47a00]' : 'text-[#1e9e6b]')}>{diagnostics.tagsWithoutTrigger ?? 0}</span></div>
+          <div className="flex items-center justify-between rounded-lg border border-[#f0f0ed] px-3 py-2"><span className="text-[11px] text-[#555]">Activadores sin etiquetas</span><span className={cn('text-[12px] font-bold', (diagnostics.triggersWithoutTags ?? 0) > 0 ? 'text-[#c47a00]' : 'text-[#1e9e6b]')}>{diagnostics.triggersWithoutTags ?? 0}</span></div>
+          <div className="flex items-center justify-between rounded-lg border border-[#f0f0ed] px-3 py-2"><span className="text-[11px] text-[#555]">Variables definidas por el usuario</span><span className="text-[12px] font-bold text-[#222]">{diagnostics.totalVariables ?? 0}</span></div>
+        </div>
+      </div>
+    </div>}
+
+    {tab === 'Etiquetas' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Etiquetas</p><span className="text-[10px] text-[#888]">{tags.length} etiquetas · hacé click en una fila para ver el detalle</span></div>
+      {tags.length ? <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Nombre</th><th className="px-3 py-3 font-semibold">Tipo</th><th className="px-3 py-3 font-semibold">Activadores de accionamiento</th><th className="px-3 py-3 font-semibold">Estado</th><th className="px-3 py-3 font-semibold">Última modificación</th></tr></thead><tbody>{tags.map((tag) => <tr key={tag.tagId} onClick={() => setSelection({ kind: 'tag', item: tag })} className="cursor-pointer border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{tag.name}</td><td className="px-3 py-3">{tag.typeLabel}</td><td className="px-3 py-3">{tag.firingTriggerNames.length ? tag.firingTriggerNames.join(', ') : '—'}</td><td className="px-3 py-3">{tag.paused ? <span className="text-[#c47a00]">Pausada</span> : <span className="text-[#1e9e6b]">Activa</span>}</td><td className="px-3 py-3 text-[#888]">{relativeTimeEs(tag.lastModifiedAt)}</td></tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin etiquetas en este contenedor.</p>}
+    </div>}
+
+    {tab === 'Activadores' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Activadores</p><span className="text-[10px] text-[#888]">{triggers.length} activadores · hacé click en una fila para ver el detalle</span></div>
+      {triggers.length ? <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Nombre</th><th className="px-3 py-3 font-semibold">Tipo de evento</th><th className="px-3 py-3 font-semibold">Filtrar</th><th className="px-3 py-3 font-semibold">Etiquetas</th><th className="px-3 py-3 font-semibold">Última modificación</th></tr></thead><tbody>{triggers.map((trigger) => <tr key={trigger.triggerId} onClick={() => setSelection({ kind: 'trigger', item: trigger })} className="cursor-pointer border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{trigger.name}</td><td className="px-3 py-3">{trigger.typeLabel}</td><td className="px-3 py-3">{trigger.filter ? <span>{trigger.filter.field && <span className="mr-1 rounded border border-[#e2e2df] bg-[#fafaf8] px-1.5 py-0.5 text-[10px]">{trigger.filter.field}</span>}{trigger.filter.operator} {trigger.filter.value}</span> : '—'}</td><td className="px-3 py-3">{trigger.tagCount}</td><td className="px-3 py-3 text-[#888]">{relativeTimeEs(trigger.lastModifiedAt)}</td></tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin activadores en este contenedor.</p>}
+    </div>}
+
+    {tab === 'Variables' && <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+      <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">Variables definidas por el usuario</p><span className="text-[10px] text-[#888]">{variables.length} variables · hacé click en una fila para ver el detalle</span></div>
+      {variables.length ? <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-[11px]"><thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">Nombre</th><th className="px-3 py-3 font-semibold">Tipo</th><th className="px-3 py-3 font-semibold">Última modificación</th></tr></thead><tbody>{variables.map((variable) => <tr key={variable.variableId} onClick={() => setSelection({ kind: 'variable', item: variable })} className="cursor-pointer border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#2368c4]">{variable.name}</td><td className="px-3 py-3">{variable.typeLabel}</td><td className="px-3 py-3 text-[#888]">{relativeTimeEs(variable.lastModifiedAt)}</td></tr>)}</tbody></table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin variables definidas por el usuario en este contenedor.</p>}
+    </div>}
+
+    <TagManagerDetailSheet selection={selection} onClose={() => setSelection(null)} />
+  </div>
+}
+
+function MultiSelectFilter({ label, options, selected, onChange }: { label: string; options: string[]; selected: string[]; onChange: (values: string[]) => void }) {
+  const [open, setOpen] = useState(false)
+  const toggle = (value: string) => onChange(selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value])
+  return <div className="relative">
+    <button type="button" onClick={() => setOpen((value) => !value)} className={cn('flex max-w-[190px] items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-medium', selected.length ? 'border-[#5b5fe8] bg-[#eeefff] text-[#5b5fe8]' : 'border-[#e2e2df] bg-white text-[#555]')}>
+      <span className="truncate">{label}{selected.length ? ` · ${selected.length}` : ''}</span>
+      <ChevronDown className="size-3 shrink-0" />
+    </button>
+    {open && <div className="absolute left-0 top-9 z-40 max-h-64 min-w-[220px] overflow-y-auto rounded-lg border border-[#dededb] bg-white p-1.5 shadow-xl">
+      {options.length ? options.map((option) => <label key={option} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-[11px] hover:bg-[#f5f5f3]"><input type="checkbox" checked={selected.includes(option)} onChange={() => toggle(option)} className="accent-[#5b5fe8]" /><span className="truncate">{option}</span></label>) : <p className="px-2 py-2 text-[11px] text-[#888]">Sin opciones disponibles</p>}
+      {selected.length > 0 && <button type="button" onClick={() => onChange([])} className="mt-1 w-full border-t border-[#eee] px-2 py-2 text-left text-[10px] font-semibold text-[#5b5fe8]">Limpiar filtro</button>}
+    </div>}
+  </div>
+}
+
+function CrmBreakdownTable({ title, rows, labelHeader }: { title: string; rows: CrmBreakdownRow[]; labelHeader: string }) {
+  return <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+    <div className="flex items-center justify-between border-b border-[#eee] px-4 py-3"><p className="text-[12px] font-bold">{title}</p><span className="text-[10px] text-[#888]">{rows.length} registros</span></div>
+    {rows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[480px] text-left text-[11px]">
+      <thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr><th className="px-3 py-3 font-semibold">{labelHeader}</th><th className="px-3 py-3 font-semibold">Total de contactos</th><th className="px-3 py-3 font-semibold">Total de ventas</th></tr></thead>
+      <tbody>{rows.map((row) => <tr key={row.label} className="border-b border-[#f0f0ed] hover:bg-[#fafaff]"><td className="px-3 py-3 text-[#222]">{row.label}</td><td className="px-3 py-3">{row.contacts.toLocaleString('es-AR')}</td><td className="px-3 py-3 font-semibold text-[#1e9e6b]">{row.sales.toLocaleString('es-AR')}</td></tr>)}</tbody>
+    </table></div> : <p className="p-8 text-center text-xs text-[#888]">Sin datos en el período seleccionado.</p>}
+  </div>
+}
+
+function CrmConexaView({ platform, onManage, onNavigate, data, client, filters, onFiltersChange, period, customRange, onPeriodChange }: { platform: Platform; onManage: () => void; onNavigate: (destination: string) => void; data: ConexaData; client: Client | null; filters: CrmAcquisitionFilters; onFiltersChange: (filters: CrmAcquisitionFilters) => void; period: string; customRange: { from: string; to: string }; onPeriodChange: (period: string, range?: { from: string; to: string }) => void }) {
+  const [tab, setTab] = useState('Adquisición')
+  const crm = (data.platformData.crm ?? {}) as { acquisition?: CrmAcquisitionReport }
+  const report = crm.acquisition
+  const filterOptions = report?.filterOptions ?? { sources: [], campaigns: [], tags: [], vendors: [], channels: [], teams: [], statuses: [] }
+  const crmTabs = ['Resumen', 'Campañas']
+
+  const header = <div className="mb-4 flex flex-col gap-4">
+    <div className="flex items-start justify-between gap-4">
+      <div className="flex items-center gap-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[#bce8dc] bg-[#effbf7]"><Users className="size-6 text-[#11A683]" /></span><div><h1 className="text-[24px] font-bold leading-none">CRM</h1><p className="mt-1 text-[11px] text-[#777]">{platform.detail} {client?.crm_type && <span className="ml-1 text-[#1e9e6b]">· ● Conectado</span>}</p></div></div>
+      <div className="flex shrink-0 items-center gap-2"><AnalyzeWithConexaButton context={`CRM · ${platform.detail}`} onClick={() => onNavigate('Chat / Análisis')} /><Button variant="outline" onClick={onManage} className="h-8 rounded-full border-[#dcdcd8] bg-white px-4 text-[11px] text-[#222]">Administrar conexión</Button></div>
+    </div>
+    <div className="flex gap-7 overflow-x-auto border-b border-[#dededb] text-[10px] font-semibold text-[#777]">{crmTabs.map((item) => <button type="button" key={item} onClick={() => setTab(item)} className={cn('shrink-0 border-b-2 px-1 pb-3', tab === item ? 'border-[#5b5fe8] text-[#5b5fe8]' : 'border-transparent')}>{item}</button>)}</div>
+  </div>
+
+  if (!client?.crm_type) return <div className="mx-auto max-w-[1180px] px-6 py-5">{header}<p className="rounded-xl border border-[#dcdcd8] bg-white p-8 text-center text-xs text-[#888]">Sin CRM conectado para este cliente.</p></div>
+  if (!report || !report.available) return <div className="mx-auto max-w-[1180px] px-6 py-5">{header}<p className="rounded-xl border border-[#dcdcd8] bg-white p-8 text-center text-xs text-[#888]">{report && 'message' in report ? report.message : 'No se pudo consultar el CRM para el período seleccionado.'}</p></div>
+
+  const sourceOptions = ['Google', 'Meta WhatsApp', 'Meta Formulario']
+  const filterSetters: Array<{ key: keyof CrmAcquisitionFilters; label: string; options: string[] }> = [
+    { key: 'sources', label: 'Fuente', options: sourceOptions },
+    { key: 'campaigns', label: 'Campaña', options: filterOptions.campaigns },
+    { key: 'tags', label: 'Etiqueta', options: filterOptions.tags },
+    { key: 'vendors', label: 'Vendedor', options: filterOptions.vendors },
+    { key: 'channels', label: 'Canal', options: filterOptions.channels },
+    { key: 'teams', label: 'Equipo de ventas', options: filterOptions.teams },
+    { key: 'statuses', label: 'Estado de oportunidad', options: filterOptions.statuses },
+  ]
+  const activeFilterCount = filterSetters.reduce((sum, item) => sum + (filters[item.key]?.length ?? 0), 0)
+
+  return <div className="mx-auto h-full max-w-[1180px] overflow-y-auto px-6 py-5">
+    {header}
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      {filterSetters.map((item) => <MultiSelectFilter key={item.key} label={item.label} options={item.options} selected={filters[item.key] ?? []} onChange={(values) => onFiltersChange({ ...filters, [item.key]: values })} />)}
+      {activeFilterCount > 0 && <button type="button" onClick={() => onFiltersChange({})} className="text-[11px] font-medium text-[#888] underline">Limpiar todos los filtros</button>}
+    </div>
+
+    <div className="mb-4 grid grid-cols-2 gap-3">
+      <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="text-[10px] font-semibold text-[#888]">Total de contactos</p><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#222]">{report.totals.contacts.toLocaleString('es-AR')}</p></div>
+      <div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="text-[10px] font-semibold text-[#888]">Total de ventas</p><p className="mt-2 text-[22px] font-semibold tracking-[-.04em] text-[#1e9e6b]">{report.totals.sales.toLocaleString('es-AR')}</p></div>
+    </div>
+
+    {(tab === 'Resumen' || tab === 'Campañas') && <div className="flex flex-col gap-4">
+      <CrmBreakdownTable title="Origen de adquisición" rows={report.campaignRows} labelHeader="Origen" />
+      <CrmBreakdownTable title="Vendedor" rows={report.vendorRows} labelHeader="Vendedor" />
+      <CrmBreakdownTable title="Equipo de ventas" rows={report.teamRows} labelHeader="Equipo" />
+    </div>}
+
+    {tab !== 'Resumen' && tab !== 'Campañas' && <p className="rounded-xl border border-[#dcdcd8] bg-white p-8 text-center text-xs text-[#888]">Seleccioná una pestaña para ver los datos.</p>}
+  </div>
+}
+
+function PeriodSelector({ period, customRange, onChange }: { period: string; customRange: { from: string; to: string }; onChange: (period: string, range?: { from: string; to: string }) => void }) {
+  const [open, setOpen] = useState(false)
+  const options = ['Hoy', 'Ayer', 'Últimos 7 días', 'Últimos 30 días', 'Este mes', 'Mes anterior']
+  return <div className="relative"><button type="button" onClick={() => setOpen((value) => !value)} className="flex items-center gap-1.5 rounded-lg border border-[#e6e6e3] bg-white px-3 py-1.5 text-[12px] font-medium text-[#5c5c5c]">{period}<ChevronDown className="size-3 text-[#9a9a9a]" /></button>{open && <div className="absolute right-0 top-9 z-50 min-w-[190px] rounded-[10px] border border-[#e6e6e3] bg-white p-1.5 shadow-lg">{options.map((item) => <button type="button" key={item} onClick={() => { onChange(item); setOpen(false) }} className="block w-full rounded-md px-2.5 py-2 text-left text-[12px] hover:bg-[#f5f5f5]">{item}</button>)}<button type="button" onClick={() => { onChange('Personalizado', customRange); setOpen(false) }} className="block w-full rounded-md px-2.5 py-2 text-left text-[12px] hover:bg-[#f5f5f5]">Personalizado</button>{period === 'Personalizado' && <div className="border-t border-[#eee] px-2.5 py-2"><label className="block text-[10px] text-[#888]">Desde<input type="date" value={customRange.from} onChange={(event) => onChange('Personalizado', { ...customRange, from: event.target.value })} className="mt-1 block w-full rounded-md border border-[#e6e6e3] px-2 py-1.5 text-[11px]" /></label><label className="mt-2 block text-[10px] text-[#888]">Hasta<input type="date" value={customRange.to} onChange={(event) => onChange('Personalizado', { ...customRange, to: event.target.value })} className="mt-1 block w-full rounded-md border border-[#e6e6e3] px-2 py-1.5 text-[11px]" /></label></div>}</div>}</div>
+}
+
+function PlatformView({ platform, initialTab, onManage, onNavigate, data, client, selectedAccounts, onAccountsChange, crmFilters, onCrmFiltersChange, period, customRange, onPeriodChange }: { platform: Platform; initialTab?: string; onManage: () => void; onNavigate: (destination: string) => void; data: ConexaData; client: Client | null; selectedAccounts: Record<string, string[]>; onAccountsChange: (accounts: string[]) => void; crmFilters: CrmAcquisitionFilters; onCrmFiltersChange: (filters: CrmAcquisitionFilters) => void; period: string; customRange: { from: string; to: string }; onPeriodChange: (period: string, range?: { from: string; to: string }) => void }) {
+  if (platform.key === 'google') return <GoogleAdsConexaView platform={platform} onManage={onManage} data={data} client={client} selectedAccounts={selectedAccounts} onAccountsChange={onAccountsChange} />
+  if (platform.key === 'meta') return <MetaAdsConexaView platform={platform} onManage={onManage} data={data} client={client} selectedAccounts={selectedAccounts} onAccountsChange={onAccountsChange} />
+  if (platform.key === 'analytics') return <GoogleAnalyticsConexaView platform={platform} onManage={onManage} data={data} />
+  if (platform.key === 'tag_manager') return <GoogleTagManagerConexaView platform={platform} onManage={onManage} data={data} />
+  if (platform.key === 'crm') return <CrmConexaView platform={platform} onManage={onManage} onNavigate={onNavigate} data={data} client={client} filters={crmFilters} onFiltersChange={onCrmFiltersChange} period={period} customRange={customRange} onPeriodChange={onPeriodChange} />
+  const tabSets: Record<string, string[]> = {
+    meta: ['Resumen', 'Campañas', 'Conjuntos', 'Anuncios', 'Creativos', 'Audiencias', 'Redes', 'Tracking'],
+    google: ['Resumen', 'Campañas', 'Grupos de anuncios', 'Palabras clave', 'Conversiones'],
+    analytics: ['Resumen', 'Adquisición', 'Participación', 'Conversiones', 'Landing Pages'],
+    tag_manager: ['Resumen', 'Contenedores', 'Tags', 'Triggers', 'Variables'],
+    crm: ['Resumen', 'Contactos', 'Oportunidades'],
+  }
+  const tabs = tabSets[platform.key] ?? tabSets.meta
+  const [selectedTab, setSelectedTab] = useState(initialTab && tabs.includes(initialTab) ? initialTab : tabs[0])
+  const platformRows = (data.platformMetrics[platform.key] ?? []).map((item) => [item.label, item.value ? formatMetric(item.value, item.label === 'Inversión') : 'Sin datos'] as [string, string])
+  const details = detailRows(data.platformData[platform.key]).filter(([label]) => selectedTab === 'Resumen' || label.toLowerCase().includes(selectedTab.toLowerCase().replaceAll(' ', '_')) || !label.includes('·')).slice(0, 80)
+  const recordNames = platform.key === 'meta' ? (selectedTab === 'Campañas' ? ['campaigns', 'campaign'] : selectedTab === 'Conjuntos' ? ['adsets', 'ad_sets', 'adsets'] : selectedTab === 'Anuncios' ? ['ads', 'ad'] : ['creatives', 'creative']) : platform.key === 'google' ? (selectedTab === 'Campañas' ? ['campaigns', 'campaign'] : ['ad_groups', 'adgroups', 'keywords', 'conversions']) : platform.key === 'crm' ? (selectedTab === 'Contactos' ? ['contacts', 'contactos', 'items', 'rows', 'data'] : ['opportunities', 'oportunidades', 'items', 'rows', 'data']) : ['rows', 'sources', 'source_medium', 'sourceMedium']
+  const nativeRecords = selectedTab === 'Resumen' ? [] : findRecords(data.platformData[platform.key], recordNames)
+  const view = { metrics: platformRows, rows: details, chart: platformRows.length ? 'Datos reales del período seleccionado' : 'Sin datos disponibles' }
+  const [feedNetwork, setFeedNetwork] = useState<'facebook' | 'instagram' | null>(null)
+  const feedItems = {
+    facebook: ['Conocé nuestro nuevo servicio de automatización comercial.', 'Testimonio: cómo ordenamos el CRM de un cliente en 30 días.', 'Tips para mejorar la conversión de tu funnel.', 'Detr��s de escena: el equipo de Paid Media en acción.'],
+    instagram: ['Nueva pieza gráfica de la campaña de octubre.', 'Reel: 3 errores comunes en campañas de Meta Ads.', 'Carrusel: antes y después de optimizar un funnel.', 'Historia destacada: casos de éxito de clientes.'],
+  }
+  if (false) return <div className="relative mx-auto max-w-[1180px] px-6 py-5"><div className="mb-3 flex items-start justify-between"><div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center overflow-hidden rounded-lg bg-white"><img src={platform.iconUrl ?? ''} alt="Meta" className="size-full object-contain" /></span><div><h1 className="text-[20px] font-bold">Meta Ads</h1><p className="text-[11px] text-[#777]">Aurelia · octubre 25 · <span className="text-[#1e9e6b]">● Conectado</span></p></div></div><Button variant="outline" onClick={onManage} className="h-8 rounded-full px-4 text-[11px]">Administrar conexión</Button></div><div className="mb-4 flex gap-7 border-b border-[#dededb] text-[10px] font-semibold text-[#777]">{tabs.map((tab) => <button type="button" key={tab} onClick={() => setSelectedTab(tab)} className={cn('border-b-2 px-1 pb-3', selectedTab === tab ? 'border-[#5b5fe8] text-[#5b5fe8]' : 'border-transparent')}>{tab}</button>)}</div><div className="grid grid-cols-2 gap-3"><FeedCard network="facebook" title="Fan Page" handle="@AureliaOficial" followers="12.400" reach="48.200" engagement="3,8%" posts="26" onOpen={() => setFeedNetwork('facebook')} /><FeedCard network="instagram" title="Instagram" handle="@aurelia.oficial" followers="21.800" reach="86.500" engagement="4,6%" posts="34" onOpen={() => setFeedNetwork('instagram')} /></div>{feedNetwork && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="dialog" aria-modal="true" aria-label={`Feed de ${feedNetwork}`}><div className="w-full max-w-[340px] rounded-2xl bg-white p-4 shadow-xl"><div className="mb-3 flex items-center justify-between border-b border-[#ededeb] pb-3"><div className="flex items-center gap-2"><span className="flex size-5 items-center justify-center overflow-hidden rounded-full bg-white"><img src={feedNetwork === 'facebook' ? 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Facebook_Logo_%282019%29-8hLkShXu9caNijxaYTMKGdv1bWipbV.png' : 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/instagram-logo-instagram-icon-transparent-free-png-Rg5Y4zK9sBURxJ2cnQ4oECUdYuqeYz.webp'} alt="" className="size-full object-contain" /></span><p className="text-[12px] font-bold">{feedNetwork === 'facebook' ? 'Fan Page — @AureliaOficial' : 'Instagram — @aurelia.oficial'}</p></div><button type="button" onClick={() => setFeedNetwork(null)} aria-label="Cerrar feed" className="text-xl text-[#aaa]">×</button></div>{feedItems[feedNetwork].map((item, index) => <div key={item} className="flex gap-2 border-b border-[#ededeb] py-2.5 last:border-0"><div className="size-10 shrink-0 rounded-md bg-[repeating-linear-gradient(45deg,#eee,#eee_5px,#f8f8f8_5px,#f8f8f8_10px)]" /><div><p className="text-[10px] font-medium leading-4">{item}</p><p className="mt-1 text-[9px] text-[#999]">{feedNetwork === 'facebook' ? [312, 480, 201, 158][index] : [890, 1240, 670, 412][index]} likes · {18 + index * 7} comentarios · Hace {index + 1} días</p></div></div>)}</div></div>}</div>
+  return <div className="mx-auto max-w-[1180px] px-6 py-5"><div className="mb-3 flex items-start justify-between"><div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center overflow-hidden rounded-lg bg-white">{platform.iconUrl ? <img src={platform.iconUrl} alt="" className="size-full object-contain" /> : <Globe2 className="size-7 text-[#11A683]" />}</span><div><h1 className="text-[20px] font-bold">{platform.name}</h1><AccountSelector platform={platform} client={client} selected={selectedAccounts[platform.key] ?? []} onChange={onAccountsChange} /><p className="text-[11px] text-[#777]">{platform.detail} <span className="ml-2 text-[#1e9e6b]">● Conectado</span></p></div></div><Button variant="outline" onClick={onManage} className="h-8 rounded-full px-4 text-[11px]">Administrar conexión</Button></div><div className="mb-4 flex gap-7 border-b border-[#dededb] text-[10px] font-semibold text-[#777]">{tabs.map((tab) => <button type="button" key={tab} onClick={() => setSelectedTab(tab)} className={cn('border-b-2 px-1 pb-3', selectedTab === tab ? 'border-[#5b5fe8] text-[#5b5fe8]' : 'border-transparent')}>{tab}</button>)}</div><div className="mb-4 grid grid-cols-6 gap-3">{view.metrics.map(([label, value]) => <div key={label} className="rounded-xl border border-[#dcdcd8] bg-white p-3 shadow-[0_2px_5px_rgba(0,0,0,.06)]"><p className="text-[10px] text-[#888]">{label}</p><p className="mt-1 text-[16px] font-bold">{value}</p></div>)}</div>{selectedTab !== 'Resumen' && <div className="mb-4 overflow-hidden rounded-xl border border-[#dcdcd8] bg-white"><p className="p-4 pb-2 text-[10px] font-bold uppercase text-[#999]">{selectedTab}</p>{nativeRecords.length ? <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-[11px]"><thead className="border-y border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]"><tr>{nativeHeaders(platform.key, selectedTab).map((header) => <th key={header} className="px-3 py-2 font-semibold">{header}</th>)}</tr></thead><tbody>{nativeRecords.map((record, index) => <tr key={String(record.id ?? record.name ?? index)} className="border-b border-[#f1f1ef]"><td className="px-3 py-2 font-medium">{String(record.name ?? record.campaign_name ?? record.source_medium ?? record.source ?? record.id ?? 'Sin nombre')}</td><td className="px-3 py-2">{platform.key === 'crm' && selectedTab === 'Contactos' ? String(record.source ?? record.referral ?? record.referral_source ?? record.referrer ?? record.utm_source ?? '—') : String(record.status ?? record.state ?? '—')}</td><td className="px-3 py-2">{String(record.objective ?? record.type ?? record.cost ?? record.spend ?? '—')}</td><td className="px-3 py-2">{String(record.budget ?? record.clicks ?? record.sessions ?? '—')}</td><td className="px-3 py-2">{String(record.spend ?? record.conversions ?? record.events ?? '—')}</td><td className="px-3 py-2">{String(record.results ?? record.conversions ?? record.users ?? '—')}</td><td className="px-3 py-2">{String(record.cpa ?? record.cpl ?? record.ctr ?? '—')}</td></tr>)}</tbody></table></div> : view.rows.length ? <div className="grid grid-cols-2 gap-x-6 gap-y-2 p-4">{view.rows.map(([label, value]) => <div key={`${label}-${value}`} className="flex justify-between gap-3 border-b border-[#f1f1ef] py-1 text-[11px]"><span className="truncate text-[#777]">{label}</span><span className="font-semibold">{value}</span></div>)}</div> : <EmptyState text="No hay registros reales para esta vista." />}</div>}<div className="rounded-xl border border-[#dcdcd8] bg-white p-4"><p className="mb-3 text-[10px] font-bold uppercase text-[#999]">{selectedTab === 'Resumen' ? `${platform.name} · Totales` : view.chart}</p><div className="flex h-28 items-end gap-2">{platformRows.length ? platformRows.map(([label, value], index) => <div key={label} className="flex flex-1 flex-col items-center gap-1"><div className="w-full rounded-t-sm bg-[#8587e8]" style={{ height: `${Math.max(12, Math.min(100, Number(value.replace(/[^0-9,.-]/g, '').replace(',', '.')) / Math.max(...platformRows.map(([, item]) => Number(item.replace(/[^0-9,.-]/g, '').replace(',', '.')) || 1)) * 100))}%` }} /><span className="text-[8px] text-[#888]">{label}</span></div>) : <EmptyState text="No hay datos para graficar." />}</div></div></div>
+}
+
+function WeeklyReport({ client }: { client: Client | null }) {
+  return <aside className="min-h-0 h-full w-[360px] shrink-0 overflow-hidden border-l border-[#e6e6e3] bg-white"><div className="h-full min-h-0 overflow-y-auto overscroll-contain p-4"><div className="mb-4 flex items-start justify-between border-b border-[#e6e6e3] pb-4"><div><h2 className="text-[15px] font-bold">Informe semanal</h2><p className="text-[10px] text-[#888]">{client?.nombre_del_negocio ?? 'Soy Aurelia'} · 07–13 Sep · Generado por Conexa</p></div><button type="button" className="text-lg text-[#aaa]" aria-label="Cerrar informe">×</button></div><div className="mb-4 grid grid-cols-2 gap-2">{[['$630.000', 'Inversión Paid Media'], ['94', 'Ventas totales'], ['6,7%', 'Conversión a venta'], ['+22%', 'CPL Meta vs. anterior']].map(([value, label]) => <div key={label} className="rounded-lg bg-[#fafaf8] p-3"><p className="font-display text-[17px] font-bold tracking-[-.04em]">{value}</p><p className="text-[9px] text-[#888]">{label}</p></div>)}</div><ReportSection title="Resumen ejecutivo"><p>La inversión total se mantuvo estable esta semana. El CPL de Meta subió 22%, concentrado en campañas de prospecting, mientras que Google Search sostuvo su eficiencia habitual.</p></ReportSection><ReportSection title="Paid Media"><p>Meta Ads y Google Ads muestran comportamientos distintos esta semana:</p><ul className="mt-2 list-disc space-y-1 pl-4"><li>Meta Prospecting: $420.000 invertidos, 128 resultados, CPL $3.281 (+22%).</li><li>Meta Remarketing: $210.000 invertidos, 91 resultados, CPL $2.307 (estable).</li><li>Google Search Marca: $180.000 invertidos, 142 conversiones, CPA $1.267.</li></ul><div className="mt-3 flex h-12 items-end gap-1 rounded bg-[#f2f2ff] px-2 pb-1">{[22, 30, 18, 36, 28, 42, 34].map((height, index) => <div key={index} className="flex-1 rounded-t-sm bg-[#7778e8]" style={{ height: `${height}px` }} />)}</div></ReportSection><ReportSection title="CRM"><p>El funnel comercial de la semana por campaña:</p><table className="mt-2 w-full text-left text-[9px]"><thead><tr className="text-[#888]"><th className="py-1">Campaña</th><th>Contactos</th><th>Oport.</th><th>Ventas</th></tr></thead><tbody>{[['Meta Prospecting', '260', '121', '16'], ['Google Search Marca', '142', '91', '31'], ['Meta Remarketing', '180', '104', '24']].map((row) => <tr key={row[0]} className="border-t border-[#eee]"><td className="py-1">{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td></tr>)}</tbody></table></ReportSection><ReportSection title="Analytics"><p>18.420 sesiones en el período. El tráfico pago se mantuvo estable; no se observan caídas relevantes en las páginas principales.</p></ReportSection></div></aside>
+}
+
+function ReportSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return <section className="mb-4 border-l-2 border-[#5b5fe8] pl-3 text-[10px] leading-4"><h3 className="mb-1 text-[11px] font-bold">{title}</h3>{children}</section>
+}
+
+function Chat({ question, setQuestion, client, onNavigate }: { question: string; setQuestion: (value: string) => void; client: Client | null; onNavigate: (destination: string, tab?: string) => void }) {
+  const [analysis, setAnalysis] = useState('Caída CPL Meta')
+  const [showAction, setShowAction] = useState(false)
+  const [confirmed, setConfirmed] = useState(false)
+  const analyses = {
+    'Caída CPL Meta': { subtitle: 'Meta Ads · Hoy', summary: 'El CPL aumentó 22% respecto del período anterior.', findings: ['El aumento se concentra en Prospecting.', 'Remarketing mantiene niveles estables.'], evidence: ['Meta Ads', 'Google Analytics', 'CRM'], recommendation: 'Revisar distribución de presupuesto y segmentación.', action: 'Reducir 15% presupuesto de Prospecting.', chips: ['¿Por qué subió el CPL?', '¿Qué campaña debería revisar?', 'Comparar con período anterior', 'Analizar presupuesto'] },
+    'Informe semanal': { subtitle: 'Meta + Google + CRM', summary: 'El rendimiento semanal se mantiene estable con oportunidades de mejora en adquisición.', findings: ['Meta concentra la mayor inversión.', 'CRM registra crecimiento de oportunidades.'], evidence: ['Meta Ads', 'Google Ads', 'CRM'], recommendation: 'Comparar atribución y crear un informe ejecutivo.', action: 'Generar informe semanal.', chips: ['Comparar canales', 'Ver oportunidades', 'Crear informe'] },
+    '¿Por qué bajaron las ventas?': { subtitle: 'Meta + Google + Analytics + CRM', summary: 'La inversión se mantuvo estable, pero cayó la conversión de oportunidad a venta.', findings: ['Las sesiones se mantuvieron estables.', 'Los contactos permanecieron estables pero cayó la conversión.'], evidence: ['Google Analytics', 'CRM', 'Google Ads'], recommendation: 'Revisar el tramo posterior a adquisición del funnel.', action: 'Analizar eventos y oportunidades.', chips: ['¿Por qué cayó el tráfico?', '¿Qué canal genera más conversiones?', 'Analizar eventos'] },
+    'Tracking Lead': { subtitle: 'Tag Manager · Meta Ads', summary: 'Se detectaron eventos Lead con atribución incompleta.', findings: ['2 eventos no tienen fuente.', 'El pixel y CAPI están activos.'], evidence: ['Tag Manager', 'Meta Ads'], recommendation: 'Validar variables y reglas del evento Lead.', action: 'Revisar configuración de tracking.', chips: ['Ver eventos', 'Validar Tag Manager', 'Comparar conversiones'] },
+  } as const
+  const current = analyses[analysis as keyof typeof analyses]
+  return <div className="flex h-full min-h-[620px]"><aside className="w-[260px] shrink-0 border-r border-[#e6e6e3] bg-white p-4"><Button variant="outline" className="mb-5 w-full justify-start" onClick={() => setAnalysis('Caída CPL Meta')}>+ Nuevo análisis</Button><p className="mb-2 px-2 text-[10.5px] uppercase tracking-[.08em] text-[#9a9a9a]">Hoy</p>{Object.keys(analyses).map((item) => <button type="button" key={item} onClick={() => setAnalysis(item)} className={cn('mb-0.5 w-full rounded-lg p-2.5 text-left', analysis === item ? 'bg-[#eeefff]' : 'hover:bg-[#f5f5f5]')}><p className="text-[13px] font-semibold">{item}</p><p className="mt-1 text-[11.5px] text-[#9a9a9a]">{client?.nombre_del_negocio ?? 'Cliente'} · {current.subtitle}</p></button>)}</aside><div className="flex min-w-0 flex-1 flex-col bg-[#fafaf8]"><div className="border-b border-[#e6e6e3] bg-white p-4"><p className="text-[15px] font-bold">{analysis}</p><p className="mt-0.5 text-xs text-[#9a9a9a]">Conexa · {client?.nombre_del_negocio ?? 'Cliente'} · {current.subtitle}</p></div><div className="flex-1 p-7">{analysis === 'Informe semanal' && <div className="mb-3 flex justify-end"><button type="button" className="rounded-xl bg-[#5b5fe8] px-4 py-3 text-[11px] font-semibold text-white shadow-sm">Armate el informe semanal</button></div>}<div className="max-w-2xl rounded-2xl border border-[#e6e6e3] bg-white p-5"><p className="mb-3 text-[11px] font-bold uppercase tracking-[.08em] text-[#5b5fe8]">✦ Conexa · Claude Sonnet 4.5</p><p className="mb-4 text-[10px] font-bold uppercase text-[#888]">Resumen</p><p className="mb-4 text-sm leading-6">{current.summary}</p>{analysis === 'Informe semanal' && <div className="mb-4 flex flex-wrap gap-2"><button type="button" onClick={() => setQuestion('Hacé la conclusión más breve.')} className="rounded-full border border-[#5b5fe8] bg-white px-3 py-1.5 text-[10px] font-semibold text-[#5b5fe8]">Hacé la conclusión más breve.</button><button type="button" onClick={() => setQuestion('Agregá CPL de Meta.')} className="rounded-full border border-[#5b5fe8] bg-white px-3 py-1.5 text-[10px] font-semibold text-[#5b5fe8]">Agregá CPL de Meta.</button></div>}<p className="mb-2 text-[10px] font-bold uppercase text-[#888]">Hallazgos</p>{current.findings.map((finding, index) => <p key={finding} className="mb-2 text-xs"><span className="mr-2 rounded bg-[#f0f0ee] px-1.5 py-0.5">{index + 1}</span>{finding}</p>)}<p className="mb-2 mt-4 text-[10px] font-bold uppercase text-[#888]">Evidencia</p><div className="mb-4 flex flex-wrap gap-2">{current.evidence.map((item) => <span key={item} className="rounded bg-[#f0f0ee] px-2 py-1 text-[10px] font-semibold">{item}</span>)}</div><p className="mb-1 text-[10px] font-bold uppercase text-[#888]">Recomendación</p><p className="mb-4 text-xs">{current.recommendation}</p><p className="mb-1 text-[10px] font-bold uppercase text-[#888]">Acciones propuestas</p><p className="mb-4 text-xs">{current.action}</p><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setShowAction(true)} className="h-7 rounded-full border-[#5b5fe8] px-3 text-[10px] text-[#5b5fe8]">Revisar acción</Button>{analysis === '¿Por qué bajaron las ventas?' && <><Button variant="outline" onClick={() => onNavigate('CRM Aurelia', 'Resumen')} className="h-7 rounded-full border-[#5b5fe8] px-3 text-[10px] text-[#5b5fe8]">Ver CRM</Button><Button variant="outline" onClick={() => onNavigate('CRM Aurelia', 'Oportunidades')} className="h-7 rounded-full border-[#5b5fe8] px-3 text-[10px] text-[#5b5fe8]">Ver oportunidades</Button><Button variant="outline" className="h-7 rounded-full border-[#5b5fe8] px-3 text-[10px] text-[#5b5fe8]">Crear informe</Button></>}{analysis === 'Tracking Lead' && <><Button variant="outline" onClick={() => onNavigate('Google Tag Manager', 'Triggers')} className="h-7 rounded-full border-[#5b5fe8] px-3 text-[10px] text-[#5b5fe8]">Ver eventos</Button><Button variant="outline" onClick={() => onNavigate('Google Tag Manager', 'Tags')} className="h-7 rounded-full border-[#5b5fe8] px-3 text-[10px] text-[#5b5fe8]">Validar Tag Manager</Button><Button variant="outline" onClick={() => onNavigate('Meta Ads', 'Tracking')} className="h-7 rounded-full border-[#5b5fe8] px-3 text-[10px] text-[#5b5fe8]">Comparar conversiones</Button></>}</div></div></div><div className="border-t border-[#e6e6e3] bg-white p-4"><div className="mb-3 flex flex-wrap gap-2">{current.chips.map((chip) => <button type="button" key={chip} onClick={() => setQuestion(chip)} className="rounded-full border border-[#dededb] bg-white px-3 py-1.5 text-[10px] font-semibold">{chip}</button>)}</div><div className="flex items-center gap-2 rounded-xl border border-[#e6e6e3] p-2"><input value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing && event.keyCode !== 229) setQuestion('') }} placeholder="Preguntale algo a Conexa..." className="min-w-0 flex-1 bg-transparent px-2 text-sm outline-none" /><Button className="h-8 rounded-full bg-[#5b5fe8] px-4 text-xs text-white" onClick={() => setQuestion('')}>Enviar</Button></div></div></div>{analysis === 'Informe semanal' && <WeeklyReport client={client} />}{showAction && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"><div className="w-full max-w-[355px] rounded-2xl bg-white p-5 shadow-xl"><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-bold">Acción propuesta</h2><button type="button" onClick={() => setShowAction(false)} className="text-xl text-[#aaa]" aria-label="Cerrar">×</button></div><div className="grid grid-cols-2 gap-4 text-[10px]"><div><p className="uppercase text-[#999]">Plataforma</p><b>Meta Ads</b></div><div><p className="uppercase text-[#999]">Cuenta</p><b>{client?.nombre_del_negocio ?? 'Aurelia Meta'}</b></div><div><p className="uppercase text-[#999]">Entidad</p><b>Meta Prospecting Córdoba</b></div><div><p className="uppercase text-[#999]">Acción</p><b>Reducir presupuesto</b></div></div><div className="my-4 grid grid-cols-3 rounded-xl bg-[#f7f7f5] p-3 text-center"><div><p className="text-[9px] text-[#999]">Valor actual</p><b>$100.000/día</b></div><div className="text-[#aaa]">→</div><div><p className="text-[9px] text-[#999]">Valor propuesto</p><b className="text-[#5b5fe8]">$80.000/día</b></div></div><p className="text-[10px] font-bold uppercase text-[#999]">Motivo</p><p className="mb-4 text-xs">CPA +31% vs período anterior.</p><p className="text-[10px] font-bold uppercase text-[#999]">Impacto esperado</p><p className="mb-4 text-xs italic text-[#777]">Hipótesis, no garantía. Se verificará luego de la ejecución.</p><label className="mb-4 flex items-start gap-2 text-[10px]"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />Entiendo que este cambio se aplicará en la plataforma real.</label><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setShowAction(false)} className="rounded-full px-4 text-xs">Rechazar</Button><Button disabled={!confirmed} onClick={() => { setShowAction(false); setConfirmed(false) }} className="rounded-full bg-[#5b5fe8] px-4 text-xs text-white">Aprobar cambio</Button></div></div></div>}</div>
+}
+
+// Lista de modelos habilitados en el selector. Mantenida a mano (no se lee
+// de ai_agents.model) para evitar ofrecer IDs que AI Gateway no reconoce.
+// Por ahora solo o4-mini está confirmado como estable para este flujo.
+const CHAT_MODELS = [
+  { value: 'openai/o4-mini', label: 'o4-mini', recommended: true },
+] as const
+
+function ConexaChat({ client, period, onNavigate, onReportCreated }: { client: Client | null; period: string; clients: Client[]; onSelectClient: (client: Client) => void; onNavigate: (destination: string) => void; onReportCreated: (report: GeneratedReport) => void }) {
+  const [model, setModel] = useState<string>(CHAT_MODELS[0].value)
+  const chatModels = CHAT_MODELS
+  const [showReport, setShowReport] = useState(false)
+  const [reportContent, setReportContent] = useState('')
+  const [resetSignal, setResetSignal] = useState(0)
+  const handleResetClick = () => { if (window.confirm('¿Resetear esta conversación? Se va a vaciar el chat actual.')) setResetSignal((value) => value + 1) }
+  const handleCreateReport = (content: string) => {
+    setReportContent(content)
+    setShowReport(true)
+    onReportCreated({ id: crypto.randomUUID(), title: `Análisis · ${client?.nombre_del_negocio ?? 'Cliente'}`, content, clientName: client?.nombre_del_negocio ?? 'Cliente', createdAt: new Date().toISOString() })
+  }
+  return <div className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden bg-[#f4f4f1] p-4 text-[#141414]">
+    <div className="flex items-center justify-between rounded-t-2xl border border-b-0 border-[#dcdcd8] bg-[#ffffff] px-5 py-3 text-[#141414]">
+      <h1 className="text-[15px] font-bold">Chat / Análisis</h1>
+      <div className="flex items-center gap-3">
+        <label className="flex items-center gap-2 text-[11px] text-[#777]">Modelo<select value={model} onChange={(event) => setModel(event.target.value)} className="rounded-lg border border-[#dededb] bg-white px-2 py-1.5 text-[11px]">{chatModels.map((item) => <option key={item.value} value={item.value}>{item.label}{item.recommended ? ' · Recomendado' : ''}</option>)}</select></label>
+        <button type="button" onClick={handleResetClick} className="flex h-8 items-center gap-1.5 rounded-full border border-[#E6E6E1] bg-white px-3 text-[11px] font-medium text-[#141414] hover:border-[#5B5FE8] hover:text-[#5B5FE8]"><RotateCcw className="size-3.5" aria-hidden="true" />Resetear chat</button>
+      </div>
+    </div>
+    <div className={cn('grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)] gap-3 overflow-hidden rounded-b-2xl border border-t-0 border-[#e6e6e3] bg-white p-3 [&>*]:min-h-0 [&>*:last-child]:h-full [&>*:last-child]:max-h-full', showReport ? 'grid-cols-[minmax(0,1fr)_360px]' : 'grid-cols-[minmax(0,1fr)]')}>
+      <div className="min-h-0 min-w-0 h-full flex-1 overflow-hidden rounded-xl border border-[#e6e6e3] bg-white">
+        <ConexaMockChat clientId={client?.id ?? null} clientName={client?.nombre_del_negocio ?? 'Cliente'} resetSignal={resetSignal} onCreateReport={handleCreateReport} />
+      </div>
+      {showReport && <aside className="rounded-xl border border-[#e6e6e3] bg-white p-5 shadow-sm"><div className="mb-5 flex items-start justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-[.08em] text-[#5b5fe8]">Conexa · Informe</p><h2 className="mt-1 text-lg font-bold">Informe del período</h2></div><button type="button" onClick={() => setShowReport(false)} className="text-xs text-[#888] hover:text-[#222]">Cerrar</button></div><div className="space-y-5 text-sm leading-6 text-[#333]"><section><h3 className="mb-1 font-bold text-[#5b5fe8]">Resumen ejecutivo</h3><MessageContent content={reportContent || 'El informe se generó a partir del último análisis de Conexa.'} /></section><section><h3 className="mb-1 font-bold text-[#5b5fe8]">Fuentes conectadas</h3><p>Meta Ads · Google Ads · GA4 · CRM</p></section></div><div className="mt-6 space-y-3"><button type="button" onClick={() => onNavigate('Informes')} className="w-full rounded-lg bg-[#5b5fe8] px-4 py-2.5 text-sm font-semibold text-white">Abrir informes</button></div></aside>}
+    </div>
+  </div>
+}
+
+function getMessageText(message: { parts?: Array<{ type: string; text?: string }> }) {
+  return message.parts?.filter((part) => part.type === 'text').map((part) => part.text ?? '').join('') ?? ''
+}

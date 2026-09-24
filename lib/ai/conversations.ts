@@ -163,6 +163,7 @@ function worstSemaforo(semaforoUnidades: Record<string, string> | null, unidades
 export interface ListConversationsOptions {
   /** Por default sólo se listan los chats activos (no archivados). */
   includeArchived?: boolean
+  clientId?: string
 }
 
 export async function listConversations(
@@ -180,6 +181,7 @@ export async function listConversations(
     .limit(100)
 
   if (!options?.includeArchived) query = query.eq('archived', false)
+  if (options?.clientId) query = query.eq('client_id', options.clientId)
 
   const { data: conversations, error } = await query
 

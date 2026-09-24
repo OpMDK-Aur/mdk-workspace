@@ -398,7 +398,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
       { type: 'input', key: 'formName', question: 'Como se llama el formulario o la landing?', placeholder: 'Ej: Formulario de contacto principal' },
       { type: 'input', key: 'webUrl', question: 'Cual es la URL? (si aplica)', placeholder: 'Ej: www.cliente.com/contacto' },
       { type: 'options', key: 'destination', question: 'A donde tienen que llegar los leads?', options: [
-        { label: 'CRM Aurelia', value: 'aurelia', emoji: '💜' },
+        { label: 'CRM', value: 'aurelia', emoji: '💜' },
         { label: 'CRM del cliente', value: 'client_crm', emoji: '🏢' },
         { label: 'Google Sheets', value: 'sheets', emoji: '📊' },
         { label: 'WhatsApp', value: 'whatsapp', emoji: '💬' },
@@ -585,7 +585,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
   },
 ]
 
-// ── Chat Message Types ────────────────────���───────────────────────────────────
+// ── Chat Message Types ─���──────────────────���───────────────────────────────────
 
 interface ChatMessage {
   id: string

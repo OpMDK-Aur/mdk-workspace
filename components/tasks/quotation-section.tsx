@@ -790,9 +790,9 @@ export function QuotationSection({ task }: { task: Task }) {
                 <span className="text-xs text-muted-foreground">Los planes en USD no incluyen IVA</span>
               </div>
 
-              {/* Aurelia CRM Plans */}
+              {/* CRM Plans */}
               <AccordionItem value="crm">
-                <AccordionTrigger className="text-sm">Planes Aurelia CRM</AccordionTrigger>
+                <AccordionTrigger className="text-sm">Planes CRM</AccordionTrigger>
                 <AccordionContent>
                   <div className="space-y-2">
                     {AURELIA_CRM_PLANS.map((plan) => (

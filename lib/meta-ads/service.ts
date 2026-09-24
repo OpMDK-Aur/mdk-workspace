@@ -44,6 +44,12 @@ export interface MetaCampaignMetrics {
   leads: number
   cpl: number
   lead_type: string
+  reach?: number
+  attribution_setting?: string
+  status?: string
+  campaign_name?: string
+  adset_name?: string
+  preview_url?: string | null
 }
 
 export interface MetaAccountMetrics {
@@ -56,6 +62,7 @@ export interface MetaAccountMetrics {
   date_range: { start: string; end: string }
   totals: {
     impressions: number
+    reach: number
     clicks: number
     spend: number
     results: number
@@ -67,6 +74,9 @@ export interface MetaAccountMetrics {
   }
   results_by_type: Record<string, { results: number; spend: number; cost_per_result: number }>
   campaigns: MetaCampaignMetrics[]
+  adsets?: MetaCampaignMetrics[]
+  ads?: MetaCampaignMetrics[]
+  creatives?: MetaCampaignMetrics[]
 }
 
 export type MetaResultType =
@@ -140,6 +150,25 @@ const TRAFFIC_ACTIONS = [
   'omni_view_content',
   'reach',
 ]
+// El objetivo de la campaña (`objective`) determina qué familia de acciones
+// corresponde a su "Resultado" real. Cuando el objetivo apunta a una
+// conversión (leads, mensajes, ventas) y la campaña no generó ninguna acción
+// de ese tipo en el período, Meta Ads Manager muestra "—" en la columna
+// Resultados -- NUNCA sustituye por clics o visitas a landing. Si dejamos que
+// el código caiga al fallback de TRAFFIC_ACTIONS para estos objetivos, una
+// campaña de "Clientes Potenciales" sin leads reales termina mostrando sus
+// clics incidentales como si fueran resultados (bug: 265 clics mostrados como
+// 265 "Resultados" cuando Meta Ads Manager muestra "—").
+const CONVERSION_OBJECTIVES = [
+  'OUTCOME_LEADS',
+  'LEAD_GENERATION',
+  'OUTCOME_SALES',
+  'CONVERSIONS',
+  'PRODUCT_CATALOG_SALES',
+  'OUTCOME_ENGAGEMENT',
+  'MESSAGES',
+  'CONVERSATIONS',
+]
 
 export function normalizeMetaAccountId(value: string) {
   return value.replace(/^act_/, '').trim()
@@ -177,11 +206,12 @@ async function fetchJson(url: string) {
   return payload as MetaApiErrorPayload & { data?: MetaInsightRow[]; paging?: { next?: string } }
 }
 
-async function fetchInsightRows(accountId: string, accessToken: string, dateFrom: string, dateTo: string) {
-  const fields = 'campaign_id,campaign_name,objective,impressions,clicks,spend,ctr,cpc,actions'
+async function fetchInsightRows(accountId: string, accessToken: string, dateFrom: string, dateTo: string, level: 'campaign' | 'adset' | 'ad' = 'campaign') {
+  const identity = level === 'campaign' ? 'campaign_id,campaign_name,objective' : level === 'adset' ? 'campaign_id,campaign_name,adset_id,adset_name' : 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name'
+  const fields = `${identity},impressions,reach,clicks,spend,ctr,cpc,actions`
   let url: string | null = `${META_BASE_URL}/act_${accountId}/insights?${new URLSearchParams({
     access_token: accessToken,
-    level: 'campaign',
+    level,
     fields,
     time_range: JSON.stringify({ since: dateFrom, until: dateTo }),
     limit: '500',
@@ -232,15 +262,19 @@ function pickByMagnitude(actions: MetaAction[] | undefined, candidateTypes: stri
   return best
 }
 
-export function normalizeMetaResult(_objective: string, actions: MetaAction[] | undefined) {
+export function normalizeMetaResult(objective: string, actions: MetaAction[] | undefined) {
   // 1) Entre las acciones de conversión real (leads, mensajes, compras)
   //    presentes en la campaña, gana la de mayor valor -- nunca la primera
   //    de una lista fija -- para que un action_type incidental con un valor
   //    chico nunca tape al resultado real de la campaña.
   const bestConversion = pickByMagnitude(actions, CONVERSION_ACTIONS)
-  // 2) Si no hay ninguna conversión real, se usa la acción de tráfico o
-  //    engagement de mayor valor como resultado (clics, visitas a landing, etc).
-  const best = bestConversion ?? pickByMagnitude(actions, TRAFFIC_ACTIONS)
+  // 2) Si no hay ninguna conversión real, sólo se recurre a tráfico/engagement
+  //    (clics, visitas a landing, etc.) cuando el objetivo de la campaña NO es
+  //    de conversión. Para campañas de leads/mensajes/ventas sin conversiones
+  //    reales, el resultado debe quedar en 0 -- igual que "—" en Meta Ads
+  //    Manager -- en vez de mostrar clics incidentales como "Resultados".
+  const isConversionObjective = CONVERSION_OBJECTIVES.includes(objective.toUpperCase())
+  const best = bestConversion ?? (isConversionObjective ? null : pickByMagnitude(actions, TRAFFIC_ACTIONS))
   if (!best) return { results: 0, resultType: 'unknown' as MetaResultType, sourceActionType: null, leads: 0, conversions: 0 }
 
   const actionType = best.type
@@ -270,6 +304,16 @@ function legacyLabel(resultType: MetaResultType) {
   } satisfies Record<MetaResultType, string>)[resultType]
 }
 
+function normalizeEntityRows(rows: MetaInsightRow[], level: 'campaign' | 'adset' | 'ad') {
+  return rows.map((row) => {
+    const id = level === 'campaign' ? row.campaign_id : level === 'adset' ? (row as MetaInsightRow & { adset_id?: string }).adset_id : (row as MetaInsightRow & { ad_id?: string }).ad_id
+    const name = level === 'campaign' ? row.campaign_name : level === 'adset' ? (row as MetaInsightRow & { adset_name?: string }).adset_name : (row as MetaInsightRow & { ad_name?: string }).ad_name
+    const result = normalizeMetaResult(row.objective || '', row.actions)
+    const spend = toNumber(row.spend)
+    return { id: id || '', name: name || 'Sin nombre', objective: row.objective || 'UNKNOWN', impressions: toInt(row.impressions), reach: toInt((row as MetaInsightRow & { reach?: string }).reach), clicks: toInt(row.clicks), spend, results: result.results, result_type: result.resultType, source_action_type: result.sourceActionType, ctr: toNumber(row.ctr), cpc: toNumber(row.cpc), cost_per_result: result.results > 0 ? spend / result.results : 0, leads: result.leads, cpl: result.leads > 0 ? spend / result.leads : 0, lead_type: legacyLabel(result.resultType) }
+  }).filter((row) => row.id)
+}
+
 export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Promise<MetaAccountMetrics> {
   const accountId = normalizeMetaAccountId(input.accountId)
   if (!/^\d{1,20}$/.test(accountId)) throw createMetaError('La cuenta de Meta Ads no tiene un ID válido.', 'ACCOUNT_ERROR')
@@ -277,27 +321,32 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
   const accessToken = process.env.META_ADS_ACCESS_TOKEN
   if (!accessToken) throw createMetaError('META_ADS_ACCESS_TOKEN no está configurado.', 'AUTHENTICATION_ERROR')
 
-  const rowsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo)
+  const rowsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'campaign')
+  const adsetsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'adset')
+  const adsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'ad')
   const activeIdsPromise = input.onlyActiveCampaigns ? fetchActiveCampaignIds(accountId, accessToken) : Promise.resolve<Set<string> | null>(null)
-  const [rows, activeIds] = await Promise.all([rowsPromise, activeIdsPromise])
+  const [rows, adsetRows, adRows, activeIds] = await Promise.all([rowsPromise, adsetsPromise, adsPromise, activeIdsPromise])
   const campaigns = rows.filter((row) => !activeIds || activeIds.has(row.campaign_id || '')).map((row) => {
     const spend = toNumber(row.spend)
     const result = normalizeMetaResult(row.objective || '', row.actions)
     const costPerResult = result.results > 0 ? spend / result.results : 0
     return {
       id: row.campaign_id || '', name: row.campaign_name || 'Sin nombre', objective: row.objective || 'UNKNOWN',
-      impressions: toInt(row.impressions), clicks: toInt(row.clicks), spend, results: result.results,
+      impressions: toInt(row.impressions), reach: toInt((row as MetaInsightRow & { reach?: string }).reach), clicks: toInt(row.clicks), spend, results: result.results,
       result_type: result.resultType, source_action_type: result.sourceActionType,
       ctr: toNumber(row.ctr), cpc: toNumber(row.cpc), cost_per_result: costPerResult,
       leads: result.leads, cpl: result.leads > 0 ? spend / result.leads : 0, lead_type: legacyLabel(result.resultType),
     }
   }).filter((campaign) => campaign.id)
+  const adsets = normalizeEntityRows(adsetRows, 'adset')
+  const ads = normalizeEntityRows(adRows, 'ad')
+  const creatives = ads.map((ad) => ({ ...ad, creative_id: ad.id, creative_name: ad.name }))
 
   const totals = campaigns.reduce((acc, campaign) => ({
-    impressions: acc.impressions + campaign.impressions, clicks: acc.clicks + campaign.clicks,
+    impressions: acc.impressions + campaign.impressions, reach: acc.reach + (campaign.reach ?? 0), clicks: acc.clicks + campaign.clicks,
     spend: acc.spend + campaign.spend, results: acc.results + campaign.results,
     ctr: 0, cpc: 0, cost_per_result: 0, leads: acc.leads + campaign.leads, cpl: 0,
-  }), { impressions: 0, clicks: 0, spend: 0, results: 0, ctr: 0, cpc: 0, cost_per_result: 0, leads: 0, cpl: 0 })
+  }), { impressions: 0, reach: 0, clicks: 0, spend: 0, results: 0, ctr: 0, cpc: 0, cost_per_result: 0, leads: 0, cpl: 0 })
   totals.ctr = totals.impressions ? (totals.clicks / totals.impressions) * 100 : 0
   totals.cpc = totals.clicks ? totals.spend / totals.clicks : 0
   totals.cost_per_result = totals.results ? totals.spend / totals.results : 0
@@ -313,7 +362,7 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
     account_id: accountId, account_name: input.accountName ?? null, moneda: input.moneda ?? null, zona_horaria: input.zonaHoraria ?? null,
     api_rows_received: rows.length,
     raw_rows: rows.slice(0, 3),
-    date_range: { start: input.dateFrom, end: input.dateTo }, totals, results_by_type: resultsByType, campaigns,
+    date_range: { start: input.dateFrom, end: input.dateTo }, totals, results_by_type: resultsByType, campaigns, adsets, ads, creatives,
   }
 }
 

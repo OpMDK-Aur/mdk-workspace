@@ -171,8 +171,18 @@ export type ComparisonDefinition = {
   comparison: { from: string; to: string }
 }
 
+export type CrossSourceEvidence = {
+  source: 'crm' | 'meta' | 'google'
+  client_id: string
+  period: { from: string; to: string }
+  records: unknown[]
+  available: boolean
+  message?: string
+}
+
 export type AnalysisRunState = {
   currentSnapshots: PaidMediaSnapshot[]
+  crossSourceEvidence: CrossSourceEvidence[]
   comparisonSnapshots: PaidMediaSnapshot[]
   changeHistory: PaidMediaChangeEvent[]
   specialistOutputs: SpecialistOutput[]

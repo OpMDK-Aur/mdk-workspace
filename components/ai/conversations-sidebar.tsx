@@ -3,7 +3,7 @@
 import { useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
 import { toast } from 'sonner'
-import { Archive, ArchiveRestore, ChevronsLeft, ChevronsRight, Filter, Loader2, MessageSquare, MessagesSquare } from 'lucide-react'
+import { Archive, ArchiveRestore, Filter, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
@@ -35,6 +35,15 @@ const fetcher = (url: string) =>
     return response.json() as Promise<{ conversations: ConversationSummary[] }>
   })
 
+const NEW_CHAT_ICON_URL = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/plus_icon_128414-RNLf1weOOYxLOGCkJdJ1CODuCAn3Wp.png'
+
+function chatSummary(preview: string | null) {
+  const words = (preview ?? '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean)
+  if (words.length === 0) return 'Nueva conversación de análisis'
+  if (words.length < 3) return [...words, 'de', 'análisis'].slice(0, 3).join(' ')
+  return words.slice(0, 6).join(' ')
+}
+
 function relativeTime(iso: string) {
   const diffMs = Date.now() - new Date(iso).getTime()
   const diffMin = Math.round(diffMs / 60000)
@@ -44,6 +53,16 @@ function relativeTime(iso: string) {
   if (diffHours < 24) return `hace ${diffHours} h`
   const diffDays = Math.round(diffHours / 24)
   return `hace ${diffDays} d`
+}
+
+function dateSectionLabel(iso: string) {
+  const date = new Date(iso)
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  if (date.toDateString() === today.toDateString()) return 'Hoy'
+  if (date.toDateString() === yesterday.toDateString()) return 'Ayer'
+  return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'long' })
 }
 
 const SEMAFORO_LABEL: Record<string, string> = { verde: 'Verde', amarillo: 'Amarillo', naranja: 'Naranja', rojo: 'Rojo' }
@@ -60,19 +79,23 @@ const ARCHIVED_SWR_KEY = '/api/ai/conversations?includeArchived=1'
 interface ConversationsSidebarProps {
   /** Hay un único chat por cliente, así que resaltamos por clientId en vez de conversationId. */
   activeClientId: string | null
+  clientFilterId?: string | null
   onSelect: (conversation: ConversationSummary) => void
+  onNewDiagnostic?: () => void | Promise<void>
+  onCollapsedChange?: (collapsed: boolean) => void
 }
 
-export function ConversationsSidebar({ activeClientId, onSelect }: ConversationsSidebarProps) {
-  const [collapsed, setCollapsed] = useState(false)
+export function ConversationsSidebar({ activeClientId, clientFilterId, onSelect, onNewDiagnostic, onCollapsedChange }: ConversationsSidebarProps) {
   const [showArchived, setShowArchived] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
   const [unidadFilter, setUnidadFilter] = useState<string>('all')
   const [pmFilter, setPmFilter] = useState<string>('all')
   const [amFilter, setAmFilter] = useState<string>('all')
   const [semaforoFilter, setSemaforoFilter] = useState<string>('all')
   const [pendingId, setPendingId] = useState<string | null>(null)
 
-  const swrKey = showArchived ? ARCHIVED_SWR_KEY : CONVERSATIONS_SWR_KEY
+  const baseKey = showArchived ? ARCHIVED_SWR_KEY : CONVERSATIONS_SWR_KEY
+  const swrKey = clientFilterId ? `${baseKey}${baseKey.includes('?') ? '&' : '?'}clientId=${encodeURIComponent(clientFilterId)}` : baseKey
   const { data, error, isLoading } = useSWR(swrKey, fetcher, { refreshInterval: 30000 })
   const { mutate } = useSWRConfig()
 
@@ -107,6 +130,11 @@ export function ConversationsSidebar({ activeClientId, onSelect }: Conversations
 
   const activeFilterCount = [unidadFilter, pmFilter, amFilter, semaforoFilter].filter((f) => f !== 'all').length
   const hasActiveFilters = activeFilterCount > 0
+  const conversationGroups = conversations.reduce<Record<string, ConversationSummary[]>>((groups, conversation) => {
+    const label = dateSectionLabel(conversation.updatedAt)
+    ;(groups[label] ??= []).push(conversation)
+    return groups
+  }, {})
 
   async function handleArchiveToggle(conversation: ConversationSummary, event: MouseEvent | KeyboardEvent) {
     event.stopPropagation()
@@ -129,100 +157,45 @@ export function ConversationsSidebar({ activeClientId, onSelect }: Conversations
     }
   }
 
-  if (collapsed) {
-    return (
-      <aside className="flex w-full shrink-0 flex-col items-center gap-2 rounded-lg border bg-card p-2 lg:sticky lg:top-8 lg:w-12 lg:self-start">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          onClick={() => setCollapsed(false)}
-          aria-label="Mostrar panel de chats"
-          title="Mostrar panel de chats"
-        >
-          <ChevronsRight className="size-4" aria-hidden="true" />
-        </Button>
-        <MessagesSquare className="size-4 text-primary" aria-hidden="true" />
-      </aside>
-    )
-  }
-
   return (
     <aside
       className={cn(
-        'flex w-full shrink-0 flex-col gap-3 rounded-lg border bg-card p-4',
+        'flex w-full shrink-0 flex-col gap-3 bg-transparent p-0',
         // Sticky solo desde lg: en desktop el panel queda fijo mientras se
         // hace scroll del contenido principal, con su propio scroll interno
         // si la lista de chats no entra en la altura disponible. En mobile
         // sigue el flujo normal de la página (position: static).
-        'lg:sticky lg:top-8 lg:w-72 lg:max-h-[calc(100vh-4rem)] lg:self-start lg:overflow-y-auto',
+        collapsed ? 'lg:w-16 lg:min-w-16' : 'lg:w-[260px] lg:min-w-[260px]',
+        'transition-all duration-200 ease-out lg:sticky lg:top-8 lg:max-h-[calc(100vh-4rem)] lg:self-start lg:overflow-x-hidden lg:overflow-y-auto',
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <MessagesSquare className="size-4 text-primary" aria-hidden="true" />
-          {showArchived ? 'Chats archivados' : 'Chats activos'}
+      <div className={cn('flex border-b border-[#ecece8] pb-3', collapsed ? 'flex-col items-center gap-2' : 'items-center justify-between')}>
+        <div className={cn('flex items-center gap-2', collapsed && 'justify-center')}>
+          <span className="text-lg font-semibold leading-none text-[#5b5fe8]">✦</span>
+          {!collapsed && <span className="text-sm font-semibold tracking-wide text-[#141414]">CONEXA</span>}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0 text-muted-foreground"
-          onClick={() => setCollapsed(true)}
-          aria-label="Colapsar panel de chats"
-          title="Colapsar panel de chats"
-        >
-          <ChevronsLeft className="size-4" aria-hidden="true" />
+        <Button variant="ghost" size="sm" className="h-6 min-w-0 px-1.5 text-xs text-[#777] hover:bg-[#f4f4f1] hover:text-[#5b5fe8]" onClick={() => { const next = !collapsed; setCollapsed(next); onCollapsedChange?.(next) }} aria-label={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}>
+          {collapsed ? '→' : '←'}
         </Button>
       </div>
+      {!collapsed && <>
+      <div className="flex flex-col items-stretch gap-2">
+        <p className="text-sm font-semibold text-[#141414]">{showArchived ? 'Chats archivados' : 'Chats activos'}</p>
+        {!showArchived && onNewDiagnostic && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-full justify-start gap-2 rounded-full border-[#dcdcd8] bg-transparent px-3 text-xs font-medium text-[#141414] shadow-none hover:border-[#dcdcd8] hover:bg-[#f4f4f1] hover:text-[#141414] focus-visible:border-[#dcdcd8] focus-visible:ring-0"
+            onClick={async () => { await onNewDiagnostic(); await mutate(CONVERSATIONS_SWR_KEY); await mutate(ARCHIVED_SWR_KEY) }}
+          >
+            <img src={NEW_CHAT_ICON_URL} alt="" className="size-3.5 object-contain" />
+            Nuevo análisis
+          </Button>
+        )}
+      </div>
 
-      <div className="flex items-center justify-between gap-2">
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs">
-              <Filter className="size-3.5" aria-hidden="true" />
-              Filtros
-              {hasActiveFilters && <Badge variant="secondary" className="h-4 min-w-4 rounded-full px-1 text-[10px]">{activeFilterCount}</Badge>}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="flex w-64 flex-col gap-1.5">
-            <FilterSelect placeholder="Unidad de negocio" value={unidadFilter} onChange={setUnidadFilter} options={unidadOptions.map((u) => ({ value: u, label: u }))} />
-            <FilterSelect placeholder="Project Manager" value={pmFilter} onChange={setPmFilter} options={pmOptions.map(([id, name]) => ({ value: id, label: name }))} />
-            <FilterSelect placeholder="Account Manager" value={amFilter} onChange={setAmFilter} options={amOptions.map(([id, name]) => ({ value: id, label: name }))} />
-            <FilterSelect
-              placeholder="Semáforo"
-              value={semaforoFilter}
-              onChange={setSemaforoFilter}
-              options={Object.entries(SEMAFORO_LABEL).map(([value, label]) => ({ value, label }))}
-              renderOption={(opt) => (
-                <span className="flex items-center gap-1.5">
-                  <span className={cn('size-2 rounded-full', SEMAFORO_DOT[opt.value])} aria-hidden="true" />
-                  {opt.label}
-                </span>
-              )}
-            />
-            {hasActiveFilters && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 self-start px-1.5 text-xs text-muted-foreground"
-                onClick={() => {
-                  setUnidadFilter('all')
-                  setPmFilter('all')
-                  setAmFilter('all')
-                  setSemaforoFilter('all')
-                }}
-              >
-                Limpiar filtros
-              </Button>
-            )}
-          </PopoverContent>
-        </Popover>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 text-xs text-muted-foreground"
-          onClick={() => setShowArchived((v) => !v)}
-        >
+      <div className="flex items-center justify-start">
+        <Button variant="ghost" size="sm" className="h-7 px-0 text-xs text-[#777] hover:bg-transparent hover:text-[#5b5fe8]" onClick={() => setShowArchived((v) => !v)}>
           {showArchived ? 'Ver activos' : 'Ver archivados'}
         </Button>
       </div>
@@ -247,7 +220,10 @@ export function ConversationsSidebar({ activeClientId, onSelect }: Conversations
 
       {!isLoading && conversations.length > 0 && (
         <nav aria-label={showArchived ? 'Chats archivados' : 'Chats activos'} className="flex flex-col gap-1">
-          {conversations.map((conversation) => {
+          {Object.entries(conversationGroups).map(([section, sectionConversations]) => (
+            <section key={section} className="flex flex-col gap-1">
+              <h3 className="px-3 pt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9a9a9a]">{section}</h3>
+              {sectionConversations.map((conversation) => {
             const isActive = !conversation.archived && conversation.clientId === activeClientId
             const isPending = pendingId === conversation.id
             return (
@@ -257,8 +233,8 @@ export function ConversationsSidebar({ activeClientId, onSelect }: Conversations
                 onClick={() => onSelect(conversation)}
                 aria-current={isActive ? 'true' : undefined}
                 className={cn(
-                  'group flex flex-col gap-1 rounded-md border px-3 py-2 text-left transition-colors',
-                  isActive ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-accent',
+                  'group flex flex-col gap-1 rounded-lg border-0 bg-transparent px-3 py-2 text-left text-[#141414] transition-colors',
+                  isActive ? 'bg-[#eef0fe] text-[#5b5fe8]' : 'hover:bg-[#f4f4f1]',
                 )}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -271,7 +247,7 @@ export function ConversationsSidebar({ activeClientId, onSelect }: Conversations
                       />
                     )}
                     {conversation.optimizationScore !== null && <ScoreGauge score={conversation.optimizationScore} />}
-                    <span className="truncate text-sm font-medium text-foreground">{conversation.clientName}</span>
+                    <span className="truncate text-sm font-medium text-foreground">{chatSummary(conversation.lastMessagePreview)}</span>
                   </span>
                   <span className="flex shrink-0 items-center gap-1">
                     <span className="text-xs text-muted-foreground">{relativeTime(conversation.updatedAt)}</span>
@@ -312,9 +288,12 @@ export function ConversationsSidebar({ activeClientId, onSelect }: Conversations
                 </div>
               </button>
             )
-          })}
+              })}
+            </section>
+          ))}
         </nav>
       )}
+      </>}
     </aside>
   )
 }

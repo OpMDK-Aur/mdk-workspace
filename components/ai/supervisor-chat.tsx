@@ -24,7 +24,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { MessageContent } from '@/components/chat/message-content'
-import { AIAnalysisPanel } from './ai-analysis-panel'
 import { CONVERSATIONS_SWR_KEY } from './conversations-sidebar'
 
 function messageText(message: UIMessage) {
@@ -85,7 +84,7 @@ function MultiagentActivityStatus({ activity }: { activity: ActivityEvent | null
   const Icon = activity.status === 'running' ? Loader2 : activity.status === 'completed' ? Check : X
   return (
     <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground" aria-live="polite">
-      <Icon className={`size-3.5 ${activity.status === 'running' ? 'animate-spin text-primary' : activity.status === 'error' ? 'text-destructive' : 'text-emerald-500'}`} aria-hidden="true" />
+      <Icon className={`size-3.5 ${activity.status === 'running' ? 'animate-spin text-primary' : activity.status === 'error' ? 'text-destructive' : 'text-[#1E9E6B]'}`} aria-hidden="true" />
       <span>{activity.label}</span>
     </div>
   )
@@ -100,6 +99,8 @@ interface SupervisorChatProps {
   /** Id(s) de cuenta de Google Ads seleccionados en la UI (separados por coma si son varios). Restringe el análisis a esas cuentas. */
   googleCustomerId?: string
   analyticsPropertyId?: string
+  model?: string
+  onAction?: (action: 'report' | 'diagnosis', content: string, reportData?: PaidMediaReportData) => void
   selectedAccountSummary?: Array<{ id: string | null; name: string; platform: string | null }>
   selectedAccountReading?: string
   scoreConfig?: { objective: string }
@@ -109,6 +110,7 @@ interface SupervisorChatProps {
   title?: string
   description?: string
   emptyStateMessage?: string
+  newDiagnostic?: boolean
 }
 
 type PersistedPerformanceAnalysis = {
@@ -119,16 +121,21 @@ type PersistedPerformanceAnalysis = {
   entity?: { platform?: 'google' | 'meta' | 'mixed'; account_ids?: string[] }
 }
 
+type PaidMediaReportData = {
+  currentSnapshots?: Array<{ platform?: string; currency?: string | null; metrics?: Record<string, unknown>; campaigns?: Array<Record<string, unknown>> }>
+  comparisonSnapshots?: Array<{ platform?: string; metrics?: Record<string, unknown> }>
+}
+
 type PersistedMessage = {
   id: string
   role: 'user' | 'assistant'
   content: string
   created_at: string
-  message_data?: { performance_analysis?: PersistedPerformanceAnalysis } | null
+  message_data?: { performance_analysis?: PersistedPerformanceAnalysis; paid_media?: PaidMediaReportData } | null
 }
 
 export function SupervisorChat(props: SupervisorChatProps) {
-  const { clientId, disabled = false } = props
+  const { clientId, disabled = false, newDiagnostic = false } = props
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [history, setHistory] = useState<PersistedMessage[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
@@ -151,10 +158,10 @@ export function SupervisorChat(props: SupervisorChatProps) {
     // backend siempre resuelve/crea ese único chat, nunca uno nuevo.
     fetch('/api/ai/conversations', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ clientId }),
-    })
-      .then(async (response) => {
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ clientId, newDiagnostic }),
+  })
+  .then(async (response) => {
         if (!response.ok) throw new Error('No se pudo cargar la conversación.')
         return response.json() as Promise<{ conversation: { id: string }; messages: PersistedMessage[] }>
       })
@@ -263,6 +270,8 @@ function SupervisorChatSession({
   metaAccountId,
   googleCustomerId,
   analyticsPropertyId,
+  model,
+  onAction,
   selectedAccountSummary = [],
   selectedAccountReading,
   scoreConfig,
@@ -291,6 +300,7 @@ function SupervisorChatSession({
   // del Supervisor, pero recién queda persistido en message_data cuando el
   // stream termina (onFinish del backend). Lo reflejamos acá apenas termina
   // cada turno, sin esperar a que el usuario recargue o cambie de cliente.
+  const [latestReportData, setLatestReportData] = useState<PaidMediaReportData | undefined>(initialMessages.findLast((message) => message.role === 'assistant')?.message_data?.paid_media)
   const [latestAnalysis, setLatestAnalysis] = useState(
     initialMessages.findLast((message) => message.role === 'assistant')?.message_data?.performance_analysis ?? null,
   )
@@ -306,7 +316,7 @@ function SupervisorChatSession({
       api: '/api/ai/chat',
       body: {
         context: clientId
-          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(analyticsPropertyId ? { analyticsPropertyId } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
+          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(analyticsPropertyId ? { analyticsPropertyId } : {}), ...(model ? { model } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
           : {},
       },
     }),
@@ -314,6 +324,10 @@ function SupervisorChatSession({
       if (dataPart.type === 'data-activity') {
         setCurrentActivity(dataPart.data as ActivityEvent)
       }
+    },
+    onError: (streamError) => {
+      const message = streamError instanceof Error ? streamError.message : 'No se pudo completar la respuesta.'
+      setCurrentActivity({ eventId: 'client-error', agentSlug: 'supervisor', status: 'error', label: message, timestamp: new Date().toISOString() })
     },
     onFinish: () => {
       // Revalida el listado de "chats activos" para que el sidebar refleje
@@ -326,12 +340,14 @@ function SupervisorChatSession({
         fetch('/api/ai/conversations', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ clientId }),
-        })
-          .then((response) => (response.ok ? response.json() : null))
+  body: JSON.stringify({ clientId }),
+  })
+  .then((response) => (response.ok ? response.json() : null))
           .then((data: { messages: PersistedMessage[] } | null) => {
-            const analysis = data?.messages.findLast((message) => message.role === 'assistant')?.message_data?.performance_analysis
+            const latest = data?.messages.findLast((message) => message.role === 'assistant')
+            const analysis = latest?.message_data?.performance_analysis
             if (analysis) setLatestAnalysis(analysis)
+            if (latest?.message_data?.paid_media) setLatestReportData(latest.message_data.paid_media)
           })
           .catch(() => {})
       }
@@ -436,26 +452,24 @@ function SupervisorChatSession({
     await sendMessage({ text, files: fileParts }, {
       body: {
         context: clientId
-          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(analyticsPropertyId ? { analyticsPropertyId } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
+          ? { clientId, ...(conversationId ? { conversationId } : {}), ...(scoreConfig ? { scoreConfig } : {}), ...(metaAccountId ? { metaAccountId } : {}), ...(googleCustomerId ? { googleCustomerId } : {}), ...(analyticsPropertyId ? { analyticsPropertyId } : {}), ...(model ? { model } : {}), ...(selectedAccountSummary.length ? { selectedAccountSummary } : {}), ...(selectedAccountReading ? { selectedAccountReading } : {}) }
           : {},
       },
     })
   }
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+      <CardHeader className="shrink-0 flex flex-row items-start justify-between gap-4">
         <div className="min-w-0">
           <CardTitle>{title}</CardTitle>
           <CardDescription>{description}</CardDescription>
           {selectedAccountSummary.length > 0 ? (
-            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs" aria-label="Cuentas seleccionadas para el análisis">
-              <span className="font-semibold text-emerald-700 dark:text-emerald-300">Analizando exclusivamente:</span>
-              {selectedAccountSummary.map((account) => <span key={`${account.platform}-${account.id}`} className="rounded bg-emerald-500/10 px-2 py-1 text-foreground">{account.name} · {account.platform === 'meta' ? 'Meta Ads' : account.platform === 'google' ? 'Google Ads' : account.platform === 'analytics' ? 'Google Analytics 4' : account.platform === 'tag_manager' ? 'Tag Manager' : account.platform === 'crm' ? 'CRM' : account.platform || 'Plataforma'}</span>)}
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-[#1E9E6B]/30 bg-[#1E9E6B]/5 px-3 py-2 text-xs" aria-label="Cuentas seleccionadas para el análisis">
+              <span className="font-semibold text-[#1E9E6B]">Analizando exclusivamente:</span>
+              {selectedAccountSummary.map((account) => <span key={`${account.platform}-${account.id}`} className="rounded bg-[#1E9E6B]/10 px-2 py-1 text-foreground">{account.name} · {account.platform === 'meta' ? 'Meta Ads' : account.platform === 'google' ? 'Google Ads' : account.platform === 'analytics' ? 'Google Analytics 4' : account.platform === 'tag_manager' ? 'Tag Manager' : account.platform === 'crm' ? 'CRM' : account.platform || 'Plataforma'}</span>)}
             </div>
-          ) : (
-            <p className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">Seleccioná al menos una cuenta publicitaria para iniciar el análisis.</p>
-          )}
+          ) : null}
         </div>
         {!disabled && onReset && messages.length > 0 && (
           <AlertDialog>
@@ -480,16 +494,16 @@ function SupervisorChatSession({
           </AlertDialog>
         )}
       </CardHeader>
-      <CardContent className="flex flex-col gap-4 p-0">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-0">
         {/* El panel de Análisis IA se apila debajo recién a partir de xl:
             con el sidebar de chats también presente, mantenerlo al costado
             desde lg dejaba la columna del chat demasiado angosta. */}
-        <div className="flex flex-col xl:flex-row">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden xl:flex-row">
           {/* Altura acotada a la ventana: así el input queda siempre dentro
               del área visible de la columna y solo la lista de mensajes
               scrollea por dentro, en vez de que el input se desplace junto
               con el contenido y termine fuera de pantalla. */}
-          <div className="flex h-[calc(100vh-14rem)] min-h-[480px] min-w-0 flex-1 flex-col gap-4 p-4">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden p-4">
         <div ref={scrollContainerRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-lg border bg-muted/30 p-4" aria-live="polite">
           {disabled ? (
             <div className="m-auto flex max-w-sm flex-col items-center gap-3 text-center text-muted-foreground">
@@ -500,24 +514,24 @@ function SupervisorChatSession({
             <div className="m-auto flex w-full max-w-2xl flex-col gap-6 py-4">
               <div className="flex items-start gap-3">
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <Bot className="size-5" aria-hidden="true" />
+                  <span className="text-xl font-semibold leading-none text-[#5b5fe8]" aria-hidden="true">✦</span>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <p className="font-medium text-foreground">¿En qué podemos ayudarte?</p>
+                  <p className="font-medium text-[#5b5fe8]">¿En qué podemos ayudarte?</p>
                   <p className="text-sm leading-6 text-muted-foreground">Este multiagente analiza el rendimiento comercial y de paid media del cliente seleccionado. Puede consultar Google Ads y Meta Ads, comparar períodos, detectar oportunidades y convertir los datos en recomendaciones accionables.</p>
                 </div>
               </div>
               <div className="flex flex-col gap-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Podés empezar preguntando</p>
-                <div className="grid gap-2 md:grid-cols-2">
+                <div className="flex flex-wrap gap-2">
                   {[
-                    '¿Cómo fue el rendimiento de mis campañas en los últimos 90 días?',
-                    '¿Qué campañas debería optimizar primero y por qué?',
-                    'Compará Meta Ads y Google Ads y señalá las diferencias.',
-                    '¿Qué acciones concretas recomendás para mejorar las conversiones?',
+'¿Cuántos leads se convirtieron en venta en [período]?',
+  'Dame un desglose por campaña de la cantidad de leads que ingresaron al CRM y cuántas ventas tuve por campaña.',
+  'Cruzá la información de CRM con Meta Ads para verificar si existen discrepancias y sobre qué campañas.',
+  'Cruzá la información de CRM con Google Ads para verificar si existen discrepancias y sobre qué campañas.',
                   ].map((suggestion) => (
-                    <button key={suggestion} type="button" className="group flex items-center justify-between gap-3 rounded-md border bg-card px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent" onClick={() => setInput(suggestion)}>
-                      <span>{suggestion}</span>
+                    <button key={suggestion} type="button" className="group flex items-center gap-2 rounded-full border border-[#dcdcd8] bg-white px-3 py-1.5 text-left text-xs text-[#141414] transition-colors hover:border-[#5b5fe8] hover:bg-[#f4f4f1]" onClick={() => { setInput(suggestion); requestAnimationFrame(() => { const field = textareaRef.current; if (!field) return; const cursor = suggestion.indexOf('[período]'); field.focus(); field.setSelectionRange(cursor, cursor + '[período]'.length) }) }}>
+                      <span>{suggestion.includes('[período]') ? <>{suggestion.split('[período]')[0]}<span className="rounded bg-[#eeefff] px-1.5 py-0.5 font-semibold text-[#5b5fe8]">[período]</span>{suggestion.split('[período]')[1]}</> : suggestion}</span>
                       <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
                     </button>
                   ))}
@@ -553,9 +567,10 @@ function SupervisorChatSession({
                       <span className="whitespace-pre-wrap">{messageText(message)}</span>
                     ) : message.role === 'assistant' ? (
                       <span className="text-muted-foreground">Preparando respuesta…</span>
-                    ) : null}
-                  </div>
-                  {message.role === 'user' && (
+  ) : null}
+  {message.role === 'assistant' && index === messages.length - 1 && !isBusy && <div className="mt-3 space-y-3 border-t pt-3"><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('report', messageText(message), latestReportData)}>Crear informe</Button><Button type="button" variant="outline" size="sm" onClick={() => onAction?.('diagnosis', messageText(message))}>Generar diagnóstico</Button></div>{/recomend|recomendación|acción concreta|optimizar|presupuesto|mejorar las conversiones/i.test(messageText(message)) && <div className="rounded-xl border border-[#dcdcff] bg-[#f7f7ff] p-4"><p className="text-[10px] font-bold uppercase tracking-[.08em] text-[#5B5FE8]">Recomendación de Conexa</p><p className="mt-2 text-sm font-semibold text-[#141414]">Acción sugerida para mejorar el rendimiento</p><p className="mt-1 text-sm leading-6 text-[#5C5C5C]">Revisá la distribución del presupuesto y la segmentación de las campañas con menor eficiencia antes de aplicar cambios.</p><Button type="button" size="sm" className="mt-3 bg-[#5B5FE8] text-white hover:bg-[#4f53d4]" onClick={() => onAction?.('diagnosis', messageText(message))}>Revisar acción</Button></div>}</div>}
+  </div>
+  {message.role === 'user' && (
                     <User className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   )}
                 </div>
@@ -637,11 +652,11 @@ function SupervisorChatSession({
                 el.style.height = `${Math.min(el.scrollHeight, 160)}px`
               }}
               onKeyDown={handleTextareaKeyDown}
-              placeholder={disabled ? disabledMessage : 'Escribí una consulta para el Supervisor… (Enter para enviar, Shift+Enter para salto de línea)'}
+              placeholder={disabled ? disabledMessage : 'Preguntale algo a Conexa...'}
               aria-label="Consulta para el Supervisor"
               disabled={isInputDisabled}
               rows={1}
-              className="min-h-9 flex-1 resize-none py-2 leading-6"
+              className="min-h-9 flex-1 resize-none border-[#dcdcd8] py-2 leading-6 outline-none focus-visible:border-[#dcdcd8] focus-visible:ring-0 focus-visible:ring-offset-0"
             />
             <Button
               type="submit"
@@ -655,7 +670,6 @@ function SupervisorChatSession({
           </form>
         </div>
           </div>
-          <AIAnalysisPanel content={lastMessage?.role === 'assistant' ? messageText(lastMessage) : ''} analysis={latestAnalysis} />
         </div>
       </CardContent>
     </Card>

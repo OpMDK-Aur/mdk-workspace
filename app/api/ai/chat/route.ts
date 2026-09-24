@@ -19,7 +19,8 @@ const SUPERVISOR_TIMEOUT_MS = 52_000
 // darle contexto al Supervisor en cada turno. Evita cargar conversaciones
 // completas indefinidamente; una estrategia de resumen (ai_conversations.summary)
 // puede reemplazar esto más adelante para conversaciones largas.
-const CONVERSATION_HISTORY_WINDOW = 20
+const CONVERSATION_HISTORY_WINDOW = 8
+const MAX_HISTORY_MESSAGE_CHARS = 12_000
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10)
@@ -385,7 +386,12 @@ export async function POST(request: Request) {
     // el usuario adjuntó archivos.
     const currentUserContent = attachmentContentParts.length > 0 ? [{ type: 'text' as const, text: query }, ...attachmentContentParts] : query
     const modelMessages: SupervisorModelMessage[] = [
-      ...history.map((message) => ({ role: message.role, content: message.content })),
+      ...history.map((message) => ({
+        role: message.role,
+        content: message.content.length > MAX_HISTORY_MESSAGE_CHARS
+          ? `${message.content.slice(0, MAX_HISTORY_MESSAGE_CHARS)}\n[Historial truncado para respetar la ventana de contexto.]`
+          : message.content,
+      })),
       { role: 'user' as const, content: currentUserContent },
     ]
 
@@ -399,6 +405,7 @@ export async function POST(request: Request) {
     // No es memoria conversacional y nunca se persiste en Supabase.
     const analysisRunState: import('@/lib/ai/contracts/performance-analyst').AnalysisRunState = {
       currentSnapshots: [],
+      crossSourceEvidence: [],
       comparisonSnapshots: [],
       changeHistory: [],
       specialistOutputs: [],
@@ -415,8 +422,9 @@ export async function POST(request: Request) {
           result = await streamSupervisorResponse(modelMessages, {
             userId: user.id,
             userEmail: user.email,
-            ...context,
-            analysisRunState,
+      ...context,
+      model: context.model,
+      analysisRunState,
             conversationWorkingContext: workingContext ?? undefined,
             emitActivity: (event) => writeActivity?.({
               ...event,
@@ -447,6 +455,10 @@ export async function POST(request: Request) {
           messageData: {
             ...(workingContext ? { context_snapshot: workingContext } : {}),
             ...(analysisRunState.specialistOutputs.at(-1) ? { performance_analysis: analysisRunState.specialistOutputs.at(-1) } : {}),
+            paid_media: {
+              currentSnapshots: analysisRunState.currentSnapshots,
+              comparisonSnapshots: analysisRunState.comparisonSnapshots,
+            },
           },
         })
       },

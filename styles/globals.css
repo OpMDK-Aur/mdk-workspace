@@ -1,6 +1,119 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
+@font-face {
+  font-family: 'Neue Montreal';
+  src: url('/fonts/Neue-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Neue Montreal';
+  src: url('/fonts/Neue-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Neue Montreal';
+  src: url('/fonts/Neue-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Monument Extended';
+  src: url('/fonts/Monument-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Monument Extended';
+  src: url('/fonts/Monument-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+.conexa-brand {
+  font-family: 'Neue Montreal', sans-serif;
+  /* Tokens de color propios de Conexa. Al redefinir las variables acá (en vez
+     de en :root), solo afectan a este árbol y no al resto del dashboard. */
+  --background: #F4F4F1;
+  --foreground: #141414;
+  --card: #ffffff;
+  --muted: #F4F4F1;
+  --muted-foreground: #6B6B6B;
+  --secondary: #F4F4F1;
+  --border: #E6E6E1;
+  --input: #E6E6E1;
+  --ring: #5B5FE8;
+  --primary: #5B5FE8;
+  --primary-foreground: #ffffff;
+}
+
+.conexa-brand .font-display {
+  font-family: 'Monument Extended', sans-serif;
+}
+
+/* Conexa owns its surfaces even when the app preview is in dark mode. */
+.conexa-brand .bg-card,
+.conexa-brand .bg-background {
+  background-color: #ffffff !important;
+}
+
+.conexa-brand .text-foreground {
+  color: #101010 !important;
+}
+
+.conexa-brand .text-muted-foreground {
+  color: #888888 !important;
+}
+
+.conexa-brand .text-primary {
+  color: #5B5FE8 !important;
+}
+
+.conexa-brand .bg-primary {
+  background-color: #5B5FE8 !important;
+}
+
+.conexa-brand .border-primary {
+  border-color: #5B5FE8 !important;
+}
+
+.conexa-brand .text-destructive {
+  color: #DC2626 !important;
+}
+
+.conexa-brand .bg-destructive {
+  background-color: #DC2626 !important;
+}
+
+.conexa-brand .border-destructive\/40 {
+  border-color: rgb(220 38 38 / 40%) !important;
+}
+
+.conexa-brand .bg-destructive\/10 {
+  background-color: rgb(220 38 38 / 10%) !important;
+}
+
+.conexa-brand .border-border {
+  border-color: #e6e6e3 !important;
+}
+
+.conexa-brand [data-slot='card'] {
+  background-color: #ffffff !important;
+  color: #101010 !important;
+  border-color: #e6e6e3 !important;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 /* ─── LIGHT MODE ───────────────────────────────────────────────────────────── */
