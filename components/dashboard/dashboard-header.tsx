@@ -72,22 +72,6 @@ export function DashboardHeader({
                     Sin resultados
                   </CommandEmpty>
                   <CommandGroup>
-                    <CommandItem
-                      value=""
-                      onSelect={() => {
-                        onSelectClient(null)
-                        setOpen(false)
-                      }}
-                      className="text-sm flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer"
-                    >
-                      <div className={cn(
-                        'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
-                        !selectedClientId ? 'border-primary bg-primary text-primary-foreground' : 'border-border'
-                      )}>
-                        {!selectedClientId && <Check className="h-3 w-3" />}
-                      </div>
-                      <span className="flex-1">Todos los clientes</span>
-                    </CommandItem>
                     {enabledClients.map((client) => {
                       const selected = selectedClientId === client.id
                       return (

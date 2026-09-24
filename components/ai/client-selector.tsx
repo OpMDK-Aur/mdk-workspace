@@ -81,10 +81,12 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
       }
 
       const enabledNames = new Set(['ICS Salud', 'VN Global'])
-      const loadedClients = (data ?? []).map((client) => ({
-        ...(client as unknown as AnalyzableClient),
-        enabled: enabledNames.has(client.nombre_del_negocio),
-      }))
+      const loadedClients = (data ?? [])
+        .filter((client) => enabledNames.has(client.nombre_del_negocio))
+        .map((client) => ({
+          ...(client as unknown as AnalyzableClient),
+          enabled: true,
+        }))
       setClients(loadedClients)
       const defaultClient = loadedClients.find((client) => client.nombre_del_negocio === 'ICS Salud')
       if ((!value || !loadedClients.some((client) => client.enabled && client.id === value.id)) && defaultClient) {
