@@ -416,26 +416,42 @@ export async function POST(request: Request) {
       execute: async ({ writer }) => {
         writeActivity = (event) => writer.write({ type: 'data-activity', id: 'activity-status', data: event, transient: true })
         writeActivity?.({ eventId: crypto.randomUUID(), agentSlug: 'supervisor', status: 'running', label: 'Preparando respuesta...', timestamp: new Date().toISOString() })
-        const supervisorTimeout = setTimeout(() => writeActivity?.({ eventId: crypto.randomUUID(), agentSlug: 'supervisor', status: 'error', label: 'La respuesta tardó demasiado. Probá nuevamente.', timestamp: new Date().toISOString() }), SUPERVISOR_TIMEOUT_MS)
-        let result
+
+        // El timeout debe REJECTAR la carrera (no solo avisar) para que el
+        // cliente reciba un error visible antes de que Vercel mate la
+        // función al límite de maxDuration. Antes esto sólo emitía un evento
+        // de actividad sin cortar el `await`, dejando el chat "Pensando..."
+        // colgado para siempre si una tool (p. ej. Meta/Google Ads) nunca
+        // resolvía.
+        let timeoutHandle: ReturnType<typeof setTimeout>
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(() => reject(new Error('La respuesta tardó demasiado. Probá nuevamente.')), SUPERVISOR_TIMEOUT_MS)
+        })
+
         try {
-          result = await streamSupervisorResponse(modelMessages, {
-            userId: user.id,
-            userEmail: user.email,
-      ...context,
-      model: context.model,
-      analysisRunState,
-            conversationWorkingContext: workingContext ?? undefined,
-            emitActivity: (event) => writeActivity?.({
-              ...event,
-              eventId: crypto.randomUUID(),
-              timestamp: new Date().toISOString(),
+          const result = await Promise.race([
+            streamSupervisorResponse(modelMessages, {
+              userId: user.id,
+              userEmail: user.email,
+              ...context,
+              model: context.model,
+              analysisRunState,
+              conversationWorkingContext: workingContext ?? undefined,
+              emitActivity: (event) => writeActivity?.({
+                ...event,
+                eventId: crypto.randomUUID(),
+                timestamp: new Date().toISOString(),
+              }),
             }),
-          })
+            timeoutPromise,
+          ])
+          // El merge también puede colgarse si el hang ocurre durante el
+          // consumo del stream (p. ej. una tool call a mitad de la
+          // generación), así que también corre contra el mismo timeout.
+          await Promise.race([writer.merge(result.toUIMessageStream()), timeoutPromise])
         } finally {
-          clearTimeout(supervisorTimeout)
+          clearTimeout(timeoutHandle!)
         }
-        writer.merge(result.toUIMessageStream())
       },
       onError: (error) => {
         const message = error instanceof Error ? error.message : 'No se pudo completar la respuesta del Supervisor.'
