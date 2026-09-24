@@ -5,7 +5,7 @@ import { agentConfigRepository } from '../repositories/agent-repository'
 import { getCatalogToolKeys, getToolDefinitions } from '../tools'
 import type { ExecutionContext } from '../types'
 
-const MAX_TOOL_OUTPUT_BYTES = 8_500_000
+const MAX_TOOL_OUTPUT_BYTES = 180_000
 
 function limitToolOutput(value: unknown) {
   const serialized = JSON.stringify(value)
