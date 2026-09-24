@@ -60,7 +60,7 @@ export function ConexaWorkspace() {
     const supabase = createClient()
   supabase.from('clientes').select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids, analytics_property_id, tag_manager_container_id, crm_type, cuentas_publicitarias(id_cuenta, nombre_cuenta, plataforma, activo)').order('nombre_del_negocio').then(({ data, error }) => {
   if (error) { setClientsError('No se pudieron cargar los clientes'); return }
-  const allowedClients = new Set(['ICS Salud', 'VN Global', 'Soy Aurelia'])
+  const allowedClients = new Set(['ICS Salud', 'VN Global', 'Soy Aurelia', 'Belkiare'])
   const rows = ((data ?? []) as Client[]).filter((item) => allowedClients.has(item.nombre_del_negocio))
   setClients(rows)
       const initialClient = rows.sort((a, b) => Number(Boolean(b.meta_ads_account_id || b.meta_ads_account_ids?.length || b.google_ads_customer_id || b.google_ads_customer_ids?.length || b.analytics_property_id || b.tag_manager_container_id || b.crm_type)) - Number(Boolean(a.meta_ads_account_id || a.meta_ads_account_ids?.length || a.google_ads_customer_id || a.google_ads_customer_ids?.length || a.analytics_property_id || a.tag_manager_container_id || a.crm_type)))[0] ?? null
