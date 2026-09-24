@@ -80,7 +80,7 @@ export function ClientSelector({ value, onChange, onAccountsChange }: ClientSele
         return
       }
 
-      const enabledNames = new Set(['ICS Salud', 'VN Global'])
+      const enabledNames = new Set(['ICS Salud', 'VN Global', 'Soy Aurelia'])
       const loadedClients = (data ?? [])
         .filter((client) => enabledNames.has(client.nombre_del_negocio))
         .map((client) => ({

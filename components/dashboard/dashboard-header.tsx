@@ -35,7 +35,7 @@ export function DashboardHeader({
   const [open, setOpen] = useState(false)
   const visibleClients = useMemo(() => {
     if (!pathname.startsWith('/conexa')) return clients
-    return clients.filter((client) => ['ICS Salud', 'VN Global'].includes(client.nombre_del_negocio))
+    return clients.filter((client) => ['ICS Salud', 'VN Global', 'Soy Aurelia'].includes(client.nombre_del_negocio))
   }, [clients, pathname])
 
   const selectedClient = useMemo(() => {

@@ -3,16 +3,30 @@
 // coincidencia, se devuelve una respuesta genérica.
 type MockResponseRule = { keywords: string[]; response: string }
 
+// El orden importa: se evalúan de arriba hacia abajo y se usa la primera que
+// matchea. Las reglas combinadas (que requieren varias palabras clave a la
+// vez) van primero para no perderse detrás de una regla genérica de un solo
+// término (p. ej. "leads por campaña y ventas" no debe caer en la regla
+// genérica de "lead").
 const RULES: MockResponseRule[] = [
+  {
+    keywords: ['campaña', 'campana'],
+    response:
+      'Desglose por campaña en el período seleccionado:\n\n' +
+      '- **Prospecting Salud**: 52 leads → 16 ventas (CPL $2.180)\n' +
+      '- **Remarketing General**: 41 leads → 14 ventas (CPL $1.640)\n' +
+      '- **Awareness Q3**: 35 leads → 4 ventas (CPL $3.050)\n\n' +
+      'Remarketing General tiene la mejor tasa de conversión a venta (34%). Te recomiendo revisar la segmentación de Awareness Q3, que concentra el CPL más alto y la conversión más baja.',
+  },
+  {
+    keywords: ['invers', 'gasto', 'spend', 'presupuesto'],
+    response:
+      'La inversión en el período fue de $1.240.500 en Meta Ads y $860.200 en Google Ads, un total de $2.100.700. El CPL promedio combinado es de $16.400.',
+  },
   {
     keywords: ['lead'],
     response:
       'En el período seleccionado ingresaron 128 leads al CRM. Meta Ads es la principal fuente (62%), seguido de Google Ads (28%). El resto proviene de tráfico orgánico y referidos.',
-  },
-  {
-    keywords: ['campaña', 'campana'],
-    response:
-      'Las campañas con mejor desempeño en el período fueron "Prospecting Salud" (CPL $2.180) y "Remarketing General" (CPL $1.640). Te recomiendo revisar la segmentación de "Awareness Q3", que muestra el CPL más alto.',
   },
   {
     keywords: ['venta', 'ventas'],
