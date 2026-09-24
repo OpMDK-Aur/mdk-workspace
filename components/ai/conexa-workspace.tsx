@@ -52,6 +52,7 @@ export function ConexaWorkspace() {
   const [data, setData] = useState<ConexaData>(emptyConexaData)
   const [isLoading, setIsLoading] = useState(false)
   const [clientLoadPending, setClientLoadPending] = useState(false)
+  const [metricsLoading, setMetricsLoading] = useState(false)
   const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([])
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string[]>>({})
   const [crmFilters, setCrmFilters] = useState<CrmAcquisitionFilters>({})
@@ -76,6 +77,7 @@ export function ConexaWorkspace() {
   useEffect(() => {
     if (!client?.id || !dataPeriod) return
     if (clientLoadPending) setIsLoading(true)
+    setMetricsLoading(true)
     let cancelled = false
     fetch('/api/conexa/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client.id, period: dataPeriod, customRange: dataCustomRange, selectedAccounts, crmFilters }) })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron consultar las tools de Conexa.')))
@@ -84,7 +86,11 @@ export function ConexaWorkspace() {
         setData({ accounts: [], metrics: Array.isArray(result.metrics) ? result.metrics : [], reports: Array.isArray(result.analytics?.reports) ? result.analytics.reports : [], approvals: [], profile: null, memory: Array.isArray(result.memory?.items) ? result.memory.items : [], platformMetrics: result.platformMetrics && typeof result.platformMetrics === 'object' ? result.platformMetrics : {}, platformData: { meta: result.meta, google: result.google, analytics: result.analytics, tagManager: result.tagManager, crm: { contacts: result.contacts, opportunities: result.opportunities, sales: result.sales, acquisition: result.crmAcquisition } } })
       })
       .catch(() => { if (!cancelled) setData(emptyConexaData) })
-      .finally(() => { if (!cancelled && clientLoadPending) { setIsLoading(false); setClientLoadPending(false) } })
+      .finally(() => {
+        if (cancelled) return
+        if (clientLoadPending) { setIsLoading(false); setClientLoadPending(false) }
+        setMetricsLoading(false)
+      })
     return () => { cancelled = true }
   }, [client?.id, dataPeriod, dataCustomRange, selectedAccounts, crmFilters])
 
@@ -122,7 +128,7 @@ export function ConexaWorkspace() {
         <p className={cn('mb-1.5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]', !sidebarOpen && 'sr-only')}>Trabajo</p>
         {baseNav.map((item) => <button key={item.label} type="button" onClick={() => { setActive(item.label); if (item.label === 'Chat / Análisis') setSidebarOpen(false) }} className={cn('mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[10.5px] font-medium', active === item.label ? 'bg-[#eeefff] text-[#5b5fe8]' : 'text-[#5c5c5c] hover:bg-[#f5f5f8]', !sidebarOpen && 'justify-center px-0')}>{item.label === 'Chat / Análisis' ? <img src={CHAT_ICON_URL} alt="" className="size-[17px] shrink-0 object-contain" /> : item.icon && <item.icon className="size-[17px] shrink-0" />}{sidebarOpen && <span className="flex-1">{item.label}</span>}{sidebarOpen && item.badge && <span className="rounded-full bg-[#D97706] px-1.5 text-[10px] font-bold text-white">{item.badge}</span>}</button>)}
         {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Plataformas</p>}
-        {platforms.map((item) => <button key={item.key} type="button" onClick={() => setActive(item.name)} className={cn('mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[10.5px]', active === item.name ? 'bg-[#eeefff] text-[#5b5fe8]' : 'text-[#5c5c5c] hover:bg-[#f5f5f8]', !sidebarOpen && 'justify-center px-0')}><span className="flex size-[18px] items-center justify-center overflow-hidden rounded-[5px] bg-white">{item.iconUrl ? <img src={item.iconUrl} alt="" className="size-full object-contain" /> : <Globe2 className="size-[15px] text-[#11A683]" />}</span>{sidebarOpen && <span className="flex-1 truncate">{item.name}</span>}{sidebarOpen && <span className={cn('size-1.5 rounded-full', item.connected ? 'bg-[#1e9e6b]' : 'bg-[#d6d6d6]')} />}</button>)}
+        {platforms.map((item) => <button key={item.key} type="button" onClick={() => setActive(item.name)} className={cn('mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[10.5px]', active === item.name ? 'bg-[#eeefff] text-[#5b5fe8]' : 'text-[#5c5c5c] hover:bg-[#f5f5f8]', !sidebarOpen && 'justify-center px-0')}><span className={cn('relative flex size-[18px] items-center justify-center overflow-hidden rounded-[5px] bg-white', metricsLoading && item.connected && 'animate-pulse')}>{item.iconUrl ? <img src={item.iconUrl} alt="" className="size-full object-contain" /> : <Globe2 className="size-[15px] text-[#11A683]" />}</span>{sidebarOpen && <span className="flex-1 truncate">{item.name}</span>}{sidebarOpen && (metricsLoading && item.connected ? <LoaderCircle className="size-2.5 animate-spin text-[#5b5fe8]" aria-label="Actualizando métricas" /> : <span className={cn('size-1.5 rounded-full', item.connected ? 'bg-[#1e9e6b]' : 'bg-[#d6d6d6]')} />)}</button>)}
         {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Cliente</p>}
         {sidebarOpen && <button type="button" className="mb-0.5 flex w-full items-center rounded-md px-2 py-1.5 text-left text-[10.5px] text-[#222]">Contexto del cliente</button>}
         {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Configuración</p>}
