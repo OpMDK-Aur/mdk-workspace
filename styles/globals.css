@@ -43,6 +43,19 @@
 
 .conexa-brand {
   font-family: 'Neue Montreal', sans-serif;
+  /* Tokens de color propios de Conexa. Al redefinir las variables acá (en vez
+     de en :root), solo afectan a este árbol y no al resto del dashboard. */
+  --background: #F4F4F1;
+  --foreground: #141414;
+  --card: #ffffff;
+  --muted: #F4F4F1;
+  --muted-foreground: #6B6B6B;
+  --secondary: #F4F4F1;
+  --border: #E6E6E1;
+  --input: #E6E6E1;
+  --ring: #5B5FE8;
+  --primary: #5B5FE8;
+  --primary-foreground: #ffffff;
 }
 
 .conexa-brand .font-display {
