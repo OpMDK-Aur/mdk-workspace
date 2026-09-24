@@ -3,7 +3,7 @@
 // Store de chats de demo para la vista Chat / Análisis de Conexa. No llama a
 // ninguna API: la lista vive en memoria y se persiste en localStorage.
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getMockResponse } from './responses'
+import { getMockResponse, type AccountsContext } from './responses'
 
 export type MockChatMessage = {
   id: string
@@ -77,7 +77,7 @@ export function dateGroupLabel(iso: string) {
   return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'long' })
 }
 
-export function useMockChats(clientId: string | null, clientName: string) {
+export function useMockChats(clientId: string | null, clientName: string, accounts?: AccountsContext) {
   const [chats, setChats] = useState<MockChat[]>(() => readStoredChats())
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
@@ -150,7 +150,7 @@ export function useMockChats(clientId: string | null, clientName: string) {
       setIsSending(true)
       window.setTimeout(() => {
         try {
-          const responseText = getMockResponse(trimmed)
+          const responseText = getMockResponse(trimmed, accounts)
           const assistantMessage: MockChatMessage = { id: `msg-${Date.now() + 1}`, role: 'assistant', content: responseText, createdAt: new Date().toISOString() }
           setChats((current) => current.map((chat) => (chat.id === activeChatId ? { ...chat, messages: [...chat.messages, assistantMessage] } : chat)))
         } finally {
@@ -158,7 +158,7 @@ export function useMockChats(clientId: string | null, clientName: string) {
         }
       }, RESPONSE_DELAY_MS)
     },
-    [activeChatId],
+    [activeChatId, accounts],
   )
 
   return { chats, activeChat, isSending, selectChat, createChat, resetActiveChat, sendMessage }

@@ -60,7 +60,7 @@ export function ConexaWorkspace() {
     const supabase = createClient()
   supabase.from('clientes').select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids, analytics_property_id, tag_manager_container_id, crm_type, cuentas_publicitarias(id_cuenta, nombre_cuenta, plataforma, activo)').order('nombre_del_negocio').then(({ data, error }) => {
   if (error) { setClientsError('No se pudieron cargar los clientes'); return }
-  const allowedClients = new Set(['ICS Salud', 'VN Global', 'Soy Aurelia'])
+  const allowedClients = new Set(['ICS Salud', 'VN Global', 'Soy Aurelia', 'Belkiare'])
   const rows = ((data ?? []) as Client[]).filter((item) => allowedClients.has(item.nombre_del_negocio))
   setClients(rows)
       const initialClient = rows.sort((a, b) => Number(Boolean(b.meta_ads_account_id || b.meta_ads_account_ids?.length || b.google_ads_customer_id || b.google_ads_customer_ids?.length || b.analytics_property_id || b.tag_manager_container_id || b.crm_type)) - Number(Boolean(a.meta_ads_account_id || a.meta_ads_account_ids?.length || a.google_ads_customer_id || a.google_ads_customer_ids?.length || a.analytics_property_id || a.tag_manager_container_id || a.crm_type)))[0] ?? null
@@ -761,7 +761,18 @@ function ConexaChat({ client, period, onNavigate, onReportCreated }: { client: C
     </div>
     <div className={cn('grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)] gap-3 overflow-hidden rounded-b-2xl border border-t-0 border-[#e6e6e3] bg-white p-3 [&>*]:min-h-0 [&>*:last-child]:h-full [&>*:last-child]:max-h-full', showReport ? 'grid-cols-[minmax(0,1fr)_360px]' : 'grid-cols-[minmax(0,1fr)]')}>
       <div className="min-h-0 min-w-0 h-full flex-1 overflow-hidden rounded-xl border border-[#e6e6e3] bg-white">
-        <ConexaMockChat clientId={client?.id ?? null} clientName={client?.nombre_del_negocio ?? 'Cliente'} resetSignal={resetSignal} onCreateReport={handleCreateReport} />
+        <ConexaMockChat
+          clientId={client?.id ?? null}
+          clientName={client?.nombre_del_negocio ?? 'Cliente'}
+          resetSignal={resetSignal}
+          onCreateReport={handleCreateReport}
+          accounts={{
+            metaAccountIds: [...(client?.meta_ads_account_ids ?? []), client?.meta_ads_account_id],
+            googleAccountIds: [...(client?.google_ads_customer_ids ?? []), client?.google_ads_customer_id],
+            analyticsPropertyId: client?.analytics_property_id ?? null,
+            tagManagerContainerId: client?.tag_manager_container_id ?? null,
+          }}
+        />
       </div>
       {showReport && <aside className="rounded-xl border border-[#e6e6e3] bg-white p-5 shadow-sm"><div className="mb-5 flex items-start justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-[.08em] text-[#5b5fe8]">Conexa · Informe</p><h2 className="mt-1 text-lg font-bold">Informe del período</h2></div><button type="button" onClick={() => setShowReport(false)} className="text-xs text-[#888] hover:text-[#222]">Cerrar</button></div><div className="space-y-5 text-sm leading-6 text-[#333]"><section><h3 className="mb-1 font-bold text-[#5b5fe8]">Resumen ejecutivo</h3><MessageContent content={reportContent || 'El informe se generó a partir del último análisis de Conexa.'} /></section><section><h3 className="mb-1 font-bold text-[#5b5fe8]">Fuentes conectadas</h3><p>Meta Ads · Google Ads · GA4 · CRM</p></section></div><div className="mt-6 space-y-3"><button type="button" onClick={() => onNavigate('Informes')} className="w-full rounded-lg bg-[#5b5fe8] px-4 py-2.5 text-sm font-semibold text-white">Abrir informes</button></div></aside>}
     </div>
