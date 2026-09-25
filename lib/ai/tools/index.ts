@@ -49,7 +49,11 @@ async function withCrmRetry<T>(
     const { data, error } = await run()
     if (!error) return { data, error: null }
     lastError = error
-    const transient = /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i.test(error.message ?? '')
+    // '57014' es el código Postgres de "statement timeout": en el CRM externo
+    // aparece de forma intermitente (carga puntual, cache frío) incluso en
+    // consultas que la próxima vez responden en milisegundos. Sin este
+    // reintento, un timeout puntual descartaba TODA la atribución de ventas.
+    const transient = /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|statement timeout|57014/i.test(error.message ?? '')
     if (!transient || attempt === maxAttempts) return { data, error }
     await new Promise((resolve) => setTimeout(resolve, attempt * 300))
   }
@@ -1014,12 +1018,22 @@ const crmSalesAttribution: ToolDefinition = {
           // gane, no dentro del período de la venta. Por eso NO filtramos
           // estos mensajes por fecha: se busca en todo el historial del
           // contacto, igual que crm_contact_ads.
-          // Algunas instalaciones del CRM responden 400 al combinar el filtro
-          // JSON `metadata IS NOT NULL` con la consulta paginada. El filtro no
-          // es necesario: la extracción recursiva descarta mensajes sin
-          // atribución después de recibirlos.
-          const filtered = await batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound'))
-          return filtered
+          // El CRM externo puede tardar (o directamente "statement timeout")
+          // un IN(contact_id) grande sin acotar por fecha. Se consulta en
+          // lotes chicos de contactos en paralelo controlado: un timeout en
+          // un lote no debe descartar la atribución de los demás contactos.
+          const CONTACT_CHUNK = 15
+          const chunks: string[][] = []
+          for (let i = 0; i < contactIds.length; i += CONTACT_CHUNK) chunks.push(contactIds.slice(i, i + CONTACT_CHUNK))
+          const results: any[] = []
+          for (let i = 0; i < chunks.length; i += 4) {
+            const group = chunks.slice(i, i + 4)
+            const settled = await Promise.all(group.map(chunk =>
+              batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', chunk).eq('direction', 'inbound')).catch(() => [] as any[])
+            ))
+            for (const rows of settled) results.push(...rows)
+          }
+          return results
         })().catch(async () => {
           // Fallback para CRMs que no exponen metadata en el endpoint de
           // mensajes: seguimos devolviendo ventas y contactos, sin romper
