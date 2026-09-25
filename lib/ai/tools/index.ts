@@ -49,7 +49,11 @@ async function withCrmRetry<T>(
     const { data, error } = await run()
     if (!error) return { data, error: null }
     lastError = error
-    const transient = /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i.test(error.message ?? '')
+    // '57014' es el código Postgres de "statement timeout": en el CRM externo
+    // aparece de forma intermitente (carga puntual, cache frío) incluso en
+    // consultas que la próxima vez responden en milisegundos. Sin este
+    // reintento, un timeout puntual descartaba TODA la atribución de ventas.
+    const transient = /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|statement timeout|57014/i.test(error.message ?? '')
     if (!transient || attempt === maxAttempts) return { data, error }
     await new Promise((resolve) => setTimeout(resolve, attempt * 300))
   }
@@ -63,9 +67,19 @@ async function withCrmRetry<T>(
  * crm_sales_attribution para que ambas resuelvan el mismo utm_id y, sobre
  * todo, el mismo NOMBRE de campaña en lugar de mostrarle al usuario el id.
  */
+function parseMetadataValue(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return value
+  try { return JSON.parse(trimmed) } catch { return value }
+}
+
 function extractUtmId(message: any): string | null {
-  const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
+  const parsedMessage = { ...message, metadata: parseMetadataValue(message.metadata), referral_metadata: parseMetadataValue(message.referral_metadata), referral: parseMetadataValue(message.referral), message_data: parseMetadataValue(message.message_data) }
+  const candidates = [parsedMessage, parsedMessage.metadata, parsedMessage.referral_metadata, parsedMessage.referral, parsedMessage.message_data]
   const visited = new Set<object>()
+  let adTitle: string | null = null
+  let adSource: string | null = message.source ? String(message.source) : null
   const find = (value: unknown): string | null => {
     if (!value || typeof value !== 'object' || visited.has(value as object)) return null
     visited.add(value as object)
@@ -78,17 +92,27 @@ function extractUtmId(message: any): string | null {
     }
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
       const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
-      if (['utm_id', 'utmid', 'utm_identifier', 'utmid_value'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
+      if (entry != null && String(entry).trim()) {
+        if (['ad_title', 'ad_name', 'advertisement_name', 'campaign_name', 'campaign_title'].includes(normalizedKey)) adTitle = String(entry).trim()
+        if (['source', 'platform', 'channel'].includes(normalizedKey)) adSource = String(entry).trim()
+        if (['utm_id', 'utmid', 'utm_identifier', 'utmid_value', 'source_id', 'ctwa_clid', 'ad_id', 'gclid', 'gbraid', 'wbraid', 'gad_campaignid'].includes(normalizedKey)) return String(entry).trim()
+      }
       const result = find(entry)
       if (result) return result
     }
     return null
   }
-  return find(candidates) ?? (message.source ? String(message.source) : null)
+  const id = find(candidates)
+  if (id) return id
+  // Algunos contactos de WhatsApp Ads no traen un id separado, pero sí la
+  // señal de anuncio y el título que el CRM muestra en "Origen del contacto".
+  if (adTitle && /facebook|meta|ctwa|ad/i.test(`${adSource ?? ''} ${message.metadata?.source_type ?? ''}`)) return adTitle
+  return null
 }
 
 function extractCampaignName(message: any): string | null {
-  const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
+  const parsedMessage = { ...message, metadata: parseMetadataValue(message.metadata), referral_metadata: parseMetadataValue(message.referral_metadata), referral: parseMetadataValue(message.referral), message_data: parseMetadataValue(message.message_data) }
+  const candidates = [parsedMessage, parsedMessage.metadata, parsedMessage.referral_metadata, parsedMessage.referral, parsedMessage.message_data]
   const visited = new Set<object>()
   const find = (value: unknown): string | null => {
     if (!value || typeof value !== 'object' || visited.has(value as object)) return null
@@ -516,7 +540,7 @@ const getGoogleMetrics: ToolDefinition = {
 
 const getGoogleAnalyticsReportTool: ToolDefinition = {
   key: 'get_google_analytics_report',
-  description: 'Obtiene un reporte resumido de Google Analytics 4 para la propiedad del cliente: resumen, hasta 100 filas relevantes de eventos, adquisición, páginas, dispositivos, geografía y evolución diaria. Usala para cualquier análisis de GA4; si se necesita un detalle específico, consultá la pregunta del usuario y profundizá con la herramienta adecuada.',
+  description: 'Obtiene un reporte resumido de Google Analytics 4 para la propiedad del cliente: resumen, hasta 100 filas relevantes de eventos, adquisición, páginas, dispositivos, geograf��a y evolución diaria. Usala para cualquier análisis de GA4; si se necesita un detalle específico, consultá la pregunta del usuario y profundizá con la herramienta adecuada.',
   inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional() }),
   async execute(input: { dateFrom?: string; dateTo?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
@@ -843,7 +867,7 @@ const crmContacts: ToolDefinition = {
 
 const crmContactAds: ToolDefinition = {
   key: 'crm_contact_ads',
-  description: 'Cuenta contactos CRM con utm_id/referral/source_id. Si ya obtuviste oportunidades won, pasá sus contactIds para cruzar únicamente esos contactos; si no, analiza todos los contactos creados en el período.',
+  description: 'Cuenta leads/contactos CRM creados en el período y los agrupa por la campaña o anuncio que figura en la atribución del CRM. Lee utm_id, source_id, ctwa_clid, ad_id y metadata visible del origen (incluyendo título del anuncio). Si ya obtuviste oportunidades won, pasá sus contactIds para cruzar únicamente esos contactos; si no, analiza todos los contactos creados en el período.',
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), contactIds: z.array(z.string()).optional() }),
   async execute(input: { dateFrom: string; dateTo: string; contactIds?: string[] }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
@@ -890,10 +914,14 @@ const crmContactAds: ToolDefinition = {
       }
       const referralsByContact = new Map<string, any[]>()
       const getReferral = (message: any) => {
+        const metadata = parseMetadataValue(message.metadata)
+        const referralMetadata = parseMetadataValue(message.referral_metadata)
+        const messageData = parseMetadataValue(message.message_data)
         const candidates = [
-          message.metadata?.referral,
-          message.metadata,
-          message.message_data,
+          (metadata as any)?.referral,
+          metadata,
+          referralMetadata,
+          messageData,
         ]
         return candidates.find((value) => value && typeof value === 'object') ?? null
       }
@@ -983,15 +1011,58 @@ const crmSalesAttribution: ToolDefinition = {
         // Los datos de contacto son enriquecimiento opcional: si el endpoint
         // contacts falla, la atribución todavía puede resolverse con mensajes,
         // oportunidades y sus referencias UTM.
-        contactIds.length ? batch('contacts', 'id,created_at,client_id,name,email,phone', query => query.in('client_id', crmAccountIds).in('id', contactIds)).catch(() => []) : Promise.resolve([]),
-        contactIds.length ? batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end)) : Promise.resolve([]),
+        contactIds.length ? batch('contacts', '*', query => query.in('client_id', crmAccountIds).in('id', contactIds)).catch(() => []) : Promise.resolve([]),
+        contactIds.length ? (async () => {
+          // El mensaje que trae el referral de campaña (el primer clic al
+          // anuncio) casi siempre ocurre mucho ANTES de que la oportunidad se
+          // gane, no dentro del período de la venta. Por eso NO filtramos
+          // estos mensajes por fecha: se busca en todo el historial del
+          // contacto, igual que crm_contact_ads.
+          // El CRM externo puede tardar (o directamente "statement timeout")
+          // un IN(contact_id) grande sin acotar por fecha. Se consulta en
+          // lotes chicos de contactos en paralelo controlado: un timeout en
+          // un lote no debe descartar la atribución de los demás contactos.
+          const CONTACT_CHUNK = 15
+          const chunks: string[][] = []
+          for (let i = 0; i < contactIds.length; i += CONTACT_CHUNK) chunks.push(contactIds.slice(i, i + CONTACT_CHUNK))
+          const results: any[] = []
+          for (let i = 0; i < chunks.length; i += 4) {
+            const group = chunks.slice(i, i + 4)
+            const settled = await Promise.all(group.map(chunk =>
+              batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', chunk).eq('direction', 'inbound')).catch(() => [] as any[])
+            ))
+            for (const rows of settled) results.push(...rows)
+          }
+          return results
+        })().catch(async () => {
+          // Fallback para CRMs que no exponen metadata en el endpoint de
+          // mensajes: seguimos devolviendo ventas y contactos, sin romper
+          // toda la herramienta por un Bad Request de enriquecimiento.
+          try {
+            return await batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound'))
+          } catch {
+            return []
+          }
+        }) : Promise.resolve([]),
         pipelineIds.length ? batch('pipeline_stages', 'id,client_id,pipeline_id,name,description', query => query.in('client_id', crmAccountIds).in('pipeline_id', pipelineIds)) : Promise.resolve([]),
       ])
-      const contactsById = new Map(contacts.map(row => [row.id, row]))
-      const stagesById = new Map(stages.map(row => [row.id, row]))
+      const contactsById = new Map(contacts.map((row: any) => [row.id, row]))
+      const stagesById = new Map(stages.map((row: any) => [row.id, row]))
       const referralsByContact = new Map<string, any>()
+      // En el panel del CRM la atribución visible pertenece al contacto
+      // (origen, ctwa_ad, título e ID del anuncio), no necesariamente a un
+      // mensaje inbound. Priorizar esta fuente evita perder las ventas cuando
+      // el endpoint de mensajes no devuelve metadata.
+      for (const contact of contacts) {
+        const campaign = extractCampaignName(contact)
+        const adId = extractUtmId(contact)
+        if (contact.id && (campaign || adId)) {
+          referralsByContact.set(contact.id, { ...contact, ad_id: adId, ad_title: campaign, campaign: campaign ?? (adId ? `UTM ID ${adId}` : null) })
+        }
+      }
       for (const message of messages) {
-        const referral = message.metadata?.referral ?? message.metadata
+        const metadata = parseMetadataValue(message.metadata) as any
+        const referral = metadata?.referral ?? metadata
         if (message.contact_id && referral && typeof referral === 'object' && !referralsByContact.has(message.contact_id)) {
           // Buscamos el utm_id y el NOMBRE de campaña con la misma búsqueda
           // recursiva que usa crm_contact_ads: el nombre suele venir anidado

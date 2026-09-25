@@ -65,33 +65,57 @@ function referralValue(referral: Record<string, unknown>, ...keys: string[]) {
   return null
 }
 
-// Clasifica referrals de pauta sin exponer el JSON de tracking en el CRM.
-// El valor devuelto combina origen y nombre: "Google · campaña".
+// El CRM no mantiene una única forma para guardar la atribución: según el
+// canal, puede venir en metadata.referral, metadata.referral_metadata o como
+// metadata plana. Aplanamos esos objetos para leer la misma información que el
+// usuario ve en el panel de origen del contacto (facebook, ctwa_ad, título del
+// anuncio, etc.) y contar leads únicos por campaña.
 function extractCampaignFromMessage(message: { metadata?: Record<string, unknown> | null }): string | null {
-  const referral = message.metadata?.referral as Record<string, unknown> | undefined
-  if (!referral || typeof referral !== 'object') return null
-  const entryPoint = referralValue(referral, 'entry_point_conversion_source')?.toLowerCase()
-  const utmSource = referralValue(referral, 'utm_source')?.toLowerCase()
-  const sourceType = referralValue(referral, 'source_type')?.toLowerCase()
-  const conversionApp = referralValue(referral, 'entry_point_conversion_app')?.toLowerCase()
-  const hasClickId = ['gclid', 'gbraid', 'wbraid', 'gad_campaignid', 'ctwa_clid', 'ad_id'].some((key) => referralValue(referral, key) !== null)
-  const hasUtm = Object.keys(referral).some((key) => key.startsWith('utm_') && referralValue(referral, key) !== null)
+  const metadata = message.metadata
+  if (!metadata || typeof metadata !== 'object') return null
 
-  if (entryPoint === 'global_search_new_chat' || entryPoint === 'global_search' || (!hasClickId && !hasUtm)) return null
-
-  if (utmSource === 'google' || ['gclid', 'gbraid', 'wbraid', 'gad_campaignid'].some((key) => referralValue(referral, key) !== null)) {
-    return `Google · ${referralValue(referral, 'utm_campaign') ?? 'Google Ads'}`
+  const candidates: Record<string, unknown>[] = []
+  const visited = new Set<object>()
+  const collect = (value: unknown) => {
+    if (!value || typeof value !== 'object' || visited.has(value as object)) return
+    visited.add(value as object)
+    if (Array.isArray(value)) {
+      value.forEach(collect)
+      return
+    }
+    const record = value as Record<string, unknown>
+    candidates.push(record)
+    Object.values(record).forEach(collect)
   }
+  collect(metadata)
 
-  if (sourceType === 'ad' && conversionApp === 'facebook' && referralValue(referral, 'form_id', 'form_name') === null) {
-    return `Meta WhatsApp · ${referralValue(referral, 'ad_title') ?? 'Meta WhatsApp Ads'}`
+  const value = (...keys: string[]) => {
+    for (const candidate of candidates) {
+      const found = referralValue(candidate, ...keys)
+      if (found) return found
+    }
+    return null
   }
+  const normalized = (input: string | null) => input?.toLowerCase().trim() ?? null
+  const source = normalized(value('utm_source', 'source', 'platform', 'entry_point_conversion_app'))
+  const sourceType = normalized(value('source_type', 'type'))
+  const entryPoint = normalized(value('entry_point_conversion_source'))
+  const campaign = value('utm_campaign', 'campaign_name', 'campaign', 'campaign_title')
+  const adTitle = value('ad_title', 'ad_name', 'advertisement_name', 'title')
+  const formName = value('form_name', 'form_id')
+  const hasAdReference = ['utm_id', 'source_id', 'ctwa_clid', 'ad_id', 'gclid', 'gbraid', 'wbraid', 'gad_campaignid'].some((key) => value(key) !== null)
+  const hasAdSource = source === 'facebook' || source === 'meta' || source === 'google' || sourceType === 'ad' || normalized(value('channel', 'source_name')) === 'ctwa_ad'
 
-  if (sourceType === 'facebook' && referralValue(referral, 'form_id', 'form_name') !== null) {
-    return `Meta Formulario · ${referralValue(referral, 'utm_campaign', 'form_name') ?? 'Meta Lead Ads'}`
+  if (entryPoint === 'global_search_new_chat' || entryPoint === 'global_search') return null
+  if (!hasAdReference && !hasAdSource && !campaign && !adTitle) return null
+
+  if (source === 'google' || ['gclid', 'gbraid', 'wbraid', 'gad_campaignid'].some((key) => value(key) !== null)) {
+    return `Google · ${campaign ?? adTitle ?? 'Google Ads'}`
   }
-
-  return null
+  if (source === 'facebook' || source === 'meta' || sourceType === 'ad' || value('ctwa_clid') !== null) {
+    return `${formName ? 'Meta Formulario' : 'Meta WhatsApp'} · ${campaign ?? adTitle ?? 'Meta Ads'}`
+  }
+  return campaign ?? adTitle ?? null
 }
 
 type ContactRecord = { contactId: string; tagNames: string[]; channelName: string | null; campaign: string | null }
