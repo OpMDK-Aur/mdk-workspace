@@ -63,8 +63,16 @@ async function withCrmRetry<T>(
  * crm_sales_attribution para que ambas resuelvan el mismo utm_id y, sobre
  * todo, el mismo NOMBRE de campaña en lugar de mostrarle al usuario el id.
  */
+function parseMetadataValue(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return value
+  try { return JSON.parse(trimmed) } catch { return value }
+}
+
 function extractUtmId(message: any): string | null {
-  const candidates = [message, message.metadata, message.referral_metadata, message.referral, message.message_data]
+  const parsedMessage = { ...message, metadata: parseMetadataValue(message.metadata), referral_metadata: parseMetadataValue(message.referral_metadata), referral: parseMetadataValue(message.referral), message_data: parseMetadataValue(message.message_data) }
+  const candidates = [parsedMessage, parsedMessage.metadata, parsedMessage.referral_metadata, parsedMessage.referral, parsedMessage.message_data]
   const visited = new Set<object>()
   let adTitle: string | null = null
   let adSource: string | null = message.source ? String(message.source) : null
@@ -99,7 +107,8 @@ function extractUtmId(message: any): string | null {
 }
 
 function extractCampaignName(message: any): string | null {
-  const candidates = [message, message.metadata, message.referral_metadata, message.referral, message.message_data]
+  const parsedMessage = { ...message, metadata: parseMetadataValue(message.metadata), referral_metadata: parseMetadataValue(message.referral_metadata), referral: parseMetadataValue(message.referral), message_data: parseMetadataValue(message.message_data) }
+  const candidates = [parsedMessage, parsedMessage.metadata, parsedMessage.referral_metadata, parsedMessage.referral, parsedMessage.message_data]
   const visited = new Set<object>()
   const find = (value: unknown): string | null => {
     if (!value || typeof value !== 'object' || visited.has(value as object)) return null
@@ -901,10 +910,14 @@ const crmContactAds: ToolDefinition = {
       }
       const referralsByContact = new Map<string, any[]>()
       const getReferral = (message: any) => {
+        const metadata = parseMetadataValue(message.metadata)
+        const referralMetadata = parseMetadataValue(message.referral_metadata)
+        const messageData = parseMetadataValue(message.message_data)
         const candidates = [
-          message.metadata?.referral,
-          message.metadata,
-          message.message_data,
+          (metadata as any)?.referral,
+          metadata,
+          referralMetadata,
+          messageData,
         ]
         return candidates.find((value) => value && typeof value === 'object') ?? null
       }
@@ -1029,7 +1042,8 @@ const crmSalesAttribution: ToolDefinition = {
         }
       }
       for (const message of messages) {
-        const referral = message.metadata?.referral ?? message.metadata
+        const metadata = parseMetadataValue(message.metadata) as any
+        const referral = metadata?.referral ?? metadata
         if (message.contact_id && referral && typeof referral === 'object' && !referralsByContact.has(message.contact_id)) {
           // Buscamos el utm_id y el NOMBRE de campaña con la misma búsqueda
           // recursiva que usa crm_contact_ads: el nombre suele venir anidado
