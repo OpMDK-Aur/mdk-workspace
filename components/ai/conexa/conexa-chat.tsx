@@ -168,6 +168,7 @@ function ConexaChatSession({
 }) {
   const [input, setInput] = useState('')
   const [currentActivity, setCurrentActivity] = useState<ActivityEvent | null>(null)
+  const [requestError, setRequestError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -199,13 +200,24 @@ function ConexaChatSession({
     onData: (dataPart) => {
       if (dataPart.type === 'data-activity') setCurrentActivity(dataPart.data as ActivityEvent)
     },
-    onError: (streamError) => {
-      const message = streamError instanceof Error ? streamError.message : 'No se pudo completar la respuesta.'
-      setCurrentActivity({ eventId: 'client-error', agentSlug: 'supervisor', status: 'error', label: message, timestamp: new Date().toISOString() })
-    },
+  onError: (streamError) => {
+  const rawMessage = streamError instanceof Error ? streamError.message : ''
+  const message = /timeout|timed out|fetch failed|bad request|internal server|500|502|503/i.test(rawMessage)
+  ? 'No pudimos completar la consulta en este momento. Podés reintentarla.'
+  : rawMessage || 'No se pudo completar la respuesta.'
+  setRequestError(message)
+  setCurrentActivity({ eventId: 'client-error', agentSlug: 'supervisor', status: 'error', label: message, timestamp: new Date().toISOString() })
+  },
   })
 
   const isBusy = status === 'submitted' || status === 'streaming'
+  useEffect(() => {
+  if (!isBusy) return
+  const timeout = window.setTimeout(() => {
+  setRequestError('La respuesta está tardando más de lo esperado. Podés reintentar la consulta.')
+  }, 30_000)
+  return () => window.clearTimeout(timeout)
+  }, [isBusy])
   const lastMessage = messages.at(-1)
   const isStreamingAssistantMessage = isBusy && lastMessage?.role === 'assistant'
 
@@ -227,8 +239,9 @@ function ConexaChatSession({
     event.preventDefault()
     const text = input.trim()
     if (!text || isBusy || !clientId) return
-    setInput('')
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+  setInput('')
+  setRequestError(null)
+  if (textareaRef.current) textareaRef.current.style.height = 'auto'
     setCurrentActivity(null)
     await sendMessage({ text }, { body: { context: buildContext() } })
   }
@@ -330,11 +343,11 @@ function ConexaChatSession({
             </div>
           )}
         </div>
-        {error && (
-          <p className="border-t border-[#E6E6E1] px-4 py-2 text-sm text-red-600" role="alert">
-            {error.message || 'No se pudo procesar la conversación con Conexa.'}
-          </p>
-        )}
+  {(error || requestError) && (
+  <p className="border-t border-[#E6E6E1] px-4 py-2 text-sm text-red-600" role="alert">
+  {requestError ?? error?.message ?? 'No se pudo procesar la conversación con Conexa.'}
+  </p>
+  )}
         <form onSubmit={handleSubmit} className="flex items-end gap-2 border-t border-[#E6E6E1] p-3">
           <textarea
             ref={textareaRef}
