@@ -536,7 +536,7 @@ const getGoogleMetrics: ToolDefinition = {
 
 const getGoogleAnalyticsReportTool: ToolDefinition = {
   key: 'get_google_analytics_report',
-  description: 'Obtiene un reporte resumido de Google Analytics 4 para la propiedad del cliente: resumen, hasta 100 filas relevantes de eventos, adquisición, páginas, dispositivos, geografía y evolución diaria. Usala para cualquier análisis de GA4; si se necesita un detalle específico, consultá la pregunta del usuario y profundizá con la herramienta adecuada.',
+  description: 'Obtiene un reporte resumido de Google Analytics 4 para la propiedad del cliente: resumen, hasta 100 filas relevantes de eventos, adquisición, páginas, dispositivos, geograf��a y evolución diaria. Usala para cualquier análisis de GA4; si se necesita un detalle específico, consultá la pregunta del usuario y profundizá con la herramienta adecuada.',
   inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional() }),
   async execute(input: { dateFrom?: string; dateTo?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
@@ -1009,18 +1009,23 @@ const crmSalesAttribution: ToolDefinition = {
         // oportunidades y sus referencias UTM.
         contactIds.length ? batch('contacts', '*', query => query.in('client_id', crmAccountIds).in('id', contactIds)).catch(() => []) : Promise.resolve([]),
         contactIds.length ? (async () => {
+          // El mensaje que trae el referral de campaña (el primer clic al
+          // anuncio) casi siempre ocurre mucho ANTES de que la oportunidad se
+          // gane, no dentro del período de la venta. Por eso NO filtramos
+          // estos mensajes por fecha: se busca en todo el historial del
+          // contacto, igual que crm_contact_ads.
           // Algunas instalaciones del CRM responden 400 al combinar el filtro
           // JSON `metadata IS NOT NULL` con la consulta paginada. El filtro no
           // es necesario: la extracción recursiva descarta mensajes sin
           // atribución después de recibirlos.
-          const filtered = await batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound').gte('created_at', start).lte('created_at', end))
+          const filtered = await batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound'))
           return filtered
         })().catch(async () => {
           // Fallback para CRMs que no exponen metadata en el endpoint de
           // mensajes: seguimos devolviendo ventas y contactos, sin romper
           // toda la herramienta por un Bad Request de enriquecimiento.
           try {
-            return await batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound').gte('created_at', start).lte('created_at', end))
+            return await batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound'))
           } catch {
             return []
           }
