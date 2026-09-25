@@ -66,6 +66,8 @@ async function withCrmRetry<T>(
 function extractUtmId(message: any): string | null {
   const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
   const visited = new Set<object>()
+  let adTitle: string | null = null
+  let adSource: string | null = message.source ? String(message.source) : null
   const find = (value: unknown): string | null => {
     if (!value || typeof value !== 'object' || visited.has(value as object)) return null
     visited.add(value as object)
@@ -78,13 +80,22 @@ function extractUtmId(message: any): string | null {
     }
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
       const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
-      if (['utm_id', 'utmid', 'utm_identifier', 'utmid_value'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
+      if (entry != null && String(entry).trim()) {
+        if (['ad_title', 'ad_name', 'advertisement_name', 'campaign_name', 'campaign_title'].includes(normalizedKey)) adTitle = String(entry).trim()
+        if (['source', 'platform', 'channel'].includes(normalizedKey)) adSource = String(entry).trim()
+        if (['utm_id', 'utmid', 'utm_identifier', 'utmid_value', 'source_id', 'ctwa_clid', 'ad_id', 'gclid', 'gbraid', 'wbraid', 'gad_campaignid'].includes(normalizedKey)) return String(entry).trim()
+      }
       const result = find(entry)
       if (result) return result
     }
     return null
   }
-  return find(candidates) ?? (message.source ? String(message.source) : null)
+  const id = find(candidates)
+  if (id) return id
+  // Algunos contactos de WhatsApp Ads no traen un id separado, pero sí la
+  // señal de anuncio y el título que el CRM muestra en "Origen del contacto".
+  if (adTitle && /facebook|meta|ctwa|ad/i.test(`${adSource ?? ''} ${message.metadata?.source_type ?? ''}`)) return adTitle
+  return null
 }
 
 function extractCampaignName(message: any): string | null {
@@ -843,7 +854,7 @@ const crmContacts: ToolDefinition = {
 
 const crmContactAds: ToolDefinition = {
   key: 'crm_contact_ads',
-  description: 'Cuenta contactos CRM con utm_id/referral/source_id. Si ya obtuviste oportunidades won, pasá sus contactIds para cruzar únicamente esos contactos; si no, analiza todos los contactos creados en el período.',
+  description: 'Cuenta leads/contactos CRM creados en el período y los agrupa por la campaña o anuncio que figura en la atribución del CRM. Lee utm_id, source_id, ctwa_clid, ad_id y metadata visible del origen (incluyendo título del anuncio). Si ya obtuviste oportunidades won, pasá sus contactIds para cruzar únicamente esos contactos; si no, analiza todos los contactos creados en el período.',
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), contactIds: z.array(z.string()).optional() }),
   async execute(input: { dateFrom: string; dateTo: string; contactIds?: string[] }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
