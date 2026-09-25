@@ -12,7 +12,7 @@ import { ATTACHMENT_MAX_COUNT, isImageOrPdfAttachment, isPlainTextAttachment, is
 export const maxDuration = 60
 
 // El stream debe fallar antes del límite de Vercel para que el cliente reciba un error visible.
-const SUPERVISOR_TIMEOUT_MS = 52_000
+const SUPERVISOR_TIMEOUT_MS = 35_000
 
 // Ventana de memoria conversacional V1: cantidad máxima de mensajes
 // persistidos (user + assistant) que se recuperan de ai_messages para
