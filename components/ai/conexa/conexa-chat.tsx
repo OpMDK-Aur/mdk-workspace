@@ -211,13 +211,6 @@ function ConexaChatSession({
   })
 
   const isBusy = status === 'submitted' || status === 'streaming'
-  useEffect(() => {
-  if (!isBusy) return
-  const timeout = window.setTimeout(() => {
-  setRequestError('La respuesta está tardando más de lo esperado. Podés reintentar la consulta.')
-  }, 30_000)
-  return () => window.clearTimeout(timeout)
-  }, [isBusy])
   const lastMessage = messages.at(-1)
   const isStreamingAssistantMessage = isBusy && lastMessage?.role === 'assistant'
 
