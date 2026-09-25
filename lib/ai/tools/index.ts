@@ -995,11 +995,27 @@ const crmSalesAttribution: ToolDefinition = {
         // contacts falla, la atribución todavía puede resolverse con mensajes,
         // oportunidades y sus referencias UTM.
         contactIds.length ? batch('contacts', 'id,created_at,client_id,name,email,phone', query => query.in('client_id', crmAccountIds).in('id', contactIds)).catch(() => []) : Promise.resolve([]),
-        contactIds.length ? batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound').not('metadata', 'is', null).gte('created_at', start).lte('created_at', end)) : Promise.resolve([]),
+        contactIds.length ? (async () => {
+          // Algunas instalaciones del CRM responden 400 al combinar el filtro
+          // JSON `metadata IS NOT NULL` con la consulta paginada. El filtro no
+          // es necesario: la extracción recursiva descarta mensajes sin
+          // atribución después de recibirlos.
+          const filtered = await batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound').gte('created_at', start).lte('created_at', end))
+          return filtered
+        })().catch(async () => {
+          // Fallback para CRMs que no exponen metadata en el endpoint de
+          // mensajes: seguimos devolviendo ventas y contactos, sin romper
+          // toda la herramienta por un Bad Request de enriquecimiento.
+          try {
+            return await batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound').gte('created_at', start).lte('created_at', end))
+          } catch {
+            return []
+          }
+        }) : Promise.resolve([]),
         pipelineIds.length ? batch('pipeline_stages', 'id,client_id,pipeline_id,name,description', query => query.in('client_id', crmAccountIds).in('pipeline_id', pipelineIds)) : Promise.resolve([]),
       ])
-      const contactsById = new Map(contacts.map(row => [row.id, row]))
-      const stagesById = new Map(stages.map(row => [row.id, row]))
+      const contactsById = new Map(contacts.map((row: any) => [row.id, row]))
+      const stagesById = new Map(stages.map((row: any) => [row.id, row]))
       const referralsByContact = new Map<string, any>()
       for (const message of messages) {
         const referral = message.metadata?.referral ?? message.metadata
