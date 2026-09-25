@@ -64,7 +64,7 @@ async function withCrmRetry<T>(
  * todo, el mismo NOMBRE de campaña en lugar de mostrarle al usuario el id.
  */
 function extractUtmId(message: any): string | null {
-  const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
+  const candidates = [message, message.metadata, message.referral_metadata, message.referral, message.message_data]
   const visited = new Set<object>()
   let adTitle: string | null = null
   let adSource: string | null = message.source ? String(message.source) : null
@@ -99,7 +99,7 @@ function extractUtmId(message: any): string | null {
 }
 
 function extractCampaignName(message: any): string | null {
-  const candidates = [message.metadata, message.referral_metadata, message.referral, message.message_data]
+  const candidates = [message, message.metadata, message.referral_metadata, message.referral, message.message_data]
   const visited = new Set<object>()
   const find = (value: unknown): string | null => {
     if (!value || typeof value !== 'object' || visited.has(value as object)) return null
@@ -994,7 +994,7 @@ const crmSalesAttribution: ToolDefinition = {
         // Los datos de contacto son enriquecimiento opcional: si el endpoint
         // contacts falla, la atribución todavía puede resolverse con mensajes,
         // oportunidades y sus referencias UTM.
-        contactIds.length ? batch('contacts', 'id,created_at,client_id,name,email,phone', query => query.in('client_id', crmAccountIds).in('id', contactIds)).catch(() => []) : Promise.resolve([]),
+        contactIds.length ? batch('contacts', '*', query => query.in('client_id', crmAccountIds).in('id', contactIds)).catch(() => []) : Promise.resolve([]),
         contactIds.length ? (async () => {
           // Algunas instalaciones del CRM responden 400 al combinar el filtro
           // JSON `metadata IS NOT NULL` con la consulta paginada. El filtro no
@@ -1017,6 +1017,17 @@ const crmSalesAttribution: ToolDefinition = {
       const contactsById = new Map(contacts.map((row: any) => [row.id, row]))
       const stagesById = new Map(stages.map((row: any) => [row.id, row]))
       const referralsByContact = new Map<string, any>()
+      // En el panel del CRM la atribución visible pertenece al contacto
+      // (origen, ctwa_ad, título e ID del anuncio), no necesariamente a un
+      // mensaje inbound. Priorizar esta fuente evita perder las ventas cuando
+      // el endpoint de mensajes no devuelve metadata.
+      for (const contact of contacts) {
+        const campaign = extractCampaignName(contact)
+        const adId = extractUtmId(contact)
+        if (contact.id && (campaign || adId)) {
+          referralsByContact.set(contact.id, { ...contact, ad_id: adId, ad_title: campaign, campaign: campaign ?? (adId ? `UTM ID ${adId}` : null) })
+        }
+      }
       for (const message of messages) {
         const referral = message.metadata?.referral ?? message.metadata
         if (message.contact_id && referral && typeof referral === 'object' && !referralsByContact.has(message.contact_id)) {
