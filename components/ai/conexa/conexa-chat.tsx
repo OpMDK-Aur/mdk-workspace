@@ -40,6 +40,36 @@ function messageText(message: UIMessage) {
 }
 
 /**
+ * Aviso de dos tonos suave (estilo notificación de mensaje) generado con
+ * Web Audio API, sin depender de un archivo de audio externo.
+ */
+function playNotificationChime() {
+  if (typeof window === 'undefined') return
+  const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  if (!AudioCtx) return
+  const ctx = new AudioCtx()
+
+  function tone(frequency: number, startTime: number, duration: number) {
+    const oscillator = ctx.createOscillator()
+    const gain = ctx.createGain()
+    oscillator.type = 'sine'
+    oscillator.frequency.value = frequency
+    gain.gain.setValueAtTime(0, startTime)
+    gain.gain.linearRampToValueAtTime(0.18, startTime + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration)
+    oscillator.connect(gain)
+    gain.connect(ctx.destination)
+    oscillator.start(startTime)
+    oscillator.stop(startTime + duration)
+  }
+
+  const now = ctx.currentTime
+  tone(880, now, 0.16)
+  tone(1318.5, now + 0.12, 0.22)
+  window.setTimeout(() => ctx.close(), 500)
+}
+
+/**
  * Wrapper que resuelve/crea la conversación real del cliente (una por
  * cliente, igual que en /ai) antes de montar la sesión de chat. El
  * `key` en ConexaChatSession fuerza un remount completo cuando cambia el
@@ -219,6 +249,16 @@ function ConexaChatSession({
     if (!container) return
     container.scrollTop = container.scrollHeight
   }, [messages.length, isBusy, currentActivity])
+
+  // Suena un aviso corto cuando la IA termina de responder (transición
+  // busy -> ready con un mensaje del asistente ya presente).
+  const wasBusyRef = useRef(false)
+  useEffect(() => {
+    const justFinished = wasBusyRef.current && !isBusy && messages.at(-1)?.role === 'assistant'
+    wasBusyRef.current = isBusy
+    if (!justFinished) return
+    playNotificationChime()
+  }, [isBusy, messages])
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     // Enter envía; Shift+Enter agrega salto de línea. No enviamos mientras el
