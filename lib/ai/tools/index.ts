@@ -1018,7 +1018,7 @@ const crmSalesAttribution: ToolDefinition = {
       for (let i = 0; i < contactIds.length; i += 25) {
         const chunk = contactIds.slice(i, i + 25)
         context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'running', label: `Consultando contactos CRM (${Math.min(i + chunk.length, contactIds.length)}/${contactIds.length})...` })
-        const rows = await batch('contacts', '*', query => query.in('client_id', crmAccountIds).in('id', chunk)).catch(() => [])
+        const rows = await batch('contacts', 'id,client_id,name,email,phone,metadata,custom_fields,source,utm_source,utm_medium,utm_campaign,utm_content,utm_term', query => query.in('client_id', crmAccountIds).in('id', chunk), 100).catch(() => [])
         contacts.push(...rows)
       }
       const contactReferralIds = new Set(contacts.filter((contact) => extractCampaignName(contact) || extractUtmId(contact)).map((contact) => contact.id))
@@ -1031,7 +1031,7 @@ const crmSalesAttribution: ToolDefinition = {
           for (let j = i; j < Math.min(i + CONTACT_CHUNK * 4, missingReferralIds.length); j += CONTACT_CHUNK) group.push(missingReferralIds.slice(j, j + CONTACT_CHUNK))
           context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'running', label: `Buscando atribución en mensajes (${Math.min(i + group.flat().length, missingReferralIds.length)}/${missingReferralIds.length})...` })
           const settled = await Promise.all(group.map(chunk =>
-            batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', chunk).eq('direction', 'inbound')).catch(() => [] as any[])
+            batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', chunk).eq('direction', 'inbound'), 100).catch(() => [] as any[])
           ))
           for (const rows of settled) messages.push(...rows)
         }
