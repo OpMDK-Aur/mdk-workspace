@@ -237,13 +237,18 @@ function ConexaChatSession({
       const event = dataPart.data as ActivityEvent
       setCurrentActivity(event)
       setActivitySteps((previous) => {
-        const stepKey = `${event.agentSlug ?? 'supervisor'}:${event.toolKey ?? event.eventId}`
+        // Usamos agentSlug + toolKey (sin eventId) para que los pasos
+        // genéricos del supervisor (sin toolKey, p. ej. "Preparando
+        // respuesta...") se agrupen entre sí -incluyendo el paso optimista
+        // que sembramos del lado del cliente al enviar- en vez de crear una
+        // fila nueva por cada eventId único.
+        const stepKey = `${event.agentSlug ?? 'supervisor'}:${event.toolKey ?? 'generic'}`
         const lastIndex = previous.length - 1
         // Si el último paso registrado corresponde a la misma acción y todavía
         // está en curso, lo actualizamos (running -> completed/error) en vez
         // de agregar una fila nueva.
         if (lastIndex >= 0 && previous[lastIndex].status === 'running') {
-          const lastKey = `${previous[lastIndex].agentSlug ?? 'supervisor'}:${previous[lastIndex].toolKey ?? previous[lastIndex].eventId}`
+          const lastKey = `${previous[lastIndex].agentSlug ?? 'supervisor'}:${previous[lastIndex].toolKey ?? 'generic'}`
           if (lastKey === stepKey) {
             const next = [...previous]
             next[lastIndex] = event
@@ -301,8 +306,19 @@ function ConexaChatSession({
     setAttachments([])
     setAttachmentError(null)
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
-    setCurrentActivity(null)
-    setActivitySteps([])
+    // Mostramos un primer paso de forma optimista, del lado del cliente, para
+    // que el panel nunca muestre el "Pensando..." genérico mientras esperamos
+    // la primera confirmación del servidor (que puede demorar por la latencia
+    // de red o el arranque del stream).
+    const optimisticStep: ActivityEvent = {
+      eventId: 'client-optimistic',
+      agentSlug: 'supervisor',
+      status: 'running',
+      label: 'Preparando respuesta...',
+      timestamp: new Date().toISOString(),
+    }
+    setCurrentActivity(optimisticStep)
+    setActivitySteps([optimisticStep])
     let files: FileList | undefined
     if (pendingAttachments.length > 0) {
       const dataTransfer = new DataTransfer()
