@@ -87,10 +87,17 @@ export async function POST(request: Request) {
     }
     let result = 0
     const visit = (value: unknown, isRoot = false) => {
+      if (Array.isArray(value)) {
+        // Meta/Google Ads devuelven sus totales reales dentro de
+        // `accounts[].totals`, no en la raíz. Sin recorrer arrays acá,
+        // impressions/clicks siempre quedaban en 0 aunque hubiera datos.
+        for (const item of value) visit(item)
+        return
+      }
       if (!value || typeof value !== 'object') return
       for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-        if (keys.includes(key) && (isRoot || !Array.isArray(value))) result += number(child)
-        if (child && typeof child === 'object' && !Array.isArray(child)) visit(child)
+        if (keys.includes(key) && isRoot) result += number(child)
+        if (child && typeof child === 'object') visit(child)
       }
     }
     visit(source, true)
