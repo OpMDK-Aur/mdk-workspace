@@ -134,9 +134,22 @@ export async function streamSupervisorResponse(
     ].join('\n\n'),
     messages,
     tools,
-  // Sonnet puede necesitar varios turnos de herramientas para cruzar CRM,
-  // atribución y plataformas antes de redactar la respuesta final.
-  stopWhen: stepCountIs(20),
+  // El modelo puede necesitar varios turnos de herramientas para cruzar CRM,
+  // atribución y plataformas antes de redactar la respuesta final. Le damos
+  // margen (25) para esa orquestación.
+  stopWhen: stepCountIs(25),
+  // Si llegamos cerca del límite de pasos sin que el modelo haya redactado
+  // todavía la respuesta final, le quitamos las tools en el último paso
+  // disponible para forzarlo a sintetizar con lo que ya recolectó, en vez de
+  // dejar que stepCountIs corte el stream a mitad de una tool call y el
+  // usuario se quede sin ninguna respuesta visible.
+  prepareStep: ({ stepNumber }) => {
+    if (stepNumber < 24) return undefined
+    return {
+      toolChoice: 'none' as const,
+      system: 'Ya no podés ejecutar más herramientas en este turno. Redactá AHORA la respuesta final únicamente con los resultados de tools que ya obtuviste en pasos anteriores. Si algún cruce quedó incompleto, aclaralo como dato faltante en vez de dejar la respuesta vacía.',
+    }
+  },
   temperature: 0.2,
     maxOutputTokens: 2200,
   })
