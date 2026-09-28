@@ -15,14 +15,19 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  webpack: (config, { isServer }) => {
-    // Suppress webpack cache serialization warning for big strings
+  webpack: (config) => {
+    // Keep the Chromium binary external while retaining webpack compatibility
+    // for deployments that explicitly use the webpack bundler.
     config.infrastructureLogging = {
       ...config.infrastructureLogging,
       level: 'error',
     }
     return config
   },
+  // Next 16 uses Turbopack by default. Declaring the config explicitly keeps
+  // dev and production builds from failing because this project also retains
+  // a webpack hook for server-only Chromium assets.
+  turbopack: {},
   // Performance optimizations
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
