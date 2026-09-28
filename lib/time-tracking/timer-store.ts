@@ -238,6 +238,17 @@ export const useTimerStore = create<TimerState>()(
         const descripcion = `[Tarea] ${taskTitle}`
 
         const { data: { user } } = await supabase.auth.getUser()
+        const isUuid = (value: string | null): value is string => Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value))
+        let resolvedTipoTareaId = isUuid(tipoTareaId) ? tipoTareaId : null
+        if (!resolvedTipoTareaId && tipoTareaId) {
+          const { data: tipo } = await supabase
+            .from('tipo_de_tareas')
+            .select('id')
+            .ilike('nombre', tipoTareaId)
+            .eq('activo', true)
+            .maybeSingle()
+          resolvedTipoTareaId = tipo?.id ?? null
+        }
         const { data: colaborador } = user?.email
           ? await supabase.from('colaboradores').select('id').eq('email', user.email).maybeSingle()
           : { data: null }
@@ -247,7 +258,7 @@ export const useTimerStore = create<TimerState>()(
           .insert({
             colaborador_id: colaborador?.id ?? null,
             cliente_id: clientId,
-            tipo_tarea_id: tipoTareaId,
+            tipo_tarea_id: resolvedTipoTareaId,
             descripcion,
             iniciado_en: startedAt,
             finalizado_en: null,
@@ -265,7 +276,7 @@ export const useTimerStore = create<TimerState>()(
         set({
           description: descripcion,
           clientId: clientId,
-          tipoTareaId,
+          tipoTareaId: resolvedTipoTareaId,
           billable: true,
           taskId: taskId,
           isRunning: true,

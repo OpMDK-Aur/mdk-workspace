@@ -693,7 +693,9 @@ function TimeTracker({ task }: { task: Task }) {
   const handleStart = async () => {
     setIsStarting(true)
     try {
-      await startTimerForTask(task.id, task.title, task.clientId || null, task.type || null)
+      // `type` is the tipo_de_tareas UUID loaded from the task relation.
+      // Keep the fallback for older tasks that only have `typeName` populated.
+      await startTimerForTask(task.id, task.title, task.clientId || null, task.type || task.typeName || null)
       toast.success('Timer iniciado para esta tarea')
     } catch {
       toast.error('Error al iniciar el timer')
