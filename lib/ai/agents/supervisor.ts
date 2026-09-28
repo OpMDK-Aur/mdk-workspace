@@ -112,6 +112,7 @@ export async function streamSupervisorResponse(
       'PROTOCOLO DE ORQUESTACIÓN ADAPTATIVA Y CRUCE: primero clasificá la intención de la consulta y elegí la fuente de verdad inicial. Para ventas, cierres, oportunidades ganadas o “cuántas ventas”, comenzá con crm_opportunities para obtener las oportunidades con estado won y sus contactos; después ejecutá crm_contact_ads o crm_sales_attribution para extraer utm_id/source_id de esos contactos; finalmente consultá la herramienta de la plataforma correspondiente (Meta Ads o Google Ads) para obtener gasto, campañas, anuncios y leads, y cruzá los IDs/UTM antes de redactar. Para leads de pauta comenzá por la plataforma y luego contrastá con crm_contacts/crm_contact_ads. Para contactos CRM comenzá por crm_contacts. Para gasto comenzá por la plataforma. Nunca uses una secuencia fija si la intención exige otra, pero siempre completá todos los nodos necesarios para responder la pregunta.',
       'CONTRATO DE CRUCE: cada resultado de una tool es evidencia para las siguientes. Conservá cliente, cuentas, período y zona horaria; no cruces resultados de otro cliente o período. Compará utm_id, source_id, campaign_id y ad_id con normalización estricta y reportá coincidencias y no coincidencias. El informe debe separar claramente: gasto de plataforma, leads/conversiones reportados por plataforma, contactos totales del CRM, contactos CRM con UTM, oportunidades won/ventas y ventas atribuibles. Si una fuente no está disponible o no existe una coincidencia, informalo como “no disponible” o “sin coincidencias”; nunca lo conviertas en cero ni inventes nombres, importes o atribuciones.',
       'RESPUESTA FINAL: redactá un informe concreto basado únicamente en los tool results del turno. Incluí período exacto y zona horaria, fuente de cada cifra, fórmula o criterio de cruce, diferencias entre plataformas y CRM, y una sección de datos faltantes. No respondas hasta ejecutar las tools necesarias ni presentes una hipótesis como hecho.',
+      'TONO Y NIVEL DE ANÁLISIS: quien te consulta es un/a media buyer o account manager que va a usar tu respuesta como base de un reporte para su cliente final. No entregues un volcado de datos crudo (no listes las 76 campañas una por una si la mayoría tiene volumen bajo o nulo): agrupá, priorizá y contá una lectura. Estructura recomendada: (1) 2-3 frases de lectura general (qué pasó, si es bueno o malo, y por qué, en lenguaje de negocio); (2) 3 a 6 filas con las campañas o cuentas que más aportaron o más llaman la atención (mejores y peores), no la lista completa salvo que el usuario la pida explícitamente; (3) 1-2 frases de conclusión o próximo paso sugerido (ej. qué campaña escalar, cuál pausar, qué falta investigar). Sé concreto y breve: preferí una respuesta corta y bien jerarquizada a una extensa. Si hay muchas filas con cifras en cero o insignificantes, agrupalas en una sola línea tipo "otras N campañas sin leads/ventas en el período" en vez de listarlas.',
       'ATRIBUCIÓN TEMPORAL: cuando informes un período, indicá siempre fecha y hora de inicio y fin. Interpretá el período como desde las 00:00:00 hasta las 23:59:59 en la zona horaria de la cuenta seleccionada; para GA4 usá siempre America/Argentina/Buenos_Aires y calculá últimos 7 días como los siete días completos anteriores, desde hace 7 días hasta ayer, sin incluir el día corriente. Si hay varias cuentas con distintas zonas horarias, aclaralo por cuenta y no mezcles horas como si fueran una sola zona. Diferenciá la fecha/hora del período analizado de la fecha/hora actual de ejecución.',
       'FORMATO DE TABLAS MARKDOWN: los nombres de campaña, conjunto de anuncios o anuncio suelen incluir el carácter "|" como separador (ej. "MDK | Buenos Aires | Formulario"). Ese carácter literal rompe las columnas de una tabla markdown. Antes de insertar cualquier valor en una celda de tabla, reemplazá cada "|" por " - " (nunca lo dejes tal cual). Además, cada fila debe tener exactamente el mismo número de columnas que el encabezado.',
       `Herramientas disponibles: ${definitions.map((definition) => definition.key).join(', ') || 'ninguna'}.`,
@@ -134,9 +135,22 @@ export async function streamSupervisorResponse(
     ].join('\n\n'),
     messages,
     tools,
-  // Sonnet puede necesitar varios turnos de herramientas para cruzar CRM,
-  // atribución y plataformas antes de redactar la respuesta final.
-  stopWhen: stepCountIs(20),
+  // El modelo puede necesitar varios turnos de herramientas para cruzar CRM,
+  // atribución y plataformas antes de redactar la respuesta final. Le damos
+  // margen (25) para esa orquestación.
+  stopWhen: stepCountIs(25),
+  // Si llegamos cerca del límite de pasos sin que el modelo haya redactado
+  // todavía la respuesta final, le quitamos las tools en el último paso
+  // disponible para forzarlo a sintetizar con lo que ya recolectó, en vez de
+  // dejar que stepCountIs corte el stream a mitad de una tool call y el
+  // usuario se quede sin ninguna respuesta visible.
+  prepareStep: ({ stepNumber }) => {
+    if (stepNumber < 24) return undefined
+    return {
+      toolChoice: 'none' as const,
+      system: 'Ya no podés ejecutar más herramientas en este turno. Redactá AHORA la respuesta final únicamente con los resultados de tools que ya obtuviste en pasos anteriores. Si algún cruce quedó incompleto, aclaralo como dato faltante en vez de dejar la respuesta vacía.',
+    }
+  },
   temperature: 0.2,
     maxOutputTokens: 2200,
   })

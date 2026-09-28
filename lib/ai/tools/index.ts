@@ -1001,51 +1001,44 @@ const crmSalesAttribution: ToolDefinition = {
     }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'running', label: 'Analizando ventas y atribución del CRM...' })
     try {
-      const opportunities = await batch('opportunities', 'id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency', query => query.in('client_id', crmAccountIds).gte('created_at', start).lte('created_at', end), 5000)
+      // La herramienta solo necesita ventas ganadas. Filtrar en el CRM evita
+      // traer y enriquecer cientos/miles de oportunidades abiertas o perdidas
+      // que no pueden aparecer en el resultado y eran la causa principal de
+      // los timeouts del multiagente.
+      const opportunities = await batch('opportunities', 'id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency', query => query.in('client_id', crmAccountIds).in('status', ['won', 'ganado']).gte('created_at', start).lte('created_at', end), 5000)
       const contactIds = [...new Set(opportunities.map(row => row.contact_id).filter(Boolean))]
       const pipelineIds = [...new Set(opportunities.map(row => row.pipeline_id).filter(Boolean))]
       // Las conversaciones no son necesarias para determinar una venta WON ni
       // para atribuirla por UTM. No hacemos esta consulta porque una falla del
       // endpoint conversations no debe invalidar todas las ventas.
-      const [contacts, messages, stages] = await Promise.all([
-        // Los datos de contacto son enriquecimiento opcional: si el endpoint
-        // contacts falla, la atribución todavía puede resolverse con mensajes,
-        // oportunidades y sus referencias UTM.
-        contactIds.length ? batch('contacts', '*', query => query.in('client_id', crmAccountIds).in('id', contactIds)).catch(() => []) : Promise.resolve([]),
-        contactIds.length ? (async () => {
-          // El mensaje que trae el referral de campaña (el primer clic al
-          // anuncio) casi siempre ocurre mucho ANTES de que la oportunidad se
-          // gane, no dentro del período de la venta. Por eso NO filtramos
-          // estos mensajes por fecha: se busca en todo el historial del
-          // contacto, igual que crm_contact_ads.
-          // El CRM externo puede tardar (o directamente "statement timeout")
-          // un IN(contact_id) grande sin acotar por fecha. Se consulta en
-          // lotes chicos de contactos en paralelo controlado: un timeout en
-          // un lote no debe descartar la atribución de los demás contactos.
-          const CONTACT_CHUNK = 15
-          const chunks: string[][] = []
-          for (let i = 0; i < contactIds.length; i += CONTACT_CHUNK) chunks.push(contactIds.slice(i, i + CONTACT_CHUNK))
-          const results: any[] = []
-          for (let i = 0; i < chunks.length; i += 4) {
-            const group = chunks.slice(i, i + 4)
-            const settled = await Promise.all(group.map(chunk =>
-              batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', chunk).eq('direction', 'inbound')).catch(() => [] as any[])
-            ))
-            for (const rows of settled) results.push(...rows)
-          }
-          return results
-        })().catch(async () => {
-          // Fallback para CRMs que no exponen metadata en el endpoint de
-          // mensajes: seguimos devolviendo ventas y contactos, sin romper
-          // toda la herramienta por un Bad Request de enriquecimiento.
-          try {
-            return await batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at', query => query.in('client_id', crmAccountIds).in('contact_id', contactIds).eq('direction', 'inbound'))
-          } catch {
-            return []
-          }
-        }) : Promise.resolve([]),
-        pipelineIds.length ? batch('pipeline_stages', 'id,client_id,pipeline_id,name,description', query => query.in('client_id', crmAccountIds).in('pipeline_id', pipelineIds)) : Promise.resolve([]),
-      ])
+      // Primero consultamos contactos: normalmente ya contienen el referral
+      // y así evitamos recorrer todo el historial de mensajes del CRM.
+      // Los mensajes se consultan únicamente para contactos sin atribución.
+      const contacts: any[] = []
+      for (let i = 0; i < contactIds.length; i += 25) {
+        const chunk = contactIds.slice(i, i + 25)
+        context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'running', label: `Consultando contactos CRM (${Math.min(i + chunk.length, contactIds.length)}/${contactIds.length})...` })
+        const rows = await batch('contacts', 'id,client_id,name,email,phone,metadata,custom_fields,source,utm_source,utm_medium,utm_campaign,utm_content,utm_term', query => query.in('client_id', crmAccountIds).in('id', chunk), 100).catch(() => [])
+        contacts.push(...rows)
+      }
+      const contactReferralIds = new Set(contacts.filter((contact) => extractCampaignName(contact) || extractUtmId(contact)).map((contact) => contact.id))
+      const missingReferralIds = contactIds.filter((id) => !contactReferralIds.has(id))
+      const messages: any[] = []
+      if (missingReferralIds.length) {
+        const CONTACT_CHUNK = 15
+        for (let i = 0; i < missingReferralIds.length; i += CONTACT_CHUNK * 4) {
+          const group = []
+          for (let j = i; j < Math.min(i + CONTACT_CHUNK * 4, missingReferralIds.length); j += CONTACT_CHUNK) group.push(missingReferralIds.slice(j, j + CONTACT_CHUNK))
+          context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'running', label: `Buscando atribución en mensajes (${Math.min(i + group.flat().length, missingReferralIds.length)}/${missingReferralIds.length})...` })
+          const settled = await Promise.all(group.map(chunk =>
+            batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', chunk).eq('direction', 'inbound'), 100).catch(() => [] as any[])
+          ))
+          for (const rows of settled) messages.push(...rows)
+        }
+      }
+      const stages = pipelineIds.length
+        ? await batch('pipeline_stages', 'id,client_id,pipeline_id,name,description', query => query.in('client_id', crmAccountIds).in('pipeline_id', pipelineIds))
+        : []
       const contactsById = new Map(contacts.map((row: any) => [row.id, row]))
       const stagesById = new Map(stages.map((row: any) => [row.id, row]))
       const referralsByContact = new Map<string, any>()
