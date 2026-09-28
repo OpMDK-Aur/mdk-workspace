@@ -44,7 +44,7 @@ interface TimerState {
   loadEntries: () => Promise<void>
 
   // Task-specific actions
-  startTimerForTask: (taskId: string, taskTitle: string, clientId: string | null) => Promise<void>
+  startTimerForTask: (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null) => Promise<void>
 
   // Computed
   getElapsedSeconds: () => number
@@ -227,7 +227,7 @@ export const useTimerStore = create<TimerState>()(
         await get().startTimer()
       },
 
-      startTimerForTask: async (taskId: string, taskTitle: string, clientId: string | null) => {
+      startTimerForTask: async (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null) => {
         const state = get()
         if (state.isRunning && state.currentEntryId) {
           await get().stopTimer()
@@ -247,7 +247,7 @@ export const useTimerStore = create<TimerState>()(
           .insert({
             colaborador_id: colaborador?.id ?? null,
             cliente_id: clientId,
-            tipo_tarea_id: null,
+            tipo_tarea_id: tipoTareaId,
             descripcion,
             iniciado_en: startedAt,
             finalizado_en: null,
@@ -265,7 +265,7 @@ export const useTimerStore = create<TimerState>()(
         set({
           description: descripcion,
           clientId: clientId,
-          tipoTareaId: null,
+          tipoTareaId,
           billable: true,
           taskId: taskId,
           isRunning: true,

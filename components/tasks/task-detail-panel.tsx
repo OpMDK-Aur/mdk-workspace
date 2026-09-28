@@ -693,7 +693,7 @@ function TimeTracker({ task }: { task: Task }) {
   const handleStart = async () => {
     setIsStarting(true)
     try {
-      await startTimerForTask(task.id, task.title, task.clientId || null)
+      await startTimerForTask(task.id, task.title, task.clientId || null, task.type || null)
       toast.success('Timer iniciado para esta tarea')
     } catch {
       toast.error('Error al iniciar el timer')
