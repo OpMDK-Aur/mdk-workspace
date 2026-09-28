@@ -1001,7 +1001,11 @@ const crmSalesAttribution: ToolDefinition = {
     }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'running', label: 'Analizando ventas y atribución del CRM...' })
     try {
-      const opportunities = await batch('opportunities', 'id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency', query => query.in('client_id', crmAccountIds).gte('created_at', start).lte('created_at', end), 5000)
+      // La herramienta solo necesita ventas ganadas. Filtrar en el CRM evita
+      // traer y enriquecer cientos/miles de oportunidades abiertas o perdidas
+      // que no pueden aparecer en el resultado y eran la causa principal de
+      // los timeouts del multiagente.
+      const opportunities = await batch('opportunities', 'id,created_at,client_id,contact_id,pipeline_id,stage_id,assigned_user,status,conversation_id,assigned_team_id,assigned_type,amount,currency', query => query.in('client_id', crmAccountIds).in('status', ['won', 'ganado']).gte('created_at', start).lte('created_at', end), 5000)
       const contactIds = [...new Set(opportunities.map(row => row.contact_id).filter(Boolean))]
       const pipelineIds = [...new Set(opportunities.map(row => row.pipeline_id).filter(Boolean))]
       // Las conversaciones no son necesarias para determinar una venta WON ni
@@ -1011,7 +1015,15 @@ const crmSalesAttribution: ToolDefinition = {
         // Los datos de contacto son enriquecimiento opcional: si el endpoint
         // contacts falla, la atribución todavía puede resolverse con mensajes,
         // oportunidades y sus referencias UTM.
-        contactIds.length ? batch('contacts', '*', query => query.in('client_id', crmAccountIds).in('id', contactIds)).catch(() => []) : Promise.resolve([]),
+        contactIds.length ? (async () => {
+          const results: any[] = []
+          for (let i = 0; i < contactIds.length; i += 25) {
+            const chunk = contactIds.slice(i, i + 25)
+            const rows = await batch('contacts', '*', query => query.in('client_id', crmAccountIds).in('id', chunk)).catch(() => [])
+            results.push(...rows)
+          }
+          return results
+        })() : Promise.resolve([]),
         contactIds.length ? (async () => {
           // El mensaje que trae el referral de campaña (el primer clic al
           // anuncio) casi siempre ocurre mucho ANTES de que la oportunidad se
