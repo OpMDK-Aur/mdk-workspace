@@ -34,7 +34,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
-import { Play, DollarSign, Clock, Loader2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Users, Pencil } from 'lucide-react'
+import { Play, DollarSign, Clock, Loader2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Users, Pencil, Download } from 'lucide-react'
 import { toast } from 'sonner'
 
 // Generate a color from client id for visual distinction
@@ -375,6 +375,35 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
     return date.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
   }
 
+  const exportEntries = () => {
+    const escapeCsv = (value: unknown) => {
+      const text = value == null ? '' : String(value)
+      return `"${text.replace(/"/g, '""')}"`
+    }
+    const rows = entries.map((entry) => [
+      entry.iniciado_en ? new Date(entry.iniciado_en).toLocaleDateString('es-AR') : '',
+      entry.iniciado_en ? new Date(entry.iniciado_en).toLocaleTimeString('es-AR') : '',
+      entry.finalizado_en ? new Date(entry.finalizado_en).toLocaleTimeString('es-AR') : 'En progreso',
+      formatDurationPrecise(entry.duracion_seg, entry.iniciado_en, entry.finalizado_en),
+      entry.descripcion,
+      getCliente(entry.cliente_id)?.nombre_del_negocio ?? 'Sin cliente',
+      getTipoTarea(entry.tipo_tarea_id)?.nombre ?? 'Sin tipo de tarea',
+      entry.colaborador_id ?? '',
+    ])
+    const csv = [
+      ['Fecha', 'Inicio', 'Fin', 'Duración', 'Descripción', 'Cliente', 'Tipo de tarea', 'Colaborador ID'],
+      ...rows,
+    ].map((row) => row.map(escapeCsv).join(';')).join('\r\n')
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `entradas-de-tiempo-${isMaster ? (dateRange === 'month' ? selectedMonth : 'rango-personalizado') : new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    toast.success(`${entries.length} entrada${entries.length === 1 ? '' : 's'} exportada${entries.length === 1 ? '' : 's'}`)
+  }
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 px-4">
@@ -386,6 +415,20 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={exportEntries}
+          disabled={entries.length === 0}
+        >
+          <Download className="h-4 w-4" aria-hidden="true" />
+          Exportar CSV
+        </Button>
+      </div>
+
       {/* Admin Filters */}
       {isMaster && (
         <div className="space-y-3 p-4 bg-card border border-border rounded-lg">
