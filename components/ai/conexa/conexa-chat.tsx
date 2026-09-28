@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
-import { ChevronRight, Loader2, Send } from 'lucide-react'
+import { Check, ChevronRight, Loader2, MoreHorizontal, Send } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MessageContent } from '@/components/chat/message-content'
 import type { ActivityEvent } from '@/lib/ai/types'
@@ -198,6 +198,7 @@ function ConexaChatSession({
 }) {
   const [input, setInput] = useState('')
   const [currentActivity, setCurrentActivity] = useState<ActivityEvent | null>(null)
+  const [activitySteps, setActivitySteps] = useState<ActivityEvent[]>([])
   const [requestError, setRequestError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -228,7 +229,25 @@ function ConexaChatSession({
       body: { context: buildContext() },
     }),
     onData: (dataPart) => {
-      if (dataPart.type === 'data-activity') setCurrentActivity(dataPart.data as ActivityEvent)
+      if (dataPart.type !== 'data-activity') return
+      const event = dataPart.data as ActivityEvent
+      setCurrentActivity(event)
+      setActivitySteps((previous) => {
+        const stepKey = `${event.agentSlug ?? 'supervisor'}:${event.toolKey ?? event.eventId}`
+        const lastIndex = previous.length - 1
+        // Si el último paso registrado corresponde a la misma acción y todavía
+        // está en curso, lo actualizamos (running -> completed/error) en vez
+        // de agregar una fila nueva.
+        if (lastIndex >= 0 && previous[lastIndex].status === 'running') {
+          const lastKey = `${previous[lastIndex].agentSlug ?? 'supervisor'}:${previous[lastIndex].toolKey ?? previous[lastIndex].eventId}`
+          if (lastKey === stepKey) {
+            const next = [...previous]
+            next[lastIndex] = event
+            return next
+          }
+        }
+        return [...previous, event]
+      })
     },
   onError: (streamError) => {
   const rawMessage = streamError instanceof Error ? streamError.message : ''
@@ -274,8 +293,9 @@ function ConexaChatSession({
     if (!text || isBusy || !clientId) return
   setInput('')
   setRequestError(null)
-  if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
     setCurrentActivity(null)
+    setActivitySteps([])
     await sendMessage({ text }, { body: { context: buildContext() } })
   }
 
@@ -366,13 +386,34 @@ function ConexaChatSession({
             ))
           )}
           {isBusy && !isStreamingAssistantMessage && (
-            <div className="flex items-center gap-2 self-start rounded-lg border border-[#E6E6E1] bg-white px-3 py-2 text-sm text-[#9a9a9a]">
-              <span className="flex gap-1" aria-hidden="true">
-                <span className="size-1.5 animate-bounce rounded-full bg-[#5B5FE8] [animation-delay:-0.3s]" />
-                <span className="size-1.5 animate-bounce rounded-full bg-[#5B5FE8] [animation-delay:-0.15s]" />
-                <span className="size-1.5 animate-bounce rounded-full bg-[#5B5FE8]" />
-              </span>
-              {currentActivity?.label ?? 'Pensando…'}
+            <div className="flex max-w-[80%] flex-col gap-1.5 self-start rounded-lg border border-[#E6E6E1] bg-white px-3 py-2 text-sm">
+              {activitySteps.length === 0 ? (
+                <span className="flex items-center gap-2 text-[#9a9a9a]">
+                  <MoreHorizontal className="size-4 animate-pulse text-[#9a9a9a]" aria-hidden="true" />
+                  Pensando…
+                </span>
+              ) : (
+                activitySteps.map((step, index) => {
+                  const isRunning = step.status === 'running'
+                  const isError = step.status === 'error'
+                  return (
+                    <span
+                      key={`${step.eventId}-${index}`}
+                      className={cn(
+                        'flex items-center gap-2',
+                        isRunning ? 'text-[#141414]' : isError ? 'text-red-600' : 'text-[#9a9a9a]',
+                      )}
+                    >
+                      {isRunning ? (
+                        <MoreHorizontal className="size-4 shrink-0 animate-pulse text-[#5B5FE8]" aria-hidden="true" />
+                      ) : (
+                        <Check className={cn('size-4 shrink-0', isError ? 'text-red-600' : 'text-[#5B5FE8]')} aria-hidden="true" />
+                      )}
+                      {step.label}
+                    </span>
+                  )
+                })
+              )}
             </div>
           )}
         </div>
