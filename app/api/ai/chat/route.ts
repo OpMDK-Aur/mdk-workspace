@@ -442,7 +442,7 @@ export async function POST(request: Request) {
         // usuario: emitimos una respuesta explícita con el dato faltante y el
         // próximo paso, en vez de dejar el chat bloqueado visualmente.
         if (!finalText.trim()) {
-          const fallback = 'Pude cargar el contexto de las cuentas publicitarias, pero el supervisor no devolvió una síntesis final. No voy a presentar esos datos como un análisis validado. Reintentá la consulta; si vuelve a ocurrir, revisaré la conexión y los permisos de Meta Ads/Google Ads antes de cruzar la información con el CRM.'
+          const fallback = 'Pude cargar el contexto disponible, pero el supervisor no devolvió una síntesis final. No voy a presentar ese contexto como un análisis validado ni asumir que existe un problema de permisos o vinculación. Falta ejecutar y validar la fuente de datos solicitada antes de cruzarla con el CRM. Reintentá la consulta para continuar con esa validación.'
           writer.write({ type: 'text-start', id: 'supervisor-fallback' })
           writer.write({ type: 'text-delta', id: 'supervisor-fallback', delta: fallback })
           writer.write({ type: 'text-end', id: 'supervisor-fallback' })
