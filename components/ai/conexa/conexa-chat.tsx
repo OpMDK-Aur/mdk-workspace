@@ -270,7 +270,14 @@ function ConexaChatSession({
 
   const isBusy = status === 'submitted' || status === 'streaming'
   const lastMessage = messages.at(-1)
-  const isStreamingAssistantMessage = isBusy && lastMessage?.role === 'assistant'
+  const lastAssistantText = lastMessage?.role === 'assistant' ? messageText(lastMessage) : ''
+  // AI SDK puede crear el mensaje assistant antes de recibir su primer token.
+  // En ese instante no hay que ocultar el panel de actividad: hacerlo dejaba
+  // una burbuja vacía, exactamente el estado que se veía cuando el stream
+  // tardaba entre llamadas de tools.
+  const isStreamingAssistantMessage = isBusy && lastMessage?.role === 'assistant' && lastAssistantText.length > 0
+  const isWaitingForAssistantContent = isBusy && lastMessage?.role === 'assistant' && lastAssistantText.length === 0
+  const showActivityPanel = isBusy && (!isStreamingAssistantMessage || isWaitingForAssistantContent)
 
   useEffect(() => {
     const container = scrollRef.current
@@ -466,7 +473,7 @@ function ConexaChatSession({
               />
             ))
           )}
-          {isBusy && !isStreamingAssistantMessage && (
+          {showActivityPanel && (
             <div className="flex max-w-[80%] flex-col gap-1.5 self-start rounded-lg border border-[#E6E6E1] bg-white px-3 py-2 text-sm">
               {activitySteps.length === 0 ? (
                 <span className="flex items-center gap-2 text-[#9a9a9a]">
