@@ -145,7 +145,18 @@ export async function streamSupervisorResponse(
   // Si llegamos cerca del límite de pasos sin que el modelo haya redactado
   // todavía la respuesta final, le quitamos las tools en el último paso
   // disponible para forzarlo a sintetizar con lo que ya recolectó.
-  prepareStep: ({ stepNumber }) => {
+  prepareStep: ({ stepNumber, steps }) => {
+    // o4-mini a veces da por terminado el turno justo después de recibir
+    // get_account_context: devuelve finishReason=stop pero sin texto ni otra
+    // tool call. En una consulta de CRM/pauta eso es una respuesta inválida.
+    // Obligamos un paso adicional de herramientas para que consulte métricas,
+    // atribución o CRM antes de sintetizar.
+    if (stepNumber === 1 && steps.some((step) => step.toolCalls?.some((call) => call.toolName === 'get_account_context'))) {
+      return {
+        toolChoice: 'required' as const,
+        system: 'Continuá el análisis: ya cargaste las cuentas, pero todavía no respondiste. Ejecutá ahora la herramienta de datos que corresponda a la pregunta (CRM, atribución, Meta Ads o Google Ads). No redactes una respuesta final todavía.',
+      }
+    }
     if (stepNumber < 14) return undefined
     return {
       toolChoice: 'none' as const,
