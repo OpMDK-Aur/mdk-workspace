@@ -151,19 +151,29 @@ export async function streamSupervisorResponse(
     // tool call. En una consulta de CRM/pauta eso es una respuesta inválida.
     // Obligamos un paso adicional de herramientas para que consulte métricas,
     // atribución o CRM antes de sintetizar.
-    if (stepNumber === 1 && steps.some((step) => step.toolCalls?.some((call) => call.toolName === 'get_account_context'))) {
+    const loadedAccountContext = steps.some((step) => step.toolCalls?.some((call) => call.toolName === 'get_account_context'))
+    if (stepNumber === 1 && loadedAccountContext) {
       return {
         toolChoice: 'required' as const,
-        system: 'Continuá el análisis: ya cargaste las cuentas, pero todavía no respondiste. Ejecutá ahora la herramienta de datos que corresponda a la pregunta (CRM, atribución, Meta Ads o Google Ads). No redactes una respuesta final todavía.',
+        system: 'Ya cargaste las cuentas. Ejecutá UNA SOLA herramienta de datos directamente relacionada con la pregunta (CRM, atribución, Meta Ads o Google Ads). No ejecutes get_account_context otra vez ni encadenes otra tool después.',
+      }
+    }
+    // Después de una única consulta de datos, el siguiente paso siempre es
+    // síntesis. Esto evita que o4-mini consuma todos los tokens encadenando
+    // herramientas y termine con finishReason=length sin texto.
+    if (stepNumber >= 2 && loadedAccountContext) {
+      return {
+        toolChoice: 'none' as const,
+        system: 'No ejecutes más herramientas. Redactá AHORA la respuesta final con lo obtenido. Cruzá CRM y pauta si existe evidencia; si falta una fuente, declaralo y agregá recomendaciones accionables.',
       }
     }
     if (stepNumber < 14) return undefined
     return {
       toolChoice: 'none' as const,
-      system: 'Ya no podés ejecutar más herramientas en este turno. Redactá AHORA la respuesta final únicamente con los resultados de tools que ya obtuviste en pasos anteriores. Si algún cruce quedó incompleto, aclaralo como dato faltante en vez de dejar la respuesta vacía.',
+      system: 'Redactá AHORA la respuesta final únicamente con los resultados obtenidos. Si algún cruce quedó incompleto, aclaralo como dato faltante y agregá recomendaciones.',
     }
   },
   temperature: 0.2,
-    maxOutputTokens: 2200,
+    maxOutputTokens: 4000,
   })
 }
