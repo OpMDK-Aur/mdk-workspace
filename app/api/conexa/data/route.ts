@@ -78,31 +78,18 @@ export async function POST(request: Request) {
     getCrmAcquisitionReport(body.clientId, range.dateFrom, range.dateTo, body.crmFilters).catch((error) => ({ available: false, message: error instanceof Error ? error.message : 'No se pudo consultar la adquisición del CRM.' })),
   ])
   const number = (value: unknown) => typeof value === 'number' ? value : Number(value) || 0
-  const total = (source: unknown, keys: string[]) => {
-    if (!source || typeof source !== 'object') return 0
+  // Meta/Google Ads devuelven sus totales reales dentro de `accounts[].totals`
+  // por cuenta, no en la raíz de la respuesta de la tool. `collectTotals`
+  // junta cada objeto `totals` disponible (el de la raíz si existe, o el de
+  // cada cuenta) para poder sumarlos sin recorrer todo el árbol a ciegas.
+  const collectTotals = (source: unknown): Array<Record<string, unknown>> => {
+    if (!source || typeof source !== 'object') return []
     const root = source as Record<string, unknown>
-    const totals = root.totals
-    if (totals && typeof totals === 'object') {
-      return keys.reduce((sum, key) => sum + number((totals as Record<string, unknown>)[key]), 0)
-    }
-    let result = 0
-    const visit = (value: unknown, isRoot = false) => {
-      if (Array.isArray(value)) {
-        // Meta/Google Ads devuelven sus totales reales dentro de
-        // `accounts[].totals`, no en la raíz. Sin recorrer arrays acá,
-        // impressions/clicks siempre quedaban en 0 aunque hubiera datos.
-        for (const item of value) visit(item)
-        return
-      }
-      if (!value || typeof value !== 'object') return
-      for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-        if (keys.includes(key) && isRoot) result += number(child)
-        if (child && typeof child === 'object') visit(child)
-      }
-    }
-    visit(source, true)
-    return result
+    if (root.totals && typeof root.totals === 'object') return [root.totals as Record<string, unknown>]
+    if (Array.isArray(root.accounts)) return root.accounts.flatMap((account) => collectTotals(account))
+    return []
   }
+  const total = (source: unknown, keys: string[]) => collectTotals(source).reduce((sum, totals) => sum + keys.reduce((s, key) => s + number(totals[key]), 0), 0)
   const crmTotals = (source: unknown, key: string) => {
     if (!source || typeof source !== 'object') return 0
     const totals = (source as { totals?: Record<string, unknown> }).totals
