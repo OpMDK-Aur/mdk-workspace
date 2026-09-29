@@ -189,6 +189,8 @@ export type AnalysisRunState = {
   clientMemory?: ClientMemory
   industryBenchmark?: IndustryBenchmark
   comparisonDefinition?: ComparisonDefinition
+  /** Resultado efímero del contexto de cuentas para no consultar Supabase dos veces en el mismo turno. */
+  accountContext?: unknown
 }
 
 export function upsertChangeHistory(state: AnalysisRunState, events: PaidMediaChangeEvent[]) {

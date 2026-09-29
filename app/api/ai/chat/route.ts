@@ -431,6 +431,23 @@ export async function POST(request: Request) {
           }),
         })
         await writer.merge(result.toUIMessageStream())
+        const finalText = await result.text
+        console.log('[v0] Supervisor stream completed', {
+          textLength: finalText.length,
+          finishReason: await result.finishReason,
+          steps: (await result.steps).length,
+        })
+        // Un proveedor puede cerrar después de una tool call sin emitir texto
+        // final. Nunca permitimos que ese caso llegue como una burbuja vacía al
+        // usuario: emitimos una respuesta explícita con el dato faltante y el
+        // próximo paso, en vez de dejar el chat bloqueado visualmente.
+        if (!finalText.trim()) {
+          const fallback = 'Pude cargar el contexto disponible, pero el supervisor no devolvió una síntesis final. No voy a presentar ese contexto como un análisis validado ni asumir que existe un problema de permisos o vinculación. Falta ejecutar y validar la fuente de datos solicitada antes de cruzarla con el CRM. Reintentá la consulta para continuar con esa validación.'
+          writer.write({ type: 'text-start', id: 'supervisor-fallback' })
+          writer.write({ type: 'text-delta', id: 'supervisor-fallback', delta: fallback })
+          writer.write({ type: 'text-end', id: 'supervisor-fallback' })
+          writeActivity?.({ eventId: crypto.randomUUID(), agentSlug: 'supervisor', status: 'error', label: 'El supervisor no generó una síntesis; se mostró una respuesta de respaldo.', timestamp: new Date().toISOString() })
+        }
       },
       onError: (error) => {
         const message = error instanceof Error ? error.message : 'No se pudo completar la respuesta del Supervisor.'

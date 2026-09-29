@@ -206,6 +206,11 @@ const getAccountContext: ToolDefinition = {
   async execute(_input, context: ExecutionContext) {
     const emit = context.emitActivity
     const clientLabel = context.metadata?.clientName
+    if (context.analysisRunState?.accountContext) {
+      console.log('[v0] get_account_context served from run cache')
+      emit?.({ agentSlug: 'supervisor', toolKey: 'get_account_context', status: 'completed', label: 'Contexto de cuentas ya cargado' })
+      return context.analysisRunState.accountContext
+    }
     emit?.({ agentSlug: 'supervisor', toolKey: 'get_account_context', status: 'running', label: `Cargando contexto${clientLabel ? ` de ${clientLabel}` : ''}...` })
     if (!context.clientId) {
       console.warn('[v0] get_account_context skipped: missing client_id')
@@ -315,7 +320,7 @@ const getAccountContext: ToolDefinition = {
     })
     emit?.({ agentSlug: 'supervisor', toolKey: 'get_account_context', status: 'completed', label: `${safeAccounts.length} cuenta${safeAccounts.length === 1 ? '' : 's'} publicitaria${safeAccounts.length === 1 ? '' : 's'} encontrada${safeAccounts.length === 1 ? '' : 's'}` })
 
-    return {
+    const result = {
       available: true,
       client_id: client.id,
       nombre_del_negocio: client.nombre_del_negocio,
@@ -329,6 +334,8 @@ const getAccountContext: ToolDefinition = {
       ...(google?.id_cuenta ? { google_ads_customer_id: google.id_cuenta } : {}),
       ...(meta?.id_cuenta ? { meta_ads_account_id: meta.id_cuenta } : {}),
     }
+    if (context.analysisRunState) context.analysisRunState.accountContext = result
+    return result
   },
 }
 

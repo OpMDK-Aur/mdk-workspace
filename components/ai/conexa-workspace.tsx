@@ -12,13 +12,14 @@ import type { TagManagerTagRow, TagManagerTriggerRow, TagManagerVariableRow, Tag
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { AnalyzeWithConexaButton } from '@/components/conexa/analyze-button'
 import type { CrmAcquisitionFilters, CrmAcquisitionReport, CrmBreakdownRow } from '@/lib/crm/service'
+import { buildReportHtml } from '@/lib/conexa/report-html'
 
 type ClientAccount = { id_cuenta: string | null; nombre_cuenta: string | null; plataforma: string | null; activo?: boolean | null }
 type Client = { id: string; nombre_del_negocio: string; meta_ads_account_id?: string | null; google_ads_customer_id?: string | null; meta_ads_account_ids?: string[] | null; google_ads_customer_ids?: string[] | null; analytics_property_id?: string | null; tag_manager_container_id?: string | null; crm_type?: string | null; cuentas_publicitarias?: ClientAccount[] | null }
 
 type Platform = { name: string; key: string; icon: typeof BarChart3; color: string; iconUrl: string | null; connected: boolean; detail: string }
 type ConexaData = { accounts: Record<string, unknown>[]; metrics: Record<string, unknown>[]; reports: Record<string, unknown>[]; approvals: Record<string, unknown>[]; profile: Record<string, unknown> | null; memory: Record<string, unknown>[]; platformMetrics: Record<string, { label: string; value: number }[]>; platformData: Record<string, unknown> }
-type GeneratedReport = { id: string; title: string; content: string; clientName: string; createdAt: string }
+type GeneratedReport = { id: string; title: string; content: string; html?: string | null; clientName: string; createdAt: string }
 const emptyConexaData: ConexaData = { accounts: [], metrics: [], reports: [], approvals: [], profile: null, memory: [], platformMetrics: {}, platformData: {} }
 const asNumber = (row: Record<string, unknown>, keys: string[]) => keys.reduce<number | null>((value, key) => value ?? (typeof row[key] === 'number' ? row[key] as number : Number(row[key]) || null), null) ?? 0
 const periodStart = (period: string) => { const days = period.includes('7') ? 7 : period.includes('90') ? 90 : 30; const date = new Date(); date.setDate(date.getDate() - days + 1); return date.toISOString().slice(0, 10) }
@@ -54,8 +55,21 @@ export function ConexaWorkspace() {
   const [clientLoadPending, setClientLoadPending] = useState(false)
   const [metricsLoading, setMetricsLoading] = useState(false)
   const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([])
+  const [reportsLoaded, setReportsLoaded] = useState(false)
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string[]>>({})
   const [crmFilters, setCrmFilters] = useState<CrmAcquisitionFilters>({})
+
+  // Los informes generados por el multiagente se guardan en Supabase (tabla
+  // conexa_reports) para que sigan apareciendo en "Informes" después de
+  // recargar la pantalla. Se cargan una sola vez, sin filtrar por cliente,
+  // para que la biblioteca funcione como historial general.
+  useEffect(() => {
+    fetch('/api/conexa/reports')
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error('No se pudieron cargar los informes'))))
+      .then((result) => { if (Array.isArray(result.reports)) setGeneratedReports(result.reports) })
+      .catch(() => {})
+      .finally(() => setReportsLoaded(true))
+  }, [])
 
   useEffect(() => {
     const supabase = createClient()
@@ -147,7 +161,7 @@ export function ConexaWorkspace() {
       <main className="relative min-h-0 flex-1 overflow-hidden bg-white">
         {isLoading && <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/90 backdrop-blur-[2px]"><div className="flex w-[min(92%,360px)] flex-col items-center rounded-2xl border border-[#e6e6e3] bg-white px-8 py-7 text-center shadow-lg" role="status" aria-live="polite"><div className="mb-4 flex size-11 items-center justify-center rounded-full bg-[#eeefff]"><LoaderCircle className="size-5 animate-spin text-[#5b5fe8]" /></div><p className="text-sm font-semibold text-[#202020]">Procesando métricas</p><p className="mt-1 text-xs leading-5 text-[#888]">Estamos consultando y preparando los datos de tus plataformas.</p><div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-[#eeefff]"><div className="h-full w-2/5 animate-pulse rounded-full bg-[#5b5fe8]" /></div></div></div>}
         {activePlatformKey && <div className="absolute right-4 top-14 z-30 flex items-center gap-2"><span className="text-[10px] font-semibold uppercase tracking-[.08em] text-[#999]">Período</span><PeriodSelector period={activePeriod} customRange={activeCustomRange} onChange={(nextPeriod, range) => { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) }} />{metricsLoading && <LoaderCircle className="size-3.5 animate-spin text-[#5b5fe8]" aria-label="Actualizando métricas" />}</div>}
-        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => { setActive('Chat / Análisis'); setSidebarOpen(false) }} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} crmAcquisition={(data.platformData.crm as { acquisition?: CrmAcquisitionReport } | undefined)?.acquisition} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} onReportCreated={(report) => setGeneratedReports((current) => [report, ...current])} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} onNavigate={(destination) => { setActive(destination); setSidebarOpen(false) }} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} crmFilters={crmFilters} onCrmFiltersChange={setCrmFilters} period={activePeriod} customRange={activeCustomRange} onPeriodChange={(nextPeriod, range) => { if (activePlatformKey) { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) } }} />}
+        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => { setActive('Chat / Análisis'); setSidebarOpen(false) }} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} crmAcquisition={(data.platformData.crm as { acquisition?: CrmAcquisitionReport } | undefined)?.acquisition} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} onReportCreated={(report, replaceId) => setGeneratedReports((current) => replaceId ? current.map((item) => (item.id === replaceId ? report : item)) : [report, ...current])} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} onNavigate={(destination) => { setActive(destination); setSidebarOpen(false) }} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} crmFilters={crmFilters} onCrmFiltersChange={setCrmFilters} period={activePeriod} customRange={activeCustomRange} onPeriodChange={(nextPeriod, range) => { if (activePlatformKey) { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) } }} />}
       </main>
     </section>
   </div>
@@ -156,8 +170,18 @@ export function ConexaWorkspace() {
 function ReportsView({ client, reports }: { client: Client | null; reports: Array<Record<string, unknown> | GeneratedReport> }) {
   const [openReport, setOpenReport] = useState<GeneratedReport | null>(null)
   const generated = reports.filter((report): report is GeneratedReport => typeof report.content === 'string')
-  const downloadHtml = (report: GeneratedReport) => { const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${report.title}</title><style>body{font-family:Arial,sans-serif;max-width:900px;margin:40px auto;line-height:1.6;color:#171717}h1{color:#5b5fe8}pre{white-space:pre-wrap;font:inherit}</style></head><body><h1>${report.title}</h1><p>${report.clientName} · ${new Date(report.createdAt).toLocaleString('es-AR')}</p><pre>${report.content}</pre></body></html>`; const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' })); const link = document.createElement('a'); link.href = url; link.download = `${report.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.html`; link.click(); URL.revokeObjectURL(url) }
-  const downloadPdf = (report: GeneratedReport) => { const popup = window.open('', '_blank', 'noopener,noreferrer'); if (!popup) return; popup.document.write(`<html><head><title>${report.title}</title><style>body{font-family:Arial,sans-serif;max-width:900px;margin:40px auto;line-height:1.6}pre{white-space:pre-wrap;font:inherit}</style></head><body><h1>${report.title}</h1><p>${report.clientName}</p><pre>${report.content.replace(/</g, '&lt;')}</pre><script>window.onload=()=>window.print()</script></body></html>`); popup.document.close() }
+  // Los informes traen un snapshot en HTML con el diseño real (tarjetas de
+  // CRM, barras, resumen renderizado) generado al momento de crearse. Si un
+  // informe viejo no tiene ese snapshot, se genera al vuelo como respaldo.
+  const reportHtml = (report: GeneratedReport) => report.html || buildReportHtml(report)
+  const downloadHtml = (report: GeneratedReport) => { const url = URL.createObjectURL(new Blob([reportHtml(report)], { type: 'text/html;charset=utf-8' })); const link = document.createElement('a'); link.href = url; link.download = `${report.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.html`; link.click(); URL.revokeObjectURL(url) }
+  const downloadPdf = (report: GeneratedReport) => {
+    const popup = window.open('', '_blank', 'noopener,noreferrer')
+    if (!popup) { window.alert('El navegador bloqueó la ventana para generar el PDF. Habilitá los popups para este sitio e intentá de nuevo.'); return }
+    const html = reportHtml(report).replace('</body>', '<script>window.onload=()=>setTimeout(()=>window.print(),150)</script></body>')
+    popup.document.write(html)
+    popup.document.close()
+  }
   return <div className="h-full overflow-y-auto"><div className="mx-auto max-w-4xl p-6 md:p-10"><div className="mb-5 flex items-start justify-between"><div><h1 className="text-xl font-bold">Informes</h1><p className="text-xs text-[#8b8b8b]">Biblioteca de informes generados por Conexa</p></div></div>{generated.length === 0 ? <div className="rounded-xl border border-dashed border-[#dededb] p-10 text-center text-xs text-[#888]">Todavía no hay informes generados desde Chat / Análisis.</div> : <div className="space-y-3">{generated.map((report) => <div key={report.id} className="flex items-center justify-between gap-4 rounded-xl border border-[#dededb] bg-white px-4 py-3"><div><p className="text-xs font-bold">{report.title}</p><p className="mt-1 text-[10px] text-[#888]">{report.clientName} · {new Date(report.createdAt).toLocaleDateString('es-AR')}</p></div><div className="flex shrink-0 gap-2"><Button variant="outline" onClick={() => setOpenReport(report)} className="h-7 rounded-full px-3 text-[10px]">Abrir</Button><Button variant="outline" onClick={() => downloadHtml(report)} className="h-7 rounded-full px-3 text-[10px]">HTML</Button><Button variant="outline" onClick={() => downloadPdf(report)} className="h-7 rounded-full px-3 text-[10px]">PDF</Button></div></div>)}</div>}{openReport && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="dialog" aria-modal="true"><div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-xl bg-white p-5"><div className="mb-3 flex items-center justify-between"><h2 className="font-bold">{openReport.title}</h2><Button variant="ghost" onClick={() => setOpenReport(null)}>Cerrar</Button></div><pre className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap text-sm leading-6">{openReport.content}</pre></div></div>}</div></div>
 }
 
@@ -745,7 +769,7 @@ const CHAT_MODELS = [
   { value: 'openai/o4-mini', label: 'o4-mini', recommended: true },
 ] as const
 
-function ConexaChat({ client, period, onNavigate, onReportCreated, crmAcquisition }: { client: Client | null; period: string; clients: Client[]; crmAcquisition?: CrmAcquisitionReport; onSelectClient: (client: Client) => void; onNavigate: (destination: string) => void; onReportCreated: (report: GeneratedReport) => void }) {
+function ConexaChat({ client, period, onNavigate, onReportCreated, crmAcquisition }: { client: Client | null; period: string; clients: Client[]; crmAcquisition?: CrmAcquisitionReport; onSelectClient: (client: Client) => void; onNavigate: (destination: string) => void; onReportCreated: (report: GeneratedReport, replaceId?: string) => void }) {
   const [model, setModel] = useState<string>(CHAT_MODELS[0].value)
   const chatModels = CHAT_MODELS
   const [showReport, setShowReport] = useState(false)
@@ -755,7 +779,20 @@ function ConexaChat({ client, period, onNavigate, onReportCreated, crmAcquisitio
   const handleCreateReport = (content: string) => {
     setReportContent(content)
     setShowReport(true)
-    onReportCreated({ id: crypto.randomUUID(), title: `Análisis · ${client?.nombre_del_negocio ?? 'Cliente'}`, content, clientName: client?.nombre_del_negocio ?? 'Cliente', createdAt: new Date().toISOString() })
+    const title = `Análisis · ${client?.nombre_del_negocio ?? 'Cliente'}`
+    const clientName = client?.nombre_del_negocio ?? 'Cliente'
+    const createdAt = new Date().toISOString()
+    // Se guarda una foto (html) del informe tal como lo diseñó la IA en ese
+    // momento (con las tarjetas de CRM que estaban visibles), para que la
+    // descarga y la vista en Informes se vean siempre igual, sin depender de
+    // que los datos en pantalla sigan siendo los mismos más adelante.
+    const html = buildReportHtml({ title, clientName, createdAt, content }, crmAcquisition)
+    const localReport: GeneratedReport = { id: crypto.randomUUID(), title, content, html, clientName, createdAt }
+    onReportCreated(localReport)
+    fetch('/api/conexa/reports', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client?.id ?? null, clientName, title, content, html }) })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((result) => { if (result?.report) onReportCreated(result.report, localReport.id) })
+      .catch(() => {})
   }
   return <div className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden bg-[#f4f4f1] p-4 text-[#141414]">
     <div className="flex items-center justify-between rounded-t-2xl border border-b-0 border-[#dcdcd8] bg-[#ffffff] px-5 py-3 text-[#141414]">
