@@ -95,11 +95,17 @@ export async function POST(request: Request) {
     const totals = (source as { totals?: Record<string, unknown> }).totals
     return number(totals?.[key])
   }
+  // GA4 no devuelve `totals`: el total del período viene en la única fila de
+  // `reports.overview` (sin dimensiones).
+  const analyticsOverview = (source: unknown, keys: string[]) => {
+    const overview = (source as { reports?: { overview?: Array<Record<string, unknown>> } } | undefined)?.reports?.overview?.[0]
+    return overview ? keys.reduce((sum, key) => sum + number(overview[key]), 0) : 0
+  }
   const metrics = [{
     spend: total(meta, ['spend', 'cost', 'investment']) + total(google, ['spend', 'cost', 'investment']),
     impressions: total(meta, ['impressions']) + total(google, ['impressions']),
     clicks: total(meta, ['clicks']) + total(google, ['clicks']),
-    visits: total(analytics, ['sessions', 'visits']),
+    visits: analyticsOverview(analytics, ['sessions']),
     contacts: crmTotals(contacts, 'contacts'),
     opportunities: crmTotals(opportunities, 'opportunities'),
     sales: crmTotals(sales, 'won_sales'),
@@ -108,7 +114,7 @@ export async function POST(request: Request) {
   const platformMetrics = {
     meta: [{ label: 'Inversión', value: total(meta, ['spend', 'cost', 'investment']) }, { label: 'Impresiones', value: total(meta, ['impressions']) }, { label: 'Clicks', value: total(meta, ['clicks']) }, { label: 'Resultados', value: total(meta, ['results', 'conversions', 'leads']) }],
     google: [{ label: 'Inversión', value: total(google, ['spend', 'cost', 'investment']) }, { label: 'Impresiones', value: total(google, ['impressions']) }, { label: 'Clicks', value: total(google, ['clicks']) }, { label: 'Conversiones', value: total(google, ['conversions', 'results']) }],
-    analytics: [{ label: 'Usuarios', value: total(analytics, ['users', 'activeUsers']) }, { label: 'Sesiones', value: total(analytics, ['sessions']) }, { label: 'Eventos', value: total(analytics, ['eventCount', 'events']) }, { label: 'Conversiones', value: total(analytics, ['conversions']) }],
+    analytics: [{ label: 'Usuarios', value: analyticsOverview(analytics, ['activeUsers']) }, { label: 'Sesiones', value: analyticsOverview(analytics, ['sessions']) }, { label: 'Eventos', value: analyticsOverview(analytics, ['eventCount']) }, { label: 'Conversiones', value: analyticsOverview(analytics, ['keyEvents']) }],
     tag_manager: [{ label: 'Etiquetas', value: tagManagerContainers.reduce((sum, container) => sum + Number((container.diagnostics as Record<string, unknown> | undefined)?.totalTags ?? 0), 0) }, { label: 'Activadores', value: tagManagerContainers.reduce((sum, container) => sum + Number((container.diagnostics as Record<string, unknown> | undefined)?.totalTriggers ?? 0), 0) }, { label: 'Variables', value: tagManagerContainers.reduce((sum, container) => sum + Number((container.diagnostics as Record<string, unknown> | undefined)?.totalVariables ?? 0), 0) }],
     crm: [{ label: 'Contactos', value: crmTotals(contacts, 'contacts') }, { label: 'Oportunidades', value: crmTotals(opportunities, 'opportunities') }, { label: 'Ventas', value: crmTotals(sales, 'won_sales') }],
   }
