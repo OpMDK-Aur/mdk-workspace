@@ -4,7 +4,8 @@ import * as XLSX from 'xlsx'
 import type { ActivityEvent } from '@/lib/ai/types'
 import { createClient } from '@/lib/supabase/server'
 import { chatRequestSchema } from '@/lib/ai/config/fallback'
-import { streamSupervisorResponse, type SupervisorModelMessage } from '@/lib/ai/agents/supervisor'
+import { detectReportMode, streamSupervisorResponse, type SupervisorModelMessage } from '@/lib/ai/agents/supervisor'
+import { buildAutoCharts } from '@/lib/ai/auto-charts'
 import { getOrCreateConversation, getLatestWorkingContext, listConversationMessages, saveConversationMessage } from '@/lib/ai/conversations'
 import { emptyWorkingContext } from '@/lib/ai/conversation-context'
 import { ATTACHMENT_MAX_COUNT, isImageOrPdfAttachment, isPlainTextAttachment, isSpreadsheetAttachment } from '@/lib/ai/attachments'
@@ -441,6 +442,14 @@ export async function POST(request: Request) {
         // final. Nunca permitimos que ese caso llegue como una burbuja vacía al
         // usuario: emitimos una respuesta explícita con el dato faltante y el
         // próximo paso, en vez de dejar el chat bloqueado visualmente.
+        if (finalText.trim() && !finalText.includes('```chart') && !detectReportMode(modelMessages)) {
+          const charts = buildAutoCharts(await result.steps)
+          if (charts.length > 0) {
+            writer.write({ type: 'text-start', id: 'supervisor-auto-charts' })
+            writer.write({ type: 'text-delta', id: 'supervisor-auto-charts', delta: `\n\n${charts.join('\n\n')}\n` })
+            writer.write({ type: 'text-end', id: 'supervisor-auto-charts' })
+          }
+        }
         if (!finalText.trim()) {
           const fallback = 'Pude cargar el contexto disponible, pero el supervisor no devolvió una síntesis final. No voy a presentar ese contexto como un análisis validado ni asumir que existe un problema de permisos o vinculación. Falta ejecutar y validar la fuente de datos solicitada antes de cruzarla con el CRM. Reintentá la consulta para continuar con esa validación.'
           writer.write({ type: 'text-start', id: 'supervisor-fallback' })

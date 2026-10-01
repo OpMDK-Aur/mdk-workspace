@@ -67,7 +67,7 @@ const AFFIRMATIVE_PATTERN = /^\s*(s[ií]|dale|ok|okay|perfecto|de una|claro|arma
 // Informes y prompts de Claude Design necesitan varias fuentes (Meta, Google,
 // CRM, período anterior). El flujo normal limita a una sola tool de datos,
 // lo que dejaba los informes con métricas vacías.
-function detectReportMode(messages: ModelMessage[]) {
+export function detectReportMode(messages: ModelMessage[]) {
   const userMessages = messages.filter((message) => message.role === 'user')
   const lastUser = messageText(userMessages.at(-1))
   if (REPORT_REQUEST_PATTERN.test(lastUser)) return true
