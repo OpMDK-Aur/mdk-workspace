@@ -11,6 +11,7 @@ import { getBuenosAiresLastSevenDays, getGoogleAnalyticsReport, getGoogleAnalyti
 import { getGoogleTagManagerReport } from '@/lib/google-tag-manager/service'
 import { createCrmClient } from '@/lib/supabase/crm'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
+import { buildClaudeDesignBrief, normalizeReportPlan, type ReportPlan } from '@/lib/ai/claude-design-prompts'
 
 const noInput = z.object({})
 
@@ -80,29 +81,26 @@ function extractUtmId(message: any): string | null {
   const visited = new Set<object>()
   let adTitle: string | null = null
   let adSource: string | null = message.source ? String(message.source) : null
-  const find = (value: unknown): string | null => {
-    if (!value || typeof value !== 'object' || visited.has(value as object)) return null
+  // Campaign-level ids win over click ids (gclid/fbclid) so a Google lead
+  // groups under its gad_campaignid instead of a unique per-click token.
+  const idPriority = ['utm_id', 'utmid', 'utm_identifier', 'utmid_value', 'gad_campaignid', 'source_id', 'ad_id', 'ctwa_clid', 'gclid', 'gbraid', 'wbraid', 'fbclid']
+  const found = new Map<string, string>()
+  const find = (value: unknown) => {
+    if (!value || typeof value !== 'object' || visited.has(value as object)) return
     visited.add(value as object)
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        const result = find(item)
-        if (result) return result
-      }
-      return null
-    }
+    if (Array.isArray(value)) { value.forEach(find); return }
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (entry && typeof entry === 'object') { find(entry); continue }
+      const text = String(entry ?? '').trim()
+      if (!text) continue
       const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
-      if (entry != null && String(entry).trim()) {
-        if (['ad_title', 'ad_name', 'advertisement_name', 'campaign_name', 'campaign_title'].includes(normalizedKey)) adTitle = String(entry).trim()
-        if (['source', 'platform', 'channel'].includes(normalizedKey)) adSource = String(entry).trim()
-        if (['utm_id', 'utmid', 'utm_identifier', 'utmid_value', 'source_id', 'ctwa_clid', 'ad_id', 'gclid', 'gbraid', 'wbraid', 'gad_campaignid'].includes(normalizedKey)) return String(entry).trim()
-      }
-      const result = find(entry)
-      if (result) return result
+      if (['ad_title', 'ad_name', 'advertisement_name', 'campaign_name', 'campaign_title'].includes(normalizedKey)) adTitle = text
+      if (['source', 'platform', 'channel'].includes(normalizedKey)) adSource = text
+      if (idPriority.includes(normalizedKey) && !found.has(normalizedKey)) found.set(normalizedKey, text)
     }
-    return null
   }
-  const id = find(candidates)
+  find(candidates)
+  const id = idPriority.map((key) => found.get(key)).find(Boolean)
   if (id) return id
   // Algunos contactos de WhatsApp Ads no traen un id separado, pero sí la
   // señal de anuncio y el título que el CRM muestra en "Origen del contacto".
@@ -114,19 +112,22 @@ function extractCampaignName(message: any): string | null {
   const parsedMessage = { ...message, metadata: parseMetadataValue(message.metadata), referral_metadata: parseMetadataValue(message.referral_metadata), referral: parseMetadataValue(message.referral), message_data: parseMetadataValue(message.message_data) }
   const candidates = [parsedMessage, parsedMessage.metadata, parsedMessage.referral_metadata, parsedMessage.referral, parsedMessage.message_data]
   const visited = new Set<object>()
-  const find = (value: unknown): string | null => {
+  // Top-level `name` is the contact's own name (e.g. "Santiago Bustos"), so a
+  // bare `name` key only counts inside nested referral/campaign objects.
+  const find = (value: unknown, nested: boolean): string | null => {
     if (!value || typeof value !== 'object' || visited.has(value as object)) return null
     visited.add(value as object)
-    if (Array.isArray(value)) return value.map(find).find(Boolean) ?? null
+    if (Array.isArray(value)) return value.map((item) => find(item, nested)).find(Boolean) ?? null
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
       const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
-      if (['campaign_name', 'campaignname', 'campaign', 'campaign_title', 'campaigntitle', 'utm_campaign', 'utmcampaign', 'ad_name', 'adname', 'ad_title', 'adtitle', 'name'].includes(normalizedKey) && entry != null && String(entry).trim()) return String(entry)
-      const result = find(entry)
+      const keys = ['campaign_name', 'campaignname', 'campaign', 'campaign_title', 'campaigntitle', 'utm_campaign', 'utmcampaign', 'ad_name', 'adname', 'ad_title', 'adtitle']
+      if ((keys.includes(normalizedKey) || (nested && normalizedKey === 'name')) && entry != null && typeof entry !== 'object' && String(entry).trim()) return String(entry)
+      const result = find(entry, true)
       if (result) return result
     }
     return null
   }
-  return find(candidates)
+  return candidates.map((candidate, index) => find(candidate, index > 0)).find(Boolean) ?? null
 }
 
 type CrmChannel = 'google_ads' | 'meta_ads' | 'other'
@@ -136,7 +137,16 @@ type CrmChannel = 'google_ads' | 'meta_ads' | 'other'
 // leads as Google.
 const CLICK_ID_CHANNEL: Record<string, CrmChannel> = {
   gclid: 'google_ads', gbraid: 'google_ads', wbraid: 'google_ads', gad_source: 'google_ads', gad_campaignid: 'google_ads',
-  fbclid: 'meta_ads', ctwa_clid: 'meta_ads', igshid: 'meta_ads',
+  fbclid: 'meta_ads', fbp: 'meta_ads', fbc: 'meta_ads', _fbp: 'meta_ads', _fbc: 'meta_ads', ctwa_clid: 'meta_ads', igshid: 'meta_ads',
+}
+const GOOGLE_URL_PARAM = /[?&#](gclid|gbraid|wbraid|gad_source|gad_campaignid)=[^&#\s]+/i
+const META_URL_PARAM = /[?&#](fbclid|_?fbp|_?fbc|fb_[a-z_]+)=[^&#\s]+/i
+
+function clickIdChannel(key: string): CrmChannel | null {
+  if (key in CLICK_ID_CHANNEL) return CLICK_ID_CHANNEL[key]
+  // Any fb* parameter (fb_ad_id, fbadid, ...) is a Meta signal.
+  if (/^_?fb[a-z_]*$/.test(key) && key !== 'fb') return 'meta_ads'
+  return null
 }
 const PLATFORM_KEYS = ['source_type', 'utm_medium', 'utm_source_platform', 'platform', 'channel', 'utm_source', 'medium', 'source_app', 'source']
 
@@ -162,7 +172,10 @@ function extractCrmChannel(message: any): CrmChannel | null {
       const text = String(entry ?? '').trim()
       if (!text) continue
       const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
-      if (normalizedKey in CLICK_ID_CHANNEL) clickSignals.push(CLICK_ID_CHANNEL[normalizedKey])
+      const clickChannel = clickIdChannel(normalizedKey)
+      if (clickChannel) clickSignals.push(clickChannel)
+      else if (GOOGLE_URL_PARAM.test(text)) clickSignals.push('google_ads')
+      else if (META_URL_PARAM.test(text)) clickSignals.push('meta_ads')
       else if (PLATFORM_KEYS.includes(normalizedKey)) {
         const channel = normalizeCrmChannel(text)
         if (channel) platformSignals.push(channel)
@@ -1058,7 +1071,7 @@ const crmContactAds: ToolDefinition = {
 
 const crmSalesAttribution: ToolDefinition = {
   key: 'crm_sales_attribution',
-  description: 'Relaciona oportunidades ganadas del CRM con contactos y mensajes inbound con utm_id/referral/source_id para atribución de ventas. Usala después de identificar las oportunidades won cuando la consulta pide ventas por campaña o anuncio. by_campaign.campaign es el NOMBRE de campaña resuelto: usá siempre ese campo para mostrarle la campaña al usuario, nunca el utm_id/ad_id (que solo sirve como referencia interna). by_channel es el resumen canónico de ventas CRM por canal y debe usarse literalmente para comparar Google Ads, Meta Ads y sin atribución. Su resultado es evidencia CRM; debe cruzarse con Meta Ads o Google Ads para validar gasto, leads y nombres de campaña. NO usar para contar el total de contactos creados: para eso usar crm_contacts.',
+  description: 'Relaciona oportunidades ganadas del CRM con contactos y mensajes inbound con utm_id/referral/source_id para atribución de ventas. Usala después de identificar las oportunidades won cuando la consulta pide ventas por campaña o anuncio. by_campaign.campaign es el NOMBRE de campaña resuelto: usá siempre ese campo para mostrarle la campaña al usuario, nunca el utm_id/ad_id (que solo sirve como referencia interna). by_channel es el resumen canónico de ventas CRM por canal y debe usarse literalmente para comparar Google Ads, Meta Ads y sin atribución. El canal ya se resuelve por click ID: gclid/gbraid/wbraid/gad_* = Google Ads; fbclid/fbp/fbc o cualquier parámetro fb* = Meta Ads. Si una venta de google_ads figura como "UTM ID <número>", ese número es el gad_campaignid: resolvé el nombre de la campaña con get_google_metrics por ID antes de responder, sin preguntar. Su resultado es evidencia CRM; debe cruzarse con Meta Ads o Google Ads para validar gasto, leads y nombres de campaña. NO usar para contar el total de contactos creados: para eso usar crm_contacts.',
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
@@ -1282,7 +1295,48 @@ const crmAppointments: ToolDefinition = {
   },
 }
 
+const getClaudeDesignPrompt: ToolDefinition = {
+  key: 'get_claude_design_prompt',
+  description: 'Devuelve la estructura del prompt para Claude Design adaptada al plan contratado por el cliente activo (Esencial o Estratégico). Usala solo cuando el usuario aceptó recibir el prompt de Claude Design de un informe ya elaborado.',
+  inputSchema: z.object({
+    plan_override: z.enum(['esencial', 'estrategico']).optional().describe('Solo si el usuario pidió explícitamente otro plan o el cliente no tiene plan cargado.'),
+  }),
+  async execute(input: { plan_override?: ReportPlan }, context: ExecutionContext) {
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_claude_design_prompt', status: 'running', label: 'Preparando prompt para Claude Design...' })
+    let rawPlan: unknown = null
+    if (context.clientId) {
+      const supabase = await createClient()
+      const { data, error } = await supabase.from('clientes').select('plan').eq('id', context.clientId).maybeSingle()
+      if (error) console.error('[v0] get_claude_design_prompt plan lookup failed:', error.message)
+      rawPlan = data?.plan ?? null
+    }
+    const plan = input.plan_override ?? normalizeReportPlan(rawPlan)
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_claude_design_prompt', status: 'completed', label: 'Prompt de Claude Design listo' })
+    if (!plan) {
+      return {
+        available: false,
+        client_plan: rawPlan,
+        message: 'El cliente no tiene un plan Esencial o Estratégico cargado. Preguntale al usuario cuál de las dos plantillas usar.',
+      }
+    }
+    return {
+      available: true,
+      client_plan: rawPlan,
+      ...buildClaudeDesignBrief(plan),
+      fill_rules: [
+        'Armá el prompt final en un único bloque de código markdown listo para copiar y pegar en Claude Design.',
+        'Empezá con design_header, luego "# document_title" y "## plan_label — [Cliente]" con Cliente, Período y Responsable/Ejecutivo.',
+        'Completá cada slide en orden con los datos reales del informe que elaboraste en esta conversación (mismo cliente y período). Mantené los números con el formato del informe.',
+        'Si un campo no tiene dato, escribí "⟶ PENDIENTE" o "⟶ sin dato" y sumalo al resumen de pendientes. Nunca inventes datos.',
+        'Agregá "⟶ NOTA PARA DISEÑO" cuando un dato necesite contexto (campaña nueva sin comparación, volumen muy bajo, cuenta sin CRM, etc.).',
+        'Cerrá con closing_sections.',
+      ],
+    }
+  },
+}
+
 const allTools: ToolDefinition[] = [
+  getClaudeDesignPrompt,
   crmAppointments,
   crmOpportunities,
   crmContacts,
