@@ -1295,13 +1295,114 @@ const crmAppointments: ToolDefinition = {
   },
 }
 
+type ReportPeriod = { dateFrom: string; dateTo: string }
+
+const isoDate = (date: Date) => date.toISOString().slice(0, 10)
+
+function lastClosedMonth(): ReportPeriod {
+  const now = new Date()
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0))
+  return { dateFrom: isoDate(start), dateTo: isoDate(end) }
+}
+
+function previousPeriod({ dateFrom, dateTo }: ReportPeriod): ReportPeriod {
+  const from = new Date(`${dateFrom}T00:00:00Z`)
+  const to = new Date(`${dateTo}T00:00:00Z`)
+  const monthEnd = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth() + 1, 0))
+  const isFullMonth = from.getUTCDate() === 1 && to.getUTCDate() === monthEnd.getUTCDate() && from.getUTCMonth() === to.getUTCMonth()
+  if (isFullMonth) {
+    return {
+      dateFrom: isoDate(new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() - 1, 1))),
+      dateTo: isoDate(new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 0))),
+    }
+  }
+  const days = Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1
+  const prevTo = new Date(from); prevTo.setUTCDate(prevTo.getUTCDate() - 1)
+  const prevFrom = new Date(prevTo); prevFrom.setUTCDate(prevFrom.getUTCDate() - days + 1)
+  return { dateFrom: isoDate(prevFrom), dateTo: isoDate(prevTo) }
+}
+
+// Solo totales y campañas: los anuncios y ad groups inflan el payload y el
+// prompt de Claude Design trabaja a nivel campaña.
+function compactPlatformMetrics(result: unknown) {
+  if (!result || typeof result !== 'object') return result
+  const record = result as Record<string, any>
+  if (!Array.isArray(record.accounts)) return record
+  return {
+    available: record.available,
+    date_range: record.date_range,
+    totals_by_currency: record.totals_by_currency,
+    errors: record.errors,
+    accounts: record.accounts.map((account: Record<string, any>) => ({
+      account_id: account.account_id,
+      account_name: account.account_name,
+      moneda: account.moneda,
+      totals: account.totals,
+      campaigns: Array.isArray(account.campaigns)
+        ? [...account.campaigns]
+            .sort((a, b) => Number(b?.spend ?? b?.cost ?? 0) - Number(a?.spend ?? a?.cost ?? 0))
+            .slice(0, 25)
+            .map(({ ads, ad_sets, ad_groups, ...campaign }: Record<string, any>) => campaign)
+        : [],
+    })),
+  }
+}
+
+function compactCrmResult(result: unknown, keep: string[]) {
+  if (!result || typeof result !== 'object') return result
+  const record = result as Record<string, any>
+  const compact: Record<string, unknown> = {}
+  for (const key of ['available', 'message', 'period', 'total', 'count', 'totals', 'summary', ...keep]) {
+    if (key in record) compact[key] = record[key]
+  }
+  return compact
+}
+
+async function collectReportData(plan: ReportPlan, period: ReportPeriod, previous: ReportPeriod, context: ExecutionContext) {
+  const run = async (definition: ToolDefinition, input: Record<string, unknown>) => {
+    try {
+      return await definition.execute(input, context)
+    } catch (error) {
+      console.error(`[v0] report data ${definition.key} failed:`, error)
+      return { available: false, message: `No se pudo consultar ${definition.key}.` }
+    }
+  }
+  const [meta, google, metaPrevious, googlePrevious, sales, contacts, opportunities, changes, benchmark] = await Promise.all([
+    run(getMetaMetrics, period),
+    run(getGoogleMetrics, period),
+    run(getMetaMetrics, previous),
+    run(getGoogleMetrics, previous),
+    run(crmSalesAttribution, period),
+    run(crmContacts, period),
+    run(crmOpportunities, period),
+    run(getAccountChangeHistory, { platform: null, dateFrom: period.dateFrom, dateTo: period.dateTo, accountId: null, entityType: null, entityId: null, sourceEventIds: null, fieldCategories: null, actorEmail: null, limit: 60 }),
+    plan === 'estrategico' ? run(getIndustryBenchmark, {}) : Promise.resolve(null),
+  ])
+  return {
+    meta: compactPlatformMetrics(meta),
+    google: compactPlatformMetrics(google),
+    meta_previous: compactPlatformMetrics(metaPrevious),
+    google_previous: compactPlatformMetrics(googlePrevious),
+    crm_sales_attribution: compactCrmResult(sales, ['by_channel', 'by_campaign', 'total_sales', 'attributed', 'unattributed']),
+    crm_contacts: compactCrmResult(contacts, ['total_contacts', 'by_source', 'by_channel', 'by_day']),
+    crm_opportunities: compactCrmResult(opportunities, ['total_opportunities', 'by_status', 'by_stage', 'won', 'won_count']),
+    change_history: changes && typeof changes === 'object'
+      ? { available: (changes as any).available, events: ((changes as any).events ?? []).slice(0, 60).map((event: any) => ({ platform: event.platform, occurred_at: event.occurred_at, actor_name: event.actor_name, entity_type: event.entity_type, entity_name: event.entity_name, operation: event.operation, field_categories: event.field_categories })) }
+      : changes,
+    ...(benchmark ? { industry_benchmark: benchmark } : {}),
+  }
+}
+
 const getClaudeDesignPrompt: ToolDefinition = {
   key: 'get_claude_design_prompt',
-  description: 'Devuelve la estructura del prompt para Claude Design adaptada al plan contratado por el cliente activo (Esencial o Estratégico). Usala solo cuando el usuario aceptó recibir el prompt de Claude Design de un informe ya elaborado.',
+  description: 'Devuelve la estructura del prompt para Claude Design adaptada al plan del cliente activo (Esencial o Estratégico) JUNTO con todas las métricas reales del período (Meta, Google, período anterior, ventas/atribución CRM, contactos CRM, oportunidades e historial de cambios) en report_data. Pasá dateFrom/dateTo del período pedido. Usala cuando el usuario pida el prompt para Claude Design o acepte recibirlo; no hace falta consultar las métricas antes.',
   inputSchema: z.object({
+    dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Inicio del período del informe (YYYY-MM-DD). Si no se indica, se usa el último mes cerrado.'),
+    dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Fin del período del informe (YYYY-MM-DD).'),
     plan_override: z.enum(['esencial', 'estrategico']).optional().describe('Solo si el usuario pidió explícitamente otro plan o el cliente no tiene plan cargado.'),
   }),
-  async execute(input: { plan_override?: ReportPlan }, context: ExecutionContext) {
+  async execute(input: { dateFrom?: string; dateTo?: string; plan_override?: ReportPlan }, context: ExecutionContext) {
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_claude_design_prompt', status: 'running', label: 'Preparando prompt para Claude Design...' })
     let rawPlan: unknown = null
     if (context.clientId) {
@@ -1311,23 +1412,37 @@ const getClaudeDesignPrompt: ToolDefinition = {
       rawPlan = data?.plan ?? null
     }
     const plan = input.plan_override ?? normalizeReportPlan(rawPlan)
-    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_claude_design_prompt', status: 'completed', label: 'Prompt de Claude Design listo' })
     if (!plan) {
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_claude_design_prompt', status: 'completed', label: 'Falta definir la plantilla' })
       return {
         available: false,
         client_plan: rawPlan,
         message: 'El cliente no tiene un plan Esencial o Estratégico cargado. Preguntale al usuario cuál de las dos plantillas usar.',
       }
     }
+    const period = input.dateFrom && input.dateTo ? { dateFrom: input.dateFrom, dateTo: input.dateTo } : lastClosedMonth()
+    const previous = previousPeriod(period)
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_claude_design_prompt', status: 'running', label: `Consultando métricas del ${period.dateFrom} al ${period.dateTo}...` })
+    const reportData = await collectReportData(plan, period, previous, context)
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_claude_design_prompt', status: 'completed', label: 'Prompt de Claude Design listo' })
     return {
       available: true,
       client_plan: rawPlan,
+      client_name: context.metadata?.clientName ?? null,
+      period,
+      previous_period: previous,
+      report_data: reportData,
       ...buildClaudeDesignBrief(plan),
       fill_rules: [
-        'Armá el prompt final en un único bloque de código markdown listo para copiar y pegar en Claude Design.',
-        'Empezá con design_header, luego "# document_title" y "## plan_label — [Cliente]" con Cliente, Período y Responsable/Ejecutivo.',
-        'Completá cada slide en orden con los datos reales del informe que elaboraste en esta conversación (mismo cliente y período). Mantené los números con el formato del informe.',
-        'Si un campo no tiene dato, escribí "⟶ PENDIENTE" o "⟶ sin dato" y sumalo al resumen de pendientes. Nunca inventes datos.',
+        'Arm�� el prompt final en un único bloque de código markdown listo para copiar y pegar en Claude Design.',
+        'Empezá con design_header, luego "# document_title" y "## plan_label — [Cliente]" con Cliente (client_name), Período (period) y Responsable/Ejecutivo.',
+        'report_data YA trae las métricas reales consultadas para este cliente: meta y google (período actual con totales y campañas), meta_previous y google_previous (período anterior para el "vs. anterior"), crm_sales_attribution (ventas y by_channel/by_campaign), crm_contacts (leads en CRM), crm_opportunities y change_history. Usalas para completar TODAS las cifras. No vuelvas a llamar a esas herramientas y no digas que falta generar el informe.',
+        'Tabla por campaña: una fila por cada campaña con inversión > 0 de report_data.meta y report_data.google (agrupá en "Otras N campañas" las de inversión insignificante), con Inversión, Leads, CPL (inversión/leads) y Vs. anterior (CPL de la misma campaña en *_previous, o "nueva" si no existía). Agregá fila TOTAL.',
+        'Acciones realizadas / optimizaciones: derivalas de report_data.change_history (qué se cambió, cuándo y en qué campaña). Solo dejá PENDIENTE si change_history no trae eventos.',
+        'Objetivo de pauta y métricas objetivo: si no hay objetivo cargado, usá el resultado del período anterior como referencia y aclaralo con una NOTA PARA DISEÑO.',
+        'Completá cada slide en orden con los números reales (inversión, leads, CPL, CPC, CTR, ventas, atribución, % vs anterior, filas TOTAL). Cada tabla debe tener todas sus filas y columnas con valores.',
+        'Entregá el prompt COMPLETO y visible en esta misma respuesta, antes de cualquier pregunta de confirmación: todas las slides de la plantilla, sin resumir, sin cortar y sin "etc.". No digas solamente que está listo ni lo reemplaces por un botón. Nunca pidas permiso para continuar.',
+        'Solo usá "⟶ PENDIENTE" para campos cualitativos que dependen del equipo (acciones realizadas, tests, requerimientos) o cuando la herramienta devolvió sin datos; en ese caso indicá la causa y sumalo al resumen de pendientes. Nunca inventes datos.',
         'Agregá "⟶ NOTA PARA DISEÑO" cuando un dato necesite contexto (campaña nueva sin comparación, volumen muy bajo, cuenta sin CRM, etc.).',
         'Cerrá con closing_sections.',
       ],

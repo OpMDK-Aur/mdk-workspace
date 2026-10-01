@@ -5,9 +5,11 @@ import useSWR from 'swr'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
-import { Check, ChevronRight, FileText, Loader2, MoreHorizontal, Paperclip, Pencil, Send, Square, X } from 'lucide-react'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ArrowUpRight, Check, ChevronRight, FileText, Loader2, MoreHorizontal, Paperclip, Pencil, Send, Square, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MessageContent } from '@/components/chat/message-content'
+import { CopyButton } from '@/components/chat/copy-button'
 import type { ActivityEvent } from '@/lib/ai/types'
 import { ATTACHMENT_ACCEPT_ATTRIBUTE, ATTACHMENT_MAX_COUNT, ATTACHMENT_MAX_SIZE_BYTES, isAttachmentMimeTypeAllowed } from '@/lib/ai/attachments'
 
@@ -22,6 +24,25 @@ const fetchRecentQuestions = async (url: string): Promise<string[]> => {
   if (!response.ok) throw new Error('No se pudieron cargar las sugerencias.')
   const data = (await response.json()) as { questions?: string[] }
   return data.questions ?? []
+}
+
+type HistoryConversation = { id: string; updatedAt: string; lastMessagePreview: string | null }
+
+const fetchClientHistory = async (url: string): Promise<HistoryConversation[]> => {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error('No se pudo cargar el historial.')
+  const data = (await response.json()) as { conversations?: HistoryConversation[] }
+  return data.conversations ?? []
+}
+
+function historySectionLabel(iso: string) {
+  const date = new Date(iso)
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  if (date.toDateString() === today.toDateString()) return 'Hoy'
+  if (date.toDateString() === yesterday.toDateString()) return 'Ayer'
+  return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'long' })
 }
 
 interface ConexaChatProps {
@@ -91,6 +112,7 @@ export function ConexaSupervisorChat(props: ConexaChatProps) {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
   const [refreshToken, setRefreshToken] = useState(0)
+  const [openConversationId, setOpenConversationId] = useState<string | null>(null)
   const lastResetSignal = useRef(resetSignal)
 
   useEffect(() => {
@@ -105,7 +127,7 @@ export function ConexaSupervisorChat(props: ConexaChatProps) {
     fetch('/api/ai/conversations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ clientId }),
+      body: JSON.stringify({ clientId, ...(openConversationId ? { openConversationId } : {}) }),
     })
       .then(async (response) => {
         if (!response.ok) throw new Error('No se pudo cargar la conversación.')
@@ -134,9 +156,20 @@ export function ConexaSupervisorChat(props: ConexaChatProps) {
     }
   }, [clientId, refreshToken])
 
+  useEffect(() => {
+    setOpenConversationId(null)
+  }, [clientId])
+
+  function handleOpenConversation(id: string) {
+    if (id === conversationId || isResetting) return
+    setOpenConversationId(id)
+    setRefreshToken((value) => value + 1)
+  }
+
   async function handleReset() {
     if (!conversationId || isResetting) return
     setIsResetting(true)
+    setOpenConversationId(null)
     try {
       await fetch('/api/ai/conversations', {
         method: 'DELETE',
@@ -181,6 +214,7 @@ export function ConexaSupervisorChat(props: ConexaChatProps) {
       conversationId={conversationId}
       initialMessages={history}
       onReset={handleReset}
+      onOpenConversation={handleOpenConversation}
       isResetting={isResetting}
     />
   )
@@ -197,11 +231,13 @@ function ConexaChatSession({
   conversationId,
   initialMessages,
   onReset,
+  onOpenConversation,
   isResetting,
 }: ConexaChatProps & {
   conversationId: string | null
   initialMessages: PersistedMessage[]
   onReset: () => void
+  onOpenConversation: (id: string) => void
   isResetting: boolean
 }) {
   const [input, setInput] = useState('')
@@ -410,6 +446,30 @@ function ConexaChatSession({
   const { data: recentQuestions } = useSWR(hasMessages ? null : '/api/ai/recent-questions', fetchRecentQuestions, { revalidateOnFocus: true })
   const suggestedQuestions = recentQuestions && recentQuestions.length > 0 ? recentQuestions : FALLBACK_QUESTIONS
 
+  const historyKey = clientId ? `/api/ai/conversations?includeArchived=1&clientId=${encodeURIComponent(clientId)}` : null
+  const { data: historyData, mutate: refreshHistory } = useSWR(historyKey, fetchClientHistory, { revalidateOnFocus: true })
+  useEffect(() => {
+    if (status === 'ready') refreshHistory()
+  }, [status, refreshHistory])
+
+  const historyItems = (historyData ?? [])
+    .filter((item) => item.lastMessagePreview || item.id === conversationId)
+    .map((item) => ({
+      id: item.id,
+      updatedAt: item.updatedAt,
+      label:
+        item.id === conversationId && hasMessages
+          ? messageText(messages.find((message) => message.role === 'user') ?? messages[0]).slice(0, 60) || 'Nueva conversación de análisis'
+          : (item.lastMessagePreview ?? '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Nueva conversación de análisis',
+    }))
+    .filter((item) => item.id !== conversationId || hasMessages)
+  const historyGroups = Object.entries(
+    historyItems.reduce<Record<string, typeof historyItems>>((groups, item) => {
+      ;(groups[historySectionLabel(item.updatedAt)] ??= []).push(item)
+      return groups
+    }, {}),
+  )
+
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden">
       <aside className="flex w-64 shrink-0 flex-col gap-3 border-r border-[#E6E6E1] bg-white p-3">
@@ -421,22 +481,40 @@ function ConexaChatSession({
         >
           {isResetting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}+ Nuevo análisis
         </button>
-        <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-          {!hasMessages ? (
+        <nav aria-label="Análisis anteriores" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+          {historyGroups.length === 0 ? (
             <p className="px-2 py-6 text-center text-sm text-[#9a9a9a]">Todavía no hay análisis</p>
           ) : (
-            <section className="flex flex-col gap-0.5">
-              <h3 className="px-2 pt-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9a9a9a]">Hoy</h3>
-              <div className="truncate rounded-md bg-[#eeefff] px-2 py-2 text-left text-sm text-[#5B5FE8]">
-                {messageText(messages[0]).slice(0, 60) || 'Nueva conversación de análisis'}
-              </div>
-            </section>
+            historyGroups.map(([section, items]) => (
+              <section key={section} className="flex flex-col gap-0.5">
+                <h3 className="px-2 pt-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9a9a9a]">{section}</h3>
+                {items.map((item) => {
+                  const isActive = item.id === conversationId
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => onOpenConversation(item.id)}
+                      disabled={isBusy || isResetting}
+                      aria-current={isActive ? 'true' : undefined}
+                      title={item.label}
+                      className={cn(
+                        'truncate rounded-md px-2 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed',
+                        isActive ? 'bg-[#eeefff] text-[#5B5FE8]' : 'text-[#141414] hover:bg-[#f4f4f1]',
+                      )}
+                    >
+                      {item.label}
+                    </button>
+                  )
+                })}
+              </section>
+            ))
           )}
-        </div>
+        </nav>
       </aside>
 
-      <div className="flex min-h-0 flex-1 flex-col bg-white">
-        <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-white p-4">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
+        <div ref={scrollRef} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden bg-white p-4">
           {!hasMessages ? (
             <div className="m-auto flex max-w-md flex-col gap-4 text-center">
               <p className="text-sm text-[#9a9a9a]">
@@ -478,6 +556,7 @@ function ConexaChatSession({
                 isLast={index === messages.length - 1}
                 isStreaming={isStreamingAssistantMessage && index === messages.length - 1}
                 onCreateReport={onCreateReport}
+                reportCta={index === messages.length - 1 ? getReportCtaState(messages, index) : null}
                 onEdit={!isBusy && message.role === 'user' ? () => handleEditMessage(message.id) : undefined}
               />
             ))
@@ -612,21 +691,24 @@ function ChatBubble({
   isStreaming,
   onCreateReport,
   onEdit,
+  reportCta,
 }: {
   message: UIMessage
   isLast: boolean
   isStreaming: boolean
   onCreateReport?: (content: string) => void
   onEdit?: () => void
+  reportCta?: ReportCtaState | null
 }) {
+  const [promptOpen, setPromptOpen] = useState(false)
   const isUser = message.role === 'user'
   const text = messageText(message)
   const fileParts = message.parts.filter((part) => part.type === 'file')
   return (
-    <div className={cn('group flex flex-col gap-2', isUser ? 'items-end' : 'items-start')}>
+    <div className={cn('group flex w-full min-w-0 flex-col gap-2', isUser ? 'items-end' : 'items-start')}>
       <div
         className={cn(
-          'max-w-[80%] rounded-lg px-3 py-2 text-sm leading-6',
+          'min-w-0 max-w-[80%] overflow-hidden break-words rounded-lg px-3 py-2 text-sm leading-6 [overflow-wrap:anywhere]',
           isUser ? 'bg-[#5B5FE8] text-white' : 'w-full max-w-[95%] border border-[#E6E6E1] bg-white text-[#141414]',
         )}
       >
@@ -665,24 +747,88 @@ function ChatBubble({
           Editar
         </button>
       )}
-      {!isUser && isLast && !isStreaming && text && onCreateReport && (
+      {!isUser && isLast && !isStreaming && text && reportCta?.confirmed && (
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => onCreateReport(text)}
-            className="rounded-full border border-[#E6E6E1] bg-white px-3 py-1.5 text-xs font-medium text-[#141414] hover:border-[#5B5FE8] hover:text-[#5B5FE8]"
-          >
-            Crear informe
-          </button>
-          <button
-            type="button"
-            onClick={() => onCreateReport(text)}
-            className="rounded-full border border-[#E6E6E1] bg-white px-3 py-1.5 text-xs font-medium text-[#141414] hover:border-[#5B5FE8] hover:text-[#5B5FE8]"
-          >
-            Generar diagnóstico
-          </button>
+          {onCreateReport && (
+            <button type="button" onClick={() => onCreateReport(text)} className={CTA_CLASS}>
+              Crear informe
+            </button>
+          )}
+          {reportCta.prompt && (
+            <button type="button" onClick={() => setPromptOpen(true)} className={CTA_CLASS}>
+              Ver prompt
+            </button>
+          )}
+          <a href={CLAUDE_DESIGN_URL} target="_blank" rel="noopener noreferrer" className={cn(CTA_CLASS, 'inline-flex items-center gap-1')}>
+            Ir a Claude Design
+            <ArrowUpRight className="size-3.5" aria-hidden="true" />
+          </a>
         </div>
+      )}
+      {reportCta?.prompt && (
+        <Dialog open={promptOpen} onOpenChange={setPromptOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Prompt para Claude Design</DialogTitle>
+              <DialogDescription>Copialo y pegalo en Claude Design para generar la plantilla.</DialogDescription>
+            </DialogHeader>
+            <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-[#E6E6E1] bg-[#f4f4f1] p-3 font-mono text-xs leading-5 text-[#141414]">
+              {reportCta.prompt}
+            </pre>
+            <div className="flex justify-end gap-2">
+              <CopyButton
+                getText={() => reportCta.prompt ?? ''}
+                label="Copiar prompt"
+                showLabel
+                className={CTA_CLASS}
+              />
+              <a href={CLAUDE_DESIGN_URL} target="_blank" rel="noopener noreferrer" className={cn(CTA_CLASS, 'inline-flex items-center gap-1')}>
+                Ir a Claude Design
+                <ArrowUpRight className="size-3.5" aria-hidden="true" />
+              </a>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   )
+}
+
+const CTA_CLASS =
+  'rounded-full border border-[#E6E6E1] bg-white px-3 py-1.5 text-xs font-medium text-[#141414] hover:border-[#5B5FE8] hover:text-[#5B5FE8]'
+const CLAUDE_DESIGN_URL = 'https://claude.ai/design'
+const REPORT_REQUEST = /\b(informe|reporte|report|prompt|claude design|cierre de mes)\b/i
+const PROMPT_REQUEST = /\b(prompt|claude design)\b/i
+const AFFIRMATIVE = /^\s*(s[ií]|dale|ok|okay|perfecto|de una|claro|arm[aá]lo|hacelo|pas[aá]melo|genial|bueno|confirmo|listo)\b/i
+const CONFIRMATION_OFFER = /\b(confirm[aá]s|confirmar|confirmaci[oó]n|¿?quer[eé]s que (lo|te lo) (genere|prepare|muestre)|listo para (crear|generar)|puedo (crear|generar|mostrar) el informe)\b/i
+const PROMPT_READY_OFFER = /\b(prompt|claude design)\b.*\b(listo|preparado|confirm[aá]|quer[eé]s)\b|\bquer[eé]s que te (muestre|pase|prepare) el prompt\b/i
+const REPORT_READY_OFFER = /\b(informe|reporte)\b.*\b(listo|preparado|confirm[aá]|quer[eé]s)\b|\bquer[eé]s que (lo|te lo) (cree|genere|prepare)\b/i
+
+function isConfirmedReportFlow(userText: string, previousAssistantText: string) {
+  return AFFIRMATIVE.test(userText) && (CONFIRMATION_OFFER.test(previousAssistantText) || REPORT_READY_OFFER.test(previousAssistantText) || PROMPT_READY_OFFER.test(previousAssistantText))
+} 
+
+type ReportCtaState = { confirmed: boolean; prompt: string | null }
+
+function getReportCtaState(messages: UIMessage[], index: number): ReportCtaState | null {
+  const message = messages[index]
+  if (message?.role !== 'assistant') return null
+  const userText = messageText(messages[index - 1] ?? message)
+  const previousAssistantText = index >= 2 ? messageText(messages[index - 2]) : ''
+  // Un pedido directo todavía no habilita CTA: primero el agente debe pedir
+  // la confirmación después de verificar y completar todos los datos.
+  const confirmedOffer = isConfirmedReportFlow(userText, previousAssistantText)
+  if (!confirmedOffer) return null
+
+  const askedForPrompt = PROMPT_REQUEST.test(userText) || PROMPT_REQUEST.test(previousAssistantText)
+  const promptSource = askedForPrompt
+    ? [...messages.slice(0, index + 1)].reverse().map(messageText).find((text) => text.includes('```') || /#\s*(document_title|Informe|PERFORMANCE|Resumen)/i.test(text))
+    : null
+  return { confirmed: true, prompt: askedForPrompt ? extractPrompt(promptSource ?? messageText(message)) : null }
+}
+
+function extractPrompt(text: string) {
+  const blocks = [...text.matchAll(/```[a-zA-Z]*\n([\s\S]*?)```/g)].map((match) => match[1].trim())
+  if (blocks.length > 0) return blocks.reduce((longest, block) => (block.length > longest.length ? block : longest))
+  return text.trim() || null
 }

@@ -153,6 +153,18 @@ export function buildClaudeDesignBrief(plan: ReportPlan) {
       'Las líneas que empiezan con "⟶ NOTA PARA DISEÑO" son instrucciones para vos, no se muestran en la slide. Los campos marcados "⟶ PENDIENTE" o "⟶ sin dato" se dejan como espacio visible para completar.',
     ].join('\n'),
     slides: slides.map((slide) => ({ heading: `## ${slide.number} · ${slide.title}`, fields: slide.fields })),
+    required_data: [
+      'Inversión, leads, CPL, CPC, CTR por campaña (período actual y anterior): get_meta_metrics y get_google_metrics',
+      'Ventas y atribución a pauta por campaña/canal: crm_opportunities + crm_sales_attribution',
+      'Leads en CRM por pauta (para el cruce vs plataforma): crm_contacts / crm_contact_ads',
+      ...(isEstrategico
+        ? [
+            'Funnel por etapa y tiempos de gestión: crm_opportunities + get_crm_context',
+            'Benchmark del rubro: get_industry_benchmark',
+            'Cambios y optimizaciones del período: get_account_change_history',
+          ]
+        : ['Cambios y optimizaciones del período: get_account_change_history']),
+    ],
     closing_sections: [
       '## Resumen de pendientes antes de cierre de arte (lista numerada con slide de referencia)',
       '**Fuente de datos:** plataformas, cuentas y período consultados (+ inputs del equipo si los hubo).',

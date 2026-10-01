@@ -8,6 +8,7 @@ import { FileBlock } from './file-block'
 import { ImageBlock } from './image-block'
 import { PdfBlock } from './pdf-block'
 import { FaltantesBlock } from './faltantes-block'
+import { CodeBlock } from './code-block'
 
 export type Artifact = {
   type: 'chart' | 'pdf' | 'image'
@@ -45,6 +46,7 @@ const markdownComponents = {
     <strong className="font-semibold text-foreground">{children}</strong>
   ),
   hr: () => <hr className="my-4 border-border" />,
+  pre: ({ children }: { children?: React.ReactNode }) => <CodeBlock>{children}</CodeBlock>,
   table: ({ children }: { children?: React.ReactNode }) => (
     <div className="my-3 w-full overflow-x-auto rounded-lg border border-border">
       <table className="w-full border-collapse text-sm">{children}</table>

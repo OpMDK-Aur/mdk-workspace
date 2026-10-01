@@ -75,7 +75,7 @@ export function ConexaWorkspace() {
     const supabase = createClient()
   supabase.from('clientes').select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids, analytics_property_id, tag_manager_container_id, crm_type, cuentas_publicitarias(id_cuenta, nombre_cuenta, plataforma, activo)').order('nombre_del_negocio').then(({ data, error }) => {
   if (error) { setClientsError('No se pudieron cargar los clientes'); return }
-  const allowedClients = new Set(['ICS Salud', 'VN Global', 'Soy Aurelia', 'Belkiare', 'Módulos Argentinos'])
+  const allowedClients = new Set(['ICS Salud', 'VN Global', 'Soy Aurelia', 'Belkiare', 'Módulos Argentinos', 'SVG entertainment'])
   const rows = ((data ?? []) as Client[]).filter((item) => allowedClients.has(item.nombre_del_negocio))
   setClients(rows)
       const initialClient = rows.sort((a, b) => Number(Boolean(b.meta_ads_account_id || b.meta_ads_account_ids?.length || b.google_ads_customer_id || b.google_ads_customer_ids?.length || b.analytics_property_id || b.tag_manager_container_id || b.crm_type)) - Number(Boolean(a.meta_ads_account_id || a.meta_ads_account_ids?.length || a.google_ads_customer_id || a.google_ads_customer_ids?.length || a.analytics_property_id || a.tag_manager_container_id || a.crm_type)))[0] ?? null
@@ -97,7 +97,7 @@ export function ConexaWorkspace() {
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron consultar las tools de Conexa.')))
       .then((result) => {
         if (cancelled) return
-        setData({ accounts: [], metrics: Array.isArray(result.metrics) ? result.metrics : [], reports: Array.isArray(result.analytics?.reports) ? result.analytics.reports : [], approvals: [], profile: null, memory: Array.isArray(result.memory?.items) ? result.memory.items : [], platformMetrics: result.platformMetrics && typeof result.platformMetrics === 'object' ? result.platformMetrics : {}, platformData: { meta: result.meta, google: result.google, analytics: result.analytics, tagManager: result.tagManager, crm: { contacts: result.contacts, opportunities: result.opportunities, sales: result.sales, acquisition: result.crmAcquisition } } })
+        setData({ accounts: [], metrics: Array.isArray(result.metrics) ? result.metrics : [], reports: Array.isArray(result.analytics?.reports) ? result.analytics.reports : [], approvals: [], profile: null, memory: Array.isArray(result.memory?.items) ? result.memory.items : [], platformMetrics: result.platformMetrics && typeof result.platformMetrics === 'object' ? result.platformMetrics : {}, platformData: { range: result.range, meta: result.meta, google: result.google, analytics: result.analytics, tagManager: result.tagManager, crm: { contacts: result.contacts, opportunities: result.opportunities, sales: result.sales, acquisition: result.crmAcquisition } } })
       })
       .catch(() => { if (!cancelled) setData(emptyConexaData) })
       .finally(() => {
@@ -207,11 +207,14 @@ function Home({ client, period, platforms, connected, data, onAsk }: { client: C
   const reportRows = Array.isArray(data.reports) ? data.reports : []
   const insights = reportRows.flatMap((report) => String(report.content ?? report.summary ?? report.description ?? '').split(/[\n•]/).map((item) => item.trim()).filter(Boolean)).slice(0, 3)
   const attention = platforms.filter((item) => !item.connected)
+  const range = data.platformData.range as { dateFrom?: string; dateTo?: string } | undefined
+  const formatDay = (value?: string) => value ? value.split('-').reverse().join('/') : ''
+  const rangeLabel = range?.dateFrom && range?.dateTo ? (range.dateFrom === range.dateTo ? formatDay(range.dateFrom) : `${formatDay(range.dateFrom)} – ${formatDay(range.dateTo)}`) : ''
   return <div className="mx-auto h-full max-w-[1180px] overflow-y-auto px-6 py-5">
     <div className="mb-5"><p className="mb-1 text-[11px] text-[#9a9a9a]">{period}</p><h1 className="text-[20px] font-bold tracking-[-.02em]">{client?.nombre_del_negocio ?? 'Soy Aurelia'}</h1><p className="mt-0.5 text-[11px] text-[#9a9a9a]">Conexiones, tracking y alertas</p></div>
     <div className="mb-6 rounded-2xl border border-[#e6e6e3] bg-white p-[18px_22px]">{platforms.map((item) => <div key={item.key} className="flex items-center justify-between py-1 text-[13.5px]"><span className="flex items-center gap-2 font-medium"><span className="flex size-6 items-center justify-center overflow-hidden rounded-md bg-white">{item.iconUrl ? <img src={item.iconUrl} alt="" className="size-full object-contain" /> : <Globe2 className="size-5 text-[#11A683]" />}</span>{item.name}</span><span className={cn('flex items-center gap-1.5 font-medium', item.connected ? 'text-[#1e9e6b]' : 'text-[#9a9a9a]')}><span className={cn('size-1.5 rounded-full', item.connected ? 'bg-[#1e9e6b]' : 'bg-[#d6d6d6]')} />{item.connected ? 'Conectado' : 'Pendiente'}</span></div>)}</div>
     <div className="mb-6 grid grid-cols-2 gap-4"><InfoCard title="Cuentas que requieren atención">{attention.length ? attention.map((item) => <Row key={item.key} text={item.name} value="Conectar" />) : <EmptyState text="No hay cuentas pendientes." />}</InfoCard><InfoCard title="Trabajo pendiente"><EmptyState text="No hay tareas disponibles." /></InfoCard></div>
-    <p className="mb-3 text-[11px] uppercase tracking-[.08em] text-[#9a9a9a]">Resumen del negocio</p><div className="mb-7 grid grid-cols-6 gap-3">{business.map(([label, value]) => <div key={label} className="rounded-xl border border-[#e6e6e3] bg-white p-4"><p className="mb-2 text-[11.5px] text-[#9a9a9a]">{label}</p><p className="text-[19px] font-bold">{value}</p></div>)}</div>
+    <div className="mb-3 flex flex-wrap items-baseline gap-x-2"><p className="text-[11px] uppercase tracking-[.08em] text-[#9a9a9a]">Resumen del negocio</p><p className="text-[11.5px] text-[#5c5c5c]">Período analizado: <span className="font-semibold">{period}</span>{rangeLabel && <> · {rangeLabel}</>}</p></div><div className="mb-7 grid grid-cols-6 gap-3">{business.map(([label, value]) => <div key={label} className="rounded-xl border border-[#e6e6e3] bg-white p-4"><p className="mb-2 text-[11.5px] text-[#9a9a9a]">{label}</p><p className="text-[19px] font-bold">{value}</p></div>)}</div>
     <div className="grid grid-cols-[1.3fr_1fr] gap-4"><InfoCard title="Funnel"><div className="grid grid-cols-6 gap-2">{funnel.map(([label, value], index) => <div key={label} className="text-center"><div className="flex h-24 items-end justify-center"><div className="w-full max-w-12 rounded-t-md bg-[#5b5fe8]" style={{ height: `${value ? Math.max(18, Math.min(96, Number(value) / Math.max(...funnel.map(([, item]) => Number(item) || 1)) * 96)) : 0}px` }} /></div><p className="mt-2 text-xs font-semibold">{formatMetric(Number(value))}</p><p className="text-[10px] text-[#888]">{label}</p>{index < funnel.length - 1 && <span className="text-[#aaa]">→</span>}</div>)}</div></InfoCard><InfoCard title="Alertas"><EmptyState text="No hay alertas disponibles." /></InfoCard></div>
     <div className="mt-7 rounded-[18px] bg-gradient-to-br from-[#5b5fe8] to-[#3f43c4] p-[26px_28px] text-white"><div className="mb-3 flex items-center gap-2 text-[13px] font-bold">✦ Insights de Conexa</div>{insights.length ? insights.map((insight, index) => <p key={`${insight}-${index}`} className="border-b border-white/15 py-2.5 text-sm">{index + 1}　{insight}</p>) : <p className="text-sm text-white/70">Todavía no hay insights generados por la IA.</p>}<Button onClick={onAsk} variant="ghost" className="mt-3 h-auto p-0 text-sm font-semibold text-white hover:bg-transparent">Ver análisis completo →</Button></div>
   </div>
@@ -775,7 +778,7 @@ function ConexaChat({ client, onNavigate, onReportCreated }: { client: Client | 
   const [showReport, setShowReport] = useState(false)
   const [reportContent, setReportContent] = useState('')
   const [resetSignal, setResetSignal] = useState(0)
-  const handleResetClick = () => { if (window.confirm('¿Resetear esta conversación? Se va a vaciar el chat actual.')) setResetSignal((value) => value + 1) }
+  const handleResetClick = () => { if (window.confirm('¿Empezar un chat nuevo? El chat actual queda guardado en el historial de la izquierda.')) setResetSignal((value) => value + 1) }
   const handleCreateReport = (content: string) => {
     setReportContent(content)
     setShowReport(true)
