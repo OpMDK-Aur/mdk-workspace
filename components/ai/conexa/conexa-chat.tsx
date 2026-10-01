@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import useSWR from 'swr'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
@@ -10,12 +11,18 @@ import { MessageContent } from '@/components/chat/message-content'
 import type { ActivityEvent } from '@/lib/ai/types'
 import { ATTACHMENT_ACCEPT_ATTRIBUTE, ATTACHMENT_MAX_COUNT, ATTACHMENT_MAX_SIZE_BYTES, isAttachmentMimeTypeAllowed } from '@/lib/ai/attachments'
 
-const SUGGESTED_QUESTIONS = [
-  '¿Cuántos leads se convirtieron en venta en [período]?',
-  'Dame un desglose por campaña de la cantidad de leads que ingresaron al CRM y cuántas ventas tuve por campaña en [período].',
-  '¿Cuál fue la inversión en Meta Ads y Google Ads durante [período]?',
-  '¿Qué campañas tuvieron el mejor y el peor desempeño en [período]?',
+const FALLBACK_QUESTIONS = [
+  'Dame el prompt para el informe mensual',
+  'Decime qué campañas tuvieron mejor performance en los últimos 7 días',
+  'Qué anuncios son los que debería apagar por baja performance',
 ]
+
+const fetchRecentQuestions = async (url: string): Promise<string[]> => {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error('No se pudieron cargar las sugerencias.')
+  const data = (await response.json()) as { questions?: string[] }
+  return data.questions ?? []
+}
 
 interface ConexaChatProps {
   clientId: string | null
@@ -400,6 +407,8 @@ function ConexaChatSession({
   }
 
   const hasMessages = messages.length > 0
+  const { data: recentQuestions } = useSWR(hasMessages ? null : '/api/ai/recent-questions', fetchRecentQuestions, { revalidateOnFocus: true })
+  const suggestedQuestions = recentQuestions && recentQuestions.length > 0 ? recentQuestions : FALLBACK_QUESTIONS
 
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden">
@@ -434,9 +443,9 @@ function ConexaChatSession({
                 Preguntale a Conexa por leads, inversión, conversiones, campañas o ventas de {clientName}. Indicá el período dentro de tu pregunta (por ejemplo, &quot;esta semana&quot; o &quot;el mes pasado&quot;); si no lo indicás, te lo va a pedir antes de responder.
               </p>
               <div className="flex flex-col gap-2 text-left">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9a9a9a]">Podés empezar preguntando</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9a9a9a]">Últimas consultas del equipo</p>
                 <div className="flex flex-col gap-2">
-                  {SUGGESTED_QUESTIONS.map((suggestion) => (
+                  {suggestedQuestions.map((suggestion) => (
                     <button
                       key={suggestion}
                       type="button"
