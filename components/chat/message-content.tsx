@@ -114,7 +114,7 @@ export function MessageContent({ content, onOpenArtifact, onSubmitFaltantes }: M
   // Parse content for special blocks (```chart, ```file, ```image, ```pdf, ```faltantes)
   const parts: Array<{ type: 'text' | 'chart' | 'file' | 'image' | 'pdf' | 'faltantes'; content: string }> = []
 
-  const regex = /```(chart|file|image|pdf|faltantes)\n([\s\S]*?)```/g
+  const regex = /```(chart|file|image|pdf|faltantes)[ \t]*\r?\n([\s\S]*?)```/g
   let lastIndex = 0
   let match
 
