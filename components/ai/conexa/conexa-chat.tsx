@@ -806,6 +806,13 @@ const CLAUDE_DESIGN_URL = 'https://claude.ai/design'
 const REPORT_REQUEST = /\b(informe|reporte|report|prompt|claude design|cierre de mes)\b/i
 const PROMPT_REQUEST = /\b(prompt|claude design)\b/i
 const AFFIRMATIVE = /^\s*(s[ií]|dale|ok|okay|perfecto|de una|claro|arm[aá]lo|hacelo|pas[aá]melo|genial|bueno|confirmo|listo)\b/i
+const CONFIRMATION_OFFER = /\b(confirm[aá]s|confirmar|confirmaci[oó]n|¿?quer[eé]s que (lo|te lo) (genere|prepare|muestre)|listo para (crear|generar)|puedo (crear|generar|mostrar) el informe)\b/i
+const PROMPT_READY_OFFER = /\b(prompt|claude design)\b.*\b(listo|preparado|confirm[aá]|quer[eé]s)\b|\bquer[eé]s que te (muestre|pase|prepare) el prompt\b/i
+const REPORT_READY_OFFER = /\b(informe|reporte)\b.*\b(listo|preparado|confirm[aá]|quer[eé]s)\b|\bquer[eé]s que (lo|te lo) (cree|genere|prepare)\b/i
+
+function isConfirmedReportFlow(userText: string, previousAssistantText: string) {
+  return AFFIRMATIVE.test(userText) && (CONFIRMATION_OFFER.test(previousAssistantText) || REPORT_READY_OFFER.test(previousAssistantText) || PROMPT_READY_OFFER.test(previousAssistantText))
+} 
 
 type ReportCtaState = { confirmed: boolean; prompt: string | null }
 
@@ -814,11 +821,12 @@ function getReportCtaState(messages: UIMessage[], index: number): ReportCtaState
   if (message?.role !== 'assistant') return null
   const userText = messageText(messages[index - 1] ?? message)
   const previousAssistantText = index >= 2 ? messageText(messages[index - 2]) : ''
-  const confirmedOffer = AFFIRMATIVE.test(userText) && REPORT_REQUEST.test(previousAssistantText)
-  const requested = messages[index - 1]?.role === 'user' && REPORT_REQUEST.test(userText)
-  if (!confirmedOffer && !requested) return null
+  // Un pedido directo todavía no habilita CTA: primero el agente debe pedir
+  // la confirmación después de verificar y completar todos los datos.
+  const confirmedOffer = isConfirmedReportFlow(userText, previousAssistantText)
+  if (!confirmedOffer) return null
 
-  const askedForPrompt = PROMPT_REQUEST.test(userText) || (confirmedOffer && PROMPT_REQUEST.test(previousAssistantText))
+  const askedForPrompt = PROMPT_REQUEST.test(userText) || PROMPT_REQUEST.test(previousAssistantText)
   return { confirmed: true, prompt: askedForPrompt ? extractPrompt(messageText(message)) : null }
 }
 
