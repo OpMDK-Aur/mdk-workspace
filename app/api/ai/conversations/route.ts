@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { archiveConversation, getOrCreateConversation, listConversations, listConversationMessages, unarchiveConversation } from '@/lib/ai/conversations'
+import { activateConversation, archiveConversation, getOrCreateConversation, listConversations, listConversationMessages, unarchiveConversation } from '@/lib/ai/conversations'
 
 export async function GET(request: Request) {
   const supabase = await createClient()
@@ -35,7 +35,10 @@ export async function POST(request: Request) {
       const current = await getOrCreateConversation(supabase, user.id, body.clientId)
       await archiveConversation(supabase, user.id, current.id)
     }
-    const conversation = await getOrCreateConversation(supabase, user.id, body.clientId)
+    const reopened = typeof body.openConversationId === 'string' && body.openConversationId
+      ? await activateConversation(supabase, user.id, body.clientId, body.openConversationId)
+      : null
+    const conversation = reopened ?? (await getOrCreateConversation(supabase, user.id, body.clientId))
     const messages = await listConversationMessages(supabase, user.id, conversation.id)
     return NextResponse.json({ conversation, messages })
   } catch (error) {

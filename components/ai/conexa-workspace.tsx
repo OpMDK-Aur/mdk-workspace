@@ -775,7 +775,7 @@ function ConexaChat({ client, onNavigate, onReportCreated }: { client: Client | 
   const [showReport, setShowReport] = useState(false)
   const [reportContent, setReportContent] = useState('')
   const [resetSignal, setResetSignal] = useState(0)
-  const handleResetClick = () => { if (window.confirm('¿Resetear esta conversación? Se va a vaciar el chat actual.')) setResetSignal((value) => value + 1) }
+  const handleResetClick = () => { if (window.confirm('¿Empezar un chat nuevo? El chat actual queda guardado en el historial de la izquierda.')) setResetSignal((value) => value + 1) }
   const handleCreateReport = (content: string) => {
     setReportContent(content)
     setShowReport(true)

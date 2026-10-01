@@ -94,6 +94,39 @@ export async function unarchiveConversation(supabase: SupabaseClient, userId: st
   if (error) throw error
 }
 
+/**
+ * Vuelve a poner como activo un análisis anterior del mismo cliente. Como
+ * solo puede haber un chat activo por (usuario, cliente), primero archiva el
+ * activo actual (que queda en el historial) y después restaura el elegido.
+ * Devuelve null si la conversación no pertenece a este usuario + cliente.
+ */
+export async function activateConversation(supabase: SupabaseClient, userId: string, clientId: string, conversationId: string) {
+  const { data: target, error: targetError } = await supabase
+    .from('ai_conversations')
+    .select(`${CONVERSATION_COLUMNS}, archived`)
+    .eq('id', conversationId)
+    .eq('user_id', userId)
+    .eq('client_id', clientId)
+    .maybeSingle()
+
+  if (targetError) throw targetError
+  if (!target) return null
+
+  if ((target as { archived?: boolean }).archived) {
+    const { error: archiveError } = await supabase
+      .from('ai_conversations')
+      .update({ archived: true })
+      .eq('user_id', userId)
+      .eq('client_id', clientId)
+      .eq('archived', false)
+      .neq('id', conversationId)
+    if (archiveError) throw archiveError
+    await unarchiveConversation(supabase, userId, conversationId)
+  }
+
+  return target as ConversationRow
+}
+
 export async function saveConversationMessage(
   supabase: SupabaseClient,
   input: {
