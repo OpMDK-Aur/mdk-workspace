@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ArrowUpRight, Check, ChevronRight, FileText, Loader2, MoreHorizontal, Paperclip, Pencil, Send, Square, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MessageContent } from '@/components/chat/message-content'
+import { CopyButton } from '@/components/chat/copy-button'
 import type { ActivityEvent } from '@/lib/ai/types'
 import { ATTACHMENT_ACCEPT_ATTRIBUTE, ATTACHMENT_MAX_COUNT, ATTACHMENT_MAX_SIZE_BYTES, isAttachmentMimeTypeAllowed } from '@/lib/ai/attachments'
 
@@ -700,7 +701,6 @@ function ChatBubble({
   reportCta?: ReportCtaState | null
 }) {
   const [promptOpen, setPromptOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
   const text = messageText(message)
   const fileParts = message.parts.filter((part) => part.type === 'file')
@@ -776,18 +776,12 @@ function ChatBubble({
               {reportCta.prompt}
             </pre>
             <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  void navigator.clipboard.writeText(reportCta.prompt ?? '').then(() => {
-                    setCopied(true)
-                    setTimeout(() => setCopied(false), 2000)
-                  })
-                }}
+              <CopyButton
+                getText={() => reportCta.prompt ?? ''}
+                label="Copiar prompt"
+                showLabel
                 className={CTA_CLASS}
-              >
-                {copied ? 'Copiado' : 'Copiar prompt'}
-              </button>
+              />
               <a href={CLAUDE_DESIGN_URL} target="_blank" rel="noopener noreferrer" className={cn(CTA_CLASS, 'inline-flex items-center gap-1')}>
                 Ir a Claude Design
                 <ArrowUpRight className="size-3.5" aria-hidden="true" />
