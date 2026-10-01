@@ -827,7 +827,10 @@ function getReportCtaState(messages: UIMessage[], index: number): ReportCtaState
   if (!confirmedOffer) return null
 
   const askedForPrompt = PROMPT_REQUEST.test(userText) || PROMPT_REQUEST.test(previousAssistantText)
-  return { confirmed: true, prompt: askedForPrompt ? extractPrompt(messageText(message)) : null }
+  const promptSource = askedForPrompt
+    ? [...messages.slice(0, index + 1)].reverse().map(messageText).find((text) => text.includes('```') || /#\s*(document_title|Informe|PERFORMANCE|Resumen)/i.test(text))
+    : null
+  return { confirmed: true, prompt: askedForPrompt ? extractPrompt(promptSource ?? messageText(message)) : null }
 }
 
 function extractPrompt(text: string) {
