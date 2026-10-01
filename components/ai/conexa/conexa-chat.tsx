@@ -5,7 +5,8 @@ import useSWR from 'swr'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
-import { Check, ChevronRight, FileText, Loader2, MoreHorizontal, Paperclip, Pencil, Send, Square, X } from 'lucide-react'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ArrowUpRight, Check, ChevronRight, FileText, Loader2, MoreHorizontal, Paperclip, Pencil, Send, Square, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MessageContent } from '@/components/chat/message-content'
 import type { ActivityEvent } from '@/lib/ai/types'
@@ -554,6 +555,7 @@ function ConexaChatSession({
                 isLast={index === messages.length - 1}
                 isStreaming={isStreamingAssistantMessage && index === messages.length - 1}
                 onCreateReport={onCreateReport}
+                reportCta={index === messages.length - 1 ? getReportCtaState(messages, index) : null}
                 onEdit={!isBusy && message.role === 'user' ? () => handleEditMessage(message.id) : undefined}
               />
             ))
@@ -688,13 +690,17 @@ function ChatBubble({
   isStreaming,
   onCreateReport,
   onEdit,
+  reportCta,
 }: {
   message: UIMessage
   isLast: boolean
   isStreaming: boolean
   onCreateReport?: (content: string) => void
   onEdit?: () => void
+  reportCta?: ReportCtaState | null
 }) {
+  const [promptOpen, setPromptOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
   const text = messageText(message)
   const fileParts = message.parts.filter((part) => part.type === 'file')
@@ -741,24 +747,83 @@ function ChatBubble({
           Editar
         </button>
       )}
-      {!isUser && isLast && !isStreaming && text && onCreateReport && (
+      {!isUser && isLast && !isStreaming && text && reportCta?.confirmed && (
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => onCreateReport(text)}
-            className="rounded-full border border-[#E6E6E1] bg-white px-3 py-1.5 text-xs font-medium text-[#141414] hover:border-[#5B5FE8] hover:text-[#5B5FE8]"
-          >
-            Crear informe
-          </button>
-          <button
-            type="button"
-            onClick={() => onCreateReport(text)}
-            className="rounded-full border border-[#E6E6E1] bg-white px-3 py-1.5 text-xs font-medium text-[#141414] hover:border-[#5B5FE8] hover:text-[#5B5FE8]"
-          >
-            Generar diagnóstico
-          </button>
+          {onCreateReport && (
+            <button type="button" onClick={() => onCreateReport(text)} className={CTA_CLASS}>
+              Crear informe
+            </button>
+          )}
+          {reportCta.prompt && (
+            <button type="button" onClick={() => setPromptOpen(true)} className={CTA_CLASS}>
+              Ver prompt
+            </button>
+          )}
+          <a href={CLAUDE_DESIGN_URL} target="_blank" rel="noopener noreferrer" className={cn(CTA_CLASS, 'inline-flex items-center gap-1')}>
+            Ir a Claude Design
+            <ArrowUpRight className="size-3.5" aria-hidden="true" />
+          </a>
         </div>
+      )}
+      {reportCta?.prompt && (
+        <Dialog open={promptOpen} onOpenChange={setPromptOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Prompt para Claude Design</DialogTitle>
+              <DialogDescription>Copialo y pegalo en Claude Design para generar la plantilla.</DialogDescription>
+            </DialogHeader>
+            <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-[#E6E6E1] bg-[#f4f4f1] p-3 font-mono text-xs leading-5 text-[#141414]">
+              {reportCta.prompt}
+            </pre>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(reportCta.prompt ?? '').then(() => {
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  })
+                }}
+                className={CTA_CLASS}
+              >
+                {copied ? 'Copiado' : 'Copiar prompt'}
+              </button>
+              <a href={CLAUDE_DESIGN_URL} target="_blank" rel="noopener noreferrer" className={cn(CTA_CLASS, 'inline-flex items-center gap-1')}>
+                Ir a Claude Design
+                <ArrowUpRight className="size-3.5" aria-hidden="true" />
+              </a>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   )
+}
+
+const CTA_CLASS =
+  'rounded-full border border-[#E6E6E1] bg-white px-3 py-1.5 text-xs font-medium text-[#141414] hover:border-[#5B5FE8] hover:text-[#5B5FE8]'
+const CLAUDE_DESIGN_URL = 'https://claude.ai/design'
+const REPORT_REQUEST = /\b(informe|reporte|report|prompt|claude design|cierre de mes)\b/i
+const PROMPT_REQUEST = /\b(prompt|claude design)\b/i
+const AFFIRMATIVE = /^\s*(s[ií]|dale|ok|okay|perfecto|de una|claro|arm[aá]lo|hacelo|pas[aá]melo|genial|bueno|confirmo|listo)\b/i
+
+type ReportCtaState = { confirmed: boolean; prompt: string | null }
+
+function getReportCtaState(messages: UIMessage[], index: number): ReportCtaState | null {
+  const message = messages[index]
+  if (message?.role !== 'assistant') return null
+  const userText = messageText(messages[index - 1] ?? message)
+  const previousAssistantText = index >= 2 ? messageText(messages[index - 2]) : ''
+  const confirmedOffer = AFFIRMATIVE.test(userText) && REPORT_REQUEST.test(previousAssistantText)
+  const requested = messages[index - 1]?.role === 'user' && REPORT_REQUEST.test(userText)
+  if (!confirmedOffer && !requested) return null
+
+  const askedForPrompt = PROMPT_REQUEST.test(userText) || (confirmedOffer && PROMPT_REQUEST.test(previousAssistantText))
+  return { confirmed: true, prompt: askedForPrompt ? extractPrompt(messageText(message)) : null }
+}
+
+function extractPrompt(text: string) {
+  const blocks = [...text.matchAll(/```[a-zA-Z]*\n([\s\S]*?)```/g)].map((match) => match[1].trim())
+  if (blocks.length > 0) return blocks.reduce((longest, block) => (block.length > longest.length ? block : longest))
+  return text.trim() || null
 }
