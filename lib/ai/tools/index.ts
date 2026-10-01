@@ -129,35 +129,94 @@ function extractCampaignName(message: any): string | null {
   return find(candidates)
 }
 
-function normalizeCrmChannel(value: unknown): 'google_ads' | 'meta_ads' | 'other' | null {
+type CrmChannel = 'google_ads' | 'meta_ads' | 'other'
+
+// Click IDs only count when they carry a value: the CRM webhook always sends
+// every key (e.g. gclid: "") so matching on the key name misclassified Meta
+// leads as Google.
+const CLICK_ID_CHANNEL: Record<string, CrmChannel> = {
+  gclid: 'google_ads', gbraid: 'google_ads', wbraid: 'google_ads', gad_source: 'google_ads', gad_campaignid: 'google_ads',
+  fbclid: 'meta_ads', ctwa_clid: 'meta_ads', igshid: 'meta_ads',
+}
+const PLATFORM_KEYS = ['source_type', 'utm_medium', 'utm_source_platform', 'platform', 'channel', 'utm_source', 'medium', 'source_app', 'source']
+
+function normalizeCrmChannel(value: unknown): CrmChannel | null {
   const text = String(value ?? '').trim().toLowerCase()
   if (!text) return null
-  if (/google|gclid|gbraid|wbraid|googleads|google ads|adwords/.test(text)) return 'google_ads'
-  if (/meta|facebook|instagram|fbclid|ctwa|whatsapp|facebook ads/.test(text)) return 'meta_ads'
+  if (/\b(google|googleads|adwords|gads|google ads)\b/.test(text)) return 'google_ads'
+  if (/\b(meta|facebook|fb|instagram|ig|whatsapp|ctwa|facebook ads)\b/.test(text)) return 'meta_ads'
   return 'other'
 }
 
-function extractCrmChannel(message: any): 'google_ads' | 'meta_ads' | 'other' | null {
+function extractCrmChannel(message: any): CrmChannel | null {
   const parsed = { ...message, metadata: parseMetadataValue(message?.metadata), referral_metadata: parseMetadataValue(message?.referral_metadata), referral: parseMetadataValue(message?.referral), message_data: parseMetadataValue(message?.message_data) }
-  const candidates = [parsed.source, parsed.utm_source, parsed.metadata, parsed.referral_metadata, parsed.referral, parsed.message_data]
+  const clickSignals: CrmChannel[] = []
+  const platformSignals: CrmChannel[] = []
   const visited = new Set<object>()
-  const find = (value: unknown): 'google_ads' | 'meta_ads' | 'other' | null => {
-    if (typeof value === 'string') return normalizeCrmChannel(value)
-    if (!value || typeof value !== 'object' || visited.has(value as object)) return null
+  const walk = (value: unknown) => {
+    if (!value || typeof value !== 'object' || visited.has(value as object)) return
     visited.add(value as object)
-    if (Array.isArray(value)) return value.map(find).find(Boolean) ?? null
+    if (Array.isArray(value)) { value.forEach(walk); return }
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (entry && typeof entry === 'object') { walk(entry); continue }
+      const text = String(entry ?? '').trim()
+      if (!text) continue
       const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
-      if (['source', 'utm_source', 'platform', 'channel', 'source_type', 'medium', 'gclid', 'gbraid', 'wbraid', 'fbclid', 'ctwa_clid'].includes(normalizedKey)) {
-        const channel = normalizeCrmChannel(`${key}:${String(entry)}`)
-        if (channel) return channel
+      if (normalizedKey in CLICK_ID_CHANNEL) clickSignals.push(CLICK_ID_CHANNEL[normalizedKey])
+      else if (PLATFORM_KEYS.includes(normalizedKey)) {
+        const channel = normalizeCrmChannel(text)
+        if (channel) platformSignals.push(channel)
       }
-      const nested = find(entry)
-      if (nested) return nested
     }
-    return null
   }
-  return find(candidates)
+  walk(parsed)
+  return clickSignals[0] ?? platformSignals.find((channel) => channel !== 'other') ?? platformSignals[0] ?? null
+}
+
+/**
+ * Lee los mensajes con referral de un conjunto de contactos pasando por
+ * conversations. Filtrar messages por contact_id agota el statement timeout
+ * del CRM; por conversation_id responde en milisegundos.
+ */
+async function loadContactReferralMessages(
+  crm: ReturnType<typeof createCrmClient>,
+  crmAccountIds: string[],
+  contactIds: string[],
+  onProgress?: (done: number, total: number) => void,
+) {
+  const contactByConversation = new Map<string, string>()
+  for (let i = 0; i < contactIds.length; i += 50) {
+    const chunk = contactIds.slice(i, i + 50)
+    const { data, error } = await withCrmRetry<any[]>(() => crm.from('conversations').select('id,contact_id').in('client_id', crmAccountIds).in('contact_id', chunk).limit(1000))
+    if (error) throw new Error(`conversations: ${error.message}`)
+    for (const row of data ?? []) contactByConversation.set(row.id, row.contact_id)
+  }
+  const conversationIds = [...contactByConversation.keys()]
+  const messages: any[] = []
+  for (let i = 0; i < conversationIds.length; i += 25) {
+    const chunk = conversationIds.slice(i, i + 25)
+    onProgress?.(Math.min(i + chunk.length, conversationIds.length), conversationIds.length)
+    for (let offset = 0; offset < 2000; offset += 200) {
+      const { data, error } = await withCrmRetry<any[]>(() => crm
+        .from('messages')
+        .select('id,created_at,client_id,contact_id,conversation_id,message_type,content,source,direction,metadata')
+        .in('client_id', crmAccountIds)
+        .in('conversation_id', chunk)
+        .not('metadata->referral', 'is', null)
+        .range(offset, offset + 199))
+      if (error) throw new Error(`messages: ${error.message}`)
+      for (const row of data ?? []) messages.push({ ...row, contact_id: row.contact_id ?? contactByConversation.get(row.conversation_id) })
+      if ((data ?? []).length < 200) break
+    }
+  }
+  return messages
+}
+
+function extractMeeting(content: unknown) {
+  const text = String(content ?? '')
+  if (!/Agendamiento\s*:/i.test(text)) return null
+  const field = (label: string) => text.match(new RegExp(`${label}\\s*:\\s*([^\\n]*)`, 'i'))?.[1]?.trim() || null
+  return { status: field('Agendamiento'), scheduled_for: field('Fecha y hora'), meeting_link: field('Link Meet') ?? field('Link'), notes: field('Notas') }
 }
 
 const CONTEXT_FIELD_LIMIT = 1200
@@ -929,27 +988,8 @@ const crmContactAds: ToolDefinition = {
         if ((data ?? []).length < 100) break
       }
       const contactIds = contacts.map(contact => contact.id).filter(Boolean)
-      const messages: any[] = []
-      // The question is about contacts created in this period. Restricting the
-      // referral lookup to the same period avoids scanning the full message history.
-      for (let batchStart = 0; batchStart < contactIds.length; batchStart += 25) {
-        const batchContactIds = contactIds.slice(batchStart, batchStart + 25)
-        for (let offset = 0; offset < 10000; offset += 100) {
-          const { data, error } = await withCrmRetry(() => crm
-            .from('messages')
-            .select('id,created_at,client_id,contact_id,conversation_id,content,source,direction,metadata')
-            .in('client_id', crmAccountIds)
-            .in('contact_id', batchContactIds)
-            // When the supervisor already identified specific contacts (for example won sales),
-            // load their complete referral history instead of limiting it to the opportunity period.
-            .gte('created_at', input.contactIds?.length ? '1970-01-01T00:00:00.000Z' : start)
-            .lt('created_at', input.contactIds?.length ? new Date().toISOString() : end)
-            .range(offset, offset + 99))
-          if (error) throw new Error(`messages: ${error.message}`)
-          messages.push(...(data ?? []))
-          if ((data ?? []).length < 100) break
-        }
-      }
+      const messages = await loadContactReferralMessages(crm, crmAccountIds, contactIds, (done, total) =>
+        context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_contact_ads', status: 'running', label: `Leyendo origen de contactos (${done}/${total} conversaciones)...` }))
       const referralsByContact = new Map<string, any[]>()
       const getReferral = (message: any) => {
         const metadata = parseMetadataValue(message.metadata)
@@ -971,6 +1011,7 @@ const crmContactAds: ToolDefinition = {
           referral: getReferral(message),
           utm_id: String(utmId),
           campaign: getCampaign(message),
+          channel: extractCrmChannel(message),
           source_id: getReferral(message)?.source_id ?? null,
           message_id: message.id,
           conversation_id: message.conversation_id,
@@ -1056,24 +1097,15 @@ const crmSalesAttribution: ToolDefinition = {
       for (let i = 0; i < contactIds.length; i += 25) {
         const chunk = contactIds.slice(i, i + 25)
         context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'running', label: `Consultando contactos CRM (${Math.min(i + chunk.length, contactIds.length)}/${contactIds.length})...` })
-        const rows = await batch('contacts', 'id,client_id,name,email,phone,metadata,custom_fields,source,utm_source,utm_medium,utm_campaign,utm_content,utm_term', query => query.in('client_id', crmAccountIds).in('id', chunk), 100).catch(() => [])
+        const rows = await batch('contacts', 'id,client_id,name,email,phone,metadata,custom_fields', query => query.in('client_id', crmAccountIds).in('id', chunk), 100).catch(() => [])
         contacts.push(...rows)
       }
       const contactReferralIds = new Set(contacts.filter((contact) => extractCampaignName(contact) || extractUtmId(contact)).map((contact) => contact.id))
       const missingReferralIds = contactIds.filter((id) => !contactReferralIds.has(id))
-      const messages: any[] = []
-      if (missingReferralIds.length) {
-        const CONTACT_CHUNK = 15
-        for (let i = 0; i < missingReferralIds.length; i += CONTACT_CHUNK * 4) {
-          const group = []
-          for (let j = i; j < Math.min(i + CONTACT_CHUNK * 4, missingReferralIds.length); j += CONTACT_CHUNK) group.push(missingReferralIds.slice(j, j + CONTACT_CHUNK))
-          context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'running', label: `Buscando atribución en mensajes (${Math.min(i + group.flat().length, missingReferralIds.length)}/${missingReferralIds.length})...` })
-          const settled = await Promise.all(group.map(chunk =>
-            batch('messages', 'id,created_at,client_id,contact_id,conversation_id,message_type,direction,status,source,delivered_at,metadata', query => query.in('client_id', crmAccountIds).in('contact_id', chunk).eq('direction', 'inbound'), 100).catch(() => [] as any[])
-          ))
-          for (const rows of settled) messages.push(...rows)
-        }
-      }
+      const messages = missingReferralIds.length
+        ? await loadContactReferralMessages(crm, crmAccountIds, missingReferralIds, (done, total) =>
+          context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'running', label: `Buscando atribución en mensajes (${done}/${total} conversaciones)...` }))
+        : []
       const stages = pipelineIds.length
         ? await batch('pipeline_stages', 'id,client_id,pipeline_id,name,description', query => query.in('client_id', crmAccountIds).in('pipeline_id', pipelineIds))
         : []
@@ -1140,7 +1172,118 @@ const crmSalesAttribution: ToolDefinition = {
   },
 }
 
+const crmAppointments: ToolDefinition = {
+  key: 'crm_appointments',
+  description: 'Lista las agendas/reuniones cargadas en el CRM (contactos con etiqueta tipo "Agendó reunión" / "Reunión agendada") en un período, con fecha y estado de la reunión, y YA CRUZADAS con su origen: canal (Meta Ads/Google Ads/otro), campaña (utm_campaign), utm_source/utm_medium y utm_id/ad_id. Usala para cualquier pregunta sobre agendas, reuniones, demos o turnos agendados, y para el detalle de campañas de esas agendas. dateBasis=tagged filtra por la fecha en que se agendó (default); dateBasis=meeting filtra por la fecha de la reunión.',
+  inputSchema: z.object({
+    dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    dateBasis: z.enum(['tagged', 'meeting']).default('tagged'),
+  }),
+  async execute(input: { dateFrom: string; dateTo: string; dateBasis?: 'tagged' | 'meeting' }, context: ExecutionContext) {
+    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const crmAccountIds = await resolveCrmAccountIds(context.clientId)
+    if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
+    const crm = createCrmClient()
+    const start = new Date(`${input.dateFrom}T00:00:00-03:00`)
+    const endExclusive = new Date(`${input.dateTo}T00:00:00-03:00`)
+    endExclusive.setUTCDate(endExclusive.getUTCDate() + 1)
+    const basis = input.dateBasis ?? 'tagged'
+    const inPeriod = (value: string | null | undefined) => {
+      const time = value ? new Date(value).getTime() : NaN
+      return Number.isFinite(time) && time >= start.getTime() && time < endExclusive.getTime()
+    }
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_appointments', status: 'running', label: 'Buscando agendas en el CRM...' })
+    try {
+      const { data: tags, error: tagsError } = await withCrmRetry<any[]>(() => crm.from('tags').select('id,client_id,name').in('client_id', crmAccountIds))
+      if (tagsError) throw new Error(`tags: ${tagsError.message}`)
+      const agendaTags = (tags ?? []).filter((tag) => /agend|reuni[oó]n|meeting|demo|turno/i.test(String(tag.name ?? '')))
+      if (agendaTags.length === 0) return { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires' }, agenda_tags: [], totals: { appointments: 0 }, message: 'El CRM no tiene etiquetas de agenda/reunión para este cliente.' }
+      const tagNames = new Map(agendaTags.map((tag) => [tag.id, tag.name]))
+      const contactTags: any[] = []
+      for (let offset = 0; offset < 10000; offset += 500) {
+        let query = crm.from('contact_tags').select('contact_id,tag_id,created_at').in('tag_id', [...tagNames.keys()])
+        if (basis === 'tagged') query = query.gte('created_at', start.toISOString()).lt('created_at', endExclusive.toISOString())
+        const { data, error } = await withCrmRetry<any[]>(() => query.range(offset, offset + 499))
+        if (error) throw new Error(`contact_tags: ${error.message}`)
+        contactTags.push(...(data ?? []))
+        if ((data ?? []).length < 500) break
+      }
+      const taggedByContact = new Map<string, any>()
+      for (const row of contactTags) if (!taggedByContact.has(row.contact_id)) taggedByContact.set(row.contact_id, row)
+      const contactIds = [...taggedByContact.keys()]
+      const contacts: any[] = []
+      for (let i = 0; i < contactIds.length; i += 100) {
+        const { data, error } = await withCrmRetry<any[]>(() => crm.from('contacts').select('id,name,email,phone,created_at').in('client_id', crmAccountIds).in('id', contactIds.slice(i, i + 100)))
+        if (error) throw new Error(`contacts: ${error.message}`)
+        contacts.push(...(data ?? []))
+      }
+      const messages = await loadContactReferralMessages(crm, crmAccountIds, contacts.map((contact) => contact.id), (done, total) =>
+        context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_appointments', status: 'running', label: `Cruzando agendas con su origen (${done}/${total} conversaciones)...` }))
+      const messagesByContact = new Map<string, any[]>()
+      for (const message of messages) {
+        const rows = messagesByContact.get(message.contact_id) ?? []
+        rows.push(message)
+        messagesByContact.set(message.contact_id, rows)
+      }
+      const appointments = contacts.map((contact) => {
+        const rows = (messagesByContact.get(contact.id) ?? []).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+        const meetingMessage = rows.find((row) => extractMeeting(row.content))
+        const referralMessage = meetingMessage ?? rows[0] ?? null
+        const referral = (parseMetadataValue(referralMessage?.metadata) as any)?.referral ?? null
+        const tagged = taggedByContact.get(contact.id)
+        return {
+          contact_id: contact.id,
+          contact_name: contact.name,
+          tag: tagNames.get(tagged?.tag_id) ?? null,
+          tagged_at: tagged?.created_at ?? null,
+          meeting: meetingMessage ? extractMeeting(meetingMessage.content) : null,
+          channel: referralMessage ? extractCrmChannel(referralMessage) : null,
+          campaign: referralMessage ? extractCampaignName(referralMessage) : null,
+          utm_source: referral?.utm_source || null,
+          utm_medium: referral?.utm_medium || referral?.source_type || null,
+          utm_id: referralMessage ? extractUtmId(referralMessage) : null,
+          ad_id: referral?.ad_id || referral?.utm_content || null,
+          landing_url: referral?.source_url || referral?.utm_url || null,
+        }
+      }).filter((row) => basis === 'tagged' || inPeriod(row.meeting?.scheduled_for))
+      const summarize = (key: 'channel' | 'campaign') => {
+        const map = new Map<string, { value: string | null; appointments: number; confirmed: number }>()
+        for (const row of appointments) {
+          const value = row[key] ?? null
+          const current = map.get(value ?? 'unattributed') ?? { value, appointments: 0, confirmed: 0 }
+          current.appointments += 1
+          if (/confirm/i.test(row.meeting?.status ?? '')) current.confirmed += 1
+          map.set(value ?? 'unattributed', current)
+        }
+        return [...map.values()].sort((a, b) => b.appointments - a.appointments)
+      }
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_appointments', status: 'completed', label: `${appointments.length} agendas encontradas` })
+      return {
+        available: true,
+        period: { date_from: input.dateFrom, date_to: input.dateTo, timezone: 'America/Argentina/Buenos_Aires', date_basis: basis },
+        agenda_tags: agendaTags.map((tag) => tag.name),
+        totals: {
+          appointments: appointments.length,
+          with_meeting_details: appointments.filter((row) => row.meeting).length,
+          confirmed: appointments.filter((row) => /confirm/i.test(row.meeting?.status ?? '')).length,
+          with_campaign: appointments.filter((row) => row.campaign).length,
+          without_attribution: appointments.filter((row) => !row.channel && !row.campaign).length,
+        },
+        by_channel: summarize('channel').map(({ value, ...rest }) => ({ channel: value ?? 'unattributed', ...rest })),
+        by_campaign: summarize('campaign').map(({ value, ...rest }) => ({ campaign: value, ...rest })),
+        appointments: appointments.slice(0, 200),
+        truncated: appointments.length > 200,
+      }
+    } catch (error) {
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_appointments', status: 'error', label: 'No se pudieron consultar las agendas' })
+      return { available: false, message: error instanceof Error ? error.message : 'No se pudieron consultar las agendas del CRM.' }
+    }
+  },
+}
+
 const allTools: ToolDefinition[] = [
+  crmAppointments,
   crmOpportunities,
   crmContacts,
   crmContactAds,
