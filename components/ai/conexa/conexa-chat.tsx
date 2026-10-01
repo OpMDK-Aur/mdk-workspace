@@ -512,8 +512,8 @@ function ConexaChatSession({
         </nav>
       </aside>
 
-      <div className="flex min-h-0 flex-1 flex-col bg-white">
-        <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-white p-4">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
+        <div ref={scrollRef} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden bg-white p-4">
           {!hasMessages ? (
             <div className="m-auto flex max-w-md flex-col gap-4 text-center">
               <p className="text-sm text-[#9a9a9a]">
@@ -705,10 +705,10 @@ function ChatBubble({
   const text = messageText(message)
   const fileParts = message.parts.filter((part) => part.type === 'file')
   return (
-    <div className={cn('group flex flex-col gap-2', isUser ? 'items-end' : 'items-start')}>
+    <div className={cn('group flex w-full min-w-0 flex-col gap-2', isUser ? 'items-end' : 'items-start')}>
       <div
         className={cn(
-          'max-w-[80%] rounded-lg px-3 py-2 text-sm leading-6',
+          'min-w-0 max-w-[80%] overflow-hidden break-words rounded-lg px-3 py-2 text-sm leading-6 [overflow-wrap:anywhere]',
           isUser ? 'bg-[#5B5FE8] text-white' : 'w-full max-w-[95%] border border-[#E6E6E1] bg-white text-[#141414]',
         )}
       >

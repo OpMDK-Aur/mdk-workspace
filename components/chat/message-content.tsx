@@ -45,6 +45,11 @@ const markdownComponents = {
     <strong className="font-semibold text-foreground">{children}</strong>
   ),
   hr: () => <hr className="my-4 border-border" />,
+  pre: ({ children }) => (
+    <pre className="my-3 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/40 p-3 font-mono text-xs leading-5 [overflow-wrap:anywhere]">
+      {children}
+    </pre>
+  ),
   table: ({ children }: { children?: React.ReactNode }) => (
     <div className="my-3 w-full overflow-x-auto rounded-lg border border-border">
       <table className="w-full border-collapse text-sm">{children}</table>
