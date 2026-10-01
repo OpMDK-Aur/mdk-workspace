@@ -11,6 +11,7 @@ import { getBuenosAiresLastSevenDays, getGoogleAnalyticsReport, getGoogleAnalyti
 import { getGoogleTagManagerReport } from '@/lib/google-tag-manager/service'
 import { createCrmClient } from '@/lib/supabase/crm'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
+import { buildClaudeDesignBrief, normalizeReportPlan, type ReportPlan } from '@/lib/ai/claude-design-prompts'
 
 const noInput = z.object({})
 
@@ -1282,7 +1283,48 @@ const crmAppointments: ToolDefinition = {
   },
 }
 
+const getClaudeDesignPrompt: ToolDefinition = {
+  key: 'get_claude_design_prompt',
+  description: 'Devuelve la estructura del prompt para Claude Design adaptada al plan contratado por el cliente activo (Esencial o Estratégico). Usala solo cuando el usuario aceptó recibir el prompt de Claude Design de un informe ya elaborado.',
+  inputSchema: z.object({
+    plan_override: z.enum(['esencial', 'estrategico']).optional().describe('Solo si el usuario pidió explícitamente otro plan o el cliente no tiene plan cargado.'),
+  }),
+  async execute(input: { plan_override?: ReportPlan }, context: ExecutionContext) {
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_claude_design_prompt', status: 'running', label: 'Preparando prompt para Claude Design...' })
+    let rawPlan: unknown = null
+    if (context.clientId) {
+      const supabase = await createClient()
+      const { data, error } = await supabase.from('clientes').select('plan').eq('id', context.clientId).maybeSingle()
+      if (error) console.error('[v0] get_claude_design_prompt plan lookup failed:', error.message)
+      rawPlan = data?.plan ?? null
+    }
+    const plan = input.plan_override ?? normalizeReportPlan(rawPlan)
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_claude_design_prompt', status: 'completed', label: 'Prompt de Claude Design listo' })
+    if (!plan) {
+      return {
+        available: false,
+        client_plan: rawPlan,
+        message: 'El cliente no tiene un plan Esencial o Estratégico cargado. Preguntale al usuario cuál de las dos plantillas usar.',
+      }
+    }
+    return {
+      available: true,
+      client_plan: rawPlan,
+      ...buildClaudeDesignBrief(plan),
+      fill_rules: [
+        'Armá el prompt final en un único bloque de código markdown listo para copiar y pegar en Claude Design.',
+        'Empezá con design_header, luego "# document_title" y "## plan_label — [Cliente]" con Cliente, Período y Responsable/Ejecutivo.',
+        'Completá cada slide en orden con los datos reales del informe que elaboraste en esta conversación (mismo cliente y período). Mantené los números con el formato del informe.',
+        'Si un campo no tiene dato, escribí "⟶ PENDIENTE" o "⟶ sin dato" y sumalo al resumen de pendientes. Nunca inventes datos.',
+        'Agregá "⟶ NOTA PARA DISEÑO" cuando un dato necesite contexto (campaña nueva sin comparación, volumen muy bajo, cuenta sin CRM, etc.).',
+        'Cerrá con closing_sections.',
+      ],
+    }
+  },
+}
+
 const allTools: ToolDefinition[] = [
+  getClaudeDesignPrompt,
   crmAppointments,
   crmOpportunities,
   crmContacts,
