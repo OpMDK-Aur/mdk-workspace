@@ -19,11 +19,17 @@ export function CreativeCard({ creative }: { creative: CreativeCardData }) {
   const paused = isPausedStatus(creative.status)
   return (
     <div className="overflow-hidden rounded-[14px] border border-[#E6E6E3] bg-white">
-      <div className="relative h-[120px]">
-        {showImage ? (
-          <img src={creative.thumbnail ?? ''} alt={creative.name} className="h-[120px] w-full object-cover" loading="lazy" onError={() => setImageFailed(true)} />
-        ) : (
-          <div className="h-[120px] w-full" style={{ background: thumbnailBackground }} aria-hidden="true" />
+      <div className="relative h-[120px] overflow-hidden">
+        <div className="absolute inset-0" style={{ background: thumbnailBackground }} aria-hidden="true" />
+        {showImage && (
+          <img
+            src={creative.thumbnail ?? ''}
+            alt={creative.name}
+            referrerPolicy="no-referrer"
+            className="absolute inset-0 h-full w-full object-cover"
+            loading="lazy"
+            onError={() => setImageFailed(true)}
+          />
         )}
         {creative.format && (
           <span className="absolute left-2 top-2 rounded-[5px] bg-white/90 px-2 py-[3px] font-mono text-[11px] text-[#5C5C5C]">{creative.format}</span>
@@ -37,7 +43,9 @@ export function CreativeCard({ creative }: { creative: CreativeCardData }) {
       </div>
       <div className="p-[14px]">
         <p className="mb-0.5 truncate text-[13.5px] font-bold text-[#141414]" title={creative.name}>{creative.name}</p>
-        <p className="mb-2.5 truncate text-[11.5px] text-[#9A9A9A]" title={creative.campaign}>{creative.campaign}</p>
+        {creative.campaign && (
+          <p className="mb-2.5 truncate text-[11.5px] text-[#9A9A9A]" title={creative.campaign}>{creative.campaign}</p>
+        )}
         <div className="flex justify-between gap-2 border-t border-[#F5F5F3] pt-2 text-[11.5px] text-[#5C5C5C]">
           <span>{creative.impressions.toLocaleString('es-AR')} impr.</span>
           <span>{'CTR ' + creative.ctr.toLocaleString('es-AR', { maximumFractionDigits: 1 }) + '%'}</span>

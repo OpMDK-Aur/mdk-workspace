@@ -244,6 +244,22 @@ async function fetchActiveCampaignIds(accountId: string, accessToken: string) {
   return ids
 }
 
+type MetaAdCreativeInfo = { campaign?: { name?: string }; creative?: Record<string, unknown> }
+
+// Insights (level=ad) no devuelve creativos: se consultan los anuncios por ID en lotes de 50.
+// Los modificadores thumbnail_width/height van en el campo porque /?ids ignora los parámetros de query.
+const AD_CREATIVE_FIELDS = 'campaign{name},creative.thumbnail_width(600).thumbnail_height(600){id,image_url,thumbnail_url,video_id,object_story_spec,asset_feed_spec}'
+
+async function fetchAdCreatives(adIds: string[], accessToken: string) {
+  const byId = new Map<string, MetaAdCreativeInfo>()
+  for (let index = 0; index < adIds.length; index += 50) {
+    const batch = adIds.slice(index, index + 50)
+    const payload = await fetchJson(`${META_BASE_URL}/?${new URLSearchParams({ access_token: accessToken, ids: batch.join(','), fields: AD_CREATIVE_FIELDS })}`) as unknown as Record<string, MetaAdCreativeInfo>
+    for (const id of batch) if (payload[id]) byId.set(id, payload[id])
+  }
+  return byId
+}
+
 function toNumber(value?: string) {
   return Number.parseFloat(value || '0') || 0
 }
@@ -340,7 +356,19 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
   }).filter((campaign) => campaign.id)
   const adsets = normalizeEntityRows(adsetRows, 'adset')
   const ads = normalizeEntityRows(adRows, 'ad')
-  const creatives = ads.map((ad) => ({ ...ad, creative_id: ad.id, creative_name: ad.name }))
+  const campaignNameByAd = new Map(adRows.map((row) => [(row as MetaInsightRow & { ad_id?: string }).ad_id ?? '', row.campaign_name ?? '']))
+  const creativeInfo = await fetchAdCreatives(ads.filter((ad) => ad.impressions > 0).map((ad) => ad.id), accessToken)
+    .catch(() => new Map<string, MetaAdCreativeInfo>())
+  const creatives = ads.map((ad) => {
+    const info = creativeInfo.get(ad.id)
+    return {
+      ...ad,
+      creative_id: ad.id,
+      creative_name: ad.name,
+      campaign_name: info?.campaign?.name || campaignNameByAd.get(ad.id) || '',
+      creative: info?.creative ?? null,
+    }
+  })
 
   const totals = campaigns.reduce((acc, campaign) => ({
     impressions: acc.impressions + campaign.impressions, reach: acc.reach + (campaign.reach ?? 0), clicks: acc.clicks + campaign.clicks,
