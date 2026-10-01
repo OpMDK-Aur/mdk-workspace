@@ -442,7 +442,7 @@ export async function POST(request: Request) {
         // final. Nunca permitimos que ese caso llegue como una burbuja vacía al
         // usuario: emitimos una respuesta explícita con el dato faltante y el
         // próximo paso, en vez de dejar el chat bloqueado visualmente.
-        if (finalText.trim() && !finalText.includes('```chart') && !detectReportMode(modelMessages)) {
+        if (finalText.trim() && !finalText.includes('```conexa-chart') && !finalText.includes('```chart') && !detectReportMode(modelMessages)) {
           const charts = buildAutoCharts(await result.steps)
           if (charts.length > 0) {
             writer.write({ type: 'text-start', id: 'supervisor-auto-charts' })

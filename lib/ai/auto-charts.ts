@@ -1,119 +1,140 @@
+import { chartFence, type ChartSpec } from './chart-spec'
+
 type ToolResultLike = { toolName?: string; output?: unknown }
 type StepLike = { toolResults?: ToolResultLike[] }
 
-type ChartRow = { name: string; inversion: number; resultados: number }
+type PeriodSnapshot = { start: string; output: Record<string, unknown> }
 
-const MAX_ITEMS = 8
+const WEEKDAY_LABELS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+const MAX_CAMPAIGNS = 5
 
 function toNumber(value: unknown) {
   const parsed = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function round(value: number) {
+  return Math.round(value * 100) / 100
+}
+
 function cleanName(value: unknown) {
   const name = typeof value === 'string' && value.trim() ? value.trim() : 'Sin nombre'
-  const normalized = name.replace(/\|/g, ' - ').replace(/\s+/g, ' ')
-  return normalized.length > 42 ? `${normalized.slice(0, 40)}…` : normalized
+  return name.replace(/\|/g, ' - ').replace(/\s+/g, ' ')
 }
 
-function collectCampaigns(output: unknown, platform: 'meta' | 'google') {
-  if (!output || typeof output !== 'object') return []
-  const record = output as Record<string, unknown>
-  if (record.available === false || !Array.isArray(record.accounts)) return []
-  const multipleAccounts = record.accounts.length > 1
-  const rows: ChartRow[] = []
-  for (const account of record.accounts as Array<Record<string, unknown>>) {
-    if (!Array.isArray(account.campaigns)) continue
-    for (const campaign of account.campaigns as Array<Record<string, unknown>>) {
-      const inversion = toNumber(campaign.spend ?? campaign.cost)
-      const resultados = platform === 'meta'
-        ? toNumber(campaign.results ?? campaign.leads)
-        : toNumber(campaign.leads ?? campaign.conversions)
-      if (inversion <= 0 && resultados <= 0) continue
-      const baseName = cleanName(campaign.name ?? campaign.campaign_name)
-      const name = multipleAccounts && typeof account.account_name === 'string'
-        ? cleanName(`${baseName} (${account.account_name})`)
-        : baseName
-      rows.push({ name, inversion: Math.round(inversion * 100) / 100, resultados })
+function startOf(output: Record<string, unknown>) {
+  const range = (output.date_range ?? output.dateRange) as { start?: unknown } | undefined
+  return typeof range?.start === 'string' ? range.start : null
+}
+
+/** Devuelve [actual, anterior] solo si la tool se ejecutó para dos períodos distintos. */
+function currentAndPrevious(snapshots: PeriodSnapshot[]) {
+  const byStart = new Map<string, PeriodSnapshot>()
+  for (const snapshot of snapshots) byStart.set(snapshot.start, snapshot)
+  const ordered = [...byStart.values()].sort((a, b) => b.start.localeCompare(a.start))
+  return ordered.length >= 2 ? [ordered[0], ordered[1]] as const : null
+}
+
+function accountsOf(output: Record<string, unknown>) {
+  return Array.isArray(output.accounts) ? output.accounts as Array<Record<string, unknown>> : []
+}
+
+function platformSpend(output: Record<string, unknown>) {
+  return accountsOf(output).reduce((sum, account) => {
+    const totals = account.totals as Record<string, unknown> | undefined
+    if (totals && totals.spend !== undefined) return sum + toNumber(totals.spend)
+    const campaigns = Array.isArray(account.campaigns) ? account.campaigns as Array<Record<string, unknown>> : []
+    return sum + campaigns.reduce((acc, campaign) => acc + toNumber(campaign.spend ?? campaign.cost), 0)
+  }, 0)
+}
+
+function campaignSpend(output: Record<string, unknown>) {
+  const spend = new Map<string, number>()
+  for (const account of accountsOf(output)) {
+    const campaigns = Array.isArray(account.campaigns) ? account.campaigns as Array<Record<string, unknown>> : []
+    for (const campaign of campaigns) {
+      const name = cleanName(campaign.name ?? campaign.campaign_name)
+      spend.set(name, (spend.get(name) ?? 0) + toNumber(campaign.spend ?? campaign.cost))
     }
   }
-  return rows
+  return spend
 }
 
-function topWithOthers(rows: ChartRow[]) {
-  const sorted = [...rows].sort((a, b) => b.inversion - a.inversion)
-  if (sorted.length <= MAX_ITEMS) return sorted
-  const top = sorted.slice(0, MAX_ITEMS - 1)
-  const rest = sorted.slice(MAX_ITEMS - 1)
-  top.push({
-    name: `Otros (${rest.length})`,
-    inversion: Math.round(rest.reduce((sum, row) => sum + row.inversion, 0) * 100) / 100,
-    resultados: rest.reduce((sum, row) => sum + row.resultados, 0),
-  })
-  return top
+function sessionsByDay(output: Record<string, unknown>) {
+  const reports = output.reports as { byDay?: Array<Record<string, unknown>> } | undefined
+  return (reports?.byDay ?? [])
+    .filter((row) => typeof row.date === 'string' && /^\d{8}$/.test(row.date as string))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+    .map((row) => ({ date: String(row.date), sessions: toNumber(row.sessions) }))
 }
 
-function chartBlock(config: Record<string, unknown>) {
-  return `\`\`\`chart\n${JSON.stringify(config)}\n\`\`\``
+function weekdayLabel(yyyymmdd: string) {
+  const date = new Date(Date.UTC(Number(yyyymmdd.slice(0, 4)), Number(yyyymmdd.slice(4, 6)) - 1, Number(yyyymmdd.slice(6, 8))))
+  return WEEKDAY_LABELS[date.getUTCDay()]
 }
 
 /**
- * o4-mini frecuentemente ignora la instrucción de emitir bloques ```chart.
- * Como respaldo determinístico, armamos los gráficos a partir de los
- * resultados reales de las tools de pauta ejecutadas en el turno.
+ * o4-mini no siempre emite los bloques de gráfico. Como respaldo
+ * determinístico armamos ChartSpec solo con los resultados reales de las
+ * tools ejecutadas en el turno, y solo cuando hay período actual y anterior
+ * (nunca inventamos la comparación).
  */
 export function buildAutoCharts(steps: StepLike[]) {
-  const byPlatform: Record<'meta' | 'google', ChartRow[]> = { meta: [], google: [] }
+  const snapshots: Record<'meta' | 'google' | 'analytics', PeriodSnapshot[]> = { meta: [], google: [], analytics: [] }
+  const toolPlatform: Record<string, keyof typeof snapshots> = {
+    get_meta_metrics: 'meta',
+    get_google_metrics: 'google',
+    get_google_analytics_report: 'analytics',
+  }
+
   for (const step of steps) {
     for (const result of step.toolResults ?? []) {
-      if (result.toolName === 'get_meta_metrics') byPlatform.meta.push(...collectCampaigns(result.output, 'meta'))
-      if (result.toolName === 'get_google_metrics') byPlatform.google.push(...collectCampaigns(result.output, 'google'))
+      const platform = result.toolName ? toolPlatform[result.toolName] : undefined
+      if (!platform || !result.output || typeof result.output !== 'object') continue
+      const output = result.output as Record<string, unknown>
+      if (output.available === false) continue
+      const start = startOf(output)
+      if (start) snapshots[platform].push({ start, output })
     }
   }
 
-  const blocks: string[] = []
-  const labels = { meta: 'Meta Ads', google: 'Google Ads' }
-  for (const platform of ['meta', 'google'] as const) {
-    const rows = byPlatform[platform]
-    if (rows.length < 2) continue
-    const data = topWithOthers(rows)
-    blocks.push(chartBlock({
-      type: 'bar',
-      layout: 'horizontal',
-      title: `Inversión por campaña · ${labels[platform]}`,
-      xKey: 'name',
-      yKey: 'inversion',
-      format: 'currency',
-      data,
-    }))
-    if (data.some((row) => row.resultados > 0)) {
-      blocks.push(chartBlock({
-        type: 'bar',
-        layout: 'horizontal',
-        title: `Resultados por campaña · ${labels[platform]}`,
-        xKey: 'name',
-        yKey: 'resultados',
-        format: 'number',
-        data: [...data].sort((a, b) => b.resultados - a.resultados),
-      }))
+  const charts: ChartSpec[] = []
+
+  const meta = currentAndPrevious(snapshots.meta)
+  const google = currentAndPrevious(snapshots.google)
+  const platformRows = [
+    meta && { label: 'Meta Ads', cur: round(platformSpend(meta[0].output)), prev: round(platformSpend(meta[1].output)) },
+    google && { label: 'Google Ads', cur: round(platformSpend(google[0].output)), prev: round(platformSpend(google[1].output)) },
+  ].filter((row): row is { label: string; cur: number; prev: number } => !!row && (row.cur > 0 || row.prev > 0))
+  if (platformRows.length > 0) charts.push({ type: 'bars', title: 'Inversión por plataforma', prefix: '$', rows: platformRows })
+
+  for (const [label, pair] of [['Meta Ads', meta], ['Google Ads', google]] as const) {
+    if (!pair) continue
+    const current = campaignSpend(pair[0].output)
+    const previous = campaignSpend(pair[1].output)
+    const rows = [...current.entries()]
+      .filter(([, spend]) => spend > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_CAMPAIGNS)
+      .map(([name, spend]) => ({ label: name, cur: round(spend), prev: round(previous.get(name) ?? 0) }))
+    if (rows.length >= 2) charts.push({ type: 'bars', title: `Inversión por campaña · ${label}`, prefix: '$', rows })
+  }
+
+  const analytics = currentAndPrevious(snapshots.analytics)
+  if (analytics) {
+    const current = sessionsByDay(analytics[0].output)
+    const previous = sessionsByDay(analytics[1].output)
+    const length = Math.min(current.length, previous.length)
+    if (length >= 2) {
+      charts.push({
+        type: 'columns',
+        title: 'Sesiones por día · Analytics',
+        labels: current.slice(0, length).map((day) => weekdayLabel(day.date)),
+        cur: current.slice(0, length).map((day) => day.sessions),
+        prev: previous.slice(0, length).map((day) => day.sessions),
+      })
     }
   }
 
-  const metaSpend = byPlatform.meta.reduce((sum, row) => sum + row.inversion, 0)
-  const googleSpend = byPlatform.google.reduce((sum, row) => sum + row.inversion, 0)
-  if (metaSpend > 0 && googleSpend > 0) {
-    blocks.unshift(chartBlock({
-      type: 'pie',
-      title: 'Distribución de inversión por plataforma',
-      xKey: 'name',
-      yKey: 'value',
-      format: 'currency',
-      data: [
-        { name: 'Meta Ads', value: Math.round(metaSpend * 100) / 100 },
-        { name: 'Google Ads', value: Math.round(googleSpend * 100) / 100 },
-      ],
-    }))
-  }
-
-  return blocks.slice(0, 3)
+  return charts.slice(0, 3).map(chartFence)
 }
