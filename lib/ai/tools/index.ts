@@ -129,6 +129,37 @@ function extractCampaignName(message: any): string | null {
   return find(candidates)
 }
 
+function normalizeCrmChannel(value: unknown): 'google_ads' | 'meta_ads' | 'other' | null {
+  const text = String(value ?? '').trim().toLowerCase()
+  if (!text) return null
+  if (/google|gclid|gbraid|wbraid|googleads|google ads|adwords/.test(text)) return 'google_ads'
+  if (/meta|facebook|instagram|fbclid|ctwa|whatsapp|facebook ads/.test(text)) return 'meta_ads'
+  return 'other'
+}
+
+function extractCrmChannel(message: any): 'google_ads' | 'meta_ads' | 'other' | null {
+  const parsed = { ...message, metadata: parseMetadataValue(message?.metadata), referral_metadata: parseMetadataValue(message?.referral_metadata), referral: parseMetadataValue(message?.referral), message_data: parseMetadataValue(message?.message_data) }
+  const candidates = [parsed.source, parsed.utm_source, parsed.metadata, parsed.referral_metadata, parsed.referral, parsed.message_data]
+  const visited = new Set<object>()
+  const find = (value: unknown): 'google_ads' | 'meta_ads' | 'other' | null => {
+    if (typeof value === 'string') return normalizeCrmChannel(value)
+    if (!value || typeof value !== 'object' || visited.has(value as object)) return null
+    visited.add(value as object)
+    if (Array.isArray(value)) return value.map(find).find(Boolean) ?? null
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      const normalizedKey = key.toLowerCase().replace(/[\s-]+/g, '_')
+      if (['source', 'utm_source', 'platform', 'channel', 'source_type', 'medium', 'gclid', 'gbraid', 'wbraid', 'fbclid', 'ctwa_clid'].includes(normalizedKey)) {
+        const channel = normalizeCrmChannel(`${key}:${String(entry)}`)
+        if (channel) return channel
+      }
+      const nested = find(entry)
+      if (nested) return nested
+    }
+    return null
+  }
+  return find(candidates)
+}
+
 const CONTEXT_FIELD_LIMIT = 1200
 const CONTEXT_COMMENT_LIMIT = 1800
 
@@ -986,7 +1017,7 @@ const crmContactAds: ToolDefinition = {
 
 const crmSalesAttribution: ToolDefinition = {
   key: 'crm_sales_attribution',
-  description: 'Relaciona oportunidades ganadas del CRM con contactos y mensajes inbound con utm_id/referral/source_id para atribución de ventas. Usala después de identificar las oportunidades won cuando la consulta pide ventas por campaña o anuncio. by_campaign.campaign es el NOMBRE de campaña resuelto: usá siempre ese campo para mostrarle la campaña al usuario, nunca el utm_id/ad_id (que solo sirve como referencia interna). Su resultado es evidencia CRM; debe cruzarse con Meta Ads o Google Ads para validar gasto, leads y nombres de campaña. NO usar para contar el total de contactos creados: para eso usar crm_contacts.',
+  description: 'Relaciona oportunidades ganadas del CRM con contactos y mensajes inbound con utm_id/referral/source_id para atribución de ventas. Usala después de identificar las oportunidades won cuando la consulta pide ventas por campaña o anuncio. by_campaign.campaign es el NOMBRE de campaña resuelto: usá siempre ese campo para mostrarle la campaña al usuario, nunca el utm_id/ad_id (que solo sirve como referencia interna). by_channel es el resumen canónico de ventas CRM por canal y debe usarse literalmente para comparar Google Ads, Meta Ads y sin atribución. Su resultado es evidencia CRM; debe cruzarse con Meta Ads o Google Ads para validar gasto, leads y nombres de campaña. NO usar para contar el total de contactos creados: para eso usar crm_contacts.',
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
@@ -1057,7 +1088,7 @@ const crmSalesAttribution: ToolDefinition = {
         const campaign = extractCampaignName(contact)
         const adId = extractUtmId(contact)
         if (contact.id && (campaign || adId)) {
-          referralsByContact.set(contact.id, { ...contact, ad_id: adId, ad_title: campaign, campaign: campaign ?? (adId ? `UTM ID ${adId}` : null) })
+          referralsByContact.set(contact.id, { ...contact, ad_id: adId, ad_title: campaign, channel: extractCrmChannel(contact), campaign: campaign ?? (adId ? `UTM ID ${adId}` : null) })
         }
       }
       for (const message of messages) {
@@ -1070,7 +1101,7 @@ const crmSalesAttribution: ToolDefinition = {
           // superior, y sin esto el usuario terminaba viendo el utm_id.
           const adId = extractUtmId(message) ?? referral.source_id ?? referral.ad_id ?? null
           const campaignName = extractCampaignName(message)
-          referralsByContact.set(message.contact_id, { ...message, referral, ad_id: adId, ad_title: campaignName, campaign: campaignName ?? (adId ? `UTM ID ${adId}` : null) })
+          referralsByContact.set(message.contact_id, { ...message, referral, ad_id: adId, ad_title: campaignName, channel: extractCrmChannel(message), campaign: campaignName ?? (adId ? `UTM ID ${adId}` : null) })
         }
       }
       const won = opportunities.filter(row => String(row.status ?? '').toLowerCase() === 'won' || String(row.status ?? '').toLowerCase() === 'ganado')
@@ -1090,7 +1121,16 @@ const crmSalesAttribution: ToolDefinition = {
         current.amount += Number(sale.opportunity.amount ?? 0) || 0
         byCampaign.set(key, current)
       }
-      const result = { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo }, totals: { won_sales: won.length, attributed_sales: attributed.filter(sale => sale.referral?.campaign).length, unattributed_sales: attributed.filter(sale => !sale.referral?.campaign).length, amount: won.reduce((sum, row) => sum + (Number(row.amount ?? 0) || 0), 0) }, by_campaign: [...byCampaign.values()].sort((a, b) => b.sales - a.sales), sales: attributed.slice(0, 100), truncated: attributed.length > 100 }
+      const byChannel = new Map<string, { channel: string; sales: number; amount: number; campaign_sales: number }>()
+      for (const sale of attributed) {
+        const channel = sale.referral?.channel ?? 'unattributed'
+        const current = byChannel.get(channel) ?? { channel, sales: 0, amount: 0, campaign_sales: 0 }
+        current.sales += 1
+        current.amount += Number(sale.opportunity.amount ?? 0) || 0
+        if (sale.referral?.campaign) current.campaign_sales += 1
+        byChannel.set(channel, current)
+      }
+      const result = { available: true, period: { date_from: input.dateFrom, date_to: input.dateTo }, totals: { won_sales: won.length, attributed_sales: attributed.filter(sale => sale.referral?.channel).length, unattributed_sales: attributed.filter(sale => !sale.referral?.channel).length, amount: won.reduce((sum, row) => sum + (Number(row.amount ?? 0) || 0), 0) }, by_channel: [...byChannel.values()].sort((a, b) => b.sales - a.sales), by_campaign: [...byCampaign.values()].sort((a, b) => b.sales - a.sales), sales: attributed.slice(0, 100), truncated: attributed.length > 100 }
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'crm_sales_attribution', status: 'completed', label: `${won.length} ventas ganadas analizadas` })
       return result
     } catch (error) {
