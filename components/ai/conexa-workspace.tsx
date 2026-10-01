@@ -769,7 +769,7 @@ const CHAT_MODELS = [
   { value: 'openai/o4-mini', label: 'o4-mini', recommended: true },
 ] as const
 
-function ConexaChat({ client, period, onNavigate, onReportCreated, crmAcquisition }: { client: Client | null; period: string; clients: Client[]; crmAcquisition?: CrmAcquisitionReport; onSelectClient: (client: Client) => void; onNavigate: (destination: string) => void; onReportCreated: (report: GeneratedReport, replaceId?: string) => void }) {
+function ConexaChat({ client, onNavigate, onReportCreated }: { client: Client | null; period: string; clients: Client[]; crmAcquisition?: CrmAcquisitionReport; onSelectClient: (client: Client) => void; onNavigate: (destination: string) => void; onReportCreated: (report: GeneratedReport, replaceId?: string) => void }) {
   const [model, setModel] = useState<string>(CHAT_MODELS[0].value)
   const chatModels = CHAT_MODELS
   const [showReport, setShowReport] = useState(false)
@@ -782,11 +782,10 @@ function ConexaChat({ client, period, onNavigate, onReportCreated, crmAcquisitio
     const title = `Análisis · ${client?.nombre_del_negocio ?? 'Cliente'}`
     const clientName = client?.nombre_del_negocio ?? 'Cliente'
     const createdAt = new Date().toISOString()
-    // Se guarda una foto (html) del informe tal como lo diseñó la IA en ese
-    // momento (con las tarjetas de CRM que estaban visibles), para que la
-    // descarga y la vista en Informes se vean siempre igual, sin depender de
-    // que los datos en pantalla sigan siendo los mismos más adelante.
-    const html = buildReportHtml({ title, clientName, createdAt, content }, crmAcquisition)
+    // The report reflects only the selected chat answer. The dashboard's CRM
+    // cards use the workspace period (e.g. the full month), so attaching them
+    // would mix a different period into a narrower analysis like a single day.
+    const html = buildReportHtml({ title, clientName, createdAt, content })
     const localReport: GeneratedReport = { id: crypto.randomUUID(), title, content, html, clientName, createdAt }
     onReportCreated(localReport)
     fetch('/api/conexa/reports', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client?.id ?? null, clientName, title, content, html }) })
@@ -816,15 +815,8 @@ function ConexaChat({ client, period, onNavigate, onReportCreated, crmAcquisitio
         />
       </div>
       {showReport && <aside className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-[#e6e6e3] bg-white shadow-sm">
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#eee] p-5 pb-4"><div><p className="text-[11px] font-bold uppercase tracking-[.08em] text-[#5b5fe8]">Conexa · Informe</p><h2 className="mt-1 text-lg font-bold">Informe del período</h2></div><button type="button" onClick={() => setShowReport(false)} className="text-xs text-[#888] hover:text-[#222]">Cerrar</button></div>
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#eee] p-5 pb-4"><div><p className="text-[11px] font-bold uppercase tracking-[.08em] text-[#5b5fe8]">Conexa · Informe</p><h2 className="mt-1 text-lg font-bold">Informe del análisis</h2></div><button type="button" onClick={() => setShowReport(false)} className="text-xs text-[#888] hover:text-[#222]">Cerrar</button></div>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5 text-sm leading-6 text-[#333]">
-          {crmAcquisition?.available && <section className="grid grid-cols-2 gap-2.5">
-            <div className="rounded-lg border border-[#eee] bg-[#fafaf8] p-3"><p className="text-[10px] font-semibold uppercase tracking-[.06em] text-[#999]">Contactos CRM</p><p className="mt-1 text-xl font-bold text-[#141414]">{crmAcquisition.totals.contacts.toLocaleString('es-AR')}</p></div>
-            <div className="rounded-lg border border-[#eee] bg-[#fafaf8] p-3"><p className="text-[10px] font-semibold uppercase tracking-[.06em] text-[#999]">Ventas ganadas</p><p className="mt-1 text-xl font-bold text-[#141414]">{crmAcquisition.totals.sales.toLocaleString('es-AR')}</p></div>
-            <div className="rounded-lg border border-[#eee] bg-[#fafaf8] p-3"><p className="text-[10px] font-semibold uppercase tracking-[.06em] text-[#999]">Tasa de cierre</p><p className="mt-1 text-xl font-bold text-[#141414]">{crmAcquisition.totals.contacts ? `${((crmAcquisition.totals.sales / crmAcquisition.totals.contacts) * 100).toFixed(1)}%` : 'Sin datos'}</p></div>
-            <div className="rounded-lg border border-[#eee] bg-[#fafaf8] p-3"><p className="text-[10px] font-semibold uppercase tracking-[.06em] text-[#999]">Campaña top</p><p className="mt-1 truncate text-sm font-bold text-[#141414]" title={crmAcquisition.campaignRows[0]?.label}>{crmAcquisition.campaignRows[0]?.label ?? 'Sin datos'}</p></div>
-          </section>}
-          {crmAcquisition?.available && crmAcquisition.campaignRows.length > 0 && <section><h3 className="mb-2 font-bold text-[#5b5fe8]">Top campañas por contactos</h3><div className="space-y-2">{crmAcquisition.campaignRows.slice(0, 5).map((row) => { const max = crmAcquisition.campaignRows[0]?.contacts || 1; return <div key={row.label} className="flex items-center gap-2 text-xs"><span className="w-[38%] shrink-0 truncate text-[#555]" title={row.label}>{row.label}</span><span className="h-2 flex-1 overflow-hidden rounded-full bg-[#eeefff]"><span className="block h-full rounded-full bg-[#5b5fe8]" style={{ width: `${Math.max(6, (row.contacts / max) * 100)}%` }} /></span><span className="w-14 shrink-0 text-right font-semibold text-[#141414]">{row.contacts}</span></div> })}</div></section>}
           <section><h3 className="mb-1 font-bold text-[#5b5fe8]">Resumen ejecutivo</h3><MessageContent content={reportContent || 'El informe se generó a partir del último análisis de Conexa.'} /></section>
           <section><h3 className="mb-1 font-bold text-[#5b5fe8]">Fuentes conectadas</h3><p>Meta Ads · Google Ads · GA4 · CRM</p></section>
           <div className="pt-2"><button type="button" onClick={() => onNavigate('Informes')} className="w-full rounded-lg bg-[#5b5fe8] px-4 py-2.5 text-sm font-semibold text-white">Abrir informes</button></div>
