@@ -1326,8 +1326,10 @@ const getClaudeDesignPrompt: ToolDefinition = {
       fill_rules: [
         'Armá el prompt final en un único bloque de código markdown listo para copiar y pegar en Claude Design.',
         'Empezá con design_header, luego "# document_title" y "## plan_label — [Cliente]" con Cliente, Período y Responsable/Ejecutivo.',
-        'Completá cada slide en orden con los datos reales del informe que elaboraste en esta conversación (mismo cliente y período). Mantené los números con el formato del informe.',
-        'Si un campo no tiene dato, escribí "⟶ PENDIENTE" o "⟶ sin dato" y sumalo al resumen de pendientes. Nunca inventes datos.',
+        'ANTES de escribir el prompt, revisá required_data: si alguna métrica no está ya en el informe de esta conversación, ejecutá AHORA la herramienta indicada para el mismo cliente y período (incluido el período anterior para las comparaciones). No entregues un prompt con métricas vacías que se podían consultar.',
+        'Completá cada slide en orden con los números reales (inversión, leads, CPL, CPC, CTR, ventas, atribución, % vs anterior, filas TOTAL). Cada tabla debe tener todas sus filas y columnas con valores.',
+        'Entregá el prompt COMPLETO en una sola respuesta: todas las slides de la plantilla, sin resumir, sin cortar y sin "etc.". Nunca pidas permiso para continuar.',
+        'Solo usá "⟶ PENDIENTE" para campos cualitativos que dependen del equipo (acciones realizadas, tests, requerimientos) o cuando la herramienta devolvió sin datos; en ese caso indicá la causa y sumalo al resumen de pendientes. Nunca inventes datos.',
         'Agregá "⟶ NOTA PARA DISEÑO" cuando un dato necesite contexto (campaña nueva sin comparación, volumen muy bajo, cuenta sin CRM, etc.).',
         'Cerrá con closing_sections.',
       ],

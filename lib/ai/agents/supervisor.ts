@@ -53,6 +53,28 @@ function getGatewayModel(model: string) {
 // o texto extraído de CSV/Excel ya inyectado como parte de texto adicional).
 export type SupervisorModelMessage = ModelMessage
 
+function messageText(message: ModelMessage | undefined) {
+  if (!message) return ''
+  if (typeof message.content === 'string') return message.content
+  return message.content
+    .map((part) => (part.type === 'text' ? part.text : ''))
+    .join(' ')
+}
+
+const REPORT_REQUEST_PATTERN = /\b(informe|reporte|report|claude design|cierre de mes|prompt)\b/i
+const AFFIRMATIVE_PATTERN = /^\s*(s[ií]|dale|ok|okay|perfecto|de una|claro|armalo|arm[aá]lo|hacelo|pasamelo|pas[aá]melo|genial|bueno)\b/i
+
+// Informes y prompts de Claude Design necesitan varias fuentes (Meta, Google,
+// CRM, período anterior). El flujo normal limita a una sola tool de datos,
+// lo que dejaba los informes con métricas vacías.
+function detectReportMode(messages: ModelMessage[]) {
+  const userMessages = messages.filter((message) => message.role === 'user')
+  const lastUser = messageText(userMessages.at(-1))
+  if (REPORT_REQUEST_PATTERN.test(lastUser)) return true
+  const lastAssistant = messageText(messages.filter((message) => message.role === 'assistant').at(-1))
+  return /claude design|informe/i.test(lastAssistant) && AFFIRMATIVE_PATTERN.test(lastUser)
+}
+
 export async function streamSupervisorResponse(
   messages: SupervisorModelMessage[],
   context: ExecutionContext,
@@ -94,6 +116,8 @@ export async function streamSupervisorResponse(
   // configuración histórica no deje el stream sin respuesta.
   const selectedModel = requestedModel === 'openai/o4-mini' ? requestedModel : 'openai/o4-mini'
   console.log('[v0] Supervisor model selected:', { requestedModel, selectedModel })
+  const reportMode = detectReportMode(messages)
+  console.log('[v0] Supervisor report mode:', reportMode)
   const tools = Object.fromEntries(
     definitions.map((definition) => [
       definition.key,
@@ -111,7 +135,8 @@ export async function streamSupervisorResponse(
       config.systemPrompt,
       'No expongas secretos, tokens, claves ni credenciales. El contexto de ejecución ya fue provisto por el backend.',
       'AGENDAS / REUNIONES: si la consulta pregunta por agendas, reuniones, demos o turnos agendados en el CRM (y/o por las campañas de esas agendas), ejecutá DIRECTAMENTE crm_appointments: ya trae cada agenda cruzada con su canal, campaña y UTMs del CRM. Respondé primero con el dato pedido (cantidad, listado resumido, desglose by_campaign y by_channel). No digas que los contactos no tienen metadata ni recomiendes "cruzar datos" con el CRM: ese cruce ya lo hace la tool.',
-      'INFORMES Y CLAUDE DESIGN: cuando el usuario pida un informe (de resultados, mensual, de cierre, estratégico, etc.), primero elaborá el informe completo. Al final del informe, y como única pregunta de cierre, preguntá: "¿Querés que te arme el prompt para Claude Design con este informe?". No generes el prompt sin que el usuario lo confirme. Si confirma, ejecutá get_claude_design_prompt (detecta solo el plan del cliente: Esencial o Estratégico; Premium usa la plantilla Estratégica) y devolvé el prompt completo siguiendo sus fill_rules, con los datos del informe más reciente de la conversación. Si la tool indica que el cliente no tiene plan cargado, preguntá qué plantilla usar. En el texto previo al bloque, aclarale al usuario qué plantilla se usó y por qué (el plan del cliente).',
+      'INFORMES CON MÉTRICAS REALES: un informe nunca puede salir con campos vacíos si el dato se puede consultar. Antes de redactar, ejecutá get_account_context y luego TODAS las fuentes necesarias para el período pedido (si no se indica, el último mes cerrado): get_meta_metrics y get_google_metrics para el período actual Y el período anterior equivalente (para el "vs. anterior"), crm_opportunities y crm_sales_attribution (ventas y atribución), crm_contacts (leads en CRM vs plataforma) y, para el Plan Estratégico, además get_industry_benchmark y get_account_change_history. Solo marcá "sin dato" lo que una herramienta devolvió vacío o no disponible, aclarando cuál.',
+  'INFORMES Y CLAUDE DESIGN: cuando el usuario pida un informe (de resultados, mensual, de cierre, estratégico, etc.), primero elaborá el informe completo. Al final del informe, y como única pregunta de cierre, preguntá: "¿Querés que te arme el prompt para Claude Design con este informe?". No generes el prompt sin que el usuario lo confirme. Si confirma, ejecutá get_claude_design_prompt (detecta solo el plan del cliente: Esencial o Estratégico; Premium usa la plantilla Estratégica) y devolvé el prompt completo siguiendo sus fill_rules, con los datos del informe más reciente de la conversación. Si la tool indica que el cliente no tiene plan cargado, preguntá qué plantilla usar. En el texto previo al bloque, aclarale al usuario qué plantilla se usó y por qué (el plan del cliente).',
       'PROPUESTAS DE CRUCE: nunca abras la respuesta con recomendaciones metodológicas, advertencias genéricas o "sería conveniente cruzar los datos". Empezá siempre por el resultado. Si un cruce adicional que vos mismo podés ejecutar (por ejemplo CRM vs inversión/leads de Meta Ads o Google Ads) aportaría valor y no lo hiciste en este turno, cerrá la respuesta con UNA pregunta concreta ofreciéndolo, por ejemplo: "¿Querés que crucemos estos datos del CRM con la plataforma para ver inversión y costo por agenda de cada campaña?". Nunca le pidas al usuario que haga el cruce manualmente.',
       'EJECUCIÓN INMEDIATA: si la consulta pide un dato, métrica, cantidad o estado verificable, no escribas una explicación previa ni anuncies lo que vas a hacer. Ejecutá las herramientas necesarias y respondé después con el resultado. El usuario solo debe ver la respuesta final y, durante la ejecución, las actividades de las herramientas.',
       'PROTOCOLO DE ORQUESTACIÓN ADAPTATIVA Y CRUCE: primero clasificá la intención de la consulta y elegí la fuente de verdad inicial. Para ventas, cierres, oportunidades ganadas o “cuántas ventas”, comenzá con crm_opportunities para obtener las oportunidades con estado won y sus contactos; después ejecutá crm_contact_ads o crm_sales_attribution para extraer utm_id/source_id de esos contactos; finalmente consultá la herramienta de la plataforma correspondiente (Meta Ads o Google Ads) para obtener gasto, campañas, anuncios y leads, y cruzá los IDs/UTM antes de redactar. Para leads de pauta comenzá por la plataforma y luego contrastá con crm_contacts/crm_contact_ads. Para contactos CRM comenzá por crm_contacts. Para gasto comenzá por la plataforma. Nunca uses una secuencia fija si la intención exige otra, pero siempre completá todos los nodos necesarios para responder la pregunta.',
@@ -157,6 +182,13 @@ export async function streamSupervisorResponse(
     // Obligamos un paso adicional de herramientas para que consulte métricas,
     // atribución o CRM antes de sintetizar.
     const loadedAccountContext = steps.some((step) => step.toolCalls?.some((call) => call.toolName === 'get_account_context'))
+    if (reportMode) {
+      if (stepNumber < 14) return undefined
+      return {
+        toolChoice: 'none' as const,
+        system: 'Redactá AHORA el informe o prompt COMPLETO, con todas las secciones, usando todas las métricas obtenidas. No lo cortes ni lo resumas.',
+      }
+    }
     if (stepNumber === 1 && loadedAccountContext) {
       return {
         toolChoice: 'required' as const,
@@ -179,6 +211,8 @@ export async function streamSupervisorResponse(
     }
   },
   temperature: 0.2,
-    maxOutputTokens: 4000,
+    // o4-mini gasta tokens de razonamiento antes del texto; un informe
+    // Estratégico de 11 slides con datos no entra en 4000 y salía cortado.
+    maxOutputTokens: reportMode ? 24000 : 4000,
   })
 }
