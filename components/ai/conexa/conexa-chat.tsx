@@ -66,7 +66,32 @@ interface ConexaChatProps {
   analyticsPropertyId?: string
 }
 
-type PersistedMessage = { id: string; role: 'user' | 'assistant'; content: string; created_at: string }
+type PersistedMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+  message_data?: { ui_message?: { parts?: unknown; metadata?: unknown } } | null
+}
+
+function isRestorablePart(part: unknown): part is UIMessage['parts'][number] {
+  if (!part || typeof part !== 'object' || typeof (part as { type?: unknown }).type !== 'string') return false
+  const { type, state } = part as { type: string; state?: unknown }
+  if (type.startsWith('data-')) return false
+  if (type.startsWith('tool-')) return state === 'output-available'
+  return true
+}
+
+function toUIMessage(message: PersistedMessage): UIMessage {
+  const stored = message.message_data?.ui_message
+  const parts = Array.isArray(stored?.parts) ? stored.parts.filter(isRestorablePart) : []
+  return {
+    id: message.id,
+    role: message.role,
+    parts: parts.length > 0 ? parts : [{ type: 'text', text: message.content }],
+    ...(stored?.metadata !== undefined ? { metadata: stored.metadata } : {}),
+  }
+}
 
 const RENDER_REPORT_PART = 'tool-renderReport'
 const TOP_CREATIVES_PART = 'tool-showTopCreatives'
@@ -291,11 +316,7 @@ function ConexaChatSession({
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const persistedMessages: UIMessage[] = initialMessages.map((message) => ({
-    id: message.id,
-    role: message.role,
-    parts: [{ type: 'text', text: message.content }],
-  }))
+  const persistedMessages: UIMessage[] = initialMessages.map(toUIMessage)
 
   function buildContext() {
     return clientId

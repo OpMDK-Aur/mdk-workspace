@@ -260,6 +260,13 @@ async function fetchAdCreatives(adIds: string[], accessToken: string) {
   return byId
 }
 
+export async function getAdCreative(adId: string) {
+  const accessToken = process.env.META_ADS_ACCESS_TOKEN
+  if (!accessToken) throw createMetaError('META_ADS_ACCESS_TOKEN no está configurado.', 'AUTHENTICATION_ERROR')
+  const byId = await fetchAdCreatives([adId], accessToken)
+  return byId.get(adId)?.creative ?? null
+}
+
 function toNumber(value?: string) {
   return Number.parseFloat(value || '0') || 0
 }

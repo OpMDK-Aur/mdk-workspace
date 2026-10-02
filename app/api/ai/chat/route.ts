@@ -491,13 +491,21 @@ export async function POST(request: Request) {
         if (!conversation) return
         const assistantMessage = messages.at(-1)
         const assistantText = getMessageTextWithCharts(assistantMessage)
-        if (!assistantText) return
+        const uiParts = (assistantMessage?.parts ?? []).filter((part) => !part.type.startsWith('data-'))
+        const hasToolOutput = uiParts.some((part) => part.type.startsWith('tool-') && 'state' in part && part.state === 'output-available')
+        if (!assistantText && !hasToolOutput) return
         await saveConversationMessage(supabase, {
           conversationId: conversation.id,
           userId: user.id,
           role: 'assistant',
-          content: assistantText,
+          content: assistantText || '[creativos de Meta mostrados al usuario]',
           messageData: {
+            ui_message: {
+              id: assistantMessage?.id,
+              role: 'assistant',
+              parts: uiParts,
+              ...(assistantMessage?.metadata !== undefined ? { metadata: assistantMessage.metadata } : {}),
+            },
             ...(workingContext ? { context_snapshot: workingContext } : {}),
             ...(analysisRunState.specialistOutputs.at(-1) ? { performance_analysis: analysisRunState.specialistOutputs.at(-1) } : {}),
             paid_media: {

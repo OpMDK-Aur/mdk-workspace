@@ -46,20 +46,57 @@ function secondaryMetrics(creative: RankedCreative, highlighted: CreativeMetric)
   return all.filter((item) => item.metric !== highlighted).slice(0, 3)
 }
 
+const refreshedThumbnails = new Map<string, Promise<string | null>>()
+
+function refreshThumbnail(adId: string) {
+  let pending = refreshedThumbnails.get(adId)
+  if (!pending) {
+    pending = fetch(`/api/ads/meta/creative-thumbnail?ad_id=${encodeURIComponent(adId)}`)
+      .then((response) => (response.ok ? (response.json() as Promise<{ thumbnail: string | null }>) : { thumbnail: null }))
+      .then((data) => data.thumbnail)
+      .catch(() => null)
+    refreshedThumbnails.set(adId, pending)
+  }
+  return pending
+}
+
 function CreativeImage({ creative, large = false }: { creative: RankedCreative; large?: boolean }) {
+  const adId = creative.adId ?? creative.id
+  const [src, setSrc] = useState(creative.thumbnail)
+  const [retried, setRetried] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [failed, setFailed] = useState(false)
-  const showImage = Boolean(creative.thumbnail) && !failed
+  const showImage = Boolean(src) && !failed && !refreshing
+
+  function handleError() {
+    if (retried || !adId) {
+      setFailed(true)
+      return
+    }
+    setRetried(true)
+    setRefreshing(true)
+    refreshThumbnail(adId).then((fresh) => {
+      setRefreshing(false)
+      if (fresh && fresh !== src) setSrc(fresh)
+      else setFailed(true)
+    })
+  }
+
   return (
     <>
       <div className="absolute inset-0" style={{ background: stripedBackground }} aria-hidden="true" />
+      {refreshing && creative.format && (
+        <span className="absolute inset-0 flex items-center justify-center font-mono text-[11px] text-[#5C5C5C]" aria-hidden="true">{creative.format}</span>
+      )}
       {showImage && (
         <img
-          src={creative.thumbnail ?? ''}
+          key={src ?? ''}
+          src={src ?? ''}
           alt={creative.name}
           referrerPolicy="no-referrer"
           loading={large ? 'eager' : 'lazy'}
           className={large ? 'absolute inset-0 h-full w-full object-contain' : 'absolute inset-0 h-full w-full object-cover'}
-          onError={() => setFailed(true)}
+          onError={handleError}
         />
       )}
     </>
