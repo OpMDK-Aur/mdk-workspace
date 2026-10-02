@@ -55,6 +55,25 @@ function limitToolOutput(value: unknown) {
   }
 }
 
+function summarizePlatform(label: string, output: Record<string, unknown> | null) {
+  if (!output || output.available !== true) {
+    return `${label}: no disponible (${String(output?.message ?? output?.error ?? 'sin respuesta de la API')}).`
+  }
+  const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 100) / 100 : 0)
+  const accounts = Array.isArray(output.accounts) ? (output.accounts as Array<Record<string, unknown>>) : []
+  const lines = accounts.map((account) => {
+    const totals = (account.totals ?? {}) as Record<string, unknown>
+    const name = String(account.account_name ?? account.name ?? account.nombre_cuenta ?? account.account_id ?? account.id ?? 'cuenta')
+    const campaigns = (Array.isArray(account.campaigns) ? (account.campaigns as Array<Record<string, unknown>>) : [])
+      .filter((campaign) => num(campaign.spend) > 0)
+      .sort((a, b) => num(b.spend) - num(a.spend))
+      .slice(0, 5)
+      .map((campaign) => `${String(campaign.name ?? campaign.campaign_name ?? campaign.id)} (gasto ${num(campaign.spend)}, leads ${num(campaign.leads ?? campaign.results)}, CPL ${num(campaign.cpl ?? campaign.cost_per_result)})`)
+    return `- ${label} · ${name}: gasto ${num(totals.spend)}, impresiones ${num(totals.impressions)}, clics ${num(totals.clicks)}, leads/resultados ${num(totals.leads ?? totals.results)}, CPL ${num(totals.cpl ?? totals.cost_per_result)}${campaigns.length ? `. Top campañas: ${campaigns.join('; ')}` : ''}`
+  })
+  return lines.length ? lines.join('\n') : `${label}: sin cuentas con datos en el período.`
+}
+
 function getGatewayModel(model: string) {
   const gateway = createOpenAI({
     apiKey: process.env.AI_GATEWAY_API_KEY,
@@ -208,6 +227,22 @@ export async function streamSupervisorResponse(
     ? { toolChoice: { type: 'tool', toolName: RENDER_REPORT_TOOL } }
     : {}
 
+  // El flujo corto (1 sola tool de datos) hacía que o4-mini consultara solo
+  // Google o solo CRM y luego afirmara que Meta "no tiene actividad". Antes de
+  // sintetizar, traemos las plataformas conectadas que no se consultaron.
+  const platformPrefetch = [
+    { toolKey: 'get_meta_metrics', label: 'Meta Ads', connected: Boolean(context.metaAccountId) },
+    { toolKey: 'get_google_metrics', label: 'Google Ads', connected: Boolean(context.googleCustomerId) },
+  ]
+  const prefetchMissingPlatforms = async (steps: Array<{ toolCalls?: Array<{ toolName?: string } | undefined> }>) => {
+    const called = new Set(steps.flatMap((step) => (step.toolCalls ?? []).map((call) => call?.toolName)))
+    const range = latestRange ?? defaultRange()
+    const pending = platformPrefetch.filter((platform) => platform.connected && !called.has(platform.toolKey) && exposedToolKeys.includes(platform.toolKey))
+    if (!pending.length) return ''
+    const summaries = await Promise.all(pending.map(async (platform) => summarizePlatform(platform.label, await runTool(platform.toolKey, range))))
+    return `\n\nDATOS REALES DE PAUTA (${range.from} a ${range.to}), obtenidos de las cuentas conectadas. Usalos en la respuesta; no digas que falta información ni que no hay actividad si acá figura gasto:\n${summaries.join('\n')}`
+  }
+
   return streamText({
     model: getGatewayModel(selectedModel),
     system: [
@@ -256,7 +291,7 @@ export async function streamSupervisorResponse(
   // Si llegamos cerca del límite de pasos sin que el modelo haya redactado
   // todavía la respuesta final, le quitamos las tools en el último paso
   // disponible para forzarlo a sintetizar con lo que ya recolectó.
-  prepareStep: ({ stepNumber, steps }) => {
+  prepareStep: async ({ stepNumber, steps }) => {
     // o4-mini a veces da por terminado el turno justo después de recibir
     // get_account_context: devuelve finishReason=stop pero sin texto ni otra
     // tool call. En una consulta de CRM/pauta eso es una respuesta inválida.
@@ -284,14 +319,14 @@ export async function streamSupervisorResponse(
       return {
         activeTools: synthesisTools,
       ...synthesisChoice,
-        system: 'No ejecutes más herramientas de datos. Redactá AHORA la respuesta final con lo obtenido. Cruzá CRM y pauta si existe evidencia; si falta una fuente, declaralo y agregá recomendaciones accionables.',
+        system: 'No ejecutes más herramientas de datos. Redactá AHORA la respuesta final con lo obtenido. Cruzá CRM y pauta si existe evidencia; si falta una fuente, declaralo y agregá recomendaciones accionables.' + await prefetchMissingPlatforms(steps),
       }
     }
     if (stepNumber < 14) return undefined
     return {
       activeTools: synthesisTools,
       ...synthesisChoice,
-      system: 'Redactá AHORA la respuesta final únicamente con los resultados obtenidos. Si algún cruce quedó incompleto, aclaralo como dato faltante y agregá recomendaciones.',
+      system: 'Redactá AHORA la respuesta final únicamente con los resultados obtenidos. Si algún cruce quedó incompleto, aclaralo como dato faltante y agregá recomendaciones.' + await prefetchMissingPlatforms(steps),
     }
   },
   temperature: 0.2,
