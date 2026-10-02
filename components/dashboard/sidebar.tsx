@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import Image from 'next/image'
+import { LogoMDK, LogoMDKMark } from '@/components/logo-mdk'
 import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
 import type { Profile } from '@/lib/types'
@@ -380,15 +380,7 @@ export function Sidebar({
           {/* Header */}
           <div className="p-2 border-b border-border shrink-0">
             <div className="flex flex-col items-center gap-2">
-              <div className="relative w-10 h-10 flex-shrink-0">
-                <Image
-                  src="/images/logo-mdk.jpg"
-                  alt="MDK"
-                  fill
-                  priority
-                  className="object-contain rounded"
-                />
-              </div>
+              <LogoMDKMark />
             </div>
           </div>
 
@@ -529,17 +521,7 @@ export function Sidebar({
             {/* Header */}
             <div className="p-4 border-b border-border shrink-0">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="relative w-28 h-10 flex-shrink-0">
-                    <Image
-                      src="/images/logo-mdk.jpg"
-                      alt="MDK"
-                      fill
-                      priority
-                      className="object-contain object-left"
-                    />
-                  </div>
-                </div>
+                <LogoMDK />
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
