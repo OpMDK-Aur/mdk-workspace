@@ -10,6 +10,7 @@ import { ArrowUpRight, Check, ChevronRight, FileText, Loader2, MoreHorizontal, P
 import { toast } from 'sonner'
 import { ChartSkeleton, ChatChart } from '@/components/conexa/chat-chart'
 import { ChatKpis, ChatKpisSkeleton } from '@/components/conexa/chat-kpis'
+import { ChatCreatives, ChatCreativesSkeleton } from '@/components/conexa/chat-creatives'
 import { parseChartSpec, type ChartSpec } from '@/lib/ai/chart-spec'
 import { isReportSections, type ReportSection } from '@/lib/ai/report-charts'
 import { asksForValidation, buildClaudeReportPrompt, isMonthlyReportRequest, REPORT_CONFIRMATION_PATTERN } from '@/lib/ai/monthly-report'
@@ -68,6 +69,7 @@ interface ConexaChatProps {
 type PersistedMessage = { id: string; role: 'user' | 'assistant'; content: string; created_at: string }
 
 const RENDER_REPORT_PART = 'tool-renderReport'
+const TOP_CREATIVES_PART = 'tool-showTopCreatives'
 const PERSISTED_CHART_FENCE = /```(?:conexa-chart|chart)[ \t]*\r?\n([\s\S]*?)```/g
 
 function reportSections(part: UIMessage['parts'][number]): ReportSection[] | null {
@@ -86,7 +88,7 @@ function messageText(message: UIMessage) {
 }
 
 function hasReportPart(message: UIMessage) {
-  return message.parts.some((part) => part.type === RENDER_REPORT_PART)
+  return message.parts.some((part) => part.type === RENDER_REPORT_PART || part.type === TOP_CREATIVES_PART)
 }
 
 function messageCharts(message: UIMessage): ChartSpec[] {
@@ -827,6 +829,12 @@ function ChatBubble({
         ) : (
           message.parts.map((part, i) => {
             if (part.type === 'text') return part.text ? <MessageContent key={i} content={part.text} /> : null
+            if (part.type === TOP_CREATIVES_PART) {
+              if (!('state' in part) || part.state === 'output-error') return null
+              return part.state === 'output-available' && 'output' in part
+                ? <ChatCreatives key={i} data={part.output} />
+                : <ChatCreativesSkeleton key={i} />
+            }
             if (part.type !== RENDER_REPORT_PART) return null
             if ('state' in part && part.state === 'output-error') return null
             const sections = reportSections(part)
@@ -849,6 +857,7 @@ function ChatBubble({
                       <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9A9A9A]">{section.heading}</h3>
                       {section.text ? <MessageContent content={section.text} /> : null}
                       {spec ? <ChatChart spec={spec} /> : null}
+                      {section.creatives ? <ChatCreatives data={section.creatives} /> : null}
                     </section>
                   )
                 })}

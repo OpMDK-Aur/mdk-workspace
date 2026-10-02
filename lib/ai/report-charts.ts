@@ -1,11 +1,12 @@
 import type { ChartSpec } from './chart-spec'
+import { rankCreatives, type TopCreativesResult } from '../meta/top-creatives'
 
 export const REPORT_HEADINGS = ['RESUMEN', 'GOOGLE ADS', 'META ADS', 'ANALYTICS', 'CRM', 'HALLAZGOS', 'RECOMENDACIONES', 'PRÓXIMOS PASOS'] as const
-export const CHART_KEYS = ['spend_by_platform', 'leads_by_channel', 'sessions_daily', 'crm_funnel', 'none'] as const
+export const CHART_KEYS = ['spend_by_platform', 'leads_by_channel', 'sessions_daily', 'crm_funnel', 'top_creatives', 'none'] as const
 
 export type ReportHeading = (typeof REPORT_HEADINGS)[number]
 export type ChartKey = (typeof CHART_KEYS)[number]
-export type ReportSection = { heading: ReportHeading; text: string; chart?: ChartSpec }
+export type ReportSection = { heading: ReportHeading; text: string; chart?: ChartSpec; creatives?: TopCreativesResult }
 
 export type DateRange = { from: string; to: string }
 type Output = Record<string, unknown>
@@ -224,7 +225,7 @@ async function crmFunnel(run: RunTool, current: DateRange, previous: DateRange):
   }
 }
 
-const BUILDERS: Record<Exclude<ChartKey, 'none'>, (run: RunTool, current: DateRange, previous: DateRange) => Promise<ChartSpec | null>> = {
+const BUILDERS: Record<Exclude<ChartKey, 'none' | 'top_creatives'>, (run: RunTool, current: DateRange, previous: DateRange) => Promise<ChartSpec | null>> = {
   spend_by_platform: spendByPlatform,
   leads_by_channel: leadsByChannel,
   sessions_daily: sessionsDaily,
@@ -302,9 +303,12 @@ export async function buildReportSections(
     if (!(await hasPlatformData(run, section.heading, current))) return null
     const text = section.text.replace(CHART_MENTION, '').trim()
     const platformChart = PLATFORM_CHARTS[section.heading]
-    const builder = platformChart ?? (section.chartKey === 'none' ? null : BUILDERS[section.chartKey])
+    const builder = platformChart ?? (section.chartKey === 'none' || section.chartKey === 'top_creatives' ? null : BUILDERS[section.chartKey])
     const chart = builder ? await builder(run, current, previous).catch(() => null) : null
-    return { heading: section.heading, text, ...(chart ? { chart } : {}) }
+    const creatives = section.heading === 'META ADS' && section.chartKey === 'top_creatives'
+      ? rankCreatives(await run('get_meta_metrics', current), { metric: 'cpl', order: 'best', limit: 3 })
+      : null
+    return { heading: section.heading, text, ...(chart ? { chart } : {}), ...(creatives ? { creatives } : {}) }
   }))
   return resolved
     .filter((section): section is ReportSection => section !== null && (section.text.length > 0 || !!section.chart))
