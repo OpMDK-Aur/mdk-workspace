@@ -12,7 +12,7 @@ import { mondayOf, toISODate, type SeguimientoItem, type SeguimientoPayload } fr
 import { SeguimientoCard } from './seguimiento-card'
 import { ItemDialog, type ItemDraft } from './item-dialog'
 import { ClientPicker, type ClienteOption } from './client-picker'
-import { GRUPO_LABELS, GRUPO_ORDER, PRIORIDAD_RANK, motivationalMessage } from './constants'
+import { GRUPO_LABELS, GRUPO_ORDER, PRIORIDAD_RANK, effectiveGrupo, motivationalMessage } from './constants'
 
 interface MetaPayload {
   currentUserId: string
@@ -95,14 +95,14 @@ export function SeguimientoView() {
     return GRUPO_ORDER.map((grupo) => ({
       grupo,
       items: filtered
-        .filter((i) => i.grupo === grupo)
+        .filter((i) => effectiveGrupo(i, today) === grupo)
         .sort((a, b) =>
           Number(a.completado) - Number(b.completado) ||
           (PRIORIDAD_RANK[a.prioridad ?? 'baja'] ?? 3) - (PRIORIDAD_RANK[b.prioridad ?? 'baja'] ?? 3) ||
           (a.fecha_vencimiento ?? '9999').localeCompare(b.fecha_vencimiento ?? '9999'),
         ),
     })).filter((g) => g.items.length > 0)
-  }, [items, clienteFiltro, estadoFiltro, prioridadFiltro])
+  }, [items, clienteFiltro, estadoFiltro, prioridadFiltro, today])
 
   const patchItem = async (id: string, patch: Partial<SeguimientoItem>) => {
     await mutate(
