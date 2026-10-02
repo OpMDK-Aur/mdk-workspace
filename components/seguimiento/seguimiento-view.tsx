@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
-import { ChevronLeft, ChevronRight, Plus, RefreshCw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ListChecks, Plus, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -125,6 +125,26 @@ export function SeguimientoView() {
     )
   }
 
+  const [syncing, setSyncing] = useState(false)
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
+  const syncTasks = async () => {
+    if (!usuarioId) return
+    setSyncing(true)
+    setSyncMessage(null)
+    try {
+      const res = await fetch(`/api/tasks/seguimiento/sync?usuario_id=${usuarioId}&semana=${semana}`, { method: 'POST' })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setSyncMessage(body.error ?? 'No se pudieron importar las tareas')
+        return
+      }
+      setSyncMessage(body.created > 0 ? `Se importaron ${body.created} tareas.` : 'No hay tareas abiertas nuevas para importar.')
+      await mutate()
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const deleteItem = async (item: SeguimientoItem) => {
     if (!window.confirm(`¿Eliminar "${item.titulo}"?`)) return
     await fetch(`/api/tasks/seguimiento/${item.id}`, { method: 'DELETE' })
@@ -226,11 +246,17 @@ export function SeguimientoView() {
           <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={() => mutate()} aria-label="Volver a buscar coincidencias">
             <RefreshCw className={cn('h-4 w-4', isValidating && 'animate-spin')} />
           </Button>
+          <Button variant="outline" onClick={syncTasks} disabled={!usuarioId || syncing} className="h-9 gap-1.5 rounded-full">
+            <ListChecks className={cn('h-4 w-4', syncing && 'animate-pulse')} />
+            {syncing ? 'Sincronizando…' : 'Sincronizar tareas'}
+          </Button>
           <Button onClick={() => setDialog({ open: true, item: null })} disabled={!usuarioId} className="h-9 gap-1.5 rounded-full bg-gradient-to-r from-mdk-orange to-mdk-pink text-[#141414] hover:opacity-90">
             <Plus className="h-4 w-4" />Nuevo ítem
           </Button>
         </div>
       </section>
+
+      {syncMessage && <p className="text-sm text-muted-foreground" role="status">{syncMessage}</p>}
 
       {data && data.summary.pendiente > 0 && (
         <p className="text-sm text-muted-foreground">
@@ -248,9 +274,15 @@ export function SeguimientoView() {
             {items.length === 0 ? 'No hay ítems de seguimiento para esta semana.' : 'Ningún ítem coincide con los filtros.'}
           </p>
           {items.length === 0 && (
-            <Button variant="outline" className="rounded-full" onClick={() => setDialog({ open: true, item: null })}>
-              <Plus className="h-4 w-4" />Agregar el primero
-            </Button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button onClick={syncTasks} disabled={!usuarioId || syncing} className="gap-1.5 rounded-full bg-gradient-to-r from-mdk-orange to-mdk-pink text-[#141414] hover:opacity-90">
+                <ListChecks className="h-4 w-4" />
+                {syncing ? 'Sincronizando…' : 'Traer mis tareas abiertas'}
+              </Button>
+              <Button variant="outline" className="rounded-full" onClick={() => setDialog({ open: true, item: null })}>
+                <Plus className="h-4 w-4" />Agregar a mano
+              </Button>
+            </div>
           )}
         </div>
       ) : (
