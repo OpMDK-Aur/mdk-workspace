@@ -158,7 +158,7 @@ export function MultiagenteWorkspace() {
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-sm font-medium text-foreground">Cliente a analizar</span>
-                {selectedClient && memory && !loadingMemory && !editingMemory && (
+                {selectedClient && active && !loadingMemory && !editingMemory && (
                   <div className="flex items-center gap-1">
                     <Button
                       type="button"
@@ -168,20 +168,20 @@ export function MultiagenteWorkspace() {
                       className="gap-1.5 border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 hover:text-primary"
                     >
                       <Eye className="size-4" aria-hidden="true" />
-                      Ver memoria
+                      Contexto del cliente
                     </Button>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
                           type="button"
                           className="flex size-6 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
-                          aria-label="Qué muestra Ver memoria"
+                          aria-label="Qué muestra Contexto del cliente"
                         >
                           <Info className="size-4" aria-hidden="true" />
                         </button>
                       </TooltipTrigger>
                       <TooltipContent side="bottom" className="max-w-64 text-pretty">
-                        Abre el contexto guardado del cliente: industria, objetivo comercial, qué vende y su conversión principal. Desde ahí también podés editarlo.
+                        Industria, objetivo comercial, qué vende, conversión principal y metas (ventas y CPL objetivo). El multiagente usa este contexto en cada respuesta. Podés editarlo cuando quieras.
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -210,7 +210,7 @@ export function MultiagenteWorkspace() {
             {selectedClient && <PaidMediaBackfillPanel clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} />}
 
             {selectedClient && loadingMemory && <div className="flex flex-col gap-4"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>}
-            {selectedClient && !loadingMemory && editingMemory && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} mode="edit" onCancel={() => setEditingMemory(false)} onCompleted={(updated) => { setMemory(updated); setEditingMemory(false); setActive(true); toast.success('Memoria del cliente actualizada.') }} />}
+            {selectedClient && !loadingMemory && editingMemory && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} mode="edit" onCancel={() => setEditingMemory(false)} onCompleted={(updated) => { setMemory(updated); setEditingMemory(false); setActive(true); toast.success('Contexto del cliente actualizado.') }} />}
             {selectedClient && !loadingMemory && !active && <ClientContextForm clientId={selectedClient.id} clientName={selectedClient.nombre_del_negocio} initialMemory={memory} onCompleted={(updated) => { setMemory(updated); setActive(true) }} />}
             {active && (
               <SupervisorChat

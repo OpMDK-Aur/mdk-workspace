@@ -15,6 +15,13 @@ import { CreativeGrid } from '@/components/conexa/meta/creative-card'
 import { toCreativeCards } from '@/lib/meta/to-creative-card'
 import type { CrmAcquisitionFilters, CrmAcquisitionReport, CrmBreakdownRow } from '@/lib/crm/service'
 import { buildReportHtml } from '@/lib/conexa/report-html'
+import useSWR from 'swr'
+import { ClientContextForm } from '@/components/ai/client-context-form'
+import type { ClientMemory } from '@/lib/ai/client-memory'
+
+const CONTEXT_VIEW = 'Contexto del cliente'
+const fetchClientMemory = (url: string) => fetch(url).then((response) => (response.ok ? response.json() : { memory: null })).then((result) => (result.memory ?? null) as ClientMemory | null)
+const isContextComplete = (memory: ClientMemory | null | undefined) => Boolean(memory?.profile.industry && memory.profile.commercial_objective && memory.profile.product_type)
 
 type ClientAccount = { id_cuenta: string | null; nombre_cuenta: string | null; plataforma: string | null; activo?: boolean | null }
 type Client = { id: string; nombre_del_negocio: string; meta_ads_account_id?: string | null; google_ads_customer_id?: string | null; meta_ads_account_ids?: string[] | null; google_ads_customer_ids?: string[] | null; analytics_property_id?: string | null; tag_manager_container_id?: string | null; crm_type?: string | null; cuentas_publicitarias?: ClientAccount[] | null }
@@ -60,6 +67,7 @@ export function ConexaWorkspace() {
   const [reportsLoaded, setReportsLoaded] = useState(false)
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string[]>>({})
   const [crmFilters, setCrmFilters] = useState<CrmAcquisitionFilters>({})
+  const { data: clientMemory, isLoading: clientMemoryLoading, mutate: mutateClientMemory } = useSWR(client?.id ? `/api/ai/client-memory?clientId=${encodeURIComponent(client.id)}` : null, fetchClientMemory, { revalidateOnFocus: false })
 
   // Los informes generados por el multiagente se guardan en Supabase (tabla
   // conexa_reports) para que sigan apareciendo en "Informes" después de
@@ -146,7 +154,7 @@ export function ConexaWorkspace() {
         {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Plataformas</p>}
         {platforms.map((item) => <button key={item.key} type="button" onClick={() => setActive(item.name)} className={cn('mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[10.5px]', active === item.name ? 'bg-[#eeefff] text-[#5b5fe8]' : 'text-[#5c5c5c] hover:bg-[#f5f5f8]', !sidebarOpen && 'justify-center px-0')}><span className="flex size-[18px] items-center justify-center overflow-hidden rounded-[5px] bg-white">{item.iconUrl ? <img src={item.iconUrl} alt="" className="size-full object-contain" /> : <Globe2 className="size-[15px] text-[#11A683]" />}</span>{sidebarOpen && <span className="flex-1 truncate">{item.name}</span>}{sidebarOpen && <span className={cn('size-1.5 rounded-full', item.connected ? 'bg-[#1e9e6b]' : 'bg-[#d6d6d6]')} />}</button>)}
         {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Cliente</p>}
-        {sidebarOpen && <button type="button" className="mb-0.5 flex w-full items-center rounded-md px-2 py-1.5 text-left text-[10.5px] text-[#222]">Contexto del cliente</button>}
+        {sidebarOpen && <button type="button" onClick={() => setActive(CONTEXT_VIEW)} aria-current={active === CONTEXT_VIEW ? 'page' : undefined} className={cn('mb-0.5 flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-[10.5px]', active === CONTEXT_VIEW ? 'bg-[#eeefff] font-medium text-[#5b5fe8]' : 'text-[#222] hover:bg-[#f5f5f8]')}>Contexto del cliente{client && !clientMemoryLoading && !isContextComplete(clientMemory) && <span className="rounded-full bg-[#D97706] px-1.5 text-[9px] font-bold text-white">Pendiente</span>}</button>}
         {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Configuración</p>}
         {sidebarOpen && <button type="button" onClick={() => window.location.assign('/dashboard/platform')} className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-[10.5px] text-[#222] hover:bg-[#f5f5f8]">Conexiones</button>}
       </nav>
@@ -163,7 +171,7 @@ export function ConexaWorkspace() {
       <main className="relative min-h-0 flex-1 overflow-hidden bg-white">
         {isLoading && <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/90 backdrop-blur-[2px]"><div className="flex w-[min(92%,360px)] flex-col items-center rounded-2xl border border-[#e6e6e3] bg-white px-8 py-7 text-center shadow-lg" role="status" aria-live="polite"><div className="mb-4 flex size-11 items-center justify-center rounded-full bg-[#eeefff]"><LoaderCircle className="size-5 animate-spin text-[#5b5fe8]" /></div><p className="text-sm font-semibold text-[#202020]">Procesando métricas</p><p className="mt-1 text-xs leading-5 text-[#888]">Estamos consultando y preparando los datos de tus plataformas.</p><div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-[#eeefff]"><div className="h-full w-2/5 animate-pulse rounded-full bg-[#5b5fe8]" /></div></div></div>}
         {activePlatformKey && <div className="absolute right-4 top-14 z-30 flex items-center gap-2"><span className="text-[10px] font-semibold uppercase tracking-[.08em] text-[#999]">Período</span><PeriodSelector period={activePeriod} customRange={activeCustomRange} onChange={(nextPeriod, range) => { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) }} />{metricsLoading && <LoaderCircle className="size-3.5 animate-spin text-[#5b5fe8]" aria-label="Actualizando métricas" />}</div>}
-        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => { setActive('Chat / Análisis'); setSidebarOpen(false) }} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} crmAcquisition={(data.platformData.crm as { acquisition?: CrmAcquisitionReport } | undefined)?.acquisition} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => setActive(destination)} onReportCreated={(report, replaceId) => setGeneratedReports((current) => replaceId ? current.map((item) => (item.id === replaceId ? report : item)) : [report, ...current])} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView loading={metricsLoading} data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} onNavigate={(destination) => { setActive(destination); setSidebarOpen(false) }} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} crmFilters={crmFilters} onCrmFiltersChange={setCrmFilters} period={activePeriod} customRange={activeCustomRange} onPeriodChange={(nextPeriod, range) => { if (activePlatformKey) { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) } }} />}
+        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => { setActive('Chat / Análisis'); setSidebarOpen(false) }} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} period={period} clients={clients} crmAcquisition={(data.platformData.crm as { acquisition?: CrmAcquisitionReport } | undefined)?.acquisition} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => { setActive(destination); if (destination === CONTEXT_VIEW) setSidebarOpen(true) }} contextStatus={!client ? 'no-client' : clientMemoryLoading ? 'loading' : isContextComplete(clientMemory) ? 'complete' : 'missing'} onReportCreated={(report, replaceId) => setGeneratedReports((current) => replaceId ? current.map((item) => (item.id === replaceId ? report : item)) : [report, ...current])} /> : active === CONTEXT_VIEW ? <ClientContextView client={client} memory={clientMemory ?? null} loading={clientMemoryLoading} onSaved={(updated) => { mutateClientMemory(updated, { revalidate: false }); setActive('Chat / Análisis'); setSidebarOpen(false) }} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView loading={metricsLoading} data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} onNavigate={(destination) => { setActive(destination); setSidebarOpen(false) }} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} crmFilters={crmFilters} onCrmFiltersChange={setCrmFilters} period={activePeriod} customRange={activeCustomRange} onPeriodChange={(nextPeriod, range) => { if (activePlatformKey) { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) } }} />}
       </main>
     </section>
   </div>
@@ -778,7 +786,19 @@ const CHAT_MODELS = [
   { value: 'openai/o4-mini', label: 'o4-mini', recommended: true },
 ] as const
 
-function ConexaChat({ client, onNavigate, onReportCreated }: { client: Client | null; period: string; clients: Client[]; crmAcquisition?: CrmAcquisitionReport; onSelectClient: (client: Client) => void; onNavigate: (destination: string) => void; onReportCreated: (report: GeneratedReport, replaceId?: string) => void }) {
+function ClientContextView({ client, memory, loading, onSaved }: { client: Client | null; memory: ClientMemory | null; loading: boolean; onSaved: (memory: ClientMemory) => void }) {
+  if (!client) return <div className="flex h-full items-center justify-center p-6"><p className="text-sm text-[#888]">Seleccioná un cliente para cargar su contexto.</p></div>
+  const complete = isContextComplete(memory)
+  return <div className="h-full overflow-y-auto bg-[#f4f4f1] p-4">
+    <div className="mx-auto flex max-w-3xl flex-col gap-4 rounded-2xl border border-[#dcdcd8] bg-white p-6 text-[#141414] md:p-10">
+      {!complete && !loading && <p role="status" className="rounded-lg border border-[#f3d6ae] bg-[#fff7ed] px-3 py-2 text-xs leading-5 text-[#9a4b06]">Completá el contexto de {client.nombre_del_negocio} para habilitar el Chat / Análisis. Con esto Conexa entiende la industria, el objetivo de la cuenta y las metas (ventas y CPL objetivo).</p>}
+      {loading ? <p className="text-sm text-[#888]">Cargando contexto…</p> : <ClientContextForm key={client.id} clientId={client.id} clientName={client.nombre_del_negocio} initialMemory={memory} mode={complete ? 'edit' : 'conversation-start'} onCompleted={onSaved} />}
+    </div>
+  </div>
+}
+
+function ConexaChat({ client, onNavigate, onReportCreated, contextStatus }: { client: Client | null; period: string; clients: Client[]; crmAcquisition?: CrmAcquisitionReport; onSelectClient: (client: Client) => void; onNavigate: (destination: string) => void; onReportCreated: (report: GeneratedReport, replaceId?: string) => void; contextStatus: 'no-client' | 'loading' | 'complete' | 'missing' }) {
+  const chatLocked = contextStatus === 'missing' || contextStatus === 'loading'
   const [model, setModel] = useState<string>(CHAT_MODELS[0].value)
   const chatModels = CHAT_MODELS
   const [showReport, setShowReport] = useState(false)
@@ -811,7 +831,15 @@ function ConexaChat({ client, onNavigate, onReportCreated }: { client: Client | 
       </div>
     </div>
     <div className={cn('grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)] gap-3 overflow-hidden rounded-b-2xl border border-t-0 border-[#e6e6e3] bg-white p-3 [&>*]:min-h-0 [&>*:last-child]:h-full [&>*:last-child]:max-h-full', showReport ? 'grid-cols-[minmax(0,1fr)_360px]' : 'grid-cols-[minmax(0,1fr)]')}>
-      <div className="min-h-0 min-w-0 h-full flex-1 overflow-hidden rounded-xl border border-[#e6e6e3] bg-white">
+      <div className="relative min-h-0 min-w-0 h-full flex-1 overflow-hidden rounded-xl border border-[#e6e6e3] bg-white">
+        {chatLocked && <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/85 p-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="context-lock-title">
+          {contextStatus === 'loading' ? <LoaderCircle className="size-5 animate-spin text-[#5b5fe8]" aria-label="Verificando contexto del cliente" /> : <div className="flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-[#dcdcd8] bg-white px-8 py-8 text-center shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-[.08em] text-[#5b5fe8]">Falta el contexto</p>
+            <h2 id="context-lock-title" className="text-balance text-base font-bold text-[#141414]">Completá el contexto de {client?.nombre_del_negocio ?? 'este cliente'} para usar el chat</h2>
+            <p className="text-pretty text-xs leading-5 text-[#777]">Industria, objetivo comercial y metas como ventas o CPL objetivo. Conexa usa estos datos en cada respuesta.</p>
+            <button type="button" onClick={() => onNavigate(CONTEXT_VIEW)} className="mt-1 rounded-full bg-[#5b5fe8] px-5 py-2 text-xs font-semibold text-white hover:bg-[#4a4ed6]">Completar contexto del cliente</button>
+          </div>}
+        </div>}
         <ConexaSupervisorChat
           clientId={client?.id ?? null}
           clientName={client?.nombre_del_negocio ?? 'Cliente'}

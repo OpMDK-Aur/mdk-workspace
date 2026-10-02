@@ -8,6 +8,8 @@ import { buildReportKpis, buildReportSections, CHART_KEYS, defaultRange, outputR
 import { agentConfigRepository } from '../repositories/agent-repository'
 import { getCatalogToolKeys, getToolDefinitions } from '../tools'
 import type { ExecutionContext } from '../types'
+import { CLIENT_PROFILE_COLUMNS, buildClientMemory, describeClientProfile } from '../client-memory'
+import { createClient } from '@/lib/supabase/server'
 
 const MAX_TOOL_OUTPUT_BYTES = 180_000
 
@@ -141,6 +143,22 @@ export function detectCreativesMode(messages: ModelMessage[]) {
 
 export function detectMonthlyReportMode(messages: ModelMessage[]) {
   return messages.some((message) => message.role === 'user' && isMonthlyReportRequest(messageText(message)))
+}
+
+async function loadClientContextPrompt(clientId?: string) {
+  if (!clientId) return ''
+  try {
+    const supabase = await createClient()
+    const [{ data: profile }, { data: client }] = await Promise.all([
+      supabase.from('ai_client_profile').select(CLIENT_PROFILE_COLUMNS).eq('client_id', clientId).maybeSingle(),
+      supabase.from('clientes').select('nombre_del_negocio').eq('id', clientId).maybeSingle(),
+    ])
+    if (!profile) return 'CONTEXTO DEL CLIENTE: el cliente todavía no completó el formulario "Contexto del cliente". Si la respuesta depende del objetivo, la industria o metas (ventas/CPL objetivo), indicá brevemente que completarlo mejora el análisis.'
+    return describeClientProfile(buildClientMemory(profile as Record<string, unknown>).profile, (client as { nombre_del_negocio?: string } | null)?.nombre_del_negocio)
+  } catch (error) {
+    console.error('[v0] Client context load failed:', error instanceof Error ? error.message : error)
+    return ''
+  }
 }
 
 export async function streamSupervisorResponse(
@@ -331,10 +349,13 @@ export async function streamSupervisorResponse(
     return (summaries ? `\n\n${summaries}` : '') + totals
   }
 
+  const clientContextPrompt = await loadClientContextPrompt(context.clientId)
+
   return streamText({
     model: getGatewayModel(selectedModel),
     system: [
       config.systemPrompt,
+      clientContextPrompt,
       'No expongas secretos, tokens, claves ni credenciales. El contexto de ejecución ya fue provisto por el backend.',
       'AGENDAS / REUNIONES: si la consulta pregunta por agendas, reuniones, demos o turnos agendados en el CRM (y/o por las campañas de esas agendas), ejecutá DIRECTAMENTE crm_appointments: ya trae cada agenda cruzada con su canal, campaña y UTMs del CRM. Respondé primero con el dato pedido (cantidad, listado resumido, desglose by_campaign y by_channel). No digas que los contactos no tienen metadata ni recomiendes "cruzar datos" con el CRM: ese cruce ya lo hace la tool.',
       'INFORMES CON MÉTRICAS REALES: un informe nunca puede salir con campos vacíos si el dato se puede consultar. Antes de redactar, ejecutá get_account_context y luego TODAS las fuentes necesarias para el período pedido (si no se indica, el último mes cerrado): get_meta_metrics y get_google_metrics para el período actual Y el período anterior equivalente (para el "vs. anterior"), crm_opportunities y crm_sales_attribution (ventas y atribución), crm_contacts (leads en CRM vs plataforma) y, para el Plan Estratégico, además get_industry_benchmark y get_account_change_history. Solo marcá "sin dato" lo que una herramienta devolvió vacío o no disponible, aclarando cuál.',

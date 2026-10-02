@@ -21,7 +21,7 @@ const Performance90dSchema = z.object({
 })
 
 export const ClientMemorySchema = z.object({
-  profile: z.object({ industry: z.string().nullable(), commercial_objective: z.string().nullable(), product_type: z.string().nullable(), primary_conversion_type: z.string().nullable() }),
+  profile: z.object({ industry: z.string().nullable(), commercial_objective: z.string().nullable(), product_type: z.string().nullable(), primary_conversion_type: z.string().nullable(), target_monthly_sales: z.number().nullable().optional(), target_cpl: z.number().nullable().optional(), additional_context: z.string().nullable().optional() }),
   sources: z.object({ industry: z.string().nullable(), commercial_objective: z.string().nullable(), product_type: z.string().nullable(), primary_conversion_type: z.string().nullable() }),
   missing_fields: z.array(z.enum(CLIENT_MEMORY_FIELDS)),
   completeness: z.enum(['complete', 'partial', 'empty']),
@@ -36,13 +36,35 @@ export function emptyPerformance90d(): ClientMemory['performance_90d'] {
 }
 
 export function emptyClientMemory(): ClientMemory {
-  return { profile: { industry: null, commercial_objective: null, product_type: null, primary_conversion_type: null }, sources: { industry: null, commercial_objective: null, product_type: null, primary_conversion_type: null }, missing_fields: [...CLIENT_MEMORY_FIELDS], completeness: 'empty', performance_90d: emptyPerformance90d() }
+  return { profile: { industry: null, commercial_objective: null, product_type: null, primary_conversion_type: null, target_monthly_sales: null, target_cpl: null, additional_context: null }, sources: { industry: null, commercial_objective: null, product_type: null, primary_conversion_type: null }, missing_fields: [...CLIENT_MEMORY_FIELDS], completeness: 'empty', performance_90d: emptyPerformance90d() }
+}
+
+export const CLIENT_PROFILE_COLUMNS = 'industry, commercial_objective, product_type, primary_conversion_type, target_monthly_sales, target_cpl, additional_context, industry_source, commercial_objective_source, product_type_source, primary_conversion_source'
+
+function toNumberOrNull(value: unknown) {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+export function describeClientProfile(profile: ClientMemory['profile'], clientName?: string) {
+  const lines = [
+    profile.industry && `- Industria / rubro: ${profile.industry.replace(/_/g, ' ')}`,
+    profile.commercial_objective && `- Objetivo comercial principal: ${profile.commercial_objective}`,
+    profile.product_type && `- Qué vende u ofrece: ${profile.product_type}`,
+    profile.primary_conversion_type && `- Conversión principal: ${profile.primary_conversion_type}`,
+    profile.target_monthly_sales != null && `- Ventas objetivo mensuales: ${profile.target_monthly_sales.toLocaleString('es-AR')}`,
+    profile.target_cpl != null && `- CPL objetivo: $ ${profile.target_cpl.toLocaleString('es-AR')}`,
+    profile.additional_context && `- Contexto adicional del account manager: ${profile.additional_context}`,
+  ].filter(Boolean)
+  if (!lines.length) return ''
+  return `CONTEXTO DEL CLIENTE${clientName ? ` (${clientName})` : ''} — cargado y confirmado por el equipo en el formulario "Contexto del cliente":\n${lines.join('\n')}\nUsá este contexto en TODAS las respuestas: interpretá la consulta del usuario en función del objetivo comercial, la industria y la conversión principal. Cuando existan, compará siempre los resultados reales contra las ventas objetivo y el CPL objetivo (indicá si se cumplen, la brecha y qué acción la cerraría). No vuelvas a preguntar estos datos.`
 }
 
 export function normalizeIndustry(value: string) { return value.trim().toLowerCase().replace(/\s+/g, '_') }
 
 export function buildClientMemory(row?: Record<string, unknown> | null, performance_90d = emptyPerformance90d()): ClientMemory {
-  const profile = { industry: typeof row?.industry === 'string' ? row.industry : null, commercial_objective: typeof row?.commercial_objective === 'string' ? row.commercial_objective : null, product_type: typeof row?.product_type === 'string' ? row.product_type : null, primary_conversion_type: typeof row?.primary_conversion_type === 'string' ? row.primary_conversion_type : null }
+  const profile = { industry: typeof row?.industry === 'string' ? row.industry : null, commercial_objective: typeof row?.commercial_objective === 'string' ? row.commercial_objective : null, product_type: typeof row?.product_type === 'string' ? row.product_type : null, primary_conversion_type: typeof row?.primary_conversion_type === 'string' ? row.primary_conversion_type : null, target_monthly_sales: toNumberOrNull(row?.target_monthly_sales), target_cpl: toNumberOrNull(row?.target_cpl), additional_context: typeof row?.additional_context === 'string' && row.additional_context.trim() ? row.additional_context : null }
   const sources = { industry: typeof row?.industry_source === 'string' ? row.industry_source : null, commercial_objective: typeof row?.commercial_objective_source === 'string' ? row.commercial_objective_source : null, product_type: typeof row?.product_type_source === 'string' ? row.product_type_source : null, primary_conversion_type: typeof row?.primary_conversion_source === 'string' ? row.primary_conversion_source : null }
   const missing_fields = CLIENT_MEMORY_FIELDS.filter((field) => !profile[field])
   return { profile, sources, missing_fields, completeness: missing_fields.length === CLIENT_MEMORY_FIELDS.length ? 'empty' : missing_fields.length ? 'partial' : 'complete', performance_90d }

@@ -6,7 +6,7 @@ import { defaultMetaDateRange, getMetaAccountMetrics, getMetaErrorDetails, norma
 import { buildCampaignComparisons, compareMetric, upsertChangeHistory, upsertPaidMediaSnapshot, SpecialistOutputSchema, type IndustryBenchmark } from '@/lib/ai/contracts/performance-analyst'
 import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 import { contextFromEvents, mergeWorkingContext } from '@/lib/ai/conversation-context'
-import { buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeIndustry, type MetricRow } from '@/lib/ai/client-memory'
+import { CLIENT_PROFILE_COLUMNS, buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeIndustry, type MetricRow } from '@/lib/ai/client-memory'
 import { getBuenosAiresLastSevenDays, getGoogleAnalyticsReport, getGoogleAnalyticsSales, getGoogleAnalyticsPageMetrics } from '@/lib/google-analytics/service'
 import { getGoogleTagManagerReport } from '@/lib/google-tag-manager/service'
 import { createCrmClient } from '@/lib/supabase/crm'
@@ -449,7 +449,7 @@ const getClientMemory: ToolDefinition = {
   async execute(_input, context) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_client_memory', status: 'running', label: 'Recuperando contexto del cliente' })
-    const { data, error } = await (await createClient()).from('ai_client_profile').select('client_id, industry, commercial_objective, product_type, primary_conversion_type, industry_source, commercial_objective_source, product_type_source, primary_conversion_source').eq('client_id', context.clientId).maybeSingle()
+    const { data, error } = await (await createClient()).from('ai_client_profile').select(`client_id, ${CLIENT_PROFILE_COLUMNS}`).eq('client_id', context.clientId).maybeSingle()
     if (error) {
       console.error('[v0] get_client_memory failed:', error.message)
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_client_memory', status: 'error', label: 'No se pudo recuperar el contexto del cliente' })
@@ -1434,7 +1434,7 @@ const getClaudeDesignPrompt: ToolDefinition = {
       report_data: reportData,
       ...buildClaudeDesignBrief(plan),
       fill_rules: [
-        'Arm�� el prompt final en un único bloque de código markdown listo para copiar y pegar en Claude Design.',
+        'Arm���� el prompt final en un único bloque de código markdown listo para copiar y pegar en Claude Design.',
         'Empezá con design_header, luego "# document_title" y "## plan_label — [Cliente]" con Cliente (client_name), Período (period) y Responsable/Ejecutivo.',
         'report_data YA trae las métricas reales consultadas para este cliente: meta y google (período actual con totales y campañas), meta_previous y google_previous (período anterior para el "vs. anterior"), crm_sales_attribution (ventas y by_channel/by_campaign), crm_contacts (leads en CRM), crm_opportunities y change_history. Usalas para completar TODAS las cifras. No vuelvas a llamar a esas herramientas y no digas que falta generar el informe.',
         'Tabla por campaña: una fila por cada campaña con inversión > 0 de report_data.meta y report_data.google (agrupá en "Otras N campañas" las de inversión insignificante), con Inversión, Leads, CPL (inversión/leads) y Vs. anterior (CPL de la misma campaña en *_previous, o "nueva" si no existía). Agregá fila TOTAL.',
