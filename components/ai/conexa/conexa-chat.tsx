@@ -10,6 +10,7 @@ import { ArrowUpRight, Check, ChevronRight, FileText, Loader2, MoreHorizontal, P
 import { toast } from 'sonner'
 import { ChartSkeleton, ChatChart } from '@/components/conexa/chat-chart'
 import { parseChartSpec, type ChartSpec } from '@/lib/ai/chart-spec'
+import { isReportSections, type ReportSection } from '@/lib/ai/report-charts'
 import { asksForValidation, buildClaudeReportPrompt, isMonthlyReportRequest, REPORT_CONFIRMATION_PATTERN } from '@/lib/ai/monthly-report'
 import { cn } from '@/lib/utils'
 import { MessageContent } from '@/components/chat/message-content'
@@ -65,25 +66,31 @@ interface ConexaChatProps {
 
 type PersistedMessage = { id: string; role: 'user' | 'assistant'; content: string; created_at: string }
 
+const RENDER_REPORT_PART = 'tool-renderReport'
+const PERSISTED_CHART_FENCE = /```(?:conexa-chart|chart)[ \t]*\r?\n([\s\S]*?)```/g
+
+function reportSections(part: UIMessage['parts'][number]): ReportSection[] | null {
+  if (part.type !== RENDER_REPORT_PART || !('state' in part) || part.state !== 'output-available' || !('output' in part)) return null
+  return isReportSections(part.output) ? part.output.sections : null
+}
+
 function messageText(message: UIMessage) {
   return message.parts
-    .filter((part) => part.type === 'text')
-    .map((part) => part.text)
+    .map((part) => {
+      if (part.type === 'text') return part.text
+      const sections = reportSections(part)
+      return sections ? sections.map((section) => `**${section.heading}**\n\n${section.text}`).join('\n\n') : ''
+    })
     .join('')
 }
 
-const RENDER_CHART_PART = 'tool-renderChart'
-const PERSISTED_CHART_FENCE = /```(?:conexa-chart|chart)[ \t]*\r?\n([\s\S]*?)```/g
-
-function hasRenderChartPart(message: UIMessage) {
-  return message.parts.some((part) => part.type === RENDER_CHART_PART)
+function hasReportPart(message: UIMessage) {
+  return message.parts.some((part) => part.type === RENDER_REPORT_PART)
 }
 
 function messageCharts(message: UIMessage): ChartSpec[] {
   const fromTools = message.parts.flatMap((part) =>
-    part.type === RENDER_CHART_PART && 'state' in part && part.state === 'output-available' && 'output' in part
-      ? [parseChartSpec(part.output)]
-      : [],
+    (reportSections(part) ?? []).map((section) => (section.chart ? parseChartSpec(section.chart) : null)),
   )
   const fromText = [...messageText(message).matchAll(PERSISTED_CHART_FENCE)].map((match) => {
     try {
@@ -344,7 +351,7 @@ function ConexaChatSession({
 
   const isBusy = status === 'submitted' || status === 'streaming'
   const lastMessage = messages.at(-1)
-  const lastAssistantHasContent = lastMessage?.role === 'assistant' && (messageText(lastMessage).length > 0 || hasRenderChartPart(lastMessage))
+  const lastAssistantHasContent = lastMessage?.role === 'assistant' && (messageText(lastMessage).length > 0 || hasReportPart(lastMessage))
   // AI SDK puede crear el mensaje assistant antes de recibir su primer token.
   // En ese instante no hay que ocultar el panel de actividad: hacerlo dejaba
   // una burbuja vacía, exactamente el estado que se veía cuando el stream
@@ -777,7 +784,7 @@ function ChatBubble({
   const isUser = message.role === 'user'
   const text = messageText(message)
   const fileParts = message.parts.filter((part) => part.type === 'file')
-  const hasCharts = hasRenderChartPart(message)
+  const hasReport = hasReportPart(message)
   const claudePrompt = isReportConfirmed ? buildClaudeReportPrompt({ clientName, summary: text, charts: messageCharts(message) }) : ''
 
   async function copyClaudePrompt() {
@@ -814,20 +821,36 @@ function ChatBubble({
         )}
         {isUser ? (
           <span className="whitespace-pre-wrap">{text}</span>
-        ) : isStreaming && !text && !hasCharts ? (
+        ) : isStreaming && !text && !hasReport ? (
           <span className="text-[#9a9a9a]">Pensando…</span>
         ) : (
           message.parts.map((part, i) => {
             if (part.type === 'text') return part.text ? <MessageContent key={i} content={part.text} /> : null
-            if (part.type === RENDER_CHART_PART) {
-              if ('state' in part && part.state === 'output-available' && 'output' in part) {
-                const spec = parseChartSpec(part.output)
-                return spec ? <ChatChart key={i} spec={spec} /> : null
-              }
-              if ('state' in part && part.state === 'output-error') return null
-              return <ChartSkeleton key={i} />
+            if (part.type !== RENDER_REPORT_PART) return null
+            if ('state' in part && part.state === 'output-error') return null
+            const sections = reportSections(part)
+            if (!sections) {
+              return (
+                <div key={i} role="status" className="flex flex-col gap-1">
+                  <span className="text-[#9a9a9a]">Analizando datos…</span>
+                  <ChartSkeleton />
+                </div>
+              )
             }
-            return null
+            return (
+              <div key={i} className="flex flex-col gap-5">
+                {sections.map((section, index) => {
+                  const spec = section.chart ? parseChartSpec(section.chart) : null
+                  return (
+                    <section key={`${section.heading}-${index}`} className="flex min-w-0 flex-col gap-1.5">
+                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9A9A9A]">{section.heading}</h3>
+                      {section.text ? <MessageContent content={section.text} /> : null}
+                      {spec ? <ChatChart spec={spec} /> : null}
+                    </section>
+                  )
+                })}
+              </div>
+            )
           })
         )}
       </div>

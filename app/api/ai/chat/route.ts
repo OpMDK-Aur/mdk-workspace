@@ -5,9 +5,9 @@ import type { ActivityEvent } from '@/lib/ai/types'
 import { createClient } from '@/lib/supabase/server'
 import { chatRequestSchema } from '@/lib/ai/config/fallback'
 import { detectReportMode, streamSupervisorResponse, type SupervisorModelMessage } from '@/lib/ai/agents/supervisor'
-import { buildAutoCharts } from '@/lib/ai/auto-charts'
 import { chartFence, parseChartSpec } from '@/lib/ai/chart-spec'
-import { RENDER_CHART_TOOL } from '@/lib/ai/agents/supervisor'
+import { RENDER_REPORT_TOOL } from '@/lib/ai/agents/supervisor'
+import { isReportSections, type ReportSection } from '@/lib/ai/report-charts'
 import { getOrCreateConversation, getLatestWorkingContext, listConversationMessages, saveConversationMessage } from '@/lib/ai/conversations'
 import { emptyWorkingContext } from '@/lib/ai/conversation-context'
 import { ATTACHMENT_MAX_COUNT, isImageOrPdfAttachment, isPlainTextAttachment, isSpreadsheetAttachment } from '@/lib/ai/attachments'
@@ -51,8 +51,8 @@ function getComparisonDefinition(query: string) {
 
 const HISTORY_CHART_FENCE = /```(?:conexa-chart|chart)[ \t]*\r?\n[\s\S]*?```/g
 
-// Los gráficos llegan como partes tool-renderChart; los persistimos como
-// bloques conexa-chart para que el historial recargado los siga mostrando.
+// Las respuestas llegan como partes tool-renderReport; las persistimos como
+// markdown con bloques conexa-chart para que el historial recargado los siga mostrando.
 function getMessageTextWithCharts(message: unknown) {
   if (!message || typeof message !== 'object') return ''
   const parts = 'parts' in message && Array.isArray(message.parts) ? message.parts : []
@@ -60,9 +60,13 @@ function getMessageTextWithCharts(message: unknown) {
     .map((part) => {
       if (!part || typeof part !== 'object') return ''
       if (part.type === 'text' && typeof part.text === 'string') return part.text
-      if (part.type === `tool-${RENDER_CHART_TOOL}` && part.state === 'output-available') {
-        const spec = parseChartSpec(part.output)
-        return spec ? `\n\n${chartFence(spec)}\n\n` : ''
+      if (part.type === `tool-${RENDER_REPORT_TOOL}` && part.state === 'output-available' && isReportSections(part.output)) {
+        return part.output.sections
+          .map((section: ReportSection) => {
+            const spec = section.chart ? parseChartSpec(section.chart) : null
+            return [`**${section.heading}**`, section.text, spec ? chartFence(spec) : ''].filter(Boolean).join('\n\n')
+          })
+          .join('\n\n')
       }
       return ''
     })
@@ -469,17 +473,8 @@ export async function POST(request: Request) {
         // usuario: emitimos una respuesta explícita con el dato faltante y el
         // próximo paso, en vez de dejar el chat bloqueado visualmente.
         const steps = await result.steps
-        const renderedCharts = steps.some((step) => step.toolCalls?.some((call) => call.toolName === RENDER_CHART_TOOL))
-        console.log('[v0] renderChart calls in response:', renderedCharts)
-        if (finalText.trim() && !renderedCharts && !finalText.includes('```conexa-chart') && !finalText.includes('```chart') && !detectReportMode(modelMessages)) {
-          const charts = buildAutoCharts(steps)
-          if (charts.length > 0) {
-            writer.write({ type: 'text-start', id: 'supervisor-auto-charts' })
-            writer.write({ type: 'text-delta', id: 'supervisor-auto-charts', delta: `\n\n${charts.join('\n\n')}\n` })
-            writer.write({ type: 'text-end', id: 'supervisor-auto-charts' })
-          }
-        }
-        if (!finalText.trim()) {
+        const renderedReport = steps.some((step) => step.toolCalls?.some((call) => call?.toolName === RENDER_REPORT_TOOL))
+        if (!finalText.trim() && !renderedReport) {
           const fallback = 'Pude cargar el contexto disponible, pero el supervisor no devolvió una síntesis final. No voy a presentar ese contexto como un análisis validado ni asumir que existe un problema de permisos o vinculación. Falta ejecutar y validar la fuente de datos solicitada antes de cruzarla con el CRM. Reintentá la consulta para continuar con esa validación.'
           writer.write({ type: 'text-start', id: 'supervisor-fallback' })
           writer.write({ type: 'text-delta', id: 'supervisor-fallback', delta: fallback })

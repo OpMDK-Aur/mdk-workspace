@@ -36,10 +36,10 @@ const markdownComponents = {
     <h3 className="mb-2 mt-4 text-sm font-semibold leading-6 text-foreground">{children}</h3>
   ),
   ul: ({ children }: { children?: React.ReactNode }) => (
-    <ul className="mb-3 ml-5 list-disc space-y-1 text-foreground/90">{children}</ul>
+    <ul className="mb-3 list-disc space-y-1 pl-5 text-foreground/90">{children}</ul>
   ),
   ol: ({ children }: { children?: React.ReactNode }) => (
-    <ol className="mb-3 ml-5 list-decimal space-y-1 text-foreground/90">{children}</ol>
+    <ol className="mb-3 list-decimal space-y-1 pl-5 text-foreground/90">{children}</ol>
   ),
   li: ({ children }: { children?: React.ReactNode }) => (
     <li className="pl-1 leading-6">{children}</li>

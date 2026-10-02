@@ -4,7 +4,12 @@ const CUR_COLOR = '#5B5FE8'
 const PREV_COLOR = '#D4D4CF'
 
 function formatNumber(value: number) {
-  return value.toLocaleString('es-AR', { maximumFractionDigits: 2 })
+  return Math.round(value).toLocaleString('es-AR')
+}
+
+function formatValue(value: number, prefix?: string) {
+  if (prefix === '$') return `$ ${Math.round(value).toLocaleString('es-AR')}`
+  return `${prefix ?? ''}${formatNumber(value)}`
 }
 
 function formatPercent(value: number) {
@@ -24,7 +29,7 @@ function variationColor(change: number) {
 function Variation({ cur, prev, suffix }: { cur: number; prev: number; suffix?: string }) {
   const change = variation(cur, prev)
   if (change === null) {
-    return <span className="text-[11px] text-[#6B6B6B]">{cur > 0 ? 'nuevo' : '—'}{suffix ? ` ${suffix}` : ''}</span>
+    return <span className="text-[11px] text-[#6B6B6B]">—</span>
   }
   const sign = change > 0 ? '+' : ''
   return (
@@ -40,16 +45,16 @@ function widthPercent(value: number, max: number, min = 0) {
   return `${Math.max(min, Math.min(100, (value / max) * 100))}%`
 }
 
-function Legend() {
+function Legend({ curLabel = 'Esta semana', prevLabel = 'Semana anterior' }: { curLabel?: string; prevLabel?: string }) {
   return (
     <div className="flex shrink-0 items-center gap-3 text-[11px] text-[#6B6B6B]">
       <span className="flex items-center gap-1.5">
         <span aria-hidden className="size-2 rounded-[2px]" style={{ backgroundColor: CUR_COLOR }} />
-        Esta semana
+        {curLabel}
       </span>
       <span className="flex items-center gap-1.5">
         <span aria-hidden className="size-2 rounded-[2px]" style={{ backgroundColor: PREV_COLOR }} />
-        Semana anterior
+        {prevLabel}
       </span>
     </div>
   )
@@ -60,7 +65,7 @@ function BarsChart({ spec }: { spec: BarsChartSpec }) {
   return (
     <div className="flex flex-col gap-3">
       {spec.rows.map((row) => (
-        <div key={row.label} className="grid grid-cols-[84px_1fr_74px] items-center gap-2.5">
+        <div key={row.label} className="grid grid-cols-[110px_minmax(0,1fr)_90px] items-center gap-2.5">
           <span className="truncate text-[12px] text-[#5C5C5C]" title={row.label}>{row.label}</span>
           <div className="flex flex-col gap-[3px]">
             <div className="h-2 rounded" style={{ width: widthPercent(row.cur, max), backgroundColor: CUR_COLOR }} />
@@ -68,7 +73,7 @@ function BarsChart({ spec }: { spec: BarsChartSpec }) {
           </div>
           <div className="flex flex-col items-end">
             <span className="text-[12.5px] font-semibold tabular-nums text-[#141414]">
-              {`${spec.prefix ?? ''}${formatNumber(row.cur)}`}
+              {formatValue(row.cur, spec.prefix)}
             </span>
             <Variation cur={row.cur} prev={row.prev} />
           </div>
@@ -86,7 +91,7 @@ function ColumnsChart({ spec }: { spec: ColumnsChartSpec }) {
     <div className="flex flex-col gap-3">
       <div className="flex items-baseline gap-2">
         <span className="text-[18px] font-bold tabular-nums text-[#141414]">{formatNumber(totalCur)}</span>
-        <Variation cur={totalCur} prev={totalPrev} suffix="vs semana anterior" />
+        <Variation cur={totalCur} prev={totalPrev} suffix={`vs ${(spec.prevLabel ?? 'semana anterior').toLowerCase()}`} />
       </div>
       <div className="flex flex-col gap-1.5">
         <div className="flex h-24 items-end justify-between gap-1 border-b border-[#E6E6E3]">
@@ -100,7 +105,7 @@ function ColumnsChart({ spec }: { spec: ColumnsChartSpec }) {
         <div className="flex justify-between gap-1">
           {spec.labels.map((label, index) => (
             <span key={`${label}-${index}`} className="flex-1 text-center text-[10.5px] text-[#9A9A9A]" title={label}>
-              {label.charAt(0).toUpperCase()}
+              {label.length > 3 ? label.charAt(0).toUpperCase() : label}
             </span>
           ))}
         </div>
@@ -129,7 +134,7 @@ function FunnelChart({ spec }: { spec: FunnelChartSpec }) {
                 {convPrev !== null ? <span className="text-[#9A9A9A]">{` · antes ${formatPercent(convPrev)}%`}</span> : null}
               </p>
             ) : null}
-            <div className="grid grid-cols-[84px_1fr_74px] items-center gap-2.5">
+            <div className="grid grid-cols-[110px_minmax(0,1fr)_90px] items-center gap-2.5">
               <span className="truncate text-[12px] text-[#5C5C5C]" title={stage.label}>{stage.label}</span>
               <div
                 className="h-[18px] rounded-[5px]"
@@ -166,7 +171,7 @@ export function ChatChart({ spec }: { spec: ChartSpec }) {
     <figure className="not-prose m-0 mt-2.5 w-full rounded-xl border border-[#EDEDEA] bg-[#FCFCFB] p-3.5">
       <figcaption className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
         <span className="text-[12.5px] font-semibold text-[#141414]">{spec.title}</span>
-        <Legend />
+        <Legend curLabel={spec.curLabel} prevLabel={spec.prevLabel} />
       </figcaption>
       {spec.type === 'bars' ? <BarsChart spec={spec} /> : null}
       {spec.type === 'columns' ? <ColumnsChart spec={spec} /> : null}
