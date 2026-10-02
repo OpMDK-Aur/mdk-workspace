@@ -259,6 +259,66 @@ export async function buildReportSections(
     .sort((a, b) => REPORT_HEADINGS.indexOf(a.heading) - REPORT_HEADINGS.indexOf(b.heading))
 }
 
+export type ReportKpi = { label: string; value: number; prev?: number; format: 'currency' | 'number' | 'percent'; invert?: boolean }
+
+type PaidTotals = { spend: number; leads: number; clicks: number; impressions: number }
+
+function paidTotals(google: Output | null, meta: Output | null): PaidTotals | null {
+  const sources = [
+    isAvailable(google) ? { output: google, leadsField: 'leads' } : null,
+    isAvailable(meta) ? { output: meta, leadsField: 'results' } : null,
+  ].filter((source): source is { output: Output; leadsField: string } => source !== null)
+  if (sources.length === 0) return null
+  return sources.reduce(
+    (acc, { output, leadsField }) => ({
+      spend: acc.spend + sumTotals(output, 'spend'),
+      leads: acc.leads + sumTotals(output, leadsField),
+      clicks: acc.clicks + sumTotals(output, 'clicks'),
+      impressions: acc.impressions + sumTotals(output, 'impressions'),
+    }),
+    { spend: 0, leads: 0, clicks: 0, impressions: 0 },
+  )
+}
+
+function crmSales(opportunities: Output | null) {
+  if (!isAvailable(opportunities)) return null
+  const totals = opportunities.totals as { by_status?: Record<string, unknown> } | undefined
+  return totals?.by_status ? toNumber(totals.by_status.won) : null
+}
+
+const withPrev = (kpi: ReportKpi, prev: number | null | undefined): ReportKpi =>
+  prev !== null && prev !== undefined && prev > 0 ? { ...kpi, prev } : kpi
+
+/** Totales del período (y del anterior) calculados con los mismos datos de los gráficos. */
+export async function buildReportKpis(run: RunTool, current: DateRange): Promise<ReportKpi[]> {
+  const previous = previousRange(current)
+  const [googleCur, googlePrev, metaCur, metaPrev, oppCur, oppPrev] = await Promise.all([
+    run('get_google_metrics', current), run('get_google_metrics', previous),
+    run('get_meta_metrics', current), run('get_meta_metrics', previous),
+    run('crm_opportunities', current), run('crm_opportunities', previous),
+  ])
+  const cur = paidTotals(googleCur, metaCur)
+  const prev = paidTotals(googlePrev, metaPrev)
+  const kpis: ReportKpi[] = []
+
+  if (cur && cur.spend > 0) kpis.push(withPrev({ label: 'Inversión Paid Media', value: cur.spend, format: 'currency' }, prev?.spend))
+  if (cur && cur.leads > 0) kpis.push(withPrev({ label: 'Leads totales', value: cur.leads, format: 'number' }, prev?.leads))
+  if (cur && cur.leads > 0 && cur.spend > 0) {
+    const prevCpl = prev && prev.leads > 0 ? prev.spend / prev.leads : null
+    kpis.push(withPrev({ label: 'CPL promedio', value: cur.spend / cur.leads, format: 'currency', invert: true }, prevCpl))
+  }
+
+  const sales = crmSales(oppCur)
+  if (sales !== null) {
+    kpis.push(withPrev({ label: 'Ventas', value: sales, format: 'number' }, crmSales(oppPrev)))
+  } else if (cur && cur.impressions > 0) {
+    const prevCtr = prev && prev.impressions > 0 ? (prev.clicks / prev.impressions) * 100 : null
+    kpis.push(withPrev({ label: 'CTR', value: (cur.clicks / cur.impressions) * 100, format: 'percent' }, prevCtr))
+  }
+
+  return kpis
+}
+
 export function isReportSections(value: unknown): value is { sections: ReportSection[] } {
   return !!value && typeof value === 'object' && Array.isArray((value as { sections?: unknown }).sections)
 }

@@ -3,7 +3,7 @@ import { hasToolCall, stepCountIs, streamText, tool } from 'ai'
 import type { ModelMessage } from 'ai'
 import { z } from 'zod'
 import { isMonthlyReportRequest, VALIDATION_QUESTION } from '../monthly-report'
-import { buildReportSections, CHART_KEYS, defaultRange, outputRange, REPORT_HEADINGS, type DateRange } from '../report-charts'
+import { buildReportKpis, buildReportSections, CHART_KEYS, defaultRange, outputRange, REPORT_HEADINGS, type DateRange } from '../report-charts'
 import { agentConfigRepository } from '../repositories/agent-repository'
 import { getCatalogToolKeys, getToolDefinitions } from '../tools'
 import type { ExecutionContext } from '../types'
@@ -16,7 +16,8 @@ const REPORT_INSTRUCTION = [
   'FORMATO DE RESPUESTA: Respondé siempre con renderReport. No escribas texto fuera de la tool.',
   'Cada sección tiene un heading, un text en markdown corto (máximo 4 bullets) y un chartKey. Orden: RESUMEN, GOOGLE ADS, META ADS, ANALYTICS, CRM, HALLAZGOS, RECOMENDACIONES, PRÓXIMOS PASOS.',
   'chartKey: GOOGLE ADS → leads_by_channel; META ADS → spend_by_platform; ANALYTICS → sessions_daily; CRM → crm_funnel; el resto → none. Los gráficos los arma el sistema con los datos reales del período actual y el anterior: no escribas sus números ni tablas.',
-  'No menciones gráficos en el texto.',
+  'El sistema muestra arriba de la respuesta tarjetas con los totales (inversión, leads, CPL y ventas o CTR) y su variación: no los escribas. RESUMEN es solo 1 o 2 frases de lectura, sin cifras.',
+  'No menciones gráficos ni tarjetas en el texto.',
   'Si una plataforma no tiene datos en el período, omití esa sección.',
 ].join(' ')
 
@@ -177,7 +178,11 @@ export async function streamSupervisorResponse(
     execute: async ({ sections }) => {
       const comparison = context.analysisRunState?.comparisonDefinition?.current
       const current = comparison ? { from: comparison.from, to: comparison.to } : latestRange ?? defaultRange()
-      return { sections: await buildReportSections(sections, runTool, current) }
+      const [kpis, resolvedSections] = await Promise.all([
+        buildReportKpis(runTool, current).catch(() => []),
+        buildReportSections(sections, runTool, current),
+      ])
+      return { kpis, sections: resolvedSections }
     },
   })
 

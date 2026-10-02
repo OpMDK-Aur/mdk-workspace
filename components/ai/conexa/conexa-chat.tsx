@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ArrowUpRight, Check, ChevronRight, FileText, Loader2, MoreHorizontal, Paperclip, Pencil, Send, Sparkles, Square, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { ChartSkeleton, ChatChart } from '@/components/conexa/chat-chart'
+import { ChatKpis, ChatKpisSkeleton } from '@/components/conexa/chat-kpis'
 import { parseChartSpec, type ChartSpec } from '@/lib/ai/chart-spec'
 import { isReportSections, type ReportSection } from '@/lib/ai/report-charts'
 import { asksForValidation, buildClaudeReportPrompt, isMonthlyReportRequest, REPORT_CONFIRMATION_PATTERN } from '@/lib/ai/monthly-report'
@@ -833,12 +834,14 @@ function ChatBubble({
               return (
                 <div key={i} role="status" className="flex flex-col gap-1">
                   <span className="text-[#9a9a9a]">Analizando datos…</span>
+                  <ChatKpisSkeleton />
                   <ChartSkeleton />
                 </div>
               )
             }
             return (
               <div key={i} className="flex flex-col gap-5">
+                <ChatKpis kpis={'output' in part ? (part.output as { kpis?: unknown }).kpis : undefined} />
                 {sections.map((section, index) => {
                   const spec = section.chart ? parseChartSpec(section.chart) : null
                   return (
