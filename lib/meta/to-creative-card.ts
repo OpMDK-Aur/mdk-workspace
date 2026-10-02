@@ -2,6 +2,8 @@ export type CreativeFormat = 'Imagen' | 'Video' | 'Carrusel' | 'Dinámico'
 
 export type CreativeCard = {
   id: string
+  adId: string | null
+  creativeId: string | null
   name: string
   campaign: string
   status: string
@@ -40,6 +42,7 @@ function toNumber(value: unknown): number {
 }
 
 type RawCreative = {
+  id?: unknown
   image_url?: unknown
   thumbnail_url?: unknown
   video_id?: unknown
@@ -50,7 +53,7 @@ type RawCreative = {
   asset_feed_spec?: { images?: Array<{ url?: unknown }>; videos?: Array<{ thumbnail_url?: unknown }> }
 }
 
-function creativeThumbnail(creative: RawCreative | null): string | null {
+export function creativeThumbnail(creative: RawCreative | null): string | null {
   if (!creative) return null
   const spec = creative.object_story_spec
   return toText(creative.image_url)
@@ -84,6 +87,8 @@ export function toCreativeCards(accounts: MetaAccountLike[]): CreativeCard[] {
         const campaign = row.campaign as { name?: unknown } | undefined
         return {
         id: String(row.creative_id ?? row.id ?? ''),
+        adId: toText(row.id) ?? toText(row.ad_id) ?? toText(row.creative_id),
+        creativeId: toText(creative?.id),
         name: toText(row.creative_name) ?? toText(row.name) ?? 'Sin nombre',
         campaign: toText(row.campaign_name) ?? toText(campaign?.name) ?? '',
         status: toText(row.effective_status) ?? toText(row.status) ?? '',
