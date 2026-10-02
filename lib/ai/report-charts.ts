@@ -231,6 +231,49 @@ const BUILDERS: Record<Exclude<ChartKey, 'none'>, (run: RunTool, current: DateRa
   crm_funnel: crmFunnel,
 }
 
+function accountName(account: Output) {
+  return String(account.account_name ?? account.name ?? account.nombre_cuenta ?? account.account_id ?? 'Cuenta')
+}
+
+function accountTotal(account: Output, field: string) {
+  const totals = account.totals as Output | undefined
+  if (totals && totals[field] !== undefined) return toNumber(totals[field])
+  return campaigns(account).reduce((sum, campaign) => sum + toNumber(campaign[field]), 0)
+}
+
+async function metaSpendByAccount(run: RunTool, current: DateRange, previous: DateRange): Promise<ChartSpec | null> {
+  const [cur, prev] = await Promise.all([run('get_meta_metrics', current), run('get_meta_metrics', previous)])
+  if (!isAvailable(cur)) return null
+  const prevByName = new Map(isAvailable(prev) ? accounts(prev).map((account) => [accountName(account), accountTotal(account, 'spend')]) : [])
+  const rows = accounts(cur)
+    .map((account) => ({ label: accountName(account), cur: accountTotal(account, 'spend'), prev: prevByName.get(accountName(account)) ?? 0 }))
+    .filter((row) => row.cur > 0 || row.prev > 0)
+    .sort((a, b) => b.cur - a.cur)
+    .slice(0, 6)
+  if (rows.length === 0) return null
+  return { type: 'bars', title: 'Inversión por cuenta · Meta Ads', prefix: '$', rows, ...periodLabels(current) }
+}
+
+async function googleLeadsByCampaignType(run: RunTool, current: DateRange, previous: DateRange): Promise<ChartSpec | null> {
+  const [cur, prev] = await Promise.all([run('get_google_metrics', current), run('get_google_metrics', previous)])
+  if (!isAvailable(cur)) return null
+  const curByChannel = googleLeadsByChannel(cur)
+  const prevByChannel = isAvailable(prev) ? googleLeadsByChannel(prev) : new Map<string, number>()
+  const rows = [...new Set([...curByChannel.keys(), ...prevByChannel.keys()])]
+    .map((label) => ({ label, cur: curByChannel.get(label) ?? 0, prev: prevByChannel.get(label) ?? 0 }))
+    .filter((row) => row.cur > 0 || row.prev > 0)
+    .sort((a, b) => b.cur - a.cur)
+    .slice(0, 6)
+  if (rows.length === 0) return null
+  return { type: 'bars', title: 'Leads por tipo de campaña · Google Ads', rows, ...periodLabels(current) }
+}
+
+const PLATFORM_CHARTS: Partial<Record<ReportHeading, (run: RunTool, current: DateRange, previous: DateRange) => Promise<ChartSpec | null>>> = {
+  'GOOGLE ADS': googleLeadsByCampaignType,
+  'META ADS': metaSpendByAccount,
+  ANALYTICS: sessionsDaily,
+}
+
 const CHART_MENTION = /\(?\s*(?:renderizad[oa]|ver|se muestra (?:en )?(?:el)?)\s+gr[aá]fico[^)\n]*\)?/gi
 
 async function hasPlatformData(run: RunTool, heading: ReportHeading, current: DateRange) {
@@ -248,10 +291,19 @@ export async function buildReportSections(
   current: DateRange,
 ): Promise<ReportSection[]> {
   const previous = previousRange(current)
-  const resolved = await Promise.all(sections.map(async (section) => {
+  const present = new Set(sections.map((section) => section.heading))
+  const withPlatforms = [
+    ...sections,
+    ...(Object.keys(PLATFORM_CHARTS) as ReportHeading[])
+      .filter((heading) => !present.has(heading))
+      .map((heading) => ({ heading, text: '', chartKey: 'none' as ChartKey })),
+  ]
+  const resolved = await Promise.all(withPlatforms.map(async (section) => {
     if (!(await hasPlatformData(run, section.heading, current))) return null
     const text = section.text.replace(CHART_MENTION, '').trim()
-    const chart = section.chartKey === 'none' ? null : await BUILDERS[section.chartKey](run, current, previous).catch(() => null)
+    const platformChart = PLATFORM_CHARTS[section.heading]
+    const builder = platformChart ?? (section.chartKey === 'none' ? null : BUILDERS[section.chartKey])
+    const chart = builder ? await builder(run, current, previous).catch(() => null) : null
     return { heading: section.heading, text, ...(chart ? { chart } : {}) }
   }))
   return resolved
