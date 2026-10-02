@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/server'
 import { chatRequestSchema } from '@/lib/ai/config/fallback'
 import { detectReportMode, streamSupervisorResponse, type SupervisorModelMessage } from '@/lib/ai/agents/supervisor'
 import { buildAutoCharts } from '@/lib/ai/auto-charts'
+import { chartFence, parseChartSpec } from '@/lib/ai/chart-spec'
+import { RENDER_CHART_TOOL } from '@/lib/ai/agents/supervisor'
 import { getOrCreateConversation, getLatestWorkingContext, listConversationMessages, saveConversationMessage } from '@/lib/ai/conversations'
 import { emptyWorkingContext } from '@/lib/ai/conversation-context'
 import { ATTACHMENT_MAX_COUNT, isImageOrPdfAttachment, isPlainTextAttachment, isSpreadsheetAttachment } from '@/lib/ai/attachments'
@@ -45,6 +47,27 @@ function getComparisonDefinition(query: string) {
     current: { from: isoDate(currentFrom), to: isoDate(currentTo) },
     comparison: { from: isoDate(comparisonFrom), to: isoDate(comparisonTo) },
   }
+}
+
+const HISTORY_CHART_FENCE = /```(?:conexa-chart|chart)[ \t]*\r?\n[\s\S]*?```/g
+
+// Los gráficos llegan como partes tool-renderChart; los persistimos como
+// bloques conexa-chart para que el historial recargado los siga mostrando.
+function getMessageTextWithCharts(message: unknown) {
+  if (!message || typeof message !== 'object') return ''
+  const parts = 'parts' in message && Array.isArray(message.parts) ? message.parts : []
+  return parts
+    .map((part) => {
+      if (!part || typeof part !== 'object') return ''
+      if (part.type === 'text' && typeof part.text === 'string') return part.text
+      if (part.type === `tool-${RENDER_CHART_TOOL}` && part.state === 'output-available') {
+        const spec = parseChartSpec(part.output)
+        return spec ? `\n\n${chartFence(spec)}\n\n` : ''
+      }
+      return ''
+    })
+    .join('')
+    .trim()
 }
 
 function getMessageText(message: unknown) {
@@ -387,12 +410,15 @@ export async function POST(request: Request) {
     // el usuario adjuntó archivos.
     const currentUserContent = attachmentContentParts.length > 0 ? [{ type: 'text' as const, text: query }, ...attachmentContentParts] : query
     const modelMessages: SupervisorModelMessage[] = [
-      ...history.map((message) => ({
-        role: message.role,
-        content: message.content.length > MAX_HISTORY_MESSAGE_CHARS
-          ? `${message.content.slice(0, MAX_HISTORY_MESSAGE_CHARS)}\n[Historial truncado para respetar la ventana de contexto.]`
-          : message.content,
-      })),
+      ...history.map((message) => {
+        const content = message.content.replace(HISTORY_CHART_FENCE, '[gráfico mostrado al usuario]')
+        return {
+          role: message.role,
+          content: content.length > MAX_HISTORY_MESSAGE_CHARS
+            ? `${content.slice(0, MAX_HISTORY_MESSAGE_CHARS)}\n[Historial truncado para respetar la ventana de contexto.]`
+            : content,
+        }
+      }),
       { role: 'user' as const, content: currentUserContent },
     ]
 
@@ -442,8 +468,11 @@ export async function POST(request: Request) {
         // final. Nunca permitimos que ese caso llegue como una burbuja vacía al
         // usuario: emitimos una respuesta explícita con el dato faltante y el
         // próximo paso, en vez de dejar el chat bloqueado visualmente.
-        if (finalText.trim() && !finalText.includes('```conexa-chart') && !finalText.includes('```chart') && !detectReportMode(modelMessages)) {
-          const charts = buildAutoCharts(await result.steps)
+        const steps = await result.steps
+        const renderedCharts = steps.some((step) => step.toolCalls?.some((call) => call.toolName === RENDER_CHART_TOOL))
+        console.log('[v0] renderChart calls in response:', renderedCharts)
+        if (finalText.trim() && !renderedCharts && !finalText.includes('```conexa-chart') && !finalText.includes('```chart') && !detectReportMode(modelMessages)) {
+          const charts = buildAutoCharts(steps)
           if (charts.length > 0) {
             writer.write({ type: 'text-start', id: 'supervisor-auto-charts' })
             writer.write({ type: 'text-delta', id: 'supervisor-auto-charts', delta: `\n\n${charts.join('\n\n')}\n` })
@@ -466,7 +495,7 @@ export async function POST(request: Request) {
       onFinish: async ({ messages }) => {
         if (!conversation) return
         const assistantMessage = messages.at(-1)
-        const assistantText = getMessageText(assistantMessage)
+        const assistantText = getMessageTextWithCharts(assistantMessage)
         if (!assistantText) return
         await saveConversationMessage(supabase, {
           conversationId: conversation.id,

@@ -150,6 +150,17 @@ function FunnelChart({ spec }: { spec: FunnelChartSpec }) {
   )
 }
 
+export function ChartSkeleton() {
+  return (
+    <div role="status" aria-label="Cargando gráfico" className="mt-2.5 flex w-full flex-col gap-3 rounded-xl border border-[#EDEDEA] bg-[#FCFCFB] p-3.5">
+      <div className="h-3 w-40 animate-pulse rounded bg-[#EDEDEA]" />
+      <div className="h-2.5 w-full animate-pulse rounded bg-[#EDEDEA]" />
+      <div className="h-2.5 w-4/5 animate-pulse rounded bg-[#EDEDEA]" />
+      <div className="h-2.5 w-3/5 animate-pulse rounded bg-[#EDEDEA]" />
+    </div>
+  )
+}
+
 export function ChatChart({ spec }: { spec: ChartSpec }) {
   return (
     <figure className="not-prose m-0 mt-2.5 w-full rounded-xl border border-[#EDEDEA] bg-[#FCFCFB] p-3.5">

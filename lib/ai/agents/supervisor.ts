@@ -1,11 +1,37 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { stepCountIs, streamText, tool } from 'ai'
 import type { ModelMessage } from 'ai'
+import { z } from 'zod'
+import { isMonthlyReportRequest, VALIDATION_QUESTION } from '../monthly-report'
 import { agentConfigRepository } from '../repositories/agent-repository'
 import { getCatalogToolKeys, getToolDefinitions } from '../tools'
 import type { ExecutionContext } from '../types'
 
 const MAX_TOOL_OUTPUT_BYTES = 180_000
+
+export const RENDER_CHART_TOOL = 'renderChart'
+
+const renderChart = tool({
+  description: 'Muestra un gráfico en el chat. Usalo siempre que compares períodos, plataformas, campañas o etapas del funnel. Un gráfico por sección.',
+  inputSchema: z.discriminatedUnion('type', [
+    z.object({ type: z.literal('bars'), title: z.string(), prefix: z.string().optional(),
+      rows: z.array(z.object({ label: z.string(), cur: z.number(), prev: z.number() })) }),
+    z.object({ type: z.literal('columns'), title: z.string(),
+      labels: z.array(z.string()), cur: z.array(z.number()), prev: z.array(z.number()) }),
+    z.object({ type: z.literal('funnel'), title: z.string(), note: z.string().optional(),
+      stages: z.array(z.object({ label: z.string(), cur: z.number(), prev: z.number(), highlight: z.boolean().optional() })) }),
+  ]),
+  execute: async (spec) => spec,
+})
+
+const RENDER_CHART_INSTRUCTION = [
+  'GRÁFICOS: cuando la respuesta incluya comparaciones numéricas, llamá a renderChart con los datos reales. No escribas tablas ni JSON en el texto.',
+  'cur = período actual, prev = período anterior equivalente (consultá también ese período con la tool de datos). Usá SOLO cifras devueltas por las tools: nunca inventes ni uses placeholders; si no tenés el período anterior, no llames a renderChart.',
+  'bars: comparar plataformas o campañas (máx. 6 filas, labels cortos, prefix "$" para montos). columns: evolución diaria. funnel: etapas del CRM, marcá highlight en la etapa con mayor caída.',
+  'Máximo un gráfico por sección y hasta 3 por respuesta. Después de llamar a renderChart SIEMPRE escribí el texto de la respuesta; no repitas en texto los números que ya muestra el gráfico. No incluyas gráficos dentro de prompts para Claude Design.',
+].join(' ')
+
+const MONTHLY_REPORT_INSTRUCTION = `MODO INFORME MENSUAL (prioridad sobre "INFORMES Y CLAUDE DESIGN"): en esta conversación el usuario pidió un informe mensual. NO ejecutes get_claude_design_prompt, NO escribas un prompt para Claude ni ofrezcas CTA: la interfaz se encarga de eso cuando el usuario valide los datos. Consultá Meta Ads, Google Ads y el CRM del mes pedido (si no se indica, el último mes cerrado) y del mes anterior. Respondé con el resumen de datos del mes usando estos títulos, en este orden: "**Período:**" (fechas exactas), "**Objetivo del informe:**", "**KPIs por plataforma**" (por plataforma: inversión, leads/resultados y CPL con valor actual, anterior y variación %), "**Funnel del CRM**", "**Hallazgos**" y "**Próximos pasos**". Llamá a renderChart para la inversión por plataforma (bars) y para el funnel del CRM (funnel). Si el usuario corrige un dato, aplicá la corrección y devolvé el resumen completo corregido. Terminá SIEMPRE con la línea exacta: "${VALIDATION_QUESTION}"`
 
 function limitToolOutput(value: unknown) {
   const serialized = JSON.stringify(value)
@@ -75,6 +101,10 @@ export function detectReportMode(messages: ModelMessage[]) {
   return /claude design|informe/i.test(lastAssistant) && AFFIRMATIVE_PATTERN.test(lastUser)
 }
 
+export function detectMonthlyReportMode(messages: ModelMessage[]) {
+  return messages.some((message) => message.role === 'user' && isMonthlyReportRequest(messageText(message)))
+}
+
 export async function streamSupervisorResponse(
   messages: SupervisorModelMessage[],
   context: ExecutionContext,
@@ -117,17 +147,21 @@ export async function streamSupervisorResponse(
   const selectedModel = requestedModel === 'openai/o4-mini' ? requestedModel : 'openai/o4-mini'
   console.log('[v0] Supervisor model selected:', { requestedModel, selectedModel })
   const reportMode = detectReportMode(messages)
-  console.log('[v0] Supervisor report mode:', reportMode)
-  const tools = Object.fromEntries(
-    definitions.map((definition) => [
-      definition.key,
-      tool({
-        description: definition.description,
-        inputSchema: definition.inputSchema,
-        execute: async (input) => limitToolOutput(await definition.execute(input, context)),
-      }),
-    ]),
-  )
+  const monthlyReportMode = detectMonthlyReportMode(messages)
+  console.log('[v0] Supervisor report mode:', { reportMode, monthlyReportMode })
+  const tools = {
+    ...Object.fromEntries(
+      definitions.map((definition) => [
+        definition.key,
+        tool({
+          description: definition.description,
+          inputSchema: definition.inputSchema,
+          execute: async (input) => limitToolOutput(await definition.execute(input, context)),
+        }),
+      ]),
+    ),
+    [RENDER_CHART_TOOL]: renderChart,
+  }
 
   return streamText({
     model: getGatewayModel(selectedModel),
@@ -141,7 +175,7 @@ export async function streamSupervisorResponse(
       'EJECUCIÓN INMEDIATA: si la consulta pide un dato, métrica, cantidad o estado verificable, no escribas una explicación previa ni anuncies lo que vas a hacer. Ejecutá las herramientas necesarias y respondé despu��s con el resultado. El usuario solo debe ver la respuesta final y, durante la ejecución, las actividades de las herramientas.',
       'PROTOCOLO DE ORQUESTACIÓN ADAPTATIVA Y CRUCE: primero clasificá la intención de la consulta y elegí la fuente de verdad inicial. Para ventas, cierres, oportunidades ganadas o “cuántas ventas”, comenzá con crm_opportunities para obtener las oportunidades con estado won y sus contactos; después ejecutá crm_contact_ads o crm_sales_attribution para extraer utm_id/source_id de esos contactos; finalmente consultá la herramienta de la plataforma correspondiente (Meta Ads o Google Ads) para obtener gasto, campañas, anuncios y leads, y cruzá los IDs/UTM antes de redactar. Para leads de pauta comenzá por la plataforma y luego contrastá con crm_contacts/crm_contact_ads. Para contactos CRM comenzá por crm_contacts. Para gasto comenzá por la plataforma. Nunca uses una secuencia fija si la intención exige otra, pero siempre completá todos los nodos necesarios para responder la pregunta.',
       'CONTRATO DE CRUCE: cada resultado de una tool es evidencia para las siguientes. Conservá cliente, cuentas, período y zona horaria; no cruces resultados de otro cliente o período. Compará utm_id, source_id, campaign_id y ad_id con normalización estricta y reportá coincidencias y no coincidencias. El informe debe separar claramente: gasto de plataforma, leads/conversiones reportados por plataforma, contactos totales del CRM, contactos CRM con UTM, oportunidades won/ventas y ventas atribuibles. Para ventas por canal, `crm_sales_attribution.by_channel` es la fuente canónica del CRM: usá exactamente sus totales (Google, Meta y sin atribución) y no reemplaces esos valores por el conteo de la plataforma consultada. Las métricas de Meta/Google sirven para inversión, leads y validación de IDs; no prueban por sí solas cuántas ventas del CRM pertenecen a cada canal. Si una fuente no está disponible o no existe una coincidencia, informalo como “no disponible” o “sin coincidencias”; nunca lo conviertas en cero ni inventes nombres, importes o atribuciones. PROHIBIDO INVENTAR: nunca escribas un ID de cuenta, campaña, cliente, permiso, error, inversión o métrica que no aparezca literalmente en el resultado de una tool. Nunca uses IDs de ejemplo como act_1234567890. Si la tool devuelve errors, usá únicamente account_id/account_name/error de ese resultado; si no devuelve account_id, decí “la cuenta seleccionada” sin inventar uno. No afirmes que falta vinculación o permisos salvo que el error de la tool lo indique explícitamente; distinguí entre sin datos, error de API, cuenta no perteneciente al cliente y permisos insuficientes.',
-      'VISUALIZACIÓN (menos texto, más gráficos): organizá la respuesta en bloques cortos (titular de 1 línea + como máximo un gráfico + 2-4 bullets). Incluí un gráfico SOLO si aporta una comparación período actual vs período anterior; las respuestas cortas van sin gráfico. Para poder comparar, cuando analices métricas consultá también el período anterior de la misma duración (llamá la tool otra vez con esas fechas). Para emitir un gráfico escribí un bloque de código con el lenguaje conexa-chart y un JSON válido con una de estas formas:\\n```conexa-chart\\n{"type":"bars","title":"Inversión por plataforma","prefix":"$","rows":[{"label":"Meta Ads","cur":1240000,"prev":1210000},{"label":"Google Ads","cur":680000,"prev":690000}]}\\n```\\n- bars: comparar entidades (plataformas, campañas; máx. 6 filas, labels cortos). prefix opcional ("$").\\n- columns: evolución diaria → {"type":"columns","title":"Sesiones por día","labels":["Lunes",...],"cur":[...],"prev":[...]} (mismo largo).\\n- funnel: etapas del CRM → {"type":"funnel","title":"Embudo CRM","stages":[{"label":"Contactos","cur":1240,"prev":1260},{"label":"Oportunidades","cur":412,"prev":418},{"label":"Ventas","cur":38,"prev":61,"highlight":true}],"note":"La conversión de oportunidad a venta pasó de 14,6% a 9,2%."}. Marcá highlight en la etapa con la mayor caída.\\nReglas: cur = período actual, prev = período anterior; usá SOLO cifras reales de las tools (nunca inventes, ni uses placeholders como X/Y/Z, ni pongas 0 en prev si no consultaste el período anterior: en ese caso no emitas gráfico); números sin símbolos ni separadores; máximo un gráfico por bloque y hasta 3 por respuesta. No repitas en texto los números que ya muestra el gráfico. No incluyas gráficos dentro de prompts para Claude Design.',
+      RENDER_CHART_INSTRUCTION,
       'RESPUESTA FINAL OBLIGATORIA: siempre terminá con una respuesta textual útil; nunca dejes el turno sin respuesta aunque una tool falle, tarde o devuelva datos parciales. Si una tool falla o agota el tiempo, explicá qué pudo validarse, qué dato falta y proponé el próximo paso concreto usando la evidencia disponible. Para consultas de CRM, la respuesta nunca puede ser solo un número ni un volcado de CRM: después de obtener el dato CRM, cruzalo obligatoriamente con pauta (Meta Ads/Google Ads según las cuentas disponibles) y, si no hay una cuenta de pauta conectada o no existe coincidencia, declaralo explícitamente y convertí esa diferencia en una recomendación de medición/atribución/seguimiento. Incluí siempre una sección “Lectura y recomendaciones” con al menos 2 recomendaciones accionables derivadas de los datos o de la brecha de datos. Las recomendaciones deben estar etiquetadas como “basada en datos” solo cuando exista evidencia cuantitativa; si no hay métricas, limitate a recomendaciones de diagnóstico/conexión y no sugieras presupuestos, CPA, frecuencia, segmentaciones o cambios de campaña como si fueran conclusiones. No afirmes que una cuenta tiene permisos insuficientes ni que está mal vinculada sin evidencia explícita en la tool. Incluí período exacto y zona horaria, fuente de cada cifra, fórmula o criterio de cruce, diferencias entre plataformas y CRM, y una sección de datos faltantes. No respondas hasta ejecutar las tools necesarias ni presentes una hipótesis como hecho.',
       'REGLA DE CRUCE CRM + PAUTA: si la consulta pide contactos, leads, oportunidades, ventas, campañas o cualquier dato del CRM, primero obtené la evidencia CRM y luego ejecutá al menos una tool de pauta disponible (get_meta_metrics o get_google_metrics) y/o crm_contact_ads/crm_sales_attribution para validar origen. Compará volumen CRM contra leads/conversiones de pauta, identificá atribuidos y no atribuidos, y redactá qué significa la diferencia para el negocio. Si solo hay una plataforma disponible, usá esa; si ninguna está disponible, respondé con la limitación y recomendaciones de instrumentación, sin fingir que el CRM está validado.',
       'TONO Y NIVEL DE ANÁLISIS: quien te consulta es un/a media buyer o account manager que va a usar tu respuesta como base de un reporte para su cliente final. No entregues un volcado de datos crudo (no listes las 76 campañas una por una si la mayoría tiene volumen bajo o nulo): agrupá, priorizá y contá una lectura. Estructura recomendada: (1) 2-3 frases de lectura general (qué pasó, si es bueno o malo, y por qué, en lenguaje de negocio); (2) 3 a 6 filas con las campañas o cuentas que más aportaron o más llaman la atención (mejores y peores), no la lista completa salvo que el usuario la pida explícitamente; (3) 1-2 frases de conclusión o próximo paso sugerido (ej. qué campaña escalar, cuál pausar, qué falta investigar). Sé concreto y breve: preferí una respuesta corta y bien jerarquizada a una extensa. Si hay muchas filas con cifras en cero o insignificantes, agrupalas en una sola línea tipo "otras N campañas sin leads/ventas en el período" en vez de listarlas.',
@@ -162,6 +196,7 @@ export async function streamSupervisorResponse(
       // hay que volver a ejecutar la tool correspondiente: el historial da
       // contexto para armar la tool call, no reemplaza la consulta de datos.
       'Los "messages" incluyen el historial reciente de esta conversación seguido de la consulta actual. Si la consulta actual es un follow-up (ej. "¿Impresiones?", "¿Y conversiones?", "¿Cuál rindió mejor?"), interpretalo con el mismo cliente, plataforma, cuentas y período del turno anterior salvo que el usuario diga lo contrario, y no vuelvas a preguntar esos datos si ya están en el historial. Para responder igual siempre volvés a ejecutar la herramienta correspondiente con ese contexto heredado: el historial ayuda a construir la tool call, no sustituye la consulta de datos actuales.',
+      ...(monthlyReportMode ? [MONTHLY_REPORT_INSTRUCTION] : []),
       ...(context.conversationWorkingContext ? [`CONTEXTO ESTRUCTURADO DE CONVERSACIÓN (prioridad sobre defaults): ${JSON.stringify(context.conversationWorkingContext)}. Para “estos cambios”, “esos cambios” o “últimos cambios”, reutilizá exactamente referenced_change_events y no hagas una búsqueda genérica. Para cuentas, campañas, grupos y períodos reutilizá sus IDs y fechas. Si hay varias cuentas, agrupá por plataforma + cuenta; nunca elijas una arbitrariamente. Si el contexto tiene otro client_id, no lo uses.`] : []),
       ...(context.analysisRunState?.comparisonDefinition ? [`El backend detectó una comparación obligatoria. Consultá primero el período CURRENT ${context.analysisRunState.comparisonDefinition.current.from} a ${context.analysisRunState.comparisonDefinition.current.to}; luego consultá el período COMPARISON ${context.analysisRunState.comparisonDefinition.comparison.from} a ${context.analysisRunState.comparisonDefinition.comparison.to}, usando la misma plataforma y cuentas. Finalmente ejecutá run_performance_analyst. No afirmes subidas o bajadas sin ambos períodos.`] : []),
     ].join('\n\n'),
@@ -186,7 +221,7 @@ export async function streamSupervisorResponse(
     if (reportMode) {
       if (stepNumber < 14) return undefined
       return {
-        toolChoice: 'none' as const,
+        activeTools: [RENDER_CHART_TOOL],
         system: 'Redactá AHORA el informe o prompt COMPLETO, con todas las secciones, usando todas las métricas obtenidas. No lo cortes ni lo resumas.',
       }
     }
@@ -201,13 +236,13 @@ export async function streamSupervisorResponse(
     // herramientas y termine con finishReason=length sin texto.
     if (stepNumber >= 2 && loadedAccountContext) {
       return {
-        toolChoice: 'none' as const,
+        activeTools: [RENDER_CHART_TOOL],
         system: 'No ejecutes más herramientas. Redactá AHORA la respuesta final con lo obtenido. Cruzá CRM y pauta si existe evidencia; si falta una fuente, declaralo y agregá recomendaciones accionables.',
       }
     }
     if (stepNumber < 14) return undefined
     return {
-      toolChoice: 'none' as const,
+      activeTools: [RENDER_CHART_TOOL],
       system: 'Redactá AHORA la respuesta final únicamente con los resultados obtenidos. Si algún cruce quedó incompleto, aclaralo como dato faltante y agregá recomendaciones.',
     }
   },
