@@ -91,7 +91,7 @@ const mainItems: NavItem[] = [
 
 // Sub-items for Tareas (nested under mainItems)
 const tareasSubItems: NavItem[] = [
-  { id: 'seguimiento', name: 'Seguimiento', href: '/dashboard/seguimiento', icon: ListChecks },
+  { id: 'seguimiento', name: 'Seguimiento', href: '/dashboard/seguimiento', icon: ListChecks, badge: 'nuevo', badgeUntil: '2026-10-09' },
   { id: 'time', name: 'Entradas de tiempo', href: '/dashboard/time', icon: Clock },
   { id: 'reports', name: 'Mis horas', href: '/dashboard/reports', icon: BarChart3 },
 ]

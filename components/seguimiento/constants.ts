@@ -1,6 +1,16 @@
-import type { SeguimientoGrupo } from '@/lib/tasks/seguimiento-match'
+import type { SeguimientoGrupo, SeguimientoItem } from '@/lib/tasks/seguimiento-match'
 
-export const GRUPO_ORDER: SeguimientoGrupo[] = ['urgente', 'semana', 'recurrente', 'depende_cliente', 'onboarding', 'tarjetas']
+export const GRUPO_ORDER: SeguimientoGrupo[] = ['urgente', 'semana', 'recurrente', 'depende_cliente', 'tarjetas']
+
+// The stored grupo is a starting point: open items due today or earlier are always shown
+// as urgent, and "urgente" items whose date moved to the future fall back to the week.
+export function effectiveGrupo(item: SeguimientoItem, today: string): SeguimientoGrupo {
+  const due = item.fecha_vencimiento
+  if (!item.completado && due && due <= today) return 'urgente'
+  if (item.grupo === 'onboarding') return 'semana'
+  if (item.grupo === 'urgente' && due && due > today) return 'semana'
+  return item.grupo
+}
 
 export const GRUPO_LABELS: Record<SeguimientoGrupo, string> = {
   urgente: 'Vencidas o para hoy',
