@@ -248,6 +248,8 @@
 @theme inline {
   --font-sans: 'Geist', 'Geist Fallback';
   --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --color-mdk-orange: #FF7F00;
+  --color-mdk-pink: #FF0049;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

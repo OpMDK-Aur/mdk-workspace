@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import type { NewTaskPrefill } from './new-task-modal'
 import dynamic from 'next/dynamic'
 import type { TaskPriority, TaskType, TaskStatus } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -66,6 +67,26 @@ export function TaskBoard() {
   const [newTaskOpen, setNewTaskOpen] = useState(false)
   const [newTaskMode, setNewTaskMode] = useState<'manual' | 'ai'>('manual')
   const [meetingOpen, setMeetingOpen] = useState(false)
+  const [prefill, setPrefill] = useState<NewTaskPrefill | null>(null)
+  const [seguimientoItemId, setSeguimientoItemId] = useState<string | null>(null)
+
+  const handleNewTaskOpenChange = (open: boolean) => {
+    setNewTaskOpen(open)
+    if (!open) {
+      setPrefill(null)
+      setSeguimientoItemId(null)
+    }
+  }
+
+  const handleTaskCreated = async (taskId: string) => {
+    if (!seguimientoItemId) return
+    await fetch(`/api/tasks/seguimiento/${seguimientoItemId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tarea_id: taskId, match_estado: 'vinculada' }),
+    }).catch(() => {})
+    router.push('/dashboard/seguimiento')
+  }
   
   // Track if seguimiento was already generated this session
   const seguimientoGenerated = useRef(false)
@@ -83,6 +104,23 @@ export function TaskBoard() {
       const taskId = searchParams.get('task')
       if (taskId) {
         setSelectedTask(taskId)
+      }
+
+      // "Crear tarea" from /dashboard/seguimiento opens the modal pre-filled
+      if (searchParams.get('new') === '1') {
+        const prioridad = searchParams.get('prioridad')
+        setPrefill({
+          title: searchParams.get('titulo') ?? '',
+          clientIds: searchParams.get('cliente_id') ? [searchParams.get('cliente_id')!] : [],
+          assigneeIds: searchParams.get('asignado_a') ? [searchParams.get('asignado_a')!] : [],
+          priority: prioridad === 'alta' || prioridad === 'media' || prioridad === 'baja' ? prioridad : '',
+          dueDate: searchParams.get('fecha_vencimiento') ?? '',
+          description: searchParams.get('descripcion') ?? '',
+        })
+        setSeguimientoItemId(searchParams.get('seguimiento_item'))
+        setNewTaskMode('manual')
+        setNewTaskOpen(true)
+        router.replace('/dashboard/tasks')
       }
       
       // Only generate seguimiento once per session (non-blocking)
@@ -396,7 +434,13 @@ export function TaskBoard() {
       <TaskDetailPanel />
 
       {/* New task modal */}
-      <NewTaskModal open={newTaskOpen} onOpenChange={setNewTaskOpen} initialMode={newTaskMode} />
+      <NewTaskModal
+        open={newTaskOpen}
+        onOpenChange={handleNewTaskOpenChange}
+        initialMode={newTaskMode}
+        initialValues={prefill}
+        onCreated={handleTaskCreated}
+      />
       <ScheduleMeetingModal open={meetingOpen} onOpenChange={setMeetingOpen} />
     </div>
   )

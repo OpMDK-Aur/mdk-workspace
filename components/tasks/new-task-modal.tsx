@@ -74,6 +74,17 @@ interface NewTaskModalProps {
   onOpenChange: (open: boolean) => void
   initialDueDate?: Date | null
   initialMode?: 'manual' | 'ai'
+  initialValues?: NewTaskPrefill | null
+  onCreated?: (taskId: string) => void
+}
+
+export interface NewTaskPrefill {
+  title: string
+  clientIds: string[]
+  assigneeIds: string[]
+  priority: TaskPriority | ''
+  dueDate: string
+  description: string
 }
 
 // ── Assistant Personality ─────────────────────────────────────────────────────
@@ -906,7 +917,7 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode = 'ai' }: NewTaskModalProps) {
+export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode = 'ai', initialValues, onCreated }: NewTaskModalProps) {
   const addTask = useTaskStore((s) => s.addTask)
   const supabase = createClient()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -944,6 +955,16 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       setQuickDueDate(initialDueDate.toISOString().split('T')[0])
     }
   }, [open, initialDueDate])
+
+  useEffect(() => {
+    if (!open || !initialValues) return
+    setQuickTitle(initialValues.title)
+    setQuickClientIds(initialValues.clientIds)
+    setQuickAssigneeIds(initialValues.assigneeIds)
+    setQuickPriority(initialValues.priority)
+    setQuickDueDate(initialValues.dueDate)
+    setQuickDescription(initialValues.description)
+  }, [open, initialValues])
   
   // Dynamic data from database
   const [dbClientes, setDbClientes] = useState<DbCliente[]>([])
@@ -1513,6 +1534,8 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
           }).catch(err => console.error('[v0] Error creating reminder:', err))
         }
       }
+
+      if (newTaskId) onCreated?.(newTaskId)
 
       // Reset quick mode state
       setQuickTitle('')
