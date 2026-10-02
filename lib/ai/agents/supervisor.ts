@@ -13,15 +13,18 @@ export const RENDER_CHART_TOOL = 'renderChart'
 
 const renderChart = tool({
   description: 'Muestra un gráfico en el chat. Usalo siempre que compares períodos, plataformas, campañas o etapas del funnel. Un gráfico por sección.',
-  inputSchema: z.discriminatedUnion('type', [
-    z.object({ type: z.literal('bars'), title: z.string(), prefix: z.string().optional(),
-      rows: z.array(z.object({ label: z.string(), cur: z.number(), prev: z.number() })) }),
-    z.object({ type: z.literal('columns'), title: z.string(),
-      labels: z.array(z.string()), cur: z.array(z.number()), prev: z.array(z.number()) }),
-    z.object({ type: z.literal('funnel'), title: z.string(), note: z.string().optional(),
-      stages: z.array(z.object({ label: z.string(), cur: z.number(), prev: z.number(), highlight: z.boolean().optional() })) }),
-  ]),
-  execute: async (spec) => spec,
+  // OpenAI rejects a union at the root of a tool schema, so the spec is nested under `chart`.
+  inputSchema: z.object({
+    chart: z.discriminatedUnion('type', [
+      z.object({ type: z.literal('bars'), title: z.string(), prefix: z.string().optional(),
+        rows: z.array(z.object({ label: z.string(), cur: z.number(), prev: z.number() })) }),
+      z.object({ type: z.literal('columns'), title: z.string(),
+        labels: z.array(z.string()), cur: z.array(z.number()), prev: z.array(z.number()) }),
+      z.object({ type: z.literal('funnel'), title: z.string(), note: z.string().optional(),
+        stages: z.array(z.object({ label: z.string(), cur: z.number(), prev: z.number(), highlight: z.boolean().optional() })) }),
+    ]),
+  }),
+  execute: async ({ chart }) => chart,
 })
 
 const RENDER_CHART_INSTRUCTION = [
