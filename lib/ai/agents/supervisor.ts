@@ -1,11 +1,29 @@
 import { createOpenAI } from '@ai-sdk/openai'
-import { stepCountIs, streamText, tool } from 'ai'
+import { generateText, hasToolCall, stepCountIs, streamText, tool } from 'ai'
 import type { ModelMessage } from 'ai'
+import { z } from 'zod'
+import { CREATIVE_METRICS, rankCreatives } from '../../meta/top-creatives'
+import { isMonthlyReportRequest, VALIDATION_QUESTION } from '../monthly-report'
+import { buildReportKpis, buildReportSections, CHART_KEYS, defaultRange, outputRange, REPORT_HEADINGS, type DateRange, type ReportKpi, type ReportSection } from '../report-charts'
 import { agentConfigRepository } from '../repositories/agent-repository'
 import { getCatalogToolKeys, getToolDefinitions } from '../tools'
 import type { ExecutionContext } from '../types'
 
 const MAX_TOOL_OUTPUT_BYTES = 180_000
+
+export const RENDER_REPORT_TOOL = 'renderReport'
+
+const REPORT_INSTRUCTION = [
+  'FORMATO DE RESPUESTA: Respondé siempre con renderReport. No escribas texto fuera de la tool.',
+  'Cada sección tiene un heading, un text en markdown corto (máximo 4 bullets) y un chartKey. Orden: RESUMEN, GOOGLE ADS, META ADS, ANALYTICS, CRM, HALLAZGOS, RECOMENDACIONES, PRÓXIMOS PASOS.',
+  'chartKey: GOOGLE ADS → leads_by_channel; META ADS → top_creatives; ANALYTICS → sessions_daily; CRM → crm_funnel; el resto → none. Los gráficos y los creativos los arma el sistema con los datos reales del período actual y el anterior: no escribas sus números ni tablas.',
+  'El sistema muestra arriba de la respuesta tarjetas con los totales (inversión, leads, CPL y ventas o CTR) y su variación: no los repitas. RESUMEN es solo 1 o 2 frases de lectura. Si usás una cifra, tomala de "TOTALES CALCULADOS" o "DATOS REALES DE PAUTA". Nunca escribas marcadores como XX, YY, ZZ, AA, BB, CC o RR.',
+  'Una cuenta de Meta o Google en 0 no significa que la plataforma no tuvo inversión: mirá el TOTAL de la plataforma.',
+  'No menciones gráficos ni tarjetas en el texto.',
+  'Si una plataforma no tiene datos en el período, omití esa sección.',
+].join(' ')
+
+const MONTHLY_REPORT_INSTRUCTION = `MODO INFORME MENSUAL (prioridad sobre "INFORMES Y CLAUDE DESIGN"): en esta conversación el usuario pidió un informe mensual. NO ejecutes get_claude_design_prompt, NO escribas un prompt para Claude ni ofrezcas CTA: la interfaz se encarga de eso cuando el usuario valide los datos. Consultá Meta Ads, Google Ads y el CRM del mes pedido (si no se indica, el último mes cerrado) y del mes anterior. Respondé con el resumen de datos del mes usando estos títulos, en este orden: "**Período:**" (fechas exactas), "**Objetivo del informe:**", "**KPIs por plataforma**" (por plataforma: inversión, leads/resultados y CPL con valor actual, anterior y variación %), "**Funnel del CRM**", "**Hallazgos**" y "**Próximos pasos**". Respondé con renderReport: "Período" y "Objetivo del informe" van en RESUMEN, los KPIs en cada sección de plataforma, el funnel en CRM y los pasos en PRÓXIMOS PASOS. Si el usuario corrige un dato, aplicá la corrección y devolvé el resumen completo corregido. El text de PRÓXIMOS PASOS termina SIEMPRE con la línea exacta: "${VALIDATION_QUESTION}"`
 
 function limitToolOutput(value: unknown) {
   const serialized = JSON.stringify(value)
@@ -39,6 +57,38 @@ function limitToolOutput(value: unknown) {
   }
 }
 
+function summarizePlatform(label: string, output: Record<string, unknown> | null) {
+  if (!output || output.available !== true) {
+    return `${label}: no disponible (${String(output?.message ?? output?.error ?? 'sin respuesta de la API')}).`
+  }
+  const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 100) / 100 : 0)
+  const accounts = Array.isArray(output.accounts) ? (output.accounts as Array<Record<string, unknown>>) : []
+  const lines = accounts.map((account) => {
+    const totals = (account.totals ?? {}) as Record<string, unknown>
+    const name = String(account.account_name ?? account.name ?? account.nombre_cuenta ?? account.account_id ?? account.id ?? 'cuenta')
+    const campaigns = (Array.isArray(account.campaigns) ? (account.campaigns as Array<Record<string, unknown>>) : [])
+      .filter((campaign) => num(campaign.spend) > 0)
+      .sort((a, b) => num(b.spend) - num(a.spend))
+      .slice(0, 5)
+      .map((campaign) => `${String(campaign.name ?? campaign.campaign_name ?? campaign.id)} (gasto ${num(campaign.spend)}, leads ${num(campaign.leads ?? campaign.results)}, CPL ${num(campaign.cpl ?? campaign.cost_per_result)})`)
+    return `- ${label} · ${name}: gasto ${num(totals.spend)}, impresiones ${num(totals.impressions)}, clics ${num(totals.clicks)}, leads/resultados ${num(totals.leads ?? totals.results)}, CPL ${num(totals.cpl ?? totals.cost_per_result)}${campaigns.length ? `. Top campañas: ${campaigns.join('; ')}` : ''}`
+  })
+  if (!lines.length) return `${label}: sin cuentas con datos en el período.`
+  const accountTotal = (field: string) => accounts.reduce((sum, account) => sum + num(((account.totals ?? {}) as Record<string, unknown>)[field]), 0)
+  const activeAccounts = accounts.filter((account) => num(((account.totals ?? {}) as Record<string, unknown>).spend) > 0).length
+  const total = `- TOTAL ${label}: gasto ${Math.round(accountTotal('spend'))}, impresiones ${accountTotal('impressions')}, clics ${accountTotal('clicks')}, leads/resultados ${accountTotal('leads') || accountTotal('results')} (${activeAccounts} de ${accounts.length} cuentas con inversión)`
+  return [total, ...lines].join('\n')
+}
+
+const PLACEHOLDER_PATTERN = /\b(XX|YY|ZZ|AA|BB|CC|RR)\b/
+const PLACEHOLDER_PATTERN_GLOBAL = /\b(XX|YY|ZZ|AA|BB|CC|RR)\b/g
+
+function describeKpis(kpis: ReportKpi[]) {
+  return kpis
+    .map((kpi) => `${kpi.label}: ${Math.round(kpi.value * 100) / 100}${kpi.prev !== undefined ? ` (anterior ${Math.round(kpi.prev * 100) / 100})` : ''}`)
+    .join('; ')
+}
+
 function getGatewayModel(model: string) {
   const gateway = createOpenAI({
     apiKey: process.env.AI_GATEWAY_API_KEY,
@@ -67,12 +117,30 @@ const AFFIRMATIVE_PATTERN = /^\s*(s[ií]|dale|ok|okay|perfecto|de una|claro|arma
 // Informes y prompts de Claude Design necesitan varias fuentes (Meta, Google,
 // CRM, período anterior). El flujo normal limita a una sola tool de datos,
 // lo que dejaba los informes con métricas vacías.
-function detectReportMode(messages: ModelMessage[]) {
+export function detectReportMode(messages: ModelMessage[]) {
   const userMessages = messages.filter((message) => message.role === 'user')
   const lastUser = messageText(userMessages.at(-1))
   if (REPORT_REQUEST_PATTERN.test(lastUser)) return true
   const lastAssistant = messageText(messages.filter((message) => message.role === 'assistant').at(-1))
   return /claude design|informe/i.test(lastAssistant) && AFFIRMATIVE_PATTERN.test(lastUser)
+}
+
+export const SHOW_TOP_CREATIVES_TOOL = 'showTopCreatives'
+const CREATIVES_PATTERN = /\b(creativ\w*|anuncios?|piezas?)\b/i
+const RANKING_FOLLOW_UP_PATTERN = /\b(mejor|peor|m[aá]s|menos|cu[aá]l(es)?|top)\b/i
+
+// "¿Cuál tuvo mejor alcance?" no nombra creativos, pero sigue a una pregunta que sí.
+export function detectCreativesMode(messages: ModelMessage[]) {
+  const userTexts = messages.filter((message) => message.role === 'user').map(messageText)
+  const lastUser = userTexts.at(-1) ?? ''
+  if (REPORT_REQUEST_PATTERN.test(lastUser)) return false
+  if (CREATIVES_PATTERN.test(lastUser)) return true
+  const previousUser = userTexts.at(-2) ?? ''
+  return CREATIVES_PATTERN.test(previousUser) && lastUser.length < 90 && RANKING_FOLLOW_UP_PATTERN.test(lastUser)
+}
+
+export function detectMonthlyReportMode(messages: ModelMessage[]) {
+  return messages.some((message) => message.role === 'user' && isMonthlyReportRequest(messageText(message)))
 }
 
 export async function streamSupervisorResponse(
@@ -117,17 +185,151 @@ export async function streamSupervisorResponse(
   const selectedModel = requestedModel === 'openai/o4-mini' ? requestedModel : 'openai/o4-mini'
   console.log('[v0] Supervisor model selected:', { requestedModel, selectedModel })
   const reportMode = detectReportMode(messages)
-  console.log('[v0] Supervisor report mode:', reportMode)
-  const tools = Object.fromEntries(
-    definitions.map((definition) => [
-      definition.key,
-      tool({
-        description: definition.description,
-        inputSchema: definition.inputSchema,
-        execute: async (input) => limitToolOutput(await definition.execute(input, context)),
-      }),
-    ]),
-  )
+  const monthlyReportMode = detectMonthlyReportMode(messages)
+  console.log('[v0] Supervisor report mode:', { reportMode, monthlyReportMode })
+  // Claude Design necesita el prompt como texto copiable; el resto responde por secciones.
+  const useReportTool = !reportMode || monthlyReportMode
+  const creativesMode = detectCreativesMode(messages)
+
+  // Resultados crudos de las tools de datos de este turno, por tool + rango.
+  // renderReport los reutiliza para armar los gráficos sin volver a consultar.
+  const toolResults = new Map<string, Promise<Record<string, unknown> | null>>()
+  const resultKey = (toolKey: string, range: DateRange) => `${toolKey}|${range.from}|${range.to}`
+  let latestRange: DateRange | null = null
+  const rememberResult = (toolKey: string, input: unknown, output: unknown) => {
+    const range = outputRange(output, input)
+    if (!range) return
+    toolResults.set(resultKey(toolKey, range), Promise.resolve(output as Record<string, unknown>))
+    if (!latestRange || range.from > latestRange.from) latestRange = range
+  }
+  const runTool = (toolKey: string, range: DateRange) => {
+    const key = resultKey(toolKey, range)
+    const cached = toolResults.get(key)
+    if (cached) return cached
+    const definition = getToolDefinitions([toolKey])[0]
+    if (!definition) return Promise.resolve(null)
+    const pending = Promise.resolve(definition.execute({ dateFrom: range.from, dateTo: range.to }, context))
+      .then((output) => (output && typeof output === 'object' ? output as Record<string, unknown> : null))
+      .catch(() => null)
+    toolResults.set(key, pending)
+    return pending
+  }
+  const currentRange = (): DateRange => {
+    const comparison = context.analysisRunState?.comparisonDefinition?.current
+    return comparison ? { from: comparison.from, to: comparison.to } : latestRange ?? defaultRange()
+  }
+
+  const renderReport = tool({
+    description: 'Devuelve la respuesta completa dividida en secciones. Siempre usá esta tool para responder análisis de performance.',
+    inputSchema: z.object({
+      sections: z.array(z.object({
+        heading: z.enum(REPORT_HEADINGS),
+        text: z.string(),
+        chartKey: z.enum(CHART_KEYS),
+      })),
+    }),
+    execute: async ({ sections }) => {
+      const current = currentRange()
+      const [kpis, resolvedSections] = await Promise.all([
+        buildReportKpis(runTool, current).catch(() => [] as ReportKpi[]),
+        buildReportSections(sections, runTool, current),
+      ])
+      return { kpis, sections: await replacePlaceholders(resolvedSections, kpis, current) }
+    },
+  })
+
+  // o4-mini a veces deja marcadores ("XX leads") en vez de cifras. Se le pide
+  // una sola vez que reescriba esas secciones con los totales reales.
+  const replacePlaceholders = async (sections: ReportSection[], kpis: ReportKpi[], range: DateRange) => {
+    const offending = sections.filter((section) => PLACEHOLDER_PATTERN.test(section.text))
+    if (!offending.length) return sections
+    console.log('[v0] renderReport placeholders detected:', offending.map((section) => section.heading))
+    const rewrites = new Map<string, string>()
+    try {
+      const { text } = await generateText({
+        model: getGatewayModel(selectedModel),
+        system: 'Reescribí cada sección reemplazando los marcadores (XX, YY, ZZ, AA, BB, CC, RR) por las cifras reales provistas. Si una cifra no está en los datos, reformulá la frase sin ella. Mantené el resto del texto. Respondé SOLO un JSON: [{"heading": "...", "text": "..."}].',
+        prompt: `TOTALES CALCULADOS: ${describeKpis(kpis)}\n\n${await platformSummaries(range)}\n\nSECCIONES:\n${JSON.stringify(offending.map(({ heading, text }) => ({ heading, text })))}`,
+        maxOutputTokens: 4000,
+      })
+      const parsed = JSON.parse(text.slice(text.indexOf('['), text.lastIndexOf(']') + 1)) as Array<{ heading?: unknown; text?: unknown }>
+      for (const item of parsed) if (typeof item.heading === 'string' && typeof item.text === 'string') rewrites.set(item.heading, item.text)
+    } catch (error) {
+      console.log('[v0] renderReport placeholder rewrite failed:', error instanceof Error ? error.message : error)
+    }
+    return sections.map((section) => {
+      const text = rewrites.get(section.heading) ?? section.text
+      return PLACEHOLDER_PATTERN.test(text) ? { ...section, text: text.replace(PLACEHOLDER_PATTERN_GLOBAL, 's/d') } : { ...section, text }
+    })
+  }
+
+  const showTopCreatives = tool({
+    description: 'Muestra los creativos de Meta Ads con su imagen, ordenados por una métrica. Usala siempre que el usuario pregunte por creativos, anuncios o piezas con mejor o peor rendimiento.',
+    inputSchema: z.object({
+      metric: z.enum(CREATIVE_METRICS),
+      order: z.enum(['best', 'worst']).default('best'),
+      limit: z.number().min(1).max(6).default(3),
+      campaignName: z.string().optional(),
+      dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Inicio del período (YYYY-MM-DD). Omitilo para usar el período del chat.'),
+      dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Fin del período (YYYY-MM-DD).'),
+    }),
+    execute: async ({ metric, order, limit, campaignName, dateFrom, dateTo }) => {
+      const range = dateFrom && dateTo ? { from: dateFrom, to: dateTo } : currentRange()
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: SHOW_TOP_CREATIVES_TOOL, status: 'running', label: 'Buscando creativos de Meta Ads...' })
+      const result = rankCreatives(await runTool('get_meta_metrics', range), { metric, order, limit, campaignName })
+      context.emitActivity?.({ agentSlug: 'supervisor', toolKey: SHOW_TOP_CREATIVES_TOOL, status: 'completed', label: `${result.items.length} creativos encontrados` })
+      return { ...result, period: range }
+    },
+  })
+
+  const tools = {
+    ...Object.fromEntries(
+      definitions.map((definition) => [
+        definition.key,
+        tool({
+          description: definition.description,
+          inputSchema: definition.inputSchema,
+          execute: async (input) => {
+            const output = await definition.execute(input, context)
+            rememberResult(definition.key, input, output)
+            return limitToolOutput(output)
+          },
+        }),
+      ]),
+    ),
+    ...(useReportTool ? { [RENDER_REPORT_TOOL]: renderReport } : {}),
+    ...(context.metaAccountId ? { [SHOW_TOP_CREATIVES_TOOL]: showTopCreatives } : {}),
+  }
+  const synthesisTools: Array<typeof RENDER_REPORT_TOOL> = useReportTool ? [RENDER_REPORT_TOOL] : []
+  const synthesisChoice: { toolChoice?: { type: 'tool'; toolName: typeof RENDER_REPORT_TOOL } } = useReportTool
+    ? { toolChoice: { type: 'tool', toolName: RENDER_REPORT_TOOL } }
+    : {}
+
+  // El flujo corto (1 sola tool de datos) hacía que o4-mini consultara solo
+  // Google o solo CRM y luego afirmara que Meta "no tiene actividad". Antes de
+  // sintetizar, traemos las plataformas conectadas que no se consultaron.
+  const platformPrefetch = [
+    { toolKey: 'get_meta_metrics', label: 'Meta Ads', connected: Boolean(context.metaAccountId) },
+    { toolKey: 'get_google_metrics', label: 'Google Ads', connected: Boolean(context.googleCustomerId) },
+  ]
+  // Siempre se resumen todas las plataformas conectadas (no solo las no
+  // consultadas): el modelo leía la primera cuenta de Meta en 0 y concluía
+  // que "Meta no tuvo inversión" aunque el total fuera > 0.
+  const platformSummaries = async (range: DateRange) => {
+    const connected = platformPrefetch.filter((platform) => platform.connected && exposedToolKeys.includes(platform.toolKey))
+    if (!connected.length) return ''
+    const summaries = await Promise.all(connected.map(async (platform) => summarizePlatform(platform.label, await runTool(platform.toolKey, range))))
+    return `DATOS REALES DE PAUTA (${range.from} a ${range.to}), obtenidos de las cuentas conectadas. Usalos en la respuesta; no digas que falta información ni que no hay actividad si el TOTAL figura con gasto:\n${summaries.join('\n')}`
+  }
+  const prefetchMissingPlatforms = async () => {
+    const range = currentRange()
+    const [summaries, kpis] = await Promise.all([
+      platformSummaries(range),
+      useReportTool ? buildReportKpis(runTool, range).catch(() => [] as ReportKpi[]) : Promise.resolve([] as ReportKpi[]),
+    ])
+    const totals = kpis.length ? `\n\nTOTALES CALCULADOS (período actual vs anterior): ${describeKpis(kpis)}. Si escribís cifras, usá exactamente estas; nunca marcadores como XX.` : ''
+    return (summaries ? `\n\n${summaries}` : '') + totals
+  }
 
   return streamText({
     model: getGatewayModel(selectedModel),
@@ -141,6 +343,8 @@ export async function streamSupervisorResponse(
       'EJECUCIÓN INMEDIATA: si la consulta pide un dato, métrica, cantidad o estado verificable, no escribas una explicación previa ni anuncies lo que vas a hacer. Ejecutá las herramientas necesarias y respondé despu��s con el resultado. El usuario solo debe ver la respuesta final y, durante la ejecución, las actividades de las herramientas.',
       'PROTOCOLO DE ORQUESTACIÓN ADAPTATIVA Y CRUCE: primero clasificá la intención de la consulta y elegí la fuente de verdad inicial. Para ventas, cierres, oportunidades ganadas o “cuántas ventas”, comenzá con crm_opportunities para obtener las oportunidades con estado won y sus contactos; después ejecutá crm_contact_ads o crm_sales_attribution para extraer utm_id/source_id de esos contactos; finalmente consultá la herramienta de la plataforma correspondiente (Meta Ads o Google Ads) para obtener gasto, campañas, anuncios y leads, y cruzá los IDs/UTM antes de redactar. Para leads de pauta comenzá por la plataforma y luego contrastá con crm_contacts/crm_contact_ads. Para contactos CRM comenzá por crm_contacts. Para gasto comenzá por la plataforma. Nunca uses una secuencia fija si la intención exige otra, pero siempre completá todos los nodos necesarios para responder la pregunta.',
       'CONTRATO DE CRUCE: cada resultado de una tool es evidencia para las siguientes. Conservá cliente, cuentas, período y zona horaria; no cruces resultados de otro cliente o período. Compará utm_id, source_id, campaign_id y ad_id con normalización estricta y reportá coincidencias y no coincidencias. El informe debe separar claramente: gasto de plataforma, leads/conversiones reportados por plataforma, contactos totales del CRM, contactos CRM con UTM, oportunidades won/ventas y ventas atribuibles. Para ventas por canal, `crm_sales_attribution.by_channel` es la fuente canónica del CRM: usá exactamente sus totales (Google, Meta y sin atribución) y no reemplaces esos valores por el conteo de la plataforma consultada. Las métricas de Meta/Google sirven para inversión, leads y validación de IDs; no prueban por sí solas cuántas ventas del CRM pertenecen a cada canal. Si una fuente no está disponible o no existe una coincidencia, informalo como “no disponible” o “sin coincidencias”; nunca lo conviertas en cero ni inventes nombres, importes o atribuciones. PROHIBIDO INVENTAR: nunca escribas un ID de cuenta, campaña, cliente, permiso, error, inversión o métrica que no aparezca literalmente en el resultado de una tool. Nunca uses IDs de ejemplo como act_1234567890. Si la tool devuelve errors, usá únicamente account_id/account_name/error de ese resultado; si no devuelve account_id, decí “la cuenta seleccionada” sin inventar uno. No afirmes que falta vinculación o permisos salvo que el error de la tool lo indique explícitamente; distinguí entre sin datos, error de API, cuenta no perteneciente al cliente y permisos insuficientes.',
+      ...(useReportTool ? [REPORT_INSTRUCTION] : []),
+      'CREATIVOS: si el usuario pregunta por creativos, anuncios o piezas, usá showTopCreatives con la métrica que corresponda (alcance → reach, CTR → ctr, CPL → cpl, CPC → cpc, inversión → spend, leads → leads, frecuencia → frequency, impresiones → impressions). Después comentá el resultado en 1 o 2 frases. No listes los creativos en texto: el sistema los muestra con su imagen.',
       'RESPUESTA FINAL OBLIGATORIA: siempre terminá con una respuesta textual útil; nunca dejes el turno sin respuesta aunque una tool falle, tarde o devuelva datos parciales. Si una tool falla o agota el tiempo, explicá qué pudo validarse, qué dato falta y proponé el próximo paso concreto usando la evidencia disponible. Para consultas de CRM, la respuesta nunca puede ser solo un número ni un volcado de CRM: después de obtener el dato CRM, cruzalo obligatoriamente con pauta (Meta Ads/Google Ads según las cuentas disponibles) y, si no hay una cuenta de pauta conectada o no existe coincidencia, declaralo explícitamente y convertí esa diferencia en una recomendación de medición/atribución/seguimiento. Incluí siempre una sección “Lectura y recomendaciones” con al menos 2 recomendaciones accionables derivadas de los datos o de la brecha de datos. Las recomendaciones deben estar etiquetadas como “basada en datos” solo cuando exista evidencia cuantitativa; si no hay métricas, limitate a recomendaciones de diagnóstico/conexión y no sugieras presupuestos, CPA, frecuencia, segmentaciones o cambios de campaña como si fueran conclusiones. No afirmes que una cuenta tiene permisos insuficientes ni que está mal vinculada sin evidencia explícita en la tool. Incluí período exacto y zona horaria, fuente de cada cifra, fórmula o criterio de cruce, diferencias entre plataformas y CRM, y una sección de datos faltantes. No respondas hasta ejecutar las tools necesarias ni presentes una hipótesis como hecho.',
       'REGLA DE CRUCE CRM + PAUTA: si la consulta pide contactos, leads, oportunidades, ventas, campañas o cualquier dato del CRM, primero obtené la evidencia CRM y luego ejecutá al menos una tool de pauta disponible (get_meta_metrics o get_google_metrics) y/o crm_contact_ads/crm_sales_attribution para validar origen. Compará volumen CRM contra leads/conversiones de pauta, identificá atribuidos y no atribuidos, y redactá qué significa la diferencia para el negocio. Si solo hay una plataforma disponible, usá esa; si ninguna está disponible, respondé con la limitación y recomendaciones de instrumentación, sin fingir que el CRM está validado.',
       'TONO Y NIVEL DE ANÁLISIS: quien te consulta es un/a media buyer o account manager que va a usar tu respuesta como base de un reporte para su cliente final. No entregues un volcado de datos crudo (no listes las 76 campañas una por una si la mayoría tiene volumen bajo o nulo): agrupá, priorizá y contá una lectura. Estructura recomendada: (1) 2-3 frases de lectura general (qué pasó, si es bueno o malo, y por qué, en lenguaje de negocio); (2) 3 a 6 filas con las campañas o cuentas que más aportaron o más llaman la atención (mejores y peores), no la lista completa salvo que el usuario la pida explícitamente; (3) 1-2 frases de conclusión o próximo paso sugerido (ej. qué campaña escalar, cuál pausar, qué falta investigar). Sé concreto y breve: preferí una respuesta corta y bien jerarquizada a una extensa. Si hay muchas filas con cifras en cero o insignificantes, agrupalas en una sola línea tipo "otras N campañas sin leads/ventas en el período" en vez de listarlas.',
@@ -161,6 +365,7 @@ export async function streamSupervisorResponse(
       // hay que volver a ejecutar la tool correspondiente: el historial da
       // contexto para armar la tool call, no reemplaza la consulta de datos.
       'Los "messages" incluyen el historial reciente de esta conversación seguido de la consulta actual. Si la consulta actual es un follow-up (ej. "¿Impresiones?", "¿Y conversiones?", "¿Cuál rindió mejor?"), interpretalo con el mismo cliente, plataforma, cuentas y período del turno anterior salvo que el usuario diga lo contrario, y no vuelvas a preguntar esos datos si ya están en el historial. Para responder igual siempre volvés a ejecutar la herramienta correspondiente con ese contexto heredado: el historial ayuda a construir la tool call, no sustituye la consulta de datos actuales.',
+      ...(monthlyReportMode ? [MONTHLY_REPORT_INSTRUCTION] : []),
       ...(context.conversationWorkingContext ? [`CONTEXTO ESTRUCTURADO DE CONVERSACIÓN (prioridad sobre defaults): ${JSON.stringify(context.conversationWorkingContext)}. Para “estos cambios”, “esos cambios” o “últimos cambios”, reutilizá exactamente referenced_change_events y no hagas una búsqueda genérica. Para cuentas, campañas, grupos y períodos reutilizá sus IDs y fechas. Si hay varias cuentas, agrupá por plataforma + cuenta; nunca elijas una arbitrariamente. Si el contexto tiene otro client_id, no lo uses.`] : []),
       ...(context.analysisRunState?.comparisonDefinition ? [`El backend detectó una comparación obligatoria. Consultá primero el período CURRENT ${context.analysisRunState.comparisonDefinition.current.from} a ${context.analysisRunState.comparisonDefinition.current.to}; luego consultá el período COMPARISON ${context.analysisRunState.comparisonDefinition.comparison.from} a ${context.analysisRunState.comparisonDefinition.comparison.to}, usando la misma plataforma y cuentas. Finalmente ejecutá run_performance_analyst. No afirmes subidas o bajadas sin ambos períodos.`] : []),
     ].join('\n\n'),
@@ -171,21 +376,36 @@ export async function streamSupervisorResponse(
   // margen suficiente para cruzar CRM + pauta, pero con un límite acotado
   // para evitar que el supervisor encadene tools indefinidamente y deje el
   // stream sin una respuesta final.
-  stopWhen: stepCountIs(15),
+  stopWhen: [stepCountIs(15), hasToolCall(RENDER_REPORT_TOOL)],
   // Si llegamos cerca del límite de pasos sin que el modelo haya redactado
   // todavía la respuesta final, le quitamos las tools en el último paso
   // disponible para forzarlo a sintetizar con lo que ya recolectó.
-  prepareStep: ({ stepNumber, steps }) => {
+  prepareStep: async ({ stepNumber, steps }) => {
     // o4-mini a veces da por terminado el turno justo después de recibir
     // get_account_context: devuelve finishReason=stop pero sin texto ni otra
     // tool call. En una consulta de CRM/pauta eso es una respuesta inválida.
     // Obligamos un paso adicional de herramientas para que consulte métricas,
     // atribución o CRM antes de sintetizar.
-    const loadedAccountContext = steps.some((step) => step.toolCalls?.some((call) => call.toolName === 'get_account_context'))
+    const loadedAccountContext = steps.some((step) => step.toolCalls?.some((call) => call?.toolName === 'get_account_context'))
+    if (creativesMode && context.metaAccountId) {
+      const shownCreatives = steps.some((step) => step.toolCalls?.some((call) => call?.toolName === SHOW_TOP_CREATIVES_TOOL))
+      if (shownCreatives) {
+        return {
+          activeTools: [],
+          toolChoice: 'none' as const,
+          system: 'El sistema ya muestra los creativos con imagen y métricas. Comentá el resultado en 1 o 2 frases (qué tienen en común o qué destacar). No listes los creativos ni sus métricas. Si la tool devolvió status inactive, unavailable o empty, explicalo en una frase.',
+        }
+      }
+      return {
+        activeTools: [SHOW_TOP_CREATIVES_TOOL],
+        toolChoice: { type: 'tool' as const, toolName: SHOW_TOP_CREATIVES_TOOL },
+      }
+    }
     if (reportMode) {
       if (stepNumber < 14) return undefined
       return {
-        toolChoice: 'none' as const,
+        activeTools: synthesisTools,
+      ...synthesisChoice,
         system: 'Redactá AHORA el informe o prompt COMPLETO, con todas las secciones, usando todas las métricas obtenidas. No lo cortes ni lo resumas.',
       }
     }
@@ -200,14 +420,16 @@ export async function streamSupervisorResponse(
     // herramientas y termine con finishReason=length sin texto.
     if (stepNumber >= 2 && loadedAccountContext) {
       return {
-        toolChoice: 'none' as const,
-        system: 'No ejecutes más herramientas. Redactá AHORA la respuesta final con lo obtenido. Cruzá CRM y pauta si existe evidencia; si falta una fuente, declaralo y agregá recomendaciones accionables.',
+        activeTools: synthesisTools,
+      ...synthesisChoice,
+        system: 'No ejecutes más herramientas de datos. Redactá AHORA la respuesta final con lo obtenido. Cruzá CRM y pauta si existe evidencia; si falta una fuente, declaralo y agregá recomendaciones accionables.' + await prefetchMissingPlatforms(),
       }
     }
     if (stepNumber < 14) return undefined
     return {
-      toolChoice: 'none' as const,
-      system: 'Redactá AHORA la respuesta final únicamente con los resultados obtenidos. Si algún cruce quedó incompleto, aclaralo como dato faltante y agregá recomendaciones.',
+      activeTools: synthesisTools,
+      ...synthesisChoice,
+      system: 'Redactá AHORA la respuesta final únicamente con los resultados obtenidos. Si algún cruce quedó incompleto, aclaralo como dato faltante y agregá recomendaciones.' + await prefetchMissingPlatforms(),
     }
   },
   temperature: 0.2,

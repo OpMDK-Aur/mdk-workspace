@@ -4,6 +4,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Maximize2 } from 'lucide-react'
 import { ChartBlock } from './chart-block'
+import { ChatChart } from '@/components/conexa/chat-chart'
+import { parseChartSpec } from '@/lib/ai/chart-spec'
 import { FileBlock } from './file-block'
 import { ImageBlock } from './image-block'
 import { PdfBlock } from './pdf-block'
@@ -34,10 +36,10 @@ const markdownComponents = {
     <h3 className="mb-2 mt-4 text-sm font-semibold leading-6 text-foreground">{children}</h3>
   ),
   ul: ({ children }: { children?: React.ReactNode }) => (
-    <ul className="mb-3 ml-5 list-disc space-y-1 text-foreground/90">{children}</ul>
+    <ul className="mb-3 list-disc space-y-1 pl-5 text-foreground/90">{children}</ul>
   ),
   ol: ({ children }: { children?: React.ReactNode }) => (
-    <ol className="mb-3 ml-5 list-decimal space-y-1 text-foreground/90">{children}</ol>
+    <ol className="mb-3 list-decimal space-y-1 pl-5 text-foreground/90">{children}</ol>
   ),
   li: ({ children }: { children?: React.ReactNode }) => (
     <li className="pl-1 leading-6">{children}</li>
@@ -112,9 +114,9 @@ function ArtifactCard({
 
 export function MessageContent({ content, onOpenArtifact, onSubmitFaltantes }: MessageContentProps) {
   // Parse content for special blocks (```chart, ```file, ```image, ```pdf, ```faltantes)
-  const parts: Array<{ type: 'text' | 'chart' | 'file' | 'image' | 'pdf' | 'faltantes'; content: string }> = []
+  const parts: Array<{ type: 'text' | 'conexa-chart' | 'chart' | 'file' | 'image' | 'pdf' | 'faltantes'; content: string }> = []
 
-  const regex = /```(chart|file|image|pdf|faltantes)\n([\s\S]*?)```/g
+  const regex = /```(conexa-chart|chart|file|image|pdf|faltantes)[ \t]*\r?\n([\s\S]*?)```/g
   let lastIndex = 0
   let match
 
@@ -122,7 +124,7 @@ export function MessageContent({ content, onOpenArtifact, onSubmitFaltantes }: M
     if (match.index > lastIndex) {
       parts.push({ type: 'text', content: content.slice(lastIndex, match.index) })
     }
-    parts.push({ type: match[1] as 'chart' | 'file' | 'image' | 'pdf' | 'faltantes', content: match[2].trim() })
+    parts.push({ type: match[1] as 'conexa-chart' | 'chart' | 'file' | 'image' | 'pdf' | 'faltantes', content: match[2].trim() })
     lastIndex = regex.lastIndex
   }
 
@@ -160,6 +162,15 @@ export function MessageContent({ content, onOpenArtifact, onSubmitFaltantes }: M
               {part.content}
             </ReactMarkdown>
           )
+        }
+
+        if (part.type === 'conexa-chart') {
+          try {
+            const spec = parseChartSpec(JSON.parse(part.content))
+            return spec ? <ChatChart key={index} spec={spec} /> : null
+          } catch {
+            return null
+          }
         }
 
         if (part.type === 'chart') {

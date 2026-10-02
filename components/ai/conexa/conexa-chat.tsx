@@ -6,7 +6,14 @@ import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ArrowUpRight, Check, ChevronRight, FileText, Loader2, MoreHorizontal, Paperclip, Pencil, Send, Square, X } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronRight, FileText, Loader2, MoreHorizontal, Paperclip, Pencil, Send, Sparkles, Square, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { ChartSkeleton, ChatChart } from '@/components/conexa/chat-chart'
+import { ChatKpis, ChatKpisSkeleton } from '@/components/conexa/chat-kpis'
+import { ChatCreatives, ChatCreativesSkeleton } from '@/components/conexa/chat-creatives'
+import { parseChartSpec, type ChartSpec } from '@/lib/ai/chart-spec'
+import { isReportSections, type ReportSection } from '@/lib/ai/report-charts'
+import { asksForValidation, buildClaudeReportPrompt, isMonthlyReportRequest, REPORT_CONFIRMATION_PATTERN } from '@/lib/ai/monthly-report'
 import { cn } from '@/lib/utils'
 import { MessageContent } from '@/components/chat/message-content'
 import { CopyButton } from '@/components/chat/copy-button'
@@ -61,12 +68,44 @@ interface ConexaChatProps {
 
 type PersistedMessage = { id: string; role: 'user' | 'assistant'; content: string; created_at: string }
 
+const RENDER_REPORT_PART = 'tool-renderReport'
+const TOP_CREATIVES_PART = 'tool-showTopCreatives'
+const PERSISTED_CHART_FENCE = /```(?:conexa-chart|chart)[ \t]*\r?\n([\s\S]*?)```/g
+
+function reportSections(part: UIMessage['parts'][number]): ReportSection[] | null {
+  if (part.type !== RENDER_REPORT_PART || !('state' in part) || part.state !== 'output-available' || !('output' in part)) return null
+  return isReportSections(part.output) ? part.output.sections : null
+}
+
 function messageText(message: UIMessage) {
   return message.parts
-    .filter((part) => part.type === 'text')
-    .map((part) => part.text)
+    .map((part) => {
+      if (part.type === 'text') return part.text
+      const sections = reportSections(part)
+      return sections ? sections.map((section) => `**${section.heading}**\n\n${section.text}`).join('\n\n') : ''
+    })
     .join('')
 }
+
+function hasReportPart(message: UIMessage) {
+  return message.parts.some((part) => part.type === RENDER_REPORT_PART || part.type === TOP_CREATIVES_PART)
+}
+
+function messageCharts(message: UIMessage): ChartSpec[] {
+  const fromTools = message.parts.flatMap((part) =>
+    (reportSections(part) ?? []).map((section) => (section.chart ? parseChartSpec(section.chart) : null)),
+  )
+  const fromText = [...messageText(message).matchAll(PERSISTED_CHART_FENCE)].map((match) => {
+    try {
+      return parseChartSpec(JSON.parse(match[1]))
+    } catch {
+      return null
+    }
+  })
+  return [...fromTools, ...fromText].filter((spec): spec is ChartSpec => spec !== null)
+}
+
+type ReportConfirmation = { reportConfirmed: boolean; messageId: string }
 
 /**
  * Aviso de dos tonos suave (estilo notificación de mensaje) generado con
@@ -246,6 +285,8 @@ function ConexaChatSession({
   const [requestError, setRequestError] = useState<string | null>(null)
   const [attachments, setAttachments] = useState<File[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [reportConfirmation, setReportConfirmation] = useState<ReportConfirmation | null>(null)
+  const [isCorrectingReport, setIsCorrectingReport] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -313,13 +354,28 @@ function ConexaChatSession({
 
   const isBusy = status === 'submitted' || status === 'streaming'
   const lastMessage = messages.at(-1)
-  const lastAssistantText = lastMessage?.role === 'assistant' ? messageText(lastMessage) : ''
+  const lastAssistantHasContent = lastMessage?.role === 'assistant' && (messageText(lastMessage).length > 0 || hasReportPart(lastMessage))
   // AI SDK puede crear el mensaje assistant antes de recibir su primer token.
   // En ese instante no hay que ocultar el panel de actividad: hacerlo dejaba
   // una burbuja vacía, exactamente el estado que se veía cuando el stream
   // tardaba entre llamadas de tools.
-  const isStreamingAssistantMessage = isBusy && lastMessage?.role === 'assistant' && lastAssistantText.length > 0
-  const isWaitingForAssistantContent = isBusy && lastMessage?.role === 'assistant' && lastAssistantText.length === 0
+  const isStreamingAssistantMessage = isBusy && lastAssistantHasContent
+  const isWaitingForAssistantContent = isBusy && lastMessage?.role === 'assistant' && !lastAssistantHasContent
+  const isMonthlyReport = messages.some((message) => message.role === 'user' && isMonthlyReportRequest(messageText(message)))
+  const pendingValidationId =
+    isMonthlyReport && !isBusy && lastMessage?.role === 'assistant' && asksForValidation(messageText(lastMessage)) && reportConfirmation?.messageId !== lastMessage.id
+      ? lastMessage.id
+      : null
+
+  function confirmReport(messageId: string) {
+    setReportConfirmation({ reportConfirmed: true, messageId })
+    setIsCorrectingReport(false)
+  }
+
+  function startReportCorrection() {
+    setIsCorrectingReport(true)
+    requestAnimationFrame(() => textareaRef.current?.focus())
+  }
   const showActivityPanel = isBusy && (!isStreamingAssistantMessage || isWaitingForAssistantContent)
 
   useEffect(() => {
@@ -355,7 +411,17 @@ function ConexaChatSession({
     setRequestError(null)
     setAttachments([])
     setAttachmentError(null)
+    setIsCorrectingReport(false)
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    // Una confirmación escrita como respuesta a "¿La información es correcta?"
+    // valida el resumen sin volver a consultar al modelo.
+    if (pendingValidationId && pendingAttachments.length === 0 && REPORT_CONFIRMATION_PATTERN.test(text)) {
+      setMessages((previous) => [...previous, { id: crypto.randomUUID(), role: 'user', parts: [{ type: 'text', text }] }])
+      confirmReport(pendingValidationId)
+      return
+    }
+    // Cualquier mensaje nuevo puede cambiar los datos validados.
+    setReportConfirmation(null)
     // Mostramos un primer paso de forma optimista, del lado del cliente, para
     // que el panel nunca muestre el "Pensando..." genérico mientras esperamos
     // la primera confirmación del servidor (que puede demorar por la latencia
@@ -419,6 +485,7 @@ function ConexaChatSession({
     if (target.role !== 'user') return
     setInput(messageText(target))
     setMessages((previous) => previous.slice(0, index))
+    setReportConfirmation(null)
     setRequestError(null)
     requestAnimationFrame(() => {
       const field = textareaRef.current
@@ -556,8 +623,13 @@ function ConexaChatSession({
                 isLast={index === messages.length - 1}
                 isStreaming={isStreamingAssistantMessage && index === messages.length - 1}
                 onCreateReport={onCreateReport}
-                reportCta={index === messages.length - 1 ? getReportCtaState(messages, index) : null}
+                reportCta={!isMonthlyReport && index === messages.length - 1 ? getReportCtaState(messages, index) : null}
                 onEdit={!isBusy && message.role === 'user' ? () => handleEditMessage(message.id) : undefined}
+                clientName={clientName}
+                needsValidation={pendingValidationId === message.id}
+                isReportConfirmed={!isBusy && reportConfirmation?.reportConfirmed === true && reportConfirmation.messageId === message.id}
+                onConfirmReport={() => confirmReport(message.id)}
+                onCorrectReport={startReportCorrection}
               />
             ))
           )}
@@ -652,7 +724,7 @@ function ConexaChatSession({
               }}
               onKeyDown={handleKeyDown}
               rows={1}
-              placeholder="Preguntale algo a Conexa..."
+              placeholder={isCorrectingReport ? '¿Qué dato hay que corregir?' : 'Preguntale algo a Conexa...'}
               aria-label="Consulta para Conexa"
               disabled={!clientId || isBusy}
               className="min-h-9 flex-1 resize-none rounded-lg border border-[#E6E6E1] bg-white px-3 py-2 text-sm leading-6 text-[#141414] outline-none focus-visible:border-[#5B5FE8]"
@@ -692,6 +764,11 @@ function ChatBubble({
   onCreateReport,
   onEdit,
   reportCta,
+  clientName,
+  needsValidation,
+  isReportConfirmed,
+  onConfirmReport,
+  onCorrectReport,
 }: {
   message: UIMessage
   isLast: boolean
@@ -699,11 +776,28 @@ function ChatBubble({
   onCreateReport?: (content: string) => void
   onEdit?: () => void
   reportCta?: ReportCtaState | null
+  clientName: string
+  needsValidation: boolean
+  isReportConfirmed: boolean
+  onConfirmReport: () => void
+  onCorrectReport: () => void
 }) {
   const [promptOpen, setPromptOpen] = useState(false)
+  const [claudePromptOpen, setClaudePromptOpen] = useState(false)
   const isUser = message.role === 'user'
   const text = messageText(message)
   const fileParts = message.parts.filter((part) => part.type === 'file')
+  const hasReport = hasReportPart(message)
+  const claudePrompt = isReportConfirmed ? buildClaudeReportPrompt({ clientName, summary: text, charts: messageCharts(message) }) : ''
+
+  async function copyClaudePrompt() {
+    try {
+      await navigator.clipboard.writeText(claudePrompt)
+      toast('Prompt copiado')
+    } catch {
+      toast.error('No se pudo copiar el prompt')
+    }
+  }
   return (
     <div className={cn('group flex w-full min-w-0 flex-col gap-2', isUser ? 'items-end' : 'items-start')}>
       <div
@@ -730,12 +824,105 @@ function ChatBubble({
         )}
         {isUser ? (
           <span className="whitespace-pre-wrap">{text}</span>
-        ) : isStreaming && !text ? (
+        ) : isStreaming && !text && !hasReport ? (
           <span className="text-[#9a9a9a]">Pensando…</span>
         ) : (
-          <MessageContent content={text} />
+          message.parts.map((part, i) => {
+            if (part.type === 'text') return part.text ? <MessageContent key={i} content={part.text} /> : null
+            if (part.type === TOP_CREATIVES_PART) {
+              if (!('state' in part) || part.state === 'output-error') return null
+              return part.state === 'output-available' && 'output' in part
+                ? <ChatCreatives key={i} data={part.output} />
+                : <ChatCreativesSkeleton key={i} />
+            }
+            if (part.type !== RENDER_REPORT_PART) return null
+            if ('state' in part && part.state === 'output-error') return null
+            const sections = reportSections(part)
+            if (!sections) {
+              return (
+                <div key={i} role="status" className="flex flex-col gap-1">
+                  <span className="text-[#9a9a9a]">Analizando datos…</span>
+                  <ChatKpisSkeleton />
+                  <ChartSkeleton />
+                </div>
+              )
+            }
+            return (
+              <div key={i} className="flex flex-col gap-5">
+                <ChatKpis kpis={'output' in part ? (part.output as { kpis?: unknown }).kpis : undefined} />
+                {sections.map((section, index) => {
+                  const spec = section.chart ? parseChartSpec(section.chart) : null
+                  return (
+                    <section key={`${section.heading}-${index}`} className="flex min-w-0 flex-col gap-1.5">
+                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9A9A9A]">{section.heading}</h3>
+                      {section.text ? <MessageContent content={section.text} /> : null}
+                      {spec ? <ChatChart spec={spec} /> : null}
+                      {section.creatives ? <ChatCreatives data={section.creatives} /> : null}
+                    </section>
+                  )
+                })}
+              </div>
+            )
+          })
         )}
       </div>
+      {needsValidation && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onConfirmReport}
+            className="h-9 rounded-full border border-[#5B5FE8] bg-white px-4 text-sm font-medium text-[#5B5FE8] transition-colors hover:bg-[#eeefff]"
+          >
+            Sí, es correcta
+          </button>
+          <button
+            type="button"
+            onClick={onCorrectReport}
+            className="h-9 rounded-full border border-[#E6E6E1] bg-white px-4 text-sm font-medium text-[#141414] transition-colors hover:border-[#141414]"
+          >
+            Corregir datos
+          </button>
+        </div>
+      )}
+      {isReportConfirmed && (
+        <>
+          <button
+            type="button"
+            onClick={() => setClaudePromptOpen(true)}
+            className="inline-flex h-9 items-center gap-2 rounded-full bg-[#5B5FE8] px-4 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          >
+            <Sparkles className="size-3.5" aria-hidden="true" />
+            Crear prompt para Claude
+          </button>
+          <Dialog open={claudePromptOpen} onOpenChange={setClaudePromptOpen}>
+            <DialogContent className="max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>Prompt para Claude</DialogTitle>
+                <DialogDescription>Armado solo con los datos que validaste para {clientName}.</DialogDescription>
+              </DialogHeader>
+              <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-[#E6E6E1] bg-[#f4f4f1] p-3 font-mono text-xs leading-5 text-[#141414]">
+                {claudePrompt}
+              </pre>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setClaudePromptOpen(false)}
+                  className="h-9 rounded-full border border-[#E6E6E1] bg-white px-4 text-sm font-medium text-[#141414] hover:border-[#141414]"
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="button"
+                  onClick={copyClaudePrompt}
+                  className="h-9 rounded-full bg-[#5B5FE8] px-4 text-sm font-medium text-white hover:opacity-90"
+                >
+                  Copiar prompt
+                </button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
       {isUser && onEdit && (
         <button
           type="button"

@@ -8,6 +8,9 @@ export type CreativeCard = {
   format: CreativeFormat | null
   thumbnail: string | null
   impressions: number
+  reach: number
+  clicks: number
+  leads: number
   ctr: number
   spend: number
   currency: string
@@ -87,6 +90,9 @@ export function toCreativeCards(accounts: MetaAccountLike[]): CreativeCard[] {
         format: creativeFormat(creative) ?? toFormat(row.format ?? row.object_type ?? row.creative_type),
         thumbnail: creativeThumbnail(creative) ?? toText(row.thumbnail_url) ?? toText(row.image_url),
         impressions: toNumber(row.impressions),
+        reach: toNumber(row.reach),
+        clicks: toNumber(row.clicks),
+        leads: toNumber(row.leads),
         ctr: toNumber(row.ctr),
         spend: toNumber(row.spend),
         currency,

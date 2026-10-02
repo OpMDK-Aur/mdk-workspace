@@ -4,7 +4,10 @@ import * as XLSX from 'xlsx'
 import type { ActivityEvent } from '@/lib/ai/types'
 import { createClient } from '@/lib/supabase/server'
 import { chatRequestSchema } from '@/lib/ai/config/fallback'
-import { streamSupervisorResponse, type SupervisorModelMessage } from '@/lib/ai/agents/supervisor'
+import { detectReportMode, streamSupervisorResponse, type SupervisorModelMessage } from '@/lib/ai/agents/supervisor'
+import { chartFence, parseChartSpec } from '@/lib/ai/chart-spec'
+import { RENDER_REPORT_TOOL } from '@/lib/ai/agents/supervisor'
+import { isReportSections, type ReportSection } from '@/lib/ai/report-charts'
 import { getOrCreateConversation, getLatestWorkingContext, listConversationMessages, saveConversationMessage } from '@/lib/ai/conversations'
 import { emptyWorkingContext } from '@/lib/ai/conversation-context'
 import { ATTACHMENT_MAX_COUNT, isImageOrPdfAttachment, isPlainTextAttachment, isSpreadsheetAttachment } from '@/lib/ai/attachments'
@@ -44,6 +47,31 @@ function getComparisonDefinition(query: string) {
     current: { from: isoDate(currentFrom), to: isoDate(currentTo) },
     comparison: { from: isoDate(comparisonFrom), to: isoDate(comparisonTo) },
   }
+}
+
+const HISTORY_CHART_FENCE = /```(?:conexa-chart|chart)[ \t]*\r?\n[\s\S]*?```/g
+
+// Las respuestas llegan como partes tool-renderReport; las persistimos como
+// markdown con bloques conexa-chart para que el historial recargado los siga mostrando.
+function getMessageTextWithCharts(message: unknown) {
+  if (!message || typeof message !== 'object') return ''
+  const parts = 'parts' in message && Array.isArray(message.parts) ? message.parts : []
+  return parts
+    .map((part) => {
+      if (!part || typeof part !== 'object') return ''
+      if (part.type === 'text' && typeof part.text === 'string') return part.text
+      if (part.type === `tool-${RENDER_REPORT_TOOL}` && part.state === 'output-available' && isReportSections(part.output)) {
+        return part.output.sections
+          .map((section: ReportSection) => {
+            const spec = section.chart ? parseChartSpec(section.chart) : null
+            return [`**${section.heading}**`, section.text, spec ? chartFence(spec) : ''].filter(Boolean).join('\n\n')
+          })
+          .join('\n\n')
+      }
+      return ''
+    })
+    .join('')
+    .trim()
 }
 
 function getMessageText(message: unknown) {
@@ -386,12 +414,15 @@ export async function POST(request: Request) {
     // el usuario adjuntó archivos.
     const currentUserContent = attachmentContentParts.length > 0 ? [{ type: 'text' as const, text: query }, ...attachmentContentParts] : query
     const modelMessages: SupervisorModelMessage[] = [
-      ...history.map((message) => ({
-        role: message.role,
-        content: message.content.length > MAX_HISTORY_MESSAGE_CHARS
-          ? `${message.content.slice(0, MAX_HISTORY_MESSAGE_CHARS)}\n[Historial truncado para respetar la ventana de contexto.]`
-          : message.content,
-      })),
+      ...history.map((message) => {
+        const content = message.content.replace(HISTORY_CHART_FENCE, '[gráfico mostrado al usuario]')
+        return {
+          role: message.role,
+          content: content.length > MAX_HISTORY_MESSAGE_CHARS
+            ? `${content.slice(0, MAX_HISTORY_MESSAGE_CHARS)}\n[Historial truncado para respetar la ventana de contexto.]`
+            : content,
+        }
+      }),
       { role: 'user' as const, content: currentUserContent },
     ]
 
@@ -441,7 +472,9 @@ export async function POST(request: Request) {
         // final. Nunca permitimos que ese caso llegue como una burbuja vacía al
         // usuario: emitimos una respuesta explícita con el dato faltante y el
         // próximo paso, en vez de dejar el chat bloqueado visualmente.
-        if (!finalText.trim()) {
+        const steps = await result.steps
+        const renderedReport = steps.some((step) => step.toolCalls?.some((call) => call?.toolName === RENDER_REPORT_TOOL))
+        if (!finalText.trim() && !renderedReport) {
           const fallback = 'Pude cargar el contexto disponible, pero el supervisor no devolvió una síntesis final. No voy a presentar ese contexto como un análisis validado ni asumir que existe un problema de permisos o vinculación. Falta ejecutar y validar la fuente de datos solicitada antes de cruzarla con el CRM. Reintentá la consulta para continuar con esa validación.'
           writer.write({ type: 'text-start', id: 'supervisor-fallback' })
           writer.write({ type: 'text-delta', id: 'supervisor-fallback', delta: fallback })
@@ -457,7 +490,7 @@ export async function POST(request: Request) {
       onFinish: async ({ messages }) => {
         if (!conversation) return
         const assistantMessage = messages.at(-1)
-        const assistantText = getMessageText(assistantMessage)
+        const assistantText = getMessageTextWithCharts(assistantMessage)
         if (!assistantText) return
         await saveConversationMessage(supabase, {
           conversationId: conversation.id,
