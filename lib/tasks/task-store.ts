@@ -1670,7 +1670,8 @@ addTask: async (taskData) => {
           files: taskData.files || [],
           quotation: null,
         },
-        ...state.tasks,
+        // A realtime reload may already have added this task from the DB.
+        ...state.tasks.filter((t) => t.id !== id),
       ],
     }))
     
