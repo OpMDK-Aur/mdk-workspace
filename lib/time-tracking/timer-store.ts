@@ -47,6 +47,7 @@ interface TimerState {
 
   // Task-specific actions
   startTimerForTask: (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null) => Promise<void>
+  syncRunningEntry: () => Promise<boolean>
 
   // Computed
   getElapsedSeconds: () => number
@@ -230,7 +231,7 @@ export const useTimerStore = create<TimerState>()(
       },
 
       startTimerForTask: async (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null) => {
-        if (get().isRunning) {
+        if (get().isRunning || (await get().syncRunningEntry())) {
           throw new Error(TIMER_ACTIVE_ERROR)
         }
 
@@ -285,6 +286,65 @@ export const useTimerStore = create<TimerState>()(
           currentEntryId: newEntry.id,
           entries: [newEntry as TimeEntry, ...get().entries],
         })
+      },
+
+      // Lightweight check against the DB so a timer started in another tab,
+      // device or page is detected even if local persisted state is stale.
+      syncRunningEntry: async () => {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user?.email) return get().isRunning
+
+        const { data: colaborador } = await supabase
+          .from('colaboradores')
+          .select('id')
+          .eq('email', user.email)
+          .maybeSingle()
+        if (!colaborador?.id) return get().isRunning
+
+        const { data: running } = await supabase
+          .from('entradas_de_tiempo')
+          .select('*')
+          .eq('colaborador_id', colaborador.id)
+          .is('finalizado_en', null)
+          .order('iniciado_en', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        const MAX_AGE_MS = 24 * 60 * 60 * 1000
+        const startMs = running?.iniciado_en ? new Date(running.iniciado_en).getTime() : NaN
+        const isValid = Boolean(running) && !isNaN(startMs) && Date.now() - startMs < MAX_AGE_MS
+
+        if (isValid && running) {
+          const state = get()
+          if (state.currentEntryId !== running.id || !state.isRunning) {
+            set({
+              isRunning: true,
+              startedAt: running.iniciado_en,
+              currentEntryId: running.id,
+              description: running.descripcion ?? '',
+              clientId: running.cliente_id ?? null,
+              tipoTareaId: running.tipo_tarea_id ?? null,
+              billable: running.facturable ?? true,
+              taskId: state.currentEntryId === running.id ? state.taskId : null,
+            })
+          }
+          return true
+        }
+
+        if (get().isRunning) {
+          set({
+            isRunning: false,
+            startedAt: null,
+            currentEntryId: null,
+            description: '',
+            clientId: null,
+            tipoTareaId: null,
+            billable: true,
+            taskId: null,
+          })
+        }
+        return false
       },
 
       deleteEntry: async (id) => {

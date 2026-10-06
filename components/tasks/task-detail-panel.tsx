@@ -668,8 +668,16 @@ function TimeTracker({ task }: { task: Task }) {
     startedAt: globalStartedAt,
     startTimerForTask, 
     stopTimer: globalStopTimer,
-    getElapsedSeconds 
+    getElapsedSeconds,
+    syncRunningEntry,
   } = useTimerStore()
+
+  useEffect(() => {
+    syncRunningEntry().catch(() => {})
+    const onFocus = () => { syncRunningEntry().catch(() => {}) }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [syncRunningEntry])
   
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [isStarting, setIsStarting] = useState(false)
@@ -742,7 +750,7 @@ function TimeTracker({ task }: { task: Task }) {
     updateTask(task.id, { totalTimeSec: 0, timeSessions: [] })
   }
 
-  const isOtherTaskRunning = globalIsRunning && globalTaskId && globalTaskId !== task.id
+  const isOtherTaskRunning = globalIsRunning && !isThisTaskRunning
 
   // ── Compact bar layout: [ ■ Parar ]  00:00:15  [ ↺ ] ──────────────────────
   return (
@@ -763,10 +771,14 @@ function TimeTracker({ task }: { task: Task }) {
         <Button
           size="sm"
           variant="outline"
-          className="h-7 px-2.5 gap-1.5 text-xs rounded-md"
+          className={cn(
+            'h-7 px-2.5 gap-1.5 text-xs rounded-md',
+            isOtherTaskRunning && 'opacity-50 cursor-not-allowed'
+          )}
           onClick={handleStart}
           disabled={isStarting}
-          title={isOtherTaskRunning ? 'Hay otro timer activo' : 'Iniciar timer'}
+          aria-disabled={isOtherTaskRunning || undefined}
+          title={isOtherTaskRunning ? 'Hay un timer activo. Detenelo para iniciar otro.' : 'Iniciar timer'}
         >
           {isStarting
             ? <Loader2 className="h-3 w-3 animate-spin" />
