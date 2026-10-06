@@ -6,6 +6,7 @@ import { CREATIVE_METRICS, rankCreatives } from '../../meta/top-creatives'
 import { isMonthlyReportRequest, VALIDATION_QUESTION } from '../monthly-report'
 import { buildReportKpis, buildReportSections, CHART_KEYS, defaultRange, outputRange, REPORT_HEADINGS, type DateRange, type ReportKpi, type ReportSection } from '../report-charts'
 import { agentConfigRepository } from '../repositories/agent-repository'
+import { SUPERVISOR_REQUIRED_TOOL_KEYS } from './supervisor-tools'
 import { getCatalogToolKeys, getToolDefinitions } from '../tools'
 import type { ExecutionContext } from '../types'
 import { CLIENT_PROFILE_COLUMNS, buildClientMemory, describeClientProfile } from '../client-memory'
@@ -167,17 +168,7 @@ export async function streamSupervisorResponse(
 ) {
   const config = await agentConfigRepository.getSupervisor(context.userId)
   const catalogToolKeys = getCatalogToolKeys()
-  const benchmarkToolRequired = 'get_industry_benchmark'
-  const crmToolRequired = 'get_crm_context'
-  const analyticsReportToolRequired = 'get_google_analytics_report'
-  const analyticsSalesToolRequired = 'get_google_analytics_sales'
-  const crmSalesAttributionToolRequired = 'crm_sales_attribution'
-  const crmOpportunitiesToolRequired = 'crm_opportunities'
-  const crmContactsToolRequired = 'crm_contacts'
-  const crmContactAdsToolRequired = 'crm_contact_ads'
-  const crmAppointmentsToolRequired = 'crm_appointments'
-  const claudeDesignToolRequired = 'get_claude_design_prompt'
-  const enabledToolKeys = [...new Set([...config.enabledTools, benchmarkToolRequired, crmToolRequired, analyticsReportToolRequired, analyticsSalesToolRequired, crmSalesAttributionToolRequired, crmOpportunitiesToolRequired, crmContactsToolRequired, crmContactAdsToolRequired, crmAppointmentsToolRequired, claudeDesignToolRequired])]
+  const enabledToolKeys = [...new Set([...config.enabledTools, ...SUPERVISOR_REQUIRED_TOOL_KEYS])]
   const definitions = getToolDefinitions(enabledToolKeys)
   const exposedToolKeys = definitions.map((definition) => definition.key)
   console.log('[multiagent-tools]', {
