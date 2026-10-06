@@ -127,7 +127,7 @@ export async function generateMonthInstances(
   try {
     const { data: cliente, error: clienteError } = await supabase
       .from('clientes')
-      .select('id, unidades_negocio, account_manager_id')
+      .select('id, unidades_negocio, account_manager_id, activo')
       .eq('id', clienteId)
       .single()
 
@@ -136,7 +136,7 @@ export async function generateMonthInstances(
     }
 
     const unidades = cliente.unidades_negocio as string[] | null
-    if (!unidades || !unidades.includes('MDK')) {
+    if (!unidades || !unidades.includes('MDK') || cliente.activo === false) {
       return { success: true, generated: 0 }
     }
 
@@ -293,7 +293,7 @@ export async function createMissingTasks(
         cliente_id,
         hito_id,
         hito:hitos_catalogo(id, nombre, descripcion, genera_tarea),
-        cliente:clientes(id, unidades_negocio, account_manager_id)
+        cliente:clientes(id, unidades_negocio, account_manager_id, activo)
       `)
       .eq('mes', mes)
       .eq('anio', anio)
@@ -308,7 +308,12 @@ export async function createMissingTasks(
       const hito = i.hito as HitoCatalogo | null
       const cliente = i.cliente as any
       const unidades = cliente?.unidades_negocio as string[] | null
-      return hito?.genera_tarea === true && unidades && unidades.includes('MDK')
+      return (
+        hito?.genera_tarea === true &&
+        cliente?.activo !== false &&
+        unidades &&
+        unidades.includes('MDK')
+      )
     })
 
     let created = 0

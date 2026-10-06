@@ -140,21 +140,30 @@ export function TaskBoard() {
   // Live updates: any insert/update/delete in `tareas` (from any user) refreshes the board.
   // Debounced because bulk operations (e.g. seguimiento generation) fire many events at once.
   useEffect(() => {
+    // Unique name per mount: reusing a fixed name returns the still-subscribed channel
+    // on fast remounts, and calling .on() on it throws and crashes the section.
     const supabase = createClient()
     let timer: ReturnType<typeof setTimeout> | null = null
-    const channel = supabase
-      .channel('task-board-tareas')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas' }, () => {
-        if (timer) clearTimeout(timer)
-        timer = setTimeout(() => {
-          useTaskStore.getState().loadTasks({ silent: true })
-        }, 400)
-      })
-      .subscribe()
+    let channel: ReturnType<typeof supabase.channel> | null = null
+    try {
+      channel = supabase
+        .channel(`task-board-tareas-${crypto.randomUUID()}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas' }, () => {
+          if (timer) clearTimeout(timer)
+          timer = setTimeout(() => {
+            useTaskStore.getState().loadTasks({ silent: true }).catch((err) => {
+              console.error('Realtime task reload failed:', err)
+            })
+          }, 400)
+        })
+        .subscribe()
+    } catch (err) {
+      console.error('Realtime subscription failed:', err)
+    }
 
     return () => {
       if (timer) clearTimeout(timer)
-      supabase.removeChannel(channel)
+      if (channel) supabase.removeChannel(channel)
     }
   }, [])
 
