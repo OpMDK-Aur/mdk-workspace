@@ -109,12 +109,22 @@ function shouldAppearInMonth(frecuencia: string, mes: number, hitoOrden: number)
   return mes % 2 === hitoOrden % 2
 }
 
+/**
+ * Hitos are only generated for active clients that belong exclusively to MDK.
+ * Clients that also have Aurelia are excluded.
+ */
+function isEligibleForHitos(cliente: { activo?: boolean | null; unidades_negocio?: string[] | null }): boolean {
+  if (cliente.activo !== true) return false
+  const unidades = (cliente.unidades_negocio ?? []).map((u) => u.toLowerCase())
+  return unidades.includes('mdk') && !unidades.includes('aurelia')
+}
+
 // ── Core Service Map Functions ────────────────────────────────────────────────
 
 /**
  * Generate all instances for a client for a given month
  * Uses ON CONFLICT DO NOTHING to avoid duplicates
- * Only generates for clients with unidad_negocio = 'MDK'
+ * Only generates for active MDK clients without Aurelia
  */
 export async function generateMonthInstances(
   clienteId: string,
@@ -127,7 +137,7 @@ export async function generateMonthInstances(
   try {
     const { data: cliente, error: clienteError } = await supabase
       .from('clientes')
-      .select('id, unidades_negocio, account_manager_id')
+      .select('id, unidades_negocio, account_manager_id, activo')
       .eq('id', clienteId)
       .single()
 
@@ -135,8 +145,7 @@ export async function generateMonthInstances(
       return { success: false, error: 'Client not found' }
     }
 
-    const unidades = cliente.unidades_negocio as string[] | null
-    if (!unidades || !unidades.includes('MDK')) {
+    if (!isEligibleForHitos(cliente)) {
       return { success: true, generated: 0 }
     }
 
@@ -522,6 +531,7 @@ export async function getServiceMapKPIs(filters?: {
     const isCurrentMonth = mes === now.getMonth() + 1 && anio === now.getFullYear()
     if (isCurrentMonth) {
       for (const cliente of allClientes) {
+        if (!isEligibleForHitos(cliente)) continue
         const { count } = await supabase
           .from('mapa_servicio_instancias')
           .select('*', { count: 'exact', head: true })
