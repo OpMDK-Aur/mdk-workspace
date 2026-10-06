@@ -113,7 +113,8 @@ import { format, formatDistanceToNow, parseISO } from 'date-fns'
 import { TaskFilesSection } from './task-files-section'
 import { es } from 'date-fns/locale'
 import { QuotationSection } from './quotation-section'
-import { useTimerStore } from '@/lib/time-tracking/timer-store'
+import { useTimerStore, TIMER_ACTIVE_ERROR } from '@/lib/time-tracking/timer-store'
+import { ActiveTimerBlockedDialog } from '@/components/time-tracking/active-timer-blocked-dialog'
 import { Square, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -667,12 +668,21 @@ function TimeTracker({ task }: { task: Task }) {
     startedAt: globalStartedAt,
     startTimerForTask, 
     stopTimer: globalStopTimer,
-    getElapsedSeconds 
+    getElapsedSeconds,
+    syncRunningEntry,
   } = useTimerStore()
+
+  useEffect(() => {
+    syncRunningEntry().catch(() => {})
+    const onFocus = () => { syncRunningEntry().catch(() => {}) }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [syncRunningEntry])
   
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [isStarting, setIsStarting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
+  const [isBlockedDialogOpen, setIsBlockedDialogOpen] = useState(false)
 
   const isThisTaskRunning = globalIsRunning && globalTaskId === task.id
 
@@ -691,14 +701,22 @@ function TimeTracker({ task }: { task: Task }) {
   const totalDisplay = task.totalTimeSec + (isThisTaskRunning ? elapsedSeconds : 0)
 
   const handleStart = async () => {
+    if (globalIsRunning) {
+      setIsBlockedDialogOpen(true)
+      return
+    }
     setIsStarting(true)
     try {
       // `type` is the tipo_de_tareas UUID loaded from the task relation.
       // Keep the fallback for older tasks that only have `typeName` populated.
       await startTimerForTask(task.id, task.title, task.clientId || null, task.type || task.typeName || null)
       toast.success('Timer iniciado para esta tarea')
-    } catch {
-      toast.error('Error al iniciar el timer')
+    } catch (error) {
+      if (error instanceof Error && error.message === TIMER_ACTIVE_ERROR) {
+        setIsBlockedDialogOpen(true)
+      } else {
+        toast.error('Error al iniciar el timer')
+      }
     } finally {
       setIsStarting(false)
     }
@@ -732,7 +750,7 @@ function TimeTracker({ task }: { task: Task }) {
     updateTask(task.id, { totalTimeSec: 0, timeSessions: [] })
   }
 
-  const isOtherTaskRunning = globalIsRunning && globalTaskId && globalTaskId !== task.id
+  const isOtherTaskRunning = globalIsRunning && !isThisTaskRunning
 
   // ── Compact bar layout: [ ■ Parar ]  00:00:15  [ ↺ ] ──────────────────────
   return (
@@ -753,10 +771,14 @@ function TimeTracker({ task }: { task: Task }) {
         <Button
           size="sm"
           variant="outline"
-          className="h-7 px-2.5 gap-1.5 text-xs rounded-md"
+          className={cn(
+            'h-7 px-2.5 gap-1.5 text-xs rounded-md',
+            isOtherTaskRunning && 'opacity-50 cursor-not-allowed'
+          )}
           onClick={handleStart}
-          disabled={isStarting || !!isOtherTaskRunning}
-          title={isOtherTaskRunning ? 'Hay otro timer activo' : 'Iniciar timer'}
+          disabled={isStarting}
+          aria-disabled={isOtherTaskRunning || undefined}
+          title={isOtherTaskRunning ? 'Hay un timer activo. Detenelo para iniciar otro.' : 'Iniciar timer'}
         >
           {isStarting
             ? <Loader2 className="h-3 w-3 animate-spin" />
@@ -785,6 +807,8 @@ function TimeTracker({ task }: { task: Task }) {
       {isOtherTaskRunning && (
         <span className="text-xs text-amber-500 ml-1">Otro timer activo</span>
       )}
+
+      <ActiveTimerBlockedDialog open={isBlockedDialogOpen} onOpenChange={setIsBlockedDialogOpen} />
     </div>
   )
 }

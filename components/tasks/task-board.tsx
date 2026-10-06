@@ -6,6 +6,7 @@ import type { NewTaskPrefill } from './new-task-modal'
 import dynamic from 'next/dynamic'
 import type { TaskPriority, TaskType, TaskStatus } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 import { useTaskStore, useTaskStoreHydrated, PRIORITY_CONFIG, TYPE_CONFIG, ASSIGNEES, STATUS_CONFIG, STATUS_ORDER } from '@/lib/tasks/task-store'
 
 // Lazy load heavy components
@@ -135,6 +136,27 @@ export function TaskBoard() {
     initTasks()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
+
+  // Live updates: any insert/update/delete in `tareas` (from any user) refreshes the board.
+  // Debounced because bulk operations (e.g. seguimiento generation) fire many events at once.
+  useEffect(() => {
+    const supabase = createClient()
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const channel = supabase
+      .channel('task-board-tareas')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas' }, () => {
+        if (timer) clearTimeout(timer)
+        timer = setTimeout(() => {
+          useTaskStore.getState().loadTasks({ silent: true })
+        }, 400)
+      })
+      .subscribe()
+
+    return () => {
+      if (timer) clearTimeout(timer)
+      supabase.removeChannel(channel)
+    }
+  }, [])
 
   const hasSimpleFilters = filters.priority || (filters.statusIds?.length ?? 0) > 0 || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned
   const hasAdvancedFilters = advancedFilters.length > 0

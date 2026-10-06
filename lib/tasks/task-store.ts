@@ -770,7 +770,7 @@ interface TaskStore {
   savedFilters: SavedFilter[]
 
   // Actions
-  loadTasks: () => Promise<void>
+  loadTasks: (options?: { silent?: boolean }) => Promise<void>
   setView: (view: 'kanban' | 'list' | 'calendar') => void
   setSelectedTask: (id: string | null) => Promise<void>
   setFilter: (key: keyof TaskStore['filters'], value: unknown) => void
@@ -831,8 +831,8 @@ export const useTaskStore = create<TaskStore>()(
   advancedFilters: [],
   savedFilters: [],
 
-  loadTasks: async () => {
-    set({ isLoading: true })
+  loadTasks: async (options) => {
+    if (!options?.silent) set({ isLoading: true })
     try {
       const supabase = createClient()
       
