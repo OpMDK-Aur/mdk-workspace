@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { parseISO } from 'date-fns'
-import { useTimerStore, type TimeEntry } from '@/lib/time-tracking/timer-store'
+import { useTimerStore, TIMER_ACTIVE_ERROR, type TimeEntry } from '@/lib/time-tracking/timer-store'
+import { ActiveTimerBlockedDialog } from '@/components/time-tracking/active-timer-blocked-dialog'
 import { createClient } from '@/lib/supabase/client'
 import type { Cliente, TipoDeTarea, Profile } from '@/lib/types'
 import {
@@ -105,6 +106,7 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
     billable: timerBillable,
     getElapsedSeconds,
   } = useTimerStore()
+  const [isBlockedDialogOpen, setIsBlockedDialogOpen] = useState(false)
   
   // Admin mode state
   const [adminEntries, setAdminEntries] = useState<TimeEntry[]>([])
@@ -334,8 +336,20 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
   }, [entries])
 
   const handleContinue = async (entry: TimeEntry) => {
-    await continueEntry(entry)
-    toast.success('Timer iniciado')
+    if (isRunning) {
+      setIsBlockedDialogOpen(true)
+      return
+    }
+    try {
+      await continueEntry(entry)
+      toast.success('Timer iniciado')
+    } catch (error) {
+      if (error instanceof Error && error.message === TIMER_ACTIVE_ERROR) {
+        setIsBlockedDialogOpen(true)
+      } else {
+        toast.error('Error al iniciar el timer')
+      }
+    }
   }
 
   const handleDelete = async (id: string) => {
@@ -612,6 +626,8 @@ export function EntriesList({ isMaster = false, currentUserId }: EntriesListProp
           ))}
         </>
       )}
+
+      <ActiveTimerBlockedDialog open={isBlockedDialogOpen} onOpenChange={setIsBlockedDialogOpen} />
     </div>
   )
 }

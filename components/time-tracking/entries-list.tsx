@@ -250,7 +250,11 @@ export function EntriesList() {
                 entry={entry}
                 cliente={getCliente(entry.cliente_id)}
                 tipoTarea={getTipoTarea(entry.tipo_tarea_id)}
-                onContinue={() => { continueEntry(entry); toast.success('Timer iniciado') }}
+                onContinue={() => {
+                  continueEntry(entry)
+                    .then(() => toast.success('Timer iniciado'))
+                    .catch(() => toast.warning('Tenés un marcador activo. Frenalo antes de iniciar una nueva marcación.'))
+                }}
                 onEdit={() => handleStartEdit(entry)}
                 onDelete={() => { deleteEntry(entry.id); toast.success('Entrada eliminada') }}
               />

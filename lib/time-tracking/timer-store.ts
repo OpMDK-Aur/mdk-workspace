@@ -4,6 +4,8 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { createClient } from '@/lib/supabase/client'
 
+export const TIMER_ACTIVE_ERROR = 'TIMER_ACTIVE'
+
 export interface TimeEntry {
   id: string
   colaborador_id: string | null
@@ -213,11 +215,11 @@ export const useTimerStore = create<TimerState>()(
       continueEntry: async (entry) => {
         const state = get()
         // Always sync with DB first to ensure consistency
-        await get().loadEntries()
-        
-        if (state.isRunning && state.currentEntryId) {
-          await get().stopTimer()
+        if (state.isRunning) {
+          throw new Error(TIMER_ACTIVE_ERROR)
         }
+        await get().loadEntries()
+
         set({
           description: entry.descripcion,
           clientId: entry.cliente_id,
@@ -228,9 +230,8 @@ export const useTimerStore = create<TimerState>()(
       },
 
       startTimerForTask: async (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null) => {
-        const state = get()
-        if (state.isRunning && state.currentEntryId) {
-          await get().stopTimer()
+        if (get().isRunning) {
+          throw new Error(TIMER_ACTIVE_ERROR)
         }
 
         const supabase = createClient()
