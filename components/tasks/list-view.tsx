@@ -41,8 +41,8 @@ function formatDate(date: Date | null): string {
   return new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: 'short' }).format(date)
 }
 
-function getInitials(name: string): string {
-  return name
+function getInitials(name: string | null | undefined): string {
+  return (name || '')
     .split(' ')
     .map((n) => n[0])
     .join('')
@@ -231,7 +231,7 @@ export function ListView() {
         cmp = a.title.localeCompare(b.title)
         break
       case 'clientName':
-        cmp = a.clientName.localeCompare(b.clientName)
+        cmp = (a.clientName || '').localeCompare(b.clientName || '')
         break
       case 'status':
         const statusOrder = ['pendiente', 'resolviendo', 'demorada', 'pausada', 'pendiente_aprobacion']
