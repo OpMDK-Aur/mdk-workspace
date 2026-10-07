@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { isClientActive, todayISODate } from '@/lib/clients/is-client-active'
 
 const MDK_UNIDAD_ID = 'afcc1aa2-d63d-4b03-b68a-e7e89bc7bd3c'
 
@@ -36,7 +37,7 @@ export async function POST() {
     // Get clients that have MDK as unidad de negocio, including account_manager_ids array
     const { data: mdkClients, error: clientsError } = await supabase
       .from('clientes_unidades_de_negocio')
-      .select('cliente_id, clientes(id, nombre_del_negocio, account_manager_id, account_manager_ids, activo)')
+      .select('cliente_id, clientes(id, nombre_del_negocio, account_manager_id, account_manager_ids, activo, fecha_baja)')
       .eq('unidad_de_negocio_id', MDK_UNIDAD_ID)
     
     if (clientsError) {
@@ -97,8 +98,8 @@ export async function POST() {
     )
     
     for (const mdkClient of mdkClients) {
-      const cliente = mdkClient.clientes as { id: string; nombre_del_negocio: string; account_manager_id: string | null; account_manager_ids: string[] | null; activo: boolean | null } | null
-      if (!cliente || cliente.activo === false) continue
+      const cliente = mdkClient.clientes as { id: string; nombre_del_negocio: string; account_manager_id: string | null; account_manager_ids: string[] | null; activo: boolean | null; fecha_baja: string | null } | null
+      if (!cliente || !isClientActive(cliente)) continue
       
       // Use first account manager from array, fallback to singular field
       const assignedTo = cliente.account_manager_ids?.[0] ?? cliente.account_manager_id ?? null
@@ -185,7 +186,7 @@ export async function DELETE() {
     const { data: inactiveClients } = await supabase
       .from('clientes')
       .select('id')
-      .eq('activo', false)
+      .or(`activo.eq.false,fecha_baja.lte.${todayISODate()}`)
 
     const inactiveIds = inactiveClients?.map(c => c.id) ?? []
     let deletedInactive = 0
