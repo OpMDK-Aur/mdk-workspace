@@ -36,7 +36,7 @@ export async function POST() {
     // Get clients that have MDK as unidad de negocio, including account_manager_ids array
     const { data: mdkClients, error: clientsError } = await supabase
       .from('clientes_unidades_de_negocio')
-      .select('cliente_id, clientes(id, nombre_del_negocio, account_manager_id, account_manager_ids)')
+      .select('cliente_id, clientes(id, nombre_del_negocio, account_manager_id, account_manager_ids, activo)')
       .eq('unidad_de_negocio_id', MDK_UNIDAD_ID)
     
     if (clientsError) {
@@ -97,8 +97,8 @@ export async function POST() {
     )
     
     for (const mdkClient of mdkClients) {
-      const cliente = mdkClient.clientes as { id: string; nombre_del_negocio: string; account_manager_id: string | null; account_manager_ids: string[] | null } | null
-      if (!cliente) continue
+      const cliente = mdkClient.clientes as { id: string; nombre_del_negocio: string; account_manager_id: string | null; account_manager_ids: string[] | null; activo: boolean | null } | null
+      if (!cliente || cliente.activo === false) continue
       
       // Use first account manager from array, fallback to singular field
       const assignedTo = cliente.account_manager_ids?.[0] ?? cliente.account_manager_id ?? null
@@ -173,16 +173,46 @@ export async function DELETE() {
       query = query.not('cliente_id', 'in', `(${mdkClientIds.join(',')})`)
     }
     
-    const { error, count } = await query.select('id')
+    const { error, data: deletedNonMdk } = await query.select('id')
     
     if (error) {
       console.error('Error deleting non-MDK seguimiento tasks:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    // Pending future seguimiento/hito tasks of inactive clients are removed so they
+    // stop showing up; completed or in-progress tasks are kept to preserve tracked time.
+    const { data: inactiveClients } = await supabase
+      .from('clientes')
+      .select('id')
+      .eq('activo', false)
+
+    const inactiveIds = inactiveClients?.map(c => c.id) ?? []
+    let deletedInactive = 0
+
+    if (inactiveIds.length > 0) {
+      const startOfToday = new Date()
+      startOfToday.setHours(0, 0, 0, 0)
+
+      const { data: removed, error: inactiveError } = await supabase
+        .from('tareas')
+        .delete()
+        .in('cliente_id', inactiveIds)
+        .eq('estado', 'pendiente')
+        .gte('fecha_vencimiento', startOfToday.toISOString())
+        .or('titulo.ilike.%Seguimiento semanal%,titulo.ilike.[Hito]%')
+        .select('id')
+
+      if (inactiveError) {
+        console.error('Error deleting tasks for inactive clients:', inactiveError)
+      } else {
+        deletedInactive = removed?.length ?? 0
+      }
+    }
     
     return NextResponse.json({ 
-      message: 'Deleted seguimiento tasks for non-MDK clients',
-      deleted: count ?? 0
+      message: 'Deleted seguimiento tasks for non-MDK and inactive clients',
+      deleted: (deletedNonMdk?.length ?? 0) + deletedInactive
     })
   } catch (error) {
     console.error('Error in delete seguimiento:', error)
