@@ -47,8 +47,8 @@ function formatTime(seconds: number): string {
   return `${s}s`
 }
 
-function getInitials(name: string): string {
-  return name
+function getInitials(name: string | null | undefined): string {
+  return (name || '')
     .split(' ')
     .map((n) => n[0])
     .join('')

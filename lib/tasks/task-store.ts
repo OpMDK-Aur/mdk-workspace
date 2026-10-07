@@ -725,7 +725,7 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
   }
 }
 
-// ���─ Store ──────────────────────────────────────────────────────────────────�����������──
+// ���─ Store ────────────────────────────────────────────────���─────────────────�����������──
 
 // Advanced filter types
 export interface FilterRule {
@@ -1646,14 +1646,34 @@ addTask: async (taskData) => {
       .catch(err => console.error('[v0] Error calling tarea-asignada API:', err))
   }
     
-    // Update local state
+    // Optimistic row must match the shape mapDbTask produces; views call string
+    // methods on these fields without guards.
+    const optimisticAssignees = taskData.assignees || []
+    const optimisticClients = taskData.clients || (taskData.clientId ? [{ id: taskData.clientId, nombre_del_negocio: taskData.clientName || '' }] : [])
+    const optimisticStatus = taskData.status || 'pendiente'
+
     set((state) => ({
       tasks: [
         {
           ...taskData,
           id,
-          clientIds: taskData.clientIds || (taskData.clientId ? [taskData.clientId] : []),
-          clients: taskData.clients || (taskData.clientId ? [{ id: taskData.clientId, nombre_del_negocio: taskData.clientName || '' }] : []),
+          clientIds,
+          clients: optimisticClients,
+          clientId: clientIds[0] || '',
+          clientName: taskData.clientName || optimisticClients[0]?.nombre_del_negocio || 'Sin cliente',
+          assigneeId: assigneeIds[0] || '',
+          assigneeName: taskData.assigneeName || optimisticAssignees[0]?.nombre || 'Sin asignar',
+          assigneeAvatar: taskData.assigneeAvatar ?? optimisticAssignees[0]?.avatar_url ?? null,
+          assignees: optimisticAssignees,
+          status: optimisticStatus,
+          priority: taskData.priority || 'media',
+          type: taskData.type || '',
+          typeName: taskData.typeName || '',
+          startDate: taskData.startDate ?? null,
+          dueDate: dueDate ? (typeof dueDate === 'string' ? parseISO(dueDate) : dueDate) : null,
+          isActive: optimisticStatus !== 'completada' && optimisticStatus !== 'resuelto' && optimisticStatus !== 'no_realizado',
+          customFields: taskData.customFields || {},
+          hitoPoe: taskData.hitoPoe || null,
           createdById: resolvedCreatedById,
           createdByName: resolvedCreatedByName,
           createdByAvatar: resolvedCreatedByAvatar,

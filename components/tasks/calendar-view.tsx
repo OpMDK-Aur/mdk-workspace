@@ -40,8 +40,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { NewTaskModal } from './new-task-modal'
 
-function getInitials(name: string): string {
-  return name
+function getInitials(name: string | null | undefined): string {
+  return (name || '')
     .split(' ')
     .map((n) => n[0])
     .join('')
