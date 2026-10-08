@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { ConexaWorkspace } from '@/components/ai/conexa-workspace'
 
 export const metadata = {
@@ -6,5 +7,5 @@ export const metadata = {
 }
 
 export default function ConexaPage() {
-  return <ConexaWorkspace />
+  return <Suspense><ConexaWorkspace /></Suspense>
 }
