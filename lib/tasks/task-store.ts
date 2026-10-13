@@ -900,10 +900,14 @@ export const useTaskStore = create<TaskStore>()(
       loadAssignees()
       
       if (allTasks.length > 0) {
-        // Map tasks without comments - comments will be loaded on demand when task is selected
+        // Comments are loaded on demand when a task is selected. Keep the ones already
+        // in memory so silent realtime reloads don't wipe the open task's comments.
+        const previousComments = new Map(
+          get().tasks.filter((t) => t.comments?.length).map((t) => [t.id, t.comments])
+        )
         const dbTasks = allTasks.map((tarea) => {
           const task = mapTareaToTask(tarea, colaboradoresMap, clientesMap)
-          task.comments = [] // Loaded on demand
+          task.comments = previousComments.get(task.id) ?? []
           return task
         })
         set({ tasks: dbTasks, isLoading: false })
