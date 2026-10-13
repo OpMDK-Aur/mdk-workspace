@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
-import { isClientActive } from '@/lib/clients/is-client-active'
+import { isClientActive, canGenerateHitos, HITO_MANAGER_SELECT } from '@/lib/clients/is-client-active'
 import type {
   HitoCatalogo,
   MapaServicioInstancia,
@@ -128,7 +128,7 @@ export async function generateMonthInstances(
   try {
     const { data: cliente, error: clienteError } = await supabase
       .from('clientes')
-      .select('id, unidades_negocio, account_manager_id, activo, fecha_baja')
+      .select(`id, unidades_negocio, activo, fecha_baja, ${HITO_MANAGER_SELECT}`)
       .eq('id', clienteId)
       .single()
 
@@ -229,7 +229,7 @@ export async function generateMonthInstances(
       insertedCount++
     }
 
-    const hitosConTarea = hitosFiltrados.filter((h) => h.genera_tarea)
+    const hitosConTarea = canGenerateHitos(cliente) ? hitosFiltrados.filter((h) => h.genera_tarea) : []
 
     for (const hito of hitosConTarea) {
       const { data: instancias } = await supabase
@@ -294,7 +294,7 @@ export async function createMissingTasks(
         cliente_id,
         hito_id,
         hito:hitos_catalogo(id, nombre, descripcion, genera_tarea),
-        cliente:clientes(id, unidades_negocio, account_manager_id, activo, fecha_baja)
+        cliente:clientes(id, unidades_negocio, activo, fecha_baja, project_manager_id, project_manager_ids, account_manager_id, account_manager_ids)
       `)
       .eq('mes', mes)
       .eq('anio', anio)
@@ -311,7 +311,7 @@ export async function createMissingTasks(
       const unidades = cliente?.unidades_negocio as string[] | null
       return (
         hito?.genera_tarea === true &&
-        isClientActive(cliente) &&
+        canGenerateHitos(cliente) &&
         unidades &&
         unidades.includes('MDK')
       )

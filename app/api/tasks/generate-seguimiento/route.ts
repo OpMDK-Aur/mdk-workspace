@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { isClientActive, todayISODate } from '@/lib/clients/is-client-active'
+import { isClientActive, isExcludedFromHitos, HITO_MANAGER_SELECT, todayISODate } from '@/lib/clients/is-client-active'
 
 const MDK_UNIDAD_ID = 'afcc1aa2-d63d-4b03-b68a-e7e89bc7bd3c'
 
@@ -210,10 +210,36 @@ export async function DELETE() {
         deletedInactive = removed?.length ?? 0
       }
     }
+
+    const { data: managedClients } = await supabase
+      .from('clientes')
+      .select(`id, ${HITO_MANAGER_SELECT}`)
+    const excludedIds = (managedClients ?? []).filter(isExcludedFromHitos).map(c => c.id)
+    let deletedExcluded = 0
+
+    if (excludedIds.length > 0) {
+      const startOfToday = new Date()
+      startOfToday.setHours(0, 0, 0, 0)
+
+      const { data: removed, error: excludedError } = await supabase
+        .from('tareas')
+        .delete()
+        .in('cliente_id', excludedIds)
+        .eq('estado', 'pendiente')
+        .gte('fecha_vencimiento', startOfToday.toISOString())
+        .ilike('titulo', '[Hito]%')
+        .select('id')
+
+      if (excludedError) {
+        console.error('Error deleting hito tasks for excluded clients:', excludedError)
+      } else {
+        deletedExcluded = removed?.length ?? 0
+      }
+    }
     
     return NextResponse.json({ 
       message: 'Deleted seguimiento tasks for non-MDK and inactive clients',
-      deleted: (deletedNonMdk?.length ?? 0) + deletedInactive
+      deleted: (deletedNonMdk?.length ?? 0) + deletedInactive + deletedExcluded
     })
   } catch (error) {
     console.error('Error in delete seguimiento:', error)
