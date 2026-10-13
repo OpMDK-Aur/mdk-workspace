@@ -1631,8 +1631,22 @@ function CustomFields({ task }: { task: Task }) {
 
 export function TaskDetailPanel() {
   const router = useRouter()
-  const { selectedTaskId, setSelectedTask, tasks, updateTask, deleteTask, toggleTaskActive, deleteComment, updateComment } = useTaskStore()
+  const { selectedTaskId, setSelectedTask, tasks, updateTask, deleteTask, toggleTaskActive, deleteComment, updateComment, refreshComments } = useTaskStore()
   const task = tasks.find((t) => t.id === selectedTaskId)
+
+  useEffect(() => {
+    if (!selectedTaskId) return
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`comentarios-tarea-${selectedTaskId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'comentarios_tareas', filter: `tarea_id=eq.${selectedTaskId}` },
+        () => { refreshComments(selectedTaskId) },
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [selectedTaskId, refreshComments])
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isActivityExpanded, setIsActivityExpanded] = useState(false)
   const [activeTab, setActiveTab] = useState('detalles')
