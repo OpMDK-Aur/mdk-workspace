@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { isClientActive, canGenerateHitos, HITO_MANAGER_SELECT } from '@/lib/clients/is-client-active'
 import type {
   HitoCatalogo,
   MapaServicioInstancia,
@@ -127,7 +128,7 @@ export async function generateMonthInstances(
   try {
     const { data: cliente, error: clienteError } = await supabase
       .from('clientes')
-      .select('id, unidades_negocio, account_manager_id, activo')
+      .select(`id, unidades_negocio, activo, fecha_baja, ${HITO_MANAGER_SELECT}`)
       .eq('id', clienteId)
       .single()
 
@@ -136,7 +137,7 @@ export async function generateMonthInstances(
     }
 
     const unidades = cliente.unidades_negocio as string[] | null
-    if (!unidades || !unidades.includes('MDK') || cliente.activo === false) {
+    if (!unidades || !unidades.includes('MDK') || !isClientActive(cliente)) {
       return { success: true, generated: 0 }
     }
 
@@ -228,7 +229,7 @@ export async function generateMonthInstances(
       insertedCount++
     }
 
-    const hitosConTarea = hitosFiltrados.filter((h) => h.genera_tarea)
+    const hitosConTarea = canGenerateHitos(cliente) ? hitosFiltrados.filter((h) => h.genera_tarea) : []
 
     for (const hito of hitosConTarea) {
       const { data: instancias } = await supabase
@@ -293,7 +294,7 @@ export async function createMissingTasks(
         cliente_id,
         hito_id,
         hito:hitos_catalogo(id, nombre, descripcion, genera_tarea),
-        cliente:clientes(id, unidades_negocio, account_manager_id, activo)
+        cliente:clientes(id, unidades_negocio, activo, fecha_baja, project_manager_id, project_manager_ids, account_manager_id, account_manager_ids)
       `)
       .eq('mes', mes)
       .eq('anio', anio)
@@ -310,7 +311,7 @@ export async function createMissingTasks(
       const unidades = cliente?.unidades_negocio as string[] | null
       return (
         hito?.genera_tarea === true &&
-        cliente?.activo !== false &&
+        canGenerateHitos(cliente) &&
         unidades &&
         unidades.includes('MDK')
       )
@@ -514,15 +515,16 @@ export async function getServiceMapKPIs(filters?: {
     const mes = filters?.mes ?? now.getMonth() + 1
     const anio = filters?.anio ?? now.getFullYear()
 
-    const { data: allClientes, error: clientesError } = await supabase
+    const { data: fetchedClientes, error: clientesError } = await supabase
       .from('clientes')
-      .select('id, nombre_del_negocio, plan, project_manager_id, account_manager_id, activo, unidades_negocio')
+      .select('id, nombre_del_negocio, plan, project_manager_id, account_manager_id, activo, fecha_baja, unidades_negocio')
       .or('activo.is.null,activo.eq.true')
       .contains('unidades_negocio', ['MDK'])
       .order('nombre_del_negocio')
 
     if (clientesError) throw clientesError
-    if (!allClientes || allClientes.length === 0) return { data: [] }
+    const allClientes = (fetchedClientes ?? []).filter(isClientActive)
+    if (allClientes.length === 0) return { data: [] }
 
     const isCurrentMonth = mes === now.getMonth() + 1 && anio === now.getFullYear()
     if (isCurrentMonth) {
