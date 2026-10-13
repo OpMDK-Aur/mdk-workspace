@@ -81,6 +81,40 @@ function mapComentarioToComment(comentario: ComentarioDB): TaskComment {
   }
 }
 
+async function fetchTaskComments(taskId: string): Promise<TaskComment[] | null> {
+  const supabase = createClient()
+  const { data: comentarios, error } = await supabase
+    .from('comentarios_tareas')
+    .select('*')
+    .eq('tarea_id', taskId)
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    console.error('[v0] Error loading comments:', error)
+    return null
+  }
+  if (!comentarios) return []
+
+  const userIds = [...new Set(comentarios.map(c => c.autor_id).filter(Boolean))] as string[]
+  const avatarMap: Record<string, string | null> = {}
+  if (userIds.length > 0) {
+    const { data: colaboradores, error: colabError } = await supabase
+      .from('colaboradores')
+      .select('id, avatar_url')
+      .in('id', userIds)
+    if (colabError) {
+      console.error('[v0] Error loading colaboradores:', colabError)
+    } else {
+      colaboradores?.forEach(c => { avatarMap[c.id] = c.avatar_url })
+    }
+  }
+
+  return comentarios.map(c => mapComentarioToComment({
+    ...c,
+    colaboradores: c.autor_id ? { avatar_url: avatarMap[c.autor_id] || null } : null,
+  } as ComentarioDB))
+}
+
 // Map DB estado to TaskStatus
 function mapEstadoToStatus(estado: string): TaskStatus {
   const map: Record<string, TaskStatus> = {
@@ -725,7 +759,7 @@ function evaluateRule(task: Task, rule: FilterRule): boolean {
   }
 }
 
-// ���─ Store ────────────────────────────────────────────────���─────────────────�����������──
+// ���─ Store ────────────────────────────────────────────────�����─────────────────�����������──
 
 // Advanced filter types
 export interface FilterRule {
@@ -773,6 +807,7 @@ interface TaskStore {
   loadTasks: (options?: { silent?: boolean }) => Promise<void>
   setView: (view: 'kanban' | 'list' | 'calendar') => void
   setSelectedTask: (id: string | null) => Promise<void>
+  refreshComments: (taskId: string) => Promise<void>
   setFilter: (key: keyof TaskStore['filters'], value: unknown) => void
   clearFilters: () => void
   
@@ -937,53 +972,21 @@ export const useTaskStore = create<TaskStore>()(
       
       // Only load if comments haven't been loaded yet
       if (task && task.comments.length === 0) {
-        const supabase = createClient()
-        const { data: comentarios, error: commError } = await supabase
-          .from('comentarios_tareas')
-          .select('*')
-          .eq('tarea_id', id)
-          .order('created_at', { ascending: true })
-        
-        if (commError) {
-          console.error('[v0] Error loading comments:', commError)
-          return
-        }
-        
-        if (comentarios && comentarios.length > 0) {
-          // Enrich comments with user avatars from colaboradores table
-          const userIds = [...new Set(comentarios.map(c => c.autor_id).filter(Boolean))] as string[]
-          
-          let avatarMap: Record<string, string | null> = {}
-          if (userIds.length > 0) {
-            const { data: colaboradores, error: colabError } = await supabase
-              .from('colaboradores')
-              .select('id, avatar_url')
-              .in('id', userIds)
-            
-            if (colabError) {
-              console.error('[v0] Error loading colaboradores:', colabError)
-            } else if (colaboradores) {
-              colaboradores.forEach(c => {
-                avatarMap[c.id] = c.avatar_url
-              })
-            }
-          }
-          
-          const enrichedComments = comentarios.map(c => ({
-            ...c,
-            colaboradores: c.autor_id ? { avatar_url: avatarMap[c.autor_id] || null } : null
-          } as ComentarioDB))
-          
+        const comments = await fetchTaskComments(id)
+        if (comments && comments.length > 0) {
           set((state) => ({
-            tasks: state.tasks.map(t => 
-              t.id === id 
-                ? { ...t, comments: enrichedComments.map(mapComentarioToComment) }
-                : t
-            )
+            tasks: state.tasks.map(t => (t.id === id ? { ...t, comments } : t)),
           }))
         }
       }
     }
+  },
+  refreshComments: async (taskId) => {
+    const comments = await fetchTaskComments(taskId)
+    if (!comments) return
+    set((state) => ({
+      tasks: state.tasks.map(t => (t.id === taskId ? { ...t, comments } : t)),
+    }))
   },
   setFilter: (key, value) => set((state) => ({
     filters: { ...state.filters, [key]: value },
@@ -1861,7 +1864,8 @@ addComment: async (taskId, content, userId, userName, userAvatar = null, mention
         t.id === taskId
           ? {
               ...t,
-              comments: [
+              // A realtime refresh may already have added this comment from the server.
+              comments: t.comments.some(c => c.id === commentId) ? t.comments : [
                 ...t.comments,
                 {
                   id: commentId,
