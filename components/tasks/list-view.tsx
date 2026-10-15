@@ -5,6 +5,7 @@ import type { Task } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { AssigneeStack, getTaskAssignees } from '@/components/tasks/assignee-stack'
 import { useTaskStore, useFilteredTasks, STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG } from '@/lib/tasks/task-store'
+import { prefetchTask } from '@/lib/tasks/prefetch-task'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -94,6 +95,7 @@ function TaskRow({ task, isSelected, onSelect }: { task: Task; isSelected: boole
     <TableRow
       className="cursor-pointer hover:bg-muted/50 transition-colors"
       onClick={() => setSelectedTask(task.id)}
+      onPointerEnter={() => prefetchTask(task.id)}
     >
       <TableCell className="w-[40px]" onClick={(e) => e.stopPropagation()}>
         <Checkbox

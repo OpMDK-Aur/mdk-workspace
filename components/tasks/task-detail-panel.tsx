@@ -1634,6 +1634,9 @@ export function TaskDetailPanel() {
   const router = useRouter()
   const { selectedTaskId, setSelectedTask, tasks, updateTask, deleteTask, toggleTaskActive, deleteComment, updateComment, refreshComments } = useTaskStore()
   const task = tasks.find((t) => t.id === selectedTaskId)
+  const isLoadingComments = useTaskStore((s) =>
+    !!selectedTaskId && !s.commentsLoadedIds[selectedTaskId],
+  )
 
   useEffect(() => {
     if (!selectedTaskId) return
@@ -2456,6 +2459,21 @@ export function TaskDetailPanel() {
                       const hasFilters = filterPersona || filterConAdjuntos || filterFechaDesde || filterFechaHasta
 
                       if ((task.activities || []).length === 0 && (task.comments || []).length === 0) {
+                        if (isLoadingComments) {
+                          return (
+                            <div className="flex flex-col gap-3 py-2" aria-busy="true" aria-label="Cargando comentarios">
+                              {[0, 1].map((i) => (
+                                <div key={i} className="flex gap-2">
+                                  <div className="size-7 shrink-0 rounded-full bg-muted animate-pulse" />
+                                  <div className="flex flex-1 flex-col gap-1.5">
+                                    <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+                                    <div className="h-3 w-full rounded bg-muted animate-pulse" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        }
                         return (
                           <div className="flex items-center justify-center h-24">
                             <p className="text-xs text-muted-foreground">Sin actividad aun</p>

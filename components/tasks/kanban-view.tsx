@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react'
 import type { TaskStatus } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useTaskStore, useTasksByStatus, STATUS_CONFIG, STATUS_ORDER } from '@/lib/tasks/task-store'
+import { prefetchTask } from '@/lib/tasks/prefetch-task'
 import { TaskCard } from './task-card'
 import { Button } from '@/components/ui/button'
 import { Plus, ChevronDown, ChevronUp } from 'lucide-react'
@@ -75,6 +76,7 @@ function KanbanColumn({ status, onAddTask }: KanbanColumnProps) {
           {visibleTasks.map((task) => (
             <div
               key={task.id}
+              onPointerEnter={() => prefetchTask(task.id)}
               draggable
               onDragStart={(e) => {
                 e.dataTransfer.setData('taskId', task.id)

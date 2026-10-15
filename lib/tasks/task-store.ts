@@ -81,6 +81,8 @@ function mapComentarioToComment(comentario: ComentarioDB): TaskComment {
   }
 }
 
+const inflightCommentLoads = new Map<string, Promise<void>>()
+
 async function fetchTaskComments(taskId: string): Promise<TaskComment[] | null> {
   const supabase = createClient()
   const { data: comentarios, error } = await supabase
@@ -812,6 +814,10 @@ interface TaskStore {
   setView: (view: 'kanban' | 'list' | 'calendar') => void
   setSelectedTask: (id: string | null) => Promise<void>
   refreshComments: (taskId: string) => Promise<void>
+  /** Loads comments once per task (deduped); safe to call on hover. */
+  prefetchComments: (taskId: string) => Promise<void>
+  commentsLoadedIds: Record<string, true>
+  commentsLoadingIds: Record<string, true>
   setFilter: (key: keyof TaskStore['filters'], value: unknown) => void
   clearFilters: () => void
   
@@ -856,6 +862,8 @@ export const useTaskStore = create<TaskStore>()(
   tasks: [],
   isLoading: false,
   selectedTaskId: null,
+  commentsLoadedIds: {},
+  commentsLoadingIds: {},
   view: 'calendar',
   filters: {
   priority: null,
@@ -964,33 +972,41 @@ export const useTaskStore = create<TaskStore>()(
   setView: (view) => set({ view }),
   setSelectedTask: async (id) => {
     set({ selectedTaskId: id })
-    
-    // Load comments on demand when task is selected
-    if (id) {
-      // Wait for task to be available (may not be loaded yet if navigating via URL)
-      let task = get().tasks.find(t => t.id === id)
-      
-      // If task not found, wait a bit for loadTasks to finish and retry
-      if (!task) {
-        await new Promise(resolve => setTimeout(resolve, 500))
-        task = get().tasks.find(t => t.id === id)
-      }
-      
-      // Only load if comments haven't been loaded yet
-      if (task && task.comments.length === 0) {
-        const comments = await fetchTaskComments(id)
-        if (comments && comments.length > 0) {
-          set((state) => ({
-            tasks: state.tasks.map(t => (t.id === id ? { ...t, comments } : t)),
-          }))
-        }
-      }
-    }
+    if (id) await get().prefetchComments(id)
+  },
+  prefetchComments: (taskId) => {
+    if (get().commentsLoadedIds[taskId]) return Promise.resolve()
+    const pending = inflightCommentLoads.get(taskId)
+    if (pending) return pending
+
+    set((state) => ({ commentsLoadingIds: { ...state.commentsLoadingIds, [taskId]: true } }))
+    const load = fetchTaskComments(taskId)
+      .then((comments) => {
+        set((state) => {
+          const { [taskId]: _done, ...loading } = state.commentsLoadingIds
+          if (!comments) return { commentsLoadingIds: loading }
+          return {
+            commentsLoadingIds: loading,
+            commentsLoadedIds: { ...state.commentsLoadedIds, [taskId]: true },
+            // Keep comments added optimistically while the fetch was in flight.
+            tasks: state.tasks.map((t) => {
+              if (t.id !== taskId) return t
+              const fetchedIds = new Set(comments.map((c) => c.id))
+              const localOnly = t.comments.filter((c) => !fetchedIds.has(c.id))
+              return { ...t, comments: [...comments, ...localOnly] }
+            }),
+          }
+        })
+      })
+      .finally(() => { inflightCommentLoads.delete(taskId) })
+    inflightCommentLoads.set(taskId, load)
+    return load
   },
   refreshComments: async (taskId) => {
     const comments = await fetchTaskComments(taskId)
     if (!comments) return
     set((state) => ({
+      commentsLoadedIds: { ...state.commentsLoadedIds, [taskId]: true },
       tasks: state.tasks.map(t => (t.id === taskId ? { ...t, comments } : t)),
     }))
   },

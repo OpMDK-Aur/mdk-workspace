@@ -44,6 +44,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { ClientFilter } from './client-filter'
 import { CreatedDateFilter } from './created-date-filter'
+import { preloadTaskDetailPanel } from '@/lib/tasks/prefetch-task'
 
 export function TaskBoard() {
   const searchParams = useSearchParams()
@@ -93,6 +94,15 @@ export function TaskBoard() {
   // Track if seguimiento was already generated this session
   const seguimientoGenerated = useRef(false)
   
+  useEffect(() => {
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(() => { preloadTaskDetailPanel() })
+      return () => window.cancelIdleCallback(id)
+    }
+    const timeout = setTimeout(() => { preloadTaskDetailPanel() }, 1500)
+    return () => clearTimeout(timeout)
+  }, [])
+
   // Generate seguimiento tasks for MDK clients on mount, then load all tasks
   useEffect(() => {
     const initTasks = async () => {

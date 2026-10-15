@@ -22,6 +22,7 @@ import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { AssigneeStack, getTaskAssignees } from '@/components/tasks/assignee-stack'
 import { useTaskStore, useFilteredTasks, PRIORITY_CONFIG, STATUS_CONFIG } from '@/lib/tasks/task-store'
+import { prefetchTask } from '@/lib/tasks/prefetch-task'
 import type { Task } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -178,6 +179,7 @@ function TaskBarCard({ task, startCol, endCol, onTaskClick }: TaskBarCardProps) 
   return (
     <button
       onClick={() => onTaskClick(task.id)}
+      onPointerEnter={() => prefetchTask(task.id)}
       title={[
         task.title,
         `Tipo: ${task.typeName || 'Tarea'}`,
@@ -377,6 +379,7 @@ function WeekRow({ weekDates, tasks, currentMonth, onTaskClick, onAddTask }: Wee
                       <button
                         key={task.id}
                         onClick={() => onTaskClick(task.id)}
+                        onPointerEnter={() => prefetchTask(task.id)}
                         className={cn(
                           'w-full text-left rounded-md px-2.5 py-2 transition-all duration-200',
                           'bg-card/40 border border-border/40 hover:border-primary/50 hover:bg-card/60',
@@ -585,6 +588,7 @@ export function CalendarView() {
                     <button
                       key={task.id}
                       onClick={() => setSelectedTask(task.id)}
+                      onPointerEnter={() => prefetchTask(task.id)}
                       className={cn(
                         'w-full text-left rounded-lg border border-gray-200 dark:border-border bg-white dark:bg-card p-3 transition-colors hover:border-primary/50 hover:shadow-sm',
                         task.status === 'resuelto' && 'opacity-50'
