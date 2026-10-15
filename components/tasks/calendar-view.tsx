@@ -415,6 +415,11 @@ function WeekRow({ weekDates, tasks, currentMonth, onTaskClick, onAddTask }: Wee
                               {priorityConfig.label}
                             </Badge>
                           )}
+                          {task.createdAt && (
+                            <span className="ml-auto text-[10px] text-muted-foreground">
+                              Creada {format(new Date(task.createdAt), 'd MMM', { locale: es })}
+                            </span>
+                          )}
                         </div>
                       </button>
                     )
@@ -599,6 +604,7 @@ export function CalendarView() {
                       <p className="text-sm font-medium text-gray-900 dark:text-foreground truncate">{task.title}</p>
                       <p className="text-xs text-gray-500 dark:text-muted-foreground truncate mt-0.5">
                         {task.clientName}
+                        {task.createdAt && ` · Creada ${format(new Date(task.createdAt), 'd MMM', { locale: es })}`}
                       </p>
                       <div className="flex items-center justify-between mt-2">
                         <div className="flex items-center gap-1.5">

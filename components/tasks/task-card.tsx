@@ -17,6 +17,7 @@ import {
   Video,
   HelpCircle,
   CalendarDays,
+  CalendarPlus,
   AlertCircle
 } from 'lucide-react'
 import { format, isToday, isTomorrow, isPast, isBefore, addDays, parseISO } from 'date-fns'
@@ -217,6 +218,13 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
               {formatTime(liveTime)}
             </span>
           </div>
+          {task.createdAt && (
+            <div className="flex items-center gap-1" title={`Creada el ${format(new Date(task.createdAt), "d 'de' MMMM yyyy, HH:mm", { locale: es })}`}>
+              <CalendarPlus className="h-3 w-3" aria-hidden="true" />
+              <span className="sr-only">Creada</span>
+              <span>{format(new Date(task.createdAt), 'd MMM', { locale: es })}</span>
+            </div>
+          )}
           {/* Due date */}
           {task.dueDate && (() => {
             const { text, color, urgent } = formatDueDate(new Date(task.dueDate))

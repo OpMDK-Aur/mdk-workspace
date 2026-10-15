@@ -108,6 +108,7 @@ import {
   ZoomOut,
   RotateCw,
   FlaskConical,
+  CalendarPlus,
 } from 'lucide-react'
 import { format, formatDistanceToNow, parseISO } from 'date-fns'
 import { TaskFilesSection } from './task-files-section'
@@ -2249,6 +2250,19 @@ export function TaskDetailPanel() {
                         </Avatar>
                         <span className="text-sm">{task.createdByName || 'Sin asignar'}</span>
                       </div>
+                    </div>
+
+                    {/* Fecha de creación row */}
+                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
+                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                        <CalendarPlus className="h-4 w-4 opacity-60" />
+                        Fecha de creación
+                      </div>
+                      <span className="px-2.5 text-sm">
+                        {task.createdAt
+                          ? format(new Date(task.createdAt), "d 'de' MMMM yyyy, HH:mm", { locale: es })
+                          : '-'}
+                      </span>
                     </div>
                   </div>
 

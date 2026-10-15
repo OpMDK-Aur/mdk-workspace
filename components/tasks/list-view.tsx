@@ -50,7 +50,7 @@ function getInitials(name: string | null | undefined): string {
     .slice(0, 2)
 }
 
-type SortKey = 'title' | 'clientName' | 'status' | 'priority' | 'dueDate' | 'totalTimeSec'
+type SortKey = 'title' | 'clientName' | 'status' | 'priority' | 'createdAt' | 'dueDate' | 'totalTimeSec'
 type SortDir = 'asc' | 'desc'
 
 function TaskRow({ task, isSelected, onSelect }: { task: Task; isSelected: boolean; onSelect: (id: string, checked: boolean) => void }) {
@@ -157,6 +157,11 @@ function TaskRow({ task, isSelected, onSelect }: { task: Task; isSelected: boole
         </div>
       </TableCell>
       <TableCell>
+        <span className="text-sm text-muted-foreground">
+          {task.createdAt ? formatDate(new Date(task.createdAt)) : '-'}
+        </span>
+      </TableCell>
+      <TableCell>
         <span className={cn('text-sm', task.dueDate && task.dueDate < new Date() ? 'text-red-400' : 'text-muted-foreground')}>
           {formatDate(task.dueDate)}
         </span>
@@ -241,6 +246,9 @@ export function ListView() {
         const priorityOrder = ['alta', 'media', 'baja']
         cmp = priorityOrder.indexOf(a.priority) - priorityOrder.indexOf(b.priority)
         break
+      case 'createdAt':
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        break
       case 'dueDate':
         const aDate = a.dueDate?.getTime() ?? Infinity
         const bDate = b.dueDate?.getTime() ?? Infinity
@@ -323,6 +331,9 @@ export function ListView() {
             <TableHead>Asignado</TableHead>
             <TableHead>Creado por</TableHead>
             <TableHead>
+              <SortButton sortKeyProp="createdAt">Creada</SortButton>
+            </TableHead>
+            <TableHead>
               <SortButton sortKeyProp="dueDate">Vencimiento</SortButton>
             </TableHead>
             <TableHead>
@@ -341,7 +352,7 @@ export function ListView() {
           ))}
           {sortedTasks.length === 0 && (
             <TableRow>
-              <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
+              <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">
                 No hay tareas que coincidan con los filtros
               </TableCell>
             </TableRow>
