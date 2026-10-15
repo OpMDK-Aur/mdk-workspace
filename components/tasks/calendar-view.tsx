@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { addDays, addWeeks, format, isSameMonth, isToday, startOfWeek } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
@@ -15,7 +15,11 @@ import { NewTaskModal } from './new-task-modal'
 import { STATUS_DOT, getTaskClients, getTaskPeople, isOpenTask, isOverdue, stripClientFromTitle, toDate } from './view-parts'
 
 const WEEKS = 4
-const MAX_ITEMS = 3
+const DEFAULT_MAX_ITEMS = 3
+const MIN_ROW_HEIGHT = 84
+const ITEM_HEIGHT = 28
+const CELL_CHROME_HEIGHT = 40
+const MORE_BUTTON_HEIGHT = 22
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
 type DayItem = { kind: 'task'; task: Task } | { kind: 'suggestion'; item: ConexaSuggestion }
@@ -81,6 +85,21 @@ export function CalendarView({ suggestions, onCreateSuggestion, onShowNoDate }: 
   const tasks = useFilteredTasks()
   const [anchor, setAnchor] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
   const [newTaskDate, setNewTaskDate] = useState<Date | null>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
+  const [maxItems, setMaxItems] = useState(DEFAULT_MAX_ITEMS)
+
+  useEffect(() => {
+    const el = gridRef.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => {
+      const rowHeight = entry.contentRect.height / WEEKS
+      // Cell padding + day header + room for the "+N más" button.
+      const available = rowHeight - CELL_CHROME_HEIGHT - MORE_BUTTON_HEIGHT
+      setMaxItems(Math.max(1, Math.floor(available / ITEM_HEIGHT)))
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   const days = useMemo(() => Array.from({ length: WEEKS * 7 }, (_, i) => addDays(anchor, i)), [anchor])
   const titleMonth = addDays(anchor, 14)
@@ -162,7 +181,7 @@ export function CalendarView({ suggestions, onCreateSuggestion, onShowNoDate }: 
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 pb-4">
-        <div className="flex min-h-full min-w-[760px] flex-col overflow-hidden rounded-[14px] border border-[var(--tasks-border)] bg-[var(--tasks-card)]">
+        <div className="flex min-h-full min-w-[560px] flex-1 flex-col overflow-hidden rounded-[14px] border border-[var(--tasks-border)] bg-[var(--tasks-card)] md:min-w-0">
           <div className="grid shrink-0 grid-cols-7 border-b border-[var(--tasks-border)] bg-[var(--tasks-col)]">
             {WEEKDAYS.map((d) => (
               <div key={d} className="px-2 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--tasks-text-3)]">
@@ -170,20 +189,24 @@ export function CalendarView({ suggestions, onCreateSuggestion, onShowNoDate }: 
               </div>
             ))}
           </div>
-          <div className="grid flex-1 grid-cols-7" style={{ gridTemplateRows: `repeat(${WEEKS}, minmax(120px, 1fr))` }}>
+          <div
+            ref={gridRef}
+            className="grid min-h-0 flex-1 grid-cols-7"
+            style={{ gridTemplateRows: `repeat(${WEEKS}, minmax(${MIN_ROW_HEIGHT}px, 1fr))` }}
+          >
             {days.map((day, i) => {
               const key = format(day, 'yyyy-MM-dd')
               const items = itemsByDay.get(key) ?? []
               const openCount = items.filter((it) => it.kind === 'task' && isOpenTask(it.task)).length
               const today = isToday(day)
               const otherMonth = !isSameMonth(day, titleMonth)
-              const visible = items.slice(0, MAX_ITEMS)
+              const visible = items.length <= maxItems + 1 ? items : items.slice(0, maxItems)
               const hidden = items.length - visible.length
               return (
                 <div
                   key={key}
                   className={cn(
-                    'group/day flex min-w-0 flex-col gap-1 border-[var(--tasks-border-soft)] p-1.5',
+                    'group/day flex min-h-0 min-w-0 flex-col gap-1 overflow-hidden border-[var(--tasks-border-soft)] p-1.5',
                     i % 7 !== 6 && 'border-r',
                     i < days.length - 7 && 'border-b',
                     otherMonth && 'bg-[var(--tasks-col)]',
