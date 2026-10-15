@@ -1984,7 +1984,7 @@ export function TaskDetailPanel() {
     <Sheet open={!!selectedTaskId} onOpenChange={(open) => !open && handleClose()}>
       <SheetContent 
         className={cn(
-          'ntm bg-[var(--task-panel)] p-0 flex flex-col overflow-x-hidden border-l border-[var(--ntm-border)] shadow-[var(--ntm-shadow)] [&>button.absolute]:hidden',
+          'ntm bg-[var(--task-panel,var(--ntm-bg,var(--background)))] p-0 flex flex-col overflow-x-hidden border-l border-[var(--ntm-border)] shadow-[var(--ntm-shadow)] [&>button.absolute]:hidden',
           isFullscreen 
             ? '!w-full !max-w-full sm:!max-w-full' 
             : '!w-[min(1120px,94vw)] !max-w-[94vw] sm:!max-w-[94vw]'
@@ -2415,7 +2415,7 @@ export function TaskDetailPanel() {
 
                 {/* ACTIVIDAD */}
                 <section className={cn(
-                  "relative flex min-w-0 flex-col bg-[var(--task-activity)] @min-[1100px]:overflow-hidden",
+                  "relative flex min-w-0 flex-col bg-[var(--task-activity,var(--ntm-footer,var(--background)))] @min-[1100px]:overflow-hidden",
                   isActivityExpanded
                     ? "min-h-0 overflow-hidden"
                     : "min-h-[480px] border-t border-border @min-[1100px]:min-h-0 @min-[1100px]:border-l @min-[1100px]:border-t-0"

@@ -422,7 +422,7 @@ aside.sticky-activity {
   --ntm-shadow: 0 30px 80px rgba(20, 20, 20, .18);
   --ntm-ease: cubic-bezier(.22, 1, .36, 1);
 
-  /* Panel de detalle de tarea */
+  /* Panel de detalle de tarea (tokens) */
   --task-panel: #FFFFFF;
   --task-activity: #FAFAF9;
   --task-field: #F1F1EE;
