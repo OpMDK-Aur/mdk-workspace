@@ -247,7 +247,11 @@ const URL_REGEX = /(?:https?:\/\/|www\.)[^\s<>"{}|\\^`\[\]]*[^\s<>"{}|\\^`\[\].,
  * an attribute (img src, existing href) or inside an existing <a> are left as-is.
  */
 export function linkifyAsCards(html: string): string {
-  return html.replace(URL_REGEX, (match, offset: number, full: string) => {
+  // Trailing punctuation glued to a URL (e.g. "https://x.com;") would otherwise
+  // render as a stray sign right after the chip, so it is consumed and dropped.
+  const urlWithTrailing = new RegExp(`${URL_REGEX.source}(?:[.,;:!?)]+(?=\\s|<|&nbsp;|$))?`, 'gi')
+  return html.replace(urlWithTrailing, (raw, offset: number, full: string) => {
+    const match = raw.replace(/[.,;:!?)]+$/, '')
     const prev = full[offset - 1]
     if (prev === '"' || prev === "'" || prev === '=') return match
     const lastOpenA = full.lastIndexOf('<a', offset)

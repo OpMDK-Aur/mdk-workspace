@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useResizableActivity } from '@/hooks/use-resizable-activity'
 import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation, ClientPlan, TaskFile, TaskComment } from '@/lib/types'
 import { cn, linkifyText } from '@/lib/utils'
 import { createClient, getAuthUser } from '@/lib/supabase/client'
@@ -1297,34 +1298,42 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
         "border-t shrink-0",
         compact ? "px-4 py-3 space-y-2" : "px-5 py-4 space-y-3"
       )}>
-        <div className="flex items-center gap-2">
-          <Avatar className={cn("shrink-0", compact ? "h-6 w-6" : "h-7 w-7")}>
-            {currentUser?.avatar_url && <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />}
-            <AvatarFallback className={cn("text-xs", compact ? "text-[7px]" : "")}>
-              {currentUser ? getInitials(currentUser.nombre) : 'US'}
-            </AvatarFallback>
-          </Avatar>
-          <span className={cn("font-medium", compact ? "text-xs" : "text-sm")}>{currentUser?.nombre || 'Nuevo comentario'}</span>
-        </div>
-        <CommentFormatToolbar
-          editorRef={editorRef}
-          onChange={() => setCommentContent(editorRef.current?.innerHTML || '')}
-          onAttachClick={() => commentFileInputRef.current?.click()}
-        />
-        <div className="relative">
+        <div className="group/composer relative rounded-[10px] border border-border bg-muted/50 transition-shadow focus-within:border-[#FF7F00] focus-within:ring-4 focus-within:ring-[#FF7F00]/15">
           <div
             ref={editorRef}
             contentEditable
             onPaste={handlePaste}
             onKeyDown={handleKeyDown}
             onInput={handleInput}
+            role="textbox"
+            aria-multiline="true"
+            aria-label="Nuevo comentario"
             data-placeholder="Escribí un comentario. Usá @ para mencionar."
-              className={cn(
-              "w-full p-3 text-sm rounded-[10px] border border-border bg-muted/50 transition-shadow focus:outline-none focus:border-[#FF7F00] focus:ring-4 focus:ring-[#FF7F00]/15 overflow-y-auto empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1",
+            className={cn(
+              "w-full overflow-y-auto px-3 pt-2.5 pb-1 text-sm leading-6 focus:outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1",
               COMMENT_RICH_TEXT_CLASSES,
-              compact ? "min-h-[50px] max-h-[120px] text-sm" : "min-h-[88px] max-h-[250px]"
+              "min-h-9 max-h-[calc(6*1.5rem+0.875rem)]"
             )}
           />
+          <div className="flex items-center gap-2 px-2 pb-2">
+            <div className="hidden group-focus-within/composer:block [&>div]:mb-0 [&>div]:border-0 [&>div]:pb-0">
+              <CommentFormatToolbar
+                editorRef={editorRef}
+                onChange={() => setCommentContent(editorRef.current?.innerHTML || '')}
+                onAttachClick={() => commentFileInputRef.current?.click()}
+              />
+            </div>
+            <span className="ml-auto hidden font-mono text-[11px] text-muted-foreground group-focus-within/composer:inline" aria-hidden="true">⌘↵</span>
+            <Button
+              size="sm"
+              className="ml-auto h-7 gap-1.5 rounded-full bg-[#FF7F00] px-3 text-[12px] font-bold text-[#141414] hover:bg-[#FF7F00] hover:brightness-105 group-focus-within/composer:ml-0 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+              onClick={handleSubmit}
+              disabled={isSubmitting || ((!commentContent.trim() || commentContent.trim() === '<br>') && pendingAttachments.length === 0)}
+            >
+              <Send className="h-3 w-3" />
+              {isSubmitting ? 'Enviando...' : 'Enviar'}
+            </Button>
+          </div>
           
           {/* Mention dropdown */}
           {showMentions && filteredAssignees.length > 0 && (
@@ -1400,16 +1409,6 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
               ))}
             </div>
           )}
-          <span className="ml-auto font-mono text-[11px] text-muted-foreground" aria-hidden="true">⌘↵</span>
-          <Button
-            size="sm"
-            className="h-8 gap-1.5 rounded-full bg-[#FF7F00] px-4 text-[13px] font-bold text-[#141414] hover:bg-[#FF7F00] hover:brightness-105 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
-            onClick={handleSubmit}
-            disabled={isSubmitting || ((!commentContent.trim() || commentContent.trim() === '<br>') && pendingAttachments.length === 0)}
-          >
-            <Send className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} />
-            {isSubmitting ? (compact ? 'Env...' : 'Enviando...') : 'Enviar'}
-          </Button>
         </div>
       </div>
 
@@ -1675,15 +1674,9 @@ export function TaskDetailPanel() {
   const [activityTab, setActivityTab] = useState<'todo' | 'comentarios' | 'historial'>('todo')
   const [isEditingDescription, setIsEditingDescription] = useState(false)
 
-  // Expanding the Activity panel also fullscreens the whole sheet so the
-  // comments feed gets the maximum available viewport width.
-  const toggleActivityExpanded = () => {
-    setIsActivityExpanded((prev) => {
-      const next = !prev
-      if (next) setIsFullscreen(true)
-      return next
-    })
-  }
+  const toggleActivityExpanded = () => setIsActivityExpanded((prev) => !prev)
+  const { width: activityWidth, isResizing: isResizingActivity, containerRef: panelGridRef, startResize: startActivityResize } =
+    useResizableActivity()
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [tempTitle, setTempTitle] = useState('')
   const [typeSearch, setTypeSearch] = useState('')
@@ -1934,10 +1927,12 @@ export function TaskDetailPanel() {
         )} 
         side="right"
         onEscapeKeyDown={(e) => {
-          if (isFullscreen) {
+          if (isActivityExpanded) {
+            e.preventDefault()
+            setIsActivityExpanded(false)
+          } else if (isFullscreen) {
             e.preventDefault()
             setIsFullscreen(false)
-            setIsActivityExpanded(false)
           }
         }}
       >
@@ -2025,12 +2020,21 @@ export function TaskDetailPanel() {
           )}
         </SheetHeader>
 
+        <div ref={panelGridRef} className="@container flex min-h-0 flex-1 flex-col">
         <Tabs
           value={activeTab}
           onValueChange={setActiveTab}
+          style={{
+            ['--activity-w' as string]: activityWidth
+              ? `${activityWidth}px`
+              : isFullscreen
+                ? 'clamp(440px, 34%, 640px)'
+                : 'clamp(400px, 38%, 560px)',
+          }}
           className={cn(
-            'grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-y-auto min-[900px]:overflow-hidden',
-            !isActivityExpanded && 'min-[900px]:grid-cols-[minmax(0,1fr)_380px]'
+            'grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-y-auto @min-[1100px]:overflow-hidden',
+            !isActivityExpanded && '@min-[1100px]:grid-cols-[minmax(0,1fr)_var(--activity-w)]',
+            isResizingActivity && 'select-none'
           )}
         >
           {!isActivityExpanded && (
@@ -2336,11 +2340,21 @@ export function TaskDetailPanel() {
 
                 {/* ACTIVIDAD */}
                 <section className={cn(
-                  "flex min-w-0 flex-col overflow-hidden",
+                  "relative flex min-w-0 flex-col @min-[1100px]:overflow-hidden",
                   isActivityExpanded
-                    ? "min-h-0"
-                    : "min-h-[480px] border-t border-border min-[900px]:min-h-0 min-[900px]:border-l min-[900px]:border-t-0"
+                    ? "min-h-0 overflow-hidden"
+                    : "min-h-[480px] border-t border-border @min-[1100px]:min-h-0 @min-[1100px]:border-l @min-[1100px]:border-t-0"
                 )}>
+                  {!isActivityExpanded && (
+                    <div
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label="Redimensionar actividad"
+                      data-active={isResizingActivity}
+                      onPointerDown={startActivityResize}
+                      className="absolute top-0 -left-[3px] z-20 hidden h-full w-1.5 cursor-col-resize transition-colors hover:bg-[#FF7F00]/60 data-[active=true]:bg-[#FF7F00] @min-[1100px]:block"
+                    />
+                  )}
                   <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
                     <div role="tablist" aria-label="Filtrar actividad" className="flex min-w-0 items-center gap-0.5 rounded-full bg-muted p-0.5">
                       {([
@@ -2609,7 +2623,7 @@ export function TaskDetailPanel() {
                                       ) : (
                                         <div
                                           className={cn(
-                                            "text-sm text-foreground/80 break-words whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity",
+                                            "max-w-[68ch] text-sm leading-relaxed text-foreground/80 break-words whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity",
                                             COMMENT_RICH_TEXT_CLASSES
                                           )}
                                           dangerouslySetInnerHTML={{ __html: linkifyAsCards(c.content) }}
@@ -2674,6 +2688,7 @@ export function TaskDetailPanel() {
                   </div>
                 </section>
         </Tabs>
+        </div>
 
       </SheetContent>
 
