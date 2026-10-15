@@ -19,6 +19,11 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { Play, Square, DollarSign, Loader2, Building2, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  formatMissingTimerFields,
+  getMissingTimerFields,
+  TimerValidationError,
+} from '@/lib/time-tracking/validate-timer'
 
 function getClientColor(id: string): string {
   const colors = [
@@ -64,6 +69,7 @@ export function ActiveTimerBar() {
     toggleBillable,
     getElapsedSeconds,
     loadEntries,
+    showValidationErrors,
   } = useTimerStore()
 
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -162,13 +168,28 @@ export function ActiveTimerBar() {
   const selectedClient = clientes.find((c) => c.id === clientId)
   const selectedTipo = tiposTarea.find((t) => t.id === tipoTareaId)
 
+  const missingFields = isRunning ? [] : getMissingTimerFields({ description, tipoTareaId, clientId })
+  const canStart = missingFields.length === 0
+  const showErrors = showValidationErrors && !canStart
+  const isMissing = (field: (typeof missingFields)[number]) => showErrors && missingFields.includes(field)
+  const errorRing = 'border-destructive ring-1 ring-destructive'
+
   const handleStart = async () => {
+    if (!canStart) {
+      useTimerStore.setState({ showValidationErrors: true })
+      toast.error(formatMissingTimerFields(missingFields))
+      return
+    }
     setIsStarting(true)
     try {
       await startTimer()
       toast.success('Timer iniciado')
-    } catch {
-      toast.error('Error al iniciar el timer')
+    } catch (error) {
+      if (error instanceof TimerValidationError) {
+        toast.error(formatMissingTimerFields(error.missing))
+      } else {
+        toast.error('Error al iniciar el timer')
+      }
     } finally {
       setIsStarting(false)
     }
@@ -271,7 +292,12 @@ export function ActiveTimerBar() {
             placeholder="¿En qué estás trabajando?"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="border-0 bg-transparent text-base shadow-none focus-visible:ring-0 px-0"
+            aria-invalid={isMissing('description') || undefined}
+            aria-required
+            className={cn(
+              'bg-transparent text-base shadow-none focus-visible:ring-0',
+              isMissing('description') ? `${errorRing} px-2` : 'border-0 px-0'
+            )}
           />
         </div>
 
@@ -281,7 +307,10 @@ export function ActiveTimerBar() {
           onValueChange={async (val) => await setTipoTareaId(val || null)}
           disabled={isLoadingTipos}
         >
-          <SelectTrigger className="w-[110px] sm:w-[180px] shrink min-w-0">
+          <SelectTrigger
+            aria-invalid={isMissing('tipo') || undefined}
+            className={cn('w-[110px] sm:w-[180px] shrink min-w-0', isMissing('tipo') && errorRing)}
+          >
             <SelectValue placeholder={isLoadingTipos ? 'Cargando...' : 'Tipo de tarea'}>
               {selectedTipo && (
                 <div className="flex items-center gap-2">
@@ -319,7 +348,10 @@ export function ActiveTimerBar() {
           onValueChange={async (val) => await setClientId(val || null)}
           disabled={isLoadingClients}
         >
-          <SelectTrigger className="w-[110px] sm:w-[180px] shrink min-w-0">
+          <SelectTrigger
+            aria-invalid={isMissing('cliente') || undefined}
+            className={cn('w-[110px] sm:w-[180px] shrink min-w-0', isMissing('cliente') && errorRing)}
+          >
             <SelectValue placeholder={isLoadingClients ? 'Cargando...' : 'Cliente'}>
               {selectedClient && (
                 <div className="flex items-center gap-2">
@@ -379,11 +411,15 @@ export function ActiveTimerBar() {
             onClick={isRunning ? handleStop : handleStart}
             size="icon"
             disabled={isStarting || isStopping}
+            aria-disabled={!isRunning && !canStart}
+            aria-label={isRunning ? 'Detener timer' : canStart ? 'Iniciar timer' : formatMissingTimerFields(missingFields)}
+            title={!isRunning && !canStart ? formatMissingTimerFields(missingFields) : undefined}
             className={cn(
               'shrink-0 h-10 w-10 rounded-full border-0 text-white',
               isRunning
                 ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-emerald-600 hover:bg-emerald-700'
+                : 'bg-emerald-600 hover:bg-emerald-700',
+              !isRunning && !canStart && 'opacity-50 cursor-not-allowed hover:bg-emerald-600'
             )}
           >
             {isStarting || isStopping ? (
@@ -396,6 +432,11 @@ export function ActiveTimerBar() {
           </Button>
         </div>
       </div>
+      {showErrors && (
+        <p role="alert" className="px-4 pb-2 -mt-1 text-xs text-destructive">
+          {formatMissingTimerFields(missingFields)}
+        </p>
+      )}
     </div>
   )
 }

@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { createClient } from '@/lib/supabase/client'
+import { getMissingTimerFields, TimerValidationError } from './validate-timer'
 
 export const TIMER_ACTIVE_ERROR = 'TIMER_ACTIVE'
 
@@ -32,6 +33,7 @@ interface TimerState {
   // Entries (local cache)
   entries: TimeEntry[]
   isLoading: boolean
+  showValidationErrors: boolean
 
   // Actions
   startTimer: () => Promise<void>
@@ -67,9 +69,15 @@ export const useTimerStore = create<TimerState>()(
       taskId: null,
       entries: [],
       isLoading: false,
+      showValidationErrors: false,
 
       startTimer: async () => {
         const state = get()
+        const missing = getMissingTimerFields(state)
+        if (missing.length > 0) {
+          set({ showValidationErrors: true })
+          throw new TimerValidationError(missing)
+        }
         const supabase = createClient()
         const startedAt = new Date().toISOString()
 
@@ -84,7 +92,7 @@ export const useTimerStore = create<TimerState>()(
             colaborador_id: colaborador?.id ?? null,
             cliente_id: state.clientId,
             tipo_tarea_id: state.tipoTareaId,
-            descripcion: state.description || 'Sin descripción',
+            descripcion: state.description.trim(),
             iniciado_en: startedAt,
             finalizado_en: null,
             duracion_seg: null,
@@ -102,6 +110,7 @@ export const useTimerStore = create<TimerState>()(
           isRunning: true,
           startedAt: startedAt,
           currentEntryId: newEntry.id,
+          showValidationErrors: false,
           entries: [newEntry as TimeEntry, ...get().entries],
         })
       },
@@ -251,6 +260,20 @@ export const useTimerStore = create<TimerState>()(
             .maybeSingle()
           resolvedTipoTareaId = tipo?.id ?? null
         }
+        const missing = getMissingTimerFields({ description: descripcion, tipoTareaId: resolvedTipoTareaId, clientId })
+        if (missing.length > 0) {
+          // Preload what the task has so the user only fills the gaps in the timer bar.
+          set({
+            description: descripcion,
+            clientId,
+            tipoTareaId: resolvedTipoTareaId,
+            billable: true,
+            taskId,
+            showValidationErrors: true,
+          })
+          throw new TimerValidationError(missing)
+        }
+
         const { data: colaborador } = user?.email
           ? await supabase.from('colaboradores').select('id').eq('email', user.email).maybeSingle()
           : { data: null }
@@ -272,10 +295,11 @@ export const useTimerStore = create<TimerState>()(
 
         if (error) {
           console.error('Error creating time entry for task:', error)
-          return
+          throw new Error(error.message || 'No se pudo iniciar el timer.')
         }
 
         set({
+          showValidationErrors: false,
           description: descripcion,
           clientId: clientId,
           tipoTareaId: resolvedTipoTareaId,

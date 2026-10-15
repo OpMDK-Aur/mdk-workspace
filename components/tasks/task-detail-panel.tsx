@@ -115,6 +115,7 @@ import { TaskFilesSection } from './task-files-section'
 import { es } from 'date-fns/locale'
 import { QuotationSection } from './quotation-section'
 import { useTimerStore, TIMER_ACTIVE_ERROR } from '@/lib/time-tracking/timer-store'
+import { formatMissingTimerFields, TimerValidationError } from '@/lib/time-tracking/validate-timer'
 import { ActiveTimerBlockedDialog } from '@/components/time-tracking/active-timer-blocked-dialog'
 import { Square, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -715,6 +716,10 @@ function TimeTracker({ task }: { task: Task }) {
     } catch (error) {
       if (error instanceof Error && error.message === TIMER_ACTIVE_ERROR) {
         setIsBlockedDialogOpen(true)
+      } else if (error instanceof TimerValidationError) {
+        toast.error(formatMissingTimerFields(error.missing), {
+          description: 'Lo precargué en la barra del timer: completalo ahí y dale Play.',
+        })
       } else {
         toast.error('Error al iniciar el timer')
       }
