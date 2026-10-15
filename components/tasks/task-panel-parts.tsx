@@ -2,7 +2,7 @@
 
 import { differenceInCalendarDays, format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { CalendarIcon, Copy, Link2, MoreHorizontal, Trash2 } from 'lucide-react'
+import { CalendarIcon, Copy, Link2, MoreHorizontal, Sparkles, Trash2 } from 'lucide-react'
 import type { Task } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useTaskStore } from '@/lib/tasks/task-store'
@@ -167,4 +167,99 @@ export function TaskMoreMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   )
+}
+
+export const CONEXA_CLASSES =
+  'bg-[#F3F3FE] border-[#CDD0F7] text-[#3F43C4] dark:bg-[#0F1028] dark:border-[#2E3070] dark:text-[#A5A8FF]'
+export const BRAND_BUTTON_CLASSES =
+  'bg-[#FF7F00] text-[#141414] hover:bg-[#FF7F00] hover:brightness-105 disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed'
+export const SECTION_LABEL_CLASSES = 'text-[11px] font-bold uppercase tracking-[.08em] text-muted-foreground'
+
+export function PanelProp({
+  icon: Icon,
+  label,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <>
+      <dt className="flex h-10 items-center gap-2 whitespace-nowrap text-muted-foreground">
+        <Icon className="size-4" />
+        {label}
+      </dt>
+      <dd className="flex min-h-10 min-w-0 items-center">{children}</dd>
+    </>
+  )
+}
+
+const CONEXA_ACTIONS = ['Completar descripción', 'Dividir en subtareas', 'Estimar tiempo', 'Sugerir responsable']
+
+export function ConexaBar({ onAction }: { onAction: (action: string) => void }) {
+  return (
+    <div className={cn('mt-6 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2', CONEXA_CLASSES)}>
+      <span className="inline-flex items-center gap-1 text-[13px] font-bold">
+        <Sparkles className="size-3.5" aria-hidden="true" />
+        Conexa
+      </span>
+      {CONEXA_ACTIONS.map((action) => (
+        <button
+          key={action}
+          type="button"
+          onClick={() => onAction(action)}
+          className="h-7 rounded-full px-2.5 text-[12.5px] font-semibold transition-colors hover:bg-white/60 dark:hover:bg-white/5"
+        >
+          {action}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function describeLink(href: string): { title: string; kind: string } {
+  try {
+    const url = new URL(href)
+    const host = url.hostname.replace(/^www\./, '')
+    const path = url.pathname
+    if (host === 'drive.google.com') {
+      return { title: 'Google Drive', kind: path.includes('/folders/') ? 'carpeta' : 'archivo' }
+    }
+    if (host === 'docs.google.com') {
+      if (path.startsWith('/spreadsheets')) return { title: 'Google Sheets', kind: 'planilla' }
+      if (path.startsWith('/presentation')) return { title: 'Google Slides', kind: 'presentación' }
+      if (path.startsWith('/forms')) return { title: 'Google Forms', kind: 'formulario' }
+      return { title: 'Google Docs', kind: 'documento' }
+    }
+    if (host.endsWith('figma.com')) return { title: 'Figma', kind: 'diseño' }
+    if (host.endsWith('canva.com')) return { title: 'Canva', kind: 'diseño' }
+    return { title: host, kind: 'enlace' }
+  } catch {
+    return { title: href, kind: 'enlace' }
+  }
+}
+
+const URL_REGEX = /(?:https?:\/\/|www\.)[^\s<>"{}|\\^`\[\]]*[^\s<>"{}|\\^`\[\].,;:!?()"']/gi
+
+/**
+ * Turns bare URLs in comment HTML into compact link cards. URLs that sit inside
+ * an attribute (img src, existing href) or inside an existing <a> are left as-is.
+ */
+export function linkifyAsCards(html: string): string {
+  return html.replace(URL_REGEX, (match, offset: number, full: string) => {
+    const prev = full[offset - 1]
+    if (prev === '"' || prev === "'" || prev === '=') return match
+    const lastOpenA = full.lastIndexOf('<a', offset)
+    if (lastOpenA !== -1 && full.lastIndexOf('</a>', offset) < lastOpenA) return match
+
+    const href = match.startsWith('www.') ? `https://${match}` : match
+    const { title, kind } = describeLink(href.replace(/&amp;/g, '&'))
+    let domain = ''
+    try { domain = new URL(href).hostname } catch { /* keep empty */ }
+    const favicon = domain
+      ? `<img src="https://www.google.com/s2/favicons?domain=${domain}&sz=32" alt="" class="size-4 shrink-0 rounded-sm !m-0 !inline-block" />`
+      : ''
+    return `<a href="${href}" target="_blank" rel="noopener noreferrer" title="${href}" class="link-card my-0.5 inline-flex max-w-full items-center gap-2 rounded-lg border border-border bg-muted/50 px-2.5 py-1 align-middle text-[13px] text-foreground no-underline transition-colors hover:bg-muted">${favicon}<span class="truncate font-semibold">${title}</span><span class="shrink-0 text-muted-foreground">· ${kind}</span></a>`
+  })
 }

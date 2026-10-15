@@ -77,7 +77,18 @@ import {
   CommandList,
 } from '@/components/ui/command'
 import { Check, ChevronsUpDown, ChevronLeft, ChevronRight, Pencil, ArrowUpDown, Search, SlidersHorizontal, Building2, Paperclip, User, Users } from 'lucide-react'
-import { OtherTimerNotice, TaskDatesField, TaskMoreMenu } from './task-panel-parts'
+import { CircleDot, Flag, Sparkles, Tag, Timer } from 'lucide-react'
+import {
+  CONEXA_CLASSES,
+  ConexaBar,
+  OtherTimerNotice,
+  PanelProp,
+  SECTION_LABEL_CLASSES,
+  TaskDatesField,
+  TaskMoreMenu,
+  linkifyAsCards,
+} from './task-panel-parts'
+import { TaskSubtasks } from './task-subtasks'
 import {
   Play,
   RotateCcw,
@@ -826,7 +837,7 @@ function TimeTracker({ task }: { task: Task }) {
 
 // Shared formatting classes so bold/italic/strikethrough/lists render the same
 // while editing (contentEditable) and when displayed as saved HTML.
-const COMMENT_RICH_TEXT_CLASSES = "[&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_i]:italic [&_s]:line-through [&_strike]:line-through [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1 [&_li]:my-0.5"
+const COMMENT_RICH_TEXT_CLASSES = "[&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_i]:italic [&_s]:line-through [&_strike]:line-through [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1 [&_li]:my-0.5 [&_.mention]:rounded-none [&_.mention]:bg-transparent [&_.mention]:px-0 [&_.mention]:font-semibold [&_.mention]:text-[#C2410C] dark:[&_.mention]:text-[#FF9A3D]"
 
 // Toolbar with Bold / Italic / Strikethrough / Bullet list / Numbered list controls
 // for a contentEditable comment editor. Uses document.execCommand so formatting
@@ -1051,7 +1062,7 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
     
     // Create mention span
     const mentionSpan = document.createElement('span')
-    mentionSpan.className = 'mention bg-primary/20 text-primary px-1 rounded'
+    mentionSpan.className = 'mention'
     mentionSpan.setAttribute('data-mention-id', assignee.id)
     mentionSpan.setAttribute('data-mention-name', assignee.name)
     mentionSpan.contentEditable = 'false'
@@ -1307,9 +1318,9 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
             onPaste={handlePaste}
             onKeyDown={handleKeyDown}
             onInput={handleInput}
-            data-placeholder={compact ? "Escribí un comentario…" : "Escribí un comentario. Usá @ para mencionar."}
+            data-placeholder="Escribí un comentario. Usá @ para mencionar."
               className={cn(
-              "w-full p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary overflow-y-auto empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/50 [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1 [&_.mention]:bg-primary/20 [&_.mention]:text-primary [&_.mention]:px-1 [&_.mention]:rounded",
+              "w-full p-3 text-sm rounded-[10px] border border-border bg-muted/50 transition-shadow focus:outline-none focus:border-[#FF7F00] focus:ring-4 focus:ring-[#FF7F00]/15 overflow-y-auto empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1",
               COMMENT_RICH_TEXT_CLASSES,
               compact ? "min-h-[50px] max-h-[120px] text-sm" : "min-h-[88px] max-h-[250px]"
             )}
@@ -1389,12 +1400,10 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
               ))}
             </div>
           )}
+          <span className="ml-auto font-mono text-[11px] text-muted-foreground" aria-hidden="true">⌘↵</span>
           <Button
             size="sm"
-            className={cn(
-              "gap-2 px-4 ml-auto rounded-full bg-[#FF7F00] text-[#141414] hover:bg-[#FF7F00]/90 disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground",
-              compact && "h-7 px-2 gap-1 text-xs"
-            )}
+            className="h-8 gap-1.5 rounded-full bg-[#FF7F00] px-4 text-[13px] font-bold text-[#141414] hover:bg-[#FF7F00] hover:brightness-105 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
             onClick={handleSubmit}
             disabled={isSubmitting || ((!commentContent.trim() || commentContent.trim() === '<br>') && pendingAttachments.length === 0)}
           >
@@ -1663,6 +1672,7 @@ export function TaskDetailPanel() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isActivityExpanded, setIsActivityExpanded] = useState(false)
   const [activeTab, setActiveTab] = useState('detalles')
+  const [activityTab, setActivityTab] = useState<'todo' | 'comentarios' | 'historial'>('todo')
   const [isEditingDescription, setIsEditingDescription] = useState(false)
 
   // Expanding the Activity panel also fullscreens the whole sheet so the
@@ -1944,6 +1954,14 @@ export function TaskDetailPanel() {
           </nav>
 
           <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => toast.info('Crear tareas con Conexa', { description: 'Esta acción estará disponible pronto.' })}
+              className={cn('mr-2 hidden h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-semibold md:inline-flex', CONEXA_CLASSES)}
+            >
+              <Sparkles className="size-3.5" aria-hidden="true" />
+              Crear tareas con Conexa
+            </button>
             <span className="text-xs text-[var(--ntm-text-3)] tabular-nums px-1 whitespace-nowrap">
               {currentIndex + 1} de {tasks.length}
             </span>
@@ -2007,87 +2025,42 @@ export function TaskDetailPanel() {
           )}
         </SheetHeader>
 
-        {/* Tabs (hidden while Activity is expanded so the comments feed gets the whole body) */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-          {!isActivityExpanded && (
-            <TabsList className="mx-6 mt-5 mb-0 shrink-0 bg-[var(--ntm-field)] p-1 h-auto rounded-full self-start">
-              <TabsTrigger value="detalles" className="text-sm px-4 py-1.5 rounded-full data-[state=active]:bg-card data-[state=active]:shadow-sm">Detalles</TabsTrigger>
-              <TabsTrigger value="cotizacion" className="text-sm px-4 py-1.5 rounded-full data-[state=active]:bg-card data-[state=active]:shadow-sm">Cotización</TabsTrigger>
-            </TabsList>
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className={cn(
+            'grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-y-auto min-[900px]:overflow-hidden',
+            !isActivityExpanded && 'min-[900px]:grid-cols-[minmax(0,1fr)_380px]'
           )}
+        >
+          {!isActivityExpanded && (
+            <section className="min-h-0 min-w-0 overflow-x-hidden min-[900px]:overflow-y-auto">
+              <div className="sticky top-0 z-10 border-b border-border bg-card px-5 pt-4 pb-3 sm:px-8">
+                <TabsList className="h-auto rounded-full bg-muted p-0.5">
+                  <TabsTrigger value="detalles" className="rounded-full px-4 py-1.5 text-[13px] font-semibold data-[state=active]:bg-card data-[state=active]:shadow-sm">Detalles</TabsTrigger>
+                  <TabsTrigger value="cotizacion" className="rounded-full px-4 py-1.5 text-[13px] font-semibold data-[state=active]:bg-card data-[state=active]:shadow-sm">Cotización</TabsTrigger>
+                </TabsList>
+              </div>
 
-          <div className="flex-1 overflow-hidden">
-            <TabsContent value="detalles" className="mt-0 h-full">
-              <div className={cn(
-                "h-full flex flex-col overflow-y-auto min-[900px]:flex-row min-[900px]:overflow-hidden",
-                isActivityExpanded ? "px-0 pb-0 pt-0" : "pl-6 pb-0",
-                isFullscreen && !isActivityExpanded && "mx-auto w-full max-w-[1200px]"
-              )}>
-                {/* LEFT / MAIN COLUMN (hidden while Activity is expanded to full screen) */}
-                <div className={cn(
-                  "flex flex-col min-w-0 pr-6 pt-5 pb-6 overflow-x-hidden min-[900px]:overflow-y-auto",
-                  isActivityExpanded ? "hidden" : "min-[900px]:flex-1"
-                )}>
-
-                  {/* Title area */}
-                  <div className="pt-0 pb-4">
-                    {/* Type selector pill + actions */}
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-4 text-xs text-[var(--ntm-text-3)]">
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <button
-                            type="button"
-                            className="h-6 inline-flex items-center gap-1.5 rounded-full px-2.5 bg-[var(--ntm-field)] text-[var(--ntm-text-2)] text-xs font-semibold hover:text-[var(--ntm-text)] transition-colors"
-                          >
-                            <span className="h-1.5 w-1.5 rounded-full bg-[var(--ntm-brand)]" aria-hidden="true" />
-                            {tiposTarea.find(t => t.id === task.type)?.nombre || task.typeName || 'Sin tipo'}
-                          </button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-56 p-2" align="start">
-                          <div className="space-y-2">
-                            <input
-                              type="text"
-                              placeholder="Buscar tipo..."
-                              value={typeSearch}
-                              onChange={(e) => setTypeSearch(e.target.value)}
-                              className="w-full px-2 py-1.5 text-xs border border-input rounded bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                            />
-                            <div className="max-h-64 overflow-y-auto space-y-1">
-                              {tiposTarea
-                                .filter(t => t.nombre.toLowerCase().includes(typeSearch.toLowerCase()))
-                                .map(t => (
-                                  <button
-                                    key={t.id}
-                                    onClick={() => {
-                                      updateTask(task.id, { type: t.id as TaskType, typeName: t.nombre })
-                                      setTypeSearch('')
-                                    }}
-                                    className="w-full text-left rounded px-2 py-1.5 hover:bg-accent transition-colors flex items-center gap-2 text-sm"
-                                  >
-                                    <span className="h-2 w-2 rounded-full bg-primary" />
-                                    {t.nombre}
-                                    {task.type === t.id && <Check className="h-4 w-4 ml-auto text-primary" />}
-                                  </button>
-                                ))}
-                              {tiposTarea.filter(t => t.nombre.toLowerCase().includes(typeSearch.toLowerCase())).length === 0 && (
-                                <div className="py-4 text-center text-xs text-muted-foreground">
-                                  No se encontraron tipos
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
+              <TabsContent value="detalles" className="mt-0">
+                <div className={cn('mx-auto px-5 py-6 sm:px-8', isFullscreen && 'max-w-[1200px]')}>
+                  <div>
+                    <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 font-semibold text-foreground/80">
+                        <span className="size-1.5 rounded-full bg-[#FF7F00]" aria-hidden="true" />
+                        {tiposTarea.find(t => t.id === task.type)?.nombre || task.typeName || 'Sin tipo'}
+                      </span>
+                      <span className="font-mono">{`T-${task.id.replace(/-/g, '').slice(0, 6).toUpperCase()}`}</span>
                       {task.createdAt && (
                         <>
                           <span aria-hidden="true">·</span>
-                          <span className="inline-flex items-center gap-1.5 min-w-0">
-                            Creada el {format(new Date(task.createdAt), "d MMM", { locale: es })} por
-                            <Avatar className="h-4 w-4">
+                          <span className="inline-flex min-w-0 items-center gap-1.5">
+                            Creada el {format(new Date(task.createdAt), "d MMM, HH:mm", { locale: es })} por
+                            <Avatar className="size-[18px]">
                               {task.createdByAvatar && <AvatarImage src={task.createdByAvatar} alt="" />}
                               <AvatarFallback className="text-[8px]">{getInitials(task.createdByName)}</AvatarFallback>
                             </Avatar>
-                            <span className="truncate text-[var(--ntm-text-2)]">{task.createdByName || 'Sin dato'}</span>
+                            <span className="truncate text-foreground/80">{task.createdByName || 'Sin dato'}</span>
                           </span>
                         </>
                       )}
@@ -2162,25 +2135,11 @@ export function TaskDetailPanel() {
                     )}
                   </div>
 
-                  {/* Time tracker - moved to header */}
-                  <div className="px-0 py-2 border-b">
-                    <TimeTracker task={task} />
-                  </div>
-
-                  {/* Metadata rows - ClickUp style */}
-                  <div className="pb-5 space-y-1">
-                    {/* Estado row */}
-                    <div className="flex items-center gap-2 min-h-[40px] py-1 hover:bg-[var(--ntm-field)] rounded-md px-2 -mx-2 transition-colors min-w-0">
-                      <div className="w-[140px] shrink-0 flex items-center gap-2.5 text-sm text-[var(--ntm-text-2)] whitespace-nowrap">
-                        <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 flex items-center justify-center">
-                          <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
-                        </div>
-                        Estado
-                      </div>
+                  {/* Propiedades */}
+                  <dl className="mt-1 grid grid-cols-[120px_minmax(0,1fr)] gap-y-1 text-sm sm:grid-cols-[140px_minmax(0,1fr)]">
+                    <PanelProp icon={CircleDot} label="Estado">
                       <Select value={task.status} onValueChange={(v) => handleStatusChange(v as TaskStatus)}>
-                        <SelectTrigger className={cn(
-                          'h-8 w-auto border-0 bg-transparent shadow-none px-2.5 text-sm font-medium gap-2 hover:bg-[var(--ntm-field)] rounded-md'
-                        )}>
+                        <SelectTrigger className="-ml-2.5 h-8 w-auto gap-2 rounded-md border-0 bg-transparent px-2.5 text-sm font-medium shadow-none hover:bg-muted">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -2194,48 +2153,11 @@ export function TaskDetailPanel() {
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
+                    </PanelProp>
 
-                    {/* Personas asignadas row */}
-                    <div className="flex items-center gap-2 min-h-[40px] py-1 hover:bg-[var(--ntm-field)] rounded-md px-2 -mx-2 transition-colors min-w-0">
-                      <div className="w-[140px] shrink-0 flex items-center gap-2.5 text-sm text-[var(--ntm-text-2)] whitespace-nowrap">
-                        <Users className="h-4 w-4 opacity-60" />
-                        Responsables
-                      </div>
-                      <MultiAssigneeSelect
-                        assignees={task.assignees || []}
-                        colaboradores={colaboradores}
-                        onChange={(newAssignees) => {
-                          updateTask(task.id, {
-                            assignees: newAssignees,
-                            assigneeId: newAssignees[0]?.id || '',
-                            assigneeName: newAssignees[0]?.nombre || 'Sin asignar',
-                            assigneeAvatar: newAssignees[0]?.avatar_url || null,
-                          })
-                        }}
-                      />
-                    </div>
-
-                    {/* Fechas row */}
-                    <div className="flex items-center gap-2 min-h-[40px] py-1 hover:bg-[var(--ntm-field)] rounded-md px-2 -mx-2 transition-colors min-w-0">
-                      <div className="w-[140px] shrink-0 flex items-center gap-2.5 text-sm text-[var(--ntm-text-2)] whitespace-nowrap">
-                        <CalendarIcon className="h-4 w-4 opacity-60" />
-                        Fechas
-                      </div>
-                      <TaskDatesField
-                        task={task}
-                        onChange={(patch) => updateTask(task.id, patch)}
-                      />
-                    </div>
-
-                    {/* Prioridad row */}
-                    <div className="flex items-center gap-2 min-h-[40px] py-1 hover:bg-[var(--ntm-field)] rounded-md px-2 -mx-2 transition-colors min-w-0">
-                      <div className="w-[140px] shrink-0 flex items-center gap-2.5 text-sm text-[var(--ntm-text-2)] whitespace-nowrap">
-                        <ArrowUpDown className="h-4 w-4 opacity-60" />
-                        Prioridad
-                      </div>
+                    <PanelProp icon={Flag} label="Prioridad">
                       <Select value={task.priority} onValueChange={(v) => updateTask(task.id, { priority: v as TaskPriority })}>
-                        <SelectTrigger className="h-8 w-auto border-0 bg-transparent shadow-none px-2.5 text-sm hover:bg-accent gap-2 rounded-md">
+                        <SelectTrigger className="-ml-2.5 h-8 w-auto gap-2 rounded-md border-0 bg-transparent px-2.5 text-sm shadow-none hover:bg-muted">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -2248,14 +2170,80 @@ export function TaskDetailPanel() {
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
+                    </PanelProp>
 
-                    {/* Clientes row */}
-                    <div className="flex items-center gap-2 min-h-[40px] py-1 hover:bg-[var(--ntm-field)] rounded-md px-2 -mx-2 transition-colors min-w-0">
-                      <div className="w-[140px] shrink-0 flex items-center gap-2.5 text-sm text-[var(--ntm-text-2)] whitespace-nowrap">
-                        <Building2 className="h-4 w-4 opacity-60" />
-                        Clientes
-                      </div>
+                    <PanelProp icon={Tag} label="Tipo *">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className="-ml-2.5 inline-flex h-8 min-w-0 items-center gap-2 rounded-md px-2.5 text-sm font-medium transition-colors hover:bg-muted"
+                          >
+                            <span className="size-2 shrink-0 rounded-full bg-[#FF7F00]" aria-hidden="true" />
+                            <span className="truncate">{tiposTarea.find(t => t.id === task.type)?.nombre || task.typeName || 'Elegí un tipo'}</span>
+                            <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-56 p-2" align="start">
+                          <div className="space-y-2">
+                            <input
+                              type="text"
+                              placeholder="Buscar tipo..."
+                              value={typeSearch}
+                              onChange={(e) => setTypeSearch(e.target.value)}
+                              className="w-full px-2 py-1.5 text-xs border border-input rounded bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                            />
+                            <div className="max-h-64 overflow-y-auto space-y-1">
+                              {tiposTarea
+                                .filter(t => t.nombre.toLowerCase().includes(typeSearch.toLowerCase()))
+                                .map(t => (
+                                  <button
+                                    key={t.id}
+                                    onClick={() => {
+                                      updateTask(task.id, { type: t.id as TaskType, typeName: t.nombre })
+                                      setTypeSearch('')
+                                    }}
+                                    className="w-full text-left rounded px-2 py-1.5 hover:bg-accent transition-colors flex items-center gap-2 text-sm"
+                                  >
+                                    <span className="h-2 w-2 rounded-full bg-primary" />
+                                    {t.nombre}
+                                    {task.type === t.id && <Check className="h-4 w-4 ml-auto text-primary" />}
+                                  </button>
+                                ))}
+                              {tiposTarea.filter(t => t.nombre.toLowerCase().includes(typeSearch.toLowerCase())).length === 0 && (
+                                <div className="py-4 text-center text-xs text-muted-foreground">
+                                  No se encontraron tipos
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </PanelProp>
+
+                    <PanelProp icon={Users} label="Responsables">
+                      <MultiAssigneeSelect
+                        assignees={task.assignees || []}
+                        colaboradores={colaboradores}
+                        onChange={(newAssignees) => {
+                          updateTask(task.id, {
+                            assignees: newAssignees,
+                            assigneeId: newAssignees[0]?.id || '',
+                            assigneeName: newAssignees[0]?.nombre || 'Sin asignar',
+                            assigneeAvatar: newAssignees[0]?.avatar_url || null,
+                          })
+                        }}
+                      />
+                    </PanelProp>
+
+                    <PanelProp icon={CalendarIcon} label="Fechas">
+                      <TaskDatesField
+                        task={task}
+                        onChange={(patch) => updateTask(task.id, patch)}
+                      />
+                    </PanelProp>
+
+                    <PanelProp icon={Building2} label="Clientes *">
                       <MultiClientSelect
                         clients={task.clients || []}
                         availableClients={clientes}
@@ -2271,39 +2259,21 @@ export function TaskDetailPanel() {
                           router.push(`/dashboard/clients/${clientId}`)
                         }}
                       />
-                    </div>
+                    </PanelProp>
 
-                    {/* Creado por row */}
-                    <div className="flex items-center gap-2 min-h-[40px] py-1 hover:bg-[var(--ntm-field)] rounded-md px-2 -mx-2 transition-colors min-w-0">
-                      <div className="w-[140px] shrink-0 flex items-center gap-2.5 text-sm text-[var(--ntm-text-2)] whitespace-nowrap">
-                        <User className="h-4 w-4 opacity-60" />
-                        Creado por
-                      </div>
-                      <div className="flex items-center gap-2 px-2.5">
-                        <Avatar className="h-6 w-6 ring-2 ring-background">
-                          {task.createdByAvatar && <AvatarImage src={task.createdByAvatar} alt={task.createdByName} />}
-                          <AvatarFallback className="text-[10px] font-medium">{getInitials(task.createdByName)}</AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm">{task.createdByName || 'Sin asignar'}</span>
-                      </div>
-                    </div>
+                    <PanelProp icon={Timer} label="Tiempo">
+                      <TimeTracker task={task} />
+                    </PanelProp>
+                  </dl>
 
-                    {/* Fecha de creación row */}
-                    <div className="flex items-center gap-2 min-h-[40px] py-1 hover:bg-[var(--ntm-field)] rounded-md px-2 -mx-2 transition-colors min-w-0">
-                      <div className="w-[140px] shrink-0 flex items-center gap-2.5 text-sm text-[var(--ntm-text-2)] whitespace-nowrap">
-                        <CalendarPlus className="h-4 w-4 opacity-60" />
-                        Fecha de creación
-                      </div>
-                      <span className="px-2.5 text-sm">
-                        {task.createdAt
-                          ? format(new Date(task.createdAt), "d 'de' MMMM yyyy, HH:mm", { locale: es })
-                          : '-'}
-                      </span>
-                    </div>
-                  </div>
+                  {/* Conexa */}
+                  <ConexaBar
+                    onAction={(action) => toast.info(`Conexa · ${action}`, { description: 'Esta acción estará disponible pronto.' })}
+                  />
 
-                  {/* Description area */}
-                  <div className="py-5 border-y flex-shrink-0">
+                  {/* Descripción */}
+                  <h2 className={cn(SECTION_LABEL_CLASSES, 'mt-8 mb-2')}>Descripción</h2>
+                  <div>
                     {isEditingDescription ? (
                       <RichTextEditor
                         content={task.description || ''}
@@ -2312,69 +2282,88 @@ export function TaskDetailPanel() {
                           if (html !== task.description) updateTask(task.id, { description: html || null })
                           setIsEditingDescription(false)
                         }}
-                        placeholder="Añade una descripción..."
+                        placeholder="Agregá una descripción..."
                       />
+                    ) : task.description ? (
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Editar descripción"
+                        onClick={(e) => {
+                          if ((e.target as HTMLElement).closest('a')) return
+                          setIsEditingDescription(true)
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') setIsEditingDescription(true) }}
+                        className="-mx-2 cursor-text rounded-lg px-2 py-1 transition-colors hover:bg-muted/50"
+                      >
+                        <div
+                          className="min-w-0 break-words text-[14px] leading-[1.6] text-foreground/90 [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_i]:italic [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_img]:max-w-full [&_img]:rounded-lg"
+                          dangerouslySetInnerHTML={{ __html: linkifyAsCards(task.description) }}
+                        />
+                      </div>
                     ) : (
                       <button
                         type="button"
-                        className="w-full text-left rounded-md px-3 py-3 hover:bg-accent/40 transition-colors"
                         onClick={() => setIsEditingDescription(true)}
-                        aria-label="Editar descripción"
+                        className="w-full rounded-xl border border-dashed border-border px-3 py-3 text-left text-sm text-muted-foreground transition-colors hover:border-[#FF7F00]/60 hover:text-foreground"
                       >
-                        {task.description ? (
-                          <div
-                            className="prose prose-sm prose-invert max-w-none [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_i]:italic [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5"
-                            dangerouslySetInnerHTML={{ __html: task.description }}
-                          />
-                        ) : (
-                          <span className="text-sm text-muted-foreground">Añade una descripción...</span>
-                        )}
+                        {'Agregá una descripción o usá ✦ Completar descripción'}
                       </button>
                     )}
                     <div ref={descriptionRef} className="hidden" aria-hidden="true" />
                   </div>
 
-                  {/* Files */}
-                  <div className="py-4 border-t">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Adjuntos</p>
-                    <TaskFilesSection
-                      task={task}
-                      currentUserId={currentUserId}
-                      colaboradorNombre={colaboradores.find(c => c.id === currentUserId)?.nombre}
-                    />
-                  </div>
+                  {/* Subtareas */}
+                  <TaskSubtasks taskId={task.id} colaboradores={colaboradores} />
 
-                  {/* Delete */}
-                  <div className="py-4 border-t mt-auto">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 text-sm gap-2"
-                      onClick={async () => {
-                        const confirmed = confirm(`¿Eliminar tarea "${task.title}"?`)
-                        if (confirmed) {
-                          await deleteTask(task.id)
-                          handleClose()
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Eliminar tarea
-                    </Button>
-                  </div>
+                  {/* Adjuntos */}
+                  <h2 className={cn(SECTION_LABEL_CLASSES, 'mt-8 mb-2')}>Adjuntos</h2>
+                  <TaskFilesSection
+                    task={task}
+                    currentUserId={currentUserId}
+                    colaboradorNombre={colaboradores.find(c => c.id === currentUserId)?.nombre}
+                  />
                 </div>
+              </TabsContent>
 
-                {/* RIGHT COLUMN - Activity (50%, or full width when expanded) */}
-                <div className={cn(
-                  "flex flex-col overflow-hidden min-w-0 border-[var(--ntm-border)]",
+              <TabsContent value="cotizacion" className="mt-0">
+                <div className={cn('mx-auto px-5 py-6 sm:px-8', isFullscreen && 'max-w-[1200px]')}>
+                  <QuotationSection task={task} />
+                </div>
+              </TabsContent>
+            </section>
+          )}
+
+                {/* ACTIVIDAD */}
+                <section className={cn(
+                  "flex min-w-0 flex-col overflow-hidden",
                   isActivityExpanded
-                    ? "w-full"
-                    : "min-h-[480px] border-t -ml-6 min-[900px]:ml-0 min-[900px]:min-h-0 min-[900px]:w-[380px] min-[900px]:shrink-0 min-[900px]:border-t-0 min-[900px]:border-l"
+                    ? "min-h-0"
+                    : "min-h-[480px] border-t border-border min-[900px]:min-h-0 min-[900px]:border-l min-[900px]:border-t-0"
                 )}>
-                  {/* Activity header with filters */}
-                  <div className="px-5 py-4 border-b border-[var(--ntm-border)] flex items-center justify-between shrink-0">
-                    <h2 className="text-sm font-semibold">Actividad</h2>
-                    <div className="flex items-center gap-1">
+                  <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
+                    <div role="tablist" aria-label="Filtrar actividad" className="flex min-w-0 items-center gap-0.5 rounded-full bg-muted p-0.5">
+                      {([
+                        ['todo', 'Todo'],
+                        ['comentarios', `Comentarios (${(task.comments || []).length})`],
+                        ['historial', 'Historial'],
+                      ] as const).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          role="tab"
+                          aria-selected={activityTab === value}
+                          onClick={() => setActivityTab(value)}
+                          className={cn(
+                            'h-7 whitespace-nowrap rounded-full px-2.5 text-[13px] font-semibold transition-colors',
+                            activityTab === value ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="ml-auto flex shrink-0 items-center gap-1">
                       <Button variant="ghost" size="icon" className="h-6 w-6">
                         <Search className="h-3.5 w-3.5" />
                       </Button>
@@ -2519,7 +2508,7 @@ export function TaskDetailPanel() {
                       return (
                         <>
                           {/* Activities - hidden when filters active */}
-                          {!hasFilters && (task.activities || []).slice(0, 20).map((activity) => (
+                          {!hasFilters && activityTab !== 'comentarios' && (task.activities || []).slice(0, 20).map((activity) => (
                             <div key={activity.id} className="flex items-start gap-3 text-xs">
                               <Avatar className="h-6 w-6 mt-0.5 shrink-0">
                                 <AvatarFallback className="text-[9px]">{getInitials(activity.userName)}</AvatarFallback>
@@ -2539,9 +2528,8 @@ export function TaskDetailPanel() {
                               <p className="text-xs text-muted-foreground">Sin resultados para los filtros aplicados</p>
                             </div>
                           ) : (
-                            filteredComments.length > 0 && (
-                              <div className={cn(!hasFilters && "pt-2 border-t mt-2")}>
-                                {!hasFilters && <p className="text-xs font-semibold mb-3">Comentarios ({(task.comments || []).length})</p>}
+                            activityTab !== 'historial' && filteredComments.length > 0 && (
+                              <div>
                                 {filteredComments.map((c) => (
                                   <div key={c.id} className="group flex items-start gap-3 text-sm mb-4">
                                     <Avatar className="h-6 w-6 mt-0.5 shrink-0">
@@ -2624,7 +2612,7 @@ export function TaskDetailPanel() {
                                             "text-sm text-foreground/80 break-words whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity",
                                             COMMENT_RICH_TEXT_CLASSES
                                           )}
-                                          dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
+                                          dangerouslySetInnerHTML={{ __html: linkifyAsCards(c.content) }}
                                         />
                                       )}
                                       {/* Attachments */}
@@ -2681,18 +2669,10 @@ export function TaskDetailPanel() {
                     })(handleDeleteComment)}
                   </div>
 
-                  {/* Comment input at bottom - using CommentsSection component */}
-                  <div className="border-t shrink-0">
+                  <div className="shrink-0 border-t border-border">
                     <CommentsSection task={task} compact={true} onDeleteComment={handleDeleteComment} />
                   </div>
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="cotizacion" className="mt-0 p-4">
-              <QuotationSection task={task} />
-            </TabsContent>
-          </div>
+                </section>
         </Tabs>
 
       </SheetContent>
