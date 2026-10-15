@@ -120,7 +120,7 @@ function KanbanColumn({ status, onAddTask }: KanbanColumnProps) {
           variant="ghost"
           size="sm"
           className="w-full justify-start text-muted-foreground hover:text-foreground"
-          onClick={onAddTask}
+          onClick={() => onAddTask(status)}
         >
           <Plus className="h-4 w-4 mr-1" />
           Agregar tarea
@@ -131,7 +131,7 @@ function KanbanColumn({ status, onAddTask }: KanbanColumnProps) {
 }
 
 interface KanbanViewProps {
-  onAddTask: () => void
+  onAddTask: (status: TaskStatus) => void
 }
 
 export function KanbanView({ onAddTask }: KanbanViewProps) {

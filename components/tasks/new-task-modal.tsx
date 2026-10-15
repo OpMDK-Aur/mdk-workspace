@@ -68,6 +68,14 @@ import {
 import { X, Plus, MessageSquare, User, Users, CalendarDays, Building2, MoreHorizontal, Paperclip, Bell, Clock, ChevronDown, FileText, Palette, Globe, TrendingUp, Link, Search, AlertTriangle, Mail, BarChart3, HelpCircle, Calculator, Sparkles, ArrowLeft, Check, Loader2, Zap, Coffee, PartyPopper, Flame, Calendar, Video, PenLine, Flag, Tag, Link2 } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { toast } from 'sonner'
+import { MAX_ATTACHMENT_BYTES, formatBytes, sanitizeFileName, uploadTaskFile } from '@/lib/tasks/upload-with-progress'
 
 interface NewTaskModalProps {
   open: boolean
@@ -75,7 +83,23 @@ interface NewTaskModalProps {
   initialDueDate?: Date | null
   initialMode?: 'manual' | 'ai'
   initialValues?: NewTaskPrefill | null
+  initialStatus?: TaskStatus | null
   onCreated?: (taskId: string) => void
+}
+
+type CreateMode = 'close' | 'open' | 'another'
+
+interface UploadItem {
+  id: string
+  name: string
+  size: number
+  mimeType: string
+  progress: number
+  status: 'uploading' | 'done' | 'error'
+  previewUrl: string | null
+  url?: string
+  error?: string
+  controller: AbortController
 }
 
 export interface NewTaskPrefill {
@@ -240,7 +264,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ──���������������────────────────────────────���──�����───────���──
+// ── Seguimiento Templates by Plan ──����������������────────────────────────────���──�����───────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -917,8 +941,13 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode = 'ai', initialValues, onCreated }: NewTaskModalProps) {
+export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode = 'ai', initialValues, initialStatus, onCreated }: NewTaskModalProps) {
   const addTask = useTaskStore((s) => s.addTask)
+  const setSelectedTask = useTaskStore((s) => s.setSelectedTask)
+  const titleInputRef = useRef<HTMLInputElement>(null)
+  const descriptionRef = useRef<HTMLDivElement>(null)
+  const [uploads, setUploads] = useState<UploadItem[]>([])
+  const [isDragging, setIsDragging] = useState(false)
   const supabase = createClient()
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -965,6 +994,10 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     setQuickDueDate(initialValues.dueDate)
     setQuickDescription(initialValues.description)
   }, [open, initialValues])
+
+  useEffect(() => {
+    if (open && initialStatus) setQuickStatus(initialStatus)
+  }, [open, initialStatus])
   
   // Dynamic data from database
   const [dbClientes, setDbClientes] = useState<DbCliente[]>([])
@@ -1444,10 +1477,85 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   }
 
   // Handle quick task creation (without Madky)
-  const handleQuickCreate = async () => {
-    if (!quickTitle.trim() || quickClientIds.length === 0) return
+  const isUploadingAttachments = uploads.some(u => u.status === 'uploading')
+  const missingRequired: string[] = []
+  if (!quickTitle.trim()) missingRequired.push('nombre')
+  if (quickClientIds.length === 0) missingRequired.push('cliente')
+  if (!quickType) missingRequired.push('tipo')
+  const canCreate = missingRequired.length === 0 && !isUploadingAttachments && !isCreating
+
+  const handleFiles = (fileList: FileList | File[]) => {
+    const files = Array.from(fileList)
+    for (const file of files) {
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        toast.error(`${file.name} supera los 25 MB`)
+        continue
+      }
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const controller = new AbortController()
+      const item: UploadItem = {
+        id,
+        name: file.name,
+        size: file.size,
+        mimeType: file.type,
+        progress: 0,
+        status: 'uploading',
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+        controller,
+      }
+      setUploads(prev => [...prev, item])
+      const path = `${currentUser?.id || 'anon'}/new/${id}-${sanitizeFileName(file.name)}`
+      uploadTaskFile(
+        file,
+        path,
+        (progress) => setUploads(prev => prev.map(u => (u.id === id ? { ...u, progress } : u))),
+        controller.signal,
+      )
+        .then((url) => {
+          setUploads(prev => prev.map(u => (u.id === id ? { ...u, status: 'done', progress: 100, url } : u)))
+        })
+        .catch((error: Error) => {
+          if (error.name === 'AbortError') return
+          setUploads(prev => prev.map(u => (u.id === id ? { ...u, status: 'error', error: error.message } : u)))
+        })
+    }
+  }
+
+  const removeUpload = (id: string) => {
+    setUploads(prev => {
+      const target = prev.find(u => u.id === id)
+      if (target?.status === 'uploading') target.controller.abort()
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl)
+      return prev.filter(u => u.id !== id)
+    })
+  }
+
+  const resetQuickForm = (keepClientAndType: boolean) => {
+    setQuickTitle('')
+    setQuickDescription('')
+    if (descriptionRef.current) descriptionRef.current.textContent = ''
+    if (!keepClientAndType) {
+      setQuickClientIds([])
+      setQuickType('')
+    }
+    setQuickPriority('')
+    setQuickAssigneeIds([])
+    setQuickDueDate('')
+    setQuickComment('')
+    setPendingAttachments([])
+    uploads.forEach(u => u.previewUrl && URL.revokeObjectURL(u.previewUrl))
+    setUploads([])
+    setReminderDate('')
+    setReminderTime('')
+    setReminderMode('asignados')
+    setReminderCustomIds([])
+  }
+
+  const handleQuickCreate = async (mode: CreateMode = 'close') => {
+    if (!canCreate) return
     
     setIsCreating(true)
+    const createdTitle = quickTitle.trim()
     
     try {
       // Build clients array
@@ -1496,10 +1604,16 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
       } as any)
 
       // Save pending attachments to tarea_adjuntos after task creation
-      if (pendingAttachments.length > 0 && newTaskId) {
+      const uploadedAttachments = [
+        ...pendingAttachments,
+        ...uploads
+          .filter(u => u.status === 'done' && u.url)
+          .map(u => ({ url: u.url!, name: u.name, mimeType: u.mimeType })),
+      ]
+      if (uploadedAttachments.length > 0 && newTaskId) {
         try {
           await supabase.from('tarea_adjuntos').insert(
-            pendingAttachments.map(att => ({
+            uploadedAttachments.map(att => ({
               tarea_id: newTaskId,
               nombre: att.name,
               url: att.url,
@@ -1535,28 +1649,28 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
         }
       }
 
-      if (newTaskId) onCreated?.(newTaskId)
+      if (!newTaskId) throw new Error('No se pudo crear la tarea')
+      onCreated?.(newTaskId)
 
-      // Reset quick mode state
-      setQuickTitle('')
-      setQuickDescription('')
-      setQuickClientIds([])
-      setQuickType('')
-      setQuickPriority('')
+      toast.success(`Tarea creada: ${createdTitle}`, {
+        action: mode === 'open' ? undefined : { label: 'Abrir', onClick: () => setSelectedTask(newTaskId) },
+      })
+
+      if (mode === 'another') {
+        resetQuickForm(true)
+        requestAnimationFrame(() => titleInputRef.current?.focus())
+        return
+      }
+
+      resetQuickForm(false)
       setQuickStatus('pendiente')
-      setQuickAssigneeIds([])
-      setQuickDueDate('')
-      setQuickComment('')
-      setPendingAttachments([])
-      setReminderDate('')
-      setReminderTime('')
-      setReminderMode('asignados')
-      setReminderCustomIds([])
       setActiveTab('tarea')
       setQuickMode(false)
       onOpenChange(false)
+      if (mode === 'open') setSelectedTask(newTaskId)
     } catch (error) {
       console.error('[v0] Error creating task:', error)
+      toast.error('No se pudo crear la tarea. Probá de nuevo.')
     } finally {
       setIsCreating(false)
     }
@@ -1566,7 +1680,15 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[800px] p-0 gap-0 overflow-hidden">
+      <DialogContent
+        className="sm:max-w-[800px] p-0 gap-0 overflow-hidden"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+            e.preventDefault()
+            handleQuickCreate('close')
+          }
+        }}
+      >
         {/* Header with Tabs */}
         <div className="flex items-center justify-between px-2 border-b pr-10">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="flex-1">
@@ -1593,9 +1715,13 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
             <div className="flex items-center gap-2 px-5 py-3 border-b">
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn('h-7 gap-1.5 text-xs', !quickType && 'border-dashed text-muted-foreground')}
+                  >
                     <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
-                    {dbTiposTarea.find(t => t.id === quickType)?.nombre || 'Tarea'}
+                    {dbTiposTarea.find(t => t.id === quickType)?.nombre || 'Tipo de tarea *'}
                     <ChevronDown className="h-3 w-3 opacity-50" />
                   </Button>
                 </PopoverTrigger>
@@ -1623,7 +1749,9 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
             {/* Title input */}
             <div className="px-5 pt-4 pb-1">
               <input
+                ref={titleInputRef}
                 type="text"
+                aria-label="Nombre de la tarea"
                 placeholder="Nombre de Tarea"
                 value={quickTitle}
                 onChange={(e) => setQuickTitle(e.target.value)}
@@ -1635,6 +1763,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
             {/* Description area */}
             <div className="px-5 py-2 min-h-[60px]">
               <div
+                ref={descriptionRef}
                 contentEditable
                 suppressContentEditableWarning
                 onInput={(e) => {
@@ -1718,10 +1847,14 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
               {/* Client chip */}
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn('h-7 gap-1.5 text-xs', quickClientIds.length === 0 && 'border-dashed text-muted-foreground')}
+                  >
                     <Building2 className="h-3.5 w-3.5" />
                     {quickClientIds.length === 0
-                      ? 'Cliente'
+                      ? 'Cliente *'
                       : quickClientIds.length === 1
                         ? dbClientes.find(c => c.id === quickClientIds[0])?.nombre_del_negocio || 'Cliente'
                         : `${quickClientIds.length} clientes`
@@ -1824,53 +1957,17 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                 size="sm" 
                 className="h-7 gap-1.5 text-xs"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isUploadingFile}
               >
                 <Paperclip className="h-3.5 w-3.5" />
-                {isUploadingFile ? 'Subiendo...' : 'Subir Archivo'}
+                Subir archivo
               </Button>
               <input
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
                 className="hidden"
-                onChange={async (e) => {
-                  const files = Array.from(e.target.files || [])
-                  if (!files.length) return
-                  setIsUploadingFile(true)
-                  for (const file of files) {
-                    try {
-                      const sanitizedName = file.name
-                        .normalize('NFD')
-                        .replace(/[\u0300-\u036f]/g, '')
-                        .replace(/\s+/g, '_')
-                        .replace(/[^a-zA-Z0-9_.-]/g, '')
-                      const path = `${currentUser?.id || 'anon'}/new/${Date.now()}-${sanitizedName}`
-
-                      const { error: uploadError } = await supabase.storage
-                        .from('task-files')
-                        .upload(path, file)
-
-                      if (uploadError) {
-                        console.error('[v0] Storage error:', uploadError)
-                        continue
-                      }
-
-                      const { data: { publicUrl } } = supabase.storage
-                        .from('task-files')
-                        .getPublicUrl(path)
-
-                      setPendingAttachments(prev => [...prev, {
-                        url: publicUrl,
-                        name: file.name,
-                        mimeType: file.type,
-                      }])
-                    } catch (error) {
-                      console.error('[v0] Upload error:', error)
-                    }
-                  }
-                  setIsUploadingFile(false)
+                onChange={(e) => {
+                  if (e.target.files?.length) handleFiles(e.target.files)
                   e.target.value = ''
                 }}
               />
@@ -1891,6 +1988,77 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                   </Button>
                 </PopoverContent>
               </Popover>
+            </div>
+
+            {/* Attachments dropzone with per-file progress */}
+            <div className="px-5 py-3 border-t">
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label="Adjuntar archivos: arrastrá o hacé click"
+                onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    fileInputRef.current?.click()
+                  }
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setIsDragging(true)
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setIsDragging(false)
+                  if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files)
+                }}
+                className={cn(
+                  'flex items-center justify-center gap-2 rounded-md border border-dashed px-3 py-3 text-xs text-muted-foreground cursor-pointer transition-colors',
+                  isDragging ? 'border-primary bg-primary/5 text-foreground' : 'border-border hover:border-muted-foreground/60 hover:text-foreground',
+                )}
+              >
+                <Paperclip className="h-3.5 w-3.5" />
+                Arrastrá archivos acá o hacé click · máx. 25 MB
+              </div>
+
+              {uploads.length > 0 && (
+                <ul className="mt-2 flex flex-col gap-1.5">
+                  {uploads.map((u) => (
+                    <li key={u.id} className="flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 text-xs">
+                      {u.previewUrl ? (
+                        <img src={u.previewUrl} alt="" className="h-7 w-7 shrink-0 rounded object-cover" />
+                      ) : (
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-muted">
+                          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate">{u.name}</span>
+                          <span className={cn('shrink-0 tabular-nums', u.status === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
+                            {u.status === 'error' ? 'Error' : u.status === 'done' ? formatBytes(u.size) : `${u.progress}%`}
+                          </span>
+                        </div>
+                        {u.status === 'uploading' && (
+                          <div className="h-1 w-full overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={u.progress} aria-valuemin={0} aria-valuemax={100} aria-label={`Subiendo ${u.name}`}>
+                            <div className="h-full bg-primary transition-all" style={{ width: `${u.progress}%` }} />
+                          </div>
+                        )}
+                        {u.status === 'error' && u.error && <span className="text-destructive">{u.error}</span>}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeUpload(u.id)}
+                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                        aria-label={`Quitar ${u.name}`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             {/* Pending attachments preview */}
@@ -2017,39 +2185,42 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end px-5 py-3 border-t">
-              <div className="flex items-center gap-2">
-                {(() => {
-                  const missing: string[] = []
-                  if (!quickTitle.trim()) missing.push('nombre')
-                  if (quickAssigneeIds.length === 0) missing.push('persona asignada')
-                  if (quickClientIds.length === 0) missing.push('cliente')
-                  if (!quickPriority) missing.push('prioridad')
-                  const isValid = missing.length === 0
-                  return (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span>
-                            <Button
-                              className="h-8 px-4"
-                              onClick={handleQuickCreate}
-                              disabled={!isValid || isCreating}
-                            >
-                              {isCreating ? 'Creando...' : 'Crear Tarea'}
-                              <ChevronDown className="h-3 w-3 ml-1" />
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        {!isValid && (
-                          <TooltipContent side="top" className="text-xs">
-                            Falta: {missing.join(', ')}
-                          </TooltipContent>
-                        )}
-                      </Tooltip>
-                    </TooltipProvider>
-                  )
-                })()}
+            <div className="flex items-center justify-between gap-3 px-5 py-3 border-t">
+              <p className="text-xs text-muted-foreground" aria-live="polite">
+                {isUploadingAttachments
+                  ? 'Esperá a que terminen de subir los archivos'
+                  : missingRequired.length > 0
+                    ? `Falta: ${missingRequired.join(', ')}`
+                    : <span className="hidden sm:inline">{'⌘↵ para crear'}</span>}
+              </p>
+              <div className="flex items-center">
+                <Button
+                  className="h-8 rounded-r-none px-4"
+                  onClick={() => handleQuickCreate('close')}
+                  disabled={!canCreate}
+                >
+                  {isCreating ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
+                  {isCreating ? 'Creando...' : 'Crear tarea'}
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      className="h-8 rounded-l-none border-l border-primary-foreground/20 px-2"
+                      disabled={!canCreate}
+                      aria-label="Más opciones de creación"
+                    >
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52">
+                    <DropdownMenuItem onSelect={() => handleQuickCreate('open')}>
+                      Crear y abrir
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => handleQuickCreate('another')}>
+                      Crear y agregar otra
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>

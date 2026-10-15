@@ -72,14 +72,31 @@ export function TaskBoard() {
   const [meetingOpen, setMeetingOpen] = useState(false)
   const [prefill, setPrefill] = useState<NewTaskPrefill | null>(null)
   const [seguimientoItemId, setSeguimientoItemId] = useState<string | null>(null)
+  const [newTaskStatus, setNewTaskStatus] = useState<TaskStatus | null>(null)
 
   const handleNewTaskOpenChange = (open: boolean) => {
     setNewTaskOpen(open)
     if (!open) {
       setPrefill(null)
       setSeguimientoItemId(null)
+      setNewTaskStatus(null)
     }
   }
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return
+      if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return
+      const target = e.target as HTMLElement | null
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
+      if (document.querySelector('[role="dialog"]')) return
+      e.preventDefault()
+      setNewTaskMode('manual')
+      setNewTaskOpen(true)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   const handleTaskCreated = async (taskId: string) => {
     if (!seguimientoItemId) return
@@ -435,7 +452,13 @@ export function TaskBoard() {
       {/* Board content */}
       <div className="flex-1 overflow-hidden">
         {view === 'kanban' && (
-          <KanbanView onAddTask={() => setNewTaskOpen(true)} />
+          <KanbanView
+            onAddTask={(status) => {
+              setNewTaskStatus(status)
+              setNewTaskMode('manual')
+              setNewTaskOpen(true)
+            }}
+          />
         )}
         {view === 'list' && (
           <div className="p-4 h-full overflow-auto">
@@ -456,6 +479,7 @@ export function TaskBoard() {
         onOpenChange={handleNewTaskOpenChange}
         initialMode={newTaskMode}
         initialValues={prefill}
+        initialStatus={newTaskStatus}
         onCreated={handleTaskCreated}
       />
       <ScheduleMeetingModal open={meetingOpen} onOpenChange={setMeetingOpen} />
