@@ -517,16 +517,105 @@ function AddSubtaskRow({
   )
 }
 
+export type SubtaskProposal = { title: string; assigneeId: string | null; source: string }
+
+function resolvePerson(people: SubtaskColaborador[], hint: string | null) {
+  if (!hint) return null
+  const h = hint.toLowerCase()
+  return people.find(p => p.id === hint) ?? people.find(p => fullName(p).toLowerCase().startsWith(h)) ?? null
+}
+
+function ProposedSubtasks({
+  proposals,
+  people,
+  onAdd,
+  onDiscard,
+}: {
+  proposals: SubtaskProposal[]
+  people: SubtaskColaborador[]
+  onAdd: (items: { title: string; assigneeId: string | null; source: string }[]) => void
+  onDiscard: () => void
+}) {
+  const [checked, setChecked] = useState(() => proposals.map(() => true))
+  const resolved = proposals.map(p => ({ ...p, person: resolvePerson(people, p.assigneeId) }))
+  const count = checked.filter(Boolean).length
+
+  return (
+    <div
+      role="group"
+      aria-label="Subtareas propuestas por Conexa"
+      className="mb-3 rounded-xl border border-[var(--task-sum-border)] bg-[var(--task-sum-bg)] p-3"
+    >
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-[.06em] text-[var(--task-sum-label)]">
+        {'✦ Propuestas de Conexa'}
+      </p>
+      <ul className="flex flex-col gap-1">
+        {resolved.map((p, i) => (
+          <li key={i}>
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-md px-1.5 py-1.5 hover:bg-[var(--task-sum-border)]/30">
+              <input
+                type="checkbox"
+                checked={checked[i]}
+                onChange={e => setChecked(c => c.map((v, j) => (j === i ? e.target.checked : v)))}
+                className="size-4 shrink-0 accent-[#5B5FE8]"
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-[var(--task-sum-strong)]">
+                  <span aria-hidden="true" className="mr-1 text-[var(--task-sum-label)]">✦</span>
+                  {p.title}
+                </span>
+                <span className="block truncate text-[11px] text-[var(--task-sum-meta)]">{p.source}</span>
+              </span>
+              {p.person ? (
+                <Avatar person={p.person} className="size-5 shrink-0" />
+              ) : (
+                <span className="text-[11px] text-[var(--task-sum-meta)]">Sin asignar</span>
+              )}
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          disabled={count === 0}
+          onClick={() =>
+            onAdd(
+              resolved
+                .filter((_, i) => checked[i])
+                .map(p => ({ title: p.title, assigneeId: p.person?.id ?? null, source: p.source })),
+            )
+          }
+          className="h-7 rounded-full bg-[#5B5FE8] px-3 text-[12px] font-semibold text-[#FFFFFF] hover:brightness-110 disabled:opacity-50"
+        >
+          {`Agregar ${count}`}
+        </button>
+        <button
+          type="button"
+          onClick={onDiscard}
+          className="h-7 rounded-full px-3 text-[12px] font-semibold text-[var(--task-sum-meta)] hover:text-[var(--task-sum-strong)]"
+        >
+          Descartar
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function TaskSubtasks({
   taskId,
   colaboradores,
   currentUserId,
   onResolveTask,
+  proposals,
+  onProposalsClose,
 }: {
   taskId: string
   colaboradores: SubtaskColaborador[]
   currentUserId: string | null
   onResolveTask?: () => void
+  proposals?: SubtaskProposal[] | null
+  onProposalsClose?: () => void
 }) {
   const { data: subtasks = [], mutate } = useSubtasks(taskId)
   const refreshCounts = useRefreshSubtaskCounts()
@@ -564,7 +653,9 @@ export function TaskSubtasks({
     }
   }
 
-  function create(items: { title: string; assigneeId: string | null; dueDate: string | null }[]) {
+  function create(
+    items: { title: string; assigneeId: string | null; dueDate: string | null; aiGenerated?: boolean; source?: string | null }[],
+  ) {
     for (const item of items) {
       const tempId = `tmp-${crypto.randomUUID()}`
       commit(
@@ -578,8 +669,8 @@ export function TaskSubtasks({
             assigneeId: item.assigneeId,
             dueDate: item.dueDate,
             position: current.length ? Math.max(...current.map(s => s.position)) + 1 : 0,
-            aiGenerated: false,
-            source: null,
+            aiGenerated: item.aiGenerated ?? false,
+            source: item.source ?? null,
             createdAt: new Date().toISOString(),
           },
         ],
@@ -662,6 +753,19 @@ export function TaskSubtasks({
           Dividir con Conexa
         </button>
       </div>
+
+      {proposals && proposals.length > 0 && (
+        <ProposedSubtasks
+          key={proposals.map(p => p.title).join('|')}
+          proposals={proposals}
+          people={colaboradores}
+          onAdd={items => {
+            create(items.map(p => ({ ...p, dueDate: null, aiGenerated: true })))
+            onProposalsClose?.()
+          }}
+          onDiscard={() => onProposalsClose?.()}
+        />
+      )}
 
       <div className="overflow-hidden rounded-xl border border-border">
         {subtasks.length > 0 && (

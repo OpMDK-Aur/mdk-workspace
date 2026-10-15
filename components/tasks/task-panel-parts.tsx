@@ -221,7 +221,7 @@ export function PanelProp({
   )
 }
 
-const CONEXA_ACTIONS = ['Completar descripción', 'Dividir en subtareas', 'Estimar tiempo', 'Sugerir responsable']
+const CONEXA_ACTIONS = ['Completar descripción', 'Dividir en subtareas', 'Estimar tiempo', 'Sugerir responsable', 'Resumir hilo']
 
 export function ConexaBar({ onAction }: { onAction: (action: string) => void }) {
   return (

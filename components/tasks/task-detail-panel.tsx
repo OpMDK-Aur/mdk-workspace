@@ -92,7 +92,15 @@ import {
   TaskMoreMenu,
   linkifyAsCards,
 } from './task-panel-parts'
-import { TaskSubtasks } from './task-subtasks'
+import { TaskSubtasks, type SubtaskProposal } from './task-subtasks'
+import { ConexaThreadSummary, type ConexaThreadSummaryHandle } from './conexa-thread-summary'
+import { hashComments } from '@/lib/conexa/tasks'
+
+const CONEXA_DRAFT_MARKER = '<span data-conexa-draft="1"></span>'
+
+function escapeHtml(text: string) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
 import {
   Play,
   RotateCcw,
@@ -916,8 +924,43 @@ function CommentFormatToolbar({
   )
   }
 
-function CommentsSection({ task, compact = false, onDeleteComment }: { task: Task; compact?: boolean; onDeleteComment: (commentId: string) => Promise<void> }) {
+function CommentsSection({
+  task,
+  compact = false,
+  onDeleteComment,
+  draft,
+}: {
+  task: Task
+  compact?: boolean
+  onDeleteComment: (commentId: string) => Promise<void>
+  draft?: { text: string; nonce: number } | null
+}) {
   const { addComment, updateComment, deleteComment } = useTaskStore()
+  const [pendingDraft, setPendingDraft] = useState<string | null>(null)
+  const conexaDraftRef = useRef(false)
+
+  const fillWithDraft = useCallback((text: string) => {
+    const el = editorRef.current
+    if (!el) return
+    el.innerHTML = escapeHtml(text)
+    setCommentContent(el.innerHTML)
+    conexaDraftRef.current = true
+    el.focus()
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    range.collapse(false)
+    const sel = window.getSelection()
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+  }, [])
+
+  useEffect(() => {
+    if (!draft) return
+    const hasText = (editorRef.current?.textContent ?? '').trim().length > 0
+    if (hasText) setPendingDraft(draft.text)
+    else fillWithDraft(draft.text)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft?.nonce])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; avatar_url: string | null } | null>(null)
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
@@ -1024,6 +1067,7 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
     
     // Update comment content state
     setCommentContent(editorRef.current.innerHTML)
+    if (!(editorRef.current.textContent ?? '').trim()) conexaDraftRef.current = false
     
     const selection = window.getSelection()
     if (!selection || selection.rangeCount === 0) return
@@ -1197,9 +1241,12 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
       }
     })
     
+    const finalContent = conexaDraftRef.current ? `${CONEXA_DRAFT_MARKER}${content}` : content
+
     try {
-      await addComment(task.id, content, userId, userName, currentUser?.avatar_url, mentionedIds, pendingAttachments)
+      await addComment(task.id, finalContent, userId, userName, currentUser?.avatar_url, mentionedIds, pendingAttachments)
       editorRef.current.innerHTML = ''
+      conexaDraftRef.current = false
       setCommentContent('')
       setPendingAttachments([])
       toast.success('Comentario agregado')
@@ -1317,6 +1364,25 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
         "border-t shrink-0",
         compact ? "px-4 py-3 space-y-2" : "px-5 py-4 space-y-3"
       )}>
+        <AlertDialog open={pendingDraft !== null} onOpenChange={(open) => !open && setPendingDraft(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Reemplazar tu borrador?</AlertDialogTitle>
+              <AlertDialogDescription>Ya escribiste algo en el comentario. Conexa lo va a reemplazar con su respuesta.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Conservar el mío</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (pendingDraft) fillWithDraft(pendingDraft)
+                  setPendingDraft(null)
+                }}
+              >
+                Reemplazar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <div className="group/composer relative rounded-[10px] border border-border bg-muted/50 transition-shadow focus-within:border-[#FF7F00] focus-within:ring-4 focus-within:ring-[#FF7F00]/15">
           <div
             ref={editorRef}
@@ -1692,6 +1758,9 @@ export function TaskDetailPanel() {
   const [activeTab, setActiveTab] = useState('detalles')
   const [activityTab, setActivityTab] = useState<'todo' | 'comentarios' | 'historial'>('todo')
   const [isEditingDescription, setIsEditingDescription] = useState(false)
+  const [subtaskProposals, setSubtaskProposals] = useState<SubtaskProposal[] | null>(null)
+  const [conexaDraft, setConexaDraft] = useState<{ text: string; nonce: number } | null>(null)
+  const threadSummaryRef = useRef<ConexaThreadSummaryHandle>(null)
 
   const toggleActivityExpanded = () => setIsActivityExpanded((prev) => !prev)
   const { width: activityWidth, isResizing: isResizingActivity, containerRef: panelGridRef, startResize: startActivityResize } =
@@ -2224,7 +2293,19 @@ export function TaskDetailPanel() {
 
                   {/* Conexa */}
                   <ConexaBar
-                    onAction={(action) => toast.info(`Conexa · ${action}`, { description: 'Esta acción estará disponible pronto.' })}
+                    onAction={(action) => {
+                      if (action === 'Resumir hilo') {
+                        const humanCount = (task.comments || []).filter((c) => c.userId !== 'system').length
+                        if (humanCount < 2) {
+                          toast.info('Conexa · Resumir hilo', { description: 'El hilo necesita al menos 2 comentarios.' })
+                          return
+                        }
+                        if (activityTab === 'historial') setActivityTab('todo')
+                        threadSummaryRef.current?.regenerate()
+                        return
+                      }
+                      toast.info(`Conexa · ${action}`, { description: 'Esta acción estará disponible pronto.' })
+                    }}
                   />
 
                   {/* Propiedades */}
@@ -2407,6 +2488,8 @@ export function TaskDetailPanel() {
                     colaboradores={colaboradores}
                     currentUserId={currentUserId}
                     onResolveTask={() => applyStatusChange('resuelto')}
+                    proposals={subtaskProposals}
+                    onProposalsClose={() => setSubtaskProposals(null)}
                   />
 
                   {/* Adjuntos */}
@@ -2608,8 +2691,26 @@ export function TaskDetailPanel() {
                         )
                       }
 
+                      const humanComments = (task.comments || []).filter((c) => c.userId !== 'system')
+                      const lastHuman = humanComments[humanComments.length - 1]
+
                       return (
                         <>
+                          {activityTab !== 'historial' && (
+                            <ConexaThreadSummary
+                              ref={threadSummaryRef}
+                              taskId={task.id}
+                              commentsCount={humanComments.length}
+                              commentsHash={hashComments(humanComments)}
+                              lastActivityAt={lastHuman ? new Date(lastHuman.createdAt) : null}
+                              userId={currentUserId}
+                              onDraftReply={(text) => setConexaDraft({ text, nonce: Date.now() })}
+                              onProposeSubtasks={(items) => {
+                                setSubtaskProposals(items)
+                                setActiveTab('detalles')
+                              }}
+                            />
+                          )}
                           {/* Activities - hidden when filters active */}
                           {!hasFilters && activityTab !== 'comentarios' && (task.activities || []).slice(0, 20).map((activity) => (
                             <div key={activity.id} className="flex items-start gap-3 text-xs">
@@ -2645,6 +2746,9 @@ export function TaskDetailPanel() {
                                         <span className="text-xs text-muted-foreground">
                                           {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
                                         </span>
+                                        {c.content.includes('data-conexa-draft') && (
+                                          <span className="text-[11px] font-medium text-[var(--task-sum-label)]">{'· ✦ Redactado con Conexa'}</span>
+                                        )}
                                         {c.userId === currentUserId && editingActivityCommentId !== c.id && (
                                           <Button
                                             variant="ghost" size="icon" className="h-6 w-6 ml-auto"
@@ -2781,7 +2885,7 @@ export function TaskDetailPanel() {
                   </div>
 
                   <div className="shrink-0 border-t border-border">
-                    <CommentsSection task={task} compact={true} onDeleteComment={handleDeleteComment} />
+                    <CommentsSection task={task} compact={true} onDeleteComment={handleDeleteComment} draft={conexaDraft} />
                   </div>
                 </section>
         </Tabs>

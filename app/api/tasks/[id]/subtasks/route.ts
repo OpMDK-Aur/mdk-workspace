@@ -39,7 +39,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { data, error } = await supabase
     .from('subtareas_tareas')
-    .insert({ ...parsed.row, tarea_id: id, orden: last ? last.orden + 1 : 0 })
+    .insert({
+      ...parsed.row,
+      tarea_id: id,
+      orden: last ? last.orden + 1 : 0,
+      ai_generado: body.aiGenerated === true,
+      origen: typeof body.source === 'string' && body.source.trim() ? body.source.trim().slice(0, 200) : null,
+    })
     .select(SUBTASK_COLUMNS)
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
