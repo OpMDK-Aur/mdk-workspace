@@ -401,3 +401,43 @@ aside.sticky-activity {
   top: 0 !important;
   bottom: auto !important;
 }
+
+/* ─── Tareas: modal Nueva tarea (tokens acotados al módulo) ─────────────── */
+.ntm {
+  --ntm-bg: #FFFFFF;
+  --ntm-footer: #FAFAF9;
+  --ntm-border: #E2E2DF;
+  --ntm-field: #F7F7F5;
+  --ntm-text: #141414;
+  --ntm-text-2: #46464E;
+  --ntm-text-3: #6B6B73;
+  --ntm-brand: #FF7F00;
+  --ntm-on-brand: #141414;
+  --ntm-link: #C2410C;
+  --ntm-warn: #B45309;
+  --ntm-cx-bg: #F3F3FE;
+  --ntm-cx-border: #CDD0F7;
+  --ntm-cx-text: #3F43C4;
+  --ntm-error: #DC2626;
+  --ntm-shadow: 0 30px 80px rgba(20, 20, 20, .18);
+  --ntm-ease: cubic-bezier(.22, 1, .36, 1);
+}
+.dark .ntm {
+  --ntm-bg: #141417;
+  --ntm-footer: #0F0F12;
+  --ntm-border: #232328;
+  --ntm-field: #1A1A1E;
+  --ntm-text: #EDEDEF;
+  --ntm-text-2: #B5B5BC;
+  --ntm-text-3: #8A8A92;
+  --ntm-link: #FF9A3D;
+  --ntm-warn: #FFB020;
+  --ntm-cx-bg: #0F1028;
+  --ntm-cx-border: #2E3070;
+  --ntm-cx-text: #A5A8FF;
+  --ntm-error: #FF6B6B;
+  --ntm-shadow: 0 30px 80px rgba(0, 0, 0, .6);
+}
+[data-slot="dialog-overlay"]:has(+ .ntm) { background: rgba(20, 20, 20, .32); }
+.dark [data-slot="dialog-overlay"]:has(+ .ntm) { background: rgba(0, 0, 0, .6); }
+.ntm-field:focus-visible, .ntm-field:focus-within { outline: none; border-color: var(--ntm-brand); box-shadow: 0 0 0 4px rgba(255, 127, 0, .15); }
