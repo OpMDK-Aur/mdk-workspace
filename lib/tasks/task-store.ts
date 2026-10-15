@@ -582,6 +582,55 @@ export const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; b
 
 export const STATUS_ORDER: TaskStatus[] = ['pendiente_aprobacion', 'pendiente', 'resolviendo', 'demorada', 'pausada', 'resuelto', 'no_realizado']
 
+export type DueFilter = 'today' | 'week' | 'overdue' | 'next7' | 'none' | 'range'
+
+export const DUE_FILTER_LABELS: Record<DueFilter, string> = {
+  today: 'Vence hoy',
+  week: 'Vence esta semana',
+  overdue: 'Vencidas',
+  next7: 'Próximos 7 días',
+  none: 'Sin fecha',
+  range: 'Rango personalizado',
+}
+
+function startOfLocalDay(d: Date) {
+  const x = new Date(d)
+  x.setHours(0, 0, 0, 0)
+  return x
+}
+
+export function matchesDueFilter(
+  task: { dueDate: Date | null; status: string },
+  filter: DueFilter,
+  from: string | null,
+  to: string | null,
+): boolean {
+  const due = task.dueDate ? new Date(task.dueDate) : null
+  if (filter === 'none') return !due
+  if (!due || Number.isNaN(due.getTime())) return false
+  const today = startOfLocalDay(new Date())
+  const dueDay = startOfLocalDay(due)
+  const dayMs = 86_400_000
+  switch (filter) {
+    case 'today':
+      return dueDay.getTime() === today.getTime()
+    case 'week': {
+      const mondayOffset = (today.getDay() + 6) % 7
+      const monday = new Date(today.getTime() - mondayOffset * dayMs)
+      const sunday = new Date(monday.getTime() + 6 * dayMs)
+      return dueDay >= monday && dueDay <= sunday
+    }
+    case 'overdue':
+      return dueDay < today && task.status !== 'resuelto' && task.status !== 'no_realizado'
+    case 'next7':
+      return dueDay >= today && dueDay <= new Date(today.getTime() + 7 * dayMs)
+    case 'range':
+      if (from && dueDay < new Date(`${from}T00:00:00`)) return false
+      if (to && dueDay > new Date(`${to}T00:00:00`)) return false
+      return true
+  }
+}
+
 export const PRIORITY_CONFIG: Record<TaskPriority, { label: string; color: string; bgColor: string }> = {
   alta:  { label: 'Alta',  color: 'text-red-800 dark:text-red-300',    bgColor: 'bg-red-100 dark:bg-red-900/50' },
   media: { label: 'Media', color: 'text-amber-900 dark:text-amber-300', bgColor: 'bg-amber-100 dark:bg-amber-900/50' },
@@ -803,6 +852,13 @@ interface TaskStore {
   createdFrom: string | null
   /** yyyy-MM-dd, inclusive */
   createdTo: string | null
+  priorities?: TaskPriority[]
+  types?: string[]
+  creatorIds?: string[]
+  dueFilter?: DueFilter | null
+  /** yyyy-MM-dd, inclusive (only for dueFilter === 'range') */
+  dueFrom?: string | null
+  dueTo?: string | null
   }
   
   // Advanced filters
@@ -1014,7 +1070,7 @@ export const useTaskStore = create<TaskStore>()(
     filters: { ...state.filters, [key]: value },
   })),
   clearFilters: () => set({
-  filters: { priority: null, statusIds: [], assigneeIds: [], showUnassigned: false, type: null, dueThisWeek: false, searchQuery: '', clientIds: [], createdFrom: null, createdTo: null },
+  filters: { priority: null, statusIds: [], assigneeIds: [], showUnassigned: false, type: null, dueThisWeek: false, searchQuery: '', clientIds: [], createdFrom: null, createdTo: null, priorities: [], types: [], creatorIds: [], dueFilter: null, dueFrom: null, dueTo: null },
   advancedFilters: [],
   }),
   
@@ -2032,7 +2088,7 @@ export function useTaskStoreHydrated() {
   return hydrated
 }
 
-// ── Selectors ───────��────────────────────────────────���────────────────────────
+// ── Selectors ───────��────────────────────────────────���────────────────���───────
 
 export function useFilteredTasks() {
   const tasks = useTaskStore((s) => s.tasks)
@@ -2086,6 +2142,10 @@ export function useFilteredTasks() {
     if (filters.createdFrom && created < new Date(`${filters.createdFrom}T00:00:00`)) return false
     if (filters.createdTo && created > new Date(`${filters.createdTo}T23:59:59.999`)) return false
   }
+  if ((filters.priorities?.length ?? 0) > 0 && !filters.priorities!.includes(task.priority)) return false
+  if ((filters.types?.length ?? 0) > 0 && !filters.types!.includes(task.type as string)) return false
+  if ((filters.creatorIds?.length ?? 0) > 0 && !(task.createdById && filters.creatorIds!.includes(task.createdById))) return false
+  if (filters.dueFilter && !matchesDueFilter(task, filters.dueFilter, filters.dueFrom ?? null, filters.dueTo ?? null)) return false
   return true
   })
 

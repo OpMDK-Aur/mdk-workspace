@@ -44,6 +44,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { ClientFilter } from './client-filter'
 import { CreatedDateFilter } from './created-date-filter'
+import { ActiveFilterChips, FiltersPopover, useFiltersUrlSync } from './filters-popover'
 import { preloadTaskDetailPanel } from '@/lib/tasks/prefetch-task'
 
 export function TaskBoard() {
@@ -205,6 +206,8 @@ export function TaskBoard() {
     }
   }, [])
 
+  useFiltersUrlSync(hydrated)
+
   const hasSimpleFilters = filters.priority || (filters.statusIds?.length ?? 0) > 0 || filters.assigneeIds.length > 0 || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned || (filters.clientIds?.length ?? 0) > 0 || Boolean(filters.createdFrom || filters.createdTo)
   const hasAdvancedFilters = advancedFilters.length > 0
   const hasFilters = hasSimpleFilters || hasAdvancedFilters
@@ -236,162 +239,7 @@ export function TaskBoard() {
         <ClientFilter />
         <CreatedDateFilter />
 
-        <Badge
-          variant="outline"
-          className={cn(
-            'cursor-pointer px-2.5 py-1 h-7 shrink-0',
-            !hasFilters && 'bg-primary/10 text-primary border-primary/30'
-          )}
-          onClick={clearFilters}
-        >
-          Todas
-        </Badge>
-
-        {/* Priority filter */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Badge
-              variant="outline"
-              className={cn(
-                'cursor-pointer px-2.5 py-1 h-7 gap-1 shrink-0',
-                filters.priority && 'bg-red-500/10 text-red-400 border-red-500/30'
-              )}
-            >
-              Prioridad
-              <ChevronDown className="h-3 w-3" />
-            </Badge>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            {(['alta', 'media', 'baja'] as TaskPriority[]).map((p) => (
-              <DropdownMenuCheckboxItem
-                key={p}
-                checked={filters.priority === p}
-                onCheckedChange={(checked) => setFilter('priority', checked ? p : null)}
-              >
-                <Badge variant="outline" className={cn('text-xs border-0', PRIORITY_CONFIG[p].bgColor, PRIORITY_CONFIG[p].color)}>
-                  {PRIORITY_CONFIG[p].label}
-                </Badge>
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* Status filter */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Badge
-              variant="outline"
-              className={cn(
-                'cursor-pointer px-2.5 py-1 h-7 gap-1 shrink-0',
-                (filters.statusIds?.length ?? 0) > 0 && 'bg-purple-500/10 text-purple-400 border-purple-500/30'
-              )}
-            >
-              {(filters.statusIds?.length ?? 0) === 0
-                ? 'Estado'
-                : filters.statusIds.length === 1
-                ? STATUS_CONFIG[filters.statusIds[0]].label
-                : `${filters.statusIds.length} estados`}
-              <ChevronDown className="h-3 w-3" />
-            </Badge>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem
-              onClick={() => setFilter('statusIds', [])}
-              className={cn((filters.statusIds?.length ?? 0) === 0 && 'bg-muted')}
-            >
-              Todos
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {STATUS_ORDER.map((s) => (
-              <DropdownMenuCheckboxItem
-                key={s}
-                checked={filters.statusIds?.includes(s) ?? false}
-                onCheckedChange={(checked) => {
-                  const currentIds = filters.statusIds ?? []
-                  const newIds = checked
-                    ? [...currentIds, s]
-                    : currentIds.filter(id => id !== s)
-                  setFilter('statusIds', newIds)
-                }}
-              >
-                <Badge variant="outline" className={cn('text-xs border-0', STATUS_CONFIG[s].bgColor, STATUS_CONFIG[s].color)}>
-                  {STATUS_CONFIG[s].label}
-                </Badge>
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* Assignee filter */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Badge
-              variant="outline"
-              className={cn(
-                'cursor-pointer px-2.5 py-1 h-7 gap-1 shrink-0',
-                (filters.assigneeIds.length > 0 || filters.showUnassigned) && 'bg-blue-500/10 text-blue-400 border-blue-500/30'
-              )}
-            >
-              {filters.showUnassigned
-                ? 'Sin asignar'
-                : filters.assigneeIds.length === 0
-                ? 'Asignado'
-                : filters.assigneeIds.length === 1
-                ? ASSIGNEES.find((a) => a.id === filters.assigneeIds[0])?.name ?? 'Asignado'
-                : `${filters.assigneeIds.length} asignados`}
-              <ChevronDown className="h-3 w-3" />
-            </Badge>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem
-              onClick={() => {
-                setFilter('assigneeIds', [])
-                setFilter('showUnassigned', false)
-              }}
-              className={cn(
-                !filters.showUnassigned && filters.assigneeIds.length === 0 && 'bg-muted'
-              )}
-            >
-              Todos
-            </DropdownMenuItem>
-            <DropdownMenuCheckboxItem
-              checked={filters.showUnassigned === true}
-              onCheckedChange={(checked) => {
-                setFilter('showUnassigned', checked)
-                if (checked) setFilter('assigneeIds', [])
-              }}
-            >
-              Sin asignar
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuSeparator />
-            {ASSIGNEES.map((a) => (
-              <DropdownMenuCheckboxItem
-                key={a.id}
-                checked={filters.assigneeIds.includes(a.id)}
-                onCheckedChange={(checked) => {
-                  setFilter('showUnassigned', false)
-                  const newIds = checked
-                    ? [...filters.assigneeIds, a.id]
-                    : filters.assigneeIds.filter(id => id !== a.id)
-                  setFilter('assigneeIds', newIds)
-                }}
-              >
-                {a.name}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {hasFilters && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-            onClick={clearFilters}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
+        <FiltersPopover />
 
         {/* Spacer */}
         <div className="flex-1 min-w-4" />
@@ -450,6 +298,8 @@ export function TaskBoard() {
       </div>
 
       {/* Board content */}
+      <ActiveFilterChips />
+
       <div className="flex-1 overflow-hidden">
         {view === 'kanban' && (
           <KanbanView
