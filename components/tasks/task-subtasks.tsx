@@ -380,6 +380,16 @@ function AddSubtaskRow({
     setOpen(false)
   }
 
+  function submit() {
+    const item = toItem(draft)
+    if (!item) return false
+    onCreate([item])
+    setDraft('')
+    setHighlight(0)
+    inputRef.current?.focus()
+    return true
+  }
+
   if (!open) {
     return (
       <button
@@ -415,8 +425,12 @@ function AddSubtaskRow({
             setHighlight(0)
           }}
           onBlur={e => {
-            if (e.relatedTarget?.closest('#subtask-mention-menu')) return
-            if (!draft.trim()) close()
+            if (e.relatedTarget?.closest('#subtask-mention-menu, [data-subtask-submit]')) return
+            if (draft.trim()) {
+              const item = toItem(draft)
+              if (item) onCreate([item])
+            }
+            close()
           }}
           onPaste={e => {
             const text = e.clipboardData.getData('text')
@@ -435,11 +449,7 @@ function AddSubtaskRow({
               if (e.nativeEvent.isComposing || e.keyCode === 229) return
               e.preventDefault()
               if (menuOpen) return pickMention(matches[highlight])
-              const item = toItem(draft)
-              if (item) {
-                onCreate([item])
-                setDraft('')
-              }
+              submit()
             } else if (e.key === 'Escape') {
               e.stopPropagation()
               close()
@@ -447,6 +457,17 @@ function AddSubtaskRow({
           }}
           className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
         />
+        <button
+          type="button"
+          data-subtask-submit
+          disabled={!parsed.title}
+          onMouseDown={e => e.preventDefault()}
+          onClick={submit}
+          className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md bg-[#FF7F00] px-2 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          <Plus className="size-3" />
+          Agregar
+        </button>
       </div>
 
       {draft.trim() && (
