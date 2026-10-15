@@ -20,6 +20,7 @@ import {
 } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
+import { AssigneeStack, getTaskAssignees } from '@/components/tasks/assignee-stack'
 import { useTaskStore, useFilteredTasks, PRIORITY_CONFIG, STATUS_CONFIG } from '@/lib/tasks/task-store'
 import type { Task } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -177,6 +178,13 @@ function TaskBarCard({ task, startCol, endCol, onTaskClick }: TaskBarCardProps) 
   return (
     <button
       onClick={() => onTaskClick(task.id)}
+      title={[
+        task.title,
+        `Tipo: ${task.typeName || 'Tarea'}`,
+        task.clientName && `Cliente: ${task.clientName}`,
+        `Responsables: ${getTaskAssignees(task).map((a) => a.nombre).join(', ') || 'Sin asignar'}`,
+        task.createdAt && `Creada: ${format(new Date(task.createdAt), "d 'de' MMMM yyyy", { locale: es })}`,
+      ].filter(Boolean).join('\n')}
       style={{ gridColumn: `${startCol + 1} / ${endCol + 2}` }}
       className={cn(
         'rounded-xl border border-gray-200 px-2 py-1.5 text-left shadow-sm transition-all',
@@ -209,28 +217,9 @@ function TaskBarCard({ task, startCol, endCol, onTaskClick }: TaskBarCardProps) 
             {priorityConfig.label}
           </Badge>
         )}
-        <div className="flex -space-x-1">
-          {task.assignees && task.assignees.length > 0 ? (
-            <>
-              {task.assignees.slice(0, 2).map((a, i) => (
-                <Avatar key={a.id} className="h-4 w-4 border border-card" style={{ zIndex: 2 - i }}>
-                  {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
-                  <AvatarFallback className="text-[6px]">{getInitials(a.nombre)}</AvatarFallback>
-                </Avatar>
-              ))}
-              {task.assignees.length > 2 && (
-                <div className="h-4 w-4 rounded-full bg-muted border border-card flex items-center justify-center text-[6px] font-medium" style={{ zIndex: 0 }}>
-                  +{task.assignees.length - 2}
-                </div>
-              )}
-            </>
-          ) : (task.assigneeAvatar || task.assigneeName) ? (
-            <Avatar className="h-4 w-4 shrink-0">
-              {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
-              <AvatarFallback className="text-[7px]">{getInitials(task.assigneeName)}</AvatarFallback>
-            </Avatar>
-          ) : null}
-        </div>
+        {getTaskAssignees(task).length > 0 && (
+          <AssigneeStack people={getTaskAssignees(task)} size="xs" max={2} />
+        )}
       </div>
     </button>
   )

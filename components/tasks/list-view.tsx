@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { Task } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { AssigneeStack, getTaskAssignees } from '@/components/tasks/assignee-stack'
 import { useTaskStore, useFilteredTasks, STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG } from '@/lib/tasks/task-store'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -141,12 +142,7 @@ function TaskRow({ task, isSelected, onSelect }: { task: Task; isSelected: boole
         </Badge>
       </TableCell>
       <TableCell>
-        <div className="flex items-center gap-2">
-          <Avatar className="h-5 w-5">
-            <AvatarFallback className="text-[9px] bg-muted">{getInitials(task.assigneeName)}</AvatarFallback>
-          </Avatar>
-          <span className="text-sm text-muted-foreground truncate max-w-[100px]">{task.assigneeName}</span>
-        </div>
+        <AssigneeStack people={getTaskAssignees(task)} size="sm" max={3} showNames className="max-w-[160px]" />
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-2">

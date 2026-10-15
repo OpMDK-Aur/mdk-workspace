@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { Task } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { AssigneeStack, getTaskAssignees } from '@/components/tasks/assignee-stack'
 import { useTaskStore, STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG } from '@/lib/tasks/task-store'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -237,32 +238,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
           })()}
         </div>
         {/* Assignees stack */}
-        <div className="flex -space-x-1.5">
-          {task.assignees && task.assignees.length > 0 ? (
-            <>
-              {task.assignees.slice(0, 3).map((a, i) => (
-                <Avatar key={a.id} className="h-5 w-5 border-2 border-card" style={{ zIndex: 3 - i }}>
-                  {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
-                  <AvatarFallback className="text-[8px] bg-muted text-muted-foreground">
-                    {getInitials(a.nombre)}
-                  </AvatarFallback>
-                </Avatar>
-              ))}
-              {task.assignees.length > 3 && (
-                <div className="h-5 w-5 rounded-full bg-muted border-2 border-card flex items-center justify-center text-[8px] font-medium text-muted-foreground" style={{ zIndex: 0 }}>
-                  +{task.assignees.length - 3}
-                </div>
-              )}
-            </>
-          ) : (
-            <Avatar className="h-5 w-5 border border-border">
-              {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
-              <AvatarFallback className="text-[9px] bg-muted text-muted-foreground">
-                {getInitials(task.assigneeName)}
-              </AvatarFallback>
-            </Avatar>
-          )}
-        </div>
+        <AssigneeStack people={getTaskAssignees(task)} size="sm" max={3} />
       </div>
     </div>
   )
