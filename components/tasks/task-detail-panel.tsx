@@ -82,9 +82,12 @@ import { CircleDot, Flag, Sparkles, Tag, Timer } from 'lucide-react'
 import {
   CONEXA_CLASSES,
   ConexaBar,
+  FieldCaret,
   OtherTimerNotice,
   PanelProp,
   SECTION_LABEL_CLASSES,
+  TASK_FIELD_CLASSES,
+  TASK_SELECT_TRIGGER_CLASSES,
   TaskDatesField,
   TaskMoreMenu,
   linkifyAsCards,
@@ -180,42 +183,46 @@ function MultiClientSelect({
   const remainingClients = availableClients.filter(c => !clients.find(cl => cl.id === c.id))
   
   return (
-    <div className="space-y-2">
-      {/* Current clients */}
-      <div className="flex flex-wrap gap-1.5">
-        {clients.length === 0 ? (
-          <span className="text-sm text-muted-foreground">Sin cliente</span>
-        ) : (
-          clients.map(c => (
-            <div
-              key={c.id}
-              className="flex items-center gap-1.5 bg-muted/50 rounded-full px-2.5 py-0.5 group"
-            >
-              <button
-                onClick={() => onNavigateToClient?.(c.id)}
-                className="text-xs hover:text-primary hover:underline transition-colors cursor-pointer"
-                title={`Ir a ${c.nombre_del_negocio}`}
-              >
-                {c.nombre_del_negocio}
-              </button>
-              <button
-                onClick={() => removeClient(c.id)}
-                className="h-4 w-4 rounded-full hover:bg-destructive/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-      
-      {/* Add client popover */}
+    <div className="flex flex-wrap items-center gap-1.5 py-0.5">
+      {clients.map(c => (
+        <div
+          key={c.id}
+          className="inline-flex h-[30px] max-w-full items-center gap-2 rounded-lg bg-[var(--task-field)] pl-1.5 pr-1.5"
+        >
+          <span
+            className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-[var(--task-type-bg)] text-[8.5px] font-bold text-[var(--task-type-text)]"
+            aria-hidden="true"
+          >
+            {getInitials(c.nombre_del_negocio)}
+          </span>
+          <button
+            type="button"
+            onClick={() => onNavigateToClient?.(c.id)}
+            className="truncate text-[13px] font-semibold text-[var(--task-text)] hover:underline"
+            title={`Ir a ${c.nombre_del_negocio}`}
+          >
+            {c.nombre_del_negocio}
+          </button>
+          <button
+            type="button"
+            onClick={() => removeClient(c.id)}
+            aria-label={`Quitar ${c.nombre_del_negocio}`}
+            className="flex size-5 shrink-0 items-center justify-center rounded text-[var(--task-text-4)] transition-colors hover:text-[var(--task-text)]"
+          >
+            <X className="size-3" />
+          </button>
+        </div>
+      ))}
+
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
-            <Plus className="h-3 w-3" />
-            Agregar cliente
-          </Button>
+          <button
+            type="button"
+            className="inline-flex h-[30px] items-center gap-1 rounded-lg border border-dashed border-[var(--task-dashed)] px-2.5 text-[12.5px] font-semibold text-[var(--task-text-3)] transition-colors hover:text-[var(--task-text)]"
+          >
+            <Plus className="size-3.5" />
+            Cliente
+          </button>
         </PopoverTrigger>
         <PopoverContent className="w-56 p-0" align="start">
           <Command>
@@ -273,40 +280,37 @@ function MultiAssigneeSelect({
   const availableColaboradores = colaboradores.filter(c => !assignees.find(a => a.id === c.id))
 
   return (
-    <div className="space-y-2">
-      {/* Current assignees */}
-      <div className="flex flex-wrap gap-1.5">
-        {assignees.length === 0 ? (
-          <span className="text-sm text-muted-foreground">Sin asignar</span>
-        ) : (
-          assignees.map(a => (
-            <div 
-              key={a.id} 
-              className="flex items-center gap-1.5 bg-muted/50 rounded-full pl-1 pr-2 py-0.5 group"
-            >
-              <Avatar className="h-5 w-5">
-                {a.avatar_url && <AvatarImage src={a.avatar_url} alt={fullName(a)} />}
-                <AvatarFallback className="text-[9px]">{getInitials(fullName(a))}</AvatarFallback>
-              </Avatar>
-              <span className="text-xs">{fullName(a)}</span>
-              <button 
-                onClick={() => removeAssignee(a.id)}
-                className="h-4 w-4 rounded-full hover:bg-destructive/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-      
-      {/* Add assignee popover */}
+    <div className="flex flex-wrap items-center gap-1.5 py-0.5">
+      {assignees.map(a => (
+        <div
+          key={a.id}
+          className="group inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-[var(--task-field)] pl-[3px] pr-2.5"
+        >
+          <Avatar className="size-[22px]">
+            {a.avatar_url && <AvatarImage src={a.avatar_url} alt="" />}
+            <AvatarFallback className="text-[9px]">{getInitials(fullName(a))}</AvatarFallback>
+          </Avatar>
+          <span className="truncate text-[12.5px] font-semibold text-[var(--task-text)]">{fullName(a)}</span>
+          <button
+            type="button"
+            onClick={() => removeAssignee(a.id)}
+            aria-label={`Quitar a ${fullName(a)}`}
+            className="-mr-1 flex size-4 items-center justify-center rounded-full text-[var(--task-text-4)] opacity-0 transition-opacity hover:text-[var(--task-text)] focus-visible:opacity-100 group-hover:opacity-100"
+          >
+            <X className="size-3" />
+          </button>
+        </div>
+      ))}
+
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
-            <Plus className="h-3 w-3" />
-            Agregar
-          </Button>
+          <button
+            type="button"
+            aria-label="Agregar responsable"
+            className="flex size-7 shrink-0 items-center justify-center rounded-full border border-dashed border-[var(--task-dashed)] text-[var(--task-text-3)] transition-colors hover:text-[var(--task-text)]"
+          >
+            <Plus className="size-3.5" />
+          </button>
         </PopoverTrigger>
         <PopoverContent className="w-56 p-0" align="start">
           <Command>
@@ -785,11 +789,12 @@ function TimeTracker({ task }: { task: Task }) {
 
   // ── Compact bar layout: [ ■ Parar ]  00:00:15  [ ↺ ] ──────────────────────
   return (
-    <div className="flex items-center gap-2 w-full">
+    <div className="flex w-full flex-col gap-1 py-0.5">
+    <div className="flex items-center gap-2.5">
       {isThisTaskRunning ? (
         <Button
           size="sm"
-          className="h-7 px-2.5 gap-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded-md"
+          className="h-[30px] px-3 gap-1.5 text-[12.5px] font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg"
           onClick={handleStop}
           disabled={isStopping}
         >
@@ -801,10 +806,10 @@ function TimeTracker({ task }: { task: Task }) {
       ) : (
         <Button
           size="sm"
-          variant="outline"
+          variant="ghost"
           className={cn(
-            'h-7 px-2.5 gap-1.5 text-xs rounded-md',
-            isOtherTaskRunning && 'opacity-50 cursor-not-allowed'
+            'h-[30px] px-3 gap-1.5 rounded-lg border-0 bg-[var(--task-field)] text-[12.5px] font-semibold text-[var(--task-text)] hover:bg-[var(--task-field)] hover:brightness-110',
+            isOtherTaskRunning && 'opacity-60 cursor-not-allowed'
           )}
           onClick={handleStart}
           disabled={isStarting}
@@ -819,8 +824,8 @@ function TimeTracker({ task }: { task: Task }) {
       )}
 
       <span className={cn(
-        'font-mono text-sm font-medium tabular-nums tracking-tight',
-        isThisTaskRunning ? 'text-green-500 dark:text-green-400' : 'text-foreground'
+        'font-mono text-[13px] font-semibold tabular-nums',
+        isThisTaskRunning ? 'text-green-500 dark:text-green-400' : 'text-[var(--task-text)]'
       )}>
         {formatTime(totalDisplay)}
       </span>
@@ -828,12 +833,14 @@ function TimeTracker({ task }: { task: Task }) {
       <Button
         size="sm"
         variant="ghost"
-        className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+        className="h-7 w-7 p-0 text-[var(--task-text-4)] hover:text-[var(--task-text)]"
         onClick={handleReset}
         title="Resetear tiempo"
+        aria-label="Resetear tiempo"
       >
         <RotateCcw className="h-3.5 w-3.5" />
       </Button>
+    </div>
 
       {isOtherTaskRunning && (
         <OtherTimerNotice />
@@ -1977,7 +1984,7 @@ export function TaskDetailPanel() {
     <Sheet open={!!selectedTaskId} onOpenChange={(open) => !open && handleClose()}>
       <SheetContent 
         className={cn(
-          'ntm p-0 flex flex-col overflow-x-hidden border-l border-[var(--ntm-border)] shadow-[var(--ntm-shadow)] [&>button.absolute]:hidden',
+          'ntm bg-[var(--task-panel)] p-0 flex flex-col overflow-x-hidden border-l border-[var(--ntm-border)] shadow-[var(--ntm-shadow)] [&>button.absolute]:hidden',
           isFullscreen 
             ? '!w-full !max-w-full sm:!max-w-full' 
             : '!w-[min(1120px,94vw)] !max-w-[94vw] sm:!max-w-[94vw]'
@@ -2096,36 +2103,41 @@ export function TaskDetailPanel() {
         >
           {!isActivityExpanded && (
             <section className="min-h-0 min-w-0 overflow-x-hidden min-[900px]:overflow-y-auto">
-              <div className="sticky top-0 z-10 border-b border-border bg-card px-5 pt-4 pb-3 sm:px-8">
-                <TabsList className="h-auto rounded-full bg-muted p-0.5">
-                  <TabsTrigger value="detalles" className="rounded-full px-4 py-1.5 text-[13px] font-semibold data-[state=active]:bg-card data-[state=active]:shadow-sm">Detalles</TabsTrigger>
-                  <TabsTrigger value="cotizacion" className="rounded-full px-4 py-1.5 text-[13px] font-semibold data-[state=active]:bg-card data-[state=active]:shadow-sm">Cotización</TabsTrigger>
+              <div className={cn('mx-auto px-5 pt-[22px] sm:px-8', isFullscreen && 'max-w-[1200px]')}>
+                <TabsList className="mb-[18px] h-auto gap-1 rounded-none bg-transparent p-0">
+                  {(['detalles', 'cotizacion'] as const).map((value) => (
+                    <TabsTrigger
+                      key={value}
+                      value={value}
+                      className="h-auto flex-none rounded-lg border-0 px-3 py-1.5 text-[13px] font-semibold text-[var(--task-text-3)] shadow-none hover:text-[var(--task-text)] data-[state=active]:bg-[var(--task-tab-active)] data-[state=active]:text-[var(--task-text)] data-[state=active]:shadow-none dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-[var(--task-tab-active)] dark:data-[state=active]:text-[var(--task-text)] dark:text-[var(--task-text-3)]"
+                    >
+                      {value === 'detalles' ? 'Detalles' : 'Cotización'}
+                    </TabsTrigger>
+                  ))}
                 </TabsList>
               </div>
 
               <TabsContent value="detalles" className="mt-0">
-                <div className={cn('mx-auto px-5 py-6 sm:px-8', isFullscreen && 'max-w-[1200px]')}>
+                <div className={cn('mx-auto px-5 pb-10 sm:px-8', isFullscreen && 'max-w-[1200px]')}>
                   <div>
-                    <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 font-semibold text-foreground/80">
-                        <span className="size-1.5 rounded-full bg-[#FF7F00]" aria-hidden="true" />
-                        {tiposTarea.find(t => t.id === task.type)?.nombre || task.typeName || 'Sin tipo'}
-                      </span>
-                      <span className="font-mono">{`T-${task.id.replace(/-/g, '').slice(0, 6).toUpperCase()}`}</span>
-                      {task.createdAt && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="inline-flex min-w-0 items-center gap-1.5">
-                            Creada el {format(new Date(task.createdAt), "d MMM, HH:mm", { locale: es })} por
-                            <Avatar className="size-[18px]">
-                              {task.createdByAvatar && <AvatarImage src={task.createdByAvatar} alt="" />}
-                              <AvatarFallback className="text-[8px]">{getInitials(task.createdByName)}</AvatarFallback>
-                            </Avatar>
-                            <span className="truncate text-foreground/80">{task.createdByName || 'Sin dato'}</span>
+                    {(() => {
+                      const typeName = tiposTarea.find(t => t.id === task.type)?.nombre || task.typeName || 'Sin tipo'
+                      const shortType = typeName.length > 32 ? `${typeName.slice(0, 31).trimEnd()}…` : typeName
+                      return (
+                        <div className="mb-2.5 flex flex-wrap items-center gap-2">
+                          <span
+                            title={typeName.length > 32 ? typeName : undefined}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--task-type-bg)] px-2.5 py-[3px] text-[11.5px] font-semibold text-[var(--task-type-text)]"
+                          >
+                            <span className="size-1.5 rounded-full bg-[var(--task-type-dot,#FF7F00)]" aria-hidden="true" />
+                            {shortType}
                           </span>
-                        </>
-                      )}
-                    </div>
+                          <span className="font-mono text-[11.5px] text-[var(--task-text-4)]">
+                            {`T-${task.id.replace(/-/g, '').slice(0, 6).toUpperCase()}`}
+                          </span>
+                        </div>
+                      )
+                    })()}
 
                     {/* Title */}
                     {isEditingTitle ? (
@@ -2147,12 +2159,12 @@ export function TaskDetailPanel() {
                           }
                           if (e.key === 'Escape') setIsEditingTitle(false)
                         }}
-                        className="w-full text-[26px] font-bold tracking-[-0.01em] bg-transparent border-0 outline-none focus:ring-0 p-0 text-foreground"
+                        className="mb-[18px] w-full text-[26px] font-bold tracking-[-0.01em] leading-tight bg-transparent border-0 outline-none focus:ring-0 p-0 text-[var(--task-text)]"
                         autoFocus
                       />
                     ) : (
                       <h1
-                        className="text-[26px] font-bold tracking-[-0.01em] cursor-text hover:text-foreground/80 leading-tight transition-colors text-balance break-words"
+                        className="mb-[18px] text-[26px] font-bold tracking-[-0.01em] text-[var(--task-text)] cursor-text hover:opacity-80 leading-tight transition-opacity text-balance break-words"
                         onClick={() => { setTempTitle(task.title); setIsEditingTitle(true) }}
                       >
                         {task.title}
@@ -2196,12 +2208,18 @@ export function TaskDetailPanel() {
                     )}
                   </div>
 
+                  {/* Conexa */}
+                  <ConexaBar
+                    onAction={(action) => toast.info(`Conexa · ${action}`, { description: 'Esta acción estará disponible pronto.' })}
+                  />
+
                   {/* Propiedades */}
-                  <dl className="mt-1 grid grid-cols-[120px_minmax(0,1fr)] gap-y-1 text-sm sm:grid-cols-[140px_minmax(0,1fr)]">
-                    <PanelProp icon={CircleDot} label="Estado">
+                  <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-4 gap-y-2.5">
+                    <PanelProp label="Estado">
                       <Select value={task.status} onValueChange={(v) => handleStatusChange(v as TaskStatus)}>
-                        <SelectTrigger className="-ml-2.5 h-8 w-auto gap-2 rounded-md border-0 bg-transparent px-2.5 text-sm font-medium shadow-none hover:bg-muted">
+                        <SelectTrigger className={cn(TASK_SELECT_TRIGGER_CLASSES, 'gap-2')}>
                           <SelectValue />
+                          <FieldCaret />
                         </SelectTrigger>
                         <SelectContent>
                           {STATUS_ORDER.map((s) => (
@@ -2216,10 +2234,11 @@ export function TaskDetailPanel() {
                       </Select>
                     </PanelProp>
 
-                    <PanelProp icon={Flag} label="Prioridad">
+                    <PanelProp label="Prioridad">
                       <Select value={task.priority} onValueChange={(v) => updateTask(task.id, { priority: v as TaskPriority })}>
-                        <SelectTrigger className="-ml-2.5 h-8 w-auto gap-2 rounded-md border-0 bg-transparent px-2.5 text-sm shadow-none hover:bg-muted">
+                        <SelectTrigger className={cn(TASK_SELECT_TRIGGER_CLASSES, 'gap-2 [&_[data-slot=badge]]:px-0 [&_[data-slot=badge]]:bg-transparent')}>
                           <SelectValue />
+                          <FieldCaret />
                         </SelectTrigger>
                         <SelectContent>
                           {(['alta', 'media', 'baja'] as TaskPriority[]).map((p) => (
@@ -2233,16 +2252,13 @@ export function TaskDetailPanel() {
                       </Select>
                     </PanelProp>
 
-                    <PanelProp icon={Tag} label="Tipo *">
+                    <PanelProp label="Tipo">
                       <Popover>
                         <PopoverTrigger asChild>
-                          <button
-                            type="button"
-                            className="-ml-2.5 inline-flex h-8 min-w-0 items-center gap-2 rounded-md px-2.5 text-sm font-medium transition-colors hover:bg-muted"
-                          >
-                            <span className="size-2 shrink-0 rounded-full bg-[#FF7F00]" aria-hidden="true" />
+                          <button type="button" className={cn(TASK_FIELD_CLASSES, 'max-w-full')}>
+                            <span className="size-1.5 shrink-0 rounded-full bg-[var(--task-type-dot,#FF7F00)]" aria-hidden="true" />
                             <span className="truncate">{tiposTarea.find(t => t.id === task.type)?.nombre || task.typeName || 'Elegí un tipo'}</span>
-                            <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+                            <FieldCaret />
                           </button>
                         </PopoverTrigger>
                         <PopoverContent className="w-56 p-2" align="start">
@@ -2282,7 +2298,7 @@ export function TaskDetailPanel() {
                       </Popover>
                     </PanelProp>
 
-                    <PanelProp icon={Users} label="Responsables">
+                    <PanelProp label="Responsables">
                       <MultiAssigneeSelect
                         assignees={task.assignees || []}
                         colaboradores={colaboradores}
@@ -2297,14 +2313,14 @@ export function TaskDetailPanel() {
                       />
                     </PanelProp>
 
-                    <PanelProp icon={CalendarIcon} label="Fechas">
+                    <PanelProp label="Fechas">
                       <TaskDatesField
                         task={task}
                         onChange={(patch) => updateTask(task.id, patch)}
                       />
                     </PanelProp>
 
-                    <PanelProp icon={Building2} label="Clientes *">
+                    <PanelProp label="Cliente">
                       <MultiClientSelect
                         clients={task.clients || []}
                         availableClients={clientes}
@@ -2322,18 +2338,15 @@ export function TaskDetailPanel() {
                       />
                     </PanelProp>
 
-                    <PanelProp icon={Timer} label="Tiempo">
+                    <PanelProp label="Tiempo">
                       <TimeTracker task={task} />
                     </PanelProp>
                   </dl>
 
-                  {/* Conexa */}
-                  <ConexaBar
-                    onAction={(action) => toast.info(`Conexa · ${action}`, { description: 'Esta acción estará disponible pronto.' })}
-                  />
+                  <hr className="my-6 border-0 border-t border-[var(--task-sep)]" />
 
                   {/* Descripción */}
-                  <h2 className={cn(SECTION_LABEL_CLASSES, 'mt-8 mb-2')}>Descripción</h2>
+                  <h2 className={cn(SECTION_LABEL_CLASSES, 'mb-2.5')}>Descripción</h2>
                   <div>
                     {isEditingDescription ? (
                       <RichTextEditor
@@ -2355,11 +2368,11 @@ export function TaskDetailPanel() {
                           setIsEditingDescription(true)
                         }}
                         onKeyDown={(e) => { if (e.key === 'Enter') setIsEditingDescription(true) }}
-                        className="-mx-2 cursor-text rounded-lg px-2 py-1 transition-colors hover:bg-muted/50"
+                        className="-mx-2 cursor-text rounded-lg px-2 py-1 transition-colors hover:bg-[var(--task-field)]/50"
                       >
                         <div
-                          className="min-w-0 break-words text-[14px] leading-[1.6] text-foreground/90 [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_i]:italic [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_img]:max-w-full [&_img]:rounded-lg"
-                          dangerouslySetInnerHTML={{ __html: linkifyAsCards(task.description) }}
+                          className="min-w-0 break-words text-[14px] leading-[1.65] text-[var(--task-desc)] [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_i]:italic [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_img]:max-w-full [&_img]:rounded-lg"
+                          dangerouslySetInnerHTML={{ __html: linkifyAsCards(task.description, { variant: 'card' }) }}
                         />
                       </div>
                     ) : (
@@ -2383,7 +2396,7 @@ export function TaskDetailPanel() {
                   />
 
                   {/* Adjuntos */}
-                  <h2 className={cn(SECTION_LABEL_CLASSES, 'mt-8 mb-2')}>Adjuntos</h2>
+                  <h2 className={cn(SECTION_LABEL_CLASSES, 'mt-7 mb-2.5')}>Adjuntos</h2>
                   <TaskFilesSection
                     task={task}
                     currentUserId={currentUserId}
@@ -2402,7 +2415,7 @@ export function TaskDetailPanel() {
 
                 {/* ACTIVIDAD */}
                 <section className={cn(
-                  "relative flex min-w-0 flex-col @min-[1100px]:overflow-hidden",
+                  "relative flex min-w-0 flex-col bg-[var(--task-activity)] @min-[1100px]:overflow-hidden",
                   isActivityExpanded
                     ? "min-h-0 overflow-hidden"
                     : "min-h-[480px] border-t border-border @min-[1100px]:min-h-0 @min-[1100px]:border-l @min-[1100px]:border-t-0"

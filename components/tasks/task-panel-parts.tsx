@@ -46,15 +46,15 @@ function DateChip({
       <PopoverTrigger asChild>
         <button
           type="button"
+          aria-label={`${label}: ${value ? format(value, 'd MMM yyyy', { locale: es }) : 'sin fecha'}`}
           className={cn(
-            'h-7 inline-flex items-center gap-1.5 rounded-md px-2 text-sm whitespace-nowrap transition-colors hover:bg-[var(--ntm-field)]',
-            value ? 'text-[var(--ntm-text)]' : 'text-[var(--ntm-text-3)]',
-            tone === 'warn' && 'text-[var(--ntm-warn)]',
+            TASK_FIELD_CLASSES,
+            'whitespace-nowrap border border-transparent',
+            !value && 'text-[var(--task-text-3)]',
+            tone === 'warn' && 'border-[var(--task-warn-border)] bg-[var(--task-warn-bg)] text-[var(--task-warn-text)]',
           )}
         >
-          <CalendarIcon className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
-          <span className="text-[var(--ntm-text-3)]">{label}</span>
-          {value ? format(value, 'd MMM yyyy', { locale: es }) : 'Sin fecha'}
+          {value ? format(value, 'd MMM', { locale: es }) : 'Sin fecha'}
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
@@ -86,22 +86,39 @@ export function TaskDatesField({
 }) {
   const done = task.status === 'resuelto' || task.status === 'no_realizado'
   const rel = task.dueDate ? relativeDue(task.dueDate, done) : null
+  const endBeforeStart =
+    !!task.startDate && !!task.dueDate && differenceInCalendarDays(task.dueDate, task.startDate) < 0
+  const hasError = endBeforeStart || !!rel?.overdue
 
   return (
-    <div className="flex flex-wrap items-center gap-x-1 gap-y-1 min-w-0">
-      <DateChip label="Inicio" value={task.startDate} onSelect={(d) => onChange({ startDate: d })} />
-      <span className="text-[var(--ntm-text-3)]" aria-hidden="true">→</span>
-      <DateChip
-        label="Vence"
-        value={task.dueDate}
-        onSelect={(d) => onChange({ dueDate: d })}
-        disabledBefore={task.startDate}
-        tone={rel?.overdue ? 'warn' : undefined}
-      />
-      {rel && (
-        <span className={cn('text-xs px-1', rel.overdue ? 'text-[var(--ntm-warn)] font-medium' : 'text-[var(--ntm-text-3)]')}>
-          {rel.label}
-        </span>
+    <div className="flex min-w-0 flex-col gap-1 py-0.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <DateChip label="Inicio" value={task.startDate} onSelect={(d) => onChange({ startDate: d })} />
+        <span className="text-[var(--task-arrow)]" aria-hidden="true">→</span>
+        <DateChip
+          label="Vence"
+          value={task.dueDate}
+          onSelect={(d) => onChange({ dueDate: d })}
+          disabledBefore={task.startDate}
+          tone={hasError ? 'warn' : undefined}
+        />
+        {rel && !endBeforeStart && (
+          <span className={cn('text-[12px]', rel.overdue ? 'text-[var(--task-warn-text)]' : 'text-[var(--task-text-3)]')}>
+            {rel.label}
+          </span>
+        )}
+      </div>
+      {endBeforeStart && task.startDate && (
+        <p className="flex flex-wrap items-center gap-x-2 text-[12px] text-[var(--task-warn-text)]">
+          La fecha de fin es anterior al inicio.
+          <button
+            type="button"
+            onClick={() => onChange({ dueDate: task.startDate })}
+            className="font-semibold text-[var(--task-cx-text)] hover:underline"
+          >
+            {`✦ Corregir a ${format(task.startDate, 'd MMM', { locale: es })}`}
+          </button>
+        </p>
       )}
     </div>
   )
@@ -117,7 +134,7 @@ export function OtherTimerNotice() {
   const label = runningTitle || description || 'otra tarea'
 
   return (
-    <p className="ml-1 min-w-0 text-xs text-[var(--ntm-text-2)] text-pretty">
+    <p className="min-w-0 text-[12px] text-[var(--task-text-3)] text-pretty">
       {'Tenés un timer corriendo en '}
       <span className="font-medium text-[var(--ntm-text)]">{label}</span>
       {'. Si iniciás este, se pausa. '}
@@ -173,24 +190,33 @@ export const CONEXA_CLASSES =
   'bg-[#F3F3FE] border-[#CDD0F7] text-[#3F43C4] dark:bg-[#0F1028] dark:border-[#2E3070] dark:text-[#A5A8FF]'
 export const BRAND_BUTTON_CLASSES =
   'bg-[#FF7F00] text-[#141414] hover:bg-[#FF7F00] hover:brightness-105 disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed'
-export const SECTION_LABEL_CLASSES = 'text-[11px] font-bold uppercase tracking-[.08em] text-muted-foreground'
+export const SECTION_LABEL_CLASSES = 'text-[11px] font-bold uppercase tracking-[.08em] text-[var(--task-text-4,#6E6E76)]'
+
+/** 30px value "field" used by every property in the task panel. */
+export const TASK_FIELD_CLASSES =
+  'inline-flex h-[30px] min-w-0 items-center gap-2 rounded-lg bg-[var(--task-field)] px-[11px] text-[13px] font-semibold text-[var(--task-text)] transition-colors hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ntm-brand)]/40'
+
+/** Overrides for shadcn SelectTrigger so it renders as a task field. */
+export const TASK_SELECT_TRIGGER_CLASSES =
+  '!h-[30px] w-auto rounded-lg border-0 bg-[var(--task-field)] dark:bg-[var(--task-field)] dark:hover:bg-[var(--task-field)] px-[11px] text-[13px] font-semibold text-[var(--task-text)] shadow-none [&>svg]:hidden focus-visible:ring-2 focus-visible:ring-[var(--ntm-brand)]/40'
+
+export function FieldCaret() {
+  return <span className="text-[var(--task-text-4)]" aria-hidden="true">▾</span>
+}
 
 export function PanelProp({
-  icon: Icon,
   label,
   children,
 }: {
-  icon: React.ComponentType<{ className?: string }>
   label: string
   children: React.ReactNode
 }) {
   return (
     <>
-      <dt className="flex h-10 items-center gap-2 whitespace-nowrap text-muted-foreground">
-        <Icon className="size-4" />
+      <dt className="flex min-h-[34px] items-start pt-[7px] whitespace-nowrap text-[13px] text-[var(--task-text-3)]">
         {label}
       </dt>
-      <dd className="flex min-h-10 min-w-0 items-center">{children}</dd>
+      <dd className="flex min-h-[34px] min-w-0 items-center">{children}</dd>
     </>
   )
 }
@@ -199,9 +225,9 @@ const CONEXA_ACTIONS = ['Completar descripción', 'Dividir en subtareas', 'Estim
 
 export function ConexaBar({ onAction }: { onAction: (action: string) => void }) {
   return (
-    <div className={cn('mt-6 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2', CONEXA_CLASSES)}>
-      <span className="inline-flex items-center gap-1 text-[13px] font-bold">
-        <Sparkles className="size-3.5" aria-hidden="true" />
+    <div className="mb-5 flex flex-wrap items-center gap-2">
+      <span className="mr-1 inline-flex items-center gap-1 text-[12px] font-bold text-[var(--task-cx-text)]">
+        <span aria-hidden="true">✦</span>
         Conexa
       </span>
       {CONEXA_ACTIONS.map((action) => (
@@ -209,7 +235,7 @@ export function ConexaBar({ onAction }: { onAction: (action: string) => void }) 
           key={action}
           type="button"
           onClick={() => onAction(action)}
-          className="h-7 rounded-full px-2.5 text-[12.5px] font-semibold transition-colors hover:bg-white/60 dark:hover:bg-white/5"
+          className="h-7 rounded-full border border-[var(--task-chip-border)] px-3 text-[12px] font-semibold text-[var(--task-text-2)] transition-colors hover:border-[var(--task-cx-hover,#5B5FE8)] hover:text-[var(--task-text)]"
         >
           {action}
         </button>
@@ -246,7 +272,8 @@ const URL_REGEX = /(?:https?:\/\/|www\.)[^\s<>"{}|\\^`\[\]]*[^\s<>"{}|\\^`\[\].,
  * Turns bare URLs in comment HTML into compact link cards. URLs that sit inside
  * an attribute (img src, existing href) or inside an existing <a> are left as-is.
  */
-export function linkifyAsCards(html: string): string {
+export function linkifyAsCards(html: string, options: { variant?: 'inline' | 'card' } = {}): string {
+  const isCard = options.variant === 'card'
   // Trailing punctuation glued to a URL (e.g. "https://x.com;") would otherwise
   // render as a stray sign right after the chip, so it is consumed and dropped.
   const urlWithTrailing = new RegExp(`${URL_REGEX.source}(?:[.,;:!?)]+(?=\\s|<|&nbsp;|$))?`, 'gi')
@@ -261,6 +288,12 @@ export function linkifyAsCards(html: string): string {
     const { title, kind } = describeLink(href.replace(/&amp;/g, '&'))
     let domain = ''
     try { domain = new URL(href).hostname } catch { /* keep empty */ }
+    if (isCard) {
+      const icon = domain
+        ? `<img src="https://www.google.com/s2/favicons?domain=${domain}&sz=64" alt="" class="size-[22px] shrink-0 rounded-md !m-0 !inline-block" />`
+        : ''
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer" title="${href}" class="link-card my-1 inline-flex max-w-full items-center gap-2.5 rounded-[10px] border border-[var(--task-card-border)] bg-[var(--task-card)] px-3 py-2 align-middle no-underline transition-colors hover:border-[var(--task-dashed)]">${icon}<span class="flex min-w-0 flex-col leading-tight"><span class="truncate text-[12.5px] font-semibold text-[var(--task-text)]">${title}</span><span class="truncate text-[11px] text-[var(--task-text-4)]">${domain || kind} · ${kind}</span></span></a>`
+    }
     const favicon = domain
       ? `<img src="https://www.google.com/s2/favicons?domain=${domain}&sz=32" alt="" class="size-4 shrink-0 rounded-sm !m-0 !inline-block" />`
       : ''

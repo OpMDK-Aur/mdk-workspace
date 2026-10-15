@@ -421,8 +421,59 @@ aside.sticky-activity {
   --ntm-error: #DC2626;
   --ntm-shadow: 0 30px 80px rgba(20, 20, 20, .18);
   --ntm-ease: cubic-bezier(.22, 1, .36, 1);
+
+  /* Panel de detalle de tarea */
+  --task-panel: #FFFFFF;
+  --task-activity: #FAFAF9;
+  --task-field: #F1F1EE;
+  --task-tab-active: #EDEDEA;
+  --task-sep: #E6E6E3;
+  --task-chip-border: #E2E2DF;
+  --task-dashed: #C8C8C4;
+  --task-text: #141414;
+  --task-text-2: #46464E;
+  --task-text-3: #64646C;
+  --task-text-4: #6B6B73;
+  --task-arrow: #C8C8C4;
+  --task-desc: #2A2A30;
+  --task-type-bg: #FFF1E3;
+  --task-type-text: #C2410C;
+  --task-type-dot: #FF7F00;
+  --task-cx-text: #3F43C4;
+  --task-cx-border: #CDD0F7;
+  --task-cx-bg: #F3F3FE;
+  --task-cx-hover: #5B5FE8;
+  --task-warn-bg: #FFF4E0;
+  --task-warn-border: #F2CF8A;
+  --task-warn-text: #B45309;
+  --task-card: #FAFAF9;
+  --task-card-border: #E6E6E3;
 }
 .dark .ntm {
+  --task-panel: #0E0E10;
+  --task-activity: #0B0B0D;
+  --task-field: #17171B;
+  --task-tab-active: #1A1A1E;
+  --task-sep: #1F1F23;
+  --task-chip-border: #2A2A2F;
+  --task-dashed: #3A3A40;
+  --task-text: #EDEDEF;
+  --task-text-2: #B5B5BC;
+  --task-text-3: #8A8A92;
+  --task-text-4: #6E6E76;
+  --task-arrow: #45454C;
+  --task-desc: #D9D9DE;
+  --task-type-bg: #2A1A0A;
+  --task-type-text: #FF9A3D;
+  --task-cx-text: #A5A8FF;
+  --task-cx-border: #2E3070;
+  --task-cx-bg: #121330;
+  --task-warn-bg: #2A2008;
+  --task-warn-border: #5A4410;
+  --task-warn-text: #FFB020;
+  --task-card: #141417;
+  --task-card-border: #232328;
+
   --ntm-bg: #141417;
   --ntm-footer: #0F0F12;
   --ntm-border: #232328;
