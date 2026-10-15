@@ -21,7 +21,6 @@ const CalendarView = dynamic(() => import('./calendar-view').then(m => ({ defaul
 })
 const TaskDetailPanel = dynamic(() => import('./task-detail-panel').then(m => ({ default: m.TaskDetailPanel })))
 const NewTaskModal = dynamic(() => import('./new-task-modal').then(m => ({ default: m.NewTaskModal })))
-const FilterBuilder = dynamic(() => import('./filter-builder').then(m => ({ default: m.FilterBuilder })))
 const ScheduleMeetingModal = dynamic(() => import('./schedule-meeting-modal').then(m => ({ default: m.ScheduleMeetingModal })))
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -43,6 +42,7 @@ import {
   Search,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { ClientFilter } from './client-filter'
 
 export function TaskBoard() {
   const searchParams = useSearchParams()
@@ -137,6 +137,14 @@ export function TaskBoard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
+  // The advanced filter builder was replaced by the client selector; drop any persisted
+  // advanced rules so they can't keep hiding tasks without a visible control.
+  useEffect(() => {
+    if (hydrated && useTaskStore.getState().advancedFilters.length > 0) {
+      setAdvancedFilters([])
+    }
+  }, [hydrated, setAdvancedFilters])
+
   // Live updates: any insert/update/delete in `tareas` (from any user) refreshes the board.
   // Debounced because bulk operations (e.g. seguimiento generation) fire many events at once.
   useEffect(() => {
@@ -167,7 +175,7 @@ export function TaskBoard() {
     }
   }, [])
 
-  const hasSimpleFilters = filters.priority || (filters.statusIds?.length ?? 0) > 0 || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned
+  const hasSimpleFilters = filters.priority || (filters.statusIds?.length ?? 0) > 0 || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned || (filters.clientIds?.length ?? 0) > 0
   const hasAdvancedFilters = advancedFilters.length > 0
   const hasFilters = hasSimpleFilters || hasAdvancedFilters
 
@@ -195,14 +203,7 @@ export function TaskBoard() {
         </Button>
 
         {/* Filters */}
-        <FilterBuilder
-          filters={advancedFilters}
-          savedFilters={savedFilters}
-          onChange={setAdvancedFilters}
-          onSaveFilter={saveFilter}
-          onLoadFilter={loadSavedFilter}
-          onDeleteSavedFilter={deleteSavedFilter}
-        />
+        <ClientFilter />
 
         <Badge
           variant="outline"
