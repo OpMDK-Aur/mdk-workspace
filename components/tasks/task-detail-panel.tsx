@@ -689,7 +689,7 @@ function RichTextEditor({
   )
 }
 
-// ── Time Tracker Component (synced with global timer) ─────────────────────────
+// ── Time Tracker Component (synced with global timer) ──���──────────────────────
 
 function TimeTracker({ task }: { task: Task }) {
   const { updateTask } = useTaskStore()
@@ -1728,6 +1728,20 @@ export function TaskDetailPanel() {
   // Image viewer state
   const [expandedImage, setExpandedImage] = useState<{ url: string; name: string } | null>(null)
   const [imageZoom, setImageZoom] = useState(100)
+  const wheelCleanupRef = useRef<(() => void) | null>(null)
+  // Callback ref: the dialog mounts its content lazily, and React's onWheel is
+  // passive, so a native non-passive listener is needed to block page scroll.
+  const imageViewportRef = useCallback((node: HTMLDivElement | null) => {
+    wheelCleanupRef.current?.()
+    wheelCleanupRef.current = null
+    if (!node) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      setImageZoom((z) => Math.max(50, Math.min(400, z + (e.deltaY > 0 ? -20 : 20))))
+    }
+    node.addEventListener('wheel', onWheel, { passive: false })
+    wheelCleanupRef.current = () => node.removeEventListener('wheel', onWheel)
+  }, [])
 
   // Description editing state
   const descriptionRef = useRef<HTMLDivElement>(null)
@@ -2702,6 +2716,14 @@ export function TaskDetailPanel() {
                                             COMMENT_RICH_TEXT_CLASSES
                                           )}
                                           dangerouslySetInnerHTML={{ __html: linkifyAsCards(c.content) }}
+                                          onClick={(e) => {
+                                            const target = e.target as HTMLElement
+                                            if (target.tagName !== 'IMG' || target.closest('a')) return
+                                            const img = target as HTMLImageElement
+                                            if (img.naturalWidth > 0 && img.naturalWidth <= 32) return
+                                            setImageZoom(100)
+                                            setExpandedImage({ url: img.src, name: img.alt && img.alt !== 'Imagen' ? img.alt : 'Imagen del comentario' })
+                                          }}
                                         />
                                       )}
                                       {/* Attachments */}
@@ -2843,18 +2865,25 @@ export function TaskDetailPanel() {
               <span className="text-xs text-muted-foreground">{imageZoom}%</span>
             </div>
           </DialogHeader>
-          <div className="flex-1 flex items-center justify-center bg-black/80 p-4 overflow-auto">
+          <div
+            ref={imageViewportRef}
+            className="flex min-h-0 flex-1 overflow-auto bg-black/80 p-4"
+          >
             {expandedImage && (
               <img
                 src={expandedImage.url}
                 alt={expandedImage.name}
-                style={{ transform: `scale(${imageZoom / 100})` }}
-                className="object-contain transition-transform duration-200"
-                onWheel={(e) => {
-                  e.preventDefault()
-                  const newZoom = Math.max(50, Math.min(300, imageZoom + (e.deltaY > 0 ? -10 : 10)))
-                  setImageZoom(newZoom)
-                }}
+                draggable={false}
+                style={
+                  imageZoom === 100
+                    ? { maxWidth: '100%', maxHeight: '70vh' }
+                    : { width: `${imageZoom}%`, maxWidth: 'none', maxHeight: 'none' }
+                }
+                className={cn(
+                  'm-auto object-contain',
+                  imageZoom > 100 ? 'cursor-zoom-out' : 'cursor-zoom-in'
+                )}
+                onDoubleClick={() => setImageZoom(imageZoom > 100 ? 100 : 200)}
               />
             )}
           </div>
