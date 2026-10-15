@@ -136,6 +136,7 @@ import {
 } from 'lucide-react'
 import { format, formatDistanceToNow, parseISO } from 'date-fns'
 import { TaskFilesSection } from './task-files-section'
+import { MAX_ATTACHMENT_BYTES, sanitizeFileName, uploadTaskFile } from '@/lib/tasks/upload-with-progress'
 import { es } from 'date-fns/locale'
 import { QuotationSection } from './quotation-section'
 import { useTimerStore, TIMER_ACTIVE_ERROR } from '@/lib/time-tracking/timer-store'
@@ -1464,17 +1465,20 @@ function CommentsSection({
               const files = Array.from(e.target.files || [])
               if (!files.length) return
               for (const file of files) {
+                if (file.size > MAX_ATTACHMENT_BYTES) {
+                  toast.error(`${file.name} supera los 25 MB`)
+                  continue
+                }
+                const toastId = toast.loading(`Subiendo ${file.name}… 0%`)
                 try {
-                  const formData = new FormData()
-                  formData.append('file', file)
-                  const res = await fetch('/api/upload', { method: 'POST', body: formData })
-                  if (res.ok) {
-                    const { url } = await res.json()
-                    setPendingAttachments(prev => [...prev, { url, name: file.name, mimeType: file.type }])
-                    toast.success(`Adjunto: ${file.name}`)
-                  }
-                } catch {
-                  toast.error('Error al subir archivo')
+                  const path = `comentarios/${task.id}/${Date.now()}-${sanitizeFileName(file.name)}`
+                  const url = await uploadTaskFile(file, path, (pct) => {
+                    toast.loading(`Subiendo ${file.name}… ${pct}%`, { id: toastId })
+                  })
+                  setPendingAttachments(prev => [...prev, { url, name: file.name, mimeType: file.type }])
+                  toast.success(`Adjunto: ${file.name}`, { id: toastId })
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : `Error al subir ${file.name}`, { id: toastId })
                 }
               }
               e.target.value = ''
