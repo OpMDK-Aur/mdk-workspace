@@ -76,7 +76,8 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { Check, ChevronsUpDown, ChevronLeft, ChevronRight, Pencil, ArrowUpDown, Search, SlidersHorizontal, Building2, Paperclip, User } from 'lucide-react'
+import { Check, ChevronsUpDown, ChevronLeft, ChevronRight, Pencil, ArrowUpDown, Search, SlidersHorizontal, Building2, Paperclip, User, Users } from 'lucide-react'
+import { OtherTimerNotice, TaskDatesField, TaskMoreMenu } from './task-panel-parts'
 import {
   Play,
   RotateCcw,
@@ -811,7 +812,7 @@ function TimeTracker({ task }: { task: Task }) {
       </Button>
 
       {isOtherTaskRunning && (
-        <span className="text-xs text-amber-500 ml-1">Otro timer activo</span>
+        <OtherTimerNotice />
       )}
 
       <ActiveTimerBlockedDialog open={isBlockedDialogOpen} onOpenChange={setIsBlockedDialogOpen} />
@@ -1306,7 +1307,7 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
             onPaste={handlePaste}
             onKeyDown={handleKeyDown}
             onInput={handleInput}
-            data-placeholder={compact ? "Escribe..." : "Escribe un comentario... usa @ para mencionar (podes pegar imagenes con Ctrl+V)"}
+            data-placeholder={compact ? "Escribí un comentario…" : "Escribí un comentario. Usá @ para mencionar."}
               className={cn(
               "w-full p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary overflow-y-auto empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/50 [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1 [&_.mention]:bg-primary/20 [&_.mention]:text-primary [&_.mention]:px-1 [&_.mention]:rounded",
               COMMENT_RICH_TEXT_CLASSES,
@@ -1390,7 +1391,10 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
           )}
           <Button
             size="sm"
-            className={cn("gap-2 px-4 ml-auto", compact && "h-7 px-2 gap-1 text-xs")}
+            className={cn(
+              "gap-2 px-4 ml-auto rounded-full bg-[#FF7F00] text-[#141414] hover:bg-[#FF7F00]/90 disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground",
+              compact && "h-7 px-2 gap-1 text-xs"
+            )}
             onClick={handleSubmit}
             disabled={isSubmitting || ((!commentContent.trim() || commentContent.trim() === '<br>') && pendingAttachments.length === 0)}
           >
@@ -1637,7 +1641,7 @@ function CustomFields({ task }: { task: Task }) {
 
 export function TaskDetailPanel() {
   const router = useRouter()
-  const { selectedTaskId, setSelectedTask, tasks, updateTask, deleteTask, toggleTaskActive, deleteComment, updateComment, refreshComments } = useTaskStore()
+  const { selectedTaskId, setSelectedTask, tasks, addTask, updateTask, deleteTask, toggleTaskActive, deleteComment, updateComment, refreshComments } = useTaskStore()
   const task = tasks.find((t) => t.id === selectedTaskId)
   const isLoadingComments = useTaskStore((s) =>
     !!selectedTaskId && !s.commentsLoadedIds[selectedTaskId],
@@ -1913,40 +1917,83 @@ export function TaskDetailPanel() {
     <Sheet open={!!selectedTaskId} onOpenChange={(open) => !open && handleClose()}>
       <SheetContent 
         className={cn(
-          'p-0 flex flex-col',
+          'ntm p-0 flex flex-col overflow-x-hidden border-l border-[var(--ntm-border)] shadow-[var(--ntm-shadow)] [&>button.absolute]:hidden',
           isFullscreen 
             ? '!w-full !max-w-full sm:!max-w-full' 
-            : '!w-[920px] !max-w-[920px]'
+            : '!w-[min(1120px,94vw)] !max-w-[94vw] sm:!max-w-[94vw]'
         )} 
         side="right"
+        onEscapeKeyDown={(e) => {
+          if (isFullscreen) {
+            e.preventDefault()
+            setIsFullscreen(false)
+            setIsActivityExpanded(false)
+          }
+        }}
       >
-        {/* Header - Navigation bar only */}
-        <SheetHeader className="px-4 py-2 border-b shrink-0 pr-12">
-          <div className="flex items-center justify-between gap-4">
-            {/* Breadcrumb */}
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0 flex-1">
-              <span className="truncate max-w-[120px]">
-                {task.clients?.[0]?.nombre_del_negocio || task.clientName || 'Sin cliente'}
-              </span>
-              <span>/</span>
-              <span className="truncate max-w-[120px] text-foreground font-medium">{task.title}</span>
-            </div>
+        <SheetHeader className="h-14 px-4 border-b border-[var(--ntm-border)] shrink-0 flex-row items-center gap-3 space-y-0">
+          <SheetTitle className="sr-only">{task.title}</SheetTitle>
+          <nav aria-label="Ubicación" className="flex items-center gap-1.5 text-sm text-[var(--ntm-text-3)] min-w-0 flex-1">
+            <span className="shrink-0">Tareas</span>
+            <span aria-hidden="true">/</span>
+            <span className="truncate max-w-[160px]">
+              {(task.clients?.length ? task.clients.map(c => c.nombre_del_negocio).join(', ') : task.clientName) || 'Sin cliente'}
+            </span>
+            <span aria-hidden="true">/</span>
+            <span className="truncate text-[var(--ntm-text)] font-medium">{task.title}</span>
+          </nav>
 
-            {/* Navigation + expand */}
-            <div className="flex items-center gap-1 shrink-0">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToPrevious} disabled={!hasPrevious} title="Tarea anterior">
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </Button>
-              <span className="text-xs text-muted-foreground tabular-nums min-w-[3.5rem] text-center">
-                {currentIndex + 1} / {tasks.length}
-              </span>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToNext} disabled={!hasNext} title="Siguiente tarea">
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsFullscreen(!isFullscreen)}>
-                {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-              </Button>
-            </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="text-xs text-[var(--ntm-text-3)] tabular-nums px-1 whitespace-nowrap">
+              {currentIndex + 1} de {tasks.length}
+            </span>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goToPrevious} disabled={!hasPrevious} aria-label="Tarea anterior">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goToNext} disabled={!hasNext} aria-label="Siguiente tarea">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </Button>
+            <TaskMoreMenu
+              onDuplicate={async () => {
+                try {
+                  const newId = await addTask({
+                    ...task,
+                    title: `${task.title} (copia)`,
+                    comments: [],
+                    files: [],
+                  })
+                  toast.success('Tarea duplicada')
+                  if (newId) setSelectedTask(newId)
+                } catch {
+                  toast.error('No se pudo duplicar la tarea')
+                }
+              }}
+              onCopyLink={() => {
+                const url = `${window.location.origin}/dashboard/tasks?task=${task.id}`
+                navigator.clipboard.writeText(url).then(
+                  () => toast.success('Link copiado'),
+                  () => toast.error('No se pudo copiar el link'),
+                )
+              }}
+              onDelete={async () => {
+                if (confirm(`¿Eliminar la tarea "${task.title}"?`)) {
+                  await deleteTask(task.id)
+                  handleClose()
+                }
+              }}
+            />
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleClose} aria-label="Cerrar">
+              <X className="h-4 w-4" />
+            </Button>
           </div>
           {/* WhatsApp buttons */}
           {task.isSystemTask && task.systemTaskMeta?.whatsappLink && (
@@ -1963,34 +2010,38 @@ export function TaskDetailPanel() {
         {/* Tabs (hidden while Activity is expanded so the comments feed gets the whole body) */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
           {!isActivityExpanded && (
-            <TabsList className="mx-6 mt-6 mb-0 shrink-0 bg-muted/50 p-1 h-auto">
-              <TabsTrigger value="detalles" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Detalles</TabsTrigger>
-              <TabsTrigger value="cotizacion" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Cotizacion</TabsTrigger>
+            <TabsList className="mx-6 mt-5 mb-0 shrink-0 bg-[var(--ntm-field)] p-1 h-auto rounded-full self-start">
+              <TabsTrigger value="detalles" className="text-sm px-4 py-1.5 rounded-full data-[state=active]:bg-card data-[state=active]:shadow-sm">Detalles</TabsTrigger>
+              <TabsTrigger value="cotizacion" className="text-sm px-4 py-1.5 rounded-full data-[state=active]:bg-card data-[state=active]:shadow-sm">Cotización</TabsTrigger>
             </TabsList>
           )}
 
           <div className="flex-1 overflow-hidden">
             <TabsContent value="detalles" className="mt-0 h-full">
               <div className={cn(
-                "h-full flex flex-row gap-0",
-                isActivityExpanded ? "px-0 pb-0 pt-0" : "px-6 pb-6"
+                "h-full flex flex-col overflow-y-auto min-[900px]:flex-row min-[900px]:overflow-hidden",
+                isActivityExpanded ? "px-0 pb-0 pt-0" : "pl-6 pb-0",
+                isFullscreen && !isActivityExpanded && "mx-auto w-full max-w-[1200px]"
               )}>
-                {/* LEFT / MAIN COLUMN - 50% (hidden while Activity is expanded to full screen) */}
+                {/* LEFT / MAIN COLUMN (hidden while Activity is expanded to full screen) */}
                 <div className={cn(
-                  "overflow-y-auto flex flex-col min-w-0 pr-6",
-                  isActivityExpanded ? "hidden" : "w-1/2"
+                  "flex flex-col min-w-0 pr-6 pt-5 pb-6 overflow-x-hidden min-[900px]:overflow-y-auto",
+                  isActivityExpanded ? "hidden" : "min-[900px]:flex-1"
                 )}>
 
                   {/* Title area */}
                   <div className="pt-0 pb-4">
                     {/* Type selector pill + actions */}
-                    <div className="flex items-center gap-2 mb-5">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-4 text-xs text-[var(--ntm-text-3)]">
                       <Popover>
                         <PopoverTrigger asChild>
-                          <Button variant="outline" size="sm" className="h-7 gap-2 text-xs rounded-full px-3.5 bg-primary/10 border-primary/20 text-primary hover:bg-primary/20">
-                            <span className="h-2 w-2 rounded-full bg-primary" />
-                            {tiposTarea.find(t => t.id === task.type)?.nombre || 'Tarea'}
-                          </Button>
+                          <button
+                            type="button"
+                            className="h-6 inline-flex items-center gap-1.5 rounded-full px-2.5 bg-[var(--ntm-field)] text-[var(--ntm-text-2)] text-xs font-semibold hover:text-[var(--ntm-text)] transition-colors"
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-[var(--ntm-brand)]" aria-hidden="true" />
+                            {tiposTarea.find(t => t.id === task.type)?.nombre || task.typeName || 'Sin tipo'}
+                          </button>
                         </PopoverTrigger>
                         <PopoverContent className="w-56 p-2" align="start">
                           <div className="space-y-2">
@@ -2027,6 +2078,19 @@ export function TaskDetailPanel() {
                           </div>
                         </PopoverContent>
                       </Popover>
+                      {task.createdAt && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="inline-flex items-center gap-1.5 min-w-0">
+                            Creada el {format(new Date(task.createdAt), "d MMM", { locale: es })} por
+                            <Avatar className="h-4 w-4">
+                              {task.createdByAvatar && <AvatarImage src={task.createdByAvatar} alt="" />}
+                              <AvatarFallback className="text-[8px]">{getInitials(task.createdByName)}</AvatarFallback>
+                            </Avatar>
+                            <span className="truncate text-[var(--ntm-text-2)]">{task.createdByName || 'Sin dato'}</span>
+                          </span>
+                        </>
+                      )}
                     </div>
 
                     {/* Title */}
@@ -2049,12 +2113,12 @@ export function TaskDetailPanel() {
                           }
                           if (e.key === 'Escape') setIsEditingTitle(false)
                         }}
-                        className="w-full text-2xl font-semibold bg-transparent border-0 outline-none focus:ring-0 p-0 text-foreground"
+                        className="w-full text-[26px] font-bold tracking-[-0.01em] bg-transparent border-0 outline-none focus:ring-0 p-0 text-foreground"
                         autoFocus
                       />
                     ) : (
                       <h1
-                        className="text-2xl font-bold cursor-text hover:text-foreground/80 leading-tight transition-colors"
+                        className="text-[26px] font-bold tracking-[-0.01em] cursor-text hover:text-foreground/80 leading-tight transition-colors text-balance break-words"
                         onClick={() => { setTempTitle(task.title); setIsEditingTitle(true) }}
                       >
                         {task.title}
@@ -2106,8 +2170,8 @@ export function TaskDetailPanel() {
                   {/* Metadata rows - ClickUp style */}
                   <div className="pb-5 space-y-1">
                     {/* Estado row */}
-                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
-                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2 min-h-[40px] py-1 hover:bg-[var(--ntm-field)] rounded-md px-2 -mx-2 transition-colors min-w-0">
+                      <div className="w-[140px] shrink-0 flex items-center gap-2.5 text-sm text-[var(--ntm-text-2)] whitespace-nowrap">
                         <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 flex items-center justify-center">
                           <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
                         </div>
@@ -2115,16 +2179,15 @@ export function TaskDetailPanel() {
                       </div>
                       <Select value={task.status} onValueChange={(v) => handleStatusChange(v as TaskStatus)}>
                         <SelectTrigger className={cn(
-                          'h-8 w-auto border-0 bg-transparent shadow-none px-2.5 text-sm font-medium gap-2 hover:bg-accent rounded-md'
+                          'h-8 w-auto border-0 bg-transparent shadow-none px-2.5 text-sm font-medium gap-2 hover:bg-[var(--ntm-field)] rounded-md'
                         )}>
-                          <div className={cn('h-2 w-2 rounded-full', statusConfig.bgColor.replace('/10', '').replace('/20', ''))} />
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           {STATUS_ORDER.map((s) => (
                             <SelectItem key={s} value={s}>
                               <div className="flex items-center gap-2">
-                                <div className={cn('w-2.5 h-2.5 rounded-sm', STATUS_CONFIG[s].bgColor.replace('/10', '').replace('/20', ''))} />
+                                <div className={cn('w-2 h-2 rounded-full', STATUS_CONFIG[s].bgColor.replace('/10', '').replace('/20', '').replace('/60', ''))} />
                                 {STATUS_CONFIG[s].label}
                               </div>
                             </SelectItem>
@@ -2134,10 +2197,10 @@ export function TaskDetailPanel() {
                     </div>
 
                     {/* Personas asignadas row */}
-                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
-                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
-                        <User className="h-4 w-4 opacity-60" />
-                        Personas asignadas
+                    <div className="flex items-center gap-2 min-h-[40px] py-1 hover:bg-[var(--ntm-field)] rounded-md px-2 -mx-2 transition-colors min-w-0">
+                      <div className="w-[140px] shrink-0 flex items-center gap-2.5 text-sm text-[var(--ntm-text-2)] whitespace-nowrap">
+                        <Users className="h-4 w-4 opacity-60" />
+                        Responsables
                       </div>
                       <MultiAssigneeSelect
                         assignees={task.assignees || []}
@@ -2154,55 +2217,20 @@ export function TaskDetailPanel() {
                     </div>
 
                     {/* Fechas row */}
-                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
-                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2 min-h-[40px] py-1 hover:bg-[var(--ntm-field)] rounded-md px-2 -mx-2 transition-colors min-w-0">
+                      <div className="w-[140px] shrink-0 flex items-center gap-2.5 text-sm text-[var(--ntm-text-2)] whitespace-nowrap">
                         <CalendarIcon className="h-4 w-4 opacity-60" />
                         Fechas
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <Popover>
-                          <PopoverTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 gap-2 text-sm px-2.5 text-muted-foreground hover:text-foreground rounded-md">
-                                <CalendarIcon className="h-3.5 w-3.5" />
-                                {task.startDate
-                                  ? format(task.startDate, 'dd MMM yyyy', { locale: es })
-                                  : 'Fecha de inicio'}
-                              </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar
-                                mode="single"
-                                selected={task.startDate ?? undefined}
-                                onSelect={(date) => updateTask(task.id, { startDate: date ?? null })}
-                                initialFocus
-                              />
-                          </PopoverContent>
-                        </Popover>
-                        <span className="text-muted-foreground/30 text-sm font-light">—</span>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 gap-2 text-sm px-2.5 text-muted-foreground hover:text-foreground rounded-md">
-                              <CalendarIcon className="h-3.5 w-3.5" />
-                              {task.dueDate
-                                ? format(task.dueDate, 'dd MMM yyyy', { locale: es })
-                                : 'Fecha limite'}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={task.dueDate ?? undefined}
-                              onSelect={(date) => updateTask(task.id, { dueDate: date ?? null })}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
+                      <TaskDatesField
+                        task={task}
+                        onChange={(patch) => updateTask(task.id, patch)}
+                      />
                     </div>
 
                     {/* Prioridad row */}
-                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
-                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2 min-h-[40px] py-1 hover:bg-[var(--ntm-field)] rounded-md px-2 -mx-2 transition-colors min-w-0">
+                      <div className="w-[140px] shrink-0 flex items-center gap-2.5 text-sm text-[var(--ntm-text-2)] whitespace-nowrap">
                         <ArrowUpDown className="h-4 w-4 opacity-60" />
                         Prioridad
                       </div>
@@ -2223,8 +2251,8 @@ export function TaskDetailPanel() {
                     </div>
 
                     {/* Clientes row */}
-                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
-                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2 min-h-[40px] py-1 hover:bg-[var(--ntm-field)] rounded-md px-2 -mx-2 transition-colors min-w-0">
+                      <div className="w-[140px] shrink-0 flex items-center gap-2.5 text-sm text-[var(--ntm-text-2)] whitespace-nowrap">
                         <Building2 className="h-4 w-4 opacity-60" />
                         Clientes
                       </div>
@@ -2246,8 +2274,8 @@ export function TaskDetailPanel() {
                     </div>
 
                     {/* Creado por row */}
-                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
-                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2 min-h-[40px] py-1 hover:bg-[var(--ntm-field)] rounded-md px-2 -mx-2 transition-colors min-w-0">
+                      <div className="w-[140px] shrink-0 flex items-center gap-2.5 text-sm text-[var(--ntm-text-2)] whitespace-nowrap">
                         <User className="h-4 w-4 opacity-60" />
                         Creado por
                       </div>
@@ -2261,8 +2289,8 @@ export function TaskDetailPanel() {
                     </div>
 
                     {/* Fecha de creación row */}
-                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
-                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2 min-h-[40px] py-1 hover:bg-[var(--ntm-field)] rounded-md px-2 -mx-2 transition-colors min-w-0">
+                      <div className="w-[140px] shrink-0 flex items-center gap-2.5 text-sm text-[var(--ntm-text-2)] whitespace-nowrap">
                         <CalendarPlus className="h-4 w-4 opacity-60" />
                         Fecha de creación
                       </div>
@@ -2338,12 +2366,14 @@ export function TaskDetailPanel() {
 
                 {/* RIGHT COLUMN - Activity (50%, or full width when expanded) */}
                 <div className={cn(
-                  "flex flex-col overflow-hidden",
-                  isActivityExpanded ? "w-full" : "w-1/2 border-l"
+                  "flex flex-col overflow-hidden min-w-0 border-[var(--ntm-border)]",
+                  isActivityExpanded
+                    ? "w-full"
+                    : "min-h-[480px] border-t -ml-6 min-[900px]:ml-0 min-[900px]:min-h-0 min-[900px]:w-[380px] min-[900px]:shrink-0 min-[900px]:border-t-0 min-[900px]:border-l"
                 )}>
                   {/* Activity header with filters */}
-                  <div className="px-5 py-4 border-b flex items-center justify-between shrink-0">
-                    <span className="text-sm font-semibold">Activity</span>
+                  <div className="px-5 py-4 border-b border-[var(--ntm-border)] flex items-center justify-between shrink-0">
+                    <h2 className="text-sm font-semibold">Actividad</h2>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="icon" className="h-6 w-6">
                         <Search className="h-3.5 w-3.5" />
@@ -2481,7 +2511,7 @@ export function TaskDetailPanel() {
                         }
                         return (
                           <div className="flex items-center justify-center h-24">
-                            <p className="text-xs text-muted-foreground">Sin actividad aun</p>
+                            <p className="text-sm text-[var(--ntm-text-3)] text-center text-pretty max-w-[240px] leading-relaxed">Todavía no hay comentarios. Mencioná a alguien con @ para avisarle.</p>
                           </div>
                         )
                       }

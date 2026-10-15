@@ -575,7 +575,7 @@ export const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; b
   resolviendo:          { label: 'Resolviendo',         color: 'text-blue-700 dark:text-blue-400',     bgColor: 'bg-blue-100 dark:bg-blue-500/10',         borderColor: 'border-blue-400/40 dark:border-blue-500/30' },
   demorada:             { label: 'Demorada',            color: 'text-orange-700 dark:text-orange-400', bgColor: 'bg-orange-100 dark:bg-orange-500/10',     borderColor: 'border-orange-400/40 dark:border-orange-500/30' },
   pausada:              { label: 'Pausada',             color: 'text-amber-700 dark:text-amber-400',   bgColor: 'bg-amber-100 dark:bg-amber-500/10',       borderColor: 'border-amber-400/40 dark:border-amber-500/30' },
-  pendiente_aprobacion: { label: 'Pendiente aprobacion',color: 'text-purple-700 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-500/10',     borderColor: 'border-purple-400/40 dark:border-purple-500/30' },
+  pendiente_aprobacion: { label: 'Por aprobar',color: 'text-purple-700 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-500/10',     borderColor: 'border-purple-400/40 dark:border-purple-500/30' },
   resuelto:             { label: 'Resuelto',            color: 'text-green-700 dark:text-green-400',   bgColor: 'bg-green-100 dark:bg-green-500/10',       borderColor: 'border-green-400/40 dark:border-green-500/30' },
   no_realizado:         { label: 'No realizado',        color: 'text-red-700 dark:text-red-400',       bgColor: 'bg-red-100 dark:bg-red-500/10',           borderColor: 'border-red-400/40 dark:border-red-500/30' },
 }
@@ -1448,7 +1448,7 @@ updateTask: async (taskId, updates) => {
       // Add activity for status change
       if (updates.status !== undefined && updates.status !== t.status) {
         const statusLabels: Record<string, string> = {
-          'pendiente_aprobacion': 'Pendiente aprobación',
+          'pendiente_aprobacion': 'Por aprobar',
           'pendiente': 'Pendiente',
           'resolviendo': 'Resolviendo',
           'demorada': 'Demorada',
