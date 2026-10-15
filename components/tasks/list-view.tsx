@@ -1,26 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import type { Task } from '@/lib/types'
+import { useMemo, useState } from 'react'
+import type { Task, TaskStatus } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { AssigneeStack, getTaskAssignees } from '@/components/tasks/assignee-stack'
-import { useTaskStore, useFilteredTasks, STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG } from '@/lib/tasks/task-store'
-import { prefetchTask } from '@/lib/tasks/prefetch-task'
-import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { ArrowUpDown, ListChecks, Trash2 } from 'lucide-react'
+import { useTaskStore, useFilteredTasks, STATUS_CONFIG, STATUS_ORDER } from '@/lib/tasks/task-store'
 import { useSubtaskCounts } from '@/hooks/use-subtasks'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import type { ConexaSuggestion } from '@/hooks/use-conexa-suggestions'
+import { prefetchTask } from '@/lib/tasks/prefetch-task'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,368 +19,393 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { ArrowDown, ArrowUp, ChevronDown, CircleCheck, Trash2 } from 'lucide-react'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
+import {
+  ClientSquares,
+  PeopleStack,
+  PriorityPill,
+  STATUS_DOT,
+  TypeChip,
+  formatCreated,
+  formatDuration,
+  getDueInfo,
+  getRiskNote,
+  getTaskClients,
+  getTaskPeople,
+  getTypeLabel,
+  stripClientFromTitle,
+  toDate,
+  useLiveTime,
+} from './view-parts'
 
-function formatTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
+const GRID = 'minmax(300px,2.6fr) minmax(140px,1.2fr) minmax(110px,1fr) 80px minmax(120px,1fr) 110px 80px 80px'
+
+type SortKey = 'title' | 'clientName' | 'priority' | 'dueDate' | 'totalTimeSec' | 'createdAt'
+const PRIORITY_RANK = { alta: 0, media: 1, baja: 2 } as const
+
+function compare(a: Task, b: Task, key: SortKey) {
+  switch (key) {
+    case 'title':
+      return a.title.localeCompare(b.title, 'es')
+    case 'clientName':
+      return (a.clientName ?? '').localeCompare(b.clientName ?? '', 'es')
+    case 'priority':
+      return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]
+    case 'totalTimeSec':
+      return a.totalTimeSec - b.totalTimeSec
+    case 'createdAt':
+      return (toDate(a.createdAt)?.getTime() ?? 0) - (toDate(b.createdAt)?.getTime() ?? 0)
+    case 'dueDate': {
+      const da = toDate(a.dueDate)?.getTime() ?? Number.MAX_SAFE_INTEGER
+      const db = toDate(b.dueDate)?.getTime() ?? Number.MAX_SAFE_INTEGER
+      return da - db
+    }
+  }
 }
-
-function formatDate(date: Date | null): string {
-  if (!date) return '-'
-  return new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: 'short' }).format(date)
-}
-
-function getInitials(name: string | null | undefined): string {
-  return (name || '')
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
-}
-
-type SortKey = 'title' | 'clientName' | 'status' | 'priority' | 'createdAt' | 'dueDate' | 'totalTimeSec'
-type SortDir = 'asc' | 'desc'
 
 function TaskRow({
   task,
-  isSelected,
+  selected,
   onSelect,
   subtasks,
 }: {
   task: Task
-  isSelected: boolean
+  selected: boolean
   onSelect: (id: string, checked: boolean) => void
   subtasks?: { done: number; total: number }
 }) {
   const setSelectedTask = useTaskStore((s) => s.setSelectedTask)
-  const updateTask = useTaskStore((s) => s.updateTask)
-  const [liveTime, setLiveTime] = useState(task.totalTimeSec)
-  const [isEditingTitle, setIsEditingTitle] = useState(false)
-  const [tempTitle, setTempTitle] = useState(task.title)
-  const statusConfig = STATUS_CONFIG[task.status] || { label: task.status, color: 'text-gray-400', bgColor: 'bg-gray-500/20' }
-  const priorityConfig = PRIORITY_CONFIG[task.priority] || { label: 'Media', color: 'text-yellow-400', bgColor: 'bg-yellow-500/20' }
-  const typeNameKey = task.typeName?.toLowerCase().replace(/ /g, '_') || ''
-  const typeConfig = TYPE_CONFIG[task.type] || TYPE_CONFIG[typeNameKey] || TYPE_CONFIG[task.typeName?.toLowerCase() || ''] || { label: task.typeName || 'Tarea', color: 'bg-gray-500/20 text-gray-400' }
-
-  useEffect(() => {
-    if (!task.isTimerRunning || !task.timerStartedAt) {
-      setLiveTime(task.totalTimeSec)
-      return
-    }
-    const interval = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - new Date(task.timerStartedAt!).getTime()) / 1000)
-      setLiveTime(task.totalTimeSec + elapsed)
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [task.isTimerRunning, task.timerStartedAt, task.totalTimeSec])
-
-  const handleStartEditTitle = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    setTempTitle(task.title)
-    setIsEditingTitle(true)
-  }
-
-  const handleSaveTitle = async () => {
-    if (tempTitle.trim() && tempTitle !== task.title) {
-      await updateTask(task.id, { title: tempTitle.trim() })
-    }
-    setIsEditingTitle(false)
-  }
+  const liveTime = useLiveTime(task)
+  const clients = getTaskClients(task)
+  const due = getDueInfo(task)
+  const risk = getRiskNote(task)
+  const created = formatCreated(task)
 
   return (
-    <TableRow
-      className="cursor-pointer hover:bg-muted/50 transition-colors"
+    <div
+      role="row"
+      tabIndex={0}
       onClick={() => setSelectedTask(task.id)}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && e.key === 'Enter') setSelectedTask(task.id)
+      }}
       onPointerEnter={() => prefetchTask(task.id)}
+      style={{ gridTemplateColumns: GRID }}
+      className={cn(
+        'grid cursor-pointer items-center gap-3 border-b border-[var(--tasks-border-soft)] px-4 py-2.5 text-[12.5px] transition-colors',
+        'hover:bg-[var(--tasks-row-hover)] focus-visible:bg-[var(--tasks-row-hover)] focus-visible:outline-none',
+        task.status === 'resuelto' && 'opacity-[.62]',
+      )}
     >
-      <TableCell className="w-[40px]" onClick={(e) => e.stopPropagation()}>
-        <Checkbox
-          checked={isSelected}
-          onCheckedChange={(checked) => onSelect(task.id, checked === true)}
-        />
-      </TableCell>
-      <TableCell className="max-w-[300px]" onClick={(e) => e.stopPropagation()}>
-        {isEditingTitle ? (
-          <Input
-            value={tempTitle}
-            onChange={(e) => setTempTitle(e.target.value)}
-            onBlur={handleSaveTitle}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSaveTitle()
-              if (e.key === 'Escape') setIsEditingTitle(false)
-            }}
-            className="h-7 text-sm"
-            autoFocus
+      <div role="cell" className="flex min-w-0 items-center gap-2.5">
+        <span onClick={(e) => e.stopPropagation()} className="flex shrink-0">
+          <Checkbox
+            checked={selected}
+            onCheckedChange={(c) => onSelect(task.id, c === true)}
+            aria-label={`Seleccionar ${task.title}`}
           />
-        ) : (
-          <div className="flex min-w-0 items-center gap-2">
-            <p
-              className="font-medium text-sm truncate cursor-text hover:text-primary"
-              onClick={handleStartEditTitle}
-            >
-              {task.title}
-            </p>
+        </span>
+        <div className="flex min-w-0 flex-col">
+          <span className="flex min-w-0 items-center gap-1.5">
+            {task.isSystemTask && (
+              <span className="shrink-0 text-[var(--tasks-cx-label)]" aria-label="Creada por Conexa" title="Creada por Conexa">
+                ✦
+              </span>
+            )}
+            <span className="truncate text-[13px] font-semibold text-[var(--tasks-text)]">
+              {stripClientFromTitle(task.title, clients)}
+            </span>
             {subtasks && subtasks.total > 0 && (
-              <span
-                className={cn(
-                  'flex shrink-0 items-center gap-1 text-xs tabular-nums text-muted-foreground',
-                  subtasks.done === subtasks.total && 'text-emerald-600 dark:text-emerald-400',
-                )}
-              >
-                <ListChecks className="h-3 w-3" aria-hidden="true" />
-                <span className="sr-only">Subtareas completadas:</span>
+              <span className="flex shrink-0 items-center gap-0.5 text-[11px] tabular-nums text-[var(--tasks-text-3)]">
+                <CircleCheck className="h-3 w-3" aria-hidden="true" />
                 {subtasks.done}/{subtasks.total}
               </span>
             )}
-          </div>
-        )}
-      </TableCell>
-      <TableCell>
-        <span className="text-sm text-muted-foreground">{task.clientName}</span>
-      </TableCell>
-      <TableCell>
-        <Badge variant="outline" className={cn('text-xs border-0', statusConfig.bgColor, statusConfig.color)}>
-          {statusConfig.label}
-        </Badge>
-      </TableCell>
-      <TableCell>
-        <Badge variant="outline" className={cn('text-xs border-0', priorityConfig.bgColor, priorityConfig.color)}>
-          {priorityConfig.label}
-        </Badge>
-      </TableCell>
-      <TableCell>
-        <Badge variant="outline" className={cn('text-xs border-0', typeConfig.color)}>
-          {typeConfig.label}
-        </Badge>
-      </TableCell>
-      <TableCell>
-        <AssigneeStack people={getTaskAssignees(task)} size="sm" max={3} showNames className="max-w-[160px]" />
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          <Avatar className="h-5 w-5">
-            <AvatarFallback className="text-[9px] bg-muted">{getInitials(task.createdByName)}</AvatarFallback>
-          </Avatar>
-          <span className="text-sm text-muted-foreground truncate max-w-[100px]">{task.createdByName}</span>
-        </div>
-      </TableCell>
-      <TableCell>
-        <span className="text-sm text-muted-foreground">
-          {task.createdAt ? formatDate(new Date(task.createdAt)) : '-'}
-        </span>
-      </TableCell>
-      <TableCell>
-        <span className={cn('text-sm', task.dueDate && task.dueDate < new Date() ? 'text-red-400' : 'text-muted-foreground')}>
-          {formatDate(task.dueDate)}
-        </span>
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-1.5">
-          {task.isTimerRunning && (
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-            </span>
-          )}
-          <span className={cn('font-mono tabular-nums text-sm', task.isTimerRunning && 'text-green-400')}>
-            {formatTime(liveTime)}
           </span>
+          {risk && <span className="truncate text-[11.5px] text-[var(--tasks-cx-text)]">✦ {risk}</span>}
         </div>
-      </TableCell>
-    </TableRow>
+      </div>
+      <div role="cell" className="min-w-0">
+        <ClientSquares clients={clients} />
+      </div>
+      <div role="cell" className="flex min-w-0">
+        <TypeChip label={getTypeLabel(task)} />
+      </div>
+      <div role="cell">
+        <PriorityPill priority={task.priority} />
+      </div>
+      <div role="cell" className="min-w-0">
+        <PeopleStack people={getTaskPeople(task)} showSingleName />
+      </div>
+      <div
+        role="cell"
+        className={cn(
+          'truncate font-semibold',
+          due?.tone === 'overdue' ? 'text-[var(--tasks-overdue)]' : 'text-[var(--tasks-text-3)]',
+        )}
+      >
+        {due?.text ?? '—'}
+      </div>
+      <div role="cell" className="flex items-center gap-1 font-mono tabular-nums text-[var(--tasks-text-3)]">
+        {task.isTimerRunning && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--tasks-baja-fg)]" aria-label="Timer en curso" />}
+        {liveTime > 0 ? formatDuration(liveTime) : '—'}
+      </div>
+      <div role="cell" className="truncate text-[var(--tasks-text-3)]">
+        {created ?? '—'}
+      </div>
+    </div>
   )
 }
 
-export function ListView() {
+function SuggestionRow({ item, onCreate, onDismiss }: { item: ConexaSuggestion; onCreate: () => void; onDismiss: () => void }) {
+  const due = toDate(item.fecha_vencimiento ? `${item.fecha_vencimiento}T12:00:00` : null)
+  return (
+    <div
+      role="row"
+      style={{ gridTemplateColumns: GRID }}
+      className="grid items-center gap-3 border-b border-dashed border-[var(--tasks-cx-border)] px-4 py-2.5 text-[12.5px]"
+    >
+      <div role="cell" className="flex min-w-0 items-center gap-1.5">
+        <span className="shrink-0 text-[var(--tasks-cx-label)]" aria-hidden="true">
+          ✦
+        </span>
+        <span className="truncate text-[13px] font-semibold text-[var(--tasks-text)]">{item.titulo}</span>
+      </div>
+      <div role="cell" className="min-w-0">
+        {item.cliente_nombre && <ClientSquares clients={[{ id: item.cliente_id ?? item.cliente_nombre, name: item.cliente_nombre }]} />}
+      </div>
+      <div role="cell" />
+      <div role="cell">{item.prioridad && <PriorityPill priority={item.prioridad} />}</div>
+      <div role="cell" />
+      <div role="cell" className="font-semibold text-[var(--tasks-text-3)]">
+        {due ? format(due, 'd MMM', { locale: es }) : '—'}
+      </div>
+      <div role="cell" className="col-span-2 flex items-center justify-end gap-2">
+        <button type="button" onClick={onDismiss} className="text-[12px] font-semibold text-[var(--tasks-text-3)] hover:text-[var(--tasks-text)]">
+          Descartar
+        </button>
+        <button
+          type="button"
+          onClick={onCreate}
+          className="h-7 rounded-full bg-[var(--tasks-cx-btn)] px-3 text-[12px] font-bold text-[var(--tasks-cx-btn-fg)] hover:opacity-90"
+        >
+          Crear
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function GroupHeader({
+  label,
+  count,
+  dot,
+  open,
+  onToggle,
+  conexa,
+}: {
+  label: string
+  count: number
+  dot: string
+  open: boolean
+  onToggle: () => void
+  conexa?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className={cn(
+        'flex w-full items-center gap-2 border-b px-4 py-2 text-left',
+        conexa
+          ? 'border-[var(--tasks-cx-border)] bg-[var(--tasks-cx-bg)]'
+          : 'border-[var(--tasks-border-soft)] bg-[var(--tasks-col)]',
+      )}
+    >
+      <ChevronDown
+        className={cn('h-3.5 w-3.5 text-[var(--tasks-text-3)] transition-transform', !open && '-rotate-90')}
+        aria-hidden="true"
+      />
+      <span className="h-2 w-2 rounded-full" style={{ background: dot }} aria-hidden="true" />
+      <span className={cn('text-[13px] font-bold', conexa ? 'text-[var(--tasks-cx-text)]' : 'text-[var(--tasks-text)]')}>
+        {label}
+      </span>
+      <span className="rounded-full bg-[var(--tasks-count)] px-1.5 text-[11.5px] font-semibold leading-5 text-[var(--tasks-text-2)]">
+        {count}
+      </span>
+    </button>
+  )
+}
+
+interface ListViewProps {
+  suggestions: ConexaSuggestion[]
+  onCreateSuggestion: (s: ConexaSuggestion) => void
+  onDismissSuggestion: (id: string) => void
+}
+
+export function ListView({ suggestions, onCreateSuggestion, onDismissSuggestion }: ListViewProps) {
   const tasks = useFilteredTasks()
-  const { data: subtaskCounts } = useSubtaskCounts(tasks.map((t) => t.id))
+  const isLoading = useTaskStore((s) => s.isLoading)
   const deleteTasks = useTaskStore((s) => s.deleteTasks)
-  const [sortKey, setSortKey] = useState<SortKey>('status')
-  const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const { data: subtaskCounts } = useSubtaskCounts(tasks.map((t) => t.id))
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' } | null>(null)
+  const [closed, setClosed] = useState<Set<string>>(() => new Set(['resuelto', 'no_realizado']))
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  const handleSelect = (id: string, checked: boolean) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (checked) {
-        next.add(id)
-      } else {
-        next.delete(id)
+  const groups = useMemo(() => {
+    return STATUS_ORDER.map((status) => {
+      let items = tasks.filter((t) => t.status === status)
+      if (sort) {
+        items = [...items].sort((a, b) => (sort.dir === 'asc' ? 1 : -1) * compare(a, b, sort.key))
       }
+      return { status, items }
+    }).filter((g) => g.items.length > 0)
+  }, [tasks, sort])
+
+  const toggleGroup = (key: string) =>
+    setClosed((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
-  }
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds(new Set(sortedTasks.map((t) => t.id)))
-    } else {
-      setSelectedIds(new Set())
-    }
-  }
+  const handleSort = (key: SortKey) =>
+    setSort((prev) => (prev?.key === key ? (prev.dir === 'asc' ? { key, dir: 'desc' } : null) : { key, dir: 'asc' }))
+
+  const handleSelect = (id: string, checked: boolean) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
 
   const handleBulkDelete = async () => {
     setIsDeleting(true)
     await deleteTasks(Array.from(selectedIds))
     setSelectedIds(new Set())
-    setShowDeleteDialog(false)
     setIsDeleting(false)
+    setShowDeleteDialog(false)
   }
 
-  const handleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortKey(key)
-      setSortDir('asc')
-    }
+  const HeaderCell = ({ label, sortKey }: { label: string; sortKey?: SortKey }) => {
+    if (!sortKey) return <div role="columnheader">{label}</div>
+    const active = sort?.key === sortKey
+    return (
+      <div role="columnheader" aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+        <button
+          type="button"
+          onClick={() => handleSort(sortKey)}
+          className={cn('flex items-center gap-1 uppercase hover:text-[var(--tasks-text)]', active && 'text-[var(--tasks-text)]')}
+        >
+          {label}
+          {active && (sort.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+        </button>
+      </div>
+    )
   }
-
-  const sortedTasks = [...tasks].sort((a, b) => {
-    let cmp = 0
-    switch (sortKey) {
-      case 'title':
-        cmp = a.title.localeCompare(b.title)
-        break
-      case 'clientName':
-        cmp = (a.clientName || '').localeCompare(b.clientName || '')
-        break
-      case 'status':
-        const statusOrder = ['pendiente', 'resolviendo', 'demorada', 'pausada', 'pendiente_aprobacion']
-        cmp = statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status)
-        break
-      case 'priority':
-        const priorityOrder = ['alta', 'media', 'baja']
-        cmp = priorityOrder.indexOf(a.priority) - priorityOrder.indexOf(b.priority)
-        break
-      case 'createdAt':
-        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        break
-      case 'dueDate':
-        const aDate = a.dueDate?.getTime() ?? Infinity
-        const bDate = b.dueDate?.getTime() ?? Infinity
-        cmp = aDate - bDate
-        break
-      case 'totalTimeSec':
-        cmp = a.totalTimeSec - b.totalTimeSec
-        break
-    }
-    return sortDir === 'asc' ? cmp : -cmp
-  })
-
-  const SortButton = ({ sortKeyProp, children }: { sortKeyProp: SortKey; children: React.ReactNode }) => (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="-ml-3 h-8 hover:bg-transparent"
-      onClick={() => handleSort(sortKeyProp)}
-    >
-      {children}
-      <ArrowUpDown className="ml-1 h-3 w-3" />
-    </Button>
-  )
-
-  const allSelected = sortedTasks.length > 0 && selectedIds.size === sortedTasks.length
-  const someSelected = selectedIds.size > 0 && selectedIds.size < sortedTasks.length
 
   return (
-    <div className="space-y-2">
-      {/* Bulk actions bar */}
+    <div className="flex h-full flex-col">
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 px-4 py-2 bg-muted/50 rounded-lg border">
-          <span className="text-sm text-muted-foreground">
+        <div className="flex shrink-0 items-center gap-3 border-b border-[var(--tasks-border)] bg-[var(--tasks-card)] px-4 py-2">
+          <span className="text-[12.5px] text-[var(--tasks-text-2)]">
             {selectedIds.size} tarea{selectedIds.size > 1 ? 's' : ''} seleccionada{selectedIds.size > 1 ? 's' : ''}
           </span>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setShowDeleteDialog(true)}
-          >
-            <Trash2 className="h-4 w-4 mr-1" />
+          <Button variant="destructive" size="sm" className="h-7" onClick={() => setShowDeleteDialog(true)}>
+            <Trash2 className="mr-1 h-3.5 w-3.5" />
             Eliminar
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSelectedIds(new Set())}
-          >
+          <Button variant="ghost" size="sm" className="h-7" onClick={() => setSelectedIds(new Set())}>
             Cancelar
           </Button>
         </div>
       )}
 
-      <div className="rounded-lg border bg-card overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="w-[40px]">
-                <Checkbox
-                  checked={allSelected}
-                  ref={(el) => {
-                    if (el) (el as HTMLButtonElement & { indeterminate?: boolean }).indeterminate = someSelected
-                  }}
-                  onCheckedChange={handleSelectAll}
-                />
-              </TableHead>
-              <TableHead className="w-[300px]">
-                <SortButton sortKeyProp="title">Tarea</SortButton>
-              </TableHead>
-            <TableHead>
-              <SortButton sortKeyProp="clientName">Cliente</SortButton>
-            </TableHead>
-            <TableHead>
-              <SortButton sortKeyProp="status">Estado</SortButton>
-            </TableHead>
-            <TableHead>
-              <SortButton sortKeyProp="priority">Prioridad</SortButton>
-            </TableHead>
-            <TableHead>Tipo</TableHead>
-            <TableHead>Asignado</TableHead>
-            <TableHead>Creado por</TableHead>
-            <TableHead>
-              <SortButton sortKeyProp="createdAt">Creada</SortButton>
-            </TableHead>
-            <TableHead>
-              <SortButton sortKeyProp="dueDate">Vencimiento</SortButton>
-            </TableHead>
-            <TableHead>
-              <SortButton sortKeyProp="totalTimeSec">Tiempo</SortButton>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sortedTasks.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              isSelected={selectedIds.has(task.id)}
-              onSelect={handleSelect}
-              subtasks={subtaskCounts?.[task.id]}
-            />
-          ))}
-          {sortedTasks.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">
-                No hay tareas que coincidan con los filtros
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </div>
+      <div className="min-h-0 flex-1 overflow-auto" role="table" aria-label="Tareas">
+        <div className="min-w-[1080px]">
+          <div
+            role="row"
+            style={{ gridTemplateColumns: GRID }}
+            className="sticky top-0 z-10 grid gap-3 border-b border-[var(--tasks-border)] bg-[var(--tasks-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--tasks-text-3)]"
+          >
+            <HeaderCell label="Tarea" sortKey="title" />
+            <HeaderCell label="Cliente" sortKey="clientName" />
+            <HeaderCell label="Tipo" />
+            <HeaderCell label="Prioridad" sortKey="priority" />
+            <HeaderCell label="Responsable" />
+            <HeaderCell label="Vence" sortKey="dueDate" />
+            <HeaderCell label="Tiempo" sortKey="totalTimeSec" />
+            <HeaderCell label="Creada" sortKey="createdAt" />
+          </div>
 
-      {/* Delete confirmation dialog */}
+          {isLoading && tasks.length === 0 &&
+            Array.from({ length: 8 }, (_, i) => (
+              <div key={i} style={{ gridTemplateColumns: GRID }} className="grid items-center gap-3 border-b border-[var(--tasks-border-soft)] px-4 py-3" aria-hidden="true">
+                <div className="tasks-skeleton h-3.5 w-4/5 rounded" />
+                <div className="tasks-skeleton h-3.5 w-3/5 rounded" />
+                <div className="tasks-skeleton h-4 w-16 rounded-full" />
+                <div className="tasks-skeleton h-4 w-12 rounded-full" />
+                <div className="tasks-skeleton h-5 w-5 rounded-full" />
+                <div className="tasks-skeleton h-3.5 w-14 rounded" />
+                <div className="tasks-skeleton h-3.5 w-10 rounded" />
+                <div className="tasks-skeleton h-3.5 w-10 rounded" />
+              </div>
+            ))}
+
+          {suggestions.length > 0 && (
+            <div role="rowgroup" id="conexa-suggestions">
+              <GroupHeader
+                label="✦ Sugeridas por Conexa"
+                count={suggestions.length}
+                dot="var(--tasks-cx-btn)"
+                open={!closed.has('conexa')}
+                onToggle={() => toggleGroup('conexa')}
+                conexa
+              />
+              {!closed.has('conexa') &&
+                suggestions.map((s) => (
+                  <SuggestionRow key={s.id} item={s} onCreate={() => onCreateSuggestion(s)} onDismiss={() => onDismissSuggestion(s.id)} />
+                ))}
+            </div>
+          )}
+
+          {groups.map(({ status, items }) => (
+            <div role="rowgroup" key={status}>
+              <GroupHeader
+                label={STATUS_CONFIG[status as TaskStatus].label}
+                count={items.length}
+                dot={STATUS_DOT[status as TaskStatus]}
+                open={!closed.has(status)}
+                onToggle={() => toggleGroup(status)}
+              />
+              {!closed.has(status) &&
+                items.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    selected={selectedIds.has(task.id)}
+                    onSelect={handleSelect}
+                    subtasks={subtaskCounts?.[task.id]}
+                  />
+                ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar tareas</AlertDialogTitle>
             <AlertDialogDescription>
-              Estas por eliminar {selectedIds.size} tarea{selectedIds.size > 1 ? 's' : ''}. Esta accion no se puede deshacer.
+              Estás por eliminar {selectedIds.size} tarea{selectedIds.size > 1 ? 's' : ''}. Esta acción no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

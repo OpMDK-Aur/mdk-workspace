@@ -181,7 +181,7 @@ export function FiltersPopover() {
       <PopoverTrigger asChild>
         <Button
           variant="outline"
-          className={cn('h-9 shrink-0 gap-1.5', count > 0 && 'border-[#FF7F00]/50 text-foreground')}
+          className={cn('h-[30px] shrink-0 gap-1.5 rounded-lg border-[var(--tasks-border)] bg-[var(--tasks-card)] text-[12.5px] font-semibold text-[var(--tasks-text)] hover:border-[var(--tasks-border-hover)]', count > 0 && 'border-[var(--tasks-brand)]/50')}
         >
           <ListFilter className="h-4 w-4" />
           Filtros

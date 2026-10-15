@@ -59,7 +59,7 @@ export function CreatedDateFilter() {
           variant="outline"
           size="sm"
           className={cn(
-            'h-7 gap-1.5 px-2.5 shrink-0 text-xs font-medium',
+            'h-[30px] gap-1.5 px-2.5 shrink-0 rounded-lg border-[var(--tasks-border)] bg-[var(--tasks-card)] text-[12.5px] font-semibold text-[var(--tasks-text)] hover:border-[var(--tasks-border-hover)]',
             active && 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/15 hover:text-amber-400'
           )}
           aria-label="Filtrar por fecha de creación"

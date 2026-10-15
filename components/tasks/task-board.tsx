@@ -4,10 +4,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import type { NewTaskPrefill } from './new-task-modal'
 import dynamic from 'next/dynamic'
-import type { TaskPriority, TaskStatus } from '@/lib/types'
+import type { TaskStatus } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import { useTaskStore, useTaskStoreHydrated, PRIORITY_CONFIG, ASSIGNEES, STATUS_CONFIG, STATUS_ORDER } from '@/lib/tasks/task-store'
+import { useTaskStore, useTaskStoreHydrated, useFilteredTasks, STATUS_CONFIG } from '@/lib/tasks/task-store'
 
 // Lazy load heavy components
 const KanbanView = dynamic(() => import('./kanban-view').then(m => ({ default: m.KanbanView })), {
@@ -22,30 +22,55 @@ const CalendarView = dynamic(() => import('./calendar-view').then(m => ({ defaul
 const TaskDetailPanel = dynamic(() => import('./task-detail-panel').then(m => ({ default: m.TaskDetailPanel })))
 const NewTaskModal = dynamic(() => import('./new-task-modal').then(m => ({ default: m.NewTaskModal })))
 const ScheduleMeetingModal = dynamic(() => import('./schedule-meeting-modal').then(m => ({ default: m.ScheduleMeetingModal })))
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu'
-import {
-  Plus,
-  LayoutGrid,
-  List,
-  Calendar,
-  ChevronDown,
-  X,
-  Search,
-} from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { Plus, Calendar, Search, MoreHorizontal, Download } from 'lucide-react'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { useConexaSuggestions, type ConexaSuggestion } from '@/hooks/use-conexa-suggestions'
+import { ConexaStrip } from './conexa-strip'
+import { TasksEmptyState, getTaskClients, getTaskPeople, getTypeLabel, toDate } from './view-parts'
+import type { Task } from '@/lib/types'
 import { ClientFilter } from './client-filter'
 import { CreatedDateFilter } from './created-date-filter'
 import { ActiveFilterChips, FiltersPopover, useFiltersUrlSync } from './filters-popover'
 import { preloadTaskDetailPanel } from '@/lib/tasks/prefetch-task'
+
+const VIEWS = [
+  { id: 'kanban', label: 'Tablero' },
+  { id: 'list', label: 'Lista' },
+  { id: 'calendar', label: 'Calendario' },
+] as const
+
+function csvCell(value: unknown) {
+  const text = value == null ? '' : String(value)
+  return /[",\n;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
+function exportCsv(tasks: Task[]) {
+  const header = ['Tarea', 'Cliente', 'Tipo', 'Estado', 'Prioridad', 'Responsables', 'Vence', 'Creada', 'Tiempo (min)']
+  const rows = tasks.map((t) => [
+    t.title,
+    getTaskClients(t).map((c) => c.name).join(' + '),
+    getTypeLabel(t) ?? '',
+    STATUS_CONFIG[t.status]?.label ?? t.status,
+    t.priority,
+    getTaskPeople(t).map((p) => p.nombre).join(', '),
+    toDate(t.dueDate)?.toISOString().slice(0, 10) ?? '',
+    toDate(t.createdAt)?.toISOString().slice(0, 10) ?? '',
+    Math.round(t.totalTimeSec / 60),
+  ])
+  const csv = [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\n')
+  const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `tareas-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 export function TaskBoard() {
   const searchParams = useSearchParams()
@@ -74,6 +99,30 @@ export function TaskBoard() {
   const [prefill, setPrefill] = useState<NewTaskPrefill | null>(null)
   const [seguimientoItemId, setSeguimientoItemId] = useState<string | null>(null)
   const [newTaskStatus, setNewTaskStatus] = useState<TaskStatus | null>(null)
+  const [returnToSeguimiento, setReturnToSeguimiento] = useState(false)
+  const filteredTasks = useFilteredTasks()
+  const allTaskCount = useTaskStore((s) => s.tasks.length)
+  const { items: suggestions, dismiss: dismissSuggestion, refresh: refreshSuggestions } = useConexaSuggestions()
+
+  const createFromSuggestion = (s: ConexaSuggestion) => {
+    setPrefill({
+      title: s.titulo,
+      clientIds: s.cliente_id ? [s.cliente_id] : [],
+      assigneeIds: [],
+      priority: s.prioridad ?? '',
+      dueDate: s.fecha_vencimiento ?? '',
+      description: (s.detalles ?? []).join('\n'),
+    })
+    setSeguimientoItemId(s.id)
+    setReturnToSeguimiento(false)
+    setNewTaskMode('manual')
+    setNewTaskOpen(true)
+  }
+
+  const showSuggestions = () => {
+    setView('kanban')
+    setTimeout(() => document.getElementById('conexa-suggestions')?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' }), 50)
+  }
 
   const handleNewTaskOpenChange = (open: boolean) => {
     setNewTaskOpen(open)
@@ -81,6 +130,7 @@ export function TaskBoard() {
       setPrefill(null)
       setSeguimientoItemId(null)
       setNewTaskStatus(null)
+      setReturnToSeguimiento(false)
     }
   }
 
@@ -106,7 +156,8 @@ export function TaskBoard() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tarea_id: taskId, match_estado: 'vinculada' }),
     }).catch(() => {})
-    router.push('/dashboard/seguimiento')
+    if (returnToSeguimiento) router.push('/dashboard/seguimiento')
+    else refreshSuggestions()
   }
   
   // Track if seguimiento was already generated this session
@@ -148,6 +199,7 @@ export function TaskBoard() {
           description: searchParams.get('descripcion') ?? '',
         })
         setSeguimientoItemId(searchParams.get('seguimiento_item'))
+        setReturnToSeguimiento(true)
         setNewTaskMode('manual')
         setNewTaskOpen(true)
         router.replace('/dashboard/tasks')
@@ -210,7 +262,12 @@ export function TaskBoard() {
 
   const hasSimpleFilters = filters.priority || (filters.statusIds?.length ?? 0) > 0 || filters.assigneeIds.length > 0 || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned || (filters.clientIds?.length ?? 0) > 0 || Boolean(filters.createdFrom || filters.createdTo)
   const hasAdvancedFilters = advancedFilters.length > 0
-  const hasFilters = hasSimpleFilters || hasAdvancedFilters
+  const hasFilters = Boolean(hasSimpleFilters || hasAdvancedFilters || filters.dueFilter)
+  const showEmpty = !isLoading && filteredTasks.length === 0 && (hasFilters || allTaskCount === 0) && suggestions.length === 0
+  const clearAll = () => {
+    clearFilters()
+    setAdvancedFilters([])
+  }
 
   // Don't render until hydrated from localStorage
   if (!hydrated) {
@@ -222,108 +279,128 @@ export function TaskBoard() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 p-4 border-b bg-card overflow-x-auto">
-        {/* Actions */}
-        <Button className="gap-1.5 shrink-0" onClick={() => { setNewTaskMode('manual'); setNewTaskOpen(true) }}>
-          <Plus className="h-4 w-4" />
+    <TooltipProvider delayDuration={300}>
+    <div className="flex h-full flex-col bg-[var(--tasks-bg)]">
+      <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--tasks-border)] px-4 py-3">
+        <button
+          type="button"
+          onClick={() => { setNewTaskMode('manual'); setNewTaskOpen(true) }}
+          className="flex h-[34px] shrink-0 items-center gap-1.5 rounded-full bg-[var(--tasks-brand)] px-4 text-[13px] font-bold text-[var(--tasks-on-brand)] hover:opacity-90"
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
           Nueva tarea
-        </Button>
-        <Button variant="outline" className="gap-1.5 shrink-0" onClick={() => setMeetingOpen(true)}>
-          <Calendar className="h-4 w-4" />
-          Agendar reunion
-        </Button>
+        </button>
 
-        {/* Filters */}
         <ClientFilter />
         <CreatedDateFilter />
-
         <FiltersPopover />
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={clearAll}
+            className="h-[30px] shrink-0 rounded-lg px-2 text-[12.5px] font-semibold text-[var(--tasks-text-3)] hover:text-[var(--tasks-text)]"
+          >
+            Limpiar
+          </button>
+        )}
 
-        {/* Spacer */}
-        <div className="flex-1 min-w-4" />
+        <div className="min-w-4 flex-1" />
 
-        {/* Search */}
         <div className="relative shrink-0">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Buscar tareas..."
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--tasks-text-3)]" aria-hidden="true" />
+          <input
+            type="search"
+            aria-label="Buscar tareas"
+            placeholder="Buscar tareas"
             value={filters.searchQuery}
             onChange={(e) => setFilter('searchQuery', e.target.value)}
-            className="pl-9 w-[150px] h-8"
+            className="h-[30px] w-[180px] rounded-lg border border-[var(--tasks-border)] bg-[var(--tasks-card)] pl-8 pr-2.5 text-[12.5px] text-[var(--tasks-text)] placeholder:text-[var(--tasks-text-3)] focus:border-[var(--tasks-brand)] focus:outline-none"
           />
         </div>
 
-        {/* View Toggle */}
-        <div className="flex items-center rounded-lg border bg-muted/30 p-0.5 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              'h-8 w-8 rounded-md',
-              view === 'kanban' && 'bg-background shadow-sm'
-            )}
-            onClick={() => setView('kanban')}
-            title="Kanban"
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              'h-8 w-8 rounded-md',
-              view === 'list' && 'bg-background shadow-sm'
-            )}
-            onClick={() => setView('list')}
-            title="Lista"
-          >
-            <List className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              'h-8 w-8 rounded-md',
-              view === 'calendar' && 'bg-background shadow-sm'
-            )}
-            onClick={() => setView('calendar')}
-            title="Calendario"
-          >
-            <Calendar className="h-4 w-4" />
-          </Button>
+        <div role="tablist" aria-label="Vista" className="flex shrink-0 items-center rounded-lg border border-[var(--tasks-border)] bg-[var(--tasks-col)] p-0.5">
+          {VIEWS.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              role="tab"
+              aria-selected={view === v.id}
+              onClick={() => setView(v.id)}
+              className={cn(
+                'h-[26px] rounded-md px-2.5 text-[12.5px] font-semibold transition-colors',
+                view === v.id
+                  ? 'bg-[var(--tasks-card)] text-[var(--tasks-text)] shadow-sm'
+                  : 'text-[var(--tasks-text-3)] hover:text-[var(--tasks-text)]',
+              )}
+            >
+              {v.label}
+            </button>
+          ))}
         </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Más acciones"
+              className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg border border-[var(--tasks-border)] bg-[var(--tasks-card)] text-[var(--tasks-text-2)] hover:border-[var(--tasks-border-hover)]"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => setMeetingOpen(true)}>
+              <Calendar className="mr-2 h-4 w-4" />
+              Agendar reunión
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => exportCsv(filteredTasks)}>
+              <Download className="mr-2 h-4 w-4" />
+              Exportar CSV
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
-      {/* Board content */}
+      <ConexaStrip suggestionCount={suggestions.length} onShowSuggestions={showSuggestions} />
       <ActiveFilterChips />
 
-      <div className="flex-1 overflow-hidden">
-        {view === 'kanban' && (
-          <KanbanView
-            onAddTask={(status) => {
-              setNewTaskStatus(status)
-              setNewTaskMode('manual')
-              setNewTaskOpen(true)
-            }}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {showEmpty ? (
+          <TasksEmptyState
+            hasFilters={hasFilters}
+            onClearFilters={clearAll}
+            onNewTask={() => { setNewTaskMode('manual'); setNewTaskOpen(true) }}
           />
-        )}
-        {view === 'list' && (
-          <div className="p-4 h-full overflow-auto">
-            <ListView />
-          </div>
-        )}
-        {view === 'calendar' && (
-          <CalendarView />
+        ) : (
+          <>
+            {view === 'kanban' && (
+              <KanbanView
+                onAddTask={(status) => {
+                  setNewTaskStatus(status)
+                  setNewTaskMode('manual')
+                  setNewTaskOpen(true)
+                }}
+                suggestions={suggestions}
+                onCreateSuggestion={createFromSuggestion}
+                onDismissSuggestion={dismissSuggestion}
+              />
+            )}
+            {view === 'list' && (
+              <ListView suggestions={suggestions} onCreateSuggestion={createFromSuggestion} onDismissSuggestion={dismissSuggestion} />
+            )}
+            {view === 'calendar' && (
+              <CalendarView
+                suggestions={suggestions}
+                onCreateSuggestion={createFromSuggestion}
+                onShowNoDate={() => { setFilter('dueFilter', 'none'); setView('list') }}
+              />
+            )}
+          </>
         )}
       </div>
 
-      {/* Detail panel */}
       <TaskDetailPanel />
 
-      {/* New task modal */}
       <NewTaskModal
         open={newTaskOpen}
         onOpenChange={handleNewTaskOpenChange}
@@ -334,5 +411,6 @@ export function TaskBoard() {
       />
       <ScheduleMeetingModal open={meetingOpen} onOpenChange={setMeetingOpen} />
     </div>
+    </TooltipProvider>
   )
 }

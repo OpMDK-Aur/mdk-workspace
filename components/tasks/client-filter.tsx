@@ -64,7 +64,7 @@ export function ClientFilter() {
           aria-expanded={open}
           aria-label="Filtrar por cliente"
           className={cn(
-            'h-8 gap-1.5 shrink-0 max-w-56',
+            'h-[30px] gap-1.5 shrink-0 max-w-56 rounded-lg border-[var(--tasks-border)] bg-[var(--tasks-card)] text-[12.5px] font-semibold text-[var(--tasks-text)] hover:border-[var(--tasks-border-hover)]',
             selectedIds.length > 0 && 'bg-primary/10 border-primary/30 text-primary'
           )}
         >

@@ -1,657 +1,250 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { 
-  format, 
-  startOfMonth, 
-  endOfMonth, 
-  startOfWeek, 
-  endOfWeek, 
-  eachDayOfInterval, 
-  isSameMonth, 
-  isSameDay, 
-  isToday,
-  startOfDay,
-  endOfDay,
-  addMonths,
-  subMonths,
-  isPast,
-  parseISO
-} from 'date-fns'
+import { useMemo, useState } from 'react'
+import { addDays, addWeeks, format, isSameMonth, isToday, startOfWeek } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { AssigneeStack, getTaskAssignees } from '@/components/tasks/assignee-stack'
-import { useTaskStore, useFilteredTasks, PRIORITY_CONFIG, STATUS_CONFIG } from '@/lib/tasks/task-store'
+import { useTaskStore, useFilteredTasks, STATUS_CONFIG } from '@/lib/tasks/task-store'
 import { prefetchTask } from '@/lib/tasks/prefetch-task'
 import type { Task } from '@/lib/types'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Calendar as CalendarIcon,
-  AlertCircle,
-  MessageCircle,
-  RotateCcw,
-  Plus,
-  ChevronDown,
-  ChevronUp
-} from 'lucide-react'
+import type { ConexaSuggestion } from '@/hooks/use-conexa-suggestions'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { NewTaskModal } from './new-task-modal'
+import { STATUS_DOT, getTaskClients, getTaskPeople, isOpenTask, isOverdue, stripClientFromTitle, toDate } from './view-parts'
 
-function getInitials(name: string | null | undefined): string {
-  return (name || '')
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
-}
+const WEEKS = 4
+const MAX_ITEMS = 3
+const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
-interface TaskBar {
-  task: Task
-  startCol: number
-  endCol: number
-}
+type DayItem = { kind: 'task'; task: Task } | { kind: 'suggestion'; item: ConexaSuggestion }
 
-function getTaskRange(task: Task): { start: Date; end: Date } | null {
-  const dueDateRaw = task.dueDate
-  if (!dueDateRaw) return null
-  const dueDate = typeof dueDateRaw === 'string' ? parseISO(dueDateRaw) : dueDateRaw
-  const startDateRaw = task.startDate
-    ? (typeof task.startDate === 'string' ? parseISO(task.startDate) : task.startDate)
-    : dueDate
-  const start = startOfDay(startDateRaw <= dueDate ? startDateRaw : dueDate)
-  const end = endOfDay(startDateRaw <= dueDate ? dueDate : startDateRaw)
-  return { start, end }
-}
-
-// Compute one continuous bar per task for the days of this week it covers,
-// clamped to the week's own start/end so the bar breaks and resumes on the next row.
-function computeWeekBars(weekDates: Date[], tasks: Task[]): TaskBar[] {
-  const weekStart = startOfDay(weekDates[0])
-  const weekEnd = endOfDay(weekDates[weekDates.length - 1])
-  const bars: TaskBar[] = []
-
-  tasks.forEach((task) => {
-    const range = getTaskRange(task)
-    if (!range) return
-    if (range.end < weekStart || range.start > weekEnd) return
-
-    const clampedStart = range.start < weekStart ? weekStart : range.start
-    const clampedEnd = range.end > weekEnd ? weekEnd : range.end
-
-    const startCol = weekDates.findIndex((d) => isSameDay(d, clampedStart))
-    const endCol = weekDates.findIndex((d) => isSameDay(d, clampedEnd))
-    if (startCol === -1 || endCol === -1) return
-
-    bars.push({ task, startCol, endCol })
-  })
-
-  return bars
-}
-
-// Greedily pack bars into lanes so overlapping date ranges stack into separate rows.
-function assignLanes(bars: TaskBar[]): TaskBar[][] {
-  const lanes: TaskBar[][] = []
-  const sorted = [...bars].sort(
-    (a, b) => getCalendarStatusRank(a.task.status) - getCalendarStatusRank(b.task.status) || a.startCol - b.startCol || (b.endCol - b.startCol) - (a.endCol - a.startCol),
-  )
-
-  sorted.forEach((bar) => {
-    const lane = lanes.find((existingLane) =>
-      existingLane.every((placed) => bar.startCol > placed.endCol || bar.endCol < placed.startCol),
-    )
-    if (lane) {
-      lane.push(bar)
-    } else {
-      lanes.push([bar])
-    }
-  })
-
-  return lanes
-}
-
-interface DayNumberCellProps {
-  date: Date
-  isCurrentMonth: boolean
-  onAddTask: (date: Date) => void
-}
-
-function DayNumberCell({ date, isCurrentMonth, onAddTask }: DayNumberCellProps) {
-  const today = isToday(date)
-  const pastDay = isPast(date) && !today
-
+function CalendarTaskItem({ task, onOpen }: { task: Task; onOpen: (id: string) => void }) {
+  const clients = getTaskClients(task)
+  const people = getTaskPeople(task)
+  const overdue = isOverdue(task)
   return (
-    <div
-      className={cn(
-        'group/day flex items-center justify-between border-r border-b px-1.5 py-1 last:border-r-0 bg-muted/40',
-        !isCurrentMonth && 'bg-muted/60',
-        today && 'bg-primary/15',
-        pastDay && isCurrentMonth && 'bg-muted/50',
-      )}
-    >
-      <span
-        className={cn(
-          'flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium',
-          today && 'bg-blue-600 text-white font-bold',
-          !today && !isCurrentMonth && 'text-muted-foreground/50',
-          !today && pastDay && isCurrentMonth && 'text-muted-foreground',
-          !today && isCurrentMonth && !pastDay && 'text-foreground',
-        )}
-      >
-        {format(date, 'd')}
-      </span>
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onAddTask(date)
-        }}
-        className={cn(
-          'flex h-5 w-5 items-center justify-center rounded opacity-0 transition-colors hover:bg-primary/20 group-hover/day:opacity-100',
-          !isCurrentMonth && 'text-muted-foreground/50',
-        )}
-        title="Crear tarea"
-      >
-        <Plus className="h-3.5 w-3.5" />
-      </button>
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => onOpen(task.id)}
+          onPointerEnter={() => prefetchTask(task.id)}
+          className={cn(
+            'flex w-full min-w-0 items-center gap-1.5 rounded-md border border-[var(--tasks-border)] bg-[var(--tasks-card)] px-1.5 py-1 text-left text-[11.5px] hover:border-[var(--tasks-border-hover)]',
+            task.status === 'resuelto' && 'opacity-[.62]',
+          )}
+        >
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: STATUS_DOT[task.status] }} aria-hidden="true" />
+          <span className={cn('truncate font-semibold', overdue ? 'text-[var(--tasks-overdue)]' : 'text-[var(--tasks-text)]')}>
+            {stripClientFromTitle(task.title, clients)}
+          </span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs">
+        <p className="font-semibold">{task.title}</p>
+        <p className="opacity-80">
+          {STATUS_CONFIG[task.status]?.label}
+          {clients.length > 0 && ` · ${clients.map((c) => c.name).join(' + ')}`}
+        </p>
+        <p className="opacity-80">{people.length ? people.map((p) => p.nombre).join(', ') : 'Sin responsable'}</p>
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
-interface TaskBarCardProps {
-  task: Task
-  startCol: number
-  endCol: number
-  onTaskClick: (taskId: string) => void
-}
-
-function TaskBarCard({ task, startCol, endCol, onTaskClick }: TaskBarCardProps) {
-  const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
-  const isSystemTask = task.isSystemTask
-  const isResuelto = task.status === 'resuelto'
-  const dueDate = task.dueDate ? (typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate) : null
-  const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate) && task.status !== 'resuelto'
-
+function CalendarSuggestionItem({ item, onCreate }: { item: ConexaSuggestion; onCreate: (s: ConexaSuggestion) => void }) {
   return (
     <button
-      onClick={() => onTaskClick(task.id)}
-      onPointerEnter={() => prefetchTask(task.id)}
-      title={[
-        task.title,
-        `Tipo: ${task.typeName || 'Tarea'}`,
-        task.clientName && `Cliente: ${task.clientName}`,
-        `Responsables: ${getTaskAssignees(task).map((a) => a.nombre).join(', ') || 'Sin asignar'}`,
-        task.createdAt && `Creada: ${format(new Date(task.createdAt), "d 'de' MMMM yyyy", { locale: es })}`,
-      ].filter(Boolean).join('\n')}
-      style={{ gridColumn: `${startCol + 1} / ${endCol + 2}` }}
-      className={cn(
-        'rounded-xl border border-gray-200 px-2 py-1.5 text-left shadow-sm transition-all',
-        'bg-white dark:border-border dark:bg-card',
-        'hover:border-primary/50 hover:shadow-md',
-        isOverdue && !isSystemTask && 'ring-1 ring-red-400/60',
-        isResuelto && 'border-green-500/60 bg-green-500/5 opacity-60',
-      )}
+      type="button"
+      onClick={() => onCreate(item)}
+      title={`Sugerida por Conexa: ${item.titulo}. Click para crear.`}
+      className="flex w-full min-w-0 items-center gap-1.5 rounded-md border border-dashed border-[var(--tasks-cx-border)] bg-[var(--tasks-cx-bg)] px-1.5 py-1 text-left text-[11.5px] hover:border-[var(--tasks-cx-btn)]"
     >
-      <div className="flex items-start gap-1.5">
-        {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />}
-        {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />}
-        <span className="flex-1 text-[11px] font-semibold text-gray-900 dark:text-foreground break-words line-clamp-1">
-          {task.title}
-        </span>
-      </div>
-      <div className="mt-1 flex items-center justify-between">
-        {isSystemTask ? (
-          <Badge
-            variant="outline"
-            className="h-3.5 px-1 text-[9px] border-0 bg-teal-100 dark:bg-teal-900/40 text-teal-800 dark:text-teal-300 font-medium"
-          >
-            Semanal
-          </Badge>
-        ) : (
-          <Badge
-            variant="outline"
-            className={cn('h-3.5 px-1 text-[9px] border-0 font-medium', priorityConfig.bgColor, priorityConfig.color)}
-          >
-            {priorityConfig.label}
-          </Badge>
-        )}
-        {getTaskAssignees(task).length > 0 && (
-          <AssigneeStack people={getTaskAssignees(task)} size="xs" max={2} />
-        )}
-      </div>
+      <span className="shrink-0 text-[var(--tasks-cx-label)]" aria-hidden="true">
+        ✦
+      </span>
+      <span className="truncate font-semibold text-[var(--tasks-cx-text)]">{item.titulo}</span>
     </button>
   )
 }
 
-const MAX_VISIBLE_LANES = 3
-
-const CALENDAR_STATUS_ORDER: Record<string, number> = {
-  pendiente_aprobacion: 0,
-  pendiente: 1,
-  resolviendo: 2,
-  demorada: 3,
-  resuelto: 4,
-  no_resuelto: 5,
-  pausada: 6,
+interface CalendarViewProps {
+  suggestions: ConexaSuggestion[]
+  onCreateSuggestion: (s: ConexaSuggestion) => void
+  onShowNoDate: () => void
 }
 
-function getCalendarStatusRank(status: string): number {
-  return CALENDAR_STATUS_ORDER[status.toLowerCase().replace(/\s+/g, '_')] ?? 99
-}
-
-function sortCalendarTasks(tasks: Task[]): Task[] {
-  return [...tasks].sort((a, b) => {
-    const statusOrder = getCalendarStatusRank(a.status) - getCalendarStatusRank(b.status)
-    if (statusOrder !== 0) return statusOrder
-    return a.title.localeCompare(b.title, 'es')
-  })
-}
-
-interface WeekRowProps {
-  weekDates: Date[]
-  tasks: Task[]
-  currentMonth: Date
-  onTaskClick: (taskId: string) => void
-  onAddTask: (date: Date) => void
-}
-
-function WeekRow({ weekDates, tasks, currentMonth, onTaskClick, onAddTask }: WeekRowProps) {
-  const bars = useMemo(() => computeWeekBars(weekDates, tasks), [weekDates, tasks])
-
-  // Multi-day tasks need to span shared rows across columns. Single-day tasks
-  // stack independently per day so one day's tasks never force blank space
-  // into other days that don't have as many tasks.
-  const { multiDayBars, singleDayBars } = useMemo(() => {
-    const multi: TaskBar[] = []
-    const single: TaskBar[] = []
-    bars.forEach((bar) => (bar.endCol > bar.startCol ? multi.push(bar) : single.push(bar)))
-    return { multiDayBars: multi, singleDayBars: single }
-  }, [bars])
-
-  const multiDayLanes = useMemo(() => assignLanes(multiDayBars), [multiDayBars])
-  const singleDayLimit = Math.max(1, MAX_VISIBLE_LANES - multiDayLanes.length)
-
-  const singleDayTasksByDay = useMemo(() => {
-    const map = new Map<number, Task[]>()
-    weekDates.forEach((_, dayIndex) => {
-      map.set(
-        dayIndex,
-        sortCalendarTasks(singleDayBars.filter((bar) => bar.startCol === dayIndex).map((bar) => bar.task)),
-      )
-    })
-    return map
-  }, [singleDayBars, weekDates])
-
-  const overflowByDay = useMemo(() => {
-    const result = new Map<string, Task[]>()
-    weekDates.forEach((date, dayIndex) => {
-      const dayTasks = singleDayTasksByDay.get(dayIndex) ?? []
-      const overflowTasks = dayTasks.slice(singleDayLimit)
-      if (overflowTasks.length > 0) result.set(format(date, 'yyyy-MM-dd'), overflowTasks)
-    })
-    return result
-  }, [singleDayTasksByDay, singleDayLimit, weekDates])
-
-  return (
-    <div className="border-b">
-      <div className="grid grid-cols-7" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
-        {weekDates.map((date) => (
-          <DayNumberCell
-            key={date.toISOString()}
-            date={date}
-            isCurrentMonth={isSameMonth(date, currentMonth)}
-            onAddTask={onAddTask}
-          />
-        ))}
-      </div>
-
-      <div className="relative min-h-[20px]">
-        {/* Day separator lines behind the task bars */}
-        <div className="absolute inset-0 grid grid-cols-7" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
-          {weekDates.map((date) => (
-            <div key={date.toISOString()} className="border-r last:border-r-0" />
-          ))}
-        </div>
-
-        <div className="relative flex flex-col gap-1 px-1.5 py-1">
-        {multiDayLanes.map((lane, laneIdx) => (
-          <div
-            key={laneIdx}
-            className="grid grid-cols-7 gap-1"
-            style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}
-          >
-            {lane.map((bar) => (
-              <TaskBarCard
-                key={bar.task.id}
-                task={bar.task}
-                startCol={bar.startCol}
-                endCol={bar.endCol}
-                onTaskClick={onTaskClick}
-              />
-            ))}
-          </div>
-        ))}
-
-        {/* Single-day tasks stack independently per day so an empty day never
-            inherits blank space from a busier day in the same week. */}
-        <div className="grid grid-cols-7 gap-1" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
-        {weekDates.map((date, dayIndex) => {
-          const dayKey = format(date, 'yyyy-MM-dd')
-          const dayTasks = singleDayTasksByDay.get(dayIndex) ?? []
-          const visibleTasks = dayTasks.slice(0, singleDayLimit)
-          const overflowTasks = overflowByDay.get(dayKey) ?? []
-          return (
-            <div key={dayKey} className="flex flex-col gap-1">
-              {visibleTasks.map((task) => (
-                <TaskBarCard key={task.id} task={task} startCol={0} endCol={0} onTaskClick={onTaskClick} />
-              ))}
-              {overflowTasks.length > 0 && (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      className="w-full py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10 hover:text-primary/80 rounded"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      +{overflowTasks.length} más
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-72 p-0 shadow-lg border" align="center" side="bottom" sideOffset={8} onClick={(event) => event.stopPropagation()}>
-                    <div className="sticky top-0 bg-background/95 px-4 py-3 border-b backdrop-blur-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-base font-semibold text-foreground capitalize">{format(date, 'd MMMM', { locale: es })}</span>
-                        <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">{overflowTasks.length} tareas</span>
-                      </div>
-                    </div>
-                    <ScrollArea className="h-80 w-full">
-                      <div className="flex flex-col gap-1 px-2 py-2">
-                      {overflowTasks.map((task) => {
-                    const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
-                    const dueDate = task.dueDate ? (typeof task.dueDate === 'string' ? parseISO(task.dueDate) : task.dueDate) : null
-                    const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate) && task.status !== 'resuelto'
-                    const isSystemTask = task.isSystemTask
-                    const isResuelto = task.status === 'resuelto'
-
-                    return (
-                      <button
-                        key={task.id}
-                        onClick={() => onTaskClick(task.id)}
-                        onPointerEnter={() => prefetchTask(task.id)}
-                        className={cn(
-                          'w-full text-left rounded-md px-2.5 py-2 transition-all duration-200',
-                          'bg-card/40 border border-border/40 hover:border-primary/50 hover:bg-card/60',
-                          'hover:shadow-sm hover:translate-x-0.5',
-                          isOverdue && !isSystemTask && 'border-red-400/50 bg-red-400/10',
-                          isResuelto && 'border-green-500/60 bg-green-500/5 opacity-50',
-                        )}
-                      >
-                        <div className="flex items-start gap-1.5 mb-1.5">
-                          <div className="flex items-start gap-1 flex-1 min-w-0">
-                            {isSystemTask && <RotateCcw className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />}
-                            {isOverdue && !isSystemTask && <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />}
-                            <span className="flex-1 text-xs font-medium text-foreground break-words line-clamp-3">
-                              {task.title}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          {isSystemTask ? (
-                            <Badge variant="outline" className="h-4 px-1.5 text-[8px] border-0 bg-teal-100/60 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 font-medium">
-                              Semanal
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className={cn('h-4 px-1.5 text-[8px] border-0 font-medium', priorityConfig.bgColor, priorityConfig.color)}>
-                              {priorityConfig.label}
-                            </Badge>
-                          )}
-                          {task.createdAt && (
-                            <span className="ml-auto text-[10px] text-muted-foreground">
-                              Creada {format(new Date(task.createdAt), 'd MMM', { locale: es })}
-                            </span>
-                          )}
-                        </div>
-                      </button>
-                    )
-                  })}
-                      </div>
-                    </ScrollArea>
-                  </PopoverContent>
-                </Popover>
-              )}
-            </div>
-          )
-        })}
-        </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-export function CalendarView() {
+export function CalendarView({ suggestions, onCreateSuggestion, onShowNoDate }: CalendarViewProps) {
   const setSelectedTask = useTaskStore((s) => s.setSelectedTask)
   const tasks = useFilteredTasks()
-  const [currentMonth, setCurrentMonth] = useState(new Date())
-  const [newTaskModalOpen, setNewTaskModalOpen] = useState(false)
-  const [selectedDateForTask, setSelectedDateForTask] = useState<Date | null>(null)
-  const [isNoDateCollapsed, setIsNoDateCollapsed] = useState(false)
-  
-  const handleAddTask = (date: Date) => {
-    setSelectedDateForTask(date)
-    setNewTaskModalOpen(true)
-  }
-  
-  // Get tasks without any calendar date
-  const tasksWithoutDate = useMemo(() => {
-    return tasks.filter((task) => !task.startDate && !task.dueDate)
-  }, [tasks])
-  
-  // Generate calendar days
-  const calendarDays = useMemo(() => {
-    const monthStart = startOfMonth(currentMonth)
-    const monthEnd = endOfMonth(currentMonth)
-    const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 }) // Monday
-    const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
-    
-    return eachDayOfInterval({ start: calendarStart, end: calendarEnd })
-  }, [currentMonth])
+  const [anchor, setAnchor] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const [newTaskDate, setNewTaskDate] = useState<Date | null>(null)
 
-  // Group days into week rows so multi-day tasks can render as one continuous
-  // bar per week, breaking and resuming across the week boundary.
-  const weeks = useMemo(() => {
-    const result: Date[][] = []
-    for (let i = 0; i < calendarDays.length; i += 7) {
-      result.push(calendarDays.slice(i, i + 7))
+  const days = useMemo(() => Array.from({ length: WEEKS * 7 }, (_, i) => addDays(anchor, i)), [anchor])
+  const titleMonth = addDays(anchor, 14)
+  const noDateCount = useMemo(() => tasks.filter((t) => !t.dueDate).length, [tasks])
+
+  const itemsByDay = useMemo(() => {
+    const map = new Map<string, DayItem[]>()
+    const push = (d: Date, item: DayItem) => {
+      const key = format(d, 'yyyy-MM-dd')
+      map.set(key, [...(map.get(key) ?? []), item])
     }
-    return result
-  }, [calendarDays])
-  
-  const weekDays = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
-  
-  const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1))
-  const handleNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1))
-  const handleToday = () => setCurrentMonth(new Date())
-  
+    for (const task of tasks) {
+      const due = toDate(task.dueDate)
+      if (due) push(due, { kind: 'task', task })
+    }
+    for (const s of suggestions) {
+      if (s.fecha_vencimiento) push(new Date(`${s.fecha_vencimiento}T12:00:00`), { kind: 'suggestion', item: s })
+    }
+    for (const [key, list] of map) {
+      map.set(
+        key,
+        list.sort((a, b) => {
+          const ra = a.kind === 'task' ? (isOpenTask(a.task) ? 0 : 2) : 1
+          const rb = b.kind === 'task' ? (isOpenTask(b.task) ? 0 : 2) : 1
+          return ra - rb
+        }),
+      )
+    }
+    return map
+  }, [tasks, suggestions])
+
+  const renderItem = (it: DayItem) =>
+    it.kind === 'task' ? (
+      <CalendarTaskItem key={it.task.id} task={it.task} onOpen={setSelectedTask} />
+    ) : (
+      <CalendarSuggestionItem key={`s-${it.item.id}`} item={it.item} onCreate={onCreateSuggestion} />
+    )
+
   return (
-    <div className="flex h-full">
-      {/* Main calendar */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Calendar header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b bg-card">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold capitalize">
-              {format(currentMonth, 'MMMM yyyy', { locale: es })}
-            </h2>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleToday}
-              className="h-7 text-xs"
-            >
-              Hoy
-            </Button>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={handlePrevMonth}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={handleNextMonth}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-        
-        {/* Week days header */}
-        <div className="grid grid-cols-7 border-b bg-muted/50" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
-          {weekDays.map((day) => (
-            <div 
-              key={day} 
-              className="py-2 text-center text-xs font-medium text-muted-foreground border-r last:border-r-0"
-            >
-              {day}
-            </div>
-          ))}
-        </div>
-        
-        {/* Calendar grid */}
-        <div className="flex-1 overflow-auto">
-          {weeks.map((weekDates) => (
-            <WeekRow
-              key={weekDates[0].toISOString()}
-              weekDates={weekDates}
-              tasks={tasks}
-              currentMonth={currentMonth}
-              onTaskClick={setSelectedTask}
-              onAddTask={handleAddTask}
-            />
-          ))}
-        </div>
-      </div>
-      
-      {/* Sidebar - Tasks without due date */}
-      <div className={cn(
-        "border-l bg-card/50 flex flex-col transition-all duration-300",
-        isNoDateCollapsed ? "w-12" : "w-72"
-      )}>
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center gap-3 px-4 py-3">
+        <h2 className="text-[15px] font-bold capitalize text-[var(--tasks-text)]">
+          {format(titleMonth, 'MMMM yyyy', { locale: es })}
+        </h2>
         <button
-          onClick={() => setIsNoDateCollapsed(!isNoDateCollapsed)}
-          className={cn(
-            "px-4 py-3 border-b flex items-center justify-between cursor-pointer hover:bg-muted/50 transition-colors",
-            isNoDateCollapsed ? "w-12 h-auto flex-col gap-2 p-2" : "w-full"
-          )}
+          type="button"
+          onClick={() => setAnchor(startOfWeek(new Date(), { weekStartsOn: 1 }))}
+          className="h-[30px] rounded-lg border border-[var(--tasks-border)] bg-[var(--tasks-card)] px-3 text-[12.5px] font-semibold text-[var(--tasks-text)] hover:border-[var(--tasks-border-hover)]"
         >
-          {isNoDateCollapsed ? (
-            <div className="flex flex-col items-center gap-2">
-              <ChevronLeft className="h-4 w-4 text-muted-foreground" />
-              <span className="text-[10px] font-medium text-muted-foreground rotate-90 whitespace-nowrap h-4 flex items-center">
-                {tasksWithoutDate.length}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 w-full">
-              <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-              <h3 className="text-sm font-medium">Sin fecha</h3>
-              <Badge variant="secondary" className="ml-auto">
-                {tasksWithoutDate.length}
-              </Badge>
-              <ChevronUp className="h-4 w-4 text-muted-foreground" />
-            </div>
-          )}
+          Hoy
         </button>
-        
-        {!isNoDateCollapsed && (
-          <ScrollArea className="flex-1">
-            <div className="p-3 space-y-2">
-              {tasksWithoutDate.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  Todas las tareas tienen fecha de vencimiento
-                </p>
-              ) : (
-                tasksWithoutDate.map((task) => {
-                  const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media
-                  const statusConfig = STATUS_CONFIG[task.status] || STATUS_CONFIG.pendiente
-                  
-                  return (
-                    <button
-                      key={task.id}
-                      onClick={() => setSelectedTask(task.id)}
-                      onPointerEnter={() => prefetchTask(task.id)}
-                      className={cn(
-                        'w-full text-left rounded-lg border border-gray-200 dark:border-border bg-white dark:bg-card p-3 transition-colors hover:border-primary/50 hover:shadow-sm',
-                        task.status === 'resuelto' && 'opacity-50'
-                      )}
-                    >
-                      <p className="text-sm font-medium text-gray-900 dark:text-foreground truncate">{task.title}</p>
-                      <p className="text-xs text-gray-500 dark:text-muted-foreground truncate mt-0.5">
-                        {task.clientName}
-                        {task.createdAt && ` · Creada ${format(new Date(task.createdAt), 'd MMM', { locale: es })}`}
-                      </p>
-                      <div className="flex items-center justify-between mt-2">
-                        <div className="flex items-center gap-1.5">
-                          <Badge
-                            variant="outline"
-                            className={cn('h-5 px-1.5 text-[10px] border-0 font-medium', statusConfig.bgColor, statusConfig.color)}
-                          >
-                            {statusConfig.label}
-                          </Badge>
-                          <Badge
-                            variant="outline"
-                            className={cn('h-5 px-1.5 text-[10px] border-0 font-medium', priorityConfig.bgColor, priorityConfig.color)}
-                          >
-                            {priorityConfig.label}
-                          </Badge>
-                        </div>
-                        {/* Assignees stack */}
-                        <div className="flex -space-x-1">
-                          {task.assignees && task.assignees.length > 0 ? (
-                            <>
-                              {task.assignees.slice(0, 2).map((a, i) => (
-                                <Avatar key={a.id} className="h-4 w-4 border border-card" style={{ zIndex: 2 - i }}>
-                                  {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.nombre} />}
-                                  <AvatarFallback className="text-[6px]">{getInitials(a.nombre)}</AvatarFallback>
-                                </Avatar>
-                              ))}
-                              {task.assignees.length > 2 && (
-                                <div className="h-4 w-4 rounded-full bg-muted border border-card flex items-center justify-center text-[6px] font-medium" style={{ zIndex: 0 }}>
-                                  +{task.assignees.length - 2}
-                                </div>
-                              )}
-                            </>
-                          ) : (task.assigneeAvatar || task.assigneeName) ? (
-                            <Avatar className="h-4 w-4">
-                              {task.assigneeAvatar && <AvatarImage src={task.assigneeAvatar} alt={task.assigneeName} />}
-                              <AvatarFallback className="text-[7px]">{getInitials(task.assigneeName)}</AvatarFallback>
-                            </Avatar>
-                          ) : null}
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })
-              )}
-            </div>
-          </ScrollArea>
+        <div className="flex items-center">
+          <button
+            type="button"
+            onClick={() => setAnchor((a) => addWeeks(a, -WEEKS))}
+            aria-label="Semanas anteriores"
+            className="flex h-[30px] w-[30px] items-center justify-center rounded-lg text-[var(--tasks-text-2)] hover:bg-[var(--tasks-count)]"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setAnchor((a) => addWeeks(a, WEEKS))}
+            aria-label="Semanas siguientes"
+            className="flex h-[30px] w-[30px] items-center justify-center rounded-lg text-[var(--tasks-text-2)] hover:bg-[var(--tasks-count)]"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+        {noDateCount > 0 && (
+          <button
+            type="button"
+            onClick={onShowNoDate}
+            className="ml-auto text-[12.5px] font-semibold text-[var(--tasks-text-3)] hover:text-[var(--tasks-text)] hover:underline"
+          >
+            Sin fecha: {noDateCount}
+          </button>
         )}
       </div>
-      
-      {/* New Task Modal */}
-      <NewTaskModal 
-        open={newTaskModalOpen} 
-        onOpenChange={setNewTaskModalOpen}
-        initialDueDate={selectedDateForTask}
+
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 pb-4">
+        <div className="flex min-h-full min-w-[760px] flex-col overflow-hidden rounded-[14px] border border-[var(--tasks-border)] bg-[var(--tasks-card)]">
+          <div className="grid shrink-0 grid-cols-7 border-b border-[var(--tasks-border)] bg-[var(--tasks-col)]">
+            {WEEKDAYS.map((d) => (
+              <div key={d} className="px-2 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--tasks-text-3)]">
+                {d}
+              </div>
+            ))}
+          </div>
+          <div className="grid flex-1 grid-cols-7" style={{ gridTemplateRows: `repeat(${WEEKS}, minmax(120px, 1fr))` }}>
+            {days.map((day, i) => {
+              const key = format(day, 'yyyy-MM-dd')
+              const items = itemsByDay.get(key) ?? []
+              const openCount = items.filter((it) => it.kind === 'task' && isOpenTask(it.task)).length
+              const today = isToday(day)
+              const otherMonth = !isSameMonth(day, titleMonth)
+              const visible = items.slice(0, MAX_ITEMS)
+              const hidden = items.length - visible.length
+              return (
+                <div
+                  key={key}
+                  className={cn(
+                    'group/day flex min-w-0 flex-col gap-1 border-[var(--tasks-border-soft)] p-1.5',
+                    i % 7 !== 6 && 'border-r',
+                    i < days.length - 7 && 'border-b',
+                    otherMonth && 'bg-[var(--tasks-col)]',
+                  )}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={cn(
+                        'flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[12px] font-semibold',
+                        today
+                          ? 'bg-[var(--tasks-brand)] font-bold text-[var(--tasks-on-brand)]'
+                          : otherMonth
+                            ? 'text-[var(--tasks-text-3)]'
+                            : 'text-[var(--tasks-text)]',
+                      )}
+                      aria-current={today ? 'date' : undefined}
+                    >
+                      {format(day, 'd')}
+                    </span>
+                    {openCount >= 2 && (
+                      <span className="truncate text-[10.5px] font-semibold text-[var(--tasks-media-fg)]">{openCount} abiertas</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setNewTaskDate(day)}
+                      aria-label={`Crear tarea el ${format(day, "d 'de' MMMM", { locale: es })}`}
+                      className="ml-auto flex h-5 w-5 items-center justify-center rounded text-[var(--tasks-text-3)] opacity-0 hover:bg-[var(--tasks-count)] focus-visible:opacity-100 group-hover/day:opacity-100"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  {visible.map(renderItem)}
+                  {hidden > 0 && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="rounded px-1.5 py-0.5 text-left text-[11px] font-semibold text-[var(--tasks-text-3)] hover:bg-[var(--tasks-count)] hover:text-[var(--tasks-text)]"
+                        >
+                          +{hidden} más
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 p-2" align="start">
+                        <p className="px-1 pb-2 text-[12.5px] font-bold capitalize">
+                          {format(day, "EEEE d 'de' MMMM", { locale: es })}
+                        </p>
+                        <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">{items.map(renderItem)}</div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      <NewTaskModal
+        open={newTaskDate !== null}
+        onOpenChange={(open) => !open && setNewTaskDate(null)}
+        initialDueDate={newTaskDate}
       />
     </div>
   )

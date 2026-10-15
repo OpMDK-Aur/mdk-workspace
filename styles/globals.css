@@ -492,3 +492,66 @@ aside.sticky-activity {
 [data-slot="dialog-overlay"]:has(+ .ntm) { background: rgba(20, 20, 20, .32); }
 .dark [data-slot="dialog-overlay"]:has(+ .ntm) { background: rgba(0, 0, 0, .6); }
 .ntm-field:focus-visible, .ntm-field:focus-within { outline: none; border-color: var(--ntm-brand); box-shadow: 0 0 0 4px rgba(255, 127, 0, .15); }
+
+/* ─── Vistas de Tareas (Tablero / Lista / Calendario) ─────────────────────── */
+:root {
+  --tasks-bg: #F6F6F4;
+  --tasks-col: #F2F2EF;
+  --tasks-card: #FFFFFF;
+  --tasks-border: #E6E6E3;
+  --tasks-border-soft: #EDEDEA;
+  --tasks-border-hover: #C8C8C4;
+  --tasks-count: #EDEDEA;
+  --tasks-row-hover: #F7F7F5;
+  --tasks-text: #141414;
+  --tasks-text-2: #46464E;
+  --tasks-text-3: #64646C;
+  --tasks-cx-bg: #F3F3FE;
+  --tasks-cx-border: #C2C5F5;
+  --tasks-cx-text: #3F43C4;
+  --tasks-cx-btn: #5B5FE8;
+  --tasks-cx-label: #5B5FE8;
+  --tasks-cx-btn-fg: #FFFFFF;
+  --tasks-brand: #FF7F00;
+  --tasks-on-brand: #141414;
+  --tasks-overdue: #DC2626;
+  --tasks-alta-bg: #FCE8E8;
+  --tasks-alta-fg: #DC2626;
+  --tasks-media-bg: #FFF4E0;
+  --tasks-media-fg: #B45309;
+  --tasks-baja-bg: #E6F6EF;
+  --tasks-baja-fg: #15803D;
+  --tasks-type-bg: #FFF1E3;
+  --tasks-type-fg: #C2410C;
+}
+.dark {
+  --tasks-bg: #0A0A0B;
+  --tasks-col: #0F0F12;
+  --tasks-card: #141417;
+  --tasks-border: #232328;
+  --tasks-border-soft: #1C1C20;
+  --tasks-border-hover: #3A3A40;
+  --tasks-count: #1A1A1E;
+  --tasks-row-hover: #17171B;
+  --tasks-text: #EDEDEF;
+  --tasks-text-2: #B5B5BC;
+  --tasks-text-3: #8A8A92;
+  --tasks-cx-bg: #0F1028;
+  --tasks-cx-border: #2E3070;
+  --tasks-cx-text: #A5A8FF;
+  --tasks-cx-btn: #5B5FE8;
+  /* #5B5FE8 sobre #0F1028 no llega a 4.5:1; la etiqueta usa el texto Conexa */
+  --tasks-cx-label: #A5A8FF;
+  --tasks-cx-btn-fg: #FFFFFF;
+  --tasks-overdue: #FF6B6B;
+  --tasks-alta-bg: #3A1416;
+  --tasks-alta-fg: #FF6B6B;
+  --tasks-media-bg: #2A2008;
+  --tasks-media-fg: #FFB020;
+  --tasks-baja-bg: #0F2A1C;
+  --tasks-baja-fg: #4ADE80;
+  --tasks-type-bg: #2A1A0A;
+  --tasks-type-fg: #FF9A3D;
+}
+@keyframes tasks-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.tasks-skeleton { animation: tasks-pulse 1.2s ease-in-out infinite; background: var(--tasks-count); }
