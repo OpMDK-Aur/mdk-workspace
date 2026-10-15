@@ -1,7 +1,10 @@
+import { Upload } from 'tus-js-client'
 import { createClient } from '@/lib/supabase/client'
 
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
 const BUCKET = 'task-files'
+// Supabase's resumable endpoint requires exactly 6 MB chunks.
+const TUS_CHUNK_SIZE = 6 * 1024 * 1024
 
 export function sanitizeFileName(name: string) {
   return name
@@ -17,9 +20,25 @@ export function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function describeTusError(err: unknown, fileName: string) {
+  const res = (err as { originalResponse?: { getStatus(): number; getBody(): string } })?.originalResponse
+  if (res) {
+    let detail = ''
+    try {
+      const body = JSON.parse(res.getBody() || '{}')
+      detail = body.message || body.error || ''
+    } catch {
+      detail = res.getBody()?.slice(0, 120) ?? ''
+    }
+    return `Error ${res.getStatus()} al subir ${fileName}${detail ? `: ${detail}` : ''}`
+  }
+  return `No se pudo subir ${fileName}. Revisá tu conexión e intentá de nuevo.`
+}
+
 /**
- * Uploads straight to Supabase Storage with XHR so we get real upload progress
- * (supabase-js `upload` has no progress callback) and skip the serverless body limit.
+ * Resumable (TUS) upload straight to Supabase Storage. Files are sent in 6 MB
+ * chunks with automatic retries, so large files survive slow or flaky networks
+ * where a single long POST would time out.
  */
 export async function uploadTaskFile(
   file: File,
@@ -31,26 +50,40 @@ export async function uploadTaskFile(
   const { data: { session } } = await supabase.auth.getSession()
   const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  const encodedPath = path.split('/').map(encodeURIComponent).join('/')
 
   await new Promise<void>((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', `${baseUrl}/storage/v1/object/${BUCKET}/${encodedPath}`)
-    xhr.setRequestHeader('Authorization', `Bearer ${session?.access_token ?? anonKey}`)
-    xhr.setRequestHeader('apikey', anonKey)
-    xhr.setRequestHeader('x-upsert', 'false')
-    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
-    }
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve()
-      else reject(new Error(`Error ${xhr.status} al subir ${file.name}`))
-    }
-    xhr.onerror = () => reject(new Error(`No se pudo subir ${file.name}`))
-    xhr.onabort = () => reject(new DOMException('Aborted', 'AbortError'))
-    signal?.addEventListener('abort', () => xhr.abort())
-    xhr.send(file)
+    const upload = new Upload(file, {
+      endpoint: `${baseUrl}/storage/v1/upload/resumable`,
+      retryDelays: [0, 1000, 3000, 5000, 10000],
+      chunkSize: TUS_CHUNK_SIZE,
+      removeFingerprintOnSuccess: true,
+      uploadDataDuringCreation: true,
+      headers: {
+        authorization: `Bearer ${session?.access_token ?? anonKey}`,
+        apikey: anonKey,
+        'x-upsert': 'false',
+      },
+      metadata: {
+        bucketName: BUCKET,
+        objectName: path,
+        contentType: file.type || 'application/octet-stream',
+        cacheControl: '3600',
+      },
+      onProgress: (sent, total) => {
+        if (total > 0) onProgress(Math.round((sent / total) * 100))
+      },
+      onError: (err) => reject(new Error(describeTusError(err, file.name))),
+      onSuccess: () => resolve(),
+    })
+
+    signal?.addEventListener('abort', () => {
+      upload.abort(true).finally(() => reject(new DOMException('Aborted', 'AbortError')))
+    })
+
+    upload.findPreviousUploads().then((previous) => {
+      if (previous.length) upload.resumeFromPreviousUpload(previous[0])
+      upload.start()
+    })
   })
 
   return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl

@@ -1023,12 +1023,23 @@ function CommentsSection({
         e.preventDefault()
         const file = item.getAsFile()
         if (file) {
-          // Convert to base64 and insert inline
-          const reader = new FileReader()
-          reader.onload = () => {
-            const dataUrl = reader.result as string
+          // Upload to Storage and embed only the URL: inline base64 bloated comments to several MB each.
+          const selectionRange = window.getSelection()?.rangeCount ? window.getSelection()!.getRangeAt(0).cloneRange() : null
+          const ext = (file.type.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '')
+          const path = `${currentUser?.id || 'anon'}/${task.id}/pasted-${Date.now()}.${ext}`
+          const uploadToast = toast.loading('Subiendo imagen...')
+          let publicUrl: string
+          try {
+            publicUrl = await uploadTaskFile(file, path, () => {})
+            toast.dismiss(uploadToast)
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'No se pudo subir la imagen', { id: uploadToast })
+            continue
+          }
+          {
             const img = document.createElement('img')
-            img.src = dataUrl
+            img.src = publicUrl
+            img.loading = 'lazy'
             img.alt = 'Imagen'
             img.style.maxWidth = '100%'
             img.style.maxHeight = '200px'
@@ -1038,8 +1049,8 @@ function CommentsSection({
             img.style.verticalAlign = 'middle'
             
             const selection = window.getSelection()
-            if (selection && selection.rangeCount > 0) {
-              const range = selection.getRangeAt(0)
+            if (selection && selectionRange && editorRef.current?.contains(selectionRange.startContainer)) {
+              const range = selectionRange
               range.deleteContents()
               range.insertNode(img)
               range.setStartAfter(img)
@@ -1049,8 +1060,8 @@ function CommentsSection({
             } else if (editorRef.current) {
               editorRef.current.appendChild(img)
             }
+            handleInput()
           }
-          reader.readAsDataURL(file)
         }
       }
     }
