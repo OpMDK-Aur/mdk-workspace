@@ -43,6 +43,7 @@ import {
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { ClientFilter } from './client-filter'
+import { CreatedDateFilter } from './created-date-filter'
 
 export function TaskBoard() {
   const searchParams = useSearchParams()
@@ -177,7 +178,7 @@ export function TaskBoard() {
     }
   }, [])
 
-  const hasSimpleFilters = filters.priority || (filters.statusIds?.length ?? 0) > 0 || filters.assigneeIds.length > 0 || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned || (filters.clientIds?.length ?? 0) > 0
+  const hasSimpleFilters = filters.priority || (filters.statusIds?.length ?? 0) > 0 || filters.assigneeIds.length > 0 || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned || (filters.clientIds?.length ?? 0) > 0 || Boolean(filters.createdFrom || filters.createdTo)
   const hasAdvancedFilters = advancedFilters.length > 0
   const hasFilters = hasSimpleFilters || hasAdvancedFilters
 
@@ -206,6 +207,7 @@ export function TaskBoard() {
 
         {/* Filters */}
         <ClientFilter />
+        <CreatedDateFilter />
 
         <Badge
           variant="outline"

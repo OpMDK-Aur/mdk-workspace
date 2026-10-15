@@ -797,6 +797,10 @@ interface TaskStore {
   dueThisWeek: boolean
   searchQuery: string
   clientIds: string[]
+  /** yyyy-MM-dd, inclusive */
+  createdFrom: string | null
+  /** yyyy-MM-dd, inclusive */
+  createdTo: string | null
   }
   
   // Advanced filters
@@ -862,6 +866,8 @@ export const useTaskStore = create<TaskStore>()(
   dueThisWeek: false,
   searchQuery: '',
   clientIds: [],
+  createdFrom: null,
+  createdTo: null,
   },
   advancedFilters: [],
   savedFilters: [],
@@ -992,7 +998,7 @@ export const useTaskStore = create<TaskStore>()(
     filters: { ...state.filters, [key]: value },
   })),
   clearFilters: () => set({
-  filters: { priority: null, statusIds: [], assigneeIds: [], showUnassigned: false, type: null, dueThisWeek: false, searchQuery: '', clientIds: [] },
+  filters: { priority: null, statusIds: [], assigneeIds: [], showUnassigned: false, type: null, dueThisWeek: false, searchQuery: '', clientIds: [], createdFrom: null, createdTo: null },
   advancedFilters: [],
   }),
   
@@ -2056,6 +2062,13 @@ export function useFilteredTasks() {
     const taskClientIds = task.clients?.map(c => c.id) || (task.clientId ? [task.clientId] : [])
     const matches = filters.clientIds.some(id => taskClientIds.includes(id))
     if (!matches) return false
+  }
+  // Creation date range filter (inclusive, local days)
+  if (filters.createdFrom || filters.createdTo) {
+    const created = task.createdAt instanceof Date ? task.createdAt : new Date(task.createdAt)
+    if (Number.isNaN(created.getTime())) return false
+    if (filters.createdFrom && created < new Date(`${filters.createdFrom}T00:00:00`)) return false
+    if (filters.createdTo && created > new Date(`${filters.createdTo}T23:59:59.999`)) return false
   }
   return true
   })
