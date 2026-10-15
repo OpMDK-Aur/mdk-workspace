@@ -4,10 +4,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import type { NewTaskPrefill } from './new-task-modal'
 import dynamic from 'next/dynamic'
-import type { TaskPriority, TaskType, TaskStatus } from '@/lib/types'
+import type { TaskPriority, TaskStatus } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import { useTaskStore, useTaskStoreHydrated, PRIORITY_CONFIG, TYPE_CONFIG, ASSIGNEES, STATUS_CONFIG, STATUS_ORDER } from '@/lib/tasks/task-store'
+import { useTaskStore, useTaskStoreHydrated, PRIORITY_CONFIG, ASSIGNEES, STATUS_CONFIG, STATUS_ORDER } from '@/lib/tasks/task-store'
 
 // Lazy load heavy components
 const KanbanView = dynamic(() => import('./kanban-view').then(m => ({ default: m.KanbanView })), {
@@ -140,10 +140,12 @@ export function TaskBoard() {
   // The advanced filter builder was replaced by the client selector; drop any persisted
   // advanced rules so they can't keep hiding tasks without a visible control.
   useEffect(() => {
-    if (hydrated && useTaskStore.getState().advancedFilters.length > 0) {
-      setAdvancedFilters([])
-    }
-  }, [hydrated, setAdvancedFilters])
+    if (!hydrated) return
+    const state = useTaskStore.getState()
+    if (state.advancedFilters.length > 0) setAdvancedFilters([])
+    // The Tipo filter was removed from the toolbar; clear any persisted value for the same reason.
+    if (state.filters.type) setFilter('type', null)
+  }, [hydrated, setAdvancedFilters, setFilter])
 
   // Live updates: any insert/update/delete in `tareas` (from any user) refreshes the board.
   // Debounced because bulk operations (e.g. seguimiento generation) fire many events at once.
@@ -175,7 +177,7 @@ export function TaskBoard() {
     }
   }, [])
 
-  const hasSimpleFilters = filters.priority || (filters.statusIds?.length ?? 0) > 0 || filters.assigneeIds.length > 0 || filters.type || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned || (filters.clientIds?.length ?? 0) > 0
+  const hasSimpleFilters = filters.priority || (filters.statusIds?.length ?? 0) > 0 || filters.assigneeIds.length > 0 || filters.dueThisWeek || filters.searchQuery || filters.showUnassigned || (filters.clientIds?.length ?? 0) > 0
   const hasAdvancedFilters = advancedFilters.length > 0
   const hasFilters = hasSimpleFilters || hasAdvancedFilters
 
@@ -346,35 +348,6 @@ export function TaskBoard() {
                 }}
               >
                 {a.name}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* Type filter */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Badge
-              variant="outline"
-              className={cn(
-                'cursor-pointer px-2.5 py-1 h-7 gap-1 shrink-0',
-                filters.type && 'bg-violet-500/10 text-violet-400 border-violet-500/30'
-              )}
-            >
-              {filters.type ? TYPE_CONFIG[filters.type].label : 'Tipo'}
-              <ChevronDown className="h-3 w-3" />
-            </Badge>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            {(Object.keys(TYPE_CONFIG) as TaskType[]).map((t) => (
-              <DropdownMenuCheckboxItem
-                key={t}
-                checked={filters.type === t}
-                onCheckedChange={(checked) => setFilter('type', checked ? t : null)}
-              >
-                <Badge variant="outline" className={cn('text-xs border-0', TYPE_CONFIG[t].color)}>
-                  {TYPE_CONFIG[t].label}
-                </Badge>
               </DropdownMenuCheckboxItem>
             ))}
           </DropdownMenuContent>
