@@ -77,7 +77,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import { useTimerStore } from '@/lib/time-tracking/timer-store'
-import { STATUS_CONFIG, STATUS_ORDER } from '@/lib/tasks/task-store'
 import { MAX_ATTACHMENT_BYTES, formatBytes, sanitizeFileName, uploadTaskFile } from '@/lib/tasks/upload-with-progress'
 
 interface NewTaskModalProps {
