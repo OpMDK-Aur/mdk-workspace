@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react'
 import type { TaskStatus } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useTaskStore, useTasksByStatus, STATUS_CONFIG, STATUS_ORDER } from '@/lib/tasks/task-store'
+import { useSubtaskCounts } from '@/hooks/use-subtasks'
 import { prefetchTask } from '@/lib/tasks/prefetch-task'
 import { TaskCard } from './task-card'
 import { Button } from '@/components/ui/button'
@@ -20,6 +21,7 @@ interface KanbanColumnProps {
 function KanbanColumn({ status, onAddTask }: KanbanColumnProps) {
   const tasksByStatus = useTasksByStatus()
   const tasks = tasksByStatus[status]
+  const { data: subtaskCounts } = useSubtaskCounts(tasks.map((t) => t.id))
   const setSelectedTask = useTaskStore((s) => s.setSelectedTask)
   const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus)
   const config = STATUS_CONFIG[status]
@@ -86,7 +88,7 @@ function KanbanColumn({ status, onAddTask }: KanbanColumnProps) {
                 e.currentTarget.classList.remove('opacity-50')
               }}
             >
-              <TaskCard task={task} onClick={() => setSelectedTask(task.id)} />
+              <TaskCard task={task} onClick={() => setSelectedTask(task.id)} subtasks={subtaskCounts?.[task.id]} />
             </div>
           ))}
           

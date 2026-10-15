@@ -19,7 +19,8 @@ import {
   HelpCircle,
   CalendarDays,
   CalendarPlus,
-  AlertCircle
+  AlertCircle,
+  ListChecks
 } from 'lucide-react'
 import { format, isToday, isTomorrow, isPast, isBefore, addDays, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -38,6 +39,7 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
 interface TaskCardProps {
   task: Task
   onClick: () => void
+  subtasks?: { done: number; total: number }
 }
 
 function formatTime(seconds: number): string {
@@ -97,7 +99,7 @@ function formatDueDate(date: Date | string): { text: string; color: string; urge
 // Default fallback for task types not in TYPE_CONFIG (e.g., UUIDs from DB)
 const DEFAULT_TYPE_CONFIG = { label: 'Tarea', color: 'bg-gray-500/20 text-gray-400', icon: undefined }
 
-export function TaskCard({ task, onClick }: TaskCardProps) {
+export function TaskCard({ task, onClick, subtasks }: TaskCardProps) {
   const [liveTime, setLiveTime] = useState(task.totalTimeSec)
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [tempTitle, setTempTitle] = useState(task.title)
@@ -224,6 +226,20 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
               <CalendarPlus className="h-3 w-3" aria-hidden="true" />
               <span className="sr-only">Creada</span>
               <span>{format(new Date(task.createdAt), 'd MMM', { locale: es })}</span>
+            </div>
+          )}
+          {subtasks && subtasks.total > 0 && (
+            <div
+              className={cn(
+                'flex items-center gap-1 tabular-nums',
+                subtasks.done === subtasks.total && 'text-emerald-600 dark:text-emerald-400',
+              )}
+            >
+              <ListChecks className="h-3 w-3" aria-hidden="true" />
+              <span className="sr-only">Subtareas completadas:</span>
+              <span>
+                {subtasks.done}/{subtasks.total}
+              </span>
             </div>
           )}
           {/* Due date */}

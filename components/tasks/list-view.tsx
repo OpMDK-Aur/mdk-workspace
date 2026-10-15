@@ -16,7 +16,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ArrowUpDown, Trash2 } from 'lucide-react'
+import { ArrowUpDown, ListChecks, Trash2 } from 'lucide-react'
+import { useSubtaskCounts } from '@/hooks/use-subtasks'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -55,7 +56,17 @@ function getInitials(name: string | null | undefined): string {
 type SortKey = 'title' | 'clientName' | 'status' | 'priority' | 'createdAt' | 'dueDate' | 'totalTimeSec'
 type SortDir = 'asc' | 'desc'
 
-function TaskRow({ task, isSelected, onSelect }: { task: Task; isSelected: boolean; onSelect: (id: string, checked: boolean) => void }) {
+function TaskRow({
+  task,
+  isSelected,
+  onSelect,
+  subtasks,
+}: {
+  task: Task
+  isSelected: boolean
+  onSelect: (id: string, checked: boolean) => void
+  subtasks?: { done: number; total: number }
+}) {
   const setSelectedTask = useTaskStore((s) => s.setSelectedTask)
   const updateTask = useTaskStore((s) => s.updateTask)
   const [liveTime, setLiveTime] = useState(task.totalTimeSec)
@@ -117,12 +128,26 @@ function TaskRow({ task, isSelected, onSelect }: { task: Task; isSelected: boole
             autoFocus
           />
         ) : (
-          <p 
-            className="font-medium text-sm truncate cursor-text hover:text-primary"
-            onClick={handleStartEditTitle}
-          >
-            {task.title}
-          </p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p
+              className="font-medium text-sm truncate cursor-text hover:text-primary"
+              onClick={handleStartEditTitle}
+            >
+              {task.title}
+            </p>
+            {subtasks && subtasks.total > 0 && (
+              <span
+                className={cn(
+                  'flex shrink-0 items-center gap-1 text-xs tabular-nums text-muted-foreground',
+                  subtasks.done === subtasks.total && 'text-emerald-600 dark:text-emerald-400',
+                )}
+              >
+                <ListChecks className="h-3 w-3" aria-hidden="true" />
+                <span className="sr-only">Subtareas completadas:</span>
+                {subtasks.done}/{subtasks.total}
+              </span>
+            )}
+          </div>
         )}
       </TableCell>
       <TableCell>
@@ -183,6 +208,7 @@ function TaskRow({ task, isSelected, onSelect }: { task: Task; isSelected: boole
 
 export function ListView() {
   const tasks = useFilteredTasks()
+  const { data: subtaskCounts } = useSubtaskCounts(tasks.map((t) => t.id))
   const deleteTasks = useTaskStore((s) => s.deleteTasks)
   const [sortKey, setSortKey] = useState<SortKey>('status')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -346,6 +372,7 @@ export function ListView() {
               task={task}
               isSelected={selectedIds.has(task.id)}
               onSelect={handleSelect}
+              subtasks={subtaskCounts?.[task.id]}
             />
           ))}
           {sortedTasks.length === 0 && (

@@ -132,6 +132,18 @@ import { formatMissingTimerFields, TimerValidationError } from '@/lib/time-track
 import { ActiveTimerBlockedDialog } from '@/components/time-tracking/active-timer-blocked-dialog'
 import { Square, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useSWRConfig } from 'swr'
+import { subtasksKey, useRefreshSubtaskCounts, type Subtask } from '@/hooks/use-subtasks'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -1696,6 +1708,9 @@ export function TaskDetailPanel() {
   const [analistaOpen, setAnalistaOpen] = useState(false)
   const [pendingStatus, setPendingStatus] = useState<TaskStatus | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [openSubtasksPrompt, setOpenSubtasksPrompt] = useState<string[] | null>(null)
+  const { mutate: globalMutate } = useSWRConfig()
+  const refreshSubtaskCounts = useRefreshSubtaskCounts()
   // Activity filters
   const [filterPersona, setFilterPersona] = useState<string | null>(null) // userId
   const [filterConAdjuntos, setFilterConAdjuntos] = useState(false)
@@ -1821,8 +1836,50 @@ export function TaskDetailPanel() {
   const taskClient = clientes.find(c => c.id === task.clientId)
   const clientPlan: ClientPlan = (taskClient?.unidad_negocio === 'MDK' && taskClient?.plan) ? taskClient.plan : 'Esencial'
 
-  // Handle status change with hito_poe interception
   const handleStatusChange = async (newStatus: TaskStatus) => {
+    if (newStatus === 'resuelto' && task.status !== 'resuelto') {
+      try {
+        const res = await fetch(subtasksKey(task.id))
+        const list: Subtask[] = res.ok ? await res.json() : []
+        const open = list.filter(s => !s.done)
+        if (open.length) {
+          setOpenSubtasksPrompt(open.map(s => s.id))
+          return
+        }
+      } catch (error) {
+        console.error('[task-detail] Error checking subtasks:', error)
+      }
+    }
+    return applyStatusChange(newStatus)
+  }
+
+  const resolveWithOpenSubtasks = async (completeThem: boolean) => {
+    const ids = openSubtasksPrompt ?? []
+    setOpenSubtasksPrompt(null)
+    if (completeThem) {
+      const results = await Promise.allSettled(
+        ids.map(id =>
+          fetch(`/api/subtasks/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ done: true }),
+          }).then(r => {
+            if (!r.ok) throw new Error()
+          }),
+        ),
+      )
+      await globalMutate(subtasksKey(task.id))
+      refreshSubtaskCounts()
+      if (results.some(r => r.status === 'rejected')) {
+        toast.error('No pudimos completar todas las subtareas')
+        return
+      }
+    }
+    await applyStatusChange('resuelto')
+  }
+
+  // Handle status change with hito_poe interception
+  const applyStatusChange = async (newStatus: TaskStatus) => {
     // If changing to 'resuelto', check if task has hito_poe
     if (newStatus === 'resuelto') {
       // First check if we already have hitoPoe in memory
@@ -2318,7 +2375,12 @@ export function TaskDetailPanel() {
                   </div>
 
                   {/* Subtareas */}
-                  <TaskSubtasks taskId={task.id} colaboradores={colaboradores} />
+                  <TaskSubtasks
+                    taskId={task.id}
+                    colaboradores={colaboradores}
+                    currentUserId={currentUserId}
+                    onResolveTask={() => applyStatusChange('resuelto')}
+                  />
 
                   {/* Adjuntos */}
                   <h2 className={cn(SECTION_LABEL_CLASSES, 'mt-8 mb-2')}>Adjuntos</h2>
@@ -2691,6 +2753,28 @@ export function TaskDetailPanel() {
         </div>
 
       </SheetContent>
+
+      <AlertDialog open={!!openSubtasksPrompt} onOpenChange={o => !o && setOpenSubtasksPrompt(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {openSubtasksPrompt?.length === 1
+                ? 'Queda 1 subtarea abierta'
+                : `Quedan ${openSubtasksPrompt?.length ?? 0} subtareas abiertas`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Podés completarlas antes de resolver la tarea o resolverla igual y dejarlas como están.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <Button variant="outline" onClick={() => resolveWithOpenSubtasks(false)}>
+              Resolver igual
+            </Button>
+            <AlertDialogAction onClick={() => resolveWithOpenSubtasks(true)}>Completarlas</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Hito Completion Modal */}
       {task.hitoPoe && (
