@@ -7,6 +7,7 @@ import { useTaskStore, useFilteredTasks, STATUS_CONFIG, STATUS_ORDER } from '@/l
 import { useSubtaskCounts } from '@/hooks/use-subtasks'
 import type { ConexaSuggestion } from '@/hooks/use-conexa-suggestions'
 import { prefetchTask } from '@/lib/tasks/prefetch-task'
+import { TaskStartButton } from './task-start-button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import {
