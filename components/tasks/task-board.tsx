@@ -236,14 +236,27 @@ export function TaskBoard() {
     const supabase = createClient()
     let timer: ReturnType<typeof setTimeout> | null = null
     let channel: ReturnType<typeof supabase.channel> | null = null
+    const changedIds = new Set<string>()
+    const deletedIds = new Set<string>()
     try {
       channel = supabase
         .channel(`task-board-tareas-${crypto.randomUUID()}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas' }, () => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas' }, (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const id = (payload.old as { id?: string })?.id
+            if (id) { deletedIds.add(id); changedIds.delete(id) }
+          } else {
+            const id = (payload.new as { id?: string })?.id
+            if (id) changedIds.add(id)
+          }
           if (timer) clearTimeout(timer)
           timer = setTimeout(() => {
-            useTaskStore.getState().loadTasks({ silent: true }).catch((err) => {
-              console.error('Realtime task reload failed:', err)
+            const changed = [...changedIds]
+            const deleted = [...deletedIds]
+            changedIds.clear()
+            deletedIds.clear()
+            useTaskStore.getState().syncTasksByIds(changed, deleted).catch((err) => {
+              console.error('Realtime task sync failed:', err)
             })
           }, 400)
         })

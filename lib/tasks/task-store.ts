@@ -83,6 +83,20 @@ function mapComentarioToComment(comentario: ComentarioDB): TaskComment {
 
 const inflightCommentLoads = new Map<string, Promise<void>>()
 
+const TASK_SELECT = `
+  *,
+  clientes:cliente_id(id, nombre_del_negocio),
+  colaboradores:asignado_a(id, nombre, apellido, avatar_url),
+  tipo_de_tareas:tipo_tarea_id(id, nombre)
+`
+
+// Lookup maps from the last full load, reused when realtime patches individual rows.
+let cachedColaboradoresMap = new Map<string, { id: string; nombre: string; apellido?: string | null; avatar_url?: string | null }>()
+let cachedClientesMap = new Map<string, { id: string; nombre_del_negocio: string }>()
+
+/** Above this many changed rows a full reload is cheaper than patching. */
+const MAX_PATCH_IDS = 150
+
 async function fetchTaskComments(taskId: string): Promise<TaskComment[] | null> {
   const supabase = createClient()
   const { data: comentarios, error } = await supabase
@@ -867,6 +881,8 @@ interface TaskStore {
 
   // Actions
   loadTasks: (options?: { silent?: boolean }) => Promise<void>
+  /** Re-fetches only the given rows (realtime); falls back to a full reload for large batches. */
+  syncTasksByIds: (changedIds: string[], deletedIds: string[]) => Promise<void>
   setView: (view: 'kanban' | 'list' | 'calendar') => void
   setSelectedTask: (id: string | null) => Promise<void>
   refreshComments: (taskId: string) => Promise<void>
@@ -967,42 +983,44 @@ export const useTaskStore = create<TaskStore>()(
         clientesData.forEach(c => clientesMap.set(c.id, c))
       }
 
-      // Load ALL tasks with pagination (Supabase limits to 1000 per request)
-      const PAGE_SIZE = 1000
-      let allTasks: TareaDB[] = []
-      let from = 0
-      let hasMore = true
+      cachedColaboradoresMap = colaboradoresMap
+      cachedClientesMap = clientesMap
 
-      while (hasMore) {
-        const { data, error } = await supabase
+      // Supabase caps responses at 1000 rows: read the count with the first page,
+      // then fetch the remaining pages in parallel instead of one after another.
+      const PAGE_SIZE = 1000
+      const fetchPage = (from: number, withCount = false) =>
+        supabase
           .from('tareas')
-          .select(`
-            *,
-            hito_poe,
-            es_tarea_sistema,
-            clientes:cliente_id(id, nombre_del_negocio),
-            colaboradores:asignado_a(id, nombre, apellido, avatar_url),
-            tipo_de_tareas:tipo_tarea_id(id, nombre)
-          `)
+          .select(TASK_SELECT, withCount ? { count: 'exact' } : undefined)
           .order('created_at', { ascending: false })
+          .order('id', { ascending: true })
           .range(from, from + PAGE_SIZE - 1)
 
-        if (error) {
-          console.error('Error loading tasks page:', error)
-          break
-        }
-
-        if (data && data.length > 0) {
-          allTasks = [...allTasks, ...(data as TareaDB[])]
-          from += PAGE_SIZE
-          hasMore = data.length === PAGE_SIZE
-        } else {
-          hasMore = false
-        }
+      const first = await fetchPage(0, true)
+      if (first.error) throw first.error
+      const total = first.count ?? first.data?.length ?? 0
+      const offsets: number[] = []
+      for (let from = PAGE_SIZE; from < total; from += PAGE_SIZE) offsets.push(from)
+      const rest = await Promise.all(offsets.map((from) => fetchPage(from)))
+      const allTasks: TareaDB[] = [...((first.data ?? []) as TareaDB[])]
+      for (const page of rest) {
+        if (page.error) console.error('Error loading tasks page:', page.error)
+        else allTasks.push(...((page.data ?? []) as TareaDB[]))
       }
-      
-      // Also update ASSIGNEES global
-      loadAssignees()
+
+      // Reuse the colaboradores we already fetched instead of querying them again.
+      if (colaboradoresData) {
+        ASSIGNEES = colaboradoresData
+          .map((c) => ({
+            id: c.id,
+            name: [c.nombre, c.apellido].filter(Boolean).join(' ') || 'Sin nombre',
+            avatar_url: c.avatar_url,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      } else {
+        loadAssignees()
+      }
       
       if (allTasks.length > 0) {
         // Comments are loaded on demand when a task is selected. Keep the ones already
@@ -1023,6 +1041,40 @@ export const useTaskStore = create<TaskStore>()(
       console.error('Error loading tasks:', error)
       set({ tasks: MOCK_TASKS, isLoading: false })
     }
+  },
+
+  syncTasksByIds: async (changedIds, deletedIds) => {
+    if (changedIds.length > MAX_PATCH_IDS || cachedColaboradoresMap.size === 0) {
+      return get().loadTasks({ silent: true })
+    }
+    const deleted = new Set(deletedIds)
+    let fresh: Task[] = []
+    if (changedIds.length > 0) {
+      const { data, error } = await createClient()
+        .from('tareas')
+        .select(TASK_SELECT)
+        .in('id', changedIds)
+      if (error) {
+        console.error('Error syncing tasks:', error)
+        return get().loadTasks({ silent: true })
+      }
+      fresh = ((data ?? []) as TareaDB[]).map((t) => mapTareaToTask(t, cachedColaboradoresMap, cachedClientesMap))
+      // Rows that no longer come back (deleted or hidden by RLS) leave the board too.
+      const returned = new Set(fresh.map((t) => t.id))
+      changedIds.forEach((id) => { if (!returned.has(id)) deleted.add(id) })
+    }
+    set((state) => {
+      const freshById = new Map(fresh.map((t) => [t.id, t]))
+      const existing = new Set(state.tasks.map((t) => t.id))
+      const updated = state.tasks
+        .filter((t) => !deleted.has(t.id))
+        .map((t) => {
+          const next = freshById.get(t.id)
+          return next ? { ...next, comments: t.comments } : t
+        })
+      const inserted = fresh.filter((t) => !existing.has(t.id)).map((t) => ({ ...t, comments: [] }))
+      return { tasks: inserted.length ? [...inserted, ...updated] : updated }
+    })
   },
 
   setView: (view) => set({ view }),
