@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Check, ChevronDown, ListFilter, Search, X } from 'lucide-react'
+import { Check, ChevronDown, CircleDot, ListFilter, Search, UserRound, X } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -32,10 +32,8 @@ function toggle<T>(list: T[] | undefined, value: T): T[] {
 
 export function countActiveFilters(f: Filters): number {
   let n = 0
-  if ((f.statusIds?.length ?? 0) > 0) n++
   if ((f.priorities?.length ?? 0) > 0) n++
   if ((f.types?.length ?? 0) > 0) n++
-  if (f.assigneeIds.length > 0 || f.showUnassigned) n++
   if ((f.creatorIds?.length ?? 0) > 0) n++
   if (f.dueFilter) n++
   return n
@@ -159,17 +157,114 @@ function PeopleList({
   )
 }
 
+const TRIGGER_CLASS =
+  'h-[30px] shrink-0 gap-1.5 rounded-lg border-[var(--tasks-border)] bg-[var(--tasks-card)] px-2.5 text-[12.5px] font-semibold text-[var(--tasks-text)] hover:border-[var(--tasks-border-hover)]'
+const TRIGGER_ACTIVE_CLASS = 'border-[var(--tasks-brand)]/60 bg-[var(--tasks-brand)]/10'
+
+function selectionLabel(names: string[], fallback: string) {
+  if (names.length === 0) return fallback
+  if (names.length === 1) return names[0]
+  return `${names[0]} +${names.length - 1}`
+}
+
+export function StatusFilter() {
+  const statusIds = useTaskStore((s) => s.filters.statusIds ?? [])
+  const setFilter = useTaskStore((s) => s.setFilter)
+  const active = statusIds.length > 0
+  const label = selectionLabel(statusIds.map((s) => STATUS_CONFIG[s]?.label ?? s), 'Estado')
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className={cn(TRIGGER_CLASS, active && TRIGGER_ACTIVE_CLASS)}>
+          <CircleDot className="h-3.5 w-3.5 text-[var(--tasks-text-3)]" aria-hidden="true" />
+          <span className="max-w-[140px] truncate">{label}</span>
+          <ChevronDown className="h-3.5 w-3.5 text-[var(--tasks-text-3)]" aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-60 p-2">
+        <div className="flex flex-col gap-0.5">
+          {STATUS_ORDER.map((s) => (
+            <Option
+              key={s}
+              checked={statusIds.includes(s)}
+              onClick={() => setFilter('statusIds', toggle<TaskStatus>(statusIds, s))}
+            >
+              {STATUS_CONFIG[s].label}
+            </Option>
+          ))}
+        </div>
+        {active && (
+          <button
+            type="button"
+            onClick={() => setFilter('statusIds', [])}
+            className="mt-1 w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            Ver todos los estados
+          </button>
+        )}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+export function AssigneeFilter() {
+  const assigneeIds = useTaskStore((s) => s.filters.assigneeIds)
+  const showUnassigned = useTaskStore((s) => s.filters.showUnassigned)
+  const setFilter = useTaskStore((s) => s.setFilter)
+  const active = assigneeIds.length > 0 || showUnassigned
+  const names = showUnassigned
+    ? ['Sin asignar']
+    : assigneeIds.map((id) => ASSIGNEES.find((a) => a.id === id)?.name ?? 'Usuario')
+  const label = selectionLabel(names, 'Responsable')
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className={cn(TRIGGER_CLASS, active && TRIGGER_ACTIVE_CLASS)}>
+          <UserRound className="h-3.5 w-3.5 text-[var(--tasks-text-3)]" aria-hidden="true" />
+          <span className="max-w-[140px] truncate">{label}</span>
+          <ChevronDown className="h-3.5 w-3.5 text-[var(--tasks-text-3)]" aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 px-0 py-2">
+        <PeopleList
+          selected={assigneeIds}
+          withUnassigned
+          unassignedChecked={showUnassigned}
+          onToggle={(id) => {
+            if (id === UNASSIGNED) {
+              const next = !showUnassigned
+              setFilter('showUnassigned', next)
+              if (next) setFilter('assigneeIds', [])
+              return
+            }
+            setFilter('showUnassigned', false)
+            setFilter('assigneeIds', toggle(assigneeIds, id))
+          }}
+        />
+        {active && (
+          <button
+            type="button"
+            onClick={() => { setFilter('assigneeIds', []); setFilter('showUnassigned', false) }}
+            className="mx-2 mt-1 w-[calc(100%-1rem)] rounded-md px-2 py-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            Ver todos los responsables
+          </button>
+        )}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 export function FiltersPopover() {
   const filters = useTaskStore((s) => s.filters)
   const setFilter = useTaskStore((s) => s.setFilter)
   const count = countActiveFilters(filters)
 
   const clearPanel = () => {
-    setFilter('statusIds', [])
     setFilter('priorities', [])
     setFilter('types', [])
-    setFilter('assigneeIds', [])
-    setFilter('showUnassigned', false)
     setFilter('creatorIds', [])
     setFilter('dueFilter', null)
     setFilter('dueFrom', null)
@@ -205,18 +300,7 @@ export function FiltersPopover() {
             )}
           </div>
           <div className="flex-1 overflow-y-auto">
-            <Section title="Estado" count={filters.statusIds?.length ?? 0} defaultOpen>
-              {STATUS_ORDER.map((s) => (
-                <Option
-                  key={s}
-                  checked={filters.statusIds?.includes(s) ?? false}
-                  onClick={() => setFilter('statusIds', toggle<TaskStatus>(filters.statusIds, s))}
-                >
-                  {STATUS_CONFIG[s].label}
-                </Option>
-              ))}
-            </Section>
-            <Section title="Prioridad" count={filters.priorities?.length ?? 0}>
+            <Section title="Prioridad" count={filters.priorities?.length ?? 0} defaultOpen>
               {PRIORITIES.map((p) => (
                 <Option
                   key={p}
@@ -237,23 +321,6 @@ export function FiltersPopover() {
                   {cfg.label}
                 </Option>
               ))}
-            </Section>
-            <Section title="Responsables" count={filters.assigneeIds.length + (filters.showUnassigned ? 1 : 0)}>
-              <PeopleList
-                selected={filters.assigneeIds}
-                withUnassigned
-                unassignedChecked={filters.showUnassigned}
-                onToggle={(id) => {
-                  if (id === UNASSIGNED) {
-                    const next = !filters.showUnassigned
-                    setFilter('showUnassigned', next)
-                    if (next) setFilter('assigneeIds', [])
-                    return
-                  }
-                  setFilter('showUnassigned', false)
-                  setFilter('assigneeIds', toggle(filters.assigneeIds, id))
-                }}
-              />
             </Section>
             <Section title="Creado por" count={filters.creatorIds?.length ?? 0}>
               <PeopleList

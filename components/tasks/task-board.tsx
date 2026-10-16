@@ -36,7 +36,7 @@ import { TasksEmptyState, getTaskClients, getTaskPeople, getTypeLabel, toDate } 
 import type { Task } from '@/lib/types'
 import { ClientFilter } from './client-filter'
 import { CreatedDateFilter } from './created-date-filter'
-import { ActiveFilterChips, FiltersPopover, useFiltersUrlSync } from './filters-popover'
+import { ActiveFilterChips, AssigneeFilter, FiltersPopover, StatusFilter, useFiltersUrlSync } from './filters-popover'
 import { preloadTaskDetailPanel } from '@/lib/tasks/prefetch-task'
 
 const VIEWS = [
@@ -291,6 +291,8 @@ export function TaskBoard() {
           Nueva tarea
         </button>
 
+        <StatusFilter />
+        <AssigneeFilter />
         <ClientFilter />
         <CreatedDateFilter />
         <FiltersPopover />
