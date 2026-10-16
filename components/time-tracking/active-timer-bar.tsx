@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTimerStore } from '@/lib/time-tracking/timer-store'
 import { formatDuration, formatDurationShort } from '@/lib/time-tracking/mock-data'
@@ -8,13 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { Cliente, TipoDeTarea } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { SearchCombobox, normalizeSearch } from '@/components/time-tracking/search-combobox'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { Play, Square, DollarSign, Loader2, Building2, Search, X } from 'lucide-react'
@@ -72,8 +66,9 @@ export function ActiveTimerBar() {
     showValidationErrors,
   } = useTimerStore()
 
-  const [clientes, setClientes] = useState<Cliente[]>([])
-  const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
+  const entries = useTimerStore((s) => s.entries)
+  const [clientes, setClientes] = useState<Pick<Cliente, 'id' | 'nombre_del_negocio'>[]>([])
+  const [tiposTarea, setTiposTarea] = useState<Pick<TipoDeTarea, 'id' | 'nombre' | 'color'>[]>([])
   const [clientSearch, setClientSearch] = useState('')
   const [clientSearchOpen, setClientSearchOpen] = useState(false)
   const [colaborador, setColaborador] = useState<ColaboradorInfo | null>(null)
@@ -87,8 +82,19 @@ export function ActiveTimerBar() {
     // Rehydrate store from localStorage before any other operations
     useTimerStore.persist.rehydrate()
     
+    async function loadClientes() {
+      const { data, error } = await createClient()
+        .from('clientes')
+        .select('id, nombre_del_negocio')
+        .order('nombre_del_negocio')
+      if (!error && data) setClientes(data)
+      setIsLoadingClients(false)
+    }
+
     async function init() {
       const supabase = createClient()
+      const clientesPromise = loadClientes()
+      const entriesPromise = loadEntries()
 
       // Obtener usuario actual
       let user = null
@@ -127,27 +133,16 @@ export function ActiveTimerBar() {
         // Cargar tipos de tarea: los genéricos (sin departamento) + los del departamento del usuario
         const { data: tipos } = await supabase
           .from('tipo_de_tareas')
-          .select('*')
+          .select('id, nombre, color')
           .eq('activo', true)
           .or(deptoId ? `departamento_id.is.null,departamento_id.eq.${deptoId}` : 'departamento_id.is.null')
           .order('nombre')
         
         if (tipos) setTiposTarea(tipos)
-        setIsLoadingTipos(false)
       }
+      setIsLoadingTipos(false)
 
-      // Cargar clientes
-      const { data: clientesData, error } = await supabase
-        .from('clientes')
-        .select('*')
-        .order('nombre_del_negocio')
-
-      if (!error && clientesData) {
-        setClientes(clientesData)
-      }
-      setIsLoadingClients(false)
-
-      await loadEntries()
+      await Promise.all([clientesPromise, entriesPromise])
     }
 
     init()
@@ -165,8 +160,29 @@ export function ActiveTimerBar() {
     return () => clearInterval(interval)
   }, [isRunning, startedAt, getElapsedSeconds])
 
-  const selectedClient = clientes.find((c) => c.id === clientId)
-  const selectedTipo = tiposTarea.find((t) => t.id === tipoTareaId)
+  const clientOptions = useMemo(
+    () => clientes.map((c) => ({ id: c.id, label: c.nombre_del_negocio })),
+    [clientes],
+  )
+  const tipoOptions = useMemo(
+    () => tiposTarea.map((t) => ({ id: t.id, label: t.nombre, color: t.color })),
+    [tiposTarea],
+  )
+  const { recentClientIds, recentTipoIds } = useMemo(() => {
+    const clients = new Set<string>()
+    const tipos = new Set<string>()
+    for (const e of entries) {
+      if (e.cliente_id && clients.size < 5) clients.add(e.cliente_id)
+      if (e.tipo_tarea_id && tipos.size < 5) tipos.add(e.tipo_tarea_id)
+      if (clients.size >= 5 && tipos.size >= 5) break
+    }
+    return { recentClientIds: [...clients], recentTipoIds: [...tipos] }
+  }, [entries])
+  const headerSearchResults = useMemo(() => {
+    const q = normalizeSearch(clientSearch)
+    if (!q) return []
+    return clientes.filter((c) => normalizeSearch(c.nombre_del_negocio).includes(q)).slice(0, 8)
+  }, [clientes, clientSearch])
 
   const missingFields = isRunning ? [] : getMissingTimerFields({ description, tipoTareaId, clientId })
   const canStart = missingFields.length === 0
@@ -251,10 +267,7 @@ export function ActiveTimerBar() {
             {/* Dropdown de resultados */}
             {clientSearchOpen && clientSearch.trim() && (
               <div className="absolute top-full left-0 mt-1 w-72 rounded-md border border-border bg-popover shadow-lg z-50 overflow-hidden">
-                {clientes
-                  .filter(c => c.nombre_del_negocio.toLowerCase().includes(clientSearch.toLowerCase()))
-                  .slice(0, 8)
-                  .map(cliente => (
+                {headerSearchResults.map(cliente => (
                     <button
                       key={cliente.id}
                       onMouseDown={(e) => {
@@ -275,7 +288,7 @@ export function ActiveTimerBar() {
                     </button>
                   ))
                 }
-                {clientes.filter(c => c.nombre_del_negocio.toLowerCase().includes(clientSearch.toLowerCase())).length === 0 && (
+                {headerSearchResults.length === 0 && (
                   <div className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</div>
                 )}
               </div>
@@ -301,87 +314,48 @@ export function ActiveTimerBar() {
           />
         </div>
 
-        {/* Tipo de tarea */}
-        <Select
-          value={tipoTareaId || ''}
-          onValueChange={async (val) => await setTipoTareaId(val || null)}
+        <SearchCombobox
+          options={tipoOptions}
+          value={tipoTareaId}
+          onChange={(id) => void setTipoTareaId(id)}
+          placeholder={isLoadingTipos ? 'Cargando...' : 'Tipo de tarea'}
+          searchPlaceholder="Buscar tipo de tarea..."
           disabled={isLoadingTipos}
-        >
-          <SelectTrigger
-            aria-invalid={isMissing('tipo') || undefined}
-            className={cn('w-[110px] sm:w-[180px] shrink min-w-0', isMissing('tipo') && errorRing)}
-          >
-            <SelectValue placeholder={isLoadingTipos ? 'Cargando...' : 'Tipo de tarea'}>
-              {selectedTipo && (
-                <div className="flex items-center gap-2">
-                  {selectedTipo.color && (
-                    <div
-                      className="h-2.5 w-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: selectedTipo.color }}
-                    />
-                  )}
-                  <span className="truncate">{selectedTipo.nombre}</span>
-                </div>
+          invalid={isMissing('tipo')}
+          recentIds={recentTipoIds}
+          className="w-[110px] sm:w-[180px] shrink"
+          renderOption={(tipo) => (
+            <>
+              {tipo.color && (
+                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: tipo.color }} />
               )}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {tiposTarea.map((tipo) => (
-              <SelectItem key={tipo.id} value={tipo.id}>
-                <div className="flex items-center gap-2">
-                  {tipo.color && (
-                    <div
-                      className="h-2.5 w-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: tipo.color }}
-                    />
-                  )}
-                  <span>{tipo.nombre}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+              <span className="truncate">{tipo.label}</span>
+            </>
+          )}
+        />
 
-        {/* Cliente */}
-        <Select
-          value={clientId || ''}
-          onValueChange={async (val) => await setClientId(val || null)}
+        <SearchCombobox
+          options={clientOptions}
+          value={clientId}
+          onChange={(id) => void setClientId(id)}
+          placeholder={isLoadingClients ? 'Cargando...' : 'Cliente'}
+          searchPlaceholder="Buscar cliente..."
           disabled={isLoadingClients}
-        >
-          <SelectTrigger
-            aria-invalid={isMissing('cliente') || undefined}
-            className={cn('w-[110px] sm:w-[180px] shrink min-w-0', isMissing('cliente') && errorRing)}
-          >
-            <SelectValue placeholder={isLoadingClients ? 'Cargando...' : 'Cliente'}>
-              {selectedClient && (
-                <div className="flex items-center gap-2">
-                  <div
-                    className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold text-white shrink-0"
-                    style={{ backgroundColor: getClientColor(selectedClient.id) }}
-                  >
-                    {getInitials(selectedClient.nombre_del_negocio)}
-                  </div>
-                  <span className="truncate">{selectedClient.nombre_del_negocio}</span>
-                </div>
-              )}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {clientes.map((cliente) => (
-              <SelectItem key={cliente.id} value={cliente.id}>
-                <div className="flex items-center gap-2">
-                  <div
-                    className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold text-white shrink-0"
-                    style={{ backgroundColor: getClientColor(cliente.id) }}
-                  >
-                    {getInitials(cliente.nombre_del_negocio)}
-                  </div>
-                  <span>{cliente.nombre_del_negocio}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          invalid={isMissing('cliente')}
+          recentIds={recentClientIds}
+          className="w-[110px] sm:w-[180px] shrink"
+          renderOption={(cliente) => (
+            <>
+              <span
+                className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold text-white shrink-0"
+                style={{ backgroundColor: getClientColor(cliente.id) }}
+              >
+                {getInitials(cliente.label)}
+              </span>
+              <span className="truncate">{cliente.label}</span>
+            </>
+          )}
+        />
 
         {/* Controles fijos: siempre visibles, nunca se achican ni se cortan */}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
