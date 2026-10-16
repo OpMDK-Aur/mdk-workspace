@@ -5,7 +5,7 @@ import useSWR from 'swr'
 import { addDays, format } from 'date-fns'
 import { X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { useTaskStore } from '@/lib/tasks/task-store'
+import { useTaskStore, useFilteredTasks } from '@/lib/tasks/task-store'
 import { isDueTomorrow, isOpenTask, isOverdue } from './view-parts'
 
 const todayKey = () => format(new Date(), 'yyyy-MM-dd')
@@ -25,7 +25,7 @@ function useHiddenToday(userId: string | undefined) {
 }
 
 export function ConexaStrip({ suggestionCount, onShowSuggestions }: { suggestionCount: number; onShowSuggestions: () => void }) {
-  const tasks = useTaskStore((s) => s.tasks)
+  const tasks = useFilteredTasks()
   const setFilter = useTaskStore((s) => s.setFilter)
   const { data: userId } = useSWR('tasks-current-user-id', async () => {
     const { data } = await createClient().auth.getUser()
