@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTimerStore } from '@/lib/time-tracking/timer-store'
 import { formatDuration, formatDurationShort } from '@/lib/time-tracking/mock-data'
@@ -8,17 +8,17 @@ import { createClient } from '@/lib/supabase/client'
 import type { Cliente, TipoDeTarea } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { SearchCombobox, normalizeSearch } from '@/components/time-tracking/search-combobox'
 import { Badge } from '@/components/ui/badge'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { Play, Square, DollarSign, Loader2, Building2, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  formatMissingTimerFields,
+  getMissingTimerFields,
+  TimerValidationError,
+} from '@/lib/time-tracking/validate-timer'
 
 function getClientColor(id: string): string {
   const colors = [
@@ -64,10 +64,13 @@ export function ActiveTimerBar() {
     toggleBillable,
     getElapsedSeconds,
     loadEntries,
+    showValidationErrors,
   } = useTimerStore()
 
-  const [clientes, setClientes] = useState<Cliente[]>([])
-  const [tiposTarea, setTiposTarea] = useState<TipoDeTarea[]>([])
+  const entries = useTimerStore((s) => s.entries)
+  const splitClientIds = useTimerStore((s) => s.splitClientIds)
+  const [clientes, setClientes] = useState<Pick<Cliente, 'id' | 'nombre_del_negocio'>[]>([])
+  const [tiposTarea, setTiposTarea] = useState<Pick<TipoDeTarea, 'id' | 'nombre' | 'color'>[]>([])
   const [clientSearch, setClientSearch] = useState('')
   const [clientSearchOpen, setClientSearchOpen] = useState(false)
   const [colaborador, setColaborador] = useState<ColaboradorInfo | null>(null)
@@ -81,8 +84,19 @@ export function ActiveTimerBar() {
     // Rehydrate store from localStorage before any other operations
     useTimerStore.persist.rehydrate()
     
+    async function loadClientes() {
+      const { data, error } = await createClient()
+        .from('clientes')
+        .select('id, nombre_del_negocio')
+        .order('nombre_del_negocio')
+      if (!error && data) setClientes(data)
+      setIsLoadingClients(false)
+    }
+
     async function init() {
       const supabase = createClient()
+      const clientesPromise = loadClientes()
+      const entriesPromise = loadEntries()
 
       // Obtener usuario actual
       let user = null
@@ -121,27 +135,16 @@ export function ActiveTimerBar() {
         // Cargar tipos de tarea: los genéricos (sin departamento) + los del departamento del usuario
         const { data: tipos } = await supabase
           .from('tipo_de_tareas')
-          .select('*')
+          .select('id, nombre, color')
           .eq('activo', true)
           .or(deptoId ? `departamento_id.is.null,departamento_id.eq.${deptoId}` : 'departamento_id.is.null')
           .order('nombre')
         
         if (tipos) setTiposTarea(tipos)
-        setIsLoadingTipos(false)
       }
+      setIsLoadingTipos(false)
 
-      // Cargar clientes
-      const { data: clientesData, error } = await supabase
-        .from('clientes')
-        .select('*')
-        .order('nombre_del_negocio')
-
-      if (!error && clientesData) {
-        setClientes(clientesData)
-      }
-      setIsLoadingClients(false)
-
-      await loadEntries()
+      await Promise.all([clientesPromise, entriesPromise])
     }
 
     init()
@@ -159,16 +162,57 @@ export function ActiveTimerBar() {
     return () => clearInterval(interval)
   }, [isRunning, startedAt, getElapsedSeconds])
 
-  const selectedClient = clientes.find((c) => c.id === clientId)
-  const selectedTipo = tiposTarea.find((t) => t.id === tipoTareaId)
+  const clientOptions = useMemo(
+    () => clientes.map((c) => ({ id: c.id, label: c.nombre_del_negocio })),
+    [clientes],
+  )
+  const splitClients = useMemo(() => {
+    if (!splitClientIds || splitClientIds.length < 2) return []
+    const byId = new Map(clientOptions.map((c) => [c.id, c]))
+    return splitClientIds.map((id) => byId.get(id) ?? { id, label: 'Cliente' })
+  }, [splitClientIds, clientOptions])
+  const tipoOptions = useMemo(
+    () => tiposTarea.map((t) => ({ id: t.id, label: t.nombre, color: t.color })),
+    [tiposTarea],
+  )
+  const { recentClientIds, recentTipoIds } = useMemo(() => {
+    const clients = new Set<string>()
+    const tipos = new Set<string>()
+    for (const e of entries) {
+      if (e.cliente_id && clients.size < 5) clients.add(e.cliente_id)
+      if (e.tipo_tarea_id && tipos.size < 5) tipos.add(e.tipo_tarea_id)
+      if (clients.size >= 5 && tipos.size >= 5) break
+    }
+    return { recentClientIds: [...clients], recentTipoIds: [...tipos] }
+  }, [entries])
+  const headerSearchResults = useMemo(() => {
+    const q = normalizeSearch(clientSearch)
+    if (!q) return []
+    return clientes.filter((c) => normalizeSearch(c.nombre_del_negocio).includes(q)).slice(0, 8)
+  }, [clientes, clientSearch])
+
+  const missingFields = isRunning ? [] : getMissingTimerFields({ description, tipoTareaId, clientId })
+  const canStart = missingFields.length === 0
+  const showErrors = showValidationErrors && !canStart
+  const isMissing = (field: (typeof missingFields)[number]) => showErrors && missingFields.includes(field)
+  const errorRing = 'border-destructive ring-1 ring-destructive'
 
   const handleStart = async () => {
+    if (!canStart) {
+      useTimerStore.setState({ showValidationErrors: true })
+      toast.error(formatMissingTimerFields(missingFields))
+      return
+    }
     setIsStarting(true)
     try {
       await startTimer()
       toast.success('Timer iniciado')
-    } catch {
-      toast.error('Error al iniciar el timer')
+    } catch (error) {
+      if (error instanceof TimerValidationError) {
+        toast.error(formatMissingTimerFields(error.missing))
+      } else {
+        toast.error('Error al iniciar el timer')
+      }
     } finally {
       setIsStarting(false)
     }
@@ -230,10 +274,7 @@ export function ActiveTimerBar() {
             {/* Dropdown de resultados */}
             {clientSearchOpen && clientSearch.trim() && (
               <div className="absolute top-full left-0 mt-1 w-72 rounded-md border border-border bg-popover shadow-lg z-50 overflow-hidden">
-                {clientes
-                  .filter(c => c.nombre_del_negocio.toLowerCase().includes(clientSearch.toLowerCase()))
-                  .slice(0, 8)
-                  .map(cliente => (
+                {headerSearchResults.map(cliente => (
                     <button
                       key={cliente.id}
                       onMouseDown={(e) => {
@@ -254,7 +295,7 @@ export function ActiveTimerBar() {
                     </button>
                   ))
                 }
-                {clientes.filter(c => c.nombre_del_negocio.toLowerCase().includes(clientSearch.toLowerCase())).length === 0 && (
+                {headerSearchResults.length === 0 && (
                   <div className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</div>
                 )}
               </div>
@@ -271,85 +312,107 @@ export function ActiveTimerBar() {
             placeholder="¿En qué estás trabajando?"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="border-0 bg-transparent text-base shadow-none focus-visible:ring-0 px-0"
+            aria-invalid={isMissing('description') || undefined}
+            aria-required
+            className={cn(
+              'bg-transparent text-base shadow-none focus-visible:ring-0',
+              isMissing('description') ? `${errorRing} px-2` : 'border-0 px-0'
+            )}
           />
         </div>
 
-        {/* Tipo de tarea */}
-        <Select
-          value={tipoTareaId || ''}
-          onValueChange={async (val) => await setTipoTareaId(val || null)}
+        <SearchCombobox
+          options={tipoOptions}
+          value={tipoTareaId}
+          onChange={(id) => void setTipoTareaId(id)}
+          placeholder={isLoadingTipos ? 'Cargando...' : 'Tipo de tarea'}
+          searchPlaceholder="Buscar tipo de tarea..."
           disabled={isLoadingTipos}
-        >
-          <SelectTrigger className="w-[110px] sm:w-[180px] shrink min-w-0">
-            <SelectValue placeholder={isLoadingTipos ? 'Cargando...' : 'Tipo de tarea'}>
-              {selectedTipo && (
-                <div className="flex items-center gap-2">
-                  {selectedTipo.color && (
-                    <div
-                      className="h-2.5 w-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: selectedTipo.color }}
-                    />
-                  )}
-                  <span className="truncate">{selectedTipo.nombre}</span>
-                </div>
+          invalid={isMissing('tipo')}
+          recentIds={recentTipoIds}
+          className="w-[110px] sm:w-[180px] shrink"
+          renderOption={(tipo) => (
+            <>
+              {tipo.color && (
+                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: tipo.color }} />
               )}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {tiposTarea.map((tipo) => (
-              <SelectItem key={tipo.id} value={tipo.id}>
-                <div className="flex items-center gap-2">
-                  {tipo.color && (
-                    <div
-                      className="h-2.5 w-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: tipo.color }}
-                    />
-                  )}
-                  <span>{tipo.nombre}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+              <span className="truncate">{tipo.label}</span>
+            </>
+          )}
+        />
 
-        {/* Cliente */}
-        <Select
-          value={clientId || ''}
-          onValueChange={async (val) => await setClientId(val || null)}
+        {splitClients.length > 1 ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="flex h-9 w-[110px] sm:w-[180px] shrink items-center gap-2 rounded-md border border-input bg-transparent px-3 text-sm hover:bg-accent"
+                aria-label={`Tiempo dividido entre ${splitClients.map((c) => c.label).join(', ')}`}
+              >
+                <span className="flex -space-x-1.5 shrink-0">
+                  {splitClients.slice(0, 3).map((c) => (
+                    <span
+                      key={c.id}
+                      className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold text-white ring-2 ring-background"
+                      style={{ backgroundColor: getClientColor(c.id) }}
+                    >
+                      {getInitials(c.label)}
+                    </span>
+                  ))}
+                </span>
+                <span className="truncate">{splitClients.length} clientes</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64 p-2">
+              <p className="px-2 pb-2 text-xs text-muted-foreground leading-relaxed">
+                El tiempo se divide en partes iguales al detener el timer.
+              </p>
+              <ul className="flex flex-col">
+                {splitClients.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      onClick={() => void setClientId(c.id)}
+                      className="group flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent"
+                    >
+                      <span
+                        className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold text-white shrink-0"
+                        style={{ backgroundColor: getClientColor(c.id) }}
+                      >
+                        {getInitials(c.label)}
+                      </span>
+                      <span className="flex-1 truncate text-left">{c.label}</span>
+                      <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100">Solo este</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </PopoverContent>
+          </Popover>
+        ) : (
+        <SearchCombobox
+          options={clientOptions}
+          value={clientId}
+          onChange={(id) => void setClientId(id)}
+          placeholder={isLoadingClients ? 'Cargando...' : 'Cliente'}
+          searchPlaceholder="Buscar cliente..."
           disabled={isLoadingClients}
-        >
-          <SelectTrigger className="w-[110px] sm:w-[180px] shrink min-w-0">
-            <SelectValue placeholder={isLoadingClients ? 'Cargando...' : 'Cliente'}>
-              {selectedClient && (
-                <div className="flex items-center gap-2">
-                  <div
-                    className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold text-white shrink-0"
-                    style={{ backgroundColor: getClientColor(selectedClient.id) }}
-                  >
-                    {getInitials(selectedClient.nombre_del_negocio)}
-                  </div>
-                  <span className="truncate">{selectedClient.nombre_del_negocio}</span>
-                </div>
-              )}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {clientes.map((cliente) => (
-              <SelectItem key={cliente.id} value={cliente.id}>
-                <div className="flex items-center gap-2">
-                  <div
-                    className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold text-white shrink-0"
-                    style={{ backgroundColor: getClientColor(cliente.id) }}
-                  >
-                    {getInitials(cliente.nombre_del_negocio)}
-                  </div>
-                  <span>{cliente.nombre_del_negocio}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          invalid={isMissing('cliente')}
+          recentIds={recentClientIds}
+          className="w-[110px] sm:w-[180px] shrink"
+          renderOption={(cliente) => (
+            <>
+              <span
+                className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold text-white shrink-0"
+                style={{ backgroundColor: getClientColor(cliente.id) }}
+              >
+                {getInitials(cliente.label)}
+              </span>
+              <span className="truncate">{cliente.label}</span>
+            </>
+          )}
+        />
+        )}
 
         {/* Controles fijos: siempre visibles, nunca se achican ni se cortan */}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
@@ -379,11 +442,15 @@ export function ActiveTimerBar() {
             onClick={isRunning ? handleStop : handleStart}
             size="icon"
             disabled={isStarting || isStopping}
+            aria-disabled={!isRunning && !canStart}
+            aria-label={isRunning ? 'Detener timer' : canStart ? 'Iniciar timer' : formatMissingTimerFields(missingFields)}
+            title={!isRunning && !canStart ? formatMissingTimerFields(missingFields) : undefined}
             className={cn(
               'shrink-0 h-10 w-10 rounded-full border-0 text-white',
               isRunning
                 ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-emerald-600 hover:bg-emerald-700'
+                : 'bg-emerald-600 hover:bg-emerald-700',
+              !isRunning && !canStart && 'opacity-50 cursor-not-allowed hover:bg-emerald-600'
             )}
           >
             {isStarting || isStopping ? (
@@ -396,6 +463,11 @@ export function ActiveTimerBar() {
           </Button>
         </div>
       </div>
+      {showErrors && (
+        <p role="alert" className="px-4 pb-2 -mt-1 text-xs text-destructive">
+          {formatMissingTimerFields(missingFields)}
+        </p>
+      )}
     </div>
   )
 }

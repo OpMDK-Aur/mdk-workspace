@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useResizableActivity } from '@/hooks/use-resizable-activity'
 import type { Task, TaskStatus, TaskPriority, TaskType, TaskCustomField, TaskQuotation, ClientPlan, TaskFile, TaskComment } from '@/lib/types'
 import { cn, linkifyText } from '@/lib/utils'
 import { createClient, getAuthUser } from '@/lib/supabase/client'
@@ -76,7 +77,30 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { Check, ChevronsUpDown, ChevronLeft, ChevronRight, Pencil, ArrowUpDown, Search, SlidersHorizontal, Building2, Paperclip, User } from 'lucide-react'
+import { Check, ChevronsUpDown, ChevronLeft, ChevronRight, Pencil, ArrowUpDown, Search, SlidersHorizontal, Building2, Paperclip, User, Users } from 'lucide-react'
+import { CircleDot, Flag, Sparkles, Tag, Timer } from 'lucide-react'
+import {
+  CONEXA_CLASSES,
+  ConexaBar,
+  FieldCaret,
+  OtherTimerNotice,
+  PanelProp,
+  SECTION_LABEL_CLASSES,
+  TASK_FIELD_CLASSES,
+  TASK_SELECT_TRIGGER_CLASSES,
+  TaskDatesField,
+  TaskMoreMenu,
+  linkifyAsCards,
+} from './task-panel-parts'
+import { TaskSubtasks, type SubtaskProposal } from './task-subtasks'
+import { ConexaThreadSummary, type ConexaThreadSummaryHandle } from './conexa-thread-summary'
+import { hashComments } from '@/lib/conexa/tasks'
+
+const CONEXA_DRAFT_MARKER = '<span data-conexa-draft="1"></span>'
+
+function escapeHtml(text: string) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
 import {
   Play,
   RotateCcw,
@@ -108,15 +132,32 @@ import {
   ZoomOut,
   RotateCw,
   FlaskConical,
+  CalendarPlus,
 } from 'lucide-react'
 import { format, formatDistanceToNow, parseISO } from 'date-fns'
 import { TaskFilesSection } from './task-files-section'
+import { MAX_ATTACHMENT_BYTES, sanitizeFileName, uploadTaskFile } from '@/lib/tasks/upload-with-progress'
 import { es } from 'date-fns/locale'
 import { QuotationSection } from './quotation-section'
 import { useTimerStore, TIMER_ACTIVE_ERROR } from '@/lib/time-tracking/timer-store'
+import { getTaskClients, TaskClientPicker, type ClientChoice } from './task-client-picker'
+import { useTaskTime } from '@/hooks/use-task-time'
+import { formatMissingTimerFields, TimerValidationError } from '@/lib/time-tracking/validate-timer'
 import { ActiveTimerBlockedDialog } from '@/components/time-tracking/active-timer-blocked-dialog'
 import { Square, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useSWRConfig } from 'swr'
+import { subtasksKey, useRefreshSubtaskCounts, type Subtask } from '@/hooks/use-subtasks'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -153,42 +194,46 @@ function MultiClientSelect({
   const remainingClients = availableClients.filter(c => !clients.find(cl => cl.id === c.id))
   
   return (
-    <div className="space-y-2">
-      {/* Current clients */}
-      <div className="flex flex-wrap gap-1.5">
-        {clients.length === 0 ? (
-          <span className="text-sm text-muted-foreground">Sin cliente</span>
-        ) : (
-          clients.map(c => (
-            <div
-              key={c.id}
-              className="flex items-center gap-1.5 bg-muted/50 rounded-full px-2.5 py-0.5 group"
-            >
-              <button
-                onClick={() => onNavigateToClient?.(c.id)}
-                className="text-xs hover:text-primary hover:underline transition-colors cursor-pointer"
-                title={`Ir a ${c.nombre_del_negocio}`}
-              >
-                {c.nombre_del_negocio}
-              </button>
-              <button
-                onClick={() => removeClient(c.id)}
-                className="h-4 w-4 rounded-full hover:bg-destructive/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-      
-      {/* Add client popover */}
+    <div className="flex flex-wrap items-center gap-1.5 py-0.5">
+      {clients.map(c => (
+        <div
+          key={c.id}
+          className="inline-flex h-[30px] max-w-full items-center gap-2 rounded-lg bg-[var(--task-field)] pl-1.5 pr-1.5"
+        >
+          <span
+            className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-[var(--task-type-bg)] text-[8.5px] font-bold text-[var(--task-type-text)]"
+            aria-hidden="true"
+          >
+            {getInitials(c.nombre_del_negocio)}
+          </span>
+          <button
+            type="button"
+            onClick={() => onNavigateToClient?.(c.id)}
+            className="truncate text-[13px] font-semibold text-[var(--task-text)] hover:underline"
+            title={`Ir a ${c.nombre_del_negocio}`}
+          >
+            {c.nombre_del_negocio}
+          </button>
+          <button
+            type="button"
+            onClick={() => removeClient(c.id)}
+            aria-label={`Quitar ${c.nombre_del_negocio}`}
+            className="flex size-5 shrink-0 items-center justify-center rounded text-[var(--task-text-4)] transition-colors hover:text-[var(--task-text)]"
+          >
+            <X className="size-3" />
+          </button>
+        </div>
+      ))}
+
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
-            <Plus className="h-3 w-3" />
-            Agregar cliente
-          </Button>
+          <button
+            type="button"
+            className="inline-flex h-[30px] items-center gap-1 rounded-lg border border-dashed border-[var(--task-dashed)] px-2.5 text-[12.5px] font-semibold text-[var(--task-text-3)] transition-colors hover:text-[var(--task-text)]"
+          >
+            <Plus className="size-3.5" />
+            Cliente
+          </button>
         </PopoverTrigger>
         <PopoverContent className="w-56 p-0" align="start">
           <Command>
@@ -246,40 +291,37 @@ function MultiAssigneeSelect({
   const availableColaboradores = colaboradores.filter(c => !assignees.find(a => a.id === c.id))
 
   return (
-    <div className="space-y-2">
-      {/* Current assignees */}
-      <div className="flex flex-wrap gap-1.5">
-        {assignees.length === 0 ? (
-          <span className="text-sm text-muted-foreground">Sin asignar</span>
-        ) : (
-          assignees.map(a => (
-            <div 
-              key={a.id} 
-              className="flex items-center gap-1.5 bg-muted/50 rounded-full pl-1 pr-2 py-0.5 group"
-            >
-              <Avatar className="h-5 w-5">
-                {a.avatar_url && <AvatarImage src={a.avatar_url} alt={fullName(a)} />}
-                <AvatarFallback className="text-[9px]">{getInitials(fullName(a))}</AvatarFallback>
-              </Avatar>
-              <span className="text-xs">{fullName(a)}</span>
-              <button 
-                onClick={() => removeAssignee(a.id)}
-                className="h-4 w-4 rounded-full hover:bg-destructive/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-      
-      {/* Add assignee popover */}
+    <div className="flex flex-wrap items-center gap-1.5 py-0.5">
+      {assignees.map(a => (
+        <div
+          key={a.id}
+          className="group inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-[var(--task-field)] pl-[3px] pr-2.5"
+        >
+          <Avatar className="size-[22px]">
+            {a.avatar_url && <AvatarImage src={a.avatar_url} alt="" />}
+            <AvatarFallback className="text-[9px]">{getInitials(fullName(a))}</AvatarFallback>
+          </Avatar>
+          <span className="truncate text-[12.5px] font-semibold text-[var(--task-text)]">{fullName(a)}</span>
+          <button
+            type="button"
+            onClick={() => removeAssignee(a.id)}
+            aria-label={`Quitar a ${fullName(a)}`}
+            className="-mr-1 flex size-4 items-center justify-center rounded-full text-[var(--task-text-4)] opacity-0 transition-opacity hover:text-[var(--task-text)] focus-visible:opacity-100 group-hover:opacity-100"
+          >
+            <X className="size-3" />
+          </button>
+        </div>
+      ))}
+
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
-            <Plus className="h-3 w-3" />
-            Agregar
-          </Button>
+          <button
+            type="button"
+            aria-label="Agregar responsable"
+            className="flex size-7 shrink-0 items-center justify-center rounded-full border border-dashed border-[var(--task-dashed)] text-[var(--task-text-3)] transition-colors hover:text-[var(--task-text)]"
+          >
+            <Plus className="size-3.5" />
+          </button>
         </PopoverTrigger>
         <PopoverContent className="w-56 p-0" align="start">
           <Command>
@@ -658,7 +700,7 @@ function RichTextEditor({
   )
 }
 
-// ── Time Tracker Component (synced with global timer) ─────────────────────────
+// ── Time Tracker Component (synced with global timer) ──���──────────────────────
 
 function TimeTracker({ task }: { task: Task }) {
   const { updateTask } = useTaskStore()
@@ -683,6 +725,8 @@ function TimeTracker({ task }: { task: Task }) {
   const [isStarting, setIsStarting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
   const [isBlockedDialogOpen, setIsBlockedDialogOpen] = useState(false)
+  const [clientPickerOpen, setClientPickerOpen] = useState(false)
+  const taskClients = getTaskClients(task)
 
   const isThisTaskRunning = globalIsRunning && globalTaskId === task.id
 
@@ -698,22 +742,38 @@ function TimeTracker({ task }: { task: Task }) {
     return () => clearInterval(interval)
   }, [isThisTaskRunning, globalStartedAt, getElapsedSeconds])
 
-  const totalDisplay = task.totalTimeSec + (isThisTaskRunning ? elapsedSeconds : 0)
+  const { mine: myTime, total: taskTotal } = useTaskTime(task.id)
 
   const handleStart = async () => {
     if (globalIsRunning) {
       setIsBlockedDialogOpen(true)
       return
     }
+    if (taskClients.length > 1) {
+      setClientPickerOpen(true)
+      return
+    }
+    void startWithClient({ clientId: taskClients[0]?.id ?? task.clientId })
+  }
+
+  const startWithClient = async (choice: ClientChoice) => {
     setIsStarting(true)
     try {
       // `type` is the tipo_de_tareas UUID loaded from the task relation.
       // Keep the fallback for older tasks that only have `typeName` populated.
-      await startTimerForTask(task.id, task.title, task.clientId || null, task.type || task.typeName || null)
-      toast.success('Timer iniciado para esta tarea')
+      await startTimerForTask(task.id, task.title, choice.clientId || null, task.type || task.typeName || null, choice.splitClientIds)
+      toast.success(
+        choice.splitClientIds
+          ? `Timer iniciado · dividido entre ${choice.splitClientIds.length} clientes`
+          : 'Timer iniciado para esta tarea',
+      )
     } catch (error) {
       if (error instanceof Error && error.message === TIMER_ACTIVE_ERROR) {
         setIsBlockedDialogOpen(true)
+      } else if (error instanceof TimerValidationError) {
+        toast.error(formatMissingTimerFields(error.missing), {
+          description: 'Lo precargué en la barra del timer: completalo ahí y dale Play.',
+        })
       } else {
         toast.error('Error al iniciar el timer')
       }
@@ -754,11 +814,12 @@ function TimeTracker({ task }: { task: Task }) {
 
   // ── Compact bar layout: [ ■ Parar ]  00:00:15  [ ↺ ] ──────────────────────
   return (
-    <div className="flex items-center gap-2 w-full">
+    <div className="flex w-full flex-col gap-1 py-0.5">
+    <div className="flex items-center gap-2.5">
       {isThisTaskRunning ? (
         <Button
           size="sm"
-          className="h-7 px-2.5 gap-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded-md"
+          className="h-[30px] px-3 gap-1.5 text-[12.5px] font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg"
           onClick={handleStop}
           disabled={isStopping}
         >
@@ -768,12 +829,13 @@ function TimeTracker({ task }: { task: Task }) {
           Parar
         </Button>
       ) : (
+        <TaskClientPicker clients={taskClients} open={clientPickerOpen} onOpenChange={setClientPickerOpen} onChoose={startWithClient}>
         <Button
           size="sm"
-          variant="outline"
+          variant="ghost"
           className={cn(
-            'h-7 px-2.5 gap-1.5 text-xs rounded-md',
-            isOtherTaskRunning && 'opacity-50 cursor-not-allowed'
+            'h-[30px] px-3 gap-1.5 rounded-lg border-0 bg-[var(--task-field)] text-[12.5px] font-semibold text-[var(--task-text)] hover:bg-[var(--task-field)] hover:brightness-110',
+            isOtherTaskRunning && 'opacity-60 cursor-not-allowed'
           )}
           onClick={handleStart}
           disabled={isStarting}
@@ -785,27 +847,33 @@ function TimeTracker({ task }: { task: Task }) {
             : <Play className="h-3 w-3 fill-current" />}
           Iniciar
         </Button>
+        </TaskClientPicker>
       )}
 
       <span className={cn(
-        'font-mono text-sm font-medium tabular-nums tracking-tight',
-        isThisTaskRunning ? 'text-green-500 dark:text-green-400' : 'text-foreground'
+        'font-mono text-[13px] font-semibold tabular-nums',
+        isThisTaskRunning ? 'text-green-500 dark:text-green-400' : 'text-[var(--task-text)]'
       )}>
-        {formatTime(totalDisplay)}
+        {formatTime(myTime)}
+      </span>
+      <span className="text-[11.5px] text-[var(--task-text-4)]">
+        tuyo · <span className="font-mono tabular-nums text-[var(--task-text)]">{formatTime(taskTotal)}</span> total
       </span>
 
       <Button
         size="sm"
         variant="ghost"
-        className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+        className="h-7 w-7 p-0 text-[var(--task-text-4)] hover:text-[var(--task-text)]"
         onClick={handleReset}
         title="Resetear tiempo"
+        aria-label="Resetear tiempo"
       >
         <RotateCcw className="h-3.5 w-3.5" />
       </Button>
+    </div>
 
       {isOtherTaskRunning && (
-        <span className="text-xs text-amber-500 ml-1">Otro timer activo</span>
+        <OtherTimerNotice />
       )}
 
       <ActiveTimerBlockedDialog open={isBlockedDialogOpen} onOpenChange={setIsBlockedDialogOpen} />
@@ -819,7 +887,7 @@ function TimeTracker({ task }: { task: Task }) {
 
 // Shared formatting classes so bold/italic/strikethrough/lists render the same
 // while editing (contentEditable) and when displayed as saved HTML.
-const COMMENT_RICH_TEXT_CLASSES = "[&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_i]:italic [&_s]:line-through [&_strike]:line-through [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1 [&_li]:my-0.5"
+const COMMENT_RICH_TEXT_CLASSES = "[&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_i]:italic [&_s]:line-through [&_strike]:line-through [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1 [&_li]:my-0.5 [&_.mention]:rounded-none [&_.mention]:bg-transparent [&_.mention]:px-0 [&_.mention]:font-semibold [&_.mention]:text-[#C2410C] dark:[&_.mention]:text-[#FF9A3D]"
 
 // Toolbar with Bold / Italic / Strikethrough / Bullet list / Numbered list controls
 // for a contentEditable comment editor. Uses document.execCommand so formatting
@@ -878,8 +946,43 @@ function CommentFormatToolbar({
   )
   }
 
-function CommentsSection({ task, compact = false, onDeleteComment }: { task: Task; compact?: boolean; onDeleteComment: (commentId: string) => Promise<void> }) {
+function CommentsSection({
+  task,
+  compact = false,
+  onDeleteComment,
+  draft,
+}: {
+  task: Task
+  compact?: boolean
+  onDeleteComment: (commentId: string) => Promise<void>
+  draft?: { text: string; nonce: number } | null
+}) {
   const { addComment, updateComment, deleteComment } = useTaskStore()
+  const [pendingDraft, setPendingDraft] = useState<string | null>(null)
+  const conexaDraftRef = useRef(false)
+
+  const fillWithDraft = useCallback((text: string) => {
+    const el = editorRef.current
+    if (!el) return
+    el.innerHTML = escapeHtml(text)
+    setCommentContent(el.innerHTML)
+    conexaDraftRef.current = true
+    el.focus()
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    range.collapse(false)
+    const sel = window.getSelection()
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+  }, [])
+
+  useEffect(() => {
+    if (!draft) return
+    const hasText = (editorRef.current?.textContent ?? '').trim().length > 0
+    if (hasText) setPendingDraft(draft.text)
+    else fillWithDraft(draft.text)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft?.nonce])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [currentUser, setCurrentUser] = useState<{ id: string; nombre: string; avatar_url: string | null } | null>(null)
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
@@ -941,12 +1044,23 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
         e.preventDefault()
         const file = item.getAsFile()
         if (file) {
-          // Convert to base64 and insert inline
-          const reader = new FileReader()
-          reader.onload = () => {
-            const dataUrl = reader.result as string
+          // Upload to Storage and embed only the URL: inline base64 bloated comments to several MB each.
+          const selectionRange = window.getSelection()?.rangeCount ? window.getSelection()!.getRangeAt(0).cloneRange() : null
+          const ext = (file.type.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '')
+          const path = `${currentUser?.id || 'anon'}/${task.id}/pasted-${Date.now()}.${ext}`
+          const uploadToast = toast.loading('Subiendo imagen...')
+          let publicUrl: string
+          try {
+            publicUrl = await uploadTaskFile(file, path, () => {})
+            toast.dismiss(uploadToast)
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'No se pudo subir la imagen', { id: uploadToast })
+            continue
+          }
+          {
             const img = document.createElement('img')
-            img.src = dataUrl
+            img.src = publicUrl
+            img.loading = 'lazy'
             img.alt = 'Imagen'
             img.style.maxWidth = '100%'
             img.style.maxHeight = '200px'
@@ -956,8 +1070,8 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
             img.style.verticalAlign = 'middle'
             
             const selection = window.getSelection()
-            if (selection && selection.rangeCount > 0) {
-              const range = selection.getRangeAt(0)
+            if (selection && selectionRange && editorRef.current?.contains(selectionRange.startContainer)) {
+              const range = selectionRange
               range.deleteContents()
               range.insertNode(img)
               range.setStartAfter(img)
@@ -967,8 +1081,8 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
             } else if (editorRef.current) {
               editorRef.current.appendChild(img)
             }
+            handleInput()
           }
-          reader.readAsDataURL(file)
         }
       }
     }
@@ -986,6 +1100,7 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
     
     // Update comment content state
     setCommentContent(editorRef.current.innerHTML)
+    if (!(editorRef.current.textContent ?? '').trim()) conexaDraftRef.current = false
     
     const selection = window.getSelection()
     if (!selection || selection.rangeCount === 0) return
@@ -1044,7 +1159,7 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
     
     // Create mention span
     const mentionSpan = document.createElement('span')
-    mentionSpan.className = 'mention bg-primary/20 text-primary px-1 rounded'
+    mentionSpan.className = 'mention'
     mentionSpan.setAttribute('data-mention-id', assignee.id)
     mentionSpan.setAttribute('data-mention-name', assignee.name)
     mentionSpan.contentEditable = 'false'
@@ -1159,9 +1274,12 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
       }
     })
     
+    const finalContent = conexaDraftRef.current ? `${CONEXA_DRAFT_MARKER}${content}` : content
+
     try {
-      await addComment(task.id, content, userId, userName, currentUser?.avatar_url, mentionedIds, pendingAttachments)
+      await addComment(task.id, finalContent, userId, userName, currentUser?.avatar_url, mentionedIds, pendingAttachments)
       editorRef.current.innerHTML = ''
+      conexaDraftRef.current = false
       setCommentContent('')
       setPendingAttachments([])
       toast.success('Comentario agregado')
@@ -1279,34 +1397,61 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
         "border-t shrink-0",
         compact ? "px-4 py-3 space-y-2" : "px-5 py-4 space-y-3"
       )}>
-        <div className="flex items-center gap-2">
-          <Avatar className={cn("shrink-0", compact ? "h-6 w-6" : "h-7 w-7")}>
-            {currentUser?.avatar_url && <AvatarImage src={currentUser.avatar_url} alt={currentUser.nombre} />}
-            <AvatarFallback className={cn("text-xs", compact ? "text-[7px]" : "")}>
-              {currentUser ? getInitials(currentUser.nombre) : 'US'}
-            </AvatarFallback>
-          </Avatar>
-          <span className={cn("font-medium", compact ? "text-xs" : "text-sm")}>{currentUser?.nombre || 'Nuevo comentario'}</span>
-        </div>
-        <CommentFormatToolbar
-          editorRef={editorRef}
-          onChange={() => setCommentContent(editorRef.current?.innerHTML || '')}
-          onAttachClick={() => commentFileInputRef.current?.click()}
-        />
-        <div className="relative">
+        <AlertDialog open={pendingDraft !== null} onOpenChange={(open) => !open && setPendingDraft(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Reemplazar tu borrador?</AlertDialogTitle>
+              <AlertDialogDescription>Ya escribiste algo en el comentario. Conexa lo va a reemplazar con su respuesta.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Conservar el mío</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (pendingDraft) fillWithDraft(pendingDraft)
+                  setPendingDraft(null)
+                }}
+              >
+                Reemplazar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <div className="group/composer relative rounded-[10px] border border-border bg-muted/50 transition-shadow focus-within:border-[#FF7F00] focus-within:ring-4 focus-within:ring-[#FF7F00]/15">
           <div
             ref={editorRef}
             contentEditable
             onPaste={handlePaste}
             onKeyDown={handleKeyDown}
             onInput={handleInput}
-            data-placeholder={compact ? "Escribe..." : "Escribe un comentario... usa @ para mencionar (podes pegar imagenes con Ctrl+V)"}
-              className={cn(
-              "w-full p-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary overflow-y-auto empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/50 [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1 [&_.mention]:bg-primary/20 [&_.mention]:text-primary [&_.mention]:px-1 [&_.mention]:rounded",
+            role="textbox"
+            aria-multiline="true"
+            aria-label="Nuevo comentario"
+            data-placeholder="Escribí un comentario. Usá @ para mencionar."
+            className={cn(
+              "w-full overflow-y-auto px-3 pt-2.5 pb-1 text-sm leading-6 focus:outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_img]:max-w-full [&_img]:max-h-[200px] [&_img]:rounded-lg [&_img]:inline-block [&_img]:align-middle [&_img]:my-1",
               COMMENT_RICH_TEXT_CLASSES,
-              compact ? "min-h-[50px] max-h-[120px] text-sm" : "min-h-[88px] max-h-[250px]"
+              "min-h-9 max-h-[calc(6*1.5rem+0.875rem)]"
             )}
           />
+          <div className="flex items-center gap-2 px-2 pb-2">
+            <div className="hidden group-focus-within/composer:block [&>div]:mb-0 [&>div]:border-0 [&>div]:pb-0">
+              <CommentFormatToolbar
+                editorRef={editorRef}
+                onChange={() => setCommentContent(editorRef.current?.innerHTML || '')}
+                onAttachClick={() => commentFileInputRef.current?.click()}
+              />
+            </div>
+            <span className="ml-auto hidden font-mono text-[11px] text-muted-foreground group-focus-within/composer:inline" aria-hidden="true">⌘↵</span>
+            <Button
+              size="sm"
+              className="ml-auto h-7 gap-1.5 rounded-full bg-[#FF7F00] px-3 text-[12px] font-bold text-[#141414] hover:bg-[#FF7F00] hover:brightness-105 group-focus-within/composer:ml-0 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+              onClick={handleSubmit}
+              disabled={isSubmitting || ((!commentContent.trim() || commentContent.trim() === '<br>') && pendingAttachments.length === 0)}
+            >
+              <Send className="h-3 w-3" />
+              {isSubmitting ? 'Enviando...' : 'Enviar'}
+            </Button>
+          </div>
           
           {/* Mention dropdown */}
           {showMentions && filteredAssignees.length > 0 && (
@@ -1352,17 +1497,20 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
               const files = Array.from(e.target.files || [])
               if (!files.length) return
               for (const file of files) {
+                if (file.size > MAX_ATTACHMENT_BYTES) {
+                  toast.error(`${file.name} supera los 25 MB`)
+                  continue
+                }
+                const toastId = toast.loading(`Subiendo ${file.name}… 0%`)
                 try {
-                  const formData = new FormData()
-                  formData.append('file', file)
-                  const res = await fetch('/api/upload', { method: 'POST', body: formData })
-                  if (res.ok) {
-                    const { url } = await res.json()
-                    setPendingAttachments(prev => [...prev, { url, name: file.name, mimeType: file.type }])
-                    toast.success(`Adjunto: ${file.name}`)
-                  }
-                } catch {
-                  toast.error('Error al subir archivo')
+                  const path = `comentarios/${task.id}/${Date.now()}-${sanitizeFileName(file.name)}`
+                  const url = await uploadTaskFile(file, path, (pct) => {
+                    toast.loading(`Subiendo ${file.name}… ${pct}%`, { id: toastId })
+                  })
+                  setPendingAttachments(prev => [...prev, { url, name: file.name, mimeType: file.type }])
+                  toast.success(`Adjunto: ${file.name}`, { id: toastId })
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : `Error al subir ${file.name}`, { id: toastId })
                 }
               }
               e.target.value = ''
@@ -1382,15 +1530,6 @@ function CommentsSection({ task, compact = false, onDeleteComment }: { task: Tas
               ))}
             </div>
           )}
-          <Button
-            size="sm"
-            className={cn("gap-2 px-4 ml-auto", compact && "h-7 px-2 gap-1 text-xs")}
-            onClick={handleSubmit}
-            disabled={isSubmitting || ((!commentContent.trim() || commentContent.trim() === '<br>') && pendingAttachments.length === 0)}
-          >
-            <Send className={cn("h-3.5 w-3.5", compact && "h-3 w-3")} />
-            {isSubmitting ? (compact ? 'Env...' : 'Enviando...') : 'Enviar'}
-          </Button>
         </div>
       </div>
 
@@ -1627,12 +1766,15 @@ function CustomFields({ task }: { task: Task }) {
   )
 }
 
-// ── Main Panel ──────────────────���─────────────────────────────────────────────
+// ── Main Panel ──────────────────���────────────────────────────────────────────��
 
 export function TaskDetailPanel() {
   const router = useRouter()
-  const { selectedTaskId, setSelectedTask, tasks, updateTask, deleteTask, toggleTaskActive, deleteComment, updateComment, refreshComments } = useTaskStore()
+  const { selectedTaskId, setSelectedTask, tasks, addTask, updateTask, deleteTask, toggleTaskActive, deleteComment, updateComment, refreshComments } = useTaskStore()
   const task = tasks.find((t) => t.id === selectedTaskId)
+  const isLoadingComments = useTaskStore((s) =>
+    !!selectedTaskId && !s.commentsLoadedIds[selectedTaskId],
+  )
 
   useEffect(() => {
     if (!selectedTaskId) return
@@ -1650,17 +1792,15 @@ export function TaskDetailPanel() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isActivityExpanded, setIsActivityExpanded] = useState(false)
   const [activeTab, setActiveTab] = useState('detalles')
+  const [activityTab, setActivityTab] = useState<'todo' | 'comentarios' | 'historial'>('todo')
   const [isEditingDescription, setIsEditingDescription] = useState(false)
+  const [subtaskProposals, setSubtaskProposals] = useState<SubtaskProposal[] | null>(null)
+  const [conexaDraft, setConexaDraft] = useState<{ text: string; nonce: number } | null>(null)
+  const threadSummaryRef = useRef<ConexaThreadSummaryHandle>(null)
 
-  // Expanding the Activity panel also fullscreens the whole sheet so the
-  // comments feed gets the maximum available viewport width.
-  const toggleActivityExpanded = () => {
-    setIsActivityExpanded((prev) => {
-      const next = !prev
-      if (next) setIsFullscreen(true)
-      return next
-    })
-  }
+  const toggleActivityExpanded = () => setIsActivityExpanded((prev) => !prev)
+  const { width: activityWidth, isResizing: isResizingActivity, containerRef: panelGridRef, startResize: startActivityResize } =
+    useResizableActivity()
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [tempTitle, setTempTitle] = useState('')
   const [typeSearch, setTypeSearch] = useState('')
@@ -1680,6 +1820,9 @@ export function TaskDetailPanel() {
   const [analistaOpen, setAnalistaOpen] = useState(false)
   const [pendingStatus, setPendingStatus] = useState<TaskStatus | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [openSubtasksPrompt, setOpenSubtasksPrompt] = useState<string[] | null>(null)
+  const { mutate: globalMutate } = useSWRConfig()
+  const refreshSubtaskCounts = useRefreshSubtaskCounts()
   // Activity filters
   const [filterPersona, setFilterPersona] = useState<string | null>(null) // userId
   const [filterConAdjuntos, setFilterConAdjuntos] = useState(false)
@@ -1690,6 +1833,20 @@ export function TaskDetailPanel() {
   // Image viewer state
   const [expandedImage, setExpandedImage] = useState<{ url: string; name: string } | null>(null)
   const [imageZoom, setImageZoom] = useState(100)
+  const wheelCleanupRef = useRef<(() => void) | null>(null)
+  // Callback ref: the dialog mounts its content lazily, and React's onWheel is
+  // passive, so a native non-passive listener is needed to block page scroll.
+  const imageViewportRef = useCallback((node: HTMLDivElement | null) => {
+    wheelCleanupRef.current?.()
+    wheelCleanupRef.current = null
+    if (!node) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      setImageZoom((z) => Math.max(50, Math.min(400, z + (e.deltaY > 0 ? -20 : 20))))
+    }
+    node.addEventListener('wheel', onWheel, { passive: false })
+    wheelCleanupRef.current = () => node.removeEventListener('wheel', onWheel)
+  }, [])
 
   // Description editing state
   const descriptionRef = useRef<HTMLDivElement>(null)
@@ -1805,8 +1962,50 @@ export function TaskDetailPanel() {
   const taskClient = clientes.find(c => c.id === task.clientId)
   const clientPlan: ClientPlan = (taskClient?.unidad_negocio === 'MDK' && taskClient?.plan) ? taskClient.plan : 'Esencial'
 
-  // Handle status change with hito_poe interception
   const handleStatusChange = async (newStatus: TaskStatus) => {
+    if (newStatus === 'resuelto' && task.status !== 'resuelto') {
+      try {
+        const res = await fetch(subtasksKey(task.id))
+        const list: Subtask[] = res.ok ? await res.json() : []
+        const open = list.filter(s => !s.done)
+        if (open.length) {
+          setOpenSubtasksPrompt(open.map(s => s.id))
+          return
+        }
+      } catch (error) {
+        console.error('[task-detail] Error checking subtasks:', error)
+      }
+    }
+    return applyStatusChange(newStatus)
+  }
+
+  const resolveWithOpenSubtasks = async (completeThem: boolean) => {
+    const ids = openSubtasksPrompt ?? []
+    setOpenSubtasksPrompt(null)
+    if (completeThem) {
+      const results = await Promise.allSettled(
+        ids.map(id =>
+          fetch(`/api/subtasks/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ done: true }),
+          }).then(r => {
+            if (!r.ok) throw new Error()
+          }),
+        ),
+      )
+      await globalMutate(subtasksKey(task.id))
+      refreshSubtaskCounts()
+      if (results.some(r => r.status === 'rejected')) {
+        toast.error('No pudimos completar todas las subtareas')
+        return
+      }
+    }
+    await applyStatusChange('resuelto')
+  }
+
+  // Handle status change with hito_poe interception
+  const applyStatusChange = async (newStatus: TaskStatus) => {
     // If changing to 'resuelto', check if task has hito_poe
     if (newStatus === 'resuelto') {
       // First check if we already have hitoPoe in memory
@@ -1904,40 +2103,93 @@ export function TaskDetailPanel() {
     <Sheet open={!!selectedTaskId} onOpenChange={(open) => !open && handleClose()}>
       <SheetContent 
         className={cn(
-          'p-0 flex flex-col',
+          'ntm bg-[var(--task-panel,var(--ntm-bg,var(--background)))] p-0 flex flex-col overflow-x-hidden border-l border-[var(--ntm-border)] shadow-[var(--ntm-shadow)] [&>button.absolute]:hidden',
           isFullscreen 
             ? '!w-full !max-w-full sm:!max-w-full' 
-            : '!w-[920px] !max-w-[920px]'
+            : '!w-[min(1120px,94vw)] !max-w-[94vw] sm:!max-w-[94vw]'
         )} 
         side="right"
+        onEscapeKeyDown={(e) => {
+          if (isActivityExpanded) {
+            e.preventDefault()
+            setIsActivityExpanded(false)
+          } else if (isFullscreen) {
+            e.preventDefault()
+            setIsFullscreen(false)
+          }
+        }}
       >
-        {/* Header - Navigation bar only */}
-        <SheetHeader className="px-4 py-2 border-b shrink-0 pr-12">
-          <div className="flex items-center justify-between gap-4">
-            {/* Breadcrumb */}
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0 flex-1">
-              <span className="truncate max-w-[120px]">
-                {task.clients?.[0]?.nombre_del_negocio || task.clientName || 'Sin cliente'}
-              </span>
-              <span>/</span>
-              <span className="truncate max-w-[120px] text-foreground font-medium">{task.title}</span>
-            </div>
+        <SheetHeader className="h-14 px-4 border-b border-[var(--ntm-border)] shrink-0 flex-row items-center gap-3 space-y-0">
+          <SheetTitle className="sr-only">{task.title}</SheetTitle>
+          <nav aria-label="Ubicación" className="flex items-center gap-1.5 text-sm text-[var(--ntm-text-3)] min-w-0 flex-1">
+            <span className="shrink-0">Tareas</span>
+            <span aria-hidden="true">/</span>
+            <span className="truncate max-w-[160px]">
+              {(task.clients?.length ? task.clients.map(c => c.nombre_del_negocio).join(', ') : task.clientName) || 'Sin cliente'}
+            </span>
+            <span aria-hidden="true">/</span>
+            <span className="truncate text-[var(--ntm-text)] font-medium">{task.title}</span>
+          </nav>
 
-            {/* Navigation + expand */}
-            <div className="flex items-center gap-1 shrink-0">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToPrevious} disabled={!hasPrevious} title="Tarea anterior">
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </Button>
-              <span className="text-xs text-muted-foreground tabular-nums min-w-[3.5rem] text-center">
-                {currentIndex + 1} / {tasks.length}
-              </span>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToNext} disabled={!hasNext} title="Siguiente tarea">
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsFullscreen(!isFullscreen)}>
-                {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-              </Button>
-            </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => toast.info('Crear tareas con Conexa', { description: 'Esta acción estará disponible pronto.' })}
+              className={cn('mr-2 hidden h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-semibold md:inline-flex', CONEXA_CLASSES)}
+            >
+              <Sparkles className="size-3.5" aria-hidden="true" />
+              Crear tareas con Conexa
+            </button>
+            <span className="text-xs text-[var(--ntm-text-3)] tabular-nums px-1 whitespace-nowrap">
+              {currentIndex + 1} de {tasks.length}
+            </span>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goToPrevious} disabled={!hasPrevious} aria-label="Tarea anterior">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goToNext} disabled={!hasNext} aria-label="Siguiente tarea">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </Button>
+            <TaskMoreMenu
+              onDuplicate={async () => {
+                try {
+                  const newId = await addTask({
+                    ...task,
+                    title: `${task.title} (copia)`,
+                    comments: [],
+                    files: [],
+                  })
+                  toast.success('Tarea duplicada')
+                  if (newId) setSelectedTask(newId)
+                } catch {
+                  toast.error('No se pudo duplicar la tarea')
+                }
+              }}
+              onCopyLink={() => {
+                const url = `${window.location.origin}/dashboard/tasks?task=${task.id}`
+                navigator.clipboard.writeText(url).then(
+                  () => toast.success('Link copiado'),
+                  () => toast.error('No se pudo copiar el link'),
+                )
+              }}
+              onDelete={async () => {
+                if (confirm(`¿Eliminar la tarea "${task.title}"?`)) {
+                  await deleteTask(task.id)
+                  handleClose()
+                }
+              }}
+            />
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleClose} aria-label="Cerrar">
+              <X className="h-4 w-4" />
+            </Button>
           </div>
           {/* WhatsApp buttons */}
           {task.isSystemTask && task.systemTaskMeta?.whatsappLink && (
@@ -1951,74 +2203,60 @@ export function TaskDetailPanel() {
           )}
         </SheetHeader>
 
-        {/* Tabs (hidden while Activity is expanded so the comments feed gets the whole body) */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-          {!isActivityExpanded && (
-            <TabsList className="mx-6 mt-6 mb-0 shrink-0 bg-muted/50 p-1 h-auto">
-              <TabsTrigger value="detalles" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Detalles</TabsTrigger>
-              <TabsTrigger value="cotizacion" className="text-sm px-4 py-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">Cotizacion</TabsTrigger>
-            </TabsList>
+        <div ref={panelGridRef} className="@container flex min-h-0 flex-1 flex-col">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          style={{
+            ['--activity-w' as string]: activityWidth
+              ? `${activityWidth}px`
+              : isFullscreen
+                ? 'clamp(440px, 34%, 640px)'
+                : 'clamp(400px, 38%, 560px)',
+          }}
+          className={cn(
+            'grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-y-auto @min-[1100px]:overflow-hidden',
+            !isActivityExpanded && '@min-[1100px]:grid-cols-[minmax(0,1fr)_var(--activity-w)]',
+            isResizingActivity && 'select-none'
           )}
+        >
+          {!isActivityExpanded && (
+            <section className="min-h-0 min-w-0 overflow-x-hidden min-[900px]:overflow-y-auto">
+              <div className={cn('mx-auto px-5 pt-[22px] sm:px-8', isFullscreen && 'max-w-[1200px]')}>
+                <TabsList className="mb-[18px] h-auto gap-1 rounded-none bg-transparent p-0">
+                  {(['detalles', 'cotizacion'] as const).map((value) => (
+                    <TabsTrigger
+                      key={value}
+                      value={value}
+                      className="h-auto flex-none rounded-lg border-0 px-3 py-1.5 text-[13px] font-semibold text-[var(--task-text-3)] shadow-none hover:text-[var(--task-text)] data-[state=active]:bg-[var(--task-tab-active)] data-[state=active]:text-[var(--task-text)] data-[state=active]:shadow-none dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-[var(--task-tab-active)] dark:data-[state=active]:text-[var(--task-text)] dark:text-[var(--task-text-3)]"
+                    >
+                      {value === 'detalles' ? 'Detalles' : 'Cotización'}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
 
-          <div className="flex-1 overflow-hidden">
-            <TabsContent value="detalles" className="mt-0 h-full">
-              <div className={cn(
-                "h-full flex flex-row gap-0",
-                isActivityExpanded ? "px-0 pb-0 pt-0" : "px-6 pb-6"
-              )}>
-                {/* LEFT / MAIN COLUMN - 50% (hidden while Activity is expanded to full screen) */}
-                <div className={cn(
-                  "overflow-y-auto flex flex-col min-w-0 pr-6",
-                  isActivityExpanded ? "hidden" : "w-1/2"
-                )}>
-
-                  {/* Title area */}
-                  <div className="pt-0 pb-4">
-                    {/* Type selector pill + actions */}
-                    <div className="flex items-center gap-2 mb-5">
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" size="sm" className="h-7 gap-2 text-xs rounded-full px-3.5 bg-primary/10 border-primary/20 text-primary hover:bg-primary/20">
-                            <span className="h-2 w-2 rounded-full bg-primary" />
-                            {tiposTarea.find(t => t.id === task.type)?.nombre || 'Tarea'}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-56 p-2" align="start">
-                          <div className="space-y-2">
-                            <input
-                              type="text"
-                              placeholder="Buscar tipo..."
-                              value={typeSearch}
-                              onChange={(e) => setTypeSearch(e.target.value)}
-                              className="w-full px-2 py-1.5 text-xs border border-input rounded bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                            />
-                            <div className="max-h-64 overflow-y-auto space-y-1">
-                              {tiposTarea
-                                .filter(t => t.nombre.toLowerCase().includes(typeSearch.toLowerCase()))
-                                .map(t => (
-                                  <button
-                                    key={t.id}
-                                    onClick={() => {
-                                      updateTask(task.id, { type: t.id as TaskType, typeName: t.nombre })
-                                      setTypeSearch('')
-                                    }}
-                                    className="w-full text-left rounded px-2 py-1.5 hover:bg-accent transition-colors flex items-center gap-2 text-sm"
-                                  >
-                                    <span className="h-2 w-2 rounded-full bg-primary" />
-                                    {t.nombre}
-                                    {task.type === t.id && <Check className="h-4 w-4 ml-auto text-primary" />}
-                                  </button>
-                                ))}
-                              {tiposTarea.filter(t => t.nombre.toLowerCase().includes(typeSearch.toLowerCase())).length === 0 && (
-                                <div className="py-4 text-center text-xs text-muted-foreground">
-                                  No se encontraron tipos
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
+              <TabsContent value="detalles" className="mt-0">
+                <div className={cn('mx-auto px-5 pb-10 sm:px-8', isFullscreen && 'max-w-[1200px]')}>
+                  <div>
+                    {(() => {
+                      const typeName = tiposTarea.find(t => t.id === task.type)?.nombre || task.typeName || 'Sin tipo'
+                      const shortType = typeName.length > 32 ? `${typeName.slice(0, 31).trimEnd()}…` : typeName
+                      return (
+                        <div className="mb-2.5 flex flex-wrap items-center gap-2">
+                          <span
+                            title={typeName.length > 32 ? typeName : undefined}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--task-type-bg)] px-2.5 py-[3px] text-[11.5px] font-semibold text-[var(--task-type-text)]"
+                          >
+                            <span className="size-1.5 rounded-full bg-[var(--task-type-dot,#FF7F00)]" aria-hidden="true" />
+                            {shortType}
+                          </span>
+                          <span className="font-mono text-[11.5px] text-[var(--task-text-4)]">
+                            {`T-${task.id.replace(/-/g, '').slice(0, 6).toUpperCase()}`}
+                          </span>
+                        </div>
+                      )
+                    })()}
 
                     {/* Title */}
                     {isEditingTitle ? (
@@ -2040,12 +2278,12 @@ export function TaskDetailPanel() {
                           }
                           if (e.key === 'Escape') setIsEditingTitle(false)
                         }}
-                        className="w-full text-2xl font-semibold bg-transparent border-0 outline-none focus:ring-0 p-0 text-foreground"
+                        className="mb-[18px] w-full text-[26px] font-bold tracking-[-0.01em] leading-tight bg-transparent border-0 outline-none focus:ring-0 p-0 text-[var(--task-text)]"
                         autoFocus
                       />
                     ) : (
                       <h1
-                        className="text-2xl font-bold cursor-text hover:text-foreground/80 leading-tight transition-colors"
+                        className="mb-[18px] text-[26px] font-bold tracking-[-0.01em] text-[var(--task-text)] cursor-text hover:opacity-80 leading-tight transition-opacity text-balance break-words"
                         onClick={() => { setTempTitle(task.title); setIsEditingTitle(true) }}
                       >
                         {task.title}
@@ -2089,47 +2327,109 @@ export function TaskDetailPanel() {
                     )}
                   </div>
 
-                  {/* Time tracker - moved to header */}
-                  <div className="px-0 py-2 border-b">
-                    <TimeTracker task={task} />
-                  </div>
+                  {/* Conexa */}
+                  <ConexaBar
+                    onAction={(action) => {
+                      if (action === 'Resumir hilo') {
+                        const humanCount = (task.comments || []).filter((c) => c.userId !== 'system').length
+                        if (humanCount < 2) {
+                          toast.info('Conexa · Resumir hilo', { description: 'El hilo necesita al menos 2 comentarios.' })
+                          return
+                        }
+                        if (activityTab === 'historial') setActivityTab('todo')
+                        threadSummaryRef.current?.regenerate()
+                        return
+                      }
+                      toast.info(`Conexa · ${action}`, { description: 'Esta acción estará disponible pronto.' })
+                    }}
+                  />
 
-                  {/* Metadata rows - ClickUp style */}
-                  <div className="pb-5 space-y-1">
-                    {/* Estado row */}
-                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
-                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
-                        <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 flex items-center justify-center">
-                          <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
-                        </div>
-                        Estado
-                      </div>
+                  {/* Propiedades */}
+                  <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-4 gap-y-2.5">
+                    <PanelProp label="Estado">
                       <Select value={task.status} onValueChange={(v) => handleStatusChange(v as TaskStatus)}>
-                        <SelectTrigger className={cn(
-                          'h-8 w-auto border-0 bg-transparent shadow-none px-2.5 text-sm font-medium gap-2 hover:bg-accent rounded-md'
-                        )}>
-                          <div className={cn('h-2 w-2 rounded-full', statusConfig.bgColor.replace('/10', '').replace('/20', ''))} />
+                        <SelectTrigger className={cn(TASK_SELECT_TRIGGER_CLASSES, 'gap-2')}>
                           <SelectValue />
+                          <FieldCaret />
                         </SelectTrigger>
                         <SelectContent>
                           {STATUS_ORDER.map((s) => (
                             <SelectItem key={s} value={s}>
                               <div className="flex items-center gap-2">
-                                <div className={cn('w-2.5 h-2.5 rounded-sm', STATUS_CONFIG[s].bgColor.replace('/10', '').replace('/20', ''))} />
+                                <div className={cn('w-2 h-2 rounded-full', STATUS_CONFIG[s].bgColor.replace('/10', '').replace('/20', '').replace('/60', ''))} />
                                 {STATUS_CONFIG[s].label}
                               </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
+                    </PanelProp>
 
-                    {/* Personas asignadas row */}
-                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
-                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
-                        <User className="h-4 w-4 opacity-60" />
-                        Personas asignadas
-                      </div>
+                    <PanelProp label="Prioridad">
+                      <Select value={task.priority} onValueChange={(v) => updateTask(task.id, { priority: v as TaskPriority })}>
+                        <SelectTrigger className={cn(TASK_SELECT_TRIGGER_CLASSES, 'gap-2 [&_[data-slot=badge]]:px-0 [&_[data-slot=badge]]:bg-transparent')}>
+                          <SelectValue />
+                          <FieldCaret />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(['alta', 'media', 'baja'] as TaskPriority[]).map((p) => (
+                            <SelectItem key={p} value={p}>
+                              <Badge variant="outline" className={cn('text-xs border-0 font-medium', PRIORITY_CONFIG[p].bgColor, PRIORITY_CONFIG[p].color)}>
+                                {PRIORITY_CONFIG[p].label}
+                              </Badge>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </PanelProp>
+
+                    <PanelProp label="Tipo">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button type="button" className={cn(TASK_FIELD_CLASSES, 'max-w-full')}>
+                            <span className="size-1.5 shrink-0 rounded-full bg-[var(--task-type-dot,#FF7F00)]" aria-hidden="true" />
+                            <span className="truncate">{tiposTarea.find(t => t.id === task.type)?.nombre || task.typeName || 'Elegí un tipo'}</span>
+                            <FieldCaret />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-56 p-2" align="start">
+                          <div className="space-y-2">
+                            <input
+                              type="text"
+                              placeholder="Buscar tipo..."
+                              value={typeSearch}
+                              onChange={(e) => setTypeSearch(e.target.value)}
+                              className="w-full px-2 py-1.5 text-xs border border-input rounded bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                            />
+                            <div className="max-h-64 overflow-y-auto space-y-1">
+                              {tiposTarea
+                                .filter(t => t.nombre.toLowerCase().includes(typeSearch.toLowerCase()))
+                                .map(t => (
+                                  <button
+                                    key={t.id}
+                                    onClick={() => {
+                                      updateTask(task.id, { type: t.id as TaskType, typeName: t.nombre })
+                                      setTypeSearch('')
+                                    }}
+                                    className="w-full text-left rounded px-2 py-1.5 hover:bg-accent transition-colors flex items-center gap-2 text-sm"
+                                  >
+                                    <span className="h-2 w-2 rounded-full bg-primary" />
+                                    {t.nombre}
+                                    {task.type === t.id && <Check className="h-4 w-4 ml-auto text-primary" />}
+                                  </button>
+                                ))}
+                              {tiposTarea.filter(t => t.nombre.toLowerCase().includes(typeSearch.toLowerCase())).length === 0 && (
+                                <div className="py-4 text-center text-xs text-muted-foreground">
+                                  No se encontraron tipos
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </PanelProp>
+
+                    <PanelProp label="Responsables">
                       <MultiAssigneeSelect
                         assignees={task.assignees || []}
                         colaboradores={colaboradores}
@@ -2142,83 +2442,16 @@ export function TaskDetailPanel() {
                           })
                         }}
                       />
-                    </div>
+                    </PanelProp>
 
-                    {/* Fechas row */}
-                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
-                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
-                        <CalendarIcon className="h-4 w-4 opacity-60" />
-                        Fechas
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Popover>
-                          <PopoverTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 gap-2 text-sm px-2.5 text-muted-foreground hover:text-foreground rounded-md">
-                                <CalendarIcon className="h-3.5 w-3.5" />
-                                {task.startDate
-                                  ? format(task.startDate, 'dd MMM yyyy', { locale: es })
-                                  : 'Fecha de inicio'}
-                              </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar
-                                mode="single"
-                                selected={task.startDate ?? undefined}
-                                onSelect={(date) => updateTask(task.id, { startDate: date ?? null })}
-                                initialFocus
-                              />
-                          </PopoverContent>
-                        </Popover>
-                        <span className="text-muted-foreground/30 text-sm font-light">—</span>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 gap-2 text-sm px-2.5 text-muted-foreground hover:text-foreground rounded-md">
-                              <CalendarIcon className="h-3.5 w-3.5" />
-                              {task.dueDate
-                                ? format(task.dueDate, 'dd MMM yyyy', { locale: es })
-                                : 'Fecha limite'}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={task.dueDate ?? undefined}
-                              onSelect={(date) => updateTask(task.id, { dueDate: date ?? null })}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    </div>
+                    <PanelProp label="Fechas">
+                      <TaskDatesField
+                        task={task}
+                        onChange={(patch) => updateTask(task.id, patch)}
+                      />
+                    </PanelProp>
 
-                    {/* Prioridad row */}
-                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
-                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
-                        <ArrowUpDown className="h-4 w-4 opacity-60" />
-                        Prioridad
-                      </div>
-                      <Select value={task.priority} onValueChange={(v) => updateTask(task.id, { priority: v as TaskPriority })}>
-                        <SelectTrigger className="h-8 w-auto border-0 bg-transparent shadow-none px-2.5 text-sm hover:bg-accent gap-2 rounded-md">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(['alta', 'media', 'baja'] as TaskPriority[]).map((p) => (
-                            <SelectItem key={p} value={p}>
-                              <Badge variant="outline" className={cn('text-xs border-0 font-medium', PRIORITY_CONFIG[p].bgColor, PRIORITY_CONFIG[p].color)}>
-                                {PRIORITY_CONFIG[p].label}
-                              </Badge>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Clientes row */}
-                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
-                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
-                        <Building2 className="h-4 w-4 opacity-60" />
-                        Clientes
-                      </div>
+                    <PanelProp label="Cliente">
                       <MultiClientSelect
                         clients={task.clients || []}
                         availableClients={clientes}
@@ -2234,26 +2467,18 @@ export function TaskDetailPanel() {
                           router.push(`/dashboard/clients/${clientId}`)
                         }}
                       />
-                    </div>
+                    </PanelProp>
 
-                    {/* Creado por row */}
-                    <div className="flex items-center min-h-[40px] py-1 hover:bg-accent/30 rounded-md px-2 -mx-2 transition-colors">
-                      <div className="w-40 shrink-0 flex items-center gap-2.5 text-sm text-muted-foreground">
-                        <User className="h-4 w-4 opacity-60" />
-                        Creado por
-                      </div>
-                      <div className="flex items-center gap-2 px-2.5">
-                        <Avatar className="h-6 w-6 ring-2 ring-background">
-                          {task.createdByAvatar && <AvatarImage src={task.createdByAvatar} alt={task.createdByName} />}
-                          <AvatarFallback className="text-[10px] font-medium">{getInitials(task.createdByName)}</AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm">{task.createdByName || 'Sin asignar'}</span>
-                      </div>
-                    </div>
-                  </div>
+                    <PanelProp label="Tiempo">
+                      <TimeTracker task={task} />
+                    </PanelProp>
+                  </dl>
 
-                  {/* Description area */}
-                  <div className="py-5 border-y flex-shrink-0">
+                  <hr className="my-6 border-0 border-t border-[var(--task-sep)]" />
+
+                  {/* Descripción */}
+                  <h2 className={cn(SECTION_LABEL_CLASSES, 'mb-2.5')}>Descripción</h2>
+                  <div>
                     {isEditingDescription ? (
                       <RichTextEditor
                         content={task.description || ''}
@@ -2262,67 +2487,105 @@ export function TaskDetailPanel() {
                           if (html !== task.description) updateTask(task.id, { description: html || null })
                           setIsEditingDescription(false)
                         }}
-                        placeholder="Añade una descripción..."
+                        placeholder="Agregá una descripción..."
                       />
+                    ) : task.description ? (
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Editar descripción"
+                        onClick={(e) => {
+                          if ((e.target as HTMLElement).closest('a')) return
+                          setIsEditingDescription(true)
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') setIsEditingDescription(true) }}
+                        className="-mx-2 cursor-text rounded-lg px-2 py-1 transition-colors hover:bg-[var(--task-field)]/50"
+                      >
+                        <div
+                          className="min-w-0 break-words text-[14px] leading-[1.65] text-[var(--task-desc)] [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_i]:italic [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_img]:max-w-full [&_img]:rounded-lg"
+                          dangerouslySetInnerHTML={{ __html: linkifyAsCards(task.description, { variant: 'card' }) }}
+                        />
+                      </div>
                     ) : (
                       <button
                         type="button"
-                        className="w-full text-left rounded-md px-3 py-3 hover:bg-accent/40 transition-colors"
                         onClick={() => setIsEditingDescription(true)}
-                        aria-label="Editar descripción"
+                        className="w-full rounded-xl border border-dashed border-border px-3 py-3 text-left text-sm text-muted-foreground transition-colors hover:border-[#FF7F00]/60 hover:text-foreground"
                       >
-                        {task.description ? (
-                          <div
-                            className="prose prose-sm prose-invert max-w-none [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_i]:italic [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5"
-                            dangerouslySetInnerHTML={{ __html: task.description }}
-                          />
-                        ) : (
-                          <span className="text-sm text-muted-foreground">Añade una descripción...</span>
-                        )}
+                        {'Agregá una descripción o usá ✦ Completar descripción'}
                       </button>
                     )}
                     <div ref={descriptionRef} className="hidden" aria-hidden="true" />
                   </div>
 
-                  {/* Files */}
-                  <div className="py-4 border-t">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Adjuntos</p>
-                    <TaskFilesSection
-                      task={task}
-                      currentUserId={currentUserId}
-                      colaboradorNombre={colaboradores.find(c => c.id === currentUserId)?.nombre}
-                    />
-                  </div>
+                  {/* Subtareas */}
+                  <TaskSubtasks
+                    taskId={task.id}
+                    colaboradores={colaboradores}
+                    currentUserId={currentUserId}
+                    onResolveTask={() => applyStatusChange('resuelto')}
+                    proposals={subtaskProposals}
+                    onProposalsClose={() => setSubtaskProposals(null)}
+                  />
 
-                  {/* Delete */}
-                  <div className="py-4 border-t mt-auto">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 text-sm gap-2"
-                      onClick={async () => {
-                        const confirmed = confirm(`¿Eliminar tarea "${task.title}"?`)
-                        if (confirmed) {
-                          await deleteTask(task.id)
-                          handleClose()
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Eliminar tarea
-                    </Button>
-                  </div>
+                  {/* Adjuntos */}
+                  <h2 className={cn(SECTION_LABEL_CLASSES, 'mt-7 mb-2.5')}>Adjuntos</h2>
+                  <TaskFilesSection
+                    task={task}
+                    currentUserId={currentUserId}
+                    colaboradorNombre={colaboradores.find(c => c.id === currentUserId)?.nombre}
+                  />
                 </div>
+              </TabsContent>
 
-                {/* RIGHT COLUMN - Activity (50%, or full width when expanded) */}
-                <div className={cn(
-                  "flex flex-col overflow-hidden",
-                  isActivityExpanded ? "w-full" : "w-1/2 border-l"
+              <TabsContent value="cotizacion" className="mt-0">
+                <div className={cn('mx-auto px-5 py-6 sm:px-8', isFullscreen && 'max-w-[1200px]')}>
+                  <QuotationSection task={task} />
+                </div>
+              </TabsContent>
+            </section>
+          )}
+
+                {/* ACTIVIDAD */}
+                <section className={cn(
+                  "relative flex min-w-0 flex-col bg-[var(--task-activity,var(--ntm-footer,var(--background)))] @min-[1100px]:overflow-hidden",
+                  isActivityExpanded
+                    ? "min-h-0 overflow-hidden"
+                    : "min-h-[480px] border-t border-border @min-[1100px]:min-h-0 @min-[1100px]:border-l @min-[1100px]:border-t-0"
                 )}>
-                  {/* Activity header with filters */}
-                  <div className="px-5 py-4 border-b flex items-center justify-between shrink-0">
-                    <span className="text-sm font-semibold">Activity</span>
-                    <div className="flex items-center gap-1">
+                  {!isActivityExpanded && (
+                    <div
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label="Redimensionar actividad"
+                      data-active={isResizingActivity}
+                      onPointerDown={startActivityResize}
+                      className="absolute top-0 -left-[3px] z-20 hidden h-full w-1.5 cursor-col-resize transition-colors hover:bg-[#FF7F00]/60 data-[active=true]:bg-[#FF7F00] @min-[1100px]:block"
+                    />
+                  )}
+                  <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
+                    <div role="tablist" aria-label="Filtrar actividad" className="flex min-w-0 items-center gap-0.5 rounded-full bg-muted p-0.5">
+                      {([
+                        ['todo', 'Todo'],
+                        ['comentarios', `Comentarios (${(task.comments || []).length})`],
+                        ['historial', 'Historial'],
+                      ] as const).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          role="tab"
+                          aria-selected={activityTab === value}
+                          onClick={() => setActivityTab(value)}
+                          className={cn(
+                            'h-7 whitespace-nowrap rounded-full px-2.5 text-[13px] font-semibold transition-colors',
+                            activityTab === value ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="ml-auto flex shrink-0 items-center gap-1">
                       <Button variant="ghost" size="icon" className="h-6 w-6">
                         <Search className="h-3.5 w-3.5" />
                       </Button>
@@ -2442,17 +2705,50 @@ export function TaskDetailPanel() {
                       const hasFilters = filterPersona || filterConAdjuntos || filterFechaDesde || filterFechaHasta
 
                       if ((task.activities || []).length === 0 && (task.comments || []).length === 0) {
+                        if (isLoadingComments) {
+                          return (
+                            <div className="flex flex-col gap-3 py-2" aria-busy="true" aria-label="Cargando comentarios">
+                              {[0, 1].map((i) => (
+                                <div key={i} className="flex gap-2">
+                                  <div className="size-7 shrink-0 rounded-full bg-muted animate-pulse" />
+                                  <div className="flex flex-1 flex-col gap-1.5">
+                                    <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+                                    <div className="h-3 w-full rounded bg-muted animate-pulse" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        }
                         return (
                           <div className="flex items-center justify-center h-24">
-                            <p className="text-xs text-muted-foreground">Sin actividad aun</p>
+                            <p className="text-sm text-[var(--ntm-text-3)] text-center text-pretty max-w-[240px] leading-relaxed">Todavía no hay comentarios. Mencioná a alguien con @ para avisarle.</p>
                           </div>
                         )
                       }
 
+                      const humanComments = (task.comments || []).filter((c) => c.userId !== 'system')
+                      const lastHuman = humanComments[humanComments.length - 1]
+
                       return (
                         <>
+                          {activityTab !== 'historial' && (
+                            <ConexaThreadSummary
+                              ref={threadSummaryRef}
+                              taskId={task.id}
+                              commentsCount={humanComments.length}
+                              commentsHash={hashComments(humanComments)}
+                              lastActivityAt={lastHuman ? new Date(lastHuman.createdAt) : null}
+                              userId={currentUserId}
+                              onDraftReply={(text) => setConexaDraft({ text, nonce: Date.now() })}
+                              onProposeSubtasks={(items) => {
+                                setSubtaskProposals(items)
+                                setActiveTab('detalles')
+                              }}
+                            />
+                          )}
                           {/* Activities - hidden when filters active */}
-                          {!hasFilters && (task.activities || []).slice(0, 20).map((activity) => (
+                          {!hasFilters && activityTab !== 'comentarios' && (task.activities || []).slice(0, 20).map((activity) => (
                             <div key={activity.id} className="flex items-start gap-3 text-xs">
                               <Avatar className="h-6 w-6 mt-0.5 shrink-0">
                                 <AvatarFallback className="text-[9px]">{getInitials(activity.userName)}</AvatarFallback>
@@ -2472,9 +2768,8 @@ export function TaskDetailPanel() {
                               <p className="text-xs text-muted-foreground">Sin resultados para los filtros aplicados</p>
                             </div>
                           ) : (
-                            filteredComments.length > 0 && (
-                              <div className={cn(!hasFilters && "pt-2 border-t mt-2")}>
-                                {!hasFilters && <p className="text-xs font-semibold mb-3">Comentarios ({(task.comments || []).length})</p>}
+                            activityTab !== 'historial' && filteredComments.length > 0 && (
+                              <div>
                                 {filteredComments.map((c) => (
                                   <div key={c.id} className="group flex items-start gap-3 text-sm mb-4">
                                     <Avatar className="h-6 w-6 mt-0.5 shrink-0">
@@ -2487,6 +2782,9 @@ export function TaskDetailPanel() {
                                         <span className="text-xs text-muted-foreground">
                                           {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
                                         </span>
+                                        {c.content.includes('data-conexa-draft') && (
+                                          <span className="text-[11px] font-medium text-[var(--task-sum-label)]">{'· ✦ Redactado con Conexa'}</span>
+                                        )}
                                         {c.userId === currentUserId && editingActivityCommentId !== c.id && (
                                           <Button
                                             variant="ghost" size="icon" className="h-6 w-6 ml-auto"
@@ -2554,10 +2852,18 @@ export function TaskDetailPanel() {
                                       ) : (
                                         <div
                                           className={cn(
-                                            "text-sm text-foreground/80 break-words whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity",
+                                            "max-w-[68ch] text-sm leading-relaxed text-foreground/80 break-words whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded [&_img]:mt-1 [&_img]:cursor-pointer [&_img]:hover:opacity-80 [&_img]:transition-opacity",
                                             COMMENT_RICH_TEXT_CLASSES
                                           )}
-                                          dangerouslySetInnerHTML={{ __html: linkifyText(c.content) }}
+                                          dangerouslySetInnerHTML={{ __html: linkifyAsCards(c.content) }}
+                                          onClick={(e) => {
+                                            const target = e.target as HTMLElement
+                                            if (target.tagName !== 'IMG' || target.closest('a')) return
+                                            const img = target as HTMLImageElement
+                                            if (img.naturalWidth > 0 && img.naturalWidth <= 32) return
+                                            setImageZoom(100)
+                                            setExpandedImage({ url: img.src, name: img.alt && img.alt !== 'Imagen' ? img.alt : 'Imagen del comentario' })
+                                          }}
                                         />
                                       )}
                                       {/* Attachments */}
@@ -2614,21 +2920,36 @@ export function TaskDetailPanel() {
                     })(handleDeleteComment)}
                   </div>
 
-                  {/* Comment input at bottom - using CommentsSection component */}
-                  <div className="border-t shrink-0">
-                    <CommentsSection task={task} compact={true} onDeleteComment={handleDeleteComment} />
+                  <div className="shrink-0 border-t border-border">
+                    <CommentsSection task={task} compact={true} onDeleteComment={handleDeleteComment} draft={conexaDraft} />
                   </div>
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="cotizacion" className="mt-0 p-4">
-              <QuotationSection task={task} />
-            </TabsContent>
-          </div>
+                </section>
         </Tabs>
+        </div>
 
       </SheetContent>
+
+      <AlertDialog open={!!openSubtasksPrompt} onOpenChange={o => !o && setOpenSubtasksPrompt(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {openSubtasksPrompt?.length === 1
+                ? 'Queda 1 subtarea abierta'
+                : `Quedan ${openSubtasksPrompt?.length ?? 0} subtareas abiertas`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Podés completarlas antes de resolver la tarea o resolverla igual y dejarlas como están.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <Button variant="outline" onClick={() => resolveWithOpenSubtasks(false)}>
+              Resolver igual
+            </Button>
+            <AlertDialogAction onClick={() => resolveWithOpenSubtasks(true)}>Completarlas</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Hito Completion Modal */}
       {task.hitoPoe && (
@@ -2684,18 +3005,25 @@ export function TaskDetailPanel() {
               <span className="text-xs text-muted-foreground">{imageZoom}%</span>
             </div>
           </DialogHeader>
-          <div className="flex-1 flex items-center justify-center bg-black/80 p-4 overflow-auto">
+          <div
+            ref={imageViewportRef}
+            className="flex min-h-0 flex-1 overflow-auto bg-black/80 p-4"
+          >
             {expandedImage && (
               <img
                 src={expandedImage.url}
                 alt={expandedImage.name}
-                style={{ transform: `scale(${imageZoom / 100})` }}
-                className="object-contain transition-transform duration-200"
-                onWheel={(e) => {
-                  e.preventDefault()
-                  const newZoom = Math.max(50, Math.min(300, imageZoom + (e.deltaY > 0 ? -10 : 10)))
-                  setImageZoom(newZoom)
-                }}
+                draggable={false}
+                style={
+                  imageZoom === 100
+                    ? { maxWidth: '100%', maxHeight: '70vh' }
+                    : { width: `${imageZoom}%`, maxWidth: 'none', maxHeight: 'none' }
+                }
+                className={cn(
+                  'm-auto object-contain',
+                  imageZoom > 100 ? 'cursor-zoom-out' : 'cursor-zoom-in'
+                )}
+                onDoubleClick={() => setImageZoom(imageZoom > 100 ? 100 : 200)}
               />
             )}
           </div>

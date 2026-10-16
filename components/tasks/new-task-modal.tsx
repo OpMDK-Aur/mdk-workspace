@@ -37,6 +37,7 @@ interface DbTipoTarea {
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -68,6 +69,15 @@ import {
 import { X, Plus, MessageSquare, User, Users, CalendarDays, Building2, MoreHorizontal, Paperclip, Bell, Clock, ChevronDown, FileText, Palette, Globe, TrendingUp, Link, Search, AlertTriangle, Mail, BarChart3, HelpCircle, Calculator, Sparkles, ArrowLeft, Check, Loader2, Zap, Coffee, PartyPopper, Flame, Calendar, Video, PenLine, Flag, Tag, Link2 } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { toast } from 'sonner'
+import { useTimerStore } from '@/lib/time-tracking/timer-store'
+import { MAX_ATTACHMENT_BYTES, formatBytes, sanitizeFileName, uploadTaskFile } from '@/lib/tasks/upload-with-progress'
 
 interface NewTaskModalProps {
   open: boolean
@@ -75,7 +85,23 @@ interface NewTaskModalProps {
   initialDueDate?: Date | null
   initialMode?: 'manual' | 'ai'
   initialValues?: NewTaskPrefill | null
+  initialStatus?: TaskStatus | null
   onCreated?: (taskId: string) => void
+}
+
+type CreateMode = 'close' | 'open' | 'another'
+
+interface UploadItem {
+  id: string
+  name: string
+  size: number
+  mimeType: string
+  progress: number
+  status: 'uploading' | 'done' | 'error'
+  previewUrl: string | null
+  url?: string
+  error?: string
+  controller: AbortController
 }
 
 export interface NewTaskPrefill {
@@ -240,7 +266,7 @@ const getClientContextFromDb = (clientId: string, clientes: DbCliente[]): Client
   }
 }
 
-// ── Seguimiento Templates by Plan ──���������������────────────────────────────���──�����───────���──
+// ── Seguimiento Templates by Plan ──����������������────────────────────────────���──�����───────���──
 
 const SEGUIMIENTO_TEMPLATES = {
   estrategico: (clientName: string) => `¡Hola ${clientName}! 👋 Buen lunes.
@@ -917,8 +943,13 @@ function ChatBubble({ message, onSelect, onInputSubmit, inputValue, setInputValu
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode = 'ai', initialValues, onCreated }: NewTaskModalProps) {
+export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode = 'ai', initialValues, initialStatus, onCreated }: NewTaskModalProps) {
   const addTask = useTaskStore((s) => s.addTask)
+  const setSelectedTask = useTaskStore((s) => s.setSelectedTask)
+  const titleInputRef = useRef<HTMLInputElement>(null)
+  const descriptionRef = useRef<HTMLDivElement>(null)
+  const [uploads, setUploads] = useState<UploadItem[]>([])
+  const [isDragging, setIsDragging] = useState(false)
   const supabase = createClient()
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -948,6 +979,12 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   const [reminderCustomIds, setReminderCustomIds] = useState<string[]>([])
   const [pendingAttachments, setPendingAttachments] = useState<{ url: string; name: string; mimeType: string }[]>([])
   const [isUploadingFile, setIsUploadingFile] = useState(false)
+  const [quickStartDate, setQuickStartDate] = useState('')
+  const [submitAttempted, setSubmitAttempted] = useState(false)
+  const [startTimerOnCreate, setStartTimerOnCreate] = useState(false)
+  const [showReminder, setShowReminder] = useState(false)
+  const [reminderAudience, setReminderAudience] = useState<'responsables' | 'yo' | 'equipo'>('responsables')
+  const allTasks = useTaskStore((s) => s.tasks)
   
   // Update quickDueDate when initialDueDate changes (e.g., from calendar)
   useEffect(() => {
@@ -965,6 +1002,10 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
     setQuickDueDate(initialValues.dueDate)
     setQuickDescription(initialValues.description)
   }, [open, initialValues])
+
+  useEffect(() => {
+    if (open && initialStatus) setQuickStatus(initialStatus)
+  }, [open, initialStatus])
   
   // Dynamic data from database
   const [dbClientes, setDbClientes] = useState<DbCliente[]>([])
@@ -1444,10 +1485,92 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
   }
 
   // Handle quick task creation (without Madky)
-  const handleQuickCreate = async () => {
-    if (!quickTitle.trim() || quickClientIds.length === 0) return
+  const isUploadingAttachments = uploads.some(u => u.status === 'uploading')
+  const missingRequired: string[] = []
+  if (!quickTitle.trim()) missingRequired.push('nombre')
+  if (quickClientIds.length === 0) missingRequired.push('cliente')
+  if (!quickType) missingRequired.push('tipo')
+  const canCreate = missingRequired.length === 0 && !isUploadingAttachments && !isCreating
+
+  const handleFiles = (fileList: FileList | File[]) => {
+    const files = Array.from(fileList)
+    for (const file of files) {
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        toast.error(`${file.name} supera los 25 MB`)
+        continue
+      }
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const controller = new AbortController()
+      const item: UploadItem = {
+        id,
+        name: file.name,
+        size: file.size,
+        mimeType: file.type,
+        progress: 0,
+        status: 'uploading',
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+        controller,
+      }
+      setUploads(prev => [...prev, item])
+      const path = `${currentUser?.id || 'anon'}/new/${id}-${sanitizeFileName(file.name)}`
+      uploadTaskFile(
+        file,
+        path,
+        (progress) => setUploads(prev => prev.map(u => (u.id === id ? { ...u, progress } : u))),
+        controller.signal,
+      )
+        .then((url) => {
+          setUploads(prev => prev.map(u => (u.id === id ? { ...u, status: 'done', progress: 100, url } : u)))
+        })
+        .catch((error: Error) => {
+          if (error.name === 'AbortError') return
+          setUploads(prev => prev.map(u => (u.id === id ? { ...u, status: 'error', error: error.message } : u)))
+        })
+    }
+  }
+
+  const removeUpload = (id: string) => {
+    setUploads(prev => {
+      const target = prev.find(u => u.id === id)
+      if (target?.status === 'uploading') target.controller.abort()
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl)
+      return prev.filter(u => u.id !== id)
+    })
+  }
+
+  const resetQuickForm = (keepClientAndType: boolean) => {
+    setQuickTitle('')
+    setQuickDescription('')
+    if (descriptionRef.current) descriptionRef.current.textContent = ''
+    if (!keepClientAndType) {
+      setQuickClientIds([])
+      setQuickType('')
+    }
+    setQuickPriority('')
+    setQuickAssigneeIds([])
+    setQuickDueDate('')
+    setQuickComment('')
+    setPendingAttachments([])
+    uploads.forEach(u => u.previewUrl && URL.revokeObjectURL(u.previewUrl))
+    setUploads([])
+    setReminderDate('')
+    setReminderTime('')
+    setReminderMode('asignados')
+    setReminderCustomIds([])
+    setReminderAudience('responsables')
+    setShowReminder(false)
+    setQuickStartDate('')
+    setSubmitAttempted(false)
+  }
+
+  const handleQuickCreate = async (mode: CreateMode = 'close') => {
+    if (!canCreate) {
+      setSubmitAttempted(true)
+      return
+    }
     
     setIsCreating(true)
+    const createdTitle = quickTitle.trim()
     
     try {
       // Build clients array
@@ -1485,21 +1608,29 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
         clientIds: quickClientIds,
         clientName: firstClient?.nombre_del_negocio || undefined,
         assigneeId: firstAssignee?.id || '',
+        assigneeIds: assignees.map(a => a.id),
         assignees,
         status: quickStatus as TaskStatus,
         priority: (quickPriority || 'media') as TaskPriority,
         type: quickType,
-          dueDate: quickDueDate ? parseISO(quickDueDate + 'T12:00:00') : null,
+        startDate: quickStartDate ? parseISO(quickStartDate + 'T12:00:00') : null,
+        dueDate: quickDueDate ? parseISO(quickDueDate + 'T12:00:00') : null,
         customFields: {},
         createdById: currentUser?.id || null,
         comments,
       } as any)
 
       // Save pending attachments to tarea_adjuntos after task creation
-      if (pendingAttachments.length > 0 && newTaskId) {
+      const uploadedAttachments = [
+        ...pendingAttachments,
+        ...uploads
+          .filter(u => u.status === 'done' && u.url)
+          .map(u => ({ url: u.url!, name: u.name, mimeType: u.mimeType })),
+      ]
+      if (uploadedAttachments.length > 0 && newTaskId) {
         try {
           await supabase.from('tarea_adjuntos').insert(
-            pendingAttachments.map(att => ({
+            uploadedAttachments.map(att => ({
               tarea_id: newTaskId,
               nombre: att.name,
               url: att.url,
@@ -1535,157 +1666,324 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
         }
       }
 
-      if (newTaskId) onCreated?.(newTaskId)
+      if (!newTaskId) throw new Error('No se pudo crear la tarea')
+      onCreated?.(newTaskId)
 
-      // Reset quick mode state
-      setQuickTitle('')
-      setQuickDescription('')
-      setQuickClientIds([])
-      setQuickType('')
-      setQuickPriority('')
+      if (startTimerOnCreate) {
+        useTimerStore
+          .getState()
+          .startTimerForTask(newTaskId, createdTitle, firstClient?.id ?? null, quickType || null)
+          .catch((err: Error) => toast.error(err.message || 'No se pudo iniciar el timer'))
+      }
+
+      toast.success(`Tarea creada: ${createdTitle}`, {
+        action: mode === 'open' ? undefined : { label: 'Abrir', onClick: () => setSelectedTask(newTaskId) },
+      })
+
+      if (mode === 'another') {
+        resetQuickForm(true)
+        requestAnimationFrame(() => titleInputRef.current?.focus())
+        return
+      }
+
+      resetQuickForm(false)
       setQuickStatus('pendiente')
-      setQuickAssigneeIds([])
-      setQuickDueDate('')
-      setQuickComment('')
-      setPendingAttachments([])
-      setReminderDate('')
-      setReminderTime('')
-      setReminderMode('asignados')
-      setReminderCustomIds([])
       setActiveTab('tarea')
       setQuickMode(false)
       onOpenChange(false)
+      if (mode === 'open') setSelectedTask(newTaskId)
     } catch (error) {
       console.error('[v0] Error creating task:', error)
+      toast.error('No se pudo crear la tarea. Probá de nuevo.')
     } finally {
       setIsCreating(false)
     }
   }
 
-  // Rest of component code continues below
+  const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const conexaSuggestion = detectFromTitle({
+    title: quickTitle,
+    clientes: dbClientes,
+    tipos: dbTiposTarea,
+    colaboradores: dbColaboradores,
+    normalize,
+  })
+  const pendingSuggestion = conexaSuggestion && {
+    client: conexaSuggestion.client && !quickClientIds.includes(conexaSuggestion.client.id) ? conexaSuggestion.client : null,
+    tipo: conexaSuggestion.tipo && quickType !== conexaSuggestion.tipo.id ? conexaSuggestion.tipo : null,
+    due: conexaSuggestion.due && quickDueDate !== conexaSuggestion.due ? conexaSuggestion.due : null,
+    priority: conexaSuggestion.priority && quickPriority !== conexaSuggestion.priority ? conexaSuggestion.priority : null,
+    assignee: conexaSuggestion.assignee && !quickAssigneeIds.includes(conexaSuggestion.assignee.id) ? conexaSuggestion.assignee : null,
+  }
+  const hasSuggestion = Boolean(pendingSuggestion && Object.values(pendingSuggestion).some(Boolean))
+
+  const applySuggestion = () => {
+    if (!pendingSuggestion) return
+    const { client, tipo, due, priority, assignee } = pendingSuggestion
+    if (client) setQuickClientIds(prev => [...prev, client.id])
+    if (tipo) setQuickType(tipo.id)
+    if (due) setQuickDueDate(due)
+    if (priority) setQuickPriority(priority)
+    if (assignee) setQuickAssigneeIds(prev => [...prev, assignee.id])
+  }
+
+  const recentAssigneeIds = (() => {
+    const ids: string[] = []
+    const mine = currentUser
+      ? allTasks
+          .filter(t => t.createdById === currentUser.id)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      : []
+    for (const t of mine) {
+      for (const a of t.assignees ?? []) if (a?.id && !ids.includes(a.id)) ids.push(a.id)
+      if (ids.length >= 6) break
+    }
+    if (currentUser && !ids.includes(currentUser.id)) ids.push(currentUser.id)
+    for (const c of dbColaboradores) {
+      if (ids.length >= 6) break
+      if (!ids.includes(c.id)) ids.push(c.id)
+    }
+    const shown = ids.slice(0, 6).filter(id => dbColaboradores.some(c => c.id === id))
+    for (const id of quickAssigneeIds) if (!shown.includes(id)) shown.push(id)
+    return shown
+  })()
+
+  const toggleAssignee = (id: string) =>
+    setQuickAssigneeIds(prev => (prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]))
+
+  const dateError = Boolean(quickStartDate && quickDueDate && quickDueDate < quickStartDate)
+  const dueHint = describeDue(quickDueDate)
+  const suggestedReminderDate = quickDueDate ? shiftISODate(quickDueDate, -1) : ''
+
+  const setAudience = (audience: 'responsables' | 'yo' | 'equipo') => {
+    setReminderAudience(audience)
+    if (audience === 'responsables') {
+      setReminderMode('asignados')
+      setReminderCustomIds([])
+    } else if (audience === 'yo') {
+      setReminderMode('personalizar')
+      setReminderCustomIds(currentUser ? [currentUser.id] : [])
+    } else {
+      setReminderMode('personalizar')
+      setReminderCustomIds(dbColaboradores.map(c => c.id))
+    }
+  }
+
+  const showClientError = submitAttempted && quickClientIds.length === 0
+  const showTypeError = submitAttempted && !quickType
+  const showTitleError = submitAttempted && !quickTitle.trim()
+  const statusCfg = STATUS_CONFIG[quickStatus as TaskStatus] ?? STATUS_CONFIG.pendiente
+  const selectedTipo = dbTiposTarea.find(t => t.id === quickType)
+
+  const field =
+    'ntm-field rounded-[10px] border border-[var(--ntm-border)] bg-[var(--ntm-field)] text-[var(--ntm-text)] placeholder:text-[var(--ntm-text-3)] transition-[border-color,box-shadow] duration-150 ease-[cubic-bezier(.22,1,.36,1)]'
+  const errorBorder = 'border-[var(--ntm-error)]'
+  const sectionLabel = 'text-[11px] font-bold uppercase tracking-[.08em] text-[var(--ntm-text-2)]'
+  const propLabel = 'flex h-10 items-center gap-1 text-[13px] text-[var(--ntm-text-2)]'
+  const chip =
+    'inline-flex h-[30px] items-center gap-1.5 rounded-full border border-[var(--ntm-border)] bg-[var(--ntm-field)] px-2.5 text-[13px] text-[var(--ntm-text)] transition-colors duration-150'
+  const isCreateBlocked = !canCreate
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[800px] p-0 gap-0 overflow-hidden">
-        {/* Header with Tabs */}
-        <div className="flex items-center justify-between px-2 border-b pr-10">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="flex-1">
-            <TabsList className="bg-transparent h-auto p-0 gap-0">
-              <TabsTrigger
-                value="tarea"
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:text-foreground"
-              >
-                Tarea
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <div className="flex items-center gap-1 shrink-0">
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-              <ChevronDown className="h-4 w-4" />
-            </Button>
+      <DialogContent
+        showCloseButton={false}
+        className="ntm top-[8vh] flex max-h-[84vh] w-[min(720px,calc(100vw-32px))] max-w-none translate-y-0 flex-col gap-0 overflow-hidden rounded-2xl border border-[var(--ntm-border)] bg-[var(--ntm-bg)] p-0 font-sans text-[var(--ntm-text)] shadow-[var(--ntm-shadow)] sm:max-w-none"
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return
+          if ((e.metaKey || e.ctrlKey) && e.shiftKey) {
+            e.preventDefault()
+            handleQuickCreate('open')
+          } else if (e.metaKey || e.ctrlKey) {
+            e.preventDefault()
+            handleQuickCreate('close')
+          } else if (e.altKey) {
+            e.preventDefault()
+            handleQuickCreate('another')
+          }
+        }}
+      >
+        <header className="flex items-center justify-between gap-3 border-b border-[var(--ntm-border)] px-5 py-3.5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <DialogTitle className="text-[13px] font-semibold text-[var(--ntm-text)]">Nueva tarea</DialogTitle>
+            <span aria-hidden className="text-[var(--ntm-text-3)]">·</span>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button type="button" className={cn(chip, 'h-7 text-xs')} aria-label={`Estado: ${statusCfg.label}`}>
+                  <span className={cn('h-2 w-2 rounded-full bg-current', statusCfg.color)} />
+                  {statusCfg.label}
+                  <ChevronDown className="h-3.5 w-3.5 text-[var(--ntm-text-3)]" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-56 p-1">
+                {STATUS_ORDER.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setQuickStatus(s)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-muted"
+                  >
+                    <span className={cn('h-2 w-2 rounded-full bg-current', STATUS_CONFIG[s].color)} />
+                    <span className="flex-1">{STATUS_CONFIG[s].label}</span>
+                    {quickStatus === s && <Check className="h-4 w-4 text-[var(--ntm-brand)]" />}
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
           </div>
-        </div>
+          <div className="flex items-center gap-2">
+            <kbd className="font-mono text-[11px] text-[var(--ntm-text-3)]">Esc</kbd>
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              aria-label="Cerrar"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--ntm-text-2)] transition-colors duration-150 hover:bg-[var(--ntm-field)] hover:text-[var(--ntm-text)]"
+            >
+              <X className="h-4 w-4" strokeWidth={2} />
+            </button>
+          </div>
+        </header>
 
-        {/* Task tab */}
-        {activeTab === 'tarea' && (
-          <div className="flex flex-col">
-            {/* Type selectors row */}
-            <div className="flex items-center gap-2 px-5 py-3 border-b">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                    <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
-                    {dbTiposTarea.find(t => t.id === quickType)?.nombre || 'Tarea'}
-                    <ChevronDown className="h-3 w-3 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-2 max-h-[320px] overflow-y-auto" align="start">
-                  <div className="text-xs text-muted-foreground px-2 py-1.5 mb-1 sticky top-0 bg-popover">Tipos de tarea</div>
-                  <div className="space-y-0.5">
-                    {dbTiposTarea.map((tipo) => (
-                      <Button
-                        key={tipo.id}
-                        variant="ghost"
-                        size="sm"
-                        className="w-full justify-start text-xs h-8 font-normal"
-                        onClick={() => setQuickType(tipo.id)}
+        <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-5 py-5">
+          <div className="flex flex-col gap-3">
+            <input
+              ref={titleInputRef}
+              type="text"
+              aria-label="Nombre de la tarea"
+              aria-invalid={showTitleError || undefined}
+              placeholder="Ej: Landing para Sunaltek el viernes, alta, Florencia"
+              value={quickTitle}
+              onChange={(e) => setQuickTitle(e.target.value)}
+              className={cn(
+                'w-full border-0 bg-transparent text-[22px] font-semibold tracking-[-0.01em] text-[var(--ntm-text)] outline-none placeholder:font-medium placeholder:text-[var(--ntm-text-3)]',
+                showTitleError && 'placeholder:text-[var(--ntm-error)]',
+              )}
+              autoFocus
+            />
+            {hasSuggestion && pendingSuggestion && (
+              <div className="flex flex-wrap items-center gap-2 rounded-[10px] border border-[var(--ntm-cx-border)] bg-[var(--ntm-cx-bg)] px-3 py-2 text-[13px] text-[var(--ntm-cx-text)]">
+                <Sparkles className="h-4 w-4 shrink-0" />
+                <span className="font-semibold">Conexa detectó:</span>
+                {pendingSuggestion.client && <CxChip>Cliente · {pendingSuggestion.client.nombre_del_negocio}</CxChip>}
+                {pendingSuggestion.tipo && <CxChip>Tipo · {pendingSuggestion.tipo.nombre}</CxChip>}
+                {pendingSuggestion.due && <CxChip>Vence · {formatShortDate(pendingSuggestion.due)}</CxChip>}
+                {pendingSuggestion.priority && <CxChip>Prioridad · {capitalize(pendingSuggestion.priority)}</CxChip>}
+                {pendingSuggestion.assignee && <CxChip>Responsable · {pendingSuggestion.assignee.nombre}</CxChip>}
+                <button
+                  type="button"
+                  onClick={applySuggestion}
+                  className="ml-auto rounded-full px-3 py-1 text-[13px] font-semibold underline-offset-2 hover:underline"
+                >
+                  Aplicar
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2">
+            <span className={propLabel}>
+              Clientes<span className="text-[var(--ntm-brand)]">*</span>
+            </span>
+            <div className="flex min-h-10 flex-col justify-center gap-1 py-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {quickClientIds.map((id) => {
+                  const c = dbClientes.find(cl => cl.id === id)
+                  if (!c) return null
+                  return (
+                    <span key={id} className={cn(chip, 'pl-1')}>
+                      <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[var(--ntm-border)] text-[10px] font-semibold text-[var(--ntm-text-2)]">
+                        {initials(c.nombre_del_negocio)}
+                      </span>
+                      <span className="max-w-[180px] truncate">{c.nombre_del_negocio}</span>
+                      <button
+                        type="button"
+                        onClick={() => setQuickClientIds(prev => prev.filter(i => i !== id))}
+                        aria-label={`Quitar ${c.nombre_del_negocio}`}
+                        className="text-[var(--ntm-text-3)] hover:text-[var(--ntm-text)]"
                       >
-                        <span className="h-2 w-2 rounded-full bg-muted-foreground/40 mr-2 shrink-0" />
-                        <span className="truncate">{tipo.nombre}</span>
-                        {quickType === tipo.id && <Check className="h-3 w-3 ml-auto shrink-0 text-primary" />}
-                      </Button>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  )
+                })}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(chip, 'border-dashed text-[var(--ntm-text-2)] hover:text-[var(--ntm-text)]', showClientError && errorBorder)}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Agregar
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-1" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar cliente..." className="h-8 text-[13px]" />
+                      <CommandList className="max-h-56 overflow-y-auto">
+                        <CommandEmpty className="py-3 text-center text-[13px] text-muted-foreground">Sin resultados</CommandEmpty>
+                        <CommandGroup>
+                          {dbClientes.map((cliente) => {
+                            const selected = quickClientIds.includes(cliente.id)
+                            return (
+                              <CommandItem
+                                key={cliente.id}
+                                value={cliente.nombre_del_negocio}
+                                onSelect={() =>
+                                  setQuickClientIds(prev =>
+                                    prev.includes(cliente.id) ? prev.filter(i => i !== cliente.id) : [...prev, cliente.id],
+                                  )
+                                }
+                                className="flex items-center gap-2 text-[13px]"
+                              >
+                                <span className="flex-1 truncate">{cliente.nombre_del_negocio}</span>
+                                {selected && <Check className="h-4 w-4 text-[var(--ntm-brand)]" />}
+                              </CommandItem>
+                            )
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              {showClientError && <p className="text-xs text-[var(--ntm-error)]">Elegí al menos un cliente</p>}
             </div>
 
-            {/* Title input */}
-            <div className="px-5 pt-4 pb-1">
-              <input
-                type="text"
-                placeholder="Nombre de Tarea"
-                value={quickTitle}
-                onChange={(e) => setQuickTitle(e.target.value)}
-                className="w-full text-2xl font-light border-0 outline-none bg-transparent placeholder:text-muted-foreground/40"
-                autoFocus
-              />
-            </div>
-
-            {/* Description area */}
-            <div className="px-5 py-2 min-h-[60px]">
-              <div
-                contentEditable
-                suppressContentEditableWarning
-                onInput={(e) => {
-                  const text = (e.target as HTMLDivElement).textContent || ''
-                  setQuickDescription(text)
-                }}
-                className="min-h-[48px] text-sm outline-none text-muted-foreground empty:before:content-['Añade_una_descripcion...'] empty:before:text-muted-foreground/40 empty:before:pointer-events-none"
-              />
-            </div>
-
-            {/* Property chips row */}
-            <div className="flex items-center gap-2 px-5 py-3 border-t flex-wrap">
-
-              {/* Assignee chip */}
+            <span className={propLabel}>
+              Tipo<span className="text-[var(--ntm-brand)]">*</span>
+            </span>
+            <div className="flex min-h-10 flex-col justify-center gap-1 py-1">
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                    <User className="h-3.5 w-3.5" />
-                    {quickAssigneeIds.length === 0
-                      ? 'Persona asignada'
-                      : quickAssigneeIds.length === 1
-                        ? fullName(dbColaboradores.find(c => c.id === quickAssigneeIds[0]) || { nombre: '', apellido: null, id: '', avatar_url: null })
-                        : `${quickAssigneeIds.length} asignados`
-                    }
-                  </Button>
+                  <button
+                    type="button"
+                    aria-invalid={showTypeError || undefined}
+                    className={cn(
+                      field,
+                      'flex h-9 w-full max-w-[320px] items-center justify-between gap-2 px-3 text-left text-[13px]',
+                      !selectedTipo && 'text-[var(--ntm-text-3)]',
+                      showTypeError && errorBorder,
+                    )}
+                  >
+                    <span className="truncate">{selectedTipo?.nombre ?? 'Elegí un tipo'}</span>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-[var(--ntm-text-3)]" />
+                  </button>
                 </PopoverTrigger>
-                <PopoverContent className="w-56 p-1" align="start">
+                <PopoverContent className="w-72 p-1" align="start">
                   <Command>
-                    <CommandInput placeholder="Buscar..." className="h-8 text-xs" />
-                    <CommandList className="max-h-48 overflow-y-auto">
-                      <CommandEmpty className="text-xs text-muted-foreground py-3 text-center">Sin resultados</CommandEmpty>
+                    <CommandInput placeholder="Buscar tipo..." className="h-8 text-[13px]" />
+                    <CommandList className="max-h-64 overflow-y-auto">
+                      <CommandEmpty className="py-3 text-center text-[13px] text-muted-foreground">Sin resultados</CommandEmpty>
                       <CommandGroup>
-                        {dbColaboradores.map((colab) => (
+                        {dbTiposTarea.map((tipo) => (
                           <CommandItem
-                            key={colab.id}
-                            value={fullName(colab)}
-                            onSelect={() => setQuickAssigneeIds(prev =>
-                              prev.includes(colab.id)
-                                ? prev.filter(id => id !== colab.id)
-                                : [...prev, colab.id]
-                            )}
-                            className="text-xs flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer aria-selected:bg-muted aria-selected:text-foreground data-[selected=true]:bg-muted"
+                            key={tipo.id}
+                            value={tipo.nombre}
+                            onSelect={() => setQuickType(tipo.id)}
+                            className="flex items-center gap-2 text-[13px]"
                           >
-                            <Avatar className="h-6 w-6 shrink-0">
-                              {colab.avatar_url && <AvatarImage src={colab.avatar_url} />}
-                              <AvatarFallback className="text-[9px] bg-muted-foreground/20">{fullName(colab).split(' ').map(n => n[0]).join('')}</AvatarFallback>
-                            </Avatar>
-                            <span className="flex-1 truncate">{fullName(colab)}</span>
-                            {quickAssigneeIds.includes(colab.id) && (
-                              <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
-                            )}
+                            <span className="flex-1 truncate">{tipo.nombre}</span>
+                            {quickType === tipo.id && <Check className="h-4 w-4 text-[var(--ntm-brand)]" />}
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -1693,370 +1991,513 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
                   </Command>
                 </PopoverContent>
               </Popover>
+              {showTypeError && <p className="text-xs text-[var(--ntm-error)]">Elegí el tipo de tarea</p>}
+            </div>
 
-              {/* Due date chip */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                    <CalendarDays className="h-3.5 w-3.5" />
-                    {quickDueDate
-                      ? parseISO(quickDueDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
-                      : 'Fecha limite'
-                    }
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-3" align="start">
-                  <input
-                    type="date"
-                    value={quickDueDate}
-                    onChange={(e) => setQuickDueDate(e.target.value)}
-                    className="bg-transparent border border-border rounded px-2 py-1 text-sm"
-                  />
-                </PopoverContent>
-              </Popover>
-
-              {/* Client chip */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                    <Building2 className="h-3.5 w-3.5" />
-                    {quickClientIds.length === 0
-                      ? 'Cliente'
-                      : quickClientIds.length === 1
-                        ? dbClientes.find(c => c.id === quickClientIds[0])?.nombre_del_negocio || 'Cliente'
-                        : `${quickClientIds.length} clientes`
-                    }
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-2" align="start">
-                  <div className="mb-2 px-1">
-                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Clientes</p>
-                  </div>
-                  <Command>
-                    <div className="relative mb-1">
-                      <CommandInput placeholder="Buscar cliente..." className="h-8 text-xs pl-8" />
-                    </div>
-                    <CommandList className="max-h-52 overflow-y-auto">
-                      <CommandEmpty className="text-xs text-muted-foreground py-3 text-center">Sin resultados</CommandEmpty>
-                      <CommandGroup>
-                        {dbClientes.map((cliente) => {
-                          const selected = quickClientIds.includes(cliente.id)
-                          return (
-                            <CommandItem
-                              key={cliente.id}
-                              value={cliente.nombre_del_negocio}
-                              onSelect={() =>
-                                setQuickClientIds(prev =>
-                                  prev.includes(cliente.id)
-                                    ? prev.filter(id => id !== cliente.id)
-                                    : [...prev, cliente.id]
-                                )
-                              }
-                              className={`text-xs flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer aria-selected:bg-muted aria-selected:text-foreground ${selected ? 'bg-muted/60' : ''}`}
-                            >
-                              <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-transparent'}`}>
-                                {selected && <Check className="h-3 w-3" />}
-                              </div>
-                              <span className="flex-1 truncate">{cliente.nombre_del_negocio}</span>
-                            </CommandItem>
-                          )
-                        })}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                  {quickClientIds.length > 0 && (
-                    <div className="mt-2 pt-2 border-t flex flex-wrap gap-1">
-                      {quickClientIds.map(id => {
-                        const c = dbClientes.find(cl => cl.id === id)
-                        if (!c) return null
-                        return (
-                          <span
-                            key={id}
-                            className="inline-flex items-center gap-1 text-[11px] bg-muted text-foreground rounded px-1.5 py-0.5"
-                          >
-                            {c.nombre_del_negocio}
-                            <button
-                              onClick={() => setQuickClientIds(prev => prev.filter(i => i !== id))}
-                              className="text-muted-foreground hover:text-foreground ml-0.5"
-                            >
-                              ×
-                            </button>
-                          </span>
-                        )
-                      })}
-                    </div>
-                  )}
-                </PopoverContent>
-              </Popover>
-
-              {/* Priority chip */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                    <Flag className="h-3.5 w-3.5" />
-                    {quickPriority.charAt(0).toUpperCase() + quickPriority.slice(1)}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-48 p-1" align="start">
-                  {['baja', 'media', 'alta'].map((priority) => (
-                    <Button
-                      key={priority}
-                      variant="ghost"
-                      size="sm"
-                      className="w-full justify-start text-xs h-8"
-                      onClick={() => setQuickPriority(priority)}
-                    >
-                      <Flag className={`h-3.5 w-3.5 mr-2 ${
-                        priority === 'alta' ? 'text-red-500' :
-                        priority === 'media' ? 'text-yellow-500' :
-                        'text-green-500'
-                      }`} />
-                      {priority.charAt(0).toUpperCase() + priority.slice(1)}
-                      {quickPriority === priority && <Check className="h-3 w-3 ml-auto" />}
-                    </Button>
-                  ))}
-                </PopoverContent>
-              </Popover>
-
-              {/* Upload file button */}
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-7 gap-1.5 text-xs"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploadingFile}
-              >
-                <Paperclip className="h-3.5 w-3.5" />
-                {isUploadingFile ? 'Subiendo...' : 'Subir Archivo'}
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-                className="hidden"
-                onChange={async (e) => {
-                  const files = Array.from(e.target.files || [])
-                  if (!files.length) return
-                  setIsUploadingFile(true)
-                  for (const file of files) {
-                    try {
-                      const sanitizedName = file.name
-                        .normalize('NFD')
-                        .replace(/[\u0300-\u036f]/g, '')
-                        .replace(/\s+/g, '_')
-                        .replace(/[^a-zA-Z0-9_.-]/g, '')
-                      const path = `${currentUser?.id || 'anon'}/new/${Date.now()}-${sanitizedName}`
-
-                      const { error: uploadError } = await supabase.storage
-                        .from('task-files')
-                        .upload(path, file)
-
-                      if (uploadError) {
-                        console.error('[v0] Storage error:', uploadError)
-                        continue
-                      }
-
-                      const { data: { publicUrl } } = supabase.storage
-                        .from('task-files')
-                        .getPublicUrl(path)
-
-                      setPendingAttachments(prev => [...prev, {
-                        url: publicUrl,
-                        name: file.name,
-                        mimeType: file.type,
-                      }])
-                    } catch (error) {
-                      console.error('[v0] Upload error:', error)
-                    }
-                  }
-                  setIsUploadingFile(false)
-                  e.target.value = ''
-                }}
+            <span className={propLabel}>Prioridad</span>
+            <div className="flex h-10 items-center">
+              <Segmented
+                label="Prioridad"
+                value={quickPriority}
+                onChange={(v) => setQuickPriority(v as TaskPriority)}
+                options={[
+                  { value: 'alta', label: 'Alta' },
+                  { value: 'media', label: 'Media' },
+                  { value: 'baja', label: 'Baja' },
+                ]}
               />
-
-              {/* Add more property button */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground hover:text-foreground hover:border-foreground hover:bg-accent">
-                    <Plus className="h-3.5 w-3.5" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-56 p-1" align="start">
-                  <div className="text-xs text-muted-foreground px-2 py-1.5 mb-1">Agregar propiedad</div>
-                  <p className="text-xs text-muted-foreground px-2 py-2 italic">Próximamente</p>
-                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs h-8 font-normal gap-2">
-                    <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
-                    Agregar enlace
-                  </Button>
-                </PopoverContent>
-              </Popover>
             </div>
 
-            {/* Pending attachments preview */}
-            {pendingAttachments.length > 0 && (
-              <div className="px-5 py-2 border-t bg-muted/30">
-                <p className="text-xs text-muted-foreground mb-2">Archivos adjuntos ({pendingAttachments.length})</p>
-                <div className="flex flex-wrap gap-2">
-                  {pendingAttachments.map((att, i) => (
-                    <div key={i} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded bg-background border border-border">
-                      {att.mimeType.startsWith('image/') ? (
-                        <img src={att.url} alt={att.name} className="h-6 w-6 object-cover rounded" />
-                      ) : (
-                        <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
-                      )}
-                      <span className="max-w-[100px] truncate">{att.name}</span>
-                      <button 
-                        type="button"
-                        onClick={() => setPendingAttachments(prev => prev.filter((_, j) => j !== i))}
-                        className="ml-1 hover:text-destructive"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Reminder section */}
-            <div className="px-5 py-3 border-t bg-muted/20">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Crear recordatorio</p>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                      <CalendarDays className="h-3.5 w-3.5" />
-                      {reminderDate
-                        ? parseISO(reminderDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
-                        : 'Fecha'
-                      }
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-3" align="start">
-                    <input
-                      type="date"
-                      value={reminderDate}
-                      onChange={(e) => setReminderDate(e.target.value)}
-                      className="bg-transparent border border-border rounded px-2 py-1 text-sm"
-                    />
-                  </PopoverContent>
-                </Popover>
-
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                      <Clock className="h-3.5 w-3.5" />
-                      {reminderTime || 'Hora'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-3" align="start">
-                    <input
-                      type="time"
-                      value={reminderTime}
-                      onChange={(e) => setReminderTime(e.target.value)}
-                      className="bg-transparent border border-border rounded px-2 py-1 text-sm"
-                    />
-                  </PopoverContent>
-                </Popover>
-
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-                      <Users className="h-3.5 w-3.5" />
-                      {reminderMode === 'asignados' 
-                        ? 'Asignados' 
-                        : reminderCustomIds.length > 0 
-                          ? `${reminderCustomIds.length} seleccionado${reminderCustomIds.length > 1 ? 's' : ''}`
-                          : 'Para'
-                      }
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-60 p-2" align="start">
-                    <div className="space-y-1">
-                      <button
-                        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${reminderMode === 'asignados' ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`}
-                        onClick={() => {
-                          setReminderMode('asignados')
-                          setReminderCustomIds([])
-                        }}
-                      >
-                        <Users className="h-3.5 w-3.5 shrink-0" />
-                        <span className="flex-1 text-left">Enviar a asignados</span>
-                        {reminderMode === 'asignados' && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
-                      </button>
-                      <div className="h-px bg-border my-1" />
-                      <p className="text-[11px] text-muted-foreground px-2 py-1 uppercase tracking-wide">O elige personas</p>
-                      <div className="max-h-44 overflow-y-auto space-y-0.5">
-                        {dbColaboradores.map((colab) => (
-                          <button
-                            key={colab.id}
-                            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${reminderCustomIds.includes(colab.id) ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`}
-                            onClick={() => {
-                              setReminderMode('personalizar')
-                              setReminderCustomIds(prev =>
-                                prev.includes(colab.id)
-                                  ? prev.filter(id => id !== colab.id)
-                                  : [...prev, colab.id]
-                              )
-                            }}
-                          >
-                            <Avatar className="h-6 w-6 shrink-0">
-                              {colab.avatar_url && <AvatarImage src={colab.avatar_url} />}
-                              <AvatarFallback className="text-[9px] bg-muted-foreground/20">{colab.nombre.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                            <span className="flex-1 text-left truncate">{colab.nombre}</span>
-                            {reminderCustomIds.includes(colab.id) && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-end px-5 py-3 border-t">
-              <div className="flex items-center gap-2">
-                {(() => {
-                  const missing: string[] = []
-                  if (!quickTitle.trim()) missing.push('nombre')
-                  if (quickAssigneeIds.length === 0) missing.push('persona asignada')
-                  if (quickClientIds.length === 0) missing.push('cliente')
-                  if (!quickPriority) missing.push('prioridad')
-                  const isValid = missing.length === 0
+            <span className={propLabel}>Responsables</span>
+            <div className="flex min-h-10 flex-col justify-center gap-1.5 py-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {recentAssigneeIds.map((id) => {
+                  const colab = dbColaboradores.find(c => c.id === id)
+                  if (!colab) return null
+                  const selected = quickAssigneeIds.includes(id)
                   return (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span>
-                            <Button
-                              className="h-8 px-4"
-                              onClick={handleQuickCreate}
-                              disabled={!isValid || isCreating}
-                            >
-                              {isCreating ? 'Creando...' : 'Crear Tarea'}
-                              <ChevronDown className="h-3 w-3 ml-1" />
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        {!isValid && (
-                          <TooltipContent side="top" className="text-xs">
-                            Falta: {missing.join(', ')}
-                          </TooltipContent>
-                        )}
-                      </Tooltip>
-                    </TooltipProvider>
+                    <button
+                      key={id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => toggleAssignee(id)}
+                      className={cn(
+                        chip,
+                        'pl-1',
+                        selected ? 'border-[var(--ntm-brand)] bg-[rgba(255,127,0,.08)]' : 'hover:border-[var(--ntm-text-3)]',
+                      )}
+                    >
+                      <Avatar className="h-[22px] w-[22px]">
+                        {colab.avatar_url && <AvatarImage src={colab.avatar_url} alt="" />}
+                        <AvatarFallback className="bg-[var(--ntm-border)] text-[10px] text-[var(--ntm-text-2)]">
+                          {initials(fullName(colab))}
+                        </AvatarFallback>
+                      </Avatar>
+                      {colab.nombre}
+                    </button>
                   )
-                })()}
+                })}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="Agregar responsable"
+                      className="flex h-[30px] w-[30px] items-center justify-center rounded-full border border-dashed border-[var(--ntm-text-3)] text-[var(--ntm-text-2)] transition-colors duration-150 hover:border-[var(--ntm-brand)] hover:text-[var(--ntm-text)]"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-60 p-1" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar persona..." className="h-8 text-[13px]" />
+                      <CommandList className="max-h-56 overflow-y-auto">
+                        <CommandEmpty className="py-3 text-center text-[13px] text-muted-foreground">Sin resultados</CommandEmpty>
+                        <CommandGroup>
+                          {dbColaboradores.map((colab) => (
+                            <CommandItem
+                              key={colab.id}
+                              value={fullName(colab)}
+                              onSelect={() => toggleAssignee(colab.id)}
+                              className="flex items-center gap-2 text-[13px]"
+                            >
+                              <Avatar className="h-6 w-6">
+                                {colab.avatar_url && <AvatarImage src={colab.avatar_url} alt="" />}
+                                <AvatarFallback className="text-[10px]">{initials(fullName(colab))}</AvatarFallback>
+                              </Avatar>
+                              <span className="flex-1 truncate">{fullName(colab)}</span>
+                              {quickAssigneeIds.includes(colab.id) && <Check className="h-4 w-4 text-[var(--ntm-brand)]" />}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
+              <p className="text-xs text-[var(--ntm-text-3)]">Se muestran primero las personas que asignaste hace poco.</p>
+            </div>
+
+            <span className={propLabel}>Fechas</span>
+            <div className="flex min-h-10 flex-col justify-center gap-1 py-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="date"
+                  aria-label="Fecha de inicio"
+                  value={quickStartDate}
+                  onChange={(e) => setQuickStartDate(e.target.value)}
+                  className={cn(field, 'h-9 px-3 text-[13px] [color-scheme:light] dark:[color-scheme:dark]')}
+                />
+                <span aria-hidden className="text-[var(--ntm-text-3)]">→</span>
+                <input
+                  type="date"
+                  aria-label="Fecha de vencimiento"
+                  aria-invalid={dateError || undefined}
+                  value={quickDueDate}
+                  onChange={(e) => setQuickDueDate(e.target.value)}
+                  className={cn(field, 'h-9 px-3 text-[13px] [color-scheme:light] dark:[color-scheme:dark]', dateError && errorBorder)}
+                />
+                {dueHint && !dateError && <span className="text-xs text-[var(--ntm-text-3)]">{dueHint}</span>}
+              </div>
+              {dateError && <p className="text-xs text-[var(--ntm-error)]">El vencimiento no puede ser antes del inicio</p>}
             </div>
           </div>
-        )}
 
-        {/* Reminder tab - REMOVED, now integrated into tarea view */}
+          <section className="flex flex-col gap-2">
+            <h3 className={sectionLabel}>Descripción</h3>
+            <textarea
+              rows={4}
+              aria-label="Descripción"
+              placeholder="Agregá contexto, entregables o links"
+              value={quickDescription}
+              onChange={(e) => setQuickDescription(e.target.value)}
+              className={cn(field, 'w-full resize-y px-3 py-2.5 text-sm leading-relaxed')}
+            />
+          </section>
+
+          <section className="flex flex-col gap-2">
+            <h3 className={sectionLabel}>Adjuntos</h3>
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Adjuntar archivos: arrastrá o hacé clic para subir"
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  fileInputRef.current?.click()
+                }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setIsDragging(true)
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setIsDragging(false)
+                if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files)
+              }}
+              className={cn(
+                'ntm-field flex h-16 cursor-pointer items-center justify-center gap-2 rounded-xl border-[1.5px] border-dashed text-[13px] text-[var(--ntm-text-2)] transition-colors duration-150',
+                isDragging ? 'border-[var(--ntm-brand)] bg-[rgba(255,127,0,.06)]' : 'border-[var(--ntm-border)] hover:border-[var(--ntm-text-3)]',
+              )}
+            >
+              <Paperclip className="h-4 w-4" />
+              <span>
+                <strong className="font-semibold text-[var(--ntm-text)]">Arrastrá archivos</strong> o hacé clic para subir · hasta 25 MB
+              </span>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.length) handleFiles(e.target.files)
+                e.target.value = ''
+              }}
+            />
+            {uploads.length > 0 && (
+              <ul className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2">
+                {uploads.map((u) => (
+                  <li key={u.id} className="flex items-center gap-2.5 rounded-[10px] border border-[var(--ntm-border)] bg-[var(--ntm-field)] p-2">
+                    {u.previewUrl ? (
+                      <img src={u.previewUrl} alt="" className="h-9 w-9 shrink-0 rounded-md object-cover" />
+                    ) : (
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--ntm-border)]">
+                        <FileText className="h-4 w-4 text-[var(--ntm-text-2)]" />
+                      </div>
+                    )}
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <span className="truncate text-[13px]">{u.name}</span>
+                      {u.status === 'uploading' && (
+                        <div
+                          className="h-[3px] w-full overflow-hidden rounded-full bg-[var(--ntm-border)]"
+                          role="progressbar"
+                          aria-valuenow={u.progress}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-label={`Subiendo ${u.name}`}
+                        >
+                          <div className="h-full bg-[var(--ntm-brand)] transition-[width] duration-200" style={{ width: `${u.progress}%` }} />
+                        </div>
+                      )}
+                      <span className={cn('font-mono text-[11px]', u.status === 'error' ? 'text-[var(--ntm-error)]' : 'text-[var(--ntm-text-3)]')}>
+                        {u.status === 'error' ? u.error || 'Error al subir' : u.status === 'done' ? formatBytes(u.size) : `${u.progress}%`}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeUpload(u.id)}
+                      aria-label={`Quitar ${u.name}`}
+                      className="shrink-0 text-[var(--ntm-text-3)] hover:text-[var(--ntm-error)]"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <h3 className={sectionLabel}>Recordatorio</h3>
+              {!showReminder && (
+                <button
+                  type="button"
+                  onClick={() => setShowReminder(true)}
+                  className="text-[13px] font-medium text-[var(--ntm-link)] hover:underline"
+                >
+                  + Agregar recordatorio
+                </button>
+              )}
+            </div>
+            {showReminder ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="date"
+                  aria-label="Fecha del recordatorio"
+                  value={reminderDate}
+                  onChange={(e) => setReminderDate(e.target.value)}
+                  className={cn(field, 'h-9 px-3 text-[13px] [color-scheme:light] dark:[color-scheme:dark]')}
+                />
+                <input
+                  type="time"
+                  aria-label="Hora del recordatorio"
+                  value={reminderTime}
+                  onChange={(e) => setReminderTime(e.target.value)}
+                  className={cn(field, 'h-9 px-3 font-mono text-[13px] [color-scheme:light] dark:[color-scheme:dark]')}
+                />
+                <span className="text-[13px] text-[var(--ntm-text-2)]">Avisar a:</span>
+                <Segmented
+                  label="Avisar a"
+                  value={reminderAudience}
+                  onChange={(v) => setAudience(v as typeof reminderAudience)}
+                  options={[
+                    { value: 'responsables', label: 'Responsables' },
+                    { value: 'yo', label: 'Solo yo' },
+                    { value: 'equipo', label: 'Todo el equipo' },
+                  ]}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowReminder(false)
+                    setReminderDate('')
+                    setReminderTime('')
+                    setAudience('responsables')
+                  }}
+                  aria-label="Quitar recordatorio"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--ntm-text-3)] hover:text-[var(--ntm-text)]"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <p className="text-[13px] text-[var(--ntm-text-3)]">
+                Sin recordatorio.
+                {suggestedReminderDate && (
+                  <>
+                    {' '}
+                    <span className="text-[var(--ntm-cx-text)]">
+                      <Sparkles className="mb-0.5 inline h-3.5 w-3.5" /> Conexa sugiere un día antes del vencimiento, 09:00
+                    </span>
+                    {' · '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReminderDate(suggestedReminderDate)
+                        setReminderTime('09:00')
+                        setShowReminder(true)
+                      }}
+                      className="font-semibold text-[var(--ntm-link)] hover:underline"
+                    >
+                      Usar
+                    </button>
+                  </>
+                )}
+              </p>
+            )}
+          </section>
+
+          <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-[var(--ntm-text)]">
+            <input
+              type="checkbox"
+              checked={startTimerOnCreate}
+              onChange={(e) => setStartTimerOnCreate(e.target.checked)}
+              className="h-4 w-4 rounded accent-[#FF7F00]"
+            />
+            Iniciar timer al crear
+            <span className="text-xs text-[var(--ntm-text-3)]">usa el título, el tipo y el cliente</span>
+          </label>
+        </div>
+
+        <footer className="flex items-center justify-between gap-3 border-t border-[var(--ntm-border)] bg-[var(--ntm-footer)] px-5 py-3">
+          <p className="text-xs" aria-live="polite">
+            {isUploadingAttachments ? (
+              <span className="text-[var(--ntm-warn)]">Esperá a que terminen de subir los archivos</span>
+            ) : missingRequired.length > 0 ? (
+              <span className="font-medium text-[var(--ntm-warn)]">Faltan: {joinSpanish(missingRequired)}</span>
+            ) : (
+              <span className="font-mono text-[var(--ntm-text-3)]">Esc para cerrar · ⌘↵ para crear</span>
+            )}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="h-9 rounded-full px-4 text-[13px] font-medium text-[var(--ntm-text-2)] transition-colors duration-150 hover:bg-[var(--ntm-field)] hover:text-[var(--ntm-text)]"
+            >
+              Cancelar
+            </button>
+            <div className="flex h-9 items-stretch overflow-hidden rounded-full">
+              <button
+                type="button"
+                onClick={() => handleQuickCreate('close')}
+                disabled={isCreating || isUploadingAttachments}
+                aria-disabled={isCreateBlocked}
+                className={cn(
+                  'flex items-center gap-1.5 pl-4 pr-3 text-[13px] font-semibold transition-colors duration-150',
+                  isCreateBlocked ? 'bg-muted text-muted-foreground' : 'bg-[#FF7F00] text-[#141414] hover:bg-[#FF8C1A]',
+                )}
+              >
+                {isCreating && <Loader2 className="h-4 w-4 animate-spin" />}
+                {isCreating ? 'Creando…' : 'Crear tarea'}
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={isCreateBlocked}
+                    aria-label="Más opciones de creación"
+                    className={cn(
+                      'flex items-center border-l border-[rgba(20,20,20,.14)] px-2.5 transition-colors duration-150',
+                      isCreateBlocked ? 'bg-muted text-muted-foreground' : 'bg-[#FF7F00] text-[#141414] hover:bg-[#FF8C1A]',
+                    )}
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onSelect={() => handleQuickCreate('open')} className="text-[13px]">
+                    Crear y abrir
+                    <span className="ml-auto font-mono text-[11px] text-muted-foreground">⌘⇧↵</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => handleQuickCreate('another')} className="text-[13px]">
+                    Crear y agregar otra
+                    <span className="ml-auto font-mono text-[11px] text-muted-foreground">⌥↵</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </footer>
       </DialogContent>
     </Dialog>
   )
+}
+
+function Segmented({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  options: { value: string; label: string }[]
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="inline-flex rounded-full bg-muted p-0.5">
+      {options.map((o) => {
+        const active = value === o.value
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(o.value)}
+            className={cn(
+              'h-7 rounded-full px-3 text-[13px] transition-[background-color,color,box-shadow] duration-150 ease-[cubic-bezier(.22,1,.36,1)]',
+              active
+                ? 'bg-card font-medium text-[var(--ntm-text)] shadow-[0_1px_2px_rgba(20,20,20,.12)]'
+                : 'text-[var(--ntm-text-2)] hover:text-[var(--ntm-text)]',
+            )}
+          >
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function CxChip({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-[var(--ntm-cx-border)] px-2 py-0.5 text-xs">
+      {children}
+    </span>
+  )
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n) => n[0]?.toUpperCase())
+    .join('')
+}
+
+function capitalize(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+function joinSpanish(items: string[]) {
+  if (items.length <= 1) return items.join('')
+  return `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}`
+}
+
+function toISODate(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function shiftISODate(iso: string, days: number) {
+  const d = parseISO(iso + 'T12:00:00')
+  d.setDate(d.getDate() + days)
+  return toISODate(d)
+}
+
+function formatShortDate(iso: string) {
+  return parseISO(iso + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
+function describeDue(iso: string) {
+  if (!iso) return ''
+  const today = parseISO(toISODate(new Date()) + 'T12:00:00')
+  const due = parseISO(iso + 'T12:00:00')
+  const diff = Math.round((due.getTime() - today.getTime()) / 86_400_000)
+  if (diff === 0) return 'vence hoy'
+  if (diff === 1) return 'vence mañana'
+  if (diff > 1) return `vence en ${diff} días`
+  if (diff === -1) return 'venció ayer'
+  return `venció hace ${Math.abs(diff)} días`
+}
+
+const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+function detectFromTitle({
+  title,
+  clientes,
+  tipos,
+  colaboradores,
+  normalize,
+}: {
+  title: string
+  clientes: DbCliente[]
+  tipos: DbTipoTarea[]
+  colaboradores: DbColaborador[]
+  normalize: (s: string) => string
+}) {
+  const t = normalize(title)
+  if (t.trim().length < 4) return null
+  const hasWord = (word: string) => new RegExp(`(^|[^a-z0-9])${escapeRegExp(word)}([^a-z0-9]|$)`).test(t)
+
+  const client =
+    clientes
+      .filter((c) => c.nombre_del_negocio && normalize(c.nombre_del_negocio).length >= 3 && hasWord(normalize(c.nombre_del_negocio)))
+      .sort((a, b) => b.nombre_del_negocio.length - a.nombre_del_negocio.length)[0] ?? null
+
+  const tipo =
+    tipos.find((tp) => hasWord(normalize(tp.nombre))) ??
+    tipos.find((tp) => normalize(tp.nombre).split(/\s+/).some((w) => w.length >= 5 && hasWord(w))) ??
+    null
+
+  let priority: TaskPriority | null = null
+  if (hasWord('alta') || hasWord('urgente')) priority = 'alta'
+  else if (hasWord('media')) priority = 'media'
+  else if (hasWord('baja')) priority = 'baja'
+
+  const assignee =
+    colaboradores.find((c) => c.nombre && normalize(c.nombre).length >= 3 && hasWord(normalize(c.nombre))) ?? null
+
+  let due: string | null = null
+  const now = new Date()
+  if (hasWord('hoy')) due = toISODate(now)
+  else if (hasWord('manana')) due = shiftISODate(toISODate(now), 1)
+  else {
+    const idx = WEEKDAYS.findIndex((d) => hasWord(d))
+    if (idx >= 0) {
+      const ahead = (idx - now.getDay() + 7) % 7 || 7
+      due = shiftISODate(toISODate(now), ahead)
+    }
+  }
+
+  if (!client && !tipo && !priority && !assignee && !due) return null
+  return { client, tipo, priority, assignee, due }
 }

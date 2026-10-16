@@ -81,6 +81,22 @@ function mapComentarioToComment(comentario: ComentarioDB): TaskComment {
   }
 }
 
+const inflightCommentLoads = new Map<string, Promise<void>>()
+
+const TASK_SELECT = `
+  *,
+  clientes:cliente_id(id, nombre_del_negocio),
+  colaboradores:asignado_a(id, nombre, apellido, avatar_url),
+  tipo_de_tareas:tipo_tarea_id(id, nombre)
+`
+
+// Lookup maps from the last full load, reused when realtime patches individual rows.
+let cachedColaboradoresMap = new Map<string, { id: string; nombre: string; apellido?: string | null; avatar_url?: string | null }>()
+let cachedClientesMap = new Map<string, { id: string; nombre_del_negocio: string }>()
+
+/** Above this many changed rows a full reload is cheaper than patching. */
+const MAX_PATCH_IDS = 150
+
 async function fetchTaskComments(taskId: string): Promise<TaskComment[] | null> {
   const supabase = createClient()
   const { data: comentarios, error } = await supabase
@@ -573,12 +589,61 @@ export const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; b
   resolviendo:          { label: 'Resolviendo',         color: 'text-blue-700 dark:text-blue-400',     bgColor: 'bg-blue-100 dark:bg-blue-500/10',         borderColor: 'border-blue-400/40 dark:border-blue-500/30' },
   demorada:             { label: 'Demorada',            color: 'text-orange-700 dark:text-orange-400', bgColor: 'bg-orange-100 dark:bg-orange-500/10',     borderColor: 'border-orange-400/40 dark:border-orange-500/30' },
   pausada:              { label: 'Pausada',             color: 'text-amber-700 dark:text-amber-400',   bgColor: 'bg-amber-100 dark:bg-amber-500/10',       borderColor: 'border-amber-400/40 dark:border-amber-500/30' },
-  pendiente_aprobacion: { label: 'Pendiente aprobacion',color: 'text-purple-700 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-500/10',     borderColor: 'border-purple-400/40 dark:border-purple-500/30' },
+  pendiente_aprobacion: { label: 'Por aprobar',color: 'text-purple-700 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-500/10',     borderColor: 'border-purple-400/40 dark:border-purple-500/30' },
   resuelto:             { label: 'Resuelto',            color: 'text-green-700 dark:text-green-400',   bgColor: 'bg-green-100 dark:bg-green-500/10',       borderColor: 'border-green-400/40 dark:border-green-500/30' },
   no_realizado:         { label: 'No realizado',        color: 'text-red-700 dark:text-red-400',       bgColor: 'bg-red-100 dark:bg-red-500/10',           borderColor: 'border-red-400/40 dark:border-red-500/30' },
 }
 
 export const STATUS_ORDER: TaskStatus[] = ['pendiente_aprobacion', 'pendiente', 'resolviendo', 'demorada', 'pausada', 'resuelto', 'no_realizado']
+
+export type DueFilter = 'today' | 'week' | 'overdue' | 'next7' | 'none' | 'range'
+
+export const DUE_FILTER_LABELS: Record<DueFilter, string> = {
+  today: 'Vence hoy',
+  week: 'Vence esta semana',
+  overdue: 'Vencidas',
+  next7: 'Próximos 7 días',
+  none: 'Sin fecha',
+  range: 'Rango personalizado',
+}
+
+function startOfLocalDay(d: Date) {
+  const x = new Date(d)
+  x.setHours(0, 0, 0, 0)
+  return x
+}
+
+export function matchesDueFilter(
+  task: { dueDate: Date | null; status: string },
+  filter: DueFilter,
+  from: string | null,
+  to: string | null,
+): boolean {
+  const due = task.dueDate ? new Date(task.dueDate) : null
+  if (filter === 'none') return !due
+  if (!due || Number.isNaN(due.getTime())) return false
+  const today = startOfLocalDay(new Date())
+  const dueDay = startOfLocalDay(due)
+  const dayMs = 86_400_000
+  switch (filter) {
+    case 'today':
+      return dueDay.getTime() === today.getTime()
+    case 'week': {
+      const mondayOffset = (today.getDay() + 6) % 7
+      const monday = new Date(today.getTime() - mondayOffset * dayMs)
+      const sunday = new Date(monday.getTime() + 6 * dayMs)
+      return dueDay >= monday && dueDay <= sunday
+    }
+    case 'overdue':
+      return dueDay < today && task.status !== 'resuelto' && task.status !== 'no_realizado'
+    case 'next7':
+      return dueDay >= today && dueDay <= new Date(today.getTime() + 7 * dayMs)
+    case 'range':
+      if (from && dueDay < new Date(`${from}T00:00:00`)) return false
+      if (to && dueDay > new Date(`${to}T00:00:00`)) return false
+      return true
+  }
+}
 
 export const PRIORITY_CONFIG: Record<TaskPriority, { label: string; color: string; bgColor: string }> = {
   alta:  { label: 'Alta',  color: 'text-red-800 dark:text-red-300',    bgColor: 'bg-red-100 dark:bg-red-900/50' },
@@ -797,6 +862,17 @@ interface TaskStore {
   dueThisWeek: boolean
   searchQuery: string
   clientIds: string[]
+  /** yyyy-MM-dd, inclusive */
+  createdFrom: string | null
+  /** yyyy-MM-dd, inclusive */
+  createdTo: string | null
+  priorities?: TaskPriority[]
+  types?: string[]
+  creatorIds?: string[]
+  dueFilter?: DueFilter | null
+  /** yyyy-MM-dd, inclusive (only for dueFilter === 'range') */
+  dueFrom?: string | null
+  dueTo?: string | null
   }
   
   // Advanced filters
@@ -805,9 +881,15 @@ interface TaskStore {
 
   // Actions
   loadTasks: (options?: { silent?: boolean }) => Promise<void>
+  /** Re-fetches only the given rows (realtime); falls back to a full reload for large batches. */
+  syncTasksByIds: (changedIds: string[], deletedIds: string[]) => Promise<void>
   setView: (view: 'kanban' | 'list' | 'calendar') => void
   setSelectedTask: (id: string | null) => Promise<void>
   refreshComments: (taskId: string) => Promise<void>
+  /** Loads comments once per task (deduped); safe to call on hover. */
+  prefetchComments: (taskId: string) => Promise<void>
+  commentsLoadedIds: Record<string, true>
+  commentsLoadingIds: Record<string, true>
   setFilter: (key: keyof TaskStore['filters'], value: unknown) => void
   clearFilters: () => void
   
@@ -852,6 +934,8 @@ export const useTaskStore = create<TaskStore>()(
   tasks: [],
   isLoading: false,
   selectedTaskId: null,
+  commentsLoadedIds: {},
+  commentsLoadingIds: {},
   view: 'calendar',
   filters: {
   priority: null,
@@ -862,6 +946,8 @@ export const useTaskStore = create<TaskStore>()(
   dueThisWeek: false,
   searchQuery: '',
   clientIds: [],
+  createdFrom: null,
+  createdTo: null,
   },
   advancedFilters: [],
   savedFilters: [],
@@ -897,42 +983,44 @@ export const useTaskStore = create<TaskStore>()(
         clientesData.forEach(c => clientesMap.set(c.id, c))
       }
 
-      // Load ALL tasks with pagination (Supabase limits to 1000 per request)
-      const PAGE_SIZE = 1000
-      let allTasks: TareaDB[] = []
-      let from = 0
-      let hasMore = true
+      cachedColaboradoresMap = colaboradoresMap
+      cachedClientesMap = clientesMap
 
-      while (hasMore) {
-        const { data, error } = await supabase
+      // Supabase caps responses at 1000 rows: read the count with the first page,
+      // then fetch the remaining pages in parallel instead of one after another.
+      const PAGE_SIZE = 1000
+      const fetchPage = (from: number, withCount = false) =>
+        supabase
           .from('tareas')
-          .select(`
-            *,
-            hito_poe,
-            es_tarea_sistema,
-            clientes:cliente_id(id, nombre_del_negocio),
-            colaboradores:asignado_a(id, nombre, apellido, avatar_url),
-            tipo_de_tareas:tipo_tarea_id(id, nombre)
-          `)
+          .select(TASK_SELECT, withCount ? { count: 'exact' } : undefined)
           .order('created_at', { ascending: false })
+          .order('id', { ascending: true })
           .range(from, from + PAGE_SIZE - 1)
 
-        if (error) {
-          console.error('Error loading tasks page:', error)
-          break
-        }
-
-        if (data && data.length > 0) {
-          allTasks = [...allTasks, ...(data as TareaDB[])]
-          from += PAGE_SIZE
-          hasMore = data.length === PAGE_SIZE
-        } else {
-          hasMore = false
-        }
+      const first = await fetchPage(0, true)
+      if (first.error) throw first.error
+      const total = first.count ?? first.data?.length ?? 0
+      const offsets: number[] = []
+      for (let from = PAGE_SIZE; from < total; from += PAGE_SIZE) offsets.push(from)
+      const rest = await Promise.all(offsets.map((from) => fetchPage(from)))
+      const allTasks: TareaDB[] = [...((first.data ?? []) as TareaDB[])]
+      for (const page of rest) {
+        if (page.error) console.error('Error loading tasks page:', page.error)
+        else allTasks.push(...((page.data ?? []) as TareaDB[]))
       }
-      
-      // Also update ASSIGNEES global
-      loadAssignees()
+
+      // Reuse the colaboradores we already fetched instead of querying them again.
+      if (colaboradoresData) {
+        ASSIGNEES = colaboradoresData
+          .map((c) => ({
+            id: c.id,
+            name: [c.nombre, c.apellido].filter(Boolean).join(' ') || 'Sin nombre',
+            avatar_url: c.avatar_url,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      } else {
+        loadAssignees()
+      }
       
       if (allTasks.length > 0) {
         // Comments are loaded on demand when a task is selected. Keep the ones already
@@ -955,36 +1043,78 @@ export const useTaskStore = create<TaskStore>()(
     }
   },
 
+  syncTasksByIds: async (changedIds, deletedIds) => {
+    if (changedIds.length > MAX_PATCH_IDS || cachedColaboradoresMap.size === 0) {
+      return get().loadTasks({ silent: true })
+    }
+    const deleted = new Set(deletedIds)
+    let fresh: Task[] = []
+    if (changedIds.length > 0) {
+      const { data, error } = await createClient()
+        .from('tareas')
+        .select(TASK_SELECT)
+        .in('id', changedIds)
+      if (error) {
+        console.error('Error syncing tasks:', error)
+        return get().loadTasks({ silent: true })
+      }
+      fresh = ((data ?? []) as TareaDB[]).map((t) => mapTareaToTask(t, cachedColaboradoresMap, cachedClientesMap))
+      // Rows that no longer come back (deleted or hidden by RLS) leave the board too.
+      const returned = new Set(fresh.map((t) => t.id))
+      changedIds.forEach((id) => { if (!returned.has(id)) deleted.add(id) })
+    }
+    set((state) => {
+      const freshById = new Map(fresh.map((t) => [t.id, t]))
+      const existing = new Set(state.tasks.map((t) => t.id))
+      const updated = state.tasks
+        .filter((t) => !deleted.has(t.id))
+        .map((t) => {
+          const next = freshById.get(t.id)
+          return next ? { ...next, comments: t.comments } : t
+        })
+      const inserted = fresh.filter((t) => !existing.has(t.id)).map((t) => ({ ...t, comments: [] }))
+      return { tasks: inserted.length ? [...inserted, ...updated] : updated }
+    })
+  },
+
   setView: (view) => set({ view }),
   setSelectedTask: async (id) => {
     set({ selectedTaskId: id })
-    
-    // Load comments on demand when task is selected
-    if (id) {
-      // Wait for task to be available (may not be loaded yet if navigating via URL)
-      let task = get().tasks.find(t => t.id === id)
-      
-      // If task not found, wait a bit for loadTasks to finish and retry
-      if (!task) {
-        await new Promise(resolve => setTimeout(resolve, 500))
-        task = get().tasks.find(t => t.id === id)
-      }
-      
-      // Only load if comments haven't been loaded yet
-      if (task && task.comments.length === 0) {
-        const comments = await fetchTaskComments(id)
-        if (comments && comments.length > 0) {
-          set((state) => ({
-            tasks: state.tasks.map(t => (t.id === id ? { ...t, comments } : t)),
-          }))
-        }
-      }
-    }
+    if (id) await get().prefetchComments(id)
+  },
+  prefetchComments: (taskId) => {
+    if (get().commentsLoadedIds[taskId]) return Promise.resolve()
+    const pending = inflightCommentLoads.get(taskId)
+    if (pending) return pending
+
+    set((state) => ({ commentsLoadingIds: { ...state.commentsLoadingIds, [taskId]: true } }))
+    const load = fetchTaskComments(taskId)
+      .then((comments) => {
+        set((state) => {
+          const { [taskId]: _done, ...loading } = state.commentsLoadingIds
+          if (!comments) return { commentsLoadingIds: loading }
+          return {
+            commentsLoadingIds: loading,
+            commentsLoadedIds: { ...state.commentsLoadedIds, [taskId]: true },
+            // Keep comments added optimistically while the fetch was in flight.
+            tasks: state.tasks.map((t) => {
+              if (t.id !== taskId) return t
+              const fetchedIds = new Set(comments.map((c) => c.id))
+              const localOnly = t.comments.filter((c) => !fetchedIds.has(c.id))
+              return { ...t, comments: [...comments, ...localOnly] }
+            }),
+          }
+        })
+      })
+      .finally(() => { inflightCommentLoads.delete(taskId) })
+    inflightCommentLoads.set(taskId, load)
+    return load
   },
   refreshComments: async (taskId) => {
     const comments = await fetchTaskComments(taskId)
     if (!comments) return
     set((state) => ({
+      commentsLoadedIds: { ...state.commentsLoadedIds, [taskId]: true },
       tasks: state.tasks.map(t => (t.id === taskId ? { ...t, comments } : t)),
     }))
   },
@@ -992,7 +1122,7 @@ export const useTaskStore = create<TaskStore>()(
     filters: { ...state.filters, [key]: value },
   })),
   clearFilters: () => set({
-  filters: { priority: null, statusIds: [], assigneeIds: [], showUnassigned: false, type: null, dueThisWeek: false, searchQuery: '', clientIds: [] },
+  filters: { priority: null, statusIds: [], assigneeIds: [], showUnassigned: false, type: null, dueThisWeek: false, searchQuery: '', clientIds: [], createdFrom: null, createdTo: null, priorities: [], types: [], creatorIds: [], dueFilter: null, dueFrom: null, dueTo: null },
   advancedFilters: [],
   }),
   
@@ -1426,7 +1556,7 @@ updateTask: async (taskId, updates) => {
       // Add activity for status change
       if (updates.status !== undefined && updates.status !== t.status) {
         const statusLabels: Record<string, string> = {
-          'pendiente_aprobacion': 'Pendiente aprobación',
+          'pendiente_aprobacion': 'Por aprobar',
           'pendiente': 'Pendiente',
           'resolviendo': 'Resolviendo',
           'demorada': 'Demorada',
@@ -1559,7 +1689,14 @@ addTask: async (taskData) => {
     const clientIds = taskData.clientIds || (taskData.clientId ? [taskData.clientId] : [])
     
     // Support both single assigneeId and multiple assigneeIds
-    const assigneeIds = taskData.assigneeIds || (taskData.assigneeId ? [taskData.assigneeId] : [])
+    const fromAssignees = ((taskData as { assignees?: { id: string }[] }).assignees ?? []).map(a => a.id)
+    const assigneeIds = [...new Set(
+      taskData.assigneeIds?.length
+        ? taskData.assigneeIds
+        : fromAssignees.length
+          ? fromAssignees
+          : taskData.assigneeId ? [taskData.assigneeId] : []
+    )].filter(Boolean)
     
     // Calculate due date for hito tasks if not provided
     let dueDate = taskData.dueDate || null
@@ -2010,7 +2147,7 @@ export function useTaskStoreHydrated() {
   return hydrated
 }
 
-// ── Selectors ───────��────────────────────────────────���────────────────────────
+// ── Selectors ───────��────────────────────────────────���────────────────���───────
 
 export function useFilteredTasks() {
   const tasks = useTaskStore((s) => s.tasks)
@@ -2057,6 +2194,17 @@ export function useFilteredTasks() {
     const matches = filters.clientIds.some(id => taskClientIds.includes(id))
     if (!matches) return false
   }
+  // Creation date range filter (inclusive, local days)
+  if (filters.createdFrom || filters.createdTo) {
+    const created = task.createdAt instanceof Date ? task.createdAt : new Date(task.createdAt)
+    if (Number.isNaN(created.getTime())) return false
+    if (filters.createdFrom && created < new Date(`${filters.createdFrom}T00:00:00`)) return false
+    if (filters.createdTo && created > new Date(`${filters.createdTo}T23:59:59.999`)) return false
+  }
+  if ((filters.priorities?.length ?? 0) > 0 && !filters.priorities!.includes(task.priority)) return false
+  if ((filters.types?.length ?? 0) > 0 && !filters.types!.includes(task.type as string)) return false
+  if ((filters.creatorIds?.length ?? 0) > 0 && !(task.createdById && filters.creatorIds!.includes(task.createdById))) return false
+  if (filters.dueFilter && !matchesDueFilter(task, filters.dueFilter, filters.dueFrom ?? null, filters.dueTo ?? null)) return false
   return true
   })
 

@@ -2,7 +2,9 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { mutate } from 'swr'
 import { createClient } from '@/lib/supabase/client'
+import { getMissingTimerFields, TimerValidationError } from './validate-timer'
 
 export const TIMER_ACTIVE_ERROR = 'TIMER_ACTIVE'
 
@@ -11,6 +13,7 @@ export interface TimeEntry {
   colaborador_id: string | null
   cliente_id: string | null
   tipo_tarea_id: string | null
+  tarea_id?: string | null
   descripcion: string
   iniciado_en: string
   finalizado_en: string | null
@@ -28,10 +31,13 @@ interface TimerState {
   tipoTareaId: string | null
   billable: boolean
   taskId: string | null
+  /** When set (2+ ids), the running time is split evenly across these clients on stop. */
+  splitClientIds: string[] | null
 
   // Entries (local cache)
   entries: TimeEntry[]
   isLoading: boolean
+  showValidationErrors: boolean
 
   // Actions
   startTimer: () => Promise<void>
@@ -46,7 +52,7 @@ interface TimerState {
   loadEntries: () => Promise<void>
 
   // Task-specific actions
-  startTimerForTask: (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null) => Promise<void>
+  startTimerForTask: (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null, splitClientIds?: string[]) => Promise<void>
   syncRunningEntry: () => Promise<boolean>
 
   // Computed
@@ -65,11 +71,18 @@ export const useTimerStore = create<TimerState>()(
       tipoTareaId: null,
       billable: true,
       taskId: null,
+      splitClientIds: null,
       entries: [],
       isLoading: false,
+      showValidationErrors: false,
 
       startTimer: async () => {
         const state = get()
+        const missing = getMissingTimerFields(state)
+        if (missing.length > 0) {
+          set({ showValidationErrors: true })
+          throw new TimerValidationError(missing)
+        }
         const supabase = createClient()
         const startedAt = new Date().toISOString()
 
@@ -84,7 +97,8 @@ export const useTimerStore = create<TimerState>()(
             colaborador_id: colaborador?.id ?? null,
             cliente_id: state.clientId,
             tipo_tarea_id: state.tipoTareaId,
-            descripcion: state.description || 'Sin descripción',
+            tarea_id: state.taskId,
+            descripcion: state.description.trim(),
             iniciado_en: startedAt,
             finalizado_en: null,
             duracion_seg: null,
@@ -102,6 +116,7 @@ export const useTimerStore = create<TimerState>()(
           isRunning: true,
           startedAt: startedAt,
           currentEntryId: newEntry.id,
+          showValidationErrors: false,
           entries: [newEntry as TimeEntry, ...get().entries],
         })
       },
@@ -119,6 +134,7 @@ export const useTimerStore = create<TimerState>()(
           tipoTareaId: null,
           billable: true,
           taskId: null,
+          splitClientIds: null,
         }
 
         if (!state.startedAt) {
@@ -147,7 +163,78 @@ export const useTimerStore = create<TimerState>()(
           }
         }
 
-        if (entryIdToUpdate) {
+        const split = state.splitClientIds && state.splitClientIds.length > 1 ? state.splitClientIds : null
+
+        if (entryIdToUpdate && split) {
+          // Consecutive slices so both duracion_seg and start/end timestamps add up to the real total.
+          const base = Math.floor(duracion_seg / split.length)
+          const remainder = duracion_seg - base * split.length
+          let cursor = startTime
+          const slices = split.map((clientId, i) => {
+            const seconds = base + (i === 0 ? remainder : 0)
+            const from = new Date(cursor).toISOString()
+            cursor += seconds * 1000
+            return { clientId, seconds, from, to: i === split.length - 1 ? finalizado_en : new Date(cursor).toISOString() }
+          })
+          const descripcion = state.description || 'Sin descripción'
+          const [first, ...rest] = slices
+
+          const { error } = await supabase
+            .from('entradas_de_tiempo')
+            .update({
+              finalizado_en: first.to,
+              duracion_seg: first.seconds,
+              descripcion,
+              cliente_id: first.clientId,
+              tipo_tarea_id: state.tipoTareaId,
+              facturable: state.billable,
+            })
+            .eq('id', entryIdToUpdate)
+          if (error) {
+            console.error('[v0] Error stopping split time entry:', error)
+            throw new Error(error.message || 'No se pudo guardar la entrada de tiempo.')
+          }
+
+          const { data: original } = await supabase
+            .from('entradas_de_tiempo')
+            .select('colaborador_id, tarea_id')
+            .eq('id', entryIdToUpdate)
+            .maybeSingle()
+
+          const { data: inserted, error: insertError } = await supabase
+            .from('entradas_de_tiempo')
+            .insert(
+              rest.map((s) => ({
+                colaborador_id: original?.colaborador_id ?? null,
+                tarea_id: original?.tarea_id ?? null,
+                cliente_id: s.clientId,
+                tipo_tarea_id: state.tipoTareaId,
+                descripcion,
+                iniciado_en: s.from,
+                finalizado_en: s.to,
+                duracion_seg: s.seconds,
+                facturable: state.billable,
+              })),
+            )
+            .select()
+          if (insertError) {
+            console.error('[v0] Error inserting split time entries:', insertError)
+            // The first slice is already saved; drop the split so a retry doesn't re-slice it.
+            set(clearState)
+            throw new Error('Se guardó el tiempo del primer cliente pero no el del resto.')
+          }
+
+          set((s) => ({
+            entries: [
+              ...((inserted ?? []) as TimeEntry[]),
+              ...s.entries.map((e) =>
+                e.id === entryIdToUpdate
+                  ? { ...e, finalizado_en: first.to, duracion_seg: first.seconds, cliente_id: first.clientId, descripcion }
+                  : e,
+              ),
+            ],
+          }))
+        } else if (entryIdToUpdate) {
           const updateData = {
             finalizado_en,
             duracion_seg,
@@ -179,6 +266,7 @@ export const useTimerStore = create<TimerState>()(
 
         // Always clear state at the end
         set(clearState)
+        void mutate('/api/tasks/time-totals')
       },
 
       setDescription: (desc) => set({ description: desc }),
@@ -199,7 +287,8 @@ export const useTimerStore = create<TimerState>()(
 
       setClientId: async (id) => {
         const state = get()
-        set({ clientId: id })
+        // Picking a single client manually overrides an even split.
+        set({ clientId: id, splitClientIds: null })
         
         // Si el timer está corriendo, actualizar la entrada activa en la BD
         if (state.isRunning && state.currentEntryId && id !== state.clientId) {
@@ -230,10 +319,11 @@ export const useTimerStore = create<TimerState>()(
         await get().startTimer()
       },
 
-      startTimerForTask: async (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null) => {
+      startTimerForTask: async (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null, splitClientIds?: string[]) => {
         if (get().isRunning || (await get().syncRunningEntry())) {
           throw new Error(TIMER_ACTIVE_ERROR)
         }
+        const split = splitClientIds && splitClientIds.length > 1 ? splitClientIds : null
 
         const supabase = createClient()
         const startedAt = new Date().toISOString()
@@ -251,6 +341,21 @@ export const useTimerStore = create<TimerState>()(
             .maybeSingle()
           resolvedTipoTareaId = tipo?.id ?? null
         }
+        const missing = getMissingTimerFields({ description: descripcion, tipoTareaId: resolvedTipoTareaId, clientId })
+        if (missing.length > 0) {
+          // Preload what the task has so the user only fills the gaps in the timer bar.
+          set({
+            description: descripcion,
+            clientId,
+            tipoTareaId: resolvedTipoTareaId,
+            billable: true,
+            taskId,
+            splitClientIds: split,
+            showValidationErrors: true,
+          })
+          throw new TimerValidationError(missing)
+        }
+
         const { data: colaborador } = user?.email
           ? await supabase.from('colaboradores').select('id').eq('email', user.email).maybeSingle()
           : { data: null }
@@ -261,6 +366,7 @@ export const useTimerStore = create<TimerState>()(
             colaborador_id: colaborador?.id ?? null,
             cliente_id: clientId,
             tipo_tarea_id: resolvedTipoTareaId,
+            tarea_id: isUuid(taskId) ? taskId : null,
             descripcion,
             iniciado_en: startedAt,
             finalizado_en: null,
@@ -272,15 +378,17 @@ export const useTimerStore = create<TimerState>()(
 
         if (error) {
           console.error('Error creating time entry for task:', error)
-          return
+          throw new Error(error.message || 'No se pudo iniciar el timer.')
         }
 
         set({
+          showValidationErrors: false,
           description: descripcion,
           clientId: clientId,
           tipoTareaId: resolvedTipoTareaId,
           billable: true,
           taskId: taskId,
+          splitClientIds: split,
           isRunning: true,
           startedAt: startedAt,
           currentEntryId: newEntry.id,
@@ -326,7 +434,8 @@ export const useTimerStore = create<TimerState>()(
               clientId: running.cliente_id ?? null,
               tipoTareaId: running.tipo_tarea_id ?? null,
               billable: running.facturable ?? true,
-              taskId: state.currentEntryId === running.id ? state.taskId : null,
+              taskId: running.tarea_id ?? (state.currentEntryId === running.id ? state.taskId : null),
+              splitClientIds: state.currentEntryId === running.id ? state.splitClientIds : null,
             })
           }
           return true
@@ -342,6 +451,7 @@ export const useTimerStore = create<TimerState>()(
             tipoTareaId: null,
             billable: true,
             taskId: null,
+            splitClientIds: null,
           })
         }
         return false
@@ -381,6 +491,7 @@ export const useTimerStore = create<TimerState>()(
               tipoTareaId: null,
               billable: true,
               taskId: null,
+              splitClientIds: null,
             })
             return
           }
@@ -454,6 +565,7 @@ export const useTimerStore = create<TimerState>()(
                   tipoTareaId: null,
                   billable: true,
                   taskId: null,
+                  splitClientIds: null,
                 })
               } else {
                 // Sync local state with the actual running entry from DB
@@ -479,6 +591,7 @@ export const useTimerStore = create<TimerState>()(
                 tipoTareaId: null,
                 billable: true,
                 taskId: null,
+                splitClientIds: null,
               })
             }
           } else {
@@ -529,6 +642,7 @@ export const useTimerStore = create<TimerState>()(
                 tipoTareaId: null,
                 billable: true,
                 taskId: null,
+                splitClientIds: null,
               })
             }
           }, 0)
@@ -550,6 +664,7 @@ export const useTimerStore = create<TimerState>()(
         tipoTareaId: state.tipoTareaId,
         billable: state.billable,
         taskId: state.taskId,
+        splitClientIds: state.splitClientIds,
       }),
     }
   )

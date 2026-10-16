@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import type { Task, TaskFile } from '@/lib/types'
 import { useTaskStore } from '@/lib/tasks/task-store'
+import { MAX_ATTACHMENT_BYTES, sanitizeFileName, uploadTaskFile } from '@/lib/tasks/upload-with-progress'
 
 interface TareaAdjunto {
   id: string
@@ -59,6 +60,7 @@ export function TaskFilesSection({ task, currentUserId, colaboradorNombre }: Tas
   const [adjuntos, setAdjuntos] = useState<TareaAdjunto[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
@@ -90,32 +92,22 @@ export function TaskFilesSection({ task, currentUserId, colaboradorNombre }: Tas
     setError(null)
 
     for (const file of Array.from(files)) {
-      console.log('[v0] Uploading file:', file.name, file.size, file.type)
-      const sanitizedName = file.name
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/\s+/g, '_')
-        .replace(/[^a-zA-Z0-9_.-]/g, '')
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        setError(`${file.name} supera los 25 MB`)
+        continue
+      }
 
-      const path = `${currentUserId || 'anon'}/${task.id}/${Date.now()}-${sanitizedName}`
-      console.log('[v0] Storage path:', path)
+      const path = `${currentUserId || 'anon'}/${task.id}/${Date.now()}-${sanitizeFileName(file.name)}`
 
       try {
-        const { error: uploadError } = await supabase.storage
-          .from('task-files')
-          .upload(path, file)
-
-        if (uploadError) {
-          console.error('[v0] Storage upload error:', uploadError)
-          setError(`Error al subir ${file.name}: ${uploadError.message}`)
+        setProgress(0)
+        let publicUrl: string
+        try {
+          publicUrl = await uploadTaskFile(file, path, setProgress)
+        } catch (uploadErr) {
+          setError(uploadErr instanceof Error ? uploadErr.message : `Error al subir ${file.name}`)
           continue
         }
-
-        console.log('[v0] Storage upload success, getting public URL')
-        const { data: { publicUrl } } = supabase.storage
-          .from('task-files')
-          .getPublicUrl(path)
-        console.log('[v0] Public URL:', publicUrl)
 
         const { data: dbData, error: dbError } = await supabase
           .from('tarea_adjuntos')
@@ -209,7 +201,7 @@ export function TaskFilesSection({ task, currentUserId, colaboradorNombre }: Tas
             <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
           )}
           <p className="text-sm text-muted-foreground">
-            {uploading ? 'Subiendo...' : 'Click para subir archivos o arrastrá acá'}
+                {uploading ? `Subiendo... ${progress}%` : 'Click para subir archivos o arrastrá acá'}
           </p>
         </div>
       ) : (
@@ -313,7 +305,7 @@ export function TaskFilesSection({ task, currentUserId, colaboradorNombre }: Tas
             {uploading ? (
               <div className="flex items-center justify-center gap-2">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                <p className="text-xs text-muted-foreground">Subiendo...</p>
+                <p className="text-xs text-muted-foreground">Subiendo... {progress}%</p>
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">+ Agregar más archivos</p>
