@@ -21,6 +21,7 @@ import {
   stripClientFromTitle,
   useLiveTime,
 } from './view-parts'
+import { TaskStartButton } from './task-start-button'
 
 interface TaskCardProps {
   task: Task
@@ -146,6 +147,7 @@ export function TaskCard({ task, onClick, subtasks }: TaskCardProps) {
           )}
         </div>
         <PeopleStack people={getTaskPeople(task)} />
+        <TaskStartButton task={task} />
       </div>
 
       {created && (

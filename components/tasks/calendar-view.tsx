@@ -12,6 +12,7 @@ import type { ConexaSuggestion } from '@/hooks/use-conexa-suggestions'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { NewTaskModal } from './new-task-modal'
+import { TaskStartButton } from './task-start-button'
 import { STATUS_DOT, getTaskClients, getTaskPeople, isOpenTask, isOverdue, stripClientFromTitle, toDate } from './view-parts'
 
 const WEEKS = 4
@@ -29,16 +30,19 @@ function CalendarTaskItem({ task, onOpen }: { task: Task; onOpen: (id: string) =
   const people = getTaskPeople(task)
   const overdue = isOverdue(task)
   return (
+    <div
+      className={cn(
+        'group flex w-full min-w-0 items-center rounded-md border border-[var(--tasks-border)] bg-[var(--tasks-card)] hover:border-[var(--tasks-border-hover)]',
+        task.status === 'resuelto' && 'opacity-[.62]',
+      )}
+    >
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
           onClick={() => onOpen(task.id)}
           onPointerEnter={() => prefetchTask(task.id)}
-          className={cn(
-            'flex w-full min-w-0 items-center gap-1.5 rounded-md border border-[var(--tasks-border)] bg-[var(--tasks-card)] px-1.5 py-1 text-left text-[11.5px] hover:border-[var(--tasks-border-hover)]',
-            task.status === 'resuelto' && 'opacity-[.62]',
-          )}
+          className="flex min-w-0 flex-1 items-center gap-1.5 px-1.5 py-1 text-left text-[11.5px]"
         >
           <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: STATUS_DOT[task.status] }} aria-hidden="true" />
           <span className={cn('truncate font-semibold', overdue ? 'text-[var(--tasks-overdue)]' : 'text-[var(--tasks-text)]')}>
@@ -55,6 +59,8 @@ function CalendarTaskItem({ task, onOpen }: { task: Task; onOpen: (id: string) =
         <p className="opacity-80">{people.length ? people.map((p) => p.nombre).join(', ') : 'Sin responsable'}</p>
       </TooltipContent>
     </Tooltip>
+    <TaskStartButton task={task} className="mr-0.5 h-5 w-5" />
+    </div>
   )
 }
 
