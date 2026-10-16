@@ -12,6 +12,7 @@ export interface TimeEntry {
   colaborador_id: string | null
   cliente_id: string | null
   tipo_tarea_id: string | null
+  tarea_id?: string | null
   descripcion: string
   iniciado_en: string
   finalizado_en: string | null
@@ -92,6 +93,7 @@ export const useTimerStore = create<TimerState>()(
             colaborador_id: colaborador?.id ?? null,
             cliente_id: state.clientId,
             tipo_tarea_id: state.tipoTareaId,
+            tarea_id: state.taskId,
             descripcion: state.description.trim(),
             iniciado_en: startedAt,
             finalizado_en: null,
@@ -284,6 +286,7 @@ export const useTimerStore = create<TimerState>()(
             colaborador_id: colaborador?.id ?? null,
             cliente_id: clientId,
             tipo_tarea_id: resolvedTipoTareaId,
+            tarea_id: isUuid(taskId) ? taskId : null,
             descripcion,
             iniciado_en: startedAt,
             finalizado_en: null,
@@ -350,7 +353,7 @@ export const useTimerStore = create<TimerState>()(
               clientId: running.cliente_id ?? null,
               tipoTareaId: running.tipo_tarea_id ?? null,
               billable: running.facturable ?? true,
-              taskId: state.currentEntryId === running.id ? state.taskId : null,
+              taskId: running.tarea_id ?? (state.currentEntryId === running.id ? state.taskId : null),
             })
           }
           return true
