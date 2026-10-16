@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { useTaskStore } from '@/lib/tasks/task-store'
 import { useTimerStore, TIMER_ACTIVE_ERROR } from '@/lib/time-tracking/timer-store'
 import { formatMissingTimerFields, TimerValidationError } from '@/lib/time-tracking/validate-timer'
+import { getTaskClients, TaskClientPicker, type ClientChoice } from './task-client-picker'
 
 const stop = (e: MouseEvent | PointerEvent) => e.stopPropagation()
 
@@ -15,6 +16,8 @@ export function TaskStartButton({ task, className }: { task: Task; className?: s
   const isRunning = useTimerStore((s) => s.isRunning)
   const runningTaskId = useTimerStore((s) => s.taskId)
   const [busy, setBusy] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const clients = getTaskClients(task)
 
   const isThisRunning = isRunning && runningTaskId === task.id
   const isOtherRunning = isRunning && !isThisRunning
@@ -60,10 +63,27 @@ export function TaskStartButton({ task, className }: { task: Task; className?: s
       return
     }
 
+    if (clients.length > 1) {
+      setPickerOpen(true)
+      return
+    }
+    void start({ clientId: clients[0]?.id ?? task.clientId })
+  }
+
+  const start = async (choice: ClientChoice) => {
+    const timer = useTimerStore.getState()
     setBusy(true)
     try {
-      await timer.startTimerForTask(task.id, task.title, task.clientId || null, task.type || task.typeName || null)
-      toast.success('Timer iniciado', { description: task.title })
+      await timer.startTimerForTask(
+        task.id,
+        task.title,
+        choice.clientId || null,
+        task.type || task.typeName || null,
+        choice.splitClientIds,
+      )
+      toast.success('Timer iniciado', {
+        description: choice.splitClientIds ? `${task.title} · dividido entre ${choice.splitClientIds.length} clientes` : task.title,
+      })
     } catch (error) {
       if (error instanceof Error && error.message === TIMER_ACTIVE_ERROR) {
         toast.error('Ya hay un timer activo', { description: 'Detenelo antes de iniciar otra tarea.' })
@@ -82,6 +102,7 @@ export function TaskStartButton({ task, className }: { task: Task; className?: s
   const label = isThisRunning ? `Parar timer de ${task.title}` : `Iniciar timer de ${task.title}`
 
   return (
+    <TaskClientPicker clients={clients} open={pickerOpen} onOpenChange={setPickerOpen} onChoose={start}>
     <button
       type="button"
       onClick={handleClick}
@@ -107,5 +128,6 @@ export function TaskStartButton({ task, className }: { task: Task; className?: s
         <Play className="h-3 w-3 fill-current" aria-hidden="true" />
       )}
     </button>
+    </TaskClientPicker>
   )
 }

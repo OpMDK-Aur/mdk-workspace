@@ -31,6 +31,8 @@ interface TimerState {
   tipoTareaId: string | null
   billable: boolean
   taskId: string | null
+  /** When set (2+ ids), the running time is split evenly across these clients on stop. */
+  splitClientIds: string[] | null
 
   // Entries (local cache)
   entries: TimeEntry[]
@@ -50,7 +52,7 @@ interface TimerState {
   loadEntries: () => Promise<void>
 
   // Task-specific actions
-  startTimerForTask: (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null) => Promise<void>
+  startTimerForTask: (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null, splitClientIds?: string[]) => Promise<void>
   syncRunningEntry: () => Promise<boolean>
 
   // Computed
@@ -69,6 +71,7 @@ export const useTimerStore = create<TimerState>()(
       tipoTareaId: null,
       billable: true,
       taskId: null,
+      splitClientIds: null,
       entries: [],
       isLoading: false,
       showValidationErrors: false,
@@ -131,6 +134,7 @@ export const useTimerStore = create<TimerState>()(
           tipoTareaId: null,
           billable: true,
           taskId: null,
+          splitClientIds: null,
         }
 
         if (!state.startedAt) {
@@ -159,7 +163,78 @@ export const useTimerStore = create<TimerState>()(
           }
         }
 
-        if (entryIdToUpdate) {
+        const split = state.splitClientIds && state.splitClientIds.length > 1 ? state.splitClientIds : null
+
+        if (entryIdToUpdate && split) {
+          // Consecutive slices so both duracion_seg and start/end timestamps add up to the real total.
+          const base = Math.floor(duracion_seg / split.length)
+          const remainder = duracion_seg - base * split.length
+          let cursor = startTime
+          const slices = split.map((clientId, i) => {
+            const seconds = base + (i === 0 ? remainder : 0)
+            const from = new Date(cursor).toISOString()
+            cursor += seconds * 1000
+            return { clientId, seconds, from, to: i === split.length - 1 ? finalizado_en : new Date(cursor).toISOString() }
+          })
+          const descripcion = state.description || 'Sin descripción'
+          const [first, ...rest] = slices
+
+          const { error } = await supabase
+            .from('entradas_de_tiempo')
+            .update({
+              finalizado_en: first.to,
+              duracion_seg: first.seconds,
+              descripcion,
+              cliente_id: first.clientId,
+              tipo_tarea_id: state.tipoTareaId,
+              facturable: state.billable,
+            })
+            .eq('id', entryIdToUpdate)
+          if (error) {
+            console.error('[v0] Error stopping split time entry:', error)
+            throw new Error(error.message || 'No se pudo guardar la entrada de tiempo.')
+          }
+
+          const { data: original } = await supabase
+            .from('entradas_de_tiempo')
+            .select('colaborador_id, tarea_id')
+            .eq('id', entryIdToUpdate)
+            .maybeSingle()
+
+          const { data: inserted, error: insertError } = await supabase
+            .from('entradas_de_tiempo')
+            .insert(
+              rest.map((s) => ({
+                colaborador_id: original?.colaborador_id ?? null,
+                tarea_id: original?.tarea_id ?? null,
+                cliente_id: s.clientId,
+                tipo_tarea_id: state.tipoTareaId,
+                descripcion,
+                iniciado_en: s.from,
+                finalizado_en: s.to,
+                duracion_seg: s.seconds,
+                facturable: state.billable,
+              })),
+            )
+            .select()
+          if (insertError) {
+            console.error('[v0] Error inserting split time entries:', insertError)
+            // The first slice is already saved; drop the split so a retry doesn't re-slice it.
+            set(clearState)
+            throw new Error('Se guardó el tiempo del primer cliente pero no el del resto.')
+          }
+
+          set((s) => ({
+            entries: [
+              ...((inserted ?? []) as TimeEntry[]),
+              ...s.entries.map((e) =>
+                e.id === entryIdToUpdate
+                  ? { ...e, finalizado_en: first.to, duracion_seg: first.seconds, cliente_id: first.clientId, descripcion }
+                  : e,
+              ),
+            ],
+          }))
+        } else if (entryIdToUpdate) {
           const updateData = {
             finalizado_en,
             duracion_seg,
@@ -212,7 +287,8 @@ export const useTimerStore = create<TimerState>()(
 
       setClientId: async (id) => {
         const state = get()
-        set({ clientId: id })
+        // Picking a single client manually overrides an even split.
+        set({ clientId: id, splitClientIds: null })
         
         // Si el timer está corriendo, actualizar la entrada activa en la BD
         if (state.isRunning && state.currentEntryId && id !== state.clientId) {
@@ -243,10 +319,11 @@ export const useTimerStore = create<TimerState>()(
         await get().startTimer()
       },
 
-      startTimerForTask: async (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null) => {
+      startTimerForTask: async (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null, splitClientIds?: string[]) => {
         if (get().isRunning || (await get().syncRunningEntry())) {
           throw new Error(TIMER_ACTIVE_ERROR)
         }
+        const split = splitClientIds && splitClientIds.length > 1 ? splitClientIds : null
 
         const supabase = createClient()
         const startedAt = new Date().toISOString()
@@ -273,6 +350,7 @@ export const useTimerStore = create<TimerState>()(
             tipoTareaId: resolvedTipoTareaId,
             billable: true,
             taskId,
+            splitClientIds: split,
             showValidationErrors: true,
           })
           throw new TimerValidationError(missing)
@@ -310,6 +388,7 @@ export const useTimerStore = create<TimerState>()(
           tipoTareaId: resolvedTipoTareaId,
           billable: true,
           taskId: taskId,
+          splitClientIds: split,
           isRunning: true,
           startedAt: startedAt,
           currentEntryId: newEntry.id,
@@ -356,6 +435,7 @@ export const useTimerStore = create<TimerState>()(
               tipoTareaId: running.tipo_tarea_id ?? null,
               billable: running.facturable ?? true,
               taskId: running.tarea_id ?? (state.currentEntryId === running.id ? state.taskId : null),
+              splitClientIds: state.currentEntryId === running.id ? state.splitClientIds : null,
             })
           }
           return true
@@ -371,6 +451,7 @@ export const useTimerStore = create<TimerState>()(
             tipoTareaId: null,
             billable: true,
             taskId: null,
+            splitClientIds: null,
           })
         }
         return false
@@ -410,6 +491,7 @@ export const useTimerStore = create<TimerState>()(
               tipoTareaId: null,
               billable: true,
               taskId: null,
+              splitClientIds: null,
             })
             return
           }
@@ -483,6 +565,7 @@ export const useTimerStore = create<TimerState>()(
                   tipoTareaId: null,
                   billable: true,
                   taskId: null,
+                  splitClientIds: null,
                 })
               } else {
                 // Sync local state with the actual running entry from DB
@@ -508,6 +591,7 @@ export const useTimerStore = create<TimerState>()(
                 tipoTareaId: null,
                 billable: true,
                 taskId: null,
+                splitClientIds: null,
               })
             }
           } else {
@@ -558,6 +642,7 @@ export const useTimerStore = create<TimerState>()(
                 tipoTareaId: null,
                 billable: true,
                 taskId: null,
+                splitClientIds: null,
               })
             }
           }, 0)
@@ -579,6 +664,7 @@ export const useTimerStore = create<TimerState>()(
         tipoTareaId: state.tipoTareaId,
         billable: state.billable,
         taskId: state.taskId,
+        splitClientIds: state.splitClientIds,
       }),
     }
   )

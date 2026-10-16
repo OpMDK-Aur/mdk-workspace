@@ -140,6 +140,7 @@ import { MAX_ATTACHMENT_BYTES, sanitizeFileName, uploadTaskFile } from '@/lib/ta
 import { es } from 'date-fns/locale'
 import { QuotationSection } from './quotation-section'
 import { useTimerStore, TIMER_ACTIVE_ERROR } from '@/lib/time-tracking/timer-store'
+import { getTaskClients, TaskClientPicker, type ClientChoice } from './task-client-picker'
 import { useTaskTime } from '@/hooks/use-task-time'
 import { formatMissingTimerFields, TimerValidationError } from '@/lib/time-tracking/validate-timer'
 import { ActiveTimerBlockedDialog } from '@/components/time-tracking/active-timer-blocked-dialog'
@@ -724,6 +725,8 @@ function TimeTracker({ task }: { task: Task }) {
   const [isStarting, setIsStarting] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
   const [isBlockedDialogOpen, setIsBlockedDialogOpen] = useState(false)
+  const [clientPickerOpen, setClientPickerOpen] = useState(false)
+  const taskClients = getTaskClients(task)
 
   const isThisTaskRunning = globalIsRunning && globalTaskId === task.id
 
@@ -746,12 +749,24 @@ function TimeTracker({ task }: { task: Task }) {
       setIsBlockedDialogOpen(true)
       return
     }
+    if (taskClients.length > 1) {
+      setClientPickerOpen(true)
+      return
+    }
+    void startWithClient({ clientId: taskClients[0]?.id ?? task.clientId })
+  }
+
+  const startWithClient = async (choice: ClientChoice) => {
     setIsStarting(true)
     try {
       // `type` is the tipo_de_tareas UUID loaded from the task relation.
       // Keep the fallback for older tasks that only have `typeName` populated.
-      await startTimerForTask(task.id, task.title, task.clientId || null, task.type || task.typeName || null)
-      toast.success('Timer iniciado para esta tarea')
+      await startTimerForTask(task.id, task.title, choice.clientId || null, task.type || task.typeName || null, choice.splitClientIds)
+      toast.success(
+        choice.splitClientIds
+          ? `Timer iniciado · dividido entre ${choice.splitClientIds.length} clientes`
+          : 'Timer iniciado para esta tarea',
+      )
     } catch (error) {
       if (error instanceof Error && error.message === TIMER_ACTIVE_ERROR) {
         setIsBlockedDialogOpen(true)
@@ -814,6 +829,7 @@ function TimeTracker({ task }: { task: Task }) {
           Parar
         </Button>
       ) : (
+        <TaskClientPicker clients={taskClients} open={clientPickerOpen} onOpenChange={setClientPickerOpen} onChoose={startWithClient}>
         <Button
           size="sm"
           variant="ghost"
@@ -831,6 +847,7 @@ function TimeTracker({ task }: { task: Task }) {
             : <Play className="h-3 w-3 fill-current" />}
           Iniciar
         </Button>
+        </TaskClientPicker>
       )}
 
       <span className={cn(
@@ -1749,7 +1766,7 @@ function CustomFields({ task }: { task: Task }) {
   )
 }
 
-// ── Main Panel ──────────────────���─────────────────────────────────────────────
+// ── Main Panel ──────────────────���────────────────────────────────────────────��
 
 export function TaskDetailPanel() {
   const router = useRouter()
