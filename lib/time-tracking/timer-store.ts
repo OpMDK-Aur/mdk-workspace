@@ -2,6 +2,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { mutate } from 'swr'
 import { createClient } from '@/lib/supabase/client'
 import { getMissingTimerFields, TimerValidationError } from './validate-timer'
 
@@ -190,6 +191,7 @@ export const useTimerStore = create<TimerState>()(
 
         // Always clear state at the end
         set(clearState)
+        void mutate('/api/tasks/time-totals')
       },
 
       setDescription: (desc) => set({ description: desc }),

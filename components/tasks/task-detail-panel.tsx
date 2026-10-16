@@ -140,6 +140,7 @@ import { MAX_ATTACHMENT_BYTES, sanitizeFileName, uploadTaskFile } from '@/lib/ta
 import { es } from 'date-fns/locale'
 import { QuotationSection } from './quotation-section'
 import { useTimerStore, TIMER_ACTIVE_ERROR } from '@/lib/time-tracking/timer-store'
+import { useTaskTime } from '@/hooks/use-task-time'
 import { formatMissingTimerFields, TimerValidationError } from '@/lib/time-tracking/validate-timer'
 import { ActiveTimerBlockedDialog } from '@/components/time-tracking/active-timer-blocked-dialog'
 import { Square, Loader2 } from 'lucide-react'
@@ -738,7 +739,7 @@ function TimeTracker({ task }: { task: Task }) {
     return () => clearInterval(interval)
   }, [isThisTaskRunning, globalStartedAt, getElapsedSeconds])
 
-  const totalDisplay = task.totalTimeSec + (isThisTaskRunning ? elapsedSeconds : 0)
+  const { mine: myTime, total: taskTotal } = useTaskTime(task.id)
 
   const handleStart = async () => {
     if (globalIsRunning) {
@@ -836,7 +837,10 @@ function TimeTracker({ task }: { task: Task }) {
         'font-mono text-[13px] font-semibold tabular-nums',
         isThisTaskRunning ? 'text-green-500 dark:text-green-400' : 'text-[var(--task-text)]'
       )}>
-        {formatTime(totalDisplay)}
+        {formatTime(myTime)}
+      </span>
+      <span className="text-[11.5px] text-[var(--task-text-4)]">
+        tuyo · <span className="font-mono tabular-nums text-[var(--task-text)]">{formatTime(taskTotal)}</span> total
       </span>
 
       <Button

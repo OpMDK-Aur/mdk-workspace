@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { NewTaskModal } from './new-task-modal'
 import { TaskStartButton } from './task-start-button'
+import { TaskTimeLabel } from './task-time-label'
 import { STATUS_DOT, getTaskClients, getTaskPeople, isOpenTask, isOverdue, stripClientFromTitle, toDate } from './view-parts'
 
 const WEEKS = 4
@@ -59,6 +60,7 @@ function CalendarTaskItem({ task, onOpen }: { task: Task; onOpen: (id: string) =
         <p className="opacity-80">{people.length ? people.map((p) => p.nombre).join(', ') : 'Sin responsable'}</p>
       </TooltipContent>
     </Tooltip>
+    <TaskTimeLabel taskId={task.id} part="total" className="shrink-0 text-[10.5px] text-[var(--tasks-text-3)]" />
     <TaskStartButton task={task} className="mr-0.5 h-5 w-5" />
     </div>
   )

@@ -8,6 +8,7 @@ import { useSubtaskCounts } from '@/hooks/use-subtasks'
 import type { ConexaSuggestion } from '@/hooks/use-conexa-suggestions'
 import { prefetchTask } from '@/lib/tasks/prefetch-task'
 import { TaskStartButton } from './task-start-button'
+import { TaskTimeLabel } from './task-time-label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import {
@@ -41,7 +42,7 @@ import {
   useLiveTime,
 } from './view-parts'
 
-const GRID = 'minmax(300px,2.6fr) minmax(140px,1.2fr) minmax(110px,1fr) 80px minmax(120px,1fr) 110px 112px 80px'
+const GRID = 'minmax(300px,2.6fr) minmax(140px,1.2fr) minmax(110px,1fr) 80px minmax(120px,1fr) 110px 112px 80px 80px'
 
 type SortKey = 'title' | 'clientName' | 'priority' | 'dueDate' | 'totalTimeSec' | 'createdAt'
 const PRIORITY_RANK = { alta: 0, media: 1, baja: 2 } as const
@@ -151,8 +152,10 @@ function TaskRow({
       </div>
       <div role="cell" className="flex items-center gap-1 font-mono tabular-nums text-[var(--tasks-text-3)]">
         <TaskStartButton task={task} />
-        {task.isTimerRunning && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--tasks-baja-fg)]" aria-label="Timer en curso" />}
-        {liveTime > 0 ? formatDuration(liveTime) : '—'}
+        <TaskTimeLabel taskId={task.id} part="mine" />
+      </div>
+      <div role="cell" className="text-[var(--tasks-text-3)]">
+        <TaskTimeLabel taskId={task.id} part="total" />
       </div>
       <div role="cell" className="truncate text-[var(--tasks-text-3)]">
         {created ?? '—'}
@@ -343,7 +346,8 @@ export function ListView({ suggestions, onCreateSuggestion, onDismissSuggestion 
             <HeaderCell label="Prioridad" sortKey="priority" />
             <HeaderCell label="Responsable" />
             <HeaderCell label="Vence" sortKey="dueDate" />
-            <HeaderCell label="Tiempo" sortKey="totalTimeSec" />
+            <HeaderCell label="Mi tiempo" />
+            <HeaderCell label="Total" />
             <HeaderCell label="Creada" sortKey="createdAt" />
           </div>
 

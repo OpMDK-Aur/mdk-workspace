@@ -22,6 +22,7 @@ import {
   useLiveTime,
 } from './view-parts'
 import { TaskStartButton } from './task-start-button'
+import { TaskTimeLabel } from './task-time-label'
 
 interface TaskCardProps {
   task: Task
@@ -137,14 +138,7 @@ export function TaskCard({ task, onClick, subtasks }: TaskCardProps) {
               {subtasks.done}/{subtasks.total}
             </span>
           )}
-          {liveTime > 0 && (
-            <span className="flex items-center gap-1 font-mono tabular-nums">
-              {task.isTimerRunning && (
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--tasks-baja-fg)]" aria-label="Timer en curso" />
-              )}
-              {formatDuration(liveTime)}
-            </span>
-          )}
+          <TaskTimeLabel taskId={task.id} />
         </div>
         <PeopleStack people={getTaskPeople(task)} />
         <TaskStartButton task={task} />
