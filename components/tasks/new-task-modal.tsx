@@ -1608,6 +1608,7 @@ export function NewTaskModal({ open, onOpenChange, initialDueDate, initialMode =
         clientIds: quickClientIds,
         clientName: firstClient?.nombre_del_negocio || undefined,
         assigneeId: firstAssignee?.id || '',
+        assigneeIds: assignees.map(a => a.id),
         assignees,
         status: quickStatus as TaskStatus,
         priority: (quickPriority || 'media') as TaskPriority,

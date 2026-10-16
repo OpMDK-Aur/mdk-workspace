@@ -1689,7 +1689,14 @@ addTask: async (taskData) => {
     const clientIds = taskData.clientIds || (taskData.clientId ? [taskData.clientId] : [])
     
     // Support both single assigneeId and multiple assigneeIds
-    const assigneeIds = taskData.assigneeIds || (taskData.assigneeId ? [taskData.assigneeId] : [])
+    const fromAssignees = ((taskData as { assignees?: { id: string }[] }).assignees ?? []).map(a => a.id)
+    const assigneeIds = [...new Set(
+      taskData.assigneeIds?.length
+        ? taskData.assigneeIds
+        : fromAssignees.length
+          ? fromAssignees
+          : taskData.assigneeId ? [taskData.assigneeId] : []
+    )].filter(Boolean)
     
     // Calculate due date for hito tasks if not provided
     let dueDate = taskData.dueDate || null
