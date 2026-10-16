@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SearchCombobox, normalizeSearch } from '@/components/time-tracking/search-combobox'
 import { Badge } from '@/components/ui/badge'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { Play, Square, DollarSign, Loader2, Building2, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -67,6 +68,7 @@ export function ActiveTimerBar() {
   } = useTimerStore()
 
   const entries = useTimerStore((s) => s.entries)
+  const splitClientIds = useTimerStore((s) => s.splitClientIds)
   const [clientes, setClientes] = useState<Pick<Cliente, 'id' | 'nombre_del_negocio'>[]>([])
   const [tiposTarea, setTiposTarea] = useState<Pick<TipoDeTarea, 'id' | 'nombre' | 'color'>[]>([])
   const [clientSearch, setClientSearch] = useState('')
@@ -164,6 +166,11 @@ export function ActiveTimerBar() {
     () => clientes.map((c) => ({ id: c.id, label: c.nombre_del_negocio })),
     [clientes],
   )
+  const splitClients = useMemo(() => {
+    if (!splitClientIds || splitClientIds.length < 2) return []
+    const byId = new Map(clientOptions.map((c) => [c.id, c]))
+    return splitClientIds.map((id) => byId.get(id) ?? { id, label: 'Cliente' })
+  }, [splitClientIds, clientOptions])
   const tipoOptions = useMemo(
     () => tiposTarea.map((t) => ({ id: t.id, label: t.nombre, color: t.color })),
     [tiposTarea],
@@ -334,6 +341,55 @@ export function ActiveTimerBar() {
           )}
         />
 
+        {splitClients.length > 1 ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="flex h-9 w-[110px] sm:w-[180px] shrink items-center gap-2 rounded-md border border-input bg-transparent px-3 text-sm hover:bg-accent"
+                aria-label={`Tiempo dividido entre ${splitClients.map((c) => c.label).join(', ')}`}
+              >
+                <span className="flex -space-x-1.5 shrink-0">
+                  {splitClients.slice(0, 3).map((c) => (
+                    <span
+                      key={c.id}
+                      className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold text-white ring-2 ring-background"
+                      style={{ backgroundColor: getClientColor(c.id) }}
+                    >
+                      {getInitials(c.label)}
+                    </span>
+                  ))}
+                </span>
+                <span className="truncate">{splitClients.length} clientes</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64 p-2">
+              <p className="px-2 pb-2 text-xs text-muted-foreground leading-relaxed">
+                El tiempo se divide en partes iguales al detener el timer.
+              </p>
+              <ul className="flex flex-col">
+                {splitClients.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      onClick={() => void setClientId(c.id)}
+                      className="group flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent"
+                    >
+                      <span
+                        className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-semibold text-white shrink-0"
+                        style={{ backgroundColor: getClientColor(c.id) }}
+                      >
+                        {getInitials(c.label)}
+                      </span>
+                      <span className="flex-1 truncate text-left">{c.label}</span>
+                      <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100">Solo este</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </PopoverContent>
+          </Popover>
+        ) : (
         <SearchCombobox
           options={clientOptions}
           value={clientId}
@@ -356,6 +412,7 @@ export function ActiveTimerBar() {
             </>
           )}
         />
+        )}
 
         {/* Controles fijos: siempre visibles, nunca se achican ni se cortan */}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
