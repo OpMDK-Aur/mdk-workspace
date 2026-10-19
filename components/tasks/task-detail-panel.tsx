@@ -97,6 +97,10 @@ import { ConexaThreadSummary, type ConexaThreadSummaryHandle } from './conexa-th
 import { hashComments } from '@/lib/conexa/tasks'
 
 const CONEXA_DRAFT_MARKER = '<span data-conexa-draft="1"></span>'
+const CONEXA_MENTION_ID = 'conexa'
+const CONEXA_MENTION = { id: CONEXA_MENTION_ID, name: 'Conexa', avatar_url: null as string | null }
+const isConexaReply = (c: { userId: string; userName: string; content: string }) =>
+  c.userId === 'system' && (c.userName === 'Conexa' || c.content.includes('data-conexa-reply'))
 
 function escapeHtml(text: string) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -1002,9 +1006,9 @@ function CommentsSection({
   const [selectedMentionIndex, setSelectedMentionIndex] = useState(0)
   const mentionStartRef = useRef<{ node: Node; offset: number } | null>(null)
   
-  const filteredAssignees = ASSIGNEES.filter(a => 
+  const filteredAssignees = [CONEXA_MENTION, ...ASSIGNEES].filter(a => 
     a.name.toLowerCase().includes(mentionSearch.toLowerCase())
-  ).slice(0, 5)
+  ).slice(0, 6)
 
   // Sort comments by date
   const sortedComments = useMemo(() => {
@@ -1275,14 +1279,36 @@ function CommentsSection({
     })
     
     const finalContent = conexaDraftRef.current ? `${CONEXA_DRAFT_MARKER}${content}` : content
+    const asksConexa = mentionedIds.includes(CONEXA_MENTION_ID)
+    const peopleMentioned = mentionedIds.filter(id => id !== CONEXA_MENTION_ID)
 
     try {
-      await addComment(task.id, finalContent, userId, userName, currentUser?.avatar_url, mentionedIds, pendingAttachments)
+      await addComment(task.id, finalContent, userId, userName, currentUser?.avatar_url, peopleMentioned, pendingAttachments)
       editorRef.current.innerHTML = ''
       conexaDraftRef.current = false
       setCommentContent('')
       setPendingAttachments([])
-      toast.success('Comentario agregado')
+      if (asksConexa) {
+        const taskId = task.id
+        const pending = fetch(`/api/conexa/tasks/${taskId}/reply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: content }),
+        }).then(async res => {
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}))
+            throw new Error(data?.error || 'Conexa no pudo responder')
+          }
+          await useTaskStore.getState().refreshComments(taskId)
+        })
+        toast.promise(pending, {
+          loading: 'Conexa está respondiendo…',
+          success: 'Conexa respondió en el hilo',
+          error: (err: Error) => err.message,
+        })
+      } else {
+        toast.success('Comentario agregado')
+      }
     } catch (err) {
       console.error('Error adding comment:', err)
       toast.error('Error al agregar comentario')
@@ -1476,9 +1502,18 @@ function CommentsSection({
                 >
                   <Avatar className={cn("shrink-0", compact ? "h-5 w-5" : "h-6 w-6")}>
                     {assignee.avatar_url && <AvatarImage src={assignee.avatar_url} />}
-                    <AvatarFallback className={cn("text-xs", compact && "text-[7px]")}>{getInitials(assignee.name)}</AvatarFallback>
+                    {assignee.id === CONEXA_MENTION_ID ? (
+                      <AvatarFallback className="bg-primary/15 text-primary">
+                        <Sparkles className={compact ? "size-3" : "size-3.5"} aria-hidden="true" />
+                      </AvatarFallback>
+                    ) : (
+                      <AvatarFallback className={cn("text-xs", compact && "text-[7px]")}>{getInitials(assignee.name)}</AvatarFallback>
+                    )}
                   </Avatar>
                   <span>{assignee.name}</span>
+                  {assignee.id === CONEXA_MENTION_ID && (
+                    <span className="ml-auto text-[11px] text-muted-foreground">Asistente</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -2774,11 +2809,20 @@ export function TaskDetailPanel() {
                                   <div key={c.id} className="group flex items-start gap-3 text-sm mb-4">
                                     <Avatar className="h-6 w-6 mt-0.5 shrink-0">
                                       <AvatarImage src={c.userAvatar || undefined} alt={c.userName} />
-                                      <AvatarFallback className="text-[10px]">{getInitials(c.userName)}</AvatarFallback>
+                                      {isConexaReply(c) ? (
+                                        <AvatarFallback className="bg-primary/15 text-primary">
+                                          <Sparkles className="size-3.5" aria-hidden="true" />
+                                        </AvatarFallback>
+                                      ) : (
+                                        <AvatarFallback className="text-[10px]">{getInitials(c.userName)}</AvatarFallback>
+                                      )}
                                     </Avatar>
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-1.5 mb-1">
                                         <span className="text-sm font-medium text-foreground">{c.userName}</span>
+                                        {isConexaReply(c) && (
+                                          <span className="rounded px-1.5 py-px text-[10px] font-medium uppercase tracking-wide bg-primary/15 text-primary">Asistente</span>
+                                        )}
                                         <span className="text-xs text-muted-foreground">
                                           {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
                                         </span>
