@@ -57,7 +57,7 @@ export function StepPublish({ clientId, adsets }: { clientId: string; adsets: Bu
   const byAdset = useMemo(() => {
     const counts = new Map<string, number>()
     for (const row of groups.ready) counts.set(row.adsetId, (counts.get(row.adsetId) ?? 0) + 1)
-    return [...counts.entries()].map(([id, count]) => ({ name: adsets.find((adset) => adset.id === id)?.name ?? 'Sin conjunto asignado', count, missing: !id }))
+    return [...counts.entries()].map(([id, count]) => ({ name: (() => { const adset = adsets.find((item) => item.id === id); return adset ? `${adset.campaignName} · ${adset.name}` : 'Sin conjunto asignado' })(), count, missing: !id }))
   }, [groups.ready, adsets])
 
   const statusLabel = initialStatus === 'PAUSED' ? 'Pausados' : 'Activos'

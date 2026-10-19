@@ -11,6 +11,7 @@ export interface MetaAccountMetricsInput {
   dateFrom: string
   dateTo: string
   onlyActiveCampaigns?: boolean
+  includeAdsetCatalog?: boolean
 }
 
 export type MetaErrorCategory =
@@ -77,6 +78,7 @@ export interface MetaAccountMetrics {
   adsets?: MetaCampaignMetrics[]
   ads?: MetaCampaignMetrics[]
   creatives?: MetaCampaignMetrics[]
+  adset_catalog?: MetaAdsetCatalogItem[]
 }
 
 export type MetaResultType =
@@ -244,6 +246,33 @@ async function fetchActiveCampaignIds(accountId: string, accessToken: string) {
   return ids
 }
 
+export type MetaAdsetCatalogItem = { id: string; name: string; status: string; campaign_id: string; campaign_name: string; campaign_status: string }
+
+// Insights solo devuelve conjuntos con entrega en el período; para la carga masiva hacen falta también los pausados y recién creados.
+const CATALOG_STATUSES = ['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'IN_PROCESS', 'WITH_ISSUES']
+
+async function fetchAdsetCatalog(accountId: string, accessToken: string) {
+  let url: string | null = `${META_BASE_URL}/act_${accountId}/adsets?${new URLSearchParams({
+    access_token: accessToken,
+    fields: 'id,name,effective_status,campaign{id,name,effective_status}',
+    filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: CATALOG_STATUSES }]),
+    limit: '500',
+  })}`
+  const items: MetaAdsetCatalogItem[] = []
+  while (url) {
+    const payload = await fetchJson(url)
+    for (const raw of (payload.data ?? []) as unknown as Array<{ id?: string; name?: string; effective_status?: string; campaign?: { id?: string; name?: string; effective_status?: string } }>) {
+      if (!raw.id) continue
+      items.push({
+        id: raw.id, name: raw.name || 'Conjunto sin nombre', status: raw.effective_status || '',
+        campaign_id: raw.campaign?.id || '', campaign_name: raw.campaign?.name || 'Campaña sin nombre', campaign_status: raw.campaign?.effective_status || '',
+      })
+    }
+    url = payload.paging?.next ?? null
+  }
+  return items
+}
+
 type MetaAdCreativeInfo = { campaign?: { name?: string }; creative?: Record<string, unknown> }
 
 // Insights (level=ad) no devuelve creativos: se consultan los anuncios por ID en lotes de 50.
@@ -348,7 +377,10 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
   const adsetsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'adset')
   const adsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'ad')
   const activeIdsPromise = input.onlyActiveCampaigns ? fetchActiveCampaignIds(accountId, accessToken) : Promise.resolve<Set<string> | null>(null)
-  const [rows, adsetRows, adRows, activeIds] = await Promise.all([rowsPromise, adsetsPromise, adsPromise, activeIdsPromise])
+  const catalogPromise = input.includeAdsetCatalog
+    ? fetchAdsetCatalog(accountId, accessToken).catch(() => undefined)
+    : Promise.resolve(undefined)
+  const [rows, adsetRows, adRows, activeIds, adsetCatalog] = await Promise.all([rowsPromise, adsetsPromise, adsPromise, activeIdsPromise, catalogPromise])
   const campaigns = rows.filter((row) => !activeIds || activeIds.has(row.campaign_id || '')).map((row) => {
     const spend = toNumber(row.spend)
     const result = normalizeMetaResult(row.objective || '', row.actions)
@@ -398,6 +430,7 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
     api_rows_received: rows.length,
     raw_rows: rows.slice(0, 3),
     date_range: { start: input.dateFrom, end: input.dateTo }, totals, results_by_type: resultsByType, campaigns, adsets, ads, creatives,
+    ...(adsetCatalog ? { adset_catalog: adsetCatalog } : {}),
   }
 }
 

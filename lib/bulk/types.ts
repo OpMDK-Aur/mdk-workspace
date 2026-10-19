@@ -43,7 +43,29 @@ export type CreativeSuggestion = {
   basis: string
 }
 
-export type BulkAdset = { id: string; name: string }
+export type BulkAdset = { id: string; name: string; campaignId: string; campaignName: string; status: string }
+
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE: 'Activa',
+  PAUSED: 'Pausada',
+  CAMPAIGN_PAUSED: 'Campaña pausada',
+  IN_PROCESS: 'En proceso',
+  WITH_ISSUES: 'Con problemas',
+}
+
+export const adsetStatusLabel = (status: string) => STATUS_LABELS[status.toUpperCase()] ?? (status ? status : 'Sin estado')
+export const isAdsetActive = (status: string) => status.toUpperCase() === 'ACTIVE'
+
+export function groupAdsetsByCampaign(adsets: BulkAdset[]) {
+  const groups = new Map<string, { campaignName: string; adsets: BulkAdset[] }>()
+  for (const adset of adsets) {
+    const key = adset.campaignId || adset.campaignName
+    const group = groups.get(key) ?? { campaignName: adset.campaignName, adsets: [] }
+    group.adsets.push(adset)
+    groups.set(key, group)
+  }
+  return [...groups.entries()].map(([key, group]) => ({ key, ...group }))
+}
 
 export type BulkDefaults = {
   adsetId: string

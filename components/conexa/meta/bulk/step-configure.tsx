@@ -6,11 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { generateCopies } from '@/lib/bulk/api'
 import { adName, derivePlacement } from '@/lib/bulk/group-assets'
 import { useBulkStore } from '@/lib/bulk/store'
-import { CTAS, PRIMARY_TEXT_LIMIT, type BulkAdset, type BulkRow, type CTA } from '@/lib/bulk/types'
+import { CTAS, PRIMARY_TEXT_LIMIT, adsetStatusLabel, groupAdsetsByCampaign, isAdsetActive, type BulkAdset, type BulkRow, type CTA } from '@/lib/bulk/types'
 import { isDraft, validateRow } from '@/lib/bulk/validate'
 import { AssetThumb, Chip, StateBadge } from './bulk-shared'
 
@@ -21,7 +21,8 @@ function Row({ row, index, adsets, clientName, selected }: { row: BulkRow; index
   const updateRow = useBulkStore((state) => state.updateRow)
   const toggleSelected = useBulkStore((state) => state.toggleSelected)
   const { state, issues } = validateRow(row)
-  const adsetName = adsets.find((adset) => adset.id === row.adsetId)?.name ?? ''
+  const currentAdset = adsets.find((adset) => adset.id === row.adsetId)
+  const adsetName = currentAdset?.name ?? ''
   const overLimit = row.primaryText.length > PRIMARY_TEXT_LIMIT
   const draft = isDraft(row)
 
@@ -40,9 +41,22 @@ function Row({ row, index, adsets, clientName, selected }: { row: BulkRow; index
       </td>
       <td className="px-3 py-3">
         <Select value={row.adsetId || undefined} onValueChange={(adsetId) => updateRow(row.id, { adsetId })}>
-          <SelectTrigger className={cn('h-8 w-[180px]', fieldClass)} aria-label="Conjunto"><SelectValue placeholder="Elegir conjunto" /></SelectTrigger>
-          <SelectContent>{adsets.map((adset) => <SelectItem key={adset.id} value={adset.id}>{adset.name}</SelectItem>)}</SelectContent>
+          <SelectTrigger className={cn('h-8 w-[220px]', fieldClass)} aria-label="Conjunto"><SelectValue placeholder="Elegir conjunto" /></SelectTrigger>
+          <SelectContent className="max-h-80">
+            {groupAdsetsByCampaign(adsets).map((group) => (
+              <SelectGroup key={group.key}>
+                <SelectLabel className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.campaignName}</SelectLabel>
+                {group.adsets.map((adset) => (
+                  <SelectItem key={adset.id} value={adset.id}>
+                    <span className="truncate">{adset.name}</span>
+                    {!isAdsetActive(adset.status) && <span className="ml-2 shrink-0 text-[11px] text-muted-foreground">{adsetStatusLabel(adset.status)}</span>}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            ))}
+          </SelectContent>
         </Select>
+        {currentAdset && <p className="mt-1 max-w-[220px] truncate text-[11px] text-[#777]" title={currentAdset.campaignName}>{currentAdset.campaignName}</p>}
       </td>
       <td className="px-3 py-3">
         <Textarea
@@ -133,9 +147,18 @@ export function StepConfigure({ clientId, clientName, adsets }: { clientId: stri
           {'✦ Escribir copies con Conexa'}
         </Button>
         {adsets.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full flex-col gap-2">
             <span className="text-[11px] text-[#777]">Asignar conjunto:</span>
-            {adsets.map((adset) => <Chip key={adset.id} active={false} onClick={() => updateRows(targetIds, { adsetId: adset.id })}>{adset.name}</Chip>)}
+            {groupAdsetsByCampaign(adsets).map((group) => (
+              <div key={group.key} className="flex flex-wrap items-center gap-2">
+                <span className="max-w-[240px] truncate text-[11px] font-semibold text-[#555]" title={group.campaignName}>{group.campaignName}</span>
+                {group.adsets.map((adset) => (
+                  <Chip key={adset.id} active={false} onClick={() => updateRows(targetIds, { adsetId: adset.id })}>
+                    {adset.name}{!isAdsetActive(adset.status) && ` · ${adsetStatusLabel(adset.status)}`}
+                  </Chip>
+                ))}
+              </div>
+            ))}
           </div>
         )}
         <button type="button" disabled={!selected.length} onClick={() => removeRows(selected)} className="ml-auto text-[11px] font-semibold text-[#c23b3b] hover:underline disabled:text-[#ccc] disabled:no-underline">
