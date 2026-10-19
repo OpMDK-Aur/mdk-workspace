@@ -22,7 +22,6 @@ export function getMissingTimerFields(input: {
   clientId: string | null | undefined
 }): TimerField[] {
   const missing: TimerField[] = []
-  if (!input.description?.trim()) missing.push('description')
   if (!input.tipoTareaId) missing.push('tipo')
   if (!input.clientId) missing.push('cliente')
   return missing
