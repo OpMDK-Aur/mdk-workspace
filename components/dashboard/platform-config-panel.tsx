@@ -2,7 +2,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getClientCrmAccounts, replaceClientCrmAccounts, updateClientPlatformIds } from '@/app/actions/platform-config'
+import { getClientCrmAccounts, replaceClientCrmAccounts, updateClientMetaPage, updateClientPlatformIds } from '@/app/actions/platform-config'
+import { SearchCombobox } from '@/components/time-tracking/search-combobox'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -41,6 +42,7 @@ interface ClientItem {
   id: string
   business_name: string
   meta_ads_account_id: string | null
+  meta_page_id?: string | null
   google_ads_customer_id: string | null
   analytics_property_id: string | null
   tag_manager_container_id: string | null
@@ -606,10 +608,53 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [filterAccountManager, setFilterAccountManager] = useState('__all__')
   const [filterConnected, setFilterConnected] = useState<'__all__' | 'connected' | 'not_connected'>('__all__')
 
+  const [metaPages, setMetaPages] = useState<Array<{ id: string; label: string; category?: string }>>([])
+  const [loadingPages, setLoadingPages] = useState(false)
+  const [pagesError, setPagesError] = useState<string | null>(null)
+  const [pageSelection, setPageSelection] = useState<Record<string, string>>(() =>
+    Object.fromEntries(clients.map(c => [c.id, c.meta_page_id ?? '']))
+  )
+  const [savedPageIds, setSavedPageIds] = useState<Record<string, string>>(() =>
+    Object.fromEntries(clients.map(c => [c.id, c.meta_page_id ?? '']))
+  )
+  const [autoPageIds, setAutoPageIds] = useState<Record<string, boolean>>({})
+
   useEffect(() => {
     fetchMetaAccounts()
     fetchGoogleAccounts()
+    fetchMetaPages()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function fetchMetaPages() {
+    setLoadingPages(true)
+    setPagesError(null)
+    try {
+      const res = await fetch('/api/ads/meta/pages')
+      const data = await res.json()
+      if (!res.ok || data.error) { setPagesError(data.error || 'No se pudieron cargar las páginas'); return }
+      const pages: Array<{ id: string; name: string; category?: string }> = data.pages ?? []
+      setMetaPages(pages.map(p => ({ id: p.id, label: p.name, category: p.category })))
+
+      const toAutoSave: Array<{ clientId: string; pageId: string }> = []
+      for (const client of clients) {
+        if (client.meta_page_id) continue
+        const candidates = pages.filter(p => matchScore(client.business_name, p.name) >= 0.8)
+        if (candidates.length === 1) toAutoSave.push({ clientId: client.id, pageId: candidates[0].id })
+      }
+      if (toAutoSave.length === 0) return
+
+      const results = await Promise.all(toAutoSave.map(({ clientId, pageId }) => updateClientMetaPage(clientId, pageId)))
+      const succeeded = toAutoSave.filter((_, i) => !results[i].error)
+      const entries = Object.fromEntries(succeeded.map(({ clientId, pageId }) => [clientId, pageId]))
+      setPageSelection(prev => ({ ...prev, ...entries }))
+      setSavedPageIds(prev => ({ ...prev, ...entries }))
+      setAutoPageIds(prev => ({ ...prev, ...Object.fromEntries(succeeded.map(({ clientId }) => [clientId, true])) }))
+    } catch {
+      setPagesError('No se pudo conectar con la API de Meta para leer las páginas.')
+    } finally {
+      setLoadingPages(false)
+    }
+  }
 
   async function fetchMetaAccounts() {
     setLoadingAccounts(true)
@@ -728,6 +773,12 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       (analyticsSelection[clientId] ?? [configAnalyticsPropertyId(clientId)].filter(Boolean)).join(',') || null,
       (tagSelection[clientId] ?? [configTagManagerContainerId(clientId)].filter(Boolean)).join(',') || null,
     )
+    const selectedPageId = pageSelection[clientId] ?? ''
+    if (!result.error && selectedPageId !== (savedPageIds[clientId] ?? '')) {
+      const pageResult = await updateClientMetaPage(clientId, selectedPageId || null)
+      if (pageResult.error) result.error = pageResult.error
+      else setSavedPageIds(prev => ({ ...prev, [clientId]: selectedPageId }))
+    }
     const crmAccountIds = crmAccountDrafts[clientId] ?? [config.ghlLocationId].filter(Boolean)
     const crmResult = config.crmType === 'aurelia'
       ? await replaceClientCrmAccounts(clientId, crmAccountIds)
@@ -965,7 +1016,9 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
         const selectedMetaIds = parseIds(config.meta)
         const selectedGoogleIds = parseIds(config.google)
 
+        const selectedPageId = pageSelection[client.id] ?? ''
         const hasChanges =
+          selectedPageId !== (savedPageIds[client.id] ?? '') ||
           config.meta !== (client.meta_ads_account_id ?? '') ||
           config.google !== (client.google_ads_customer_id ?? '') ||
           config.crmType !== (client.crm_type ?? '') ||
@@ -1059,6 +1112,46 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                     onChange={(ids) => handleMetaIdsChange(client.id, ids)}
                     loading={loadingAccounts}
                   />
+
+                  <div className="flex flex-col gap-1.5 pt-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="text-xs text-muted-foreground">Página de Facebook</Label>
+                      {autoPageIds[client.id] && selectedPageId === savedPageIds[client.id] && (
+                        <span className="flex items-center gap-1 text-[11px] text-primary">
+                          <Link2 className="h-3 w-3" />Detectada automáticamente
+                        </span>
+                      )}
+                    </div>
+                    <SearchCombobox
+                      options={selectedPageId && !metaPages.some(p => p.id === selectedPageId)
+                        ? [{ id: selectedPageId, label: `ID ${selectedPageId}` }, ...metaPages]
+                        : metaPages}
+                      value={selectedPageId || null}
+                      onChange={(id) => {
+                        setPageSelection(prev => ({ ...prev, [client.id]: id }))
+                        setAutoPageIds(prev => ({ ...prev, [client.id]: false }))
+                        setSaved(prev => ({ ...prev, [client.id]: false }))
+                      }}
+                      placeholder={loadingPages ? 'Cargando páginas…' : 'Elegir página'}
+                      searchPlaceholder="Buscar página…"
+                      emptyText={pagesError ?? 'Sin páginas con acceso'}
+                      disabled={loadingPages && metaPages.length === 0}
+                      className="h-9 w-full"
+                      renderOption={(page) => (
+                        <div className="flex min-w-0 flex-col">
+                          <span className="truncate text-sm">{page.label}</span>
+                          <span className="truncate text-[11px] text-muted-foreground">
+                            {'category' in page && page.category ? `${page.category} · ` : ''}{page.id}
+                          </span>
+                        </div>
+                      )}
+                    />
+                    {!selectedPageId && !loadingPages && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Necesaria para publicar anuncios desde la carga masiva.
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 {/* ── Google Ads (multi-select) ── */}

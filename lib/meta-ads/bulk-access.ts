@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { MetaPublishError } from './publish'
+import { listPromotablePages, matchPageByName } from './pages'
 
 type ClientRow = {
+  nombre_del_negocio: string | null
   meta_page_id: string | null
   meta_ads_account_id: string | null
   meta_ads_account_ids: string[] | null
@@ -19,7 +22,7 @@ export async function resolveBulkClient(clientId: string) {
 
   const { data } = await supabase
     .from('clientes')
-    .select('meta_page_id, meta_ads_account_id, meta_ads_account_ids, cuentas_publicitarias(id_cuenta, plataforma, activo)')
+    .select('nombre_del_negocio, meta_page_id, meta_ads_account_id, meta_ads_account_ids, cuentas_publicitarias(id_cuenta, plataforma, activo)')
     .eq('id', clientId)
     .maybeSingle<ClientRow>()
   if (!data) return { error: NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 }) }
@@ -30,7 +33,20 @@ export async function resolveBulkClient(clientId: string) {
     ...(data.cuentas_publicitarias ?? []).filter((item) => item.plataforma === 'meta' && item.activo !== false && item.id_cuenta).map((item) => item.id_cuenta as string),
   ].flatMap((value) => String(value).split(',')).map(normalize).filter(Boolean))
 
-  return { pageId: data.meta_page_id, accountIds }
+  const pageId = data.meta_page_id || (await autoResolvePage(clientId, data.nombre_del_negocio ?? '', [...accountIds]))
+  return { pageId, accountIds }
+}
+
+/**
+ * When the client has no page saved, use the pages its ad accounts can promote.
+ * A single promotable page, or a single name match among them, is saved so it only resolves once.
+ */
+async function autoResolvePage(clientId: string, clientName: string, accountIds: string[]) {
+  const pages = await listPromotablePages(accountIds)
+  const page = pages.length === 1 ? pages[0] : matchPageByName(clientName, pages)
+  if (!page) return null
+  await createAdminClient().from('clientes').update({ meta_page_id: page.id }).eq('id', clientId).is('meta_page_id', null)
+  return page.id
 }
 
 export function isAllowedAssetUrl(url: string) {

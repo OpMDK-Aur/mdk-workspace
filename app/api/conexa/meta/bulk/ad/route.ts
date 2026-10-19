@@ -11,7 +11,7 @@ export async function POST(request: Request) {
 
   const access = await resolveBulkClient(body.clientId)
   if ('error' in access) return access.error
-  if (!access.pageId) return NextResponse.json({ error: 'El cliente no tiene una página de Facebook configurada (meta_page_id).' }, { status: 400 })
+  if (!access.pageId) return NextResponse.json({ error: 'No pudimos detectar la página de Facebook del cliente. Elegila en Configuración de clientes → Página de Facebook.' }, { status: 400 })
 
   if (!/^\d+$/.test(String(body.adsetId ?? ''))) return NextResponse.json({ error: 'Conjunto inválido.' }, { status: 400 })
   if (!body.name?.trim() || !body.primaryText?.trim() || !body.headline?.trim()) return NextResponse.json({ error: 'Faltan nombre, texto principal o título.' }, { status: 400 })
