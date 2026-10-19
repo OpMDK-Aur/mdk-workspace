@@ -121,22 +121,8 @@ export const ConexaThreadSummary = forwardRef<ConexaThreadSummaryHandle, Props>(
 
   if (!data) return null
 
-  if (data.openAsks.length === 0) {
-    const days = data.unansweredDays ?? (lastActivityAt ? Math.floor((Date.now() - lastActivityAt.getTime()) / 86_400_000) : 0)
-    return (
-      <section ref={containerRef} aria-label="Resumen de Conexa" className={`${CONTAINER} flex items-center justify-between gap-2`}>
-        <p className="min-w-0 truncate text-[13px] text-[var(--task-sum-text)]">
-          <span className={`${LABEL} mr-2`}>✦</span>
-          {`Sin pendientes en el hilo. Última actividad hace ${plural(days, 'día', 'días')}.`}
-        </p>
-        <button type="button" onClick={() => setCollapsed(true)} className={LINK_BUTTON}>
-          Ocultar
-        </button>
-      </section>
-    )
-  }
-
   const known = knownSentence(data)
+  const idleDays = lastActivityAt ? Math.floor((Date.now() - lastActivityAt.getTime()) / 86_400_000) : 0
 
   return (
     <section ref={containerRef} aria-label="Resumen de Conexa" className={CONTAINER}>
@@ -152,14 +138,23 @@ export const ConexaThreadSummary = forwardRef<ConexaThreadSummaryHandle, Props>(
         </div>
       </div>
 
-      <div className="text-[13px] leading-[1.55] text-[var(--task-sum-text)] text-pretty">
-        {data.openAsks.map((ask, i) => (
-          <p key={i}>{emphasize(ask.text, ask.items)}</p>
-        ))}
-        {data.unansweredDays != null && data.unansweredDays > 0 && (
-          <p>{`Nadie respondió en ${plural(data.unansweredDays, 'día', 'días')}.`}</p>
-        )}
-      </div>
+      {data.summary && (
+        <p className="text-[13px] leading-[1.55] text-[var(--task-sum-text)] text-pretty">{data.summary}</p>
+      )}
+
+      {data.openAsks.length > 0 ? (
+        <div className="mt-2 flex flex-col gap-1 border-t border-[var(--task-sum-border)] pt-2 text-[13px] leading-[1.55] text-[var(--task-sum-text)] text-pretty">
+          <p className={LABEL}>Pendiente</p>
+          {data.openAsks.map((ask, i) => (
+            <p key={i}>{emphasize(ask.text, ask.items)}</p>
+          ))}
+          {data.unansweredDays != null && data.unansweredDays > 0 && (
+            <p>{`Nadie respondió en ${plural(data.unansweredDays, 'día', 'días')}.`}</p>
+          )}
+        </div>
+      ) : (
+        <p className={`${META} mt-2`}>{`Sin pendientes en el hilo · última actividad hace ${plural(idleDays, 'día', 'días')}.`}</p>
+      )}
 
       {known && <p className="mt-2 text-[12.5px] leading-[1.5] text-[var(--task-sum-known)] text-pretty">{known}</p>}
 

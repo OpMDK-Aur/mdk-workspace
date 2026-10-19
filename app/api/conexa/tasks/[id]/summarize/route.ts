@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { isUuid, requireUser } from '@/lib/tasks/subtasks-api'
-import { hashComments, summarizeThread, type ThreadSummary } from '@/lib/conexa/tasks'
+import { hashComments, MIN_COMMENTS_FOR_SUMMARY, type ThreadSummary } from '@/lib/conexa/tasks'
+import { summarizeThread } from '@/lib/conexa/thread-summary'
+
+export const maxDuration = 60
 
 const cache = new Map<string, ThreadSummary>()
 const MAX_CACHE = 500
@@ -39,8 +42,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (cached) return NextResponse.json(cached)
   }
 
-  const summary = summarizeThread({ taskId: id, taskTitle: task.titulo as string, comments })
-  if (cache.size >= MAX_CACHE) cache.delete(cache.keys().next().value as string)
-  cache.set(key, summary)
-  return NextResponse.json(summary)
+  if (comments.length < MIN_COMMENTS_FOR_SUMMARY) {
+    return NextResponse.json({ error: 'El hilo no tiene comentarios suficientes' }, { status: 422 })
+  }
+
+  const authorIds = [...new Set(comments.map(c => c.authorId).filter((a): a is string => !!a))]
+  const { data: people } = authorIds.length
+    ? await supabase.from('colaboradores').select('id, nombre, apellido').in('id', authorIds)
+    : { data: [] }
+  const authorNames = new Map(
+    (people ?? []).map(p => [p.id as string, [p.nombre, p.apellido].filter(Boolean).join(' ') || 'Alguien']),
+  )
+
+  try {
+    const summary = await summarizeThread({ taskId: id, taskTitle: task.titulo as string, comments, authorNames })
+    if (cache.size >= MAX_CACHE) cache.delete(cache.keys().next().value as string)
+    cache.set(key, summary)
+    return NextResponse.json(summary)
+  } catch (err) {
+    console.error('[conexa] thread summary failed', err)
+    return NextResponse.json({ error: 'No pudimos generar el resumen' }, { status: 502 })
+  }
 }
