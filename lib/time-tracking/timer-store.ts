@@ -8,6 +8,56 @@ import { getMissingTimerFields, TimerValidationError } from './validate-timer'
 
 export const TIMER_ACTIVE_ERROR = 'TIMER_ACTIVE'
 
+const TASK_TIME_KEY = '/api/tasks/time-totals'
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const isUuid = (value: string | null | undefined): value is string => Boolean(value && UUID_RE.test(value))
+
+let colaboradorCache: { email: string; id: string } | null = null
+let colaboradorPromise: Promise<string | null> | null = null
+let hasFullEntries = false
+
+async function getSessionEmail(): Promise<string | null> {
+  // getSession reads the locally stored session (no network round trip); RLS still validates the JWT server-side.
+  const { data: { session } } = await createClient().auth.getSession()
+  return session?.user?.email ?? null
+}
+
+/** colaboradores.id of the signed-in user, looked up once per session instead of on every timer action. */
+async function getMyColaboradorId(): Promise<string | null> {
+  const email = await getSessionEmail()
+  if (!email) return null
+  if (colaboradorCache?.email === email) return colaboradorCache.id
+  if (!colaboradorPromise) {
+    colaboradorPromise = Promise.resolve(
+      createClient().from('colaboradores').select('id').eq('email', email).maybeSingle(),
+    )
+      .then(({ data }) => {
+        if (data?.id) colaboradorCache = { email, id: data.id }
+        return data?.id ?? null
+      })
+      .finally(() => {
+        colaboradorPromise = null
+      })
+  }
+  return colaboradorPromise
+}
+
+type TaskTimeTotals = Record<string, { total: number; mine: number }>
+
+/** Adds the just-stopped time to the cached task totals so views update without rescanning every entry. */
+function addToTaskTotals(taskId: string | null, seconds: number) {
+  if (!isUuid(taskId) || seconds <= 0) return
+  void mutate<TaskTimeTotals>(
+    TASK_TIME_KEY,
+    (current) => {
+      if (!current) return current
+      const prev = current[taskId] ?? { total: 0, mine: 0 }
+      return { ...current, [taskId]: { total: prev.total + seconds, mine: prev.mine + seconds } }
+    },
+    { revalidate: false },
+  )
+}
+
 export interface TimeEntry {
   id: string
   colaborador_id: string | null
@@ -49,7 +99,8 @@ interface TimerState {
   continueEntry: (entry: TimeEntry) => Promise<void>
   deleteEntry: (id: string) => Promise<void>
   updateEntry: (id: string, updates: Partial<TimeEntry>) => Promise<void>
-  loadEntries: () => Promise<void>
+  /** With `limit`, only the most recent entries are fetched (enough for the timer bar). */
+  loadEntries: (options?: { limit?: number }) => Promise<void>
 
   // Task-specific actions
   startTimerForTask: (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null, splitClientIds?: string[]) => Promise<void>
@@ -85,16 +136,12 @@ export const useTimerStore = create<TimerState>()(
         }
         const supabase = createClient()
         const startedAt = new Date().toISOString()
-
-        const { data: { user } } = await supabase.auth.getUser()
-        const { data: colaborador } = user?.email
-          ? await supabase.from('colaboradores').select('id').eq('email', user.email).maybeSingle()
-          : { data: null }
+        const colaboradorId = await getMyColaboradorId()
 
         const { data: newEntry, error } = await supabase
           .from('entradas_de_tiempo')
           .insert({
-            colaborador_id: colaborador?.id ?? null,
+            colaborador_id: colaboradorId,
             cliente_id: state.clientId,
             tipo_tarea_id: state.tipoTareaId,
             tarea_id: state.taskId,
@@ -195,11 +242,10 @@ export const useTimerStore = create<TimerState>()(
             throw new Error(error.message || 'No se pudo guardar la entrada de tiempo.')
           }
 
-          const { data: original } = await supabase
-            .from('entradas_de_tiempo')
-            .select('colaborador_id, tarea_id')
-            .eq('id', entryIdToUpdate)
-            .maybeSingle()
+          const cached = get().entries.find((e) => e.id === entryIdToUpdate)
+          const original = cached
+            ? { colaborador_id: cached.colaborador_id, tarea_id: cached.tarea_id ?? null }
+            : (await supabase.from('entradas_de_tiempo').select('colaborador_id, tarea_id').eq('id', entryIdToUpdate).maybeSingle()).data
 
           const { data: inserted, error: insertError } = await supabase
             .from('entradas_de_tiempo')
@@ -266,7 +312,7 @@ export const useTimerStore = create<TimerState>()(
 
         // Always clear state at the end
         set(clearState)
-        void mutate('/api/tasks/time-totals')
+        if (entryIdToUpdate) addToTaskTotals(state.taskId, duracion_seg)
       },
 
       setDescription: (desc) => set({ description: desc }),
@@ -305,10 +351,9 @@ export const useTimerStore = create<TimerState>()(
       continueEntry: async (entry) => {
         const state = get()
         // Always sync with DB first to ensure consistency
-        if (state.isRunning) {
+        if (state.isRunning || (await get().syncRunningEntry())) {
           throw new Error(TIMER_ACTIVE_ERROR)
         }
-        await get().loadEntries()
 
         set({
           description: entry.descripcion,
@@ -320,27 +365,34 @@ export const useTimerStore = create<TimerState>()(
       },
 
       startTimerForTask: async (taskId: string, taskTitle: string, clientId: string | null, tipoTareaId: string | null, splitClientIds?: string[]) => {
-        if (get().isRunning || (await get().syncRunningEntry())) {
+        if (get().isRunning) {
           throw new Error(TIMER_ACTIVE_ERROR)
         }
         const split = splitClientIds && splitClientIds.length > 1 ? splitClientIds : null
 
         const supabase = createClient()
-        const startedAt = new Date().toISOString()
         const descripcion = `[Tarea] ${taskTitle}`
 
-        const { data: { user } } = await supabase.auth.getUser()
-        const isUuid = (value: string | null): value is string => Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value))
-        let resolvedTipoTareaId = isUuid(tipoTareaId) ? tipoTareaId : null
-        if (!resolvedTipoTareaId && tipoTareaId) {
+        const resolveTipo = async () => {
+          if (isUuid(tipoTareaId)) return tipoTareaId
+          if (!tipoTareaId) return null
           const { data: tipo } = await supabase
             .from('tipo_de_tareas')
             .select('id')
             .ilike('nombre', tipoTareaId)
             .eq('activo', true)
             .maybeSingle()
-          resolvedTipoTareaId = tipo?.id ?? null
+          return (tipo?.id as string | undefined) ?? null
         }
+        const [alreadyRunning, resolvedTipoTareaId, colaboradorId] = await Promise.all([
+          get().syncRunningEntry(),
+          resolveTipo(),
+          getMyColaboradorId(),
+        ])
+        if (alreadyRunning) {
+          throw new Error(TIMER_ACTIVE_ERROR)
+        }
+        const startedAt = new Date().toISOString()
         const missing = getMissingTimerFields({ description: descripcion, tipoTareaId: resolvedTipoTareaId, clientId })
         if (missing.length > 0) {
           // Preload what the task has so the user only fills the gaps in the timer bar.
@@ -356,14 +408,10 @@ export const useTimerStore = create<TimerState>()(
           throw new TimerValidationError(missing)
         }
 
-        const { data: colaborador } = user?.email
-          ? await supabase.from('colaboradores').select('id').eq('email', user.email).maybeSingle()
-          : { data: null }
-
         const { data: newEntry, error } = await supabase
           .from('entradas_de_tiempo')
           .insert({
-            colaborador_id: colaborador?.id ?? null,
+            colaborador_id: colaboradorId,
             cliente_id: clientId,
             tipo_tarea_id: resolvedTipoTareaId,
             tarea_id: isUuid(taskId) ? taskId : null,
@@ -400,20 +448,13 @@ export const useTimerStore = create<TimerState>()(
       // device or page is detected even if local persisted state is stale.
       syncRunningEntry: async () => {
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user?.email) return get().isRunning
-
-        const { data: colaborador } = await supabase
-          .from('colaboradores')
-          .select('id')
-          .eq('email', user.email)
-          .maybeSingle()
-        if (!colaborador?.id) return get().isRunning
+        const colaboradorId = await getMyColaboradorId()
+        if (!colaboradorId) return get().isRunning
 
         const { data: running } = await supabase
           .from('entradas_de_tiempo')
           .select('*')
-          .eq('colaborador_id', colaborador.id)
+          .eq('colaborador_id', colaboradorId)
           .is('finalizado_en', null)
           .order('iniciado_en', { ascending: false })
           .limit(1)
@@ -471,14 +512,14 @@ export const useTimerStore = create<TimerState>()(
         await supabase.from('entradas_de_tiempo').update(updates).eq('id', id)
       },
 
-      loadEntries: async () => {
+      loadEntries: async (options) => {
+        const limit = options?.limit
         set({ isLoading: true })
         try {
           const supabase = createClient()
           
-          // Get current user
-          const { data: { user } } = await supabase.auth.getUser()
-          if (!user) {
+          const email = await getSessionEmail()
+          if (!email) {
             // Clear timer state if no user
             set({ 
               entries: [], 
@@ -497,15 +538,13 @@ export const useTimerStore = create<TimerState>()(
           }
           
           // Use colaboradores.id consistently; it is the foreign key in entradas_de_tiempo.
-          const { data: colaborador } = user.email
-            ? await supabase.from('colaboradores').select('id').eq('email', user.email).maybeSingle()
-            : { data: null }
-          if (!colaborador) {
+          const colaboradorId = await getMyColaboradorId()
+          if (!colaboradorId) {
             set({ entries: [], isLoading: false })
             return
           }
 
-          const pageSize = 1000
+          const pageSize = limit ?? 1000
           const allEntries: TimeEntry[] = []
           let page = 0
           let error: { message?: string } | null = null
@@ -516,7 +555,7 @@ export const useTimerStore = create<TimerState>()(
             const { data: pageEntries, error: pageError } = await supabase
               .from('entradas_de_tiempo')
               .select('*')
-              .eq('colaborador_id', colaborador.id)
+              .eq('colaborador_id', colaboradorId)
               .order('iniciado_en', { ascending: false })
               .range(from, to)
 
@@ -525,14 +564,16 @@ export const useTimerStore = create<TimerState>()(
               break
             }
             allEntries.push(...(pageEntries ?? []))
-            if (!pageEntries || pageEntries.length < pageSize) break
+            if (limit || !pageEntries || pageEntries.length < pageSize) break
             page += 1
           }
 
           if (!error) {
             // Filter out entries with invalid iniciado_en
             const validEntries = allEntries.filter((e) => e.iniciado_en && !isNaN(new Date(e.iniciado_en).getTime()))
-            set({ entries: validEntries })
+            // A recent-only load must not shrink a full history another view already loaded.
+            if (!limit) hasFullEntries = true
+            if (!limit || !hasFullEntries) set({ entries: validEntries })
 
             // Check if there's actually a running entry in the database
             const runningEntry = validEntries.find((e) => e.finalizado_en === null)

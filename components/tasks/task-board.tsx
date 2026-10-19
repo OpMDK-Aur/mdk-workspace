@@ -172,20 +172,41 @@ export function TaskBoard() {
     return () => clearTimeout(timeout)
   }, [])
 
-  // Generate seguimiento tasks for MDK clients on mount, then load all tasks
+  const [tasksLoaded, setTasksLoaded] = useState(false)
+  const lastOpenedTaskParam = useRef<string | null>(null)
+
+  // Load all tasks once on mount. Filters are mirrored into the URL, so depending on
+  // searchParams here used to re-download every task on each filter click.
   useEffect(() => {
     const initTasks = async () => {
-      // Load tasks and wait for them to be ready
       await loadTasks()
-      
-      // Load saved filters from database
+      setTasksLoaded(true)
       loadSavedFilters()
-      
-      // Open task from URL parameter (e.g., from notification click) AFTER tasks are loaded
+
+      // Regenerate seguimiento once per browser session, not on every visit to the board.
+      // DELETE must finish before POST, otherwise the two requests race on the same rows.
+      const SEGUIMIENTO_KEY = 'mdk-seguimiento-generated'
+      if (!seguimientoGenerated.current && !sessionStorage.getItem(SEGUIMIENTO_KEY)) {
+        seguimientoGenerated.current = true
+        sessionStorage.setItem(SEGUIMIENTO_KEY, '1')
+        fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' })
+          .then(() => fetch('/api/tasks/generate-seguimiento', { method: 'POST' }))
+          .catch(() => {})
+      }
+    }
+    initTasks()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // URL-driven actions (notification links, "Crear tarea" from seguimiento) once tasks are in memory.
+  useEffect(() => {
+    if (!tasksLoaded) return
+    {
       const taskId = searchParams.get('task')
-      if (taskId) {
+      if (taskId && taskId !== lastOpenedTaskParam.current) {
         setSelectedTask(taskId)
       }
+      lastOpenedTaskParam.current = taskId
 
       // "Crear tarea" from /dashboard/seguimiento opens the modal pre-filled
       if (searchParams.get('new') === '1') {
@@ -204,19 +225,9 @@ export function TaskBoard() {
         setNewTaskOpen(true)
         router.replace('/dashboard/tasks')
       }
-      
-      // Only generate seguimiento once per session (non-blocking)
-      if (!seguimientoGenerated.current) {
-        seguimientoGenerated.current = true
-        Promise.all([
-          fetch('/api/tasks/generate-seguimiento', { method: 'DELETE' }),
-          fetch('/api/tasks/generate-seguimiento', { method: 'POST' })
-        ]).catch(() => {}) // Silently fail
-      }
     }
-    initTasks()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [searchParams, tasksLoaded])
 
   // The advanced filter builder was replaced by the client selector; drop any persisted
   // advanced rules so they can't keep hiding tasks without a visible control.

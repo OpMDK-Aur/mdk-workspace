@@ -96,22 +96,12 @@ export function ActiveTimerBar() {
     async function init() {
       const supabase = createClient()
       const clientesPromise = loadClientes()
-      const entriesPromise = loadEntries()
+      // The bar only needs the running entry and recent ones (for "recientes"); the full history loads on /dashboard/time.
+      const entriesPromise = loadEntries({ limit: 200 })
 
-      // Obtener usuario actual
-      let user = null
-      try {
-        const { data } = await supabase.auth.getUser()
-        user = data.user
-      } catch (err) {
-        // Ignore lock errors - they happen when multiple components call getUser simultaneously
-        if (err instanceof Error && err.message.includes('Lock')) {
-          // Retry after a short delay
-          await new Promise(resolve => setTimeout(resolve, 100))
-          const { data } = await supabase.auth.getUser()
-          user = data.user
-        }
-      }
+      // Local session read: avoids a network round trip to the auth server on every page load.
+      const { data: { session } } = await supabase.auth.getSession()
+      const user = session?.user ?? null
 
       if (user) {
         // Obtener colaborador con su departamento
