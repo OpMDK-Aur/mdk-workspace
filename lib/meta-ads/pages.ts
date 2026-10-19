@@ -26,8 +26,26 @@ async function collect<T>(firstUrl: string): Promise<T[]> {
 export async function listAccessiblePages(): Promise<MetaPage[]> {
   const token = process.env.META_ADS_ACCESS_TOKEN
   if (!token) throw new Error('META_ADS_ACCESS_TOKEN no configurado')
-  const pages = await collect<MetaPage>(`${META_BASE_URL}/me/accounts?fields=id,name,category&limit=100&access_token=${token}`)
-  return pages.sort((a, b) => a.name.localeCompare(b.name))
+  const fields = 'fields=id,name,category&limit=100'
+  const [directPages, businesses] = await Promise.all([
+    collect<MetaPage>(`${META_BASE_URL}/me/accounts?${fields}&access_token=${token}`),
+    collect<{ id: string }>(`${META_BASE_URL}/me/businesses?fields=id&limit=100&access_token=${token}`).catch(() => []),
+  ])
+
+  // /me/accounts only lists pages with a direct user role; Business Manager pages (owned and client) come from each business.
+  const businessPages = await Promise.all(
+    businesses.flatMap((business) =>
+      ['owned_pages', 'client_pages'].map((edge) =>
+        collect<MetaPage>(`${META_BASE_URL}/${business.id}/${edge}?${fields}&access_token=${token}`).catch(() => []),
+      ),
+    ),
+  )
+
+  const unique = new Map<string, MetaPage>()
+  for (const page of [...directPages, ...businessPages.flat()]) {
+    if (!unique.has(page.id)) unique.set(page.id, page)
+  }
+  return [...unique.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /** Pages an ad account is allowed to advertise with. Errors per account are ignored. */
