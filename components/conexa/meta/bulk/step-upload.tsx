@@ -9,6 +9,7 @@ import { CTAS, type BulkAdset, type BulkAsset } from '@/lib/bulk/types'
 import type { CreativeCard } from '@/lib/meta/to-creative-card'
 import { Chip, Panel } from './bulk-shared'
 import { CompactSuggestions } from './creative-suggestions'
+import { StrategyCard } from './strategy/strategy-card'
 
 const SAMPLE_FILES = [
   'oferta_verano_1x1.jpg', 'oferta_verano_4x5.jpg', 'oferta_verano_9x16.jpg',
@@ -97,7 +98,10 @@ export function StepUpload({ clientId, clientName, creatives, destinationUrl }: 
           </div>
         </Panel>
       </div>
-      <CompactSuggestions clientId={clientId} creatives={creatives} />
+      <div className="flex flex-col gap-4">
+        <StrategyCard clientId={clientId} clientName={clientName} destinationUrl={destinationUrl} creatives={creatives} />
+        <CompactSuggestions clientId={clientId} creatives={creatives} />
+      </div>
     </div>
   )
 }

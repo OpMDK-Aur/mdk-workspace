@@ -12,7 +12,7 @@ import { adName, derivePlacement } from '@/lib/bulk/group-assets'
 import { useBulkStore } from '@/lib/bulk/store'
 import { CTAS, PRIMARY_TEXT_LIMIT, adsetStatusLabel, groupAdsetsByCampaign, isAdsetActive, type BulkAdset, type BulkRow, type CTA } from '@/lib/bulk/types'
 import { isDraft, validateRow } from '@/lib/bulk/validate'
-import { AssetThumb, Chip, StateBadge } from './bulk-shared'
+import { AssetThumb, StateBadge } from './bulk-shared'
 import { NewDestinationDialog, type MetaAccountOption } from './new-destination-dialog'
 
 const fieldClass = 'border-[#dcdcd8] bg-white text-[12px] text-[#141414] placeholder:text-[#aaa] dark:bg-white'
@@ -154,21 +154,6 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
           {'✦ Escribir copies con Conexa'}
         </Button>
         <NewDestinationDialog clientId={clientId} clientName={clientName} accounts={accounts} adsets={adsets} onCreated={(adsetId) => updateRows(targetIds, { adsetId })} />
-        {adsets.length > 0 && (
-          <div className="flex w-full flex-col gap-2">
-            <span className="text-[11px] text-[#777]">Asignar conjunto:</span>
-            {groupAdsetsByCampaign(adsets).map((group) => (
-              <div key={group.key} className="flex flex-wrap items-center gap-2">
-                <span className="max-w-[240px] truncate text-[11px] font-semibold text-[#555]" title={group.campaignName}>{group.campaignName}</span>
-                {group.adsets.map((adset) => (
-                  <Chip key={adset.id} active={false} onClick={() => updateRows(targetIds, { adsetId: adset.id })}>
-                    {adset.name}{!isAdsetActive(adset.status) && ` · ${adsetStatusLabel(adset.status)}`}
-                  </Chip>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
         <button type="button" disabled={!selected.length} onClick={() => removeRows(selected)} className="ml-auto text-[11px] font-semibold text-[#c23b3b] hover:underline disabled:text-[#ccc] disabled:no-underline">
           Quitar seleccionados
         </button>
