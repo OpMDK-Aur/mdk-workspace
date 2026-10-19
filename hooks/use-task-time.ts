@@ -16,8 +16,9 @@ async function fetchTotals(url: string): Promise<TaskTimeTotals> {
 
 export function useTaskTimeTotals() {
   return useSWR<TaskTimeTotals>(TASK_TIME_KEY, fetchTotals, {
-    revalidateOnFocus: true,
-    dedupingInterval: 30_000,
+    // Totals scan every task-linked entry; stopping a timer already updates the cache locally.
+    revalidateOnFocus: false,
+    dedupingInterval: 60_000,
   })
 }
 
