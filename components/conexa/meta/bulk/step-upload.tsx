@@ -5,7 +5,7 @@ import { ImageUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ACCEPTED_TYPES, filesToAssets, newId, ratioFromName } from '@/lib/bulk/group-assets'
 import { useBulkStore } from '@/lib/bulk/store'
-import { CTAS, adsetStatusLabel, isAdsetActive, type BulkAdset, type BulkAsset } from '@/lib/bulk/types'
+import { CTAS, type BulkAdset, type BulkAsset } from '@/lib/bulk/types'
 import type { CreativeCard } from '@/lib/meta/to-creative-card'
 import { Chip, Panel } from './bulk-shared'
 import { CompactSuggestions } from './creative-suggestions'
@@ -23,7 +23,7 @@ function sampleAssets(): BulkAsset[] {
   return SAMPLE_FILES.map((name) => ({ id: newId('asset'), name, kind: name.endsWith('.mp4') ? 'video' : 'image', ratio: ratioFromName(name) ?? '1:1' }))
 }
 
-export function StepUpload({ clientId, clientName, adsets, creatives, destinationUrl }: { clientId: string; clientName: string; adsets: BulkAdset[]; creatives: CreativeCard[]; destinationUrl?: string | null }) {
+export function StepUpload({ clientId, clientName, creatives, destinationUrl }: { clientId: string; clientName: string; adsets?: BulkAdset[]; creatives: CreativeCard[]; destinationUrl?: string | null }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [reading, setReading] = useState(false)
@@ -74,18 +74,6 @@ export function StepUpload({ clientId, clientName, adsets, creatives, destinatio
 
         <Panel title="Valores por defecto del lote">
           <div className="flex flex-col gap-4">
-            <div>
-              <p className="mb-2 text-[11px] font-medium text-[#777]">Conjunto</p>
-              {adsets.length ? (
-                <div className="flex flex-wrap gap-2">
-                  {adsets.map((adset) => (
-                    <Chip key={adset.id} active={defaults.adsetId === adset.id} onClick={() => setDefaults({ adsetId: adset.id })}>
-                      {`${adset.campaignName} · ${adset.name}`}{!isAdsetActive(adset.status) && ` (${adsetStatusLabel(adset.status)})`}
-                    </Chip>
-                  ))}
-                </div>
-              ) : <p className="text-[11.5px] text-[#999]">No hay conjuntos activos en la cuenta seleccionada.</p>}
-            </div>
             <div>
               <p className="mb-2 text-[11px] font-medium text-[#777]">CTA</p>
               <div className="flex flex-wrap gap-2">
