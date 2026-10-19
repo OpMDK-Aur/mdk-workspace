@@ -13,6 +13,7 @@ import { useBulkStore } from '@/lib/bulk/store'
 import { CTAS, PRIMARY_TEXT_LIMIT, adsetStatusLabel, groupAdsetsByCampaign, isAdsetActive, type BulkAdset, type BulkRow, type CTA } from '@/lib/bulk/types'
 import { isDraft, validateRow } from '@/lib/bulk/validate'
 import { AssetThumb, Chip, StateBadge } from './bulk-shared'
+import { NewDestinationDialog, type MetaAccountOption } from './new-destination-dialog'
 
 const fieldClass = 'border-[#dcdcd8] bg-white text-[12px] text-[#141414] placeholder:text-[#aaa] dark:bg-white'
 const ISSUE_COLOR = { warn: 'text-[#a86412]', info: 'text-[#888]', error: 'text-[#c23b3b]' } as const
@@ -35,7 +36,13 @@ function Row({ row, index, adsets, clientName, selected }: { row: BulkRow; index
         <div className="flex items-end gap-1.5">{row.assets.map((asset) => <AssetThumb key={asset.id} asset={asset} />)}</div>
       </td>
       <td className="px-3 py-3">
-        <p className="max-w-[220px] break-all font-mono text-[11px] text-[#141414]">{adName({ clientName, adsetName, baseName: row.baseName, index })}</p>
+        <Input
+          value={row.adName ?? adName({ clientName, adsetName, baseName: row.baseName, index })}
+          onChange={(event) => updateRow(row.id, { adName: event.target.value })}
+          aria-label="Nombre del anuncio"
+          title="Nombre del anuncio en Meta"
+          className={cn('h-8 w-[230px] font-mono text-[11px]', fieldClass)}
+        />
         <p className="mt-1 text-[11px] text-[#777]">{derivePlacement(row.assets)}</p>
         <p className={cn('text-[11px]', draft ? 'text-[#5B5FE8]' : 'text-[#999]')}>{draft ? 'Sugerido por Conexa' : `${row.assets.length} ${row.assets.length === 1 ? 'archivo' : 'archivos'}`}</p>
       </td>
@@ -56,7 +63,7 @@ function Row({ row, index, adsets, clientName, selected }: { row: BulkRow; index
             ))}
           </SelectContent>
         </Select>
-        {currentAdset && <p className="mt-1 max-w-[220px] truncate text-[11px] text-[#777]" title={currentAdset.campaignName}>{currentAdset.campaignName}</p>}
+        {currentAdset && <p className="mt-1 max-w-[220px] truncate text-[11px] text-[#777]" title={currentAdset.campaignName}>{`Campaña: ${currentAdset.campaignName}`}</p>}
       </td>
       <td className="px-3 py-3">
         <Textarea
@@ -93,7 +100,7 @@ function Row({ row, index, adsets, clientName, selected }: { row: BulkRow; index
   )
 }
 
-export function StepConfigure({ clientId, clientName, adsets }: { clientId: string; clientName: string; adsets: BulkAdset[] }) {
+export function StepConfigure({ clientId, clientName, adsets, accounts }: { clientId: string; clientName: string; adsets: BulkAdset[]; accounts: MetaAccountOption[] }) {
   const rows = useBulkStore((state) => state.rows)
   const selected = useBulkStore((state) => state.selected)
   const setSelected = useBulkStore((state) => state.setSelected)
@@ -146,6 +153,7 @@ export function StepConfigure({ clientId, clientName, adsets }: { clientId: stri
         <Button size="sm" variant="outline" onClick={writeCopies} disabled={writing} className="h-8 rounded-full border-[#5B5FE8]/50 bg-white text-[11px] text-[#5B5FE8] hover:bg-[#5B5FE8]/5 hover:text-[#5B5FE8]">
           {'✦ Escribir copies con Conexa'}
         </Button>
+        <NewDestinationDialog clientId={clientId} clientName={clientName} accounts={accounts} adsets={adsets} onCreated={(adsetId) => updateRows(targetIds, { adsetId })} />
         {adsets.length > 0 && (
           <div className="flex w-full flex-col gap-2">
             <span className="text-[11px] text-[#777]">Asignar conjunto:</span>

@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { groupAssets, mergeRows, newId, revokeAssetUrls } from './group-assets'
-import type { BulkAsset, BulkDefaults, BulkRow, CreativeSuggestion, PublishInitialStatus } from './types'
+import type { BulkAsset, BulkDefaults, BulkRow, CreativeSuggestion, NewDestination, PublishInitialStatus } from './types'
 
 export type BulkStep = 1 | 2 | 3
 export type PublishPhase = 'idle' | 'publishing' | 'finished'
@@ -17,6 +17,12 @@ type BulkState = {
   publishPhase: PublishPhase
   publishProgress: number
   briefsSent: string[]
+  destinations: NewDestination[]
+  link: string
+  addDestination: (destination: NewDestination) => void
+  updateDestination: (id: string, patch: Partial<NewDestination>) => void
+  removeDestination: (id: string) => void
+  setLink: (link: string) => void
   setClient: (clientId: string, defaults: BulkDefaults) => void
   setStep: (step: BulkStep) => void
   setDefaults: (defaults: Partial<BulkDefaults>) => void
@@ -33,7 +39,7 @@ type BulkState = {
   reset: () => void
 }
 
-const initial = { step: 1 as BulkStep, rows: [], selected: [], initialStatus: 'PAUSED' as PublishInitialStatus, publishPhase: 'idle' as PublishPhase, publishProgress: 0 }
+const initial = { step: 1 as BulkStep, rows: [], selected: [], initialStatus: 'PAUSED' as PublishInitialStatus, publishPhase: 'idle' as PublishPhase, publishProgress: 0, destinations: [] as NewDestination[], link: '' }
 
 export const useBulkStore = create<BulkState>((set, get) => ({
   clientId: null,
@@ -45,6 +51,14 @@ export const useBulkStore = create<BulkState>((set, get) => ({
     for (const row of get().rows) revokeAssetUrls(row.assets)
     set({ clientId, defaults, briefsSent: [], ...initial })
   },
+  addDestination: (destination) => set((state) => ({ destinations: [...state.destinations, destination] })),
+  updateDestination: (id, patch) => set((state) => ({ destinations: state.destinations.map((item) => item.id === id ? { ...item, ...patch } : item) })),
+  removeDestination: (id) => set((state) => ({
+    destinations: state.destinations.filter((item) => item.id !== id),
+    rows: state.rows.map((row) => row.adsetId === id ? { ...row, adsetId: '' } : row),
+    defaults: state.defaults.adsetId === id ? { ...state.defaults, adsetId: '' } : state.defaults,
+  })),
+  setLink: (link) => set({ link }),
   setStep: (step) => set({ step }),
   setDefaults: (defaults) => set((state) => ({ defaults: { ...state.defaults, ...defaults } })),
   addAssets: (assets) => set((state) => ({ rows: mergeRows(state.rows, groupAssets(assets, state.defaults)), step: 2 })),

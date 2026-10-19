@@ -1,5 +1,6 @@
 import type { CreativeCard } from '@/lib/meta/to-creative-card'
-import { HEADLINE_LIMIT, PRIMARY_TEXT_LIMIT, type BulkRow, type CreativeSuggestion, type PublishInitialStatus } from './types'
+import { createClient } from '@/lib/supabase/client'
+import { HEADLINE_LIMIT, PRIMARY_TEXT_LIMIT, type BulkAsset, type BulkRow, type CreativeSuggestion, type NewDestination, type PublishInitialStatus, type Ratio } from './types'
 
 // Phase 1 mocks. Swap each body for the real endpoint call:
 // POST /api/conexa/meta/bulk/copies, GET /api/conexa/meta/creative-suggestions, POST /api/conexa/meta/bulk/publish (SSE).
@@ -74,21 +75,63 @@ export async function getCreativeSuggestions({ creatives }: { clientId: string; 
   ]
 }
 
-export type PublishProgress = { rowId: string; index: number; total: number; status: 'done' | 'error'; metaAdId?: string; error?: string }
-
-export async function publishBulk({ rows, onProgress }: { clientId: string; rows: BulkRow[]; initialStatus: PublishInitialStatus; onProgress: (event: PublishProgress) => void }) {
-  for (const [index, row] of rows.entries()) {
-    await wait(450)
-    const failed = row.baseName.includes('largo') && row.assets.some((asset) => asset.kind === 'video')
-    onProgress(failed
-      ? { rowId: row.id, index, total: rows.length, status: 'error', error: '(#100) El video supera la duración máxima permitida para Stories (60 s).' }
-      : { rowId: row.id, index, total: rows.length, status: 'done', metaAdId: `mock_${Math.random().toString().slice(2, 14)}` })
-  }
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.error ?? `Error ${response.status}`)
+  return payload as T
 }
 
-export async function retryPublishRow({ row }: { clientId: string; row: BulkRow; initialStatus: PublishInitialStatus }) {
-  await wait(700)
-  return { metaAdId: `mock_${Math.random().toString().slice(2, 14)}`, rowId: row.id }
+// Los archivos van directo del navegador al storage para no pasar por el límite de tamaño de las funciones.
+export async function uploadBulkAsset(clientId: string, asset: BulkAsset): Promise<string> {
+  if (!asset.file) throw new Error(`Falta el archivo de ${asset.name}. Volvé a subirlo.`)
+  const supabase = createClient()
+  const safeName = asset.file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9.\-_]/g, '_')
+  const path = `meta-bulk/${clientId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`
+  const { error } = await supabase.storage.from('chat-adjuntos').upload(path, asset.file, { contentType: asset.file.type || 'application/octet-stream', cacheControl: '3600' })
+  if (error) throw new Error(`No se pudo subir ${asset.name}: ${error.message}`)
+  return supabase.storage.from('chat-adjuntos').getPublicUrl(path).data.publicUrl
+}
+
+// Meta usa un solo archivo por anuncio en esta versión: priorizamos los formatos de feed.
+export function primaryAsset(assets: BulkAsset[]) {
+  const ready = assets.filter((asset) => !asset.pending && asset.file)
+  const order: Ratio[] = ['4:5', '1:1', '1.91:1', '9:16']
+  return [...ready].sort((a, b) => order.indexOf(a.ratio) - order.indexOf(b.ratio))[0]
+}
+
+export async function createDestination({ clientId, destination, status }: { clientId: string; destination: NewDestination; status: PublishInitialStatus }) {
+  return postJson<{ campaignId: string; adsetId: string }>('/api/conexa/meta/bulk/structure', {
+    clientId,
+    accountId: destination.accountId,
+    status,
+    campaign: destination.campaign.mode === 'new' ? { mode: 'new', name: destination.campaign.name, objective: destination.campaign.objective } : { mode: 'existing', id: destination.campaign.id },
+    adset: destination.adset,
+  })
+}
+
+export async function publishAd({ clientId, row, adsetId, name, status, link }: { clientId: string; row: BulkRow; adsetId: string; name: string; status: PublishInitialStatus; link: string }) {
+  const asset = primaryAsset(row.assets)
+  if (!asset) throw new Error('El anuncio no tiene un archivo listo para subir.')
+  const url = await uploadBulkAsset(clientId, asset)
+  return postJson<{ adId: string; accountId: string }>('/api/conexa/meta/bulk/ad', {
+    clientId,
+    adsetId,
+    status,
+    name,
+    primaryText: row.primaryText,
+    headline: row.headline,
+    cta: row.cta,
+    link,
+    asset: { url, kind: asset.kind, name: asset.name },
+  })
+}
+
+export async function fetchPixels(clientId: string, accountId: string) {
+  const response = await fetch(`/api/conexa/meta/bulk/pixels?${new URLSearchParams({ clientId, accountId })}`)
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.error ?? 'No se pudieron cargar los píxeles')
+  return (payload.pixels ?? []) as Array<{ id: string; name: string }>
 }
 
 export async function createDesignBrief({ suggestion }: { clientId: string; suggestion: CreativeSuggestion }) {

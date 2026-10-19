@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBulkStore, type BulkStep } from '@/lib/bulk/store'
-import type { BulkAdset } from '@/lib/bulk/types'
+import { destinationToAdset, type BulkAdset } from '@/lib/bulk/types'
+import type { MetaAccountOption } from './new-destination-dialog'
 import type { CreativeCard } from '@/lib/meta/to-creative-card'
 import { StepConfigure } from './step-configure'
 import { StepPublish } from './step-publish'
@@ -45,12 +46,14 @@ function Stepper() {
   )
 }
 
-export function BulkUploadView({ clientId, clientName, adsets, creatives, destinationUrl }: { clientId: string; clientName: string; adsets: BulkAdset[]; creatives: CreativeCard[]; destinationUrl?: string | null }) {
+export function BulkUploadView({ clientId, clientName, adsets: existingAdsets, accounts, creatives, destinationUrl }: { clientId: string; clientName: string; adsets: BulkAdset[]; accounts: MetaAccountOption[]; creatives: CreativeCard[]; destinationUrl?: string | null }) {
   const step = useBulkStore((state) => state.step)
+  const destinations = useBulkStore((state) => state.destinations)
+  const adsets = useMemo(() => [...destinations.map(destinationToAdset), ...existingAdsets], [destinations, existingAdsets])
   const setClient = useBulkStore((state) => state.setClient)
   const defaults = useBulkStore((state) => state.defaults)
   const setDefaults = useBulkStore((state) => state.setDefaults)
-  const firstAdsetId = adsets[0]?.id ?? ''
+  const firstAdsetId = existingAdsets[0]?.id ?? ''
 
   useEffect(() => {
     setClient(clientId, { adsetId: firstAdsetId, cta: 'Más información' })
@@ -64,8 +67,8 @@ export function BulkUploadView({ clientId, clientName, adsets, creatives, destin
     <div>
       <Stepper />
       {step === 1 && <StepUpload clientId={clientId} clientName={clientName} adsets={adsets} creatives={creatives} destinationUrl={destinationUrl} />}
-      {step === 2 && <StepConfigure clientId={clientId} clientName={clientName} adsets={adsets} />}
-      {step === 3 && <StepPublish clientId={clientId} adsets={adsets} />}
+      {step === 2 && <StepConfigure clientId={clientId} clientName={clientName} adsets={adsets} accounts={accounts} />}
+      {step === 3 && <StepPublish clientId={clientId} clientName={clientName} adsets={adsets} destinationUrl={destinationUrl} />}
     </div>
   )
 }
