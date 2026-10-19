@@ -64,9 +64,13 @@ export async function POST(request: Request) {
   // comparar el string completo nunca matchea y hacía que el filtro
   // quedara vacío y cayera al fallback de "todas las cuentas del cliente".
   const splitIds = (value: string) => value.split(',').map((id) => id.trim()).filter(Boolean)
-  const metaIds = (accounts ?? []).filter((account) => account.plataforma === 'meta').flatMap((account) => splitIds(account.id_cuenta))
+  // La misma cuenta de Meta aparece guardada como `act_123` y como `123`.
+  // Se compara sin el prefijo para no duplicarla ni perder la selección.
+  const metaKey = (id: string) => id.trim().replace(/^act_/, '')
+  const metaIds = [...new Map([...(accounts ?? []).filter((account) => account.plataforma === 'meta').flatMap((account) => splitIds(account.id_cuenta)), ...(client?.meta_ads_account_id ? splitIds(client.meta_ads_account_id) : [])].map((id) => [metaKey(id), `act_${metaKey(id)}`])).values()]
   const googleIds = (accounts ?? []).filter((account) => account.plataforma === 'google').flatMap((account) => splitIds(account.id_cuenta).map((id) => id.replace(/-/g, '')))
-  const accountIds = (selectedMeta === undefined ? metaIds : metaIds.filter((id) => selectedMeta.includes(id))).join(',')
+  const selectedMetaKeys = selectedMeta?.flatMap((value) => splitIds(String(value))).map(metaKey)
+  const accountIds = (selectedMetaKeys === undefined || selectedMetaKeys.length === 0 ? metaIds : metaIds.filter((id) => selectedMetaKeys.includes(metaKey(id)))).join(',')
   const customerIds = [...new Set(selectedGoogle === undefined ? googleIds : googleIds.filter((id) => selectedGoogle.includes(id)))].join(',')
   const context: ExecutionContext = { userId: user?.id ?? 'conexa-prototype', userEmail: user?.email ?? undefined, clientId: body.clientId, metaAccountId: accountIds || client?.meta_ads_account_id || undefined, googleCustomerId: customerIds || client?.google_ads_customer_id || undefined, analyticsPropertyId: client?.analytics_property_id || undefined }
   const tools = getToolDefinitions(['get_meta_metrics', 'get_google_metrics', 'get_google_analytics_report', 'get_google_tag_manager_report', 'crm_contacts', 'crm_opportunities', 'crm_sales_attribution', 'get_client_memory'])
