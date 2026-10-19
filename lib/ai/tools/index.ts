@@ -566,7 +566,7 @@ const getMetaMetrics: ToolDefinition = {
       const batch = selected.slice(index, index + 3)
       const batchResults = await Promise.all(batch.map(async (account) => {
         try {
-          const metrics = await getMetaAccountMetrics({ accountId: account.id_cuenta, accountName: account.nombre_cuenta, moneda: account.moneda, zonaHoraria: account.zona_horaria, dateFrom: dateFrom!, dateTo: dateTo!, onlyActiveCampaigns: false })
+          const metrics = await getMetaAccountMetrics({ accountId: account.id_cuenta, accountName: account.nombre_cuenta, moneda: account.moneda, zonaHoraria: account.zona_horaria, dateFrom: dateFrom!, dateTo: dateTo!, onlyActiveCampaigns: false, includeAdsetCatalog: true })
           addMetaSnapshot(context, account, metrics)
           return { account, metrics }
         } catch (cause) {

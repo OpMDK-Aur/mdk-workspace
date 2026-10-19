@@ -88,6 +88,29 @@ export async function updateClientPlatformIds(
   return { success: true }
 }
 
+export async function updateClientMetaPage(clientId: string, pageId: string | null) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'No autorizado' }
+
+  const { data: colaborador } = await supabase.from('colaboradores').select('rol_id').eq('id', user.id).single()
+  if (!colaborador) return { error: 'Sin permiso' }
+
+  const normalized = pageId?.trim() || null
+  if (normalized && !/^\d+$/.test(normalized)) return { error: 'ID de página inválido' }
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('clientes')
+    .update({ meta_page_id: normalized, updated_at: new Date().toISOString() })
+    .eq('id', clientId)
+  if (error) return { error: error.message }
+
+  revalidatePath('/dashboard')
+  revalidatePath('/dashboard/clients/config')
+  return { success: true }
+}
+
 export async function saveClientAureliaAccount(clientId: string, accountId: string | null) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
