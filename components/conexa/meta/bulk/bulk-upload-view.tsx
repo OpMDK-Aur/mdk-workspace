@@ -51,17 +51,10 @@ export function BulkUploadView({ clientId, clientName, adsets: existingAdsets, a
   const destinations = useBulkStore((state) => state.destinations)
   const adsets = useMemo(() => [...destinations.map(destinationToAdset), ...existingAdsets], [destinations, existingAdsets])
   const setClient = useBulkStore((state) => state.setClient)
-  const defaults = useBulkStore((state) => state.defaults)
-  const setDefaults = useBulkStore((state) => state.setDefaults)
-  const firstAdsetId = existingAdsets[0]?.id ?? ''
 
   useEffect(() => {
-    setClient(clientId, { adsetId: firstAdsetId, cta: 'Más información' })
-  }, [clientId, firstAdsetId, setClient])
-
-  useEffect(() => {
-    if (!defaults.adsetId && firstAdsetId) setDefaults({ adsetId: firstAdsetId })
-  }, [defaults.adsetId, firstAdsetId, setDefaults])
+    setClient(clientId, { adsetId: '', cta: 'Más información' })
+  }, [clientId, setClient])
 
   return (
     <div>
