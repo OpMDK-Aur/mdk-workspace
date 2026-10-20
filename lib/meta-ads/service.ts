@@ -1,3 +1,5 @@
+import { getMetaAccessToken } from './token'
+
 export interface MetaAction {
   action_type: string
   value: string
@@ -290,7 +292,7 @@ async function fetchAdCreatives(adIds: string[], accessToken: string) {
 }
 
 export async function getAdCreative(adId: string) {
-  const accessToken = process.env.META_ADS_ACCESS_TOKEN
+  const accessToken = await getMetaAccessToken()
   if (!accessToken) throw createMetaError('META_ADS_ACCESS_TOKEN no está configurado.', 'AUTHENTICATION_ERROR')
   const byId = await fetchAdCreatives([adId], accessToken)
   return byId.get(adId)?.creative ?? null
@@ -370,7 +372,7 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
   const accountId = normalizeMetaAccountId(input.accountId)
   if (!/^\d{1,20}$/.test(accountId)) throw createMetaError('La cuenta de Meta Ads no tiene un ID válido.', 'ACCOUNT_ERROR')
   assertDate(input.dateFrom); assertDate(input.dateTo)
-  const accessToken = process.env.META_ADS_ACCESS_TOKEN
+  const accessToken = await getMetaAccessToken()
   if (!accessToken) throw createMetaError('META_ADS_ACCESS_TOKEN no está configurado.', 'AUTHENTICATION_ERROR')
 
   const rowsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'campaign')

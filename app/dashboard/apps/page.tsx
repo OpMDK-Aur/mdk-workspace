@@ -26,6 +26,15 @@ export default async function AppsPage() {
     .eq('plataforma', 'google_sheets')
     .maybeSingle()
 
+  const { data: metaToken } = await supabase
+    .from('plataformas_tokens')
+    .select('email_conectado, token_expiry, updated_at')
+    .eq('plataforma', 'meta_ads')
+    .eq('activo', true)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
   const { data: discordInfo } = await supabase
     .from('colaboradores')
     .select('discord_id, discord_username')
@@ -45,6 +54,7 @@ export default async function AppsPage() {
         googleToken={googleToken ?? null}
         googleCalendarToken={googleCalendarToken ?? null}
         googleSheetsToken={googleSheetsToken ?? null}
+        metaToken={metaToken ?? null}
         discordInfo={discordInfo ?? null}
         appUrl={process.env.NEXT_PUBLIC_APP_URL || ''}
       />
