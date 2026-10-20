@@ -1,4 +1,5 @@
 'use server'
+import { parsePageIds, serializePageIds } from '@/lib/meta-ads/page-ids'
 
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
@@ -96,8 +97,9 @@ export async function updateClientMetaPage(clientId: string, pageId: string | nu
   const { data: colaborador } = await supabase.from('colaboradores').select('rol_id').eq('id', user.id).single()
   if (!colaborador) return { error: 'Sin permiso' }
 
-  const normalized = pageId?.trim() || null
-  if (normalized && !/^\d+$/.test(normalized)) return { error: 'ID de página inválido' }
+  const ids = parsePageIds(pageId)
+  if (ids.some((id) => !/^\d+$/.test(id))) return { error: 'ID de página inválido' }
+  const normalized = serializePageIds(ids)
 
   const admin = createAdminClient()
   const { error } = await admin

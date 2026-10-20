@@ -275,7 +275,7 @@ export async function POST(req: Request) {
           `https://graph.facebook.com/v19.0/me/accounts?limit=100&access_token=${accessToken}`
         )
         const accountsData = await accountsRes.json()
-        const page = accountsData.data?.find((p: any) => p.id === cliente.meta_page_id)
+        const page = accountsData.data?.find((p: any) => (cliente.meta_page_id ?? '').split(',').map((id: string) => id.trim()).includes(p.id))
 
         if (!page) {
           const resultado: TesterResultado = {

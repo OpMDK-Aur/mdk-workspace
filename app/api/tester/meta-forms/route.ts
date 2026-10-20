@@ -37,7 +37,7 @@ export async function GET(req: Request) {
       `https://graph.facebook.com/v19.0/me/accounts?limit=100&access_token=${accessToken}`
     )
     const accountsData = await accountsRes.json()
-    const page = accountsData.data?.find((p: any) => p.id === cliente.meta_page_id)
+    const page = accountsData.data?.find((p: any) => (cliente.meta_page_id ?? '').split(',').map((id: string) => id.trim()).includes(p.id))
 
     if (!page) {
       return NextResponse.json({ error: 'Página no encontrada. Agregala al Business Manager de MDK.' }, { status: 404 })
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
 
     // Listar formularios activos de la página
     const formsRes = await fetch(
-      `https://graph.facebook.com/v19.0/${cliente.meta_page_id}/leadgen_forms?fields=id,name,status&limit=50&access_token=${page.access_token}`
+      `https://graph.facebook.com/v19.0/${page.id}/leadgen_forms?fields=id,name,status&limit=50&access_token=${page.access_token}`
     )
     const formsData = await formsRes.json()
 

@@ -110,12 +110,13 @@ export async function createDestination({ clientId, destination, status }: { cli
   })
 }
 
-export async function publishAd({ clientId, row, adsetId, name, status, link }: { clientId: string; row: BulkRow; adsetId: string; name: string; status: PublishInitialStatus; link: string }) {
+export async function publishAd({ clientId, pageId, row, adsetId, name, status, link }: { clientId: string; pageId?: string; row: BulkRow; adsetId: string; name: string; status: PublishInitialStatus; link: string }) {
   const asset = primaryAsset(row.assets)
   if (!asset) throw new Error('El anuncio no tiene un archivo listo para subir.')
   const url = await uploadBulkAsset(clientId, asset)
   return postJson<{ adId: string; accountId: string }>('/api/conexa/meta/bulk/ad', {
     clientId,
+    pageId,
     adsetId,
     status,
     name,
@@ -125,6 +126,13 @@ export async function publishAd({ clientId, row, adsetId, name, status, link }: 
     link,
     asset: { url, kind: asset.kind, name: asset.name },
   })
+}
+
+export async function fetchClientPages(clientId: string) {
+  const response = await fetch(`/api/conexa/meta/bulk/pages?${new URLSearchParams({ clientId })}`)
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.error ?? 'No se pudieron cargar las páginas')
+  return (payload.pages ?? []) as Array<{ id: string; name: string }>
 }
 
 export async function fetchPixels(clientId: string, accountId: string) {

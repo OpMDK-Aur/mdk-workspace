@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { getClientCrmAccounts, replaceClientCrmAccounts, updateClientMetaPage, updateClientPlatformIds } from '@/app/actions/platform-config'
+import { parsePageIds, serializePageIds } from '@/lib/meta-ads/page-ids'
 import { SearchCombobox } from '@/components/time-tracking/search-combobox'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,6 +24,7 @@ import {
   ChevronUp,
   Search,
   Map,
+  X,
 } from 'lucide-react'
 import {
   Select,
@@ -1122,17 +1124,36 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                         </span>
                       )}
                     </div>
+                    {parsePageIds(selectedPageId).length > 0 && (
+                      <ul className="flex flex-wrap gap-1.5" aria-label="Páginas asignadas">
+                        {parsePageIds(selectedPageId).map(id => (
+                          <li key={id} className="flex items-center gap-1 rounded-full border border-border bg-muted py-1 pl-2.5 pr-1 text-xs text-foreground">
+                            <span className="max-w-[200px] truncate">{metaPages.find(p => p.id === id)?.label ?? `ID ${id}`}</span>
+                            <button
+                              type="button"
+                              aria-label={`Quitar ${metaPages.find(p => p.id === id)?.label ?? id}`}
+                              onClick={() => {
+                                setPageSelection(prev => ({ ...prev, [client.id]: serializePageIds(parsePageIds(prev[client.id]).filter(pageId => pageId !== id)) ?? '' }))
+                                setAutoPageIds(prev => ({ ...prev, [client.id]: false }))
+                                setSaved(prev => ({ ...prev, [client.id]: false }))
+                              }}
+                              className="rounded-full p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                            >
+                              <X className="h-3 w-3" aria-hidden="true" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     <SearchCombobox
-                      options={selectedPageId && !metaPages.some(p => p.id === selectedPageId)
-                        ? [{ id: selectedPageId, label: `ID ${selectedPageId}` }, ...metaPages]
-                        : metaPages}
-                      value={selectedPageId || null}
+                      options={metaPages.filter(p => !parsePageIds(selectedPageId).includes(p.id))}
+                      value={null}
                       onChange={(id) => {
-                        setPageSelection(prev => ({ ...prev, [client.id]: id }))
+                        setPageSelection(prev => ({ ...prev, [client.id]: serializePageIds([...parsePageIds(prev[client.id]), id]) ?? '' }))
                         setAutoPageIds(prev => ({ ...prev, [client.id]: false }))
                         setSaved(prev => ({ ...prev, [client.id]: false }))
                       }}
-                      placeholder={loadingPages ? 'Cargando páginas…' : 'Elegir página'}
+                      placeholder={loadingPages ? 'Cargando páginas…' : parsePageIds(selectedPageId).length ? 'Agregar otra página' : 'Elegir página'}
                       searchPlaceholder="Buscar página…"
                       emptyText={pagesError ?? 'Sin páginas con acceso'}
                       disabled={loadingPages && metaPages.length === 0}
