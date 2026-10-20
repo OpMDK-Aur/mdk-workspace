@@ -245,39 +245,94 @@ export function TaskBoard() {
     // Unique name per mount: reusing a fixed name returns the still-subscribed channel
     // on fast remounts, and calling .on() on it throws and crashes the section.
     const supabase = createClient()
+    let disposed = false
     let timer: ReturnType<typeof setTimeout> | null = null
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+    let retryAttempt = 0
     let channel: ReturnType<typeof supabase.channel> | null = null
+    let lastResync = Date.now()
     const changedIds = new Set<string>()
     const deletedIds = new Set<string>()
-    try {
-      channel = supabase
-        .channel(`task-board-tareas-${crypto.randomUUID()}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas' }, (payload) => {
-          if (payload.eventType === 'DELETE') {
-            const id = (payload.old as { id?: string })?.id
-            if (id) { deletedIds.add(id); changedIds.delete(id) }
-          } else {
-            const id = (payload.new as { id?: string })?.id
-            if (id) changedIds.add(id)
-          }
-          if (timer) clearTimeout(timer)
-          timer = setTimeout(() => {
-            const changed = [...changedIds]
-            const deleted = [...deletedIds]
-            changedIds.clear()
-            deletedIds.clear()
-            useTaskStore.getState().syncTasksByIds(changed, deleted).catch((err) => {
-              console.error('Realtime task sync failed:', err)
-            })
-          }, 400)
-        })
-        .subscribe()
-    } catch (err) {
-      console.error('Realtime subscription failed:', err)
+
+    // Events missed while the socket was down are never replayed, so every reconnect,
+    // tab return or poll re-reads the board instead of trusting the channel alone.
+    const resync = (minGapMs = 0) => {
+      if (disposed || Date.now() - lastResync < minGapMs) return
+      lastResync = Date.now()
+      useTaskStore.getState().loadTasks({ silent: true }).catch((err) => {
+        console.error('Task board resync failed:', err)
+      })
     }
 
+    const subscribe = () => {
+      if (disposed) return
+      if (channel) supabase.removeChannel(channel)
+      try {
+        channel = supabase
+          .channel(`task-board-tareas-${crypto.randomUUID()}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas' }, (payload) => {
+            if (payload.eventType === 'DELETE') {
+              const id = (payload.old as { id?: string })?.id
+              if (id) { deletedIds.add(id); changedIds.delete(id) }
+            } else {
+              const id = (payload.new as { id?: string })?.id
+              if (id) changedIds.add(id)
+            }
+            if (timer) clearTimeout(timer)
+            timer = setTimeout(() => {
+              const changed = [...changedIds]
+              const deleted = [...deletedIds]
+              changedIds.clear()
+              deletedIds.clear()
+              useTaskStore.getState().syncTasksByIds(changed, deleted).catch((err) => {
+                console.error('Realtime task sync failed:', err)
+              })
+            }, 400)
+          })
+          .subscribe((status) => {
+            if (disposed) return
+            if (status === 'SUBSCRIBED') {
+              if (retryAttempt > 0) resync()
+              retryAttempt = 0
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+              if (retryTimer) return
+              const delay = Math.min(30_000, 1_000 * 2 ** retryAttempt)
+              retryAttempt += 1
+              retryTimer = setTimeout(() => {
+                retryTimer = null
+                subscribe()
+              }, delay)
+            }
+          })
+      } catch (err) {
+        console.error('Realtime subscription failed:', err)
+      }
+    }
+
+    subscribe()
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') resync(5_000)
+    }
+    const onOnline = () => {
+      resync()
+      subscribe()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    window.addEventListener('online', onOnline)
+    const poll = setInterval(() => {
+      if (document.visibilityState === 'visible') resync(55_000)
+    }, 60_000)
+
     return () => {
+      disposed = true
       if (timer) clearTimeout(timer)
+      if (retryTimer) clearTimeout(retryTimer)
+      clearInterval(poll)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      window.removeEventListener('online', onOnline)
       if (channel) supabase.removeChannel(channel)
     }
   }, [])

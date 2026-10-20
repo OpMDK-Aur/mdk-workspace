@@ -1038,8 +1038,9 @@ export const useTaskStore = create<TaskStore>()(
         set({ tasks: [], isLoading: false })
       }
     } catch (error) {
+      // Keep whatever real tasks are already on screen; the next resync will retry.
       console.error('Error loading tasks:', error)
-      set({ tasks: MOCK_TASKS, isLoading: false })
+      set({ isLoading: false })
     }
   },
 
@@ -2235,7 +2236,7 @@ export function useTasksByStatus() {
   return grouped
 }
 
-// ── Quotation Helpers ─────���─────────────────────────────��─────────────────────
+// ── Quotation Helpers ─────���───────────────────���─────────��─────────────────────
 
 export function calculateQuotation(hours: number, notes: string = ''): TaskQuotation {
   const subtotal = hours * HOURLY_RATE
