@@ -1,3 +1,5 @@
+import { getMetaAccessToken } from './token'
+
 const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
 const META_BASE_URL = `https://graph.facebook.com/${META_API_VERSION}`
 const MAX_PAGES_OF_RESULTS = 10
@@ -24,7 +26,7 @@ async function collect<T>(firstUrl: string): Promise<T[]> {
 }
 
 export async function listAccessiblePages(): Promise<MetaPage[]> {
-  const token = process.env.META_ADS_ACCESS_TOKEN
+  const token = await getMetaAccessToken()
   if (!token) throw new Error('META_ADS_ACCESS_TOKEN no configurado')
   const fields = 'fields=id,name,category&limit=100'
   const [directPages, businesses] = await Promise.all([
@@ -50,7 +52,7 @@ export async function listAccessiblePages(): Promise<MetaPage[]> {
 
 /** Pages an ad account is allowed to advertise with. Errors per account are ignored. */
 export async function listPromotablePages(accountIds: string[]): Promise<MetaPage[]> {
-  const token = process.env.META_ADS_ACCESS_TOKEN
+  const token = await getMetaAccessToken()
   if (!token || accountIds.length === 0) return []
   const results = await Promise.all(
     accountIds.map((id) =>

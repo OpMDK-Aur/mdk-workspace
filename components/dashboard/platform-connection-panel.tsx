@@ -23,11 +23,12 @@ interface PlatformConnectionPanelProps {
   googleToken: TokenInfo | null
   googleCalendarToken: TokenInfo | null
   googleSheetsToken: TokenInfo | null
+  metaToken: TokenInfo | null
   discordInfo: DiscordInfo | null
   appUrl: string
 }
 
-export function PlatformConnectionPanel({ googleToken, googleCalendarToken, googleSheetsToken, discordInfo, appUrl }: PlatformConnectionPanelProps) {
+export function PlatformConnectionPanel({ googleToken, googleCalendarToken, googleSheetsToken, metaToken, discordInfo, appUrl }: PlatformConnectionPanelProps) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
@@ -35,6 +36,7 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, goog
   const [loadingCalendar, setLoadingCalendar] = useState(false)
   const [loadingSheets, setLoadingSheets] = useState(false)
   const [loadingDiscord, setLoadingDiscord] = useState(false)
+  const [loadingMeta, setLoadingMeta] = useState(false)
 
   // Handle URL params for success/error messages
   useEffect(() => {
@@ -57,6 +59,11 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, goog
       router.replace('/dashboard/apps')
       return
     }
+    if (connected === 'meta') {
+      setNotice({ type: 'success', message: 'Meta reconectado. Las fanpages autorizadas ya están disponibles en la carga masiva.' })
+      router.replace('/dashboard/apps')
+      return
+    }
     if (discord === 'connected') {
       setNotice({ type: 'success', message: 'Cuenta de Discord conectada correctamente.' })
       router.replace('/dashboard/apps')
@@ -74,8 +81,14 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, goog
         db_error: 'Error al guardar los tokens en la base de datos.',
         missing_scope: 'El token no tiene el scope necesario. Volve a autorizar.',
         no_refresh_token_revoke_required: 'No se obtuvo refresh token. Revoca el acceso en myaccount.google.com/permissions y volve a autorizar.',
+        meta_denied: 'Se canceló la autorización de Meta.',
+        meta_state: 'La autorización de Meta expiró. Volvé a intentar.',
+        config_error: 'Falta configurar META_APP_SECRET.',
+        token_error: 'Meta no devolvió un token de acceso.',
       }
-      setNotice({ type: 'error', message: messages[error] ?? `Error: ${error}` })
+      const detail = searchParams.get('msg')
+      const base = messages[error] ?? `Error: ${error}`
+      setNotice({ type: 'error', message: detail ? `${base} (${detail})` : base })
       router.replace('/dashboard/apps')
       return
     }
@@ -95,6 +108,15 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, goog
     setLoadingSheets(true)
     window.location.href = '/api/auth/google-sheets'
   }
+
+  const handleConnectMeta = () => {
+    setLoadingMeta(true)
+    window.location.href = '/api/auth/meta'
+  }
+
+  const metaUpdatedAt = metaToken?.updated_at
+    ? new Date(metaToken.updated_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })
+    : null
 
   const handleConnectDiscord = async () => {
     setLoadingDiscord(true)
@@ -157,6 +179,45 @@ export function PlatformConnectionPanel({ googleToken, googleCalendarToken, goog
           {notice.message}
         </div>
       )}
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-muted text-sm font-bold">
+                f
+              </div>
+              <div>
+                <CardTitle className="text-base">Meta (Facebook e Instagram)</CardTitle>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {metaToken?.email_conectado ?? 'Usando el token configurado del sistema'}
+                </p>
+              </div>
+              {metaToken ? (
+                <Badge className="border-green-500/20 bg-green-500/15 text-xs text-green-600">
+                  <CheckCircle2 className="mr-1 h-3 w-3" />
+                  Conectado
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs text-muted-foreground">Token del sistema</Badge>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {metaUpdatedAt && (
+                <span className="hidden text-xs text-muted-foreground sm:block">Actualizado {metaUpdatedAt}</span>
+              )}
+              <Button size="sm" variant={metaToken ? 'outline' : 'default'} className="h-8 gap-2" onClick={handleConnectMeta} disabled={loadingMeta}>
+                {loadingMeta ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><RefreshCw className="h-3.5 w-3.5" />{metaToken ? 'Reconectar' : 'Reautorizar'}</>}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Al reautorizar, en la pantalla de Meta elegí &quot;Editar acceso&quot; y marcá todas las páginas, cuentas publicitarias y portfolios comerciales (incluidos los de otros portfolios, como Pire Rayen). Solo aparecen en la carga masiva las páginas que selecciones ahí.
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Google Ads Card */}
       <Card>

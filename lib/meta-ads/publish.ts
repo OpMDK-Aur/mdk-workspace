@@ -1,3 +1,5 @@
+import { getMetaAccessToken } from './token'
+
 const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
 const META_BASE_URL = `https://graph.facebook.com/${META_API_VERSION}`
 
@@ -59,15 +61,15 @@ const OPTIMIZATION: Record<CampaignObjective, { goal: string; destination?: stri
   OUTCOME_SALES: { goal: 'OFFSITE_CONVERSIONS', destination: 'WEBSITE', event: 'PURCHASE' },
 }
 
-function token() {
-  const value = process.env.META_ADS_ACCESS_TOKEN
+async function token() {
+  const value = await getMetaAccessToken()
   if (!value) throw new MetaPublishError('META_ADS_ACCESS_TOKEN no está configurado.', 'config')
   return value
 }
 
 async function graph<T>(step: string, path: string, init?: { method?: 'GET' | 'POST'; params?: Record<string, string> }): Promise<T> {
   const method = init?.method ?? 'GET'
-  const params = new URLSearchParams({ ...(init?.params ?? {}), access_token: token() })
+  const params = new URLSearchParams({ ...(init?.params ?? {}), access_token: await token() })
   const url = method === 'GET' ? `${META_BASE_URL}/${path}?${params}` : `${META_BASE_URL}/${path}`
   const response = await fetch(url, method === 'GET' ? { cache: 'no-store' } : { method, body: params, cache: 'no-store' })
   const payload = await response.json().catch(() => null) as ({ error?: { message?: string; error_user_msg?: string; error_user_title?: string } } & T) | null
