@@ -42,6 +42,7 @@ import { ClientLandings } from './client-landings'
   import { ClientCRMs } from './client-crms'
   import { ClientCotizaciones } from './client-cotizaciones'
 import { ClientTareas } from './client-tareas'
+import { ClientConexaSummary } from './client-conexa-summary'
 import { ClientNPS } from './client-nps'
 import { ClientInfoCard } from './client-info-card'
 import Link from 'next/link'
@@ -1827,6 +1828,8 @@ export function ClientOverview({ client, profiles, currentProfile, assignment, t
             <ClientCRMs clientId={client.id} />
           </div>
         </div>
+
+        <ClientConexaSummary clientId={client.id} />
 
         {/* ── Tareas, Cotizaciones, Adjuntos ── */}
         <div className="grid md:grid-cols-2 gap-4">
