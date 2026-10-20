@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { MetaPublishError } from './publish'
 import { listPromotablePages, matchPageByName } from './pages'
+import { parsePageIds } from './page-ids'
 
 type ClientRow = {
   nombre_del_negocio: string | null
@@ -33,8 +34,9 @@ export async function resolveBulkClient(clientId: string) {
     ...(data.cuentas_publicitarias ?? []).filter((item) => item.plataforma === 'meta' && item.activo !== false && item.id_cuenta).map((item) => item.id_cuenta as string),
   ].flatMap((value) => String(value).split(',')).map(normalize).filter(Boolean))
 
-  const pageId = data.meta_page_id || (await autoResolvePage(clientId, data.nombre_del_negocio ?? '', [...accountIds]))
-  return { pageId, accountIds }
+  const savedPageIds = parsePageIds(data.meta_page_id)
+  const pageIds = savedPageIds.length ? savedPageIds : [await autoResolvePage(clientId, data.nombre_del_negocio ?? '', [...accountIds])].filter((id): id is string => Boolean(id))
+  return { pageId: pageIds[0] ?? null, pageIds, accountIds }
 }
 
 /**

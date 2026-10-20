@@ -6,7 +6,8 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
-import { createDestination, primaryAsset, publishAd } from '@/lib/bulk/api'
+import useSWR from 'swr'
+import { createDestination, fetchClientPages, primaryAsset, publishAd } from '@/lib/bulk/api'
 import { adName } from '@/lib/bulk/group-assets'
 import { useBulkStore } from '@/lib/bulk/store'
 import { isNewDestinationId, type BulkAdset, type BulkRow } from '@/lib/bulk/types'
@@ -59,6 +60,9 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl }: { 
   const reset = useBulkStore((state) => state.reset)
   const [retrying, setRetrying] = useState<string[]>([])
   const [publishTotal, setPublishTotal] = useState(0)
+  const { data: pages } = useSWR(['bulk-client-pages', clientId], () => fetchClientPages(clientId), { revalidateOnFocus: false })
+  const [chosenPageId, setChosenPageId] = useState<string | null>(null)
+  const pageId = chosenPageId && pages?.some((page) => page.id === chosenPageId) ? chosenPageId : pages?.[0]?.id
   const link = storedLink || destinationUrl || ''
   const linkValid = isValidUrl(link)
 
@@ -116,7 +120,7 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl }: { 
       if (!adset) throw new Error('Elegí un conjunto de anuncios.')
       if (!primaryAsset(row.assets)) throw new Error('El anuncio no tiene un archivo listo para subir.')
       const metaAdsetId = await resolveAdsetId(row.adsetId)
-      const result = await publishAd({ clientId, row, adsetId: metaAdsetId, name, status: initialStatus, link })
+      const result = await publishAd({ clientId, pageId, row, adsetId: metaAdsetId, name, status: initialStatus, link })
       updateRow(row.id, { status: 'done', metaAdId: result.adId, published: { campaignName: adset.campaignName, adsetName: adset.name, adName: name, adsetId: metaAdsetId, accountId: result.accountId } })
     } catch (error) {
       updateRow(row.id, { status: 'error', error: errorText(error) })
@@ -246,6 +250,19 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl }: { 
               <label htmlFor="bulk-link" className="text-[11px] font-medium text-[#777]">URL de destino</label>
               <Input id="bulk-link" type="url" value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://sitio-del-cliente.com/landing" className="h-9 max-w-[480px] border-[#dcdcd8] bg-white text-[12px] text-[#141414] placeholder:text-[#aaa] dark:bg-white" />
             </div>
+            {pages && pages.length > 1 && (
+              <div>
+                <p className="mb-2 text-[11px] font-medium text-[#777]">Página de Facebook</p>
+                <div role="radiogroup" aria-label="Página de Facebook" className="flex flex-wrap gap-1.5">
+                  {pages.map((page) => (
+                    <button key={page.id} type="button" role="radio" aria-checked={pageId === page.id} onClick={() => setChosenPageId(page.id)} className={cn('rounded-full border px-3.5 py-1.5 text-[11.5px] font-medium', pageId === page.id ? 'border-[#141414] bg-[#141414] text-white' : 'border-[#dcdcd8] bg-white text-[#333] hover:bg-[#f5f5f3]')}>
+                      {page.name}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11.5px] text-[#777]">Todos los anuncios del lote se publican con esta página.</p>
+              </div>
+            )}
             <div>
               <p className="mb-2 text-[11px] font-medium text-[#777]">Estado al subir</p>
               <div role="radiogroup" aria-label="Estado al subir" className="inline-flex rounded-full border border-[#dcdcd8] bg-[#f5f5f3] p-0.5">

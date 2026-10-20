@@ -6,12 +6,15 @@ export const runtime = 'nodejs'
 export const maxDuration = 90
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null) as (Omit<AdInput, 'pageId'> & { clientId: string }) | null
+  const body = await request.json().catch(() => null) as (Omit<AdInput, 'pageId'> & { clientId: string; pageId?: string }) | null
   if (!body) return NextResponse.json({ error: 'Solicitud inválida' }, { status: 400 })
 
   const access = await resolveBulkClient(body.clientId)
   if ('error' in access) return access.error
   if (!access.pageId) return NextResponse.json({ error: 'No pudimos detectar la página de Facebook del cliente. Elegila en Configuración de clientes → Página de Facebook.' }, { status: 400 })
+  const requestedPageId = body.pageId ? String(body.pageId) : null
+  if (requestedPageId && !access.pageIds.includes(requestedPageId)) return NextResponse.json({ error: 'La página elegida no está asignada a este cliente.' }, { status: 403 })
+  const pageId = requestedPageId ?? access.pageId
 
   if (!/^\d+$/.test(String(body.adsetId ?? ''))) return NextResponse.json({ error: 'Conjunto inválido.' }, { status: 400 })
   if (!body.name?.trim() || !body.primaryText?.trim() || !body.headline?.trim()) return NextResponse.json({ error: 'Faltan nombre, texto principal o título.' }, { status: 400 })
@@ -28,7 +31,7 @@ export async function POST(request: Request) {
     if (!access.accountIds.has(accountId)) return NextResponse.json({ error: 'El conjunto no pertenece a una cuenta de este cliente.' }, { status: 403 })
     const result = await createAd({
       adsetId: body.adsetId,
-      pageId: access.pageId,
+      pageId,
       status: body.status === 'ACTIVE' ? 'ACTIVE' : 'PAUSED',
       name: body.name.trim(),
       primaryText: body.primaryText,
