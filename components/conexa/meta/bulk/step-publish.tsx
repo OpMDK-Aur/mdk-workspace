@@ -45,7 +45,7 @@ function NameLine({ label, value }: { label: string; value: string }) {
 const isValidUrl = (value: string) => { try { return ['http:', 'https:'].includes(new URL(value).protocol) } catch { return false } }
 const errorText = (error: unknown) => error instanceof Error ? error.message : 'Error desconocido'
 
-export function StepPublish({ clientId, clientName, adsets, destinationUrl }: { clientId: string; clientName: string; adsets: BulkAdset[]; destinationUrl?: string | null }) {
+export function StepPublish({ clientId, clientName, adsets, destinationUrl, pageIds }: { pageIds?: string[]; clientId: string; clientName: string; adsets: BulkAdset[]; destinationUrl?: string | null }) {
   const rows = useBulkStore((state) => state.rows)
   const initialStatus = useBulkStore((state) => state.initialStatus)
   const setInitialStatus = useBulkStore((state) => state.setInitialStatus)
@@ -60,7 +60,9 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl }: { 
   const reset = useBulkStore((state) => state.reset)
   const [retrying, setRetrying] = useState<string[]>([])
   const [publishTotal, setPublishTotal] = useState(0)
-  const { data: pages } = useSWR(['bulk-client-pages', clientId], () => fetchClientPages(clientId), { revalidateOnFocus: false })
+  const { data: allPages } = useSWR(['bulk-client-pages', clientId], () => fetchClientPages(clientId), { revalidateOnFocus: false })
+  const filteredPages = pageIds?.length ? allPages?.filter((page) => pageIds.includes(page.id)) : allPages
+  const pages = filteredPages?.length ? filteredPages : allPages
   const [chosenPageId, setChosenPageId] = useState<string | null>(null)
   const pageId = chosenPageId && pages?.some((page) => page.id === chosenPageId) ? chosenPageId : pages?.[0]?.id
   const link = storedLink || destinationUrl || ''
