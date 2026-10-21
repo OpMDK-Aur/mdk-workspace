@@ -46,7 +46,7 @@ function Stepper() {
   )
 }
 
-export function BulkUploadView({ clientId, clientName, adsets: existingAdsets, accounts, creatives, destinationUrl }: { clientId: string; clientName: string; adsets: BulkAdset[]; accounts: MetaAccountOption[]; creatives: CreativeCard[]; destinationUrl?: string | null }) {
+export function BulkUploadView({ clientId, clientName, adsets: existingAdsets, accounts, creatives, destinationUrl, pageIds }: { pageIds?: string[]; clientId: string; clientName: string; adsets: BulkAdset[]; accounts: MetaAccountOption[]; creatives: CreativeCard[]; destinationUrl?: string | null }) {
   const step = useBulkStore((state) => state.step)
   const destinations = useBulkStore((state) => state.destinations)
   const adsets = useMemo(() => [...destinations.map(destinationToAdset), ...existingAdsets], [destinations, existingAdsets])
@@ -61,7 +61,7 @@ export function BulkUploadView({ clientId, clientName, adsets: existingAdsets, a
       <Stepper />
       {step === 1 && <StepUpload clientId={clientId} clientName={clientName} adsets={adsets} creatives={creatives} destinationUrl={destinationUrl} />}
       {step === 2 && <StepConfigure clientId={clientId} clientName={clientName} adsets={adsets} accounts={accounts} />}
-      {step === 3 && <StepPublish clientId={clientId} clientName={clientName} adsets={adsets} destinationUrl={destinationUrl} />}
+      {step === 3 && <StepPublish clientId={clientId} clientName={clientName} adsets={adsets} destinationUrl={destinationUrl} pageIds={pageIds} />}
     </div>
   )
 }
