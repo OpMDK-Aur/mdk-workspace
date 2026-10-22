@@ -76,6 +76,7 @@ export interface MetaAccountMetrics {
     cpl: number
   }
   results_by_type: Record<string, { results: number; spend: number; cost_per_result: number }>
+  daily?: MetaDailyPoint[]
   campaigns: MetaCampaignMetrics[]
   adsets?: MetaCampaignMetrics[]
   ads?: MetaCampaignMetrics[]
@@ -227,6 +228,46 @@ async function fetchInsightRows(accountId: string, accessToken: string, dateFrom
     url = payload.paging?.next ?? null
   }
   return rows
+}
+
+export type MetaDailyPoint = { date: string; spend: number; results: number }
+
+async function fetchDailyRows(accountId: string, accessToken: string, dateFrom: string, dateTo: string) {
+  let url: string | null = `${META_BASE_URL}/act_${accountId}/insights?${new URLSearchParams({
+    access_token: accessToken,
+    level: 'campaign',
+    fields: 'campaign_id,objective,spend,actions',
+    time_range: JSON.stringify({ since: dateFrom, until: dateTo }),
+    time_increment: '1',
+    limit: '500',
+  })}`
+  const rows: Array<MetaInsightRow & { date_start?: string }> = []
+  while (url) {
+    const payload = await fetchJson(url)
+    rows.push(...(payload.data ?? []))
+    url = payload.paging?.next ?? null
+  }
+  return rows
+}
+
+// Los días sin entrega no vienen en la respuesta; se completan en cero para que el eje muestre todo el período.
+function buildDailySeries(rows: Array<MetaInsightRow & { date_start?: string }>, dateFrom: string, dateTo: string, activeIds: Set<string> | null) {
+  const byDate = new Map<string, MetaDailyPoint>()
+  const cursor = new Date(`${dateFrom}T00:00:00Z`)
+  const end = new Date(`${dateTo}T00:00:00Z`)
+  for (let guard = 0; cursor <= end && guard < 400; guard += 1) {
+    const day = cursor.toISOString().slice(0, 10)
+    byDate.set(day, { date: day, spend: 0, results: 0 })
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  for (const row of rows) {
+    if (!row.date_start || (activeIds && !activeIds.has(row.campaign_id || ''))) continue
+    const point = byDate.get(row.date_start) ?? { date: row.date_start, spend: 0, results: 0 }
+    point.spend += toNumber(row.spend)
+    point.results += normalizeMetaResult(row.objective || '', row.actions).results
+    byDate.set(row.date_start, point)
+  }
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date))
 }
 
 async function fetchActiveCampaignIds(accountId: string, accessToken: string) {
@@ -382,7 +423,9 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
   const catalogPromise = input.includeAdsetCatalog
     ? fetchAdsetCatalog(accountId, accessToken).catch(() => undefined)
     : Promise.resolve(undefined)
-  const [rows, adsetRows, adRows, activeIds, adsetCatalog] = await Promise.all([rowsPromise, adsetsPromise, adsPromise, activeIdsPromise, catalogPromise])
+  const dailyPromise = fetchDailyRows(accountId, accessToken, input.dateFrom, input.dateTo).catch(() => null)
+  const [rows, adsetRows, adRows, activeIds, adsetCatalog, dailyRows] = await Promise.all([rowsPromise, adsetsPromise, adsPromise, activeIdsPromise, catalogPromise, dailyPromise])
+  const daily = dailyRows ? buildDailySeries(dailyRows, input.dateFrom, input.dateTo, activeIds) : undefined
   const campaigns = rows.filter((row) => !activeIds || activeIds.has(row.campaign_id || '')).map((row) => {
     const spend = toNumber(row.spend)
     const result = normalizeMetaResult(row.objective || '', row.actions)
@@ -433,6 +476,7 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
     raw_rows: rows.slice(0, 3),
     date_range: { start: input.dateFrom, end: input.dateTo }, totals, results_by_type: resultsByType, campaigns, adsets, ads, creatives,
     ...(adsetCatalog ? { adset_catalog: adsetCatalog } : {}),
+    ...(daily ? { daily } : {}),
   }
 }
 
