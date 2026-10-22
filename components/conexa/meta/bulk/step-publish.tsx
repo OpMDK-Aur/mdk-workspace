@@ -10,7 +10,7 @@ import useSWR from 'swr'
 import { createDestination, fetchClientPages, primaryAsset, publishAd } from '@/lib/bulk/api'
 import { adName } from '@/lib/bulk/group-assets'
 import { useBulkStore } from '@/lib/bulk/store'
-import { isNewDestinationId, type BulkAdset, type BulkRow } from '@/lib/bulk/types'
+import { isNewDestinationId, isWhatsappAdset, type BulkAdset, type BulkRow } from '@/lib/bulk/types'
 import { validateRow } from '@/lib/bulk/validate'
 import { Panel, StateBadge } from './bulk-shared'
 
@@ -102,6 +102,9 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl, page
   }, [groups.ready, adsets])
 
   const missingAdset = groups.ready.some((row) => !adsets.some((item) => item.id === row.adsetId))
+  const whatsappCount = groups.ready.filter((row) => isWhatsappAdset(adsets.find((item) => item.id === row.adsetId))).length
+  const needsLink = groups.ready.length === 0 || whatsappCount < groups.ready.length
+  const linkOk = !needsLink || linkValid
   const statusLabel = initialStatus === 'PAUSED' ? 'pausados' : 'activos'
 
   async function resolveAdsetId(adsetId: string) {
@@ -109,7 +112,7 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl, page
     const destination = useBulkStore.getState().destinations.find((item) => item.id === adsetId)
     if (!destination) throw new Error('El destino nuevo ya no existe. Volvé a elegir el conjunto.')
     if (destination.created) return destination.created.adsetId
-    const created = await createDestination({ clientId, destination, status: initialStatus })
+    const created = await createDestination({ clientId, destination, status: initialStatus, pageId })
     updateDestination(destination.id, { created })
     return created.adsetId
   }
@@ -122,7 +125,7 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl, page
       if (!adset) throw new Error('Elegí un conjunto de anuncios.')
       if (!primaryAsset(row.assets)) throw new Error('El anuncio no tiene un archivo listo para subir.')
       const metaAdsetId = await resolveAdsetId(row.adsetId)
-      const result = await publishAd({ clientId, pageId, row, adsetId: metaAdsetId, name, status: initialStatus, link })
+      const result = await publishAd({ clientId, pageId, row, adsetId: metaAdsetId, name, status: initialStatus, link: isWhatsappAdset(adset) ? '' : link })
       updateRow(row.id, { status: 'done', metaAdId: result.adId, published: { campaignName: adset.campaignName, adsetName: adset.name, adName: name, adsetId: metaAdsetId, accountId: result.accountId } })
     } catch (error) {
       updateRow(row.id, { status: 'error', error: errorText(error) })
@@ -131,7 +134,7 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl, page
 
   async function publish() {
     const batch = groups.ready
-    if (!batch.length || !linkValid) return
+    if (!batch.length || !linkOk) return
     setPublishTotal(batch.length)
     setPublishPhase('publishing', 0)
     // Secuencial: los anuncios del mismo destino nuevo comparten la campaña y el conjunto creados por el primero.
@@ -191,7 +194,10 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl, page
         <Panel title={<>{'Controles de '}<span className="text-[#5B5FE8]">{'✦ Conexa'}</span></>}>
           <ul className="flex flex-col gap-2">
             <Check tone={missingAdset ? 'warn' : 'ok'}>{missingAdset ? 'Hay anuncios sin conjunto: elegilos en el paso anterior.' : 'Todos los anuncios tienen campaña y conjunto.'}</Check>
-            <Check tone={linkValid ? 'ok' : 'warn'}>{linkValid ? 'URL de destino válida.' : 'Falta la URL de destino de los anuncios.'}</Check>
+            {!needsLink
+              ? <Check tone="ok">Los anuncios abren WhatsApp: no necesitan URL de destino.</Check>
+              : <Check tone={linkValid ? 'ok' : 'warn'}>{linkValid ? 'URL de destino válida.' : 'Falta la URL de destino de los anuncios.'}</Check>}
+            {needsLink && whatsappCount > 0 && <Check tone="muted">{`${whatsappCount} ${whatsappCount === 1 ? 'anuncio va' : 'anuncios van'} a WhatsApp y no usan la URL.`}</Check>}
             <Check tone={groups.review > 0 ? 'warn' : 'ok'}>{groups.review > 0 ? `${groups.review} ${groups.review === 1 ? 'anuncio necesita' : 'anuncios necesitan'} revisión de textos: no se publican.` : 'Textos principales y títulos completos.'}</Check>
             <Check tone="muted">{groups.drafts > 0 ? `${groups.drafts} ${groups.drafts === 1 ? 'borrador' : 'borradores'} sin archivo quedan fuera del lote.` : 'Sin borradores pendientes.'}</Check>
             <Check tone="muted">Se sube un archivo por anuncio, priorizando 4:5 y 1:1 para feed.</Check>
@@ -248,10 +254,12 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl, page
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="bulk-link" className="text-[11px] font-medium text-[#777]">URL de destino</label>
-              <Input id="bulk-link" type="url" value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://sitio-del-cliente.com/landing" className="h-9 max-w-[480px] border-[#dcdcd8] bg-white text-[12px] text-[#141414] placeholder:text-[#aaa] dark:bg-white" />
-            </div>
+            {needsLink && (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="bulk-link" className="text-[11px] font-medium text-[#777]">URL de destino</label>
+                <Input id="bulk-link" type="url" value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://sitio-del-cliente.com/landing" className="h-9 max-w-[480px] border-[#dcdcd8] bg-white text-[12px] text-[#141414] placeholder:text-[#aaa] dark:bg-white" />
+              </div>
+            )}
             {pages && pages.length > 1 && (
               <div>
                 <p className="mb-2 text-[11px] font-medium text-[#777]">Página de Facebook</p>
@@ -280,7 +288,7 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl, page
             </div>
             <div className="flex items-center justify-between">
               <Button size="sm" variant="outline" onClick={() => setStep(2)} className="h-9 rounded-full border-[#dcdcd8] bg-white px-4 text-[11.5px] text-[#333] hover:bg-[#f5f5f3] hover:text-[#141414]">{'← Volver a configurar'}</Button>
-              <Button size="sm" onClick={publish} disabled={!groups.ready.length || !linkValid || missingAdset} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
+              <Button size="sm" onClick={publish} disabled={!groups.ready.length || !linkOk || missingAdset} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
                 {`Subir ${groups.ready.length} ${groups.ready.length === 1 ? 'anuncio' : 'anuncios'} a Meta`}
               </Button>
             </div>

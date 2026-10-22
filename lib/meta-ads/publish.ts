@@ -14,6 +14,8 @@ export type NewAdsetInput = {
   ageMax: number
   genders: 'all' | 'male' | 'female'
   pixelId?: string
+  destination?: 'WHATSAPP'
+  pageId?: string
 }
 
 export type StructureInput = {
@@ -60,6 +62,9 @@ const OPTIMIZATION: Record<CampaignObjective, { goal: string; destination?: stri
   OUTCOME_LEADS: { goal: 'OFFSITE_CONVERSIONS', destination: 'WEBSITE', event: 'LEAD' },
   OUTCOME_SALES: { goal: 'OFFSITE_CONVERSIONS', destination: 'WEBSITE', event: 'PURCHASE' },
 }
+
+const WHATSAPP_OPTIMIZATION: { goal: string; destination?: string; event?: string } = { goal: 'CONVERSATIONS', destination: 'WHATSAPP' }
+const WHATSAPP_LINK = 'https://api.whatsapp.com/send'
 
 async function token() {
   const value = await getMetaAccessToken()
@@ -121,7 +126,11 @@ export async function createStructure(input: StructureInput) {
     objective = await getCampaignObjective(campaignId)
   }
 
-  const optimization = OPTIMIZATION[objective] ?? OPTIMIZATION.OUTCOME_TRAFFIC
+  const whatsapp = input.adset.destination === 'WHATSAPP'
+  if (whatsapp && objective !== 'OUTCOME_ENGAGEMENT') {
+    throw new MetaPublishError('El destino WhatsApp solo se puede usar en campañas con objetivo Interacción.', 'conjunto')
+  }
+  const optimization = whatsapp ? WHATSAPP_OPTIMIZATION : OPTIMIZATION[objective] ?? OPTIMIZATION.OUTCOME_TRAFFIC
   if (optimization.event && !input.adset.pixelId) {
     throw new MetaPublishError('Este objetivo necesita un píxel para optimizar conversiones.', 'conjunto')
   }
@@ -145,7 +154,9 @@ export async function createStructure(input: StructureInput) {
     status: input.status,
   }
   if (optimization.destination) adsetParams.destination_type = optimization.destination
-  if (optimization.event && input.adset.pixelId) {
+  if (whatsapp) {
+    adsetParams.promoted_object = JSON.stringify({ page_id: input.adset.pageId })
+  } else if (optimization.event && input.adset.pixelId) {
     adsetParams.promoted_object = JSON.stringify({ pixel_id: input.adset.pixelId, custom_event_type: optimization.event })
   }
 
@@ -178,8 +189,14 @@ async function uploadVideo(accountId: string, asset: AdAssetInput) {
 }
 
 export async function createAd(input: AdInput) {
-  const accountId = await getAdsetAccountId(input.adsetId)
-  const callToAction = { type: CTA_TYPES[input.cta] ?? 'LEARN_MORE', value: { link: input.link } }
+  const adset = await graph<{ account_id: string; destination_type?: string }>('conjunto', input.adsetId, { params: { fields: 'account_id,destination_type' } })
+  const accountId = adset.account_id
+  const whatsapp = adset.destination_type === 'WHATSAPP'
+  if (!whatsapp && !/^https?:\/\//i.test(input.link)) throw new MetaPublishError('Falta la URL de destino del anuncio.', 'anuncio')
+  const link = whatsapp ? WHATSAPP_LINK : input.link
+  const callToAction = whatsapp
+    ? { type: 'WHATSAPP_MESSAGE', value: { app_destination: 'WHATSAPP', link } }
+    : { type: CTA_TYPES[input.cta] ?? 'LEARN_MORE', value: { link } }
 
   let objectStorySpec: Record<string, unknown>
   if (input.asset.kind === 'video') {
@@ -187,7 +204,7 @@ export async function createAd(input: AdInput) {
     objectStorySpec = { page_id: input.pageId, video_data: { video_id: videoId, image_url: thumbnail, message: input.primaryText, title: input.headline, call_to_action: callToAction } }
   } else {
     const hash = await uploadImage(accountId, input.asset)
-    objectStorySpec = { page_id: input.pageId, link_data: { image_hash: hash, link: input.link, message: input.primaryText, name: input.headline, call_to_action: callToAction } }
+    objectStorySpec = { page_id: input.pageId, link_data: { image_hash: hash, link, message: input.primaryText, name: input.headline, call_to_action: callToAction } }
   }
 
   const creative = await graph<{ id: string }>('creativo', `${act(accountId)}/adcreatives`, {

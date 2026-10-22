@@ -18,11 +18,15 @@ export async function POST(request: Request) {
 
   if (!/^\d+$/.test(String(body.adsetId ?? ''))) return NextResponse.json({ error: 'Conjunto inválido.' }, { status: 400 })
   if (!body.name?.trim() || !body.primaryText?.trim() || !body.headline?.trim()) return NextResponse.json({ error: 'Faltan nombre, texto principal o título.' }, { status: 400 })
-  try {
-    const link = new URL(body.link)
-    if (link.protocol !== 'https:' && link.protocol !== 'http:') throw new Error('protocol')
-  } catch {
-    return NextResponse.json({ error: 'La URL de destino no es válida.' }, { status: 400 })
+  // Los conjuntos con destino WhatsApp no usan URL; createAd exige una válida para el resto.
+  const rawLink = typeof body.link === 'string' ? body.link.trim() : ''
+  if (rawLink) {
+    try {
+      const link = new URL(rawLink)
+      if (link.protocol !== 'https:' && link.protocol !== 'http:') throw new Error('protocol')
+    } catch {
+      return NextResponse.json({ error: 'La URL de destino no es válida.' }, { status: 400 })
+    }
   }
   if (!body.asset || !isAllowedAssetUrl(body.asset.url) || !['image', 'video'].includes(body.asset.kind)) return NextResponse.json({ error: 'Archivo inválido.' }, { status: 400 })
 
@@ -37,7 +41,7 @@ export async function POST(request: Request) {
       primaryText: body.primaryText,
       headline: body.headline,
       cta: body.cta,
-      link: body.link,
+      link: rawLink,
       asset: { url: body.asset.url, kind: body.asset.kind, name: String(body.asset.name ?? 'archivo').slice(0, 100) },
     })
     return NextResponse.json(result)
