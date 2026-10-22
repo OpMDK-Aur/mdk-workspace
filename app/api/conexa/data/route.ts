@@ -7,43 +7,7 @@ import { getCrmAcquisitionReport, type CrmAcquisitionFilters } from '@/lib/crm/s
 
 export const maxDuration = 60
 
-const toISODate = (date: Date) => date.toISOString().slice(0, 10)
-
-// El selector de período de la UI ofrece opciones de texto libre ("Hoy",
-// "Ayer", "Últimos 7 días", "Este mes", "Mes anterior", "Personalizado") que
-// no siempre contienen un número parseable. Antes, cualquier período sin un
-// dígito (p. ej. "Ayer") caía al default de 30 días, inflando las métricas
-// ~30x contra lo que se ve en Meta/Google Ads para ese mismo día.
-function dateRange(period: string, customRange?: { from?: string; to?: string }) {
-  const today = new Date()
-  const normalized = period.trim().toLowerCase()
-
-  if (normalized === 'personalizado' && customRange?.from && customRange?.to) {
-    return { dateFrom: customRange.from, dateTo: customRange.to }
-  }
-  if (normalized === 'hoy') {
-    return { dateFrom: toISODate(today), dateTo: toISODate(today) }
-  }
-  if (normalized === 'ayer') {
-    const yesterday = new Date(today)
-    yesterday.setUTCDate(yesterday.getUTCDate() - 1)
-    return { dateFrom: toISODate(yesterday), dateTo: toISODate(yesterday) }
-  }
-  if (normalized === 'este mes') {
-    const from = new Date(today.getUTCFullYear(), today.getUTCMonth(), 1)
-    return { dateFrom: toISODate(from), dateTo: toISODate(today) }
-  }
-  if (normalized === 'mes anterior') {
-    const from = new Date(today.getUTCFullYear(), today.getUTCMonth() - 1, 1)
-    const to = new Date(today.getUTCFullYear(), today.getUTCMonth(), 0)
-    return { dateFrom: toISODate(from), dateTo: toISODate(to) }
-  }
-  const match = normalized.match(/(\d+)/)
-  const days = match ? Number(match[1]) : 30
-  const from = new Date(today)
-  from.setUTCDate(from.getUTCDate() - days + 1)
-  return { dateFrom: toISODate(from), dateTo: toISODate(today) }
-}
+import { dateRange } from '@/lib/conexa/period-range'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
