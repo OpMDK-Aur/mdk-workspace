@@ -100,9 +100,10 @@ export function primaryAsset(assets: BulkAsset[]) {
   return [...ready].sort((a, b) => order.indexOf(a.ratio) - order.indexOf(b.ratio))[0]
 }
 
-export async function createDestination({ clientId, destination, status }: { clientId: string; destination: NewDestination; status: PublishInitialStatus }) {
+export async function createDestination({ clientId, destination, status, pageId }: { clientId: string; destination: NewDestination; status: PublishInitialStatus; pageId?: string }) {
   return postJson<{ campaignId: string; adsetId: string }>('/api/conexa/meta/bulk/structure', {
     clientId,
+    pageId,
     accountId: destination.accountId,
     status,
     campaign: destination.campaign.mode === 'new' ? { mode: 'new', name: destination.campaign.name, objective: destination.campaign.objective } : { mode: 'existing', id: destination.campaign.id },

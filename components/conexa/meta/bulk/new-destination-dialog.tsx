@@ -35,6 +35,7 @@ export function NewDestinationDialog({ clientId, clientName, accounts, adsets, o
   const [ageMax, setAgeMax] = useState('65')
   const [genders, setGenders] = useState<'all' | 'male' | 'female'>('all')
   const [pixelId, setPixelId] = useState('')
+  const [engagementTarget, setEngagementTarget] = useState<'POST' | 'WHATSAPP'>('WHATSAPP')
   const [error, setError] = useState('')
 
   const activeAccount = accountId || accounts[0]?.id || ''
@@ -46,6 +47,8 @@ export function NewDestinationDialog({ clientId, clientName, accounts, adsets, o
 
   const objectiveInfo = OBJECTIVES.find((item) => item.value === objective)!
   const needsPixel = campaignMode === 'new' && objectiveInfo.needsPixel
+  const showEngagementTarget = campaignMode === 'existing' || objective === 'OUTCOME_ENGAGEMENT'
+  const toWhatsapp = showEngagementTarget && engagementTarget === 'WHATSAPP'
   const { data: pixels, isLoading: loadingPixels } = useSWR(open && activeAccount ? ['meta-pixels', clientId, activeAccount] : null, () => fetchPixels(clientId, activeAccount))
 
   const suggestedCampaign = `${tag(clientName)}_${objectiveInfo.tag}_${month()}`
@@ -70,7 +73,7 @@ export function NewDestinationDialog({ clientId, clientName, accounts, adsets, o
       id: newId('new'),
       accountId: activeAccount,
       campaign: campaignMode === 'new' ? { mode: 'new', name: finalCampaign, objective } : { mode: 'existing', id: existingCampaign!.id, name: existingCampaign!.name },
-      adset: { name: finalAdset, dailyBudget: Number(budget), countries, ageMin: Number(ageMin), ageMax: Number(ageMax), genders, pixelId: pixelId || undefined },
+      adset: { name: finalAdset, dailyBudget: Number(budget), countries, ageMin: Number(ageMin), ageMax: Number(ageMax), genders, pixelId: pixelId || undefined, ...(toWhatsapp ? { destination: 'WHATSAPP' as const } : {}) },
     }
     addDestination(destination)
     onCreated(destination.id)
@@ -133,6 +136,22 @@ export function NewDestinationDialog({ clientId, clientName, accounts, adsets, o
               </Select>
             )}
           </fieldset>
+
+          {showEngagementTarget && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[11px] text-[#555]">Dónde ocurre la interacción</span>
+              <div role="radiogroup" aria-label="Dónde ocurre la interacción" className="inline-flex w-fit rounded-full border border-[#dcdcd8] bg-[#f5f5f3] p-0.5">
+                {([['WHATSAPP', 'WhatsApp'], ['POST', campaignMode === 'existing' ? 'Según la campaña' : 'En la publicación']] as const).map(([value, label]) => (
+                  <button key={value} type="button" role="radio" aria-checked={engagementTarget === value} onClick={() => setEngagementTarget(value)} className={cn('rounded-full px-4 py-1.5 text-[11.5px] font-medium', engagementTarget === value ? 'bg-white text-[#141414] shadow-sm' : 'text-[#777]')}>{label}</button>
+                ))}
+              </div>
+              <p className="text-pretty text-[11.5px] leading-relaxed text-[#777]">
+                {toWhatsapp
+                  ? `El conjunto optimiza conversaciones y los anuncios abren WhatsApp: no hace falta URL de destino. La página de Facebook tiene que tener el número de WhatsApp vinculado${campaignMode === 'existing' ? ', y la campaña tiene que ser de Interacción' : ''}.`
+                  : campaignMode === 'existing' ? 'El conjunto usa la optimización del objetivo de la campaña.' : 'Optimiza interacciones con la publicación (me gusta, comentarios, compartidos).'}
+              </p>
+            </div>
+          )}
 
           <fieldset className="flex flex-col gap-3">
             <legend className="mb-2 text-[12px] font-semibold">Conjunto de anuncios</legend>

@@ -289,7 +289,7 @@ async function fetchActiveCampaignIds(accountId: string, accessToken: string) {
   return ids
 }
 
-export type MetaAdsetCatalogItem = { id: string; name: string; status: string; campaign_id: string; campaign_name: string; campaign_status: string }
+export type MetaAdsetCatalogItem = { id: string; name: string; status: string; destination_type?: string; campaign_id: string; campaign_name: string; campaign_status: string }
 
 // Insights solo devuelve conjuntos con entrega en el período; para la carga masiva hacen falta también los pausados y recién creados.
 const CATALOG_STATUSES = ['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'IN_PROCESS', 'WITH_ISSUES']
@@ -297,17 +297,17 @@ const CATALOG_STATUSES = ['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'IN_PROCESS', '
 async function fetchAdsetCatalog(accountId: string, accessToken: string) {
   let url: string | null = `${META_BASE_URL}/act_${accountId}/adsets?${new URLSearchParams({
     access_token: accessToken,
-    fields: 'id,name,effective_status,campaign{id,name,effective_status}',
+    fields: 'id,name,effective_status,destination_type,campaign{id,name,effective_status}',
     filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: CATALOG_STATUSES }]),
     limit: '500',
   })}`
   const items: MetaAdsetCatalogItem[] = []
   while (url) {
     const payload = await fetchJson(url)
-    for (const raw of (payload.data ?? []) as unknown as Array<{ id?: string; name?: string; effective_status?: string; campaign?: { id?: string; name?: string; effective_status?: string } }>) {
+    for (const raw of (payload.data ?? []) as unknown as Array<{ id?: string; name?: string; effective_status?: string; destination_type?: string; campaign?: { id?: string; name?: string; effective_status?: string } }>) {
       if (!raw.id) continue
       items.push({
-        id: raw.id, name: raw.name || 'Conjunto sin nombre', status: raw.effective_status || '',
+        id: raw.id, name: raw.name || 'Conjunto sin nombre', status: raw.effective_status || '', destination_type: raw.destination_type || '',
         campaign_id: raw.campaign?.id || '', campaign_name: raw.campaign?.name || 'Campaña sin nombre', campaign_status: raw.campaign?.effective_status || '',
       })
     }

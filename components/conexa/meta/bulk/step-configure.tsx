@@ -18,7 +18,35 @@ import { NewDestinationDialog, type MetaAccountOption } from './new-destination-
 const fieldClass = 'border-[#dcdcd8] bg-white text-[12px] text-[#141414] placeholder:text-[#aaa] dark:bg-white'
 const ISSUE_COLOR = { warn: 'text-[#a86412]', info: 'text-[#888]', error: 'text-[#c23b3b]' } as const
 
-function Row({ row, index, adsets, clientName, selected }: { row: BulkRow; index: number; adsets: BulkAdset[]; clientName: string; selected: boolean }) {
+type CopyField = 'primaryText' | 'headline'
+
+function CopyActions({ value, applyLabel, onApply }: { value: string; applyLabel: string; onApply: () => void }) {
+  const [copied, setCopied] = useState(false)
+  const empty = !value.trim()
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      <button type="button" disabled={empty} onClick={copy} className="text-[10px] font-semibold text-[#555] hover:text-[#141414] hover:underline disabled:text-[#ccc] disabled:no-underline">
+        {copied ? 'Copiado' : 'Copiar'}
+      </button>
+      <button type="button" disabled={empty} onClick={onApply} className="text-[10px] font-semibold text-[#5B5FE8] hover:underline disabled:text-[#ccc] disabled:no-underline">
+        {applyLabel}
+      </button>
+    </div>
+  )
+}
+
+function Row({ row, index, adsets, clientName, selected, applyLabel, onApply }: { row: BulkRow; index: number; adsets: BulkAdset[]; clientName: string; selected: boolean; applyLabel: string; onApply: (field: CopyField, value: string) => void }) {
   const updateRow = useBulkStore((state) => state.updateRow)
   const toggleSelected = useBulkStore((state) => state.toggleSelected)
   const { state, issues } = validateRow(row)
@@ -78,9 +106,15 @@ function Row({ row, index, adsets, clientName, selected }: { row: BulkRow; index
           {row.aiGenerated ? <span className="text-[10px] font-semibold text-[#5B5FE8]">{'✦ Copy de Conexa'}</span> : <span />}
           <span className={cn('font-mono text-[10px]', overLimit ? 'font-semibold text-[#a86412]' : 'text-[#999]')}>{`${row.primaryText.length}/${PRIMARY_TEXT_LIMIT}`}</span>
         </div>
+        <div className="mt-1">
+          <CopyActions value={row.primaryText} applyLabel={applyLabel} onApply={() => onApply('primaryText', row.primaryText)} />
+        </div>
       </td>
       <td className="px-3 py-3">
         <Input value={row.headline} onChange={(event) => updateRow(row.id, { headline: event.target.value, aiGenerated: false })} placeholder="Título" aria-label="Título" className={cn('h-8 w-[180px]', fieldClass)} />
+        <div className="mt-1">
+          <CopyActions value={row.headline} applyLabel={applyLabel} onApply={() => onApply('headline', row.headline)} />
+        </div>
       </td>
       <td className="px-3 py-3">
         <Select value={row.cta} onValueChange={(cta) => updateRow(row.id, { cta: cta as CTA })}>
@@ -122,6 +156,12 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
 
   const targetIds = selected.length ? selected : rows.map((row) => row.id)
   const allSelected = rows.length > 0 && selected.length === rows.length
+  const applyLabel = selected.length ? `Aplicar a ${selected.length} seleccionados` : 'Aplicar a todos'
+
+  function applyCopy(field: CopyField, value: string) {
+    const ids = rows.filter((row) => row.status !== 'done' && targetIds.includes(row.id)).map((row) => row.id)
+    updateRows(ids, { [field]: value, aiGenerated: false })
+  }
 
   async function writeCopies() {
     const targets = rows.filter((row) => row.status !== 'done' && (selected.length ? selected.includes(row.id) : !row.primaryText.trim() || !row.headline.trim()))
@@ -178,7 +218,7 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => <Row key={row.id} row={row} index={index} adsets={adsets} clientName={clientName} selected={selected.includes(row.id)} />)}
+              {rows.map((row, index) => <Row key={row.id} row={row} index={index} adsets={adsets} clientName={clientName} selected={selected.includes(row.id)} applyLabel={applyLabel} onApply={applyCopy} />)}
             </tbody>
           </table>
         </div>

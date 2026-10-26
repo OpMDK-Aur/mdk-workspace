@@ -52,7 +52,7 @@ export type NewDestination = {
   id: string
   accountId: string
   campaign: { mode: 'new'; name: string; objective: Objective } | { mode: 'existing'; id: string; name: string }
-  adset: { name: string; dailyBudget: number; countries: string[]; ageMin: number; ageMax: number; genders: 'all' | 'male' | 'female'; pixelId?: string }
+  adset: { name: string; dailyBudget: number; countries: string[]; ageMin: number; ageMax: number; genders: 'all' | 'male' | 'female'; pixelId?: string; destination?: 'WHATSAPP' }
   created?: { campaignId: string; adsetId: string }
 }
 
@@ -66,6 +66,7 @@ export function destinationToAdset(destination: NewDestination): BulkAdset {
     campaignName: destination.campaign.name,
     status: 'NEW',
     accountId: destination.accountId,
+    destination: destination.adset.destination,
   }
 }
 
@@ -80,7 +81,9 @@ export type CreativeSuggestion = {
   basis: string
 }
 
-export type BulkAdset = { id: string; name: string; campaignId: string; campaignName: string; status: string; accountId?: string }
+export type BulkAdset = { id: string; name: string; campaignId: string; campaignName: string; status: string; accountId?: string; destination?: string }
+
+export const isWhatsappAdset = (adset?: BulkAdset) => adset?.destination === 'WHATSAPP'
 
 const STATUS_LABELS: Record<string, string> = {
   NEW: 'Nuevo',
