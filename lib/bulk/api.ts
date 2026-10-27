@@ -1,6 +1,6 @@
 import type { CreativeCard } from '@/lib/meta/to-creative-card'
 import { createClient } from '@/lib/supabase/client'
-import { HEADLINE_LIMIT, PRIMARY_TEXT_LIMIT, type BulkAsset, type BulkRow, type CreativeSuggestion, type NewDestination, type PublishInitialStatus, type Ratio } from './types'
+import { HEADLINE_LIMIT, PRIMARY_TEXT_LIMIT, type BulkAsset, type BulkRow, type CreativeSuggestion, type LibraryAd, type NewDestination, type PublishInitialStatus, type Ratio } from './types'
 
 // Phase 1 mocks. Swap each body for the real endpoint call:
 // POST /api/conexa/meta/bulk/copies, GET /api/conexa/meta/creative-suggestions, POST /api/conexa/meta/bulk/publish (SSE).
@@ -95,7 +95,7 @@ export async function uploadBulkAsset(clientId: string, asset: BulkAsset): Promi
 
 // Meta usa un solo archivo por anuncio en esta versión: priorizamos los formatos de feed.
 export function primaryAsset(assets: BulkAsset[]) {
-  const ready = assets.filter((asset) => !asset.pending && asset.file)
+  const ready = assets.filter((asset) => !asset.pending && (asset.file || asset.sourceAdId))
   const order: Ratio[] = ['4:5', '1:1', '1.91:1', '9:16']
   return [...ready].sort((a, b) => order.indexOf(a.ratio) - order.indexOf(b.ratio))[0]
 }
@@ -114,7 +114,7 @@ export async function createDestination({ clientId, destination, status, pageId 
 export async function publishAd({ clientId, pageId, row, adsetId, name, status, link }: { clientId: string; pageId?: string; row: BulkRow; adsetId: string; name: string; status: PublishInitialStatus; link: string }) {
   const asset = primaryAsset(row.assets)
   if (!asset) throw new Error('El anuncio no tiene un archivo listo para subir.')
-  const url = await uploadBulkAsset(clientId, asset)
+  const url = asset.sourceAdId ? '' : await uploadBulkAsset(clientId, asset)
   return postJson<{ adId: string; accountId: string }>('/api/conexa/meta/bulk/ad', {
     clientId,
     pageId,
@@ -125,8 +125,15 @@ export async function publishAd({ clientId, pageId, row, adsetId, name, status, 
     headline: row.headline,
     cta: row.cta,
     link,
-    asset: { url, kind: asset.kind, name: asset.name },
+    asset: { url, kind: asset.kind, name: asset.name, sourceAdId: asset.sourceAdId },
   })
+}
+
+export async function fetchLibraryAds(clientId: string) {
+  const response = await fetch(`/api/conexa/meta/bulk/library?${new URLSearchParams({ clientId })}`)
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.error ?? 'No se pudieron cargar los anuncios de la cuenta')
+  return (payload.ads ?? []) as LibraryAd[]
 }
 
 export async function fetchClientPages(clientId: string) {

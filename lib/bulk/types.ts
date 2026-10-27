@@ -13,7 +13,10 @@ export type BulkAsset = {
   pending?: boolean
   metaHash?: string
   metaVideoId?: string
+  sourceAdId?: string
 }
+
+export type LibraryAd = { id: string; name: string; status: string; campaignName: string; accountId: string; createdTime: string; kind: 'image' | 'video'; thumbnail: string | null; primaryText: string; headline: string }
 
 export type BulkRowStatus = 'idle' | 'uploading' | 'creating' | 'done' | 'error'
 

@@ -25,7 +25,47 @@ export type StructureInput = {
   adset: NewAdsetInput
 }
 
-export type AdAssetInput = { url: string; kind: 'image' | 'video'; name: string }
+export type SourceAdMedia = { accountId: string; kind: 'image' | 'video'; imageHash?: string; imageUrl?: string; videoId?: string; thumbnail?: string }
+
+export type AdAssetInput = { url: string; kind: 'image' | 'video'; name: string; source?: SourceAdMedia }
+
+export type LibraryAd = { id: string; name: string; status: string; campaignName: string; accountId: string; createdTime: string; kind: 'image' | 'video'; thumbnail: string | null; primaryText: string; headline: string }
+
+type Text = { text?: string }
+type RawAdCreative = {
+  body?: string; title?: string; image_hash?: string; image_url?: string; thumbnail_url?: string; video_id?: string
+  object_story_spec?: {
+    link_data?: { message?: string; name?: string; image_hash?: string; picture?: string; child_attachments?: unknown[] }
+    video_data?: { message?: string; title?: string; video_id?: string; image_url?: string }
+  }
+  asset_feed_spec?: { bodies?: Text[]; titles?: Text[]; images?: Array<{ hash?: string; url?: string }>; videos?: Array<{ video_id?: string; thumbnail_url?: string }> }
+}
+type RawAd = { id: string; name?: string; effective_status?: string; created_time?: string; account_id?: string; campaign?: { name?: string }; creative?: RawAdCreative }
+
+const AD_LIBRARY_CREATIVE = 'creative.thumbnail_width(400).thumbnail_height(400){body,title,image_hash,image_url,thumbnail_url,video_id,object_story_spec,asset_feed_spec}'
+
+function creativeCopy(creative: RawAdCreative = {}) {
+  const story = creative.object_story_spec
+  const feed = creative.asset_feed_spec
+  return {
+    primaryText: creative.body || story?.link_data?.message || story?.video_data?.message || feed?.bodies?.[0]?.text || '',
+    headline: creative.title || story?.link_data?.name || story?.video_data?.title || feed?.titles?.[0]?.text || '',
+  }
+}
+
+// Carruseles quedan afuera: la carga masiva publica una sola pieza por anuncio.
+function creativeMedia(accountId: string, creative: RawAdCreative = {}): SourceAdMedia | null {
+  const story = creative.object_story_spec
+  const feed = creative.asset_feed_spec
+  if (story?.link_data?.child_attachments?.length) return null
+  const videoId = creative.video_id || story?.video_data?.video_id || feed?.videos?.[0]?.video_id
+  const thumbnail = creative.thumbnail_url || story?.video_data?.image_url || feed?.videos?.[0]?.thumbnail_url || creative.image_url
+  if (videoId) return { accountId, kind: 'video', videoId, thumbnail }
+  const imageHash = creative.image_hash || story?.link_data?.image_hash || feed?.images?.[0]?.hash
+  const imageUrl = creative.image_url || story?.link_data?.picture || feed?.images?.[0]?.url || creative.thumbnail_url
+  if (!imageHash && !imageUrl) return null
+  return { accountId, kind: 'image', imageHash, imageUrl, thumbnail: creative.thumbnail_url || imageUrl }
+}
 
 export type AdInput = {
   adsetId: string
@@ -188,6 +228,50 @@ async function uploadVideo(accountId: string, asset: AdAssetInput) {
   throw new MetaPublishError(`El video ${asset.name} sigue procesándose en Meta. Reintentá en unos minutos.`, 'video')
 }
 
+async function sourceVideo(source: SourceAdMedia) {
+  const videoId = source.videoId as string
+  if (source.thumbnail) return { videoId, thumbnail: source.thumbnail }
+  const video = await graph<{ picture?: string }>('video', videoId, { params: { fields: 'picture' } })
+  if (!video.picture) throw new MetaPublishError('No se pudo obtener la miniatura del video original.', 'video')
+  return { videoId, thumbnail: video.picture }
+}
+
+// Los hashes de imagen son propios de cada cuenta: en otra cuenta la imagen se vuelve a subir.
+async function sourceImageHash(accountId: string, asset: AdAssetInput) {
+  const source = asset.source as SourceAdMedia
+  if (source.imageHash && source.accountId.replace(/^act_/, '') === accountId.replace(/^act_/, '')) return source.imageHash
+  if (!source.imageUrl) throw new MetaPublishError(`No se pudo copiar la imagen de ${asset.name} a esta cuenta.`, 'imagen')
+  return uploadImage(accountId, { ...asset, url: source.imageUrl })
+}
+
+export async function listLibraryAds(accountId: string): Promise<LibraryAd[]> {
+  const result = await graph<{ data?: RawAd[] }>('biblioteca', `${act(accountId)}/ads`, {
+    params: { fields: `id,name,effective_status,created_time,account_id,campaign{name},${AD_LIBRARY_CREATIVE}`, limit: '100' },
+  })
+  return (result.data ?? []).flatMap((ad) => {
+    const media = creativeMedia(ad.account_id ?? accountId, ad.creative)
+    if (!media) return []
+    return [{
+      id: ad.id,
+      name: ad.name ?? `Anuncio ${ad.id}`,
+      status: ad.effective_status ?? '',
+      campaignName: ad.campaign?.name ?? '',
+      accountId: ad.account_id ?? accountId,
+      createdTime: ad.created_time ?? '',
+      kind: media.kind,
+      thumbnail: media.thumbnail ?? null,
+      ...creativeCopy(ad.creative),
+    }]
+  })
+}
+
+export async function getSourceAdMedia(adId: string) {
+  const ad = await graph<RawAd>('anuncio de origen', adId, { params: { fields: `account_id,${AD_LIBRARY_CREATIVE}` } })
+  const media = creativeMedia(ad.account_id ?? '', ad.creative)
+  if (!media || !ad.account_id) throw new MetaPublishError('El anuncio elegido no tiene una imagen o video reutilizable.', 'anuncio de origen')
+  return media
+}
+
 export async function createAd(input: AdInput) {
   const adset = await graph<{ account_id: string; destination_type?: string }>('conjunto', input.adsetId, { params: { fields: 'account_id,destination_type' } })
   const accountId = adset.account_id
@@ -200,10 +284,10 @@ export async function createAd(input: AdInput) {
 
   let objectStorySpec: Record<string, unknown>
   if (input.asset.kind === 'video') {
-    const { videoId, thumbnail } = await uploadVideo(accountId, input.asset)
+    const { videoId, thumbnail } = input.asset.source?.videoId ? await sourceVideo(input.asset.source) : await uploadVideo(accountId, input.asset)
     objectStorySpec = { page_id: input.pageId, video_data: { video_id: videoId, image_url: thumbnail, message: input.primaryText, title: input.headline, call_to_action: callToAction } }
   } else {
-    const hash = await uploadImage(accountId, input.asset)
+    const hash = input.asset.source ? await sourceImageHash(accountId, input.asset) : await uploadImage(accountId, input.asset)
     objectStorySpec = { page_id: input.pageId, link_data: { image_hash: hash, link, message: input.primaryText, name: input.headline, call_to_action: callToAction } }
   }
 

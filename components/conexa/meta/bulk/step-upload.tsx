@@ -10,6 +10,7 @@ import type { CreativeCard } from '@/lib/meta/to-creative-card'
 import { Chip, Panel } from './bulk-shared'
 import { CompactSuggestions } from './creative-suggestions'
 import { ExistingCampaigns } from './existing-campaigns'
+import { LibraryAdsPicker } from './library-ads-picker'
 import { StrategyCard } from './strategy/strategy-card'
 
 const SAMPLE_FILES = [
@@ -62,6 +63,8 @@ export function StepUpload({ clientId, clientName, adsets = [], creatives, desti
             JPG, PNG, MP4 o MOV. Conexa detecta el formato y agrupa en un solo anuncio las versiones 1:1, 4:5 y 9:16 de una misma pieza (ej. oferta_1x1.jpg + oferta_9x16.jpg).
           </p>
           <input ref={inputRef} type="file" multiple accept={ACCEPTED_TYPES.join(',')} className="sr-only" onChange={(event) => { handleFiles(event.target.files); event.target.value = '' }} aria-label="Elegir archivos" />
+          <span className="text-[11px] text-[#999]">o</span>
+          <LibraryAdsPicker clientId={clientId} />
         </div>
         <div className="flex items-center justify-between">
           <button type="button" onClick={() => addAssets(sampleAssets())} className="text-[11.5px] font-semibold text-[#5B5FE8] hover:underline">
