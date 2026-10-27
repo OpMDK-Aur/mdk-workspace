@@ -19,6 +19,7 @@ const fieldClass = 'border-[#dcdcd8] bg-white text-[12px] text-[#141414] placeho
 const ISSUE_COLOR = { warn: 'text-[#a86412]', info: 'text-[#888]', error: 'text-[#c23b3b]' } as const
 
 type CopyField = 'primaryText' | 'headline'
+type ApplyField = CopyField | 'adsetId'
 
 function CopyActions({ value, applyLabel, onApply }: { value: string; applyLabel: string; onApply: () => void }) {
   const [copied, setCopied] = useState(false)
@@ -46,7 +47,7 @@ function CopyActions({ value, applyLabel, onApply }: { value: string; applyLabel
   )
 }
 
-function CampaignAdsetPicker({ row, adsets, currentAdset, onChange }: { row: BulkRow; adsets: BulkAdset[]; currentAdset?: BulkAdset; onChange: (adsetId: string) => void }) {
+function CampaignAdsetPicker({ row, adsets, currentAdset, applyLabel, onChange, onApply }: { row: BulkRow; adsets: BulkAdset[]; currentAdset?: BulkAdset; applyLabel: string; onChange: (adsetId: string) => void; onApply: () => void }) {
   const campaigns = useMemo(
     () => groupAdsetsByCampaign(adsets).map((group) => ({ ...group, objective: group.adsets.find((adset) => adset.objective)?.objective })),
     [adsets],
@@ -102,11 +103,20 @@ function CampaignAdsetPicker({ row, adsets, currentAdset, onChange }: { row: Bul
           )}
         </div>
       )}
+      <button
+        type="button"
+        disabled={!currentAdset}
+        onClick={onApply}
+        title={currentAdset ? `${currentAdset.campaignName} › ${currentAdset.name}` : 'Elegí un conjunto para aplicarlo'}
+        className="self-start text-[10px] font-semibold text-[#5B5FE8] hover:underline disabled:text-[#ccc] disabled:no-underline"
+      >
+        {`${applyLabel} (campaña y conjunto)`}
+      </button>
     </div>
   )
 }
 
-function Row({ row, index, adsets, clientName, selected, applyLabel, onApply }: { row: BulkRow; index: number; adsets: BulkAdset[]; clientName: string; selected: boolean; applyLabel: string; onApply: (field: CopyField, value: string) => void }) {
+function Row({ row, index, adsets, clientName, selected, applyLabel, onApply }: { row: BulkRow; index: number; adsets: BulkAdset[]; clientName: string; selected: boolean; applyLabel: string; onApply: (field: ApplyField, value: string) => void }) {
   const updateRow = useBulkStore((state) => state.updateRow)
   const toggleSelected = useBulkStore((state) => state.toggleSelected)
   const { state, issues } = validateRow(row)
@@ -135,7 +145,14 @@ function Row({ row, index, adsets, clientName, selected, applyLabel, onApply }: 
         <p className={cn('text-[11px]', draft ? 'text-[#5B5FE8]' : 'text-[#999]')}>{draft ? 'Sugerido por Conexa' : `${row.assets.length} ${row.assets.length === 1 ? 'archivo' : 'archivos'}`}</p>
       </td>
       <td className="px-3 py-3">
-        <CampaignAdsetPicker row={row} adsets={adsets} currentAdset={currentAdset} onChange={(adsetId) => updateRow(row.id, { adsetId })} />
+        <CampaignAdsetPicker
+          row={row}
+          adsets={adsets}
+          currentAdset={currentAdset}
+          applyLabel={applyLabel}
+          onChange={(adsetId) => updateRow(row.id, { adsetId })}
+          onApply={() => onApply('adsetId', row.adsetId ?? '')}
+        />
       </td>
       <td className="px-3 py-3">
         <Textarea
@@ -202,9 +219,10 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
   const allSelected = rows.length > 0 && selected.length === rows.length
   const applyLabel = selected.length ? `Aplicar a ${selected.length} seleccionados` : 'Aplicar a todos'
 
-  function applyCopy(field: CopyField, value: string) {
+  function applyCopy(field: ApplyField, value: string) {
+    if (!value) return
     const ids = rows.filter((row) => row.status !== 'done' && targetIds.includes(row.id)).map((row) => row.id)
-    updateRows(ids, { [field]: value, aiGenerated: false })
+    updateRows(ids, field === 'adsetId' ? { adsetId: value } : { [field]: value, aiGenerated: false })
   }
 
   async function writeCopies() {
