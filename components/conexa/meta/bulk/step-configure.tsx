@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { generateCopies } from '@/lib/bulk/api'
 import { adName, derivePlacement } from '@/lib/bulk/group-assets'
 import { useBulkStore } from '@/lib/bulk/store'
-import { CTAS, PRIMARY_TEXT_LIMIT, adsetStatusLabel, groupAdsetsByCampaign, isAdsetActive, type BulkAdset, type BulkRow, type CTA } from '@/lib/bulk/types'
+import { CTAS, PRIMARY_TEXT_LIMIT, adsetDestinationInfo, adsetStatusLabel, objectiveLabel, groupAdsetsByCampaign, isAdsetActive, type BulkAdset, type BulkRow, type CTA } from '@/lib/bulk/types'
 import { isDraft, validateRow } from '@/lib/bulk/validate'
 import { AssetThumb, StateBadge } from './bulk-shared'
 import { NewDestinationDialog, type MetaAccountOption } from './new-destination-dialog'
@@ -46,6 +46,66 @@ function CopyActions({ value, applyLabel, onApply }: { value: string; applyLabel
   )
 }
 
+function CampaignAdsetPicker({ row, adsets, currentAdset, onChange }: { row: BulkRow; adsets: BulkAdset[]; currentAdset?: BulkAdset; onChange: (adsetId: string) => void }) {
+  const campaigns = useMemo(
+    () => groupAdsetsByCampaign(adsets).map((group) => ({ ...group, objective: group.adsets.find((adset) => adset.objective)?.objective })),
+    [adsets],
+  )
+  const [pickedCampaign, setPickedCampaign] = useState('')
+  const campaignKey = currentAdset ? currentAdset.campaignId || currentAdset.campaignName : pickedCampaign
+  const campaign = campaigns.find((group) => group.key === campaignKey)
+  const destination = currentAdset ? adsetDestinationInfo(currentAdset) : null
+
+  const selectCampaign = (key: string) => {
+    setPickedCampaign(key)
+    const next = campaigns.find((group) => group.key === key)
+    onChange(next?.adsets.length === 1 ? next.adsets[0].id : '')
+  }
+
+  return (
+    <div className="flex w-[240px] flex-col gap-1.5">
+      <Select value={campaignKey || undefined} onValueChange={selectCampaign}>
+        <SelectTrigger className={cn('h-8 w-full', fieldClass)} aria-label={`Campaña de ${row.baseName}`}><SelectValue placeholder="Elegir campaña" /></SelectTrigger>
+        <SelectContent className="max-h-80">
+          {campaigns.map((group) => (
+            <SelectItem key={group.key} value={group.key}>
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate">{group.campaignName}</span>
+                <span className="text-[11px] text-muted-foreground">{`${objectiveLabel(group.objective)} · ${group.adsets.length} ${group.adsets.length === 1 ? 'conjunto' : 'conjuntos'}`}</span>
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={row.adsetId || undefined} onValueChange={onChange} disabled={!campaign}>
+        <SelectTrigger className={cn('h-8 w-full', fieldClass)} aria-label={`Conjunto de ${row.baseName}`}><SelectValue placeholder={campaign ? 'Elegir conjunto' : 'Primero elegí campaña'} /></SelectTrigger>
+        <SelectContent className="max-h-80">
+          {campaign?.adsets.map((adset) => (
+            <SelectItem key={adset.id} value={adset.id}>
+              <span className="truncate">{adset.name}</span>
+              {!isAdsetActive(adset.status) && <span className="ml-2 shrink-0 text-[11px] text-muted-foreground">{adsetStatusLabel(adset.status)}</span>}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {campaign && (
+        <div className="flex flex-col gap-0.5 text-[11px] leading-relaxed text-[#777]">
+          <span>
+            <span className="font-semibold text-[#444]">Objetivo: </span>
+            {objectiveLabel(currentAdset?.objective ?? campaign.objective)}
+          </span>
+          {destination && (
+            <span className="truncate" title={destination.value}>
+              <span className="font-semibold text-[#444]">{`${destination.label}: `}</span>
+              {destination.value}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Row({ row, index, adsets, clientName, selected, applyLabel, onApply }: { row: BulkRow; index: number; adsets: BulkAdset[]; clientName: string; selected: boolean; applyLabel: string; onApply: (field: CopyField, value: string) => void }) {
   const updateRow = useBulkStore((state) => state.updateRow)
   const toggleSelected = useBulkStore((state) => state.toggleSelected)
@@ -75,23 +135,7 @@ function Row({ row, index, adsets, clientName, selected, applyLabel, onApply }: 
         <p className={cn('text-[11px]', draft ? 'text-[#5B5FE8]' : 'text-[#999]')}>{draft ? 'Sugerido por Conexa' : `${row.assets.length} ${row.assets.length === 1 ? 'archivo' : 'archivos'}`}</p>
       </td>
       <td className="px-3 py-3">
-        <Select value={row.adsetId || undefined} onValueChange={(adsetId) => updateRow(row.id, { adsetId })}>
-          <SelectTrigger className={cn('h-8 w-[220px]', fieldClass)} aria-label="Conjunto"><SelectValue placeholder="Elegir conjunto" /></SelectTrigger>
-          <SelectContent className="max-h-80">
-            {groupAdsetsByCampaign(adsets).map((group) => (
-              <SelectGroup key={group.key}>
-                <SelectLabel className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.campaignName}</SelectLabel>
-                {group.adsets.map((adset) => (
-                  <SelectItem key={adset.id} value={adset.id}>
-                    <span className="truncate">{adset.name}</span>
-                    {!isAdsetActive(adset.status) && <span className="ml-2 shrink-0 text-[11px] text-muted-foreground">{adsetStatusLabel(adset.status)}</span>}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            ))}
-          </SelectContent>
-        </Select>
-        {currentAdset && <p className="mt-1 max-w-[220px] truncate text-[11px] text-[#777]" title={currentAdset.campaignName}>{`Campaña: ${currentAdset.campaignName}`}</p>}
+        <CampaignAdsetPicker row={row} adsets={adsets} currentAdset={currentAdset} onChange={(adsetId) => updateRow(row.id, { adsetId })} />
       </td>
       <td className="px-3 py-3">
         <Textarea
@@ -214,7 +258,7 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
                 <th className="w-10 px-3 py-3">
                   <Checkbox checked={allSelected} onCheckedChange={(checked) => setSelected(checked ? rows.map((row) => row.id) : [])} aria-label="Seleccionar todos" className="border-[#bbb] bg-white" />
                 </th>
-                {['Piezas', 'Anuncio', 'Conjunto', 'Texto principal', 'Título', 'CTA', 'Estado'].map((header) => <th key={header} className="px-3 py-3 font-semibold">{header}</th>)}
+                {['Piezas', 'Anuncio', 'Campaña y conjunto', 'Texto principal', 'Título', 'CTA', 'Estado'].map((header) => <th key={header} className="px-3 py-3 font-semibold">{header}</th>)}
               </tr>
             </thead>
             <tbody>
