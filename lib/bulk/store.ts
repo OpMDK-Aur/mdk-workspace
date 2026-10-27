@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { groupAssets, mergeRows, newId, revokeAssetUrls } from './group-assets'
-import type { BulkAsset, BulkDefaults, BulkRow, CreativeSuggestion, NewDestination, PublishInitialStatus } from './types'
+import type { BulkAsset, BulkDefaults, BulkRow, CreativeSuggestion, LibraryAd, NewDestination, PublishInitialStatus } from './types'
 
 export type BulkStep = 1 | 2 | 3
 export type PublishPhase = 'idle' | 'publishing' | 'finished'
@@ -28,6 +28,7 @@ type BulkState = {
   setDefaults: (defaults: Partial<BulkDefaults>) => void
   addAssets: (assets: BulkAsset[]) => void
   addSuggestion: (suggestion: CreativeSuggestion) => void
+  addLibraryAds: (ads: LibraryAd[]) => void
   updateRow: (id: string, patch: Partial<BulkRow>) => void
   updateRows: (ids: string[], patch: Partial<BulkRow>) => void
   removeRows: (ids: string[]) => void
@@ -77,6 +78,20 @@ export const useBulkStore = create<BulkState>((set, get) => ({
       status: 'idle',
     }
     return { rows: [...state.rows, row] }
+  }),
+  addLibraryAds: (ads) => set((state) => {
+    const used = new Set(state.rows.flatMap((row) => row.assets.map((asset) => asset.sourceAdId).filter(Boolean)))
+    const rows: BulkRow[] = ads.filter((ad) => !used.has(ad.id)).map((ad) => ({
+      id: newId('row'),
+      baseName: ad.name,
+      assets: [{ id: newId('asset'), name: ad.name, kind: ad.kind, ratio: ad.kind === 'video' ? '9:16' : '1:1', sourceAdId: ad.id, ...(ad.thumbnail && { url: ad.thumbnail, kind: 'image' as const }) }],
+      adsetId: state.defaults.adsetId,
+      cta: state.defaults.cta,
+      primaryText: ad.primaryText,
+      headline: ad.headline,
+      status: 'idle',
+    }))
+    return { rows: [...state.rows, ...rows], step: 2 }
   }),
   updateRow: (id, patch) => set((state) => ({ rows: state.rows.map((row) => row.id === id ? { ...row, ...patch } : row) })),
   updateRows: (ids, patch) => set((state) => ({ rows: state.rows.map((row) => ids.includes(row.id) ? { ...row, ...patch } : row) })),

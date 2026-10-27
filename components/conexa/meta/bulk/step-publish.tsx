@@ -103,7 +103,10 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl, page
 
   const missingAdset = groups.ready.some((row) => !adsets.some((item) => item.id === row.adsetId))
   const whatsappCount = groups.ready.filter((row) => isWhatsappAdset(adsets.find((item) => item.id === row.adsetId))).length
-  const needsLink = groups.ready.length === 0 || whatsappCount < groups.ready.length
+  const needsLink = groups.ready.length === 0 || groups.ready.some((row) => {
+    const adset = adsets.find((item) => item.id === row.adsetId)
+    return !isWhatsappAdset(adset) && !adset?.link
+  })
   const linkOk = !needsLink || linkValid
   const statusLabel = initialStatus === 'PAUSED' ? 'pausados' : 'activos'
 
@@ -125,7 +128,7 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl, page
       if (!adset) throw new Error('Elegí un conjunto de anuncios.')
       if (!primaryAsset(row.assets)) throw new Error('El anuncio no tiene un archivo listo para subir.')
       const metaAdsetId = await resolveAdsetId(row.adsetId)
-      const result = await publishAd({ clientId, pageId, row, adsetId: metaAdsetId, name, status: initialStatus, link: isWhatsappAdset(adset) ? '' : link })
+      const result = await publishAd({ clientId, pageId, row, adsetId: metaAdsetId, name, status: initialStatus, link: isWhatsappAdset(adset) ? '' : (linkValid ? link : adset.link ?? link) })
       updateRow(row.id, { status: 'done', metaAdId: result.adId, published: { campaignName: adset.campaignName, adsetName: adset.name, adName: name, adsetId: metaAdsetId, accountId: result.accountId } })
     } catch (error) {
       updateRow(row.id, { status: 'error', error: errorText(error) })

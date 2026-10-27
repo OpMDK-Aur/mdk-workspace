@@ -289,30 +289,149 @@ async function fetchActiveCampaignIds(accountId: string, accessToken: string) {
   return ids
 }
 
-export type MetaAdsetCatalogItem = { id: string; name: string; status: string; destination_type?: string; campaign_id: string; campaign_name: string; campaign_status: string }
+export type MetaAdsetCatalogItem = {
+  id: string; name: string; status: string; destination_type?: string; campaign_id: string; campaign_name: string; campaign_status: string
+  campaign_objective?: string; whatsapp_number?: string; link?: string; lead_form_id?: string; lead_form_name?: string
+}
 
 // Insights solo devuelve conjuntos con entrega en el período; para la carga masiva hacen falta también los pausados y recién creados.
 const CATALOG_STATUSES = ['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'IN_PROCESS', 'WITH_ISSUES']
+const CATALOG_BASE_FIELDS = 'id,name,effective_status,destination_type,campaign{id,name,effective_status,objective}'
+// El destino real (número, enlace o formulario) vive en el creativo: se toma el primer anuncio del conjunto como referencia.
+const CATALOG_DESTINATION_FIELDS = `${CATALOG_BASE_FIELDS},promoted_object,ads.limit(1){creative{effective_object_story_id,object_story_spec,asset_feed_spec}}`
 
-async function fetchAdsetCatalog(accountId: string, accessToken: string) {
+type CatalogCta = { value?: { link?: string; lead_gen_form_id?: string; whatsapp_number?: string } }
+type CatalogRaw = {
+  id?: string; name?: string; effective_status?: string; destination_type?: string
+  promoted_object?: { whatsapp_phone_number?: string; page_id?: string }
+  campaign?: { id?: string; name?: string; effective_status?: string; objective?: string }
+  ads?: { data?: Array<{ creative?: {
+    effective_object_story_id?: string
+    object_story_spec?: { page_id?: string; link_data?: { link?: string; call_to_action?: CatalogCta }; video_data?: { call_to_action?: CatalogCta } }
+    asset_feed_spec?: { link_urls?: Array<{ website_url?: string }>; call_to_actions?: CatalogCta[] }
+  } }> }
+}
+
+function catalogDestination(raw: CatalogRaw) {
+  const creative = raw.ads?.data?.[0]?.creative
+  const story = creative?.object_story_spec
+  const ctas = [story?.link_data?.call_to_action, story?.video_data?.call_to_action, ...(creative?.asset_feed_spec?.call_to_actions ?? [])]
+  const leadFormId = ctas.find((cta) => cta?.value?.lead_gen_form_id)?.value?.lead_gen_form_id
+  const whatsapp = raw.promoted_object?.whatsapp_phone_number || ctas.find((cta) => cta?.value?.whatsapp_number)?.value?.whatsapp_number
+  const link = story?.link_data?.link || story?.video_data?.call_to_action?.value?.link || creative?.asset_feed_spec?.link_urls?.[0]?.website_url
+  return { lead_form_id: leadFormId || undefined, whatsapp_number: whatsapp || undefined, link: link || undefined }
+}
+
+function catalogPageId(raw: CatalogRaw) {
+  const creative = raw.ads?.data?.[0]?.creative
+  return raw.promoted_object?.page_id || creative?.object_story_spec?.page_id || creative?.effective_object_story_id?.split('_')[0] || undefined
+}
+
+const isLeadAdset = (raw: CatalogRaw) =>
+  raw.destination_type?.toUpperCase() === 'ON_AD' || ['OUTCOME_LEADS', 'LEAD_GENERATION'].includes(raw.campaign?.objective?.toUpperCase() ?? '')
+
+// Los formularios y las publicaciones de la página solo se leen con el token de la página.
+async function fetchPageTokens(pageIds: string[], accessToken: string) {
+  const tokens = new Map<string, string>()
+  await Promise.all(pageIds.map(async (pageId) => {
+    try {
+      const payload = await fetchJson(`${META_BASE_URL}/${pageId}?${new URLSearchParams({ access_token: accessToken, fields: 'access_token' })}`) as { access_token?: string }
+      if (payload.access_token) tokens.set(pageId, payload.access_token)
+    } catch {
+      // Sin rol en la página no hay token; se usa el del usuario.
+    }
+  }))
+  return tokens
+}
+
+// Anuncios creados desde una publicación existente no traen el formulario en el creativo: está en el botón de la publicación.
+async function fetchPostLeadFormId(postId: string, accessToken: string) {
+  try {
+    const payload = await fetchJson(`${META_BASE_URL}/${postId}?${new URLSearchParams({ access_token: accessToken, fields: 'call_to_action' })}`) as { call_to_action?: CatalogCta }
+    return payload.call_to_action?.value?.lead_gen_form_id || undefined
+  } catch {
+    return undefined
+  }
+}
+
+async function fetchCatalogPages(accountId: string, accessToken: string, fields: string) {
   let url: string | null = `${META_BASE_URL}/act_${accountId}/adsets?${new URLSearchParams({
     access_token: accessToken,
-    fields: 'id,name,effective_status,destination_type,campaign{id,name,effective_status}',
+    fields,
     filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: CATALOG_STATUSES }]),
-    limit: '500',
+    limit: '200',
   })}`
-  const items: MetaAdsetCatalogItem[] = []
+  const rows: CatalogRaw[] = []
   while (url) {
     const payload = await fetchJson(url)
-    for (const raw of (payload.data ?? []) as unknown as Array<{ id?: string; name?: string; effective_status?: string; destination_type?: string; campaign?: { id?: string; name?: string; effective_status?: string } }>) {
-      if (!raw.id) continue
-      items.push({
-        id: raw.id, name: raw.name || 'Conjunto sin nombre', status: raw.effective_status || '', destination_type: raw.destination_type || '',
-        campaign_id: raw.campaign?.id || '', campaign_name: raw.campaign?.name || 'Campaña sin nombre', campaign_status: raw.campaign?.effective_status || '',
-      })
-    }
+    rows.push(...((payload.data ?? []) as unknown as CatalogRaw[]))
     url = payload.paging?.next ?? null
   }
+  return rows
+}
+
+async function fetchLeadFormNames(formIds: string[], accessToken: string) {
+  const names = new Map<string, string>()
+  for (let index = 0; index < formIds.length; index += 50) {
+    const batch = formIds.slice(index, index + 50)
+    try {
+      const payload = await fetchJson(`${META_BASE_URL}/?${new URLSearchParams({ access_token: accessToken, ids: batch.join(','), fields: 'name' })}`) as unknown as Record<string, { name?: string }>
+      for (const id of batch) if (payload[id]?.name) names.set(id, payload[id].name as string)
+    } catch {
+      // Leer formularios requiere permisos de la página; sin ellos se muestra el ID.
+    }
+  }
+  return names
+}
+
+async function fetchAdsetCatalog(accountId: string, accessToken: string) {
+  let rows: CatalogRaw[]
+  let withDestination = true
+  try {
+    rows = await fetchCatalogPages(accountId, accessToken, CATALOG_DESTINATION_FIELDS)
+  } catch {
+    withDestination = false
+    rows = await fetchCatalogPages(accountId, accessToken, CATALOG_BASE_FIELDS)
+  }
+  const items: MetaAdsetCatalogItem[] = []
+  const leadItems: Array<{ item: MetaAdsetCatalogItem; pageId?: string; postId?: string }> = []
+  for (const raw of rows) {
+    if (!raw.id) continue
+    const item: MetaAdsetCatalogItem = {
+      id: raw.id, name: raw.name || 'Conjunto sin nombre', status: raw.effective_status || '', destination_type: raw.destination_type || '',
+      campaign_id: raw.campaign?.id || '', campaign_name: raw.campaign?.name || 'Campaña sin nombre', campaign_status: raw.campaign?.effective_status || '',
+      campaign_objective: raw.campaign?.objective || '',
+      ...(withDestination ? catalogDestination(raw) : {}),
+    }
+    items.push(item)
+    if (withDestination && (item.lead_form_id || isLeadAdset(raw))) {
+      leadItems.push({ item, pageId: catalogPageId(raw), postId: raw.ads?.data?.[0]?.creative?.effective_object_story_id })
+    }
+  }
+  if (!leadItems.length) return items
+
+  const pageIds = [...new Set(leadItems.map((lead) => lead.pageId).filter((id): id is string => Boolean(id)))]
+  const pageTokens = await fetchPageTokens(pageIds, accessToken)
+  const tokenFor = (pageId?: string) => (pageId && pageTokens.get(pageId)) || accessToken
+
+  await Promise.all(leadItems.filter((lead) => !lead.item.lead_form_id && lead.postId).map(async (lead) => {
+    lead.item.lead_form_id = await fetchPostLeadFormId(lead.postId as string, tokenFor(lead.pageId))
+  }))
+
+  const formsByToken = new Map<string, Set<string>>()
+  for (const lead of leadItems) {
+    if (!lead.item.lead_form_id) continue
+    const token = tokenFor(lead.pageId)
+    formsByToken.set(token, (formsByToken.get(token) ?? new Set()).add(lead.item.lead_form_id))
+  }
+  const names = new Map<string, string>()
+  for (const [token, ids] of formsByToken) {
+    for (const [id, name] of await fetchLeadFormNames([...ids], token)) names.set(id, name)
+  }
+  const missing = [...new Set(leadItems.map((lead) => lead.item.lead_form_id).filter((id): id is string => Boolean(id) && !names.has(id as string)))]
+  if (missing.length) for (const [id, name] of await fetchLeadFormNames(missing, accessToken)) names.set(id, name)
+
+  for (const lead of leadItems) if (lead.item.lead_form_id) lead.item.lead_form_name = names.get(lead.item.lead_form_id)
   return items
 }
 
