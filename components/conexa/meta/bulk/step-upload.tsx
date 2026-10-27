@@ -9,6 +9,7 @@ import { CTAS, type BulkAdset, type BulkAsset } from '@/lib/bulk/types'
 import type { CreativeCard } from '@/lib/meta/to-creative-card'
 import { Chip, Panel } from './bulk-shared'
 import { CompactSuggestions } from './creative-suggestions'
+import { ExistingCampaigns } from './existing-campaigns'
 import { StrategyCard } from './strategy/strategy-card'
 
 const SAMPLE_FILES = [
@@ -24,7 +25,7 @@ function sampleAssets(): BulkAsset[] {
   return SAMPLE_FILES.map((name) => ({ id: newId('asset'), name, kind: name.endsWith('.mp4') ? 'video' : 'image', ratio: ratioFromName(name) ?? '1:1' }))
 }
 
-export function StepUpload({ clientId, clientName, creatives, destinationUrl }: { clientId: string; clientName: string; adsets?: BulkAdset[]; creatives: CreativeCard[]; destinationUrl?: string | null }) {
+export function StepUpload({ clientId, clientName, adsets = [], creatives, destinationUrl }: { clientId: string; clientName: string; adsets?: BulkAdset[]; creatives: CreativeCard[]; destinationUrl?: string | null }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [reading, setReading] = useState(false)
@@ -99,6 +100,7 @@ export function StepUpload({ clientId, clientName, creatives, destinationUrl }: 
         </Panel>
       </div>
       <div className="flex flex-col gap-4">
+        <ExistingCampaigns adsets={adsets} />
         <StrategyCard clientId={clientId} clientName={clientName} destinationUrl={destinationUrl} creatives={creatives} />
         <CompactSuggestions clientId={clientId} creatives={creatives} />
       </div>

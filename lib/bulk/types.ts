@@ -81,7 +81,32 @@ export type CreativeSuggestion = {
   basis: string
 }
 
-export type BulkAdset = { id: string; name: string; campaignId: string; campaignName: string; status: string; accountId?: string; destination?: string }
+export type BulkAdset = {
+  id: string; name: string; campaignId: string; campaignName: string; status: string; accountId?: string; destination?: string
+  objective?: string; whatsappNumber?: string; link?: string; leadFormId?: string; leadFormName?: string
+}
+
+const OBJECTIVE_LABELS: Record<string, string> = {
+  OUTCOME_TRAFFIC: 'Tráfico', LINK_CLICKS: 'Tráfico',
+  OUTCOME_LEADS: 'Clientes potenciales', LEAD_GENERATION: 'Clientes potenciales',
+  OUTCOME_SALES: 'Ventas', CONVERSIONS: 'Ventas', PRODUCT_CATALOG_SALES: 'Ventas por catálogo',
+  OUTCOME_ENGAGEMENT: 'Interacción', MESSAGES: 'Mensajes', POST_ENGAGEMENT: 'Interacción',
+  OUTCOME_AWARENESS: 'Reconocimiento', REACH: 'Alcance', BRAND_AWARENESS: 'Reconocimiento',
+  OUTCOME_APP_PROMOTION: 'Promoción de app',
+}
+
+export const objectiveLabel = (objective?: string) => (objective ? OBJECTIVE_LABELS[objective.toUpperCase()] ?? objective : 'Sin objetivo')
+
+export type AdsetDestinationInfo = { kind: 'whatsapp' | 'form' | 'link' | 'none'; label: string; value: string }
+
+// El objetivo decide qué destino es relevante: WhatsApp → número, formulario instantáneo → nombre del formulario, resto → enlace.
+export function adsetDestinationInfo(adset: BulkAdset): AdsetDestinationInfo {
+  const destination = adset.destination?.toUpperCase() ?? ''
+  if (destination.includes('WHATSAPP') || adset.whatsappNumber) return { kind: 'whatsapp', label: 'WhatsApp', value: adset.whatsappNumber || 'Número de la página' }
+  if (adset.leadFormId || destination === 'ON_AD') return { kind: 'form', label: 'Formulario', value: adset.leadFormName || (adset.leadFormId ? `ID ${adset.leadFormId}` : 'Formulario instantáneo') }
+  if (adset.link) return { kind: 'link', label: 'Enlace', value: adset.link }
+  return { kind: 'none', label: 'Destino', value: 'Sin anuncios de referencia' }
+}
 
 export const isWhatsappAdset = (adset?: BulkAdset) => adset?.destination === 'WHATSAPP'
 
