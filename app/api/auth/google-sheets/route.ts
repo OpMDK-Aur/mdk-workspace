@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
+import { safeReturnPath } from '@/lib/google/return-path'
 
-export async function GET() {
+export async function GET(request: Request) {
   const clientId = process.env.GOOGLE_CLIENT_ID
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   const redirectUri = `${appUrl}/api/auth/google-sheets/callback`
@@ -23,6 +24,9 @@ export async function GET() {
   authUrl.searchParams.set('scope', scopes)
   authUrl.searchParams.set('access_type', 'offline')
   authUrl.searchParams.set('prompt', 'consent')
+
+  const returnTo = safeReturnPath(new URL(request.url).searchParams.get('return'))
+  if (returnTo) authUrl.searchParams.set('state', returnTo)
 
   return NextResponse.redirect(authUrl.toString())
 }

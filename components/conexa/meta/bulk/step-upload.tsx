@@ -11,6 +11,7 @@ import { Chip, Panel } from './bulk-shared'
 import { CompactSuggestions } from './creative-suggestions'
 import { ExistingCampaigns } from './existing-campaigns'
 import { LibraryAdsPicker } from './library-ads-picker'
+import { SheetImportDialog } from './sheet-import-dialog'
 import { StrategyCard } from './strategy/strategy-card'
 
 const SAMPLE_FILES = [
@@ -64,7 +65,10 @@ export function StepUpload({ clientId, clientName, adsets = [], creatives, desti
           </p>
           <input ref={inputRef} type="file" multiple accept={ACCEPTED_TYPES.join(',')} className="sr-only" onChange={(event) => { handleFiles(event.target.files); event.target.value = '' }} aria-label="Elegir archivos" />
           <span className="text-[11px] text-[#999]">o</span>
-          <LibraryAdsPicker clientId={clientId} />
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <LibraryAdsPicker clientId={clientId} />
+            <SheetImportDialog adsets={adsets} />
+          </div>
         </div>
         <div className="flex items-center justify-between">
           <button type="button" onClick={() => addAssets(sampleAssets())} className="text-[11.5px] font-semibold text-[#5B5FE8] hover:underline">

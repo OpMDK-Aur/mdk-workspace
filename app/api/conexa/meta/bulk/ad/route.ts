@@ -46,8 +46,8 @@ export async function POST(request: Request) {
       cta: body.cta,
       link: rawLink,
       asset: source
-        ? { url: source.imageUrl ?? '', kind: source.kind, name: String(body.asset.name ?? 'anuncio').slice(0, 100), source }
-        : { url: body.asset.url, kind: body.asset.kind, name: String(body.asset.name ?? 'archivo').slice(0, 100) },
+        ? { url: source.imageUrl ?? '', kind: source.kind, name: String(body.asset?.name ?? 'anuncio').slice(0, 100), source }
+        : { url: body.asset!.url, kind: body.asset!.kind, name: String(body.asset!.name ?? 'archivo').slice(0, 100) },
     })
     return NextResponse.json(result)
   } catch (cause) {
