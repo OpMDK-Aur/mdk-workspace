@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
+import { safeReturnPath } from '@/lib/google/return-path'
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
@@ -96,7 +97,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL(`/dashboard/platform?error=db_error&msg=${encodeURIComponent(dbError.message)}`, appUrl))
     }
 
-    return NextResponse.redirect(new URL('/dashboard/platform?connected=google_sheets', appUrl))
+    const returnTo = safeReturnPath(requestUrl.searchParams.get('state'))
+    return NextResponse.redirect(new URL(returnTo ?? '/dashboard/platform?connected=google_sheets', appUrl))
   } catch (err) {
     console.error('[google-sheets-callback] Error:', err)
     return NextResponse.redirect(new URL('/dashboard/platform?error=unknown', appUrl))

@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { groupAssets, mergeRows, newId, revokeAssetUrls } from './group-assets'
-import type { BulkAsset, BulkDefaults, BulkRow, CreativeSuggestion, LibraryAd, NewDestination, PublishInitialStatus } from './types'
+import type { BulkAsset, BulkDefaults, BulkRow, CreativeSuggestion, LibraryAd, NewDestination, PublishInitialStatus, SheetImportEntry } from './types'
 
 export type BulkStep = 1 | 2 | 3
 export type PublishPhase = 'idle' | 'publishing' | 'finished'
@@ -29,6 +29,7 @@ type BulkState = {
   addAssets: (assets: BulkAsset[]) => void
   addSuggestion: (suggestion: CreativeSuggestion) => void
   addLibraryAds: (ads: LibraryAd[]) => void
+  addSheetRows: (entries: SheetImportEntry[]) => void
   updateRow: (id: string, patch: Partial<BulkRow>) => void
   updateRows: (ids: string[], patch: Partial<BulkRow>) => void
   removeRows: (ids: string[]) => void
@@ -93,6 +94,19 @@ export const useBulkStore = create<BulkState>((set, get) => ({
     }))
     return { rows: [...state.rows, ...rows], step: 2 }
   }),
+  addSheetRows: (entries) => set((state) => ({
+    rows: [...state.rows, ...entries.map((entry): BulkRow => ({
+      id: newId('row'),
+      baseName: entry.name,
+      assets: entry.assets,
+      adsetId: entry.adsetId || state.defaults.adsetId,
+      cta: entry.cta ?? state.defaults.cta,
+      primaryText: entry.primaryText,
+      headline: entry.headline,
+      status: 'idle',
+    }))],
+    step: 2,
+  })),
   updateRow: (id, patch) => set((state) => ({ rows: state.rows.map((row) => row.id === id ? { ...row, ...patch } : row) })),
   updateRows: (ids, patch) => set((state) => ({ rows: state.rows.map((row) => ids.includes(row.id) ? { ...row, ...patch } : row) })),
   removeRows: (ids) => set((state) => {
