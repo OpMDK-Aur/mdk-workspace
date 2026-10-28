@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getGoogleSheetsAccess } from '@/lib/google/sheets-token'
-import { GoogleApiError, readSheetImport } from '@/lib/google/sheet-import'
+import { GoogleApiError, readSheetGrid, resolveDriveLinks } from '@/lib/google/sheet-import'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -14,7 +14,8 @@ const ACCESS_ERRORS = {
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
   const url = typeof body?.url === 'string' ? body.url.trim().slice(0, 500) : ''
-  if (!url) return NextResponse.json({ error: 'Pegá el link del Google Sheet.' }, { status: 400 })
+  const driveIds: string[] = Array.isArray(body?.driveIds) ? [...new Set<string>(body.driveIds.filter((id: unknown): id is string => typeof id === 'string' && /^[\w-]{10,100}$/.test(id)))].slice(0, 100) : []
+  if (!url && !driveIds.length) return NextResponse.json({ error: 'Pegá el link del Google Sheet.' }, { status: 400 })
 
   const access = await getGoogleSheetsAccess()
   if ('error' in access) {
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    return NextResponse.json(await readSheetImport(access.accessToken, url))
+    return NextResponse.json(driveIds.length ? { links: await resolveDriveLinks(access.accessToken, driveIds) } : await readSheetGrid(access.accessToken, url))
   } catch (error) {
     if (error instanceof GoogleApiError) {
       if (error.status === 403 || error.status === 404) {
