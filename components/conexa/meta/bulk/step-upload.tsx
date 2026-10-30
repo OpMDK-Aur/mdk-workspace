@@ -67,7 +67,7 @@ export function StepUpload({ clientId, clientName, adsets = [], creatives, desti
           <span className="text-[11px] text-[#999]">o</span>
           <div className="flex flex-wrap items-center justify-center gap-2">
             <LibraryAdsPicker clientId={clientId} />
-            <SheetImportDialog adsets={adsets} />
+            <SheetImportDialog destinationUrl={destinationUrl} />
           </div>
         </div>
         <div className="flex items-center justify-between">

@@ -36,6 +36,8 @@ export type BulkRow = {
   headline: string
   aiGenerated?: boolean
   fromSuggestion?: string
+  planAdId?: string
+  planDestination?: { campaignName: string; adsetName: string }
   status?: BulkRowStatus
   error?: string
   metaAdId?: string
