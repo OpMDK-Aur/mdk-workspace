@@ -83,9 +83,14 @@ export async function loadInventory(accountIds: string[]) {
   const results = await Promise.allSettled(accountIds.map(loadAccountInventory))
   const inventory: Inventory = { accounts: [], campaigns: [], adsets: [], ads: [], currency: {} }
   const warnings: string[] = []
+  const failedNames = await Promise.all(results.map((result, index) => result.status === 'rejected'
+    ? metaGet<{ name?: string }>(act(accountIds[index]), { fields: 'name' }).then((account) => account.name).catch(() => undefined)
+    : undefined))
   results.forEach((result, index) => {
     if (result.status === 'rejected') {
-      warnings.push(`No pude leer la cuenta ${accountIds[index]}: ${result.reason instanceof Error ? result.reason.message : 'error de Meta'}`)
+      const name = failedNames[index] ?? accountIds[index]
+      inventory.accounts.push({ id: accountIds[index], name })
+      warnings.push(`No pude leer las campañas de ${name}: ${result.reason instanceof Error ? result.reason.message : 'error de Meta'}`)
       return
     }
     inventory.accounts.push(...result.value.accounts)

@@ -28,10 +28,18 @@ export async function resolveBulkClient(clientId: string) {
     .maybeSingle<ClientRow>()
   if (!data) return { error: NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 }) }
 
+  // The nested select runs under the user's RLS and can hide ad accounts the Meta Ads view does show,
+  // so once access to the client is confirmed the accounts are read the same way that view reads them.
+  const { data: linkedAccounts } = await createAdminClient()
+    .from('cuentas_publicitarias')
+    .select('id_cuenta, plataforma, activo')
+    .eq('cliente_id', clientId)
+    .eq('plataforma', 'meta')
+
   const accountIds = new Set([
     ...(data.meta_ads_account_ids ?? []),
     ...(data.meta_ads_account_id ? [data.meta_ads_account_id] : []),
-    ...(data.cuentas_publicitarias ?? []).filter((item) => item.plataforma === 'meta' && item.activo !== false && item.id_cuenta).map((item) => item.id_cuenta as string),
+    ...[...(data.cuentas_publicitarias ?? []), ...(linkedAccounts ?? [])].filter((item) => item.plataforma === 'meta' && item.activo !== false && item.id_cuenta).map((item) => item.id_cuenta as string),
   ].flatMap((value) => String(value).split(',')).map(normalize).filter(Boolean))
 
   const savedPageIds = parsePageIds(data.meta_page_id)
