@@ -1,66 +1,78 @@
 'use client'
 
-import { useState } from 'react'
-import { FileSpreadsheet, FolderOpen, Loader2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { FileSpreadsheet, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { buildSheetEntries, matchAdset, readSheet, SheetReadError } from '@/lib/bulk/sheet-client'
 import { useBulkStore } from '@/lib/bulk/store'
-import type { BulkAdset, SheetImportResult } from '@/lib/bulk/types'
+import { CTAS } from '@/lib/bulk/types'
+import { BulkPlanError, buildPlanRequest, interpretSheetRequest } from '@/lib/conexa/bulk/client'
+import { CANONICAL_ACTIONS, ACTION_LABELS, ROLES, ROLE_LABELS, type CanonicalAction, type InterpretResponse, type Role, type SheetInterpretation } from '@/lib/conexa/bulk/types'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
-export function SheetImportDialog({ adsets }: { adsets: BulkAdset[] }) {
+const selectClass = 'w-full rounded-md border border-[#e5e5e0] bg-white px-2 py-1.5 text-[12px] text-[#141414] outline-none focus:border-[#5B5FE8]'
+
+export function SheetImportDialog({ destinationUrl }: { destinationUrl?: string | null }) {
   const [open, setOpen] = useState(false)
   const [url, setUrl] = useState('')
-  const [reading, setReading] = useState(false)
+  const [busy, setBusy] = useState<'reading' | 'planning' | null>(null)
   const [error, setError] = useState<{ message: string; needsGoogle: boolean } | null>(null)
-  const [result, setResult] = useState<SheetImportResult | null>(null)
-  const [selected, setSelected] = useState<Set<number>>(new Set())
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
-  const addSheetRows = useBulkStore((state) => state.addSheetRows)
+  const [read, setRead] = useState<InterpretResponse | null>(null)
+  const [interpretation, setInterpretation] = useState<SheetInterpretation | null>(null)
+  const [filter, setFilter] = useState<{ column: string; values: string[] } | undefined>()
+  const [defaults, setDefaults] = useState({ cta: CTAS[0] as string, url: destinationUrl ?? '' })
+  const clientId = useBulkStore((state) => state.clientId)
+  const startSheetPlan = useBulkStore((state) => state.startSheetPlan)
 
-  async function read() {
-    if (!url.trim()) return
-    setReading(true)
+  const filterOptions = useMemo(() => {
+    if (!read || !filter?.column) return []
+    const index = read.grid.headers.indexOf(filter.column)
+    return [...new Set(read.grid.rows.map((row) => row.cells[index]?.trim()).filter(Boolean))] as string[]
+  }, [read, filter?.column])
+
+  const fail = (cause: unknown, fallback: string) => setError({ message: cause instanceof Error ? cause.message : fallback, needsGoogle: cause instanceof BulkPlanError && cause.needsGoogle })
+
+  async function interpret() {
+    if (!url.trim() || !clientId) return
+    setBusy('reading')
     setError(null)
-    setResult(null)
+    setRead(null)
     try {
-      const data = await readSheet(url)
-      setResult(data)
-      setSelected(new Set(data.rows.filter((row) => row.files.length).map((row) => row.rowNumber)))
+      const data = await interpretSheetRequest({ clientId, url })
+      setRead(data)
+      setInterpretation(data.interpretation)
+      setFilter(data.interpretation.suggestedRowFilter)
     } catch (cause) {
-      setError({ message: cause instanceof Error ? cause.message : 'No se pudo leer el sheet.', needsGoogle: cause instanceof SheetReadError && cause.needsGoogle })
+      fail(cause, 'No se pudo leer el sheet.')
     } finally {
-      setReading(false)
+      setBusy(null)
     }
   }
 
-  function toggle(rowNumber: number) {
-    setSelected((current) => {
-      const next = new Set(current)
-      if (next.has(rowNumber)) next.delete(rowNumber)
-      else next.add(rowNumber)
-      return next
-    })
+  async function buildPlan() {
+    if (!interpretation || !clientId) return
+    setBusy('planning')
+    setError(null)
+    try {
+      const { context } = await buildPlanRequest({ clientId, url, interpretation, rowFilter: filter?.values.length ? filter : undefined, batchDefaults: defaults })
+      startSheetPlan(context)
+      setOpen(false)
+      setRead(null)
+      setUrl('')
+    } catch (cause) {
+      fail(cause, 'No se pudo armar el plan.')
+    } finally {
+      setBusy(null)
+    }
   }
 
-  async function importRows() {
-    if (!result) return
-    const rows = result.rows.filter((row) => selected.has(row.rowNumber) && row.files.length)
-    const { entries, failed } = await buildSheetEntries(rows, adsets, (done, total) => setProgress({ done, total }))
-    setProgress(null)
-    if (failed && !entries.length) {
-      setError({ message: 'No se pudo descargar ningún archivo de Drive.', needsGoogle: false })
-      return
-    }
-    addSheetRows(entries)
-    setOpen(false)
-    setResult(null)
-    setUrl('')
-  }
+  const setRole = (header: string, role: Role) => setInterpretation((current) => current && { ...current, columns: current.columns.map((column) => (column.header === header ? { ...column, role, confidence: 1 } : column)) })
+  const setVocabulary = (value: string, action: CanonicalAction) => setInterpretation((current) => current && { ...current, actionVocabulary: { ...current.actionVocabulary, [value]: action } })
+  const setStatus = (key: 'done' | 'error', value: string) => setInterpretation((current) => current && { ...current, statusVocabulary: { ...current.statusVocabulary, [key]: value || undefined } })
+  const toggleFilterValue = (value: string) => setFilter((current) => current && { ...current, values: current.values.includes(value) ? current.values.filter((item) => item !== value) : [...current.values, value] })
 
   const connectHref = typeof window === 'undefined' ? '/api/auth/google-sheets' : `/api/auth/google-sheets?return=${encodeURIComponent(window.location.pathname + window.location.search)}`
-  const importable = result?.rows.filter((row) => selected.has(row.rowNumber) && row.files.length) ?? []
-  const fileCount = importable.reduce((sum, row) => sum + row.files.length, 0)
+  const hasCreatives = interpretation?.columns.some((column) => column.role === 'creatives_link')
+  const hasStatus = interpretation?.columns.some((column) => column.role === 'status')
 
   return (
     <>
@@ -68,23 +80,23 @@ export function SheetImportDialog({ adsets }: { adsets: BulkAdset[] }) {
         <FileSpreadsheet className="size-3.5" aria-hidden="true" />
         Importar desde Google Sheet
       </button>
-      <Dialog open={open} onOpenChange={(next) => { if (!progress) setOpen(next) }}>
-        <DialogContent className="max-w-4xl bg-white text-[#141414]">
+      <Dialog open={open} onOpenChange={(next) => { if (!busy) setOpen(next) }}>
+        <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto bg-white text-[#141414]">
           <DialogHeader>
             <DialogTitle>Importar desde Google Sheet</DialogTitle>
             <DialogDescription className="text-pretty text-[#777]">
-              Cada fila es un anuncio. Leo las columnas Anuncio, Texto principal, Título, CTA y Conjunto, y descargo las imágenes o videos del link de Drive de la fila (archivo o carpeta).
+              Conexa interpreta las columnas de este cliente y arma un plan de carga contra lo que ya existe en Meta. Nada se crea hasta que lo apruebes.
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={(event) => { event.preventDefault(); read() }} className="flex gap-2">
+          <form onSubmit={(event) => { event.preventDefault(); interpret() }} className="flex gap-2">
             <label className="flex flex-1 items-center gap-2 rounded-lg border border-[#e5e5e0] px-3 py-2 focus-within:border-[#5B5FE8]">
               <span className="sr-only">Link del Google Sheet</span>
               <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/…" className="w-full bg-transparent text-[13px] outline-none placeholder:text-[#aaa]" />
             </label>
-            <button type="submit" disabled={reading || !url.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-[#141414] px-4 text-[12.5px] font-semibold text-white disabled:opacity-40">
-              {reading && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
-              {reading ? 'Leyendo…' : 'Leer sheet'}
+            <button type="submit" disabled={Boolean(busy) || !url.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-[#141414] px-4 text-[12.5px] font-semibold text-white disabled:opacity-40">
+              {busy === 'reading' && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
+              {busy === 'reading' ? 'Interpretando…' : 'Leer sheet'}
             </button>
           </form>
 
@@ -95,65 +107,102 @@ export function SheetImportDialog({ adsets }: { adsets: BulkAdset[] }) {
             </div>
           )}
 
-          {result && (
-            <div className="flex flex-col gap-2">
-              <p className="text-[11.5px] text-[#777]">{`${result.title} · ${result.sheetTitle} · ${result.rows.length} filas`}</p>
-              <div className="max-h-[360px] overflow-auto rounded-lg border border-[#ececea]">
-                <table className="w-full min-w-[720px] text-left text-[12px]">
-                  <thead className="sticky top-0 bg-[#fafaf8] text-[10.5px] uppercase tracking-wide text-[#999]">
-                    <tr>
-                      <th className="w-8 px-3 py-2"><span className="sr-only">Incluir</span></th>
-                      <th className="px-2 py-2 font-semibold">Fila</th>
-                      <th className="px-2 py-2 font-semibold">Anuncio</th>
-                      <th className="px-2 py-2 font-semibold">Texto principal</th>
-                      <th className="px-2 py-2 font-semibold">Título</th>
-                      <th className="px-2 py-2 font-semibold">Conjunto</th>
-                      <th className="px-2 py-2 font-semibold">Drive</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.rows.map((row) => {
-                      const disabled = !row.files.length
-                      const adset = matchAdset(row.adsetName, adsets)
-                      return (
-                        <tr key={row.rowNumber} className={cn('border-t border-[#f0f0ed] align-top', disabled && 'opacity-55')}>
-                          <td className="px-3 py-2">
-                            <input type="checkbox" disabled={disabled} checked={selected.has(row.rowNumber)} onChange={() => toggle(row.rowNumber)} aria-label={`Incluir fila ${row.rowNumber}`} className="accent-[#5B5FE8]" />
-                          </td>
-                          <td className="px-2 py-2 font-mono text-[11px] text-[#999]">{row.rowNumber}</td>
-                          <td className="max-w-[140px] truncate px-2 py-2 font-medium">{row.name || '—'}</td>
-                          <td className="max-w-[220px] px-2 py-2 text-[#444]"><span className="line-clamp-2">{row.primaryText || '—'}</span></td>
-                          <td className="max-w-[140px] truncate px-2 py-2 text-[#444]">{row.headline || '—'}</td>
-                          <td className="max-w-[130px] truncate px-2 py-2 text-[#444]">
-                            {row.adsetName ? (adset ? adset.name : <span className="text-[#b07a12]">{`${row.adsetName} (no encontrado)`}</span>) : '—'}
-                          </td>
-                          <td className="px-2 py-2">
-                            {row.error ? (
-                              <span className="text-[#a8321f]">{row.error}</span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-[#333]">
-                                <FolderOpen className="size-3.5 text-[#5B5FE8]" aria-hidden="true" />
-                                {`${row.files.length} archivo${row.files.length === 1 ? '' : 's'}`}
-                                {row.skipped > 0 && <span className="text-[#999]">{` · ${row.skipped} omitidos`}</span>}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+          {read && interpretation && (
+            <div className="flex flex-col gap-4">
+              <p className="text-[11.5px] text-[#777]">
+                {`${read.grid.title} · ${read.grid.sheetTitle} · ${read.grid.rows.length} filas · `}
+                {read.reused === 'full' ? 'Interpretación guardada de este cliente' : read.reused === 'partial' ? 'Interpretación guardada, con columnas nuevas' : 'Interpretación nueva'}
+                {!read.persisted && ' · no se pudo guardar (falta aplicar el SQL)'}
+              </p>
+
+              {interpretation.warnings.length > 0 && (
+                <ul className="flex flex-col gap-1 rounded-lg border border-[#f0e2c2] bg-[#fdf8ec] px-3 py-2 text-[11.5px] text-[#8a5f0d]">
+                  {interpretation.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                </ul>
+              )}
+
+              <fieldset className="rounded-lg border border-[#ececea] p-3">
+                <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-[#999]">Columnas</legend>
+                <div className="grid grid-cols-1 gap-x-4 gap-y-2 md:grid-cols-2">
+                  {interpretation.columns.map((column) => (
+                    <div key={column.header} className="flex items-center gap-2">
+                      <label htmlFor={`role-${column.header}`} className="w-[42%] truncate text-[12px] font-medium" title={column.note ?? column.header}>{column.header}</label>
+                      <select id={`role-${column.header}`} value={column.role} onChange={(event) => setRole(column.header, event.target.value as Role)} className={cn(selectClass, column.confidence < 0.6 && 'border-[#e8c48a]')}>
+                        {ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                {!hasCreatives && <p className="mt-2 text-[11.5px] text-[#a8321f]">Marcá qué columna tiene el link de Drive con los creativos.</p>}
+              </fieldset>
+
+              {Object.keys(interpretation.actionVocabulary).length > 0 && (
+                <fieldset className="rounded-lg border border-[#ececea] p-3">
+                  <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-[#999]">Qué significa cada acción del sheet</legend>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    {Object.entries(interpretation.actionVocabulary).map(([value, action]) => (
+                      <div key={value} className="flex items-center gap-2">
+                        <label htmlFor={`action-${value}`} className="w-[42%] truncate text-[12px]">{`"${value}"`}</label>
+                        <select id={`action-${value}`} value={action} onChange={(event) => setVocabulary(value, event.target.value as CanonicalAction)} className={selectClass}>
+                          {CANONICAL_ACTIONS.map((item) => <option key={item} value={item}>{ACTION_LABELS[item]}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
+
+              <fieldset className="flex flex-wrap gap-4 rounded-lg border border-[#ececea] p-3">
+                <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-[#999]">Filas y valores por defecto</legend>
+                <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
+                  <label htmlFor="row-filter" className="text-[11.5px] font-semibold">Procesar solo filas donde</label>
+                  <select id="row-filter" value={filter?.column ?? ''} onChange={(event) => setFilter(event.target.value ? { column: event.target.value, values: [] } : undefined)} className={selectClass}>
+                    <option value="">Todas las filas</option>
+                    {read.grid.headers.map((header) => <option key={header} value={header}>{header}</option>)}
+                  </select>
+                  {filter && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {filterOptions.map((value) => (
+                        <button key={value} type="button" onClick={() => toggleFilterValue(value)} aria-pressed={filter.values.includes(value)} className={cn('rounded-full border px-2.5 py-0.5 text-[11px]', filter.values.includes(value) ? 'border-[#5B5FE8] bg-[#5B5FE8]/10 text-[#5B5FE8]' : 'border-[#e5e5e0] text-[#555]')}>
+                          {value}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex min-w-[160px] flex-col gap-1.5">
+                  <label htmlFor="default-cta" className="text-[11.5px] font-semibold">CTA si la fila no trae</label>
+                  <select id="default-cta" value={defaults.cta} onChange={(event) => setDefaults({ ...defaults, cta: event.target.value })} className={selectClass}>
+                    {CTAS.map((cta) => <option key={cta} value={cta}>{cta}</option>)}
+                  </select>
+                </div>
+                <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
+                  <label htmlFor="default-url" className="text-[11.5px] font-semibold">URL si la fila no trae</label>
+                  <input id="default-url" value={defaults.url} onChange={(event) => setDefaults({ ...defaults, url: event.target.value })} placeholder="https://…" className={selectClass} />
+                </div>
+                {hasStatus && (
+                  <div className="flex w-full flex-wrap gap-4">
+                    <div className="flex min-w-[160px] flex-col gap-1.5">
+                      <label htmlFor="status-done" className="text-[11.5px] font-semibold">Escribir en Estado al terminar</label>
+                      <input id="status-done" value={interpretation.statusVocabulary.done ?? ''} onChange={(event) => setStatus('done', event.target.value)} placeholder="Ej. Subido" className={selectClass} />
+                    </div>
+                    <div className="flex min-w-[160px] flex-col gap-1.5">
+                      <label htmlFor="status-error" className="text-[11.5px] font-semibold">Si falla</label>
+                      <input id="status-error" value={interpretation.statusVocabulary.error ?? ''} onChange={(event) => setStatus('error', event.target.value)} placeholder="Ej. Error" className={selectClass} />
+                    </div>
+                  </div>
+                )}
+              </fieldset>
             </div>
           )}
 
           <DialogFooter className="items-center gap-3 sm:justify-between">
             <p className="text-[11.5px] text-[#777]">
-              {progress ? `Descargando de Drive ${progress.done}/${progress.total}…` : result ? `${importable.length} anuncios · ${fileCount} archivos` : 'El sheet y los archivos deben estar compartidos con tu cuenta de Google conectada.'}
+              {busy === 'planning' ? 'Leyendo Drive y cruzando con Meta…' : read ? 'Podés corregir cualquier columna; queda guardado para este cliente.' : 'El sheet y las carpetas deben estar compartidos con tu cuenta de Google conectada.'}
             </p>
-            <button type="button" onClick={importRows} disabled={!importable.length || Boolean(progress)} className="inline-flex items-center gap-1.5 rounded-full bg-[#141414] px-4 py-2 text-[12.5px] font-semibold text-white disabled:opacity-40">
-              {progress && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
-              {`Importar ${importable.length} anuncios`}
+            <button type="button" onClick={buildPlan} disabled={!read || !hasCreatives || Boolean(busy)} className="inline-flex items-center gap-1.5 rounded-full bg-[#141414] px-4 py-2 text-[12.5px] font-semibold text-white disabled:opacity-40">
+              {busy === 'planning' && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
+              Armar plan de carga
             </button>
           </DialogFooter>
         </DialogContent>

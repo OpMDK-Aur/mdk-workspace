@@ -2,10 +2,13 @@
 
 import { create } from 'zustand'
 import { groupAssets, mergeRows, newId, revokeAssetUrls } from './group-assets'
+import type { PlanContext, PlanOverrides } from '@/lib/conexa/bulk/types'
 import type { BulkAsset, BulkDefaults, BulkRow, CreativeSuggestion, LibraryAd, NewDestination, PublishInitialStatus, SheetImportEntry } from './types'
 
-export type BulkStep = 1 | 2 | 3
+// 'plan' solo existe cuando la carga arrancó con "Importar desde Google Sheet".
+export type BulkStep = 1 | 'plan' | 2 | 3
 export type PublishPhase = 'idle' | 'publishing' | 'finished'
+export type SheetPlanState = { context: PlanContext; overrides: PlanOverrides }
 
 type BulkState = {
   clientId: string | null
@@ -19,6 +22,11 @@ type BulkState = {
   briefsSent: string[]
   destinations: NewDestination[]
   link: string
+  sheetPlan: SheetPlanState | null
+  startSheetPlan: (context: PlanContext) => void
+  setPlanOverrides: (overrides: PlanOverrides) => void
+  setPlanRows: (rows: BulkRow[]) => void
+  exitSheetPlan: () => void
   addDestination: (destination: NewDestination) => void
   updateDestination: (id: string, patch: Partial<NewDestination>) => void
   removeDestination: (id: string) => void
@@ -41,7 +49,7 @@ type BulkState = {
   reset: () => void
 }
 
-const initial = { step: 1 as BulkStep, rows: [], selected: [], initialStatus: 'PAUSED' as PublishInitialStatus, publishPhase: 'idle' as PublishPhase, publishProgress: 0, destinations: [] as NewDestination[], link: '' }
+const initial = { step: 1 as BulkStep, rows: [], selected: [], initialStatus: 'PAUSED' as PublishInitialStatus, publishPhase: 'idle' as PublishPhase, publishProgress: 0, destinations: [] as NewDestination[], link: '', sheetPlan: null as SheetPlanState | null }
 
 export const useBulkStore = create<BulkState>((set, get) => ({
   clientId: null,
@@ -61,6 +69,16 @@ export const useBulkStore = create<BulkState>((set, get) => ({
     defaults: state.defaults.adsetId === id ? { ...state.defaults, adsetId: '' } : state.defaults,
   })),
   setLink: (link) => set({ link }),
+  startSheetPlan: (context) => {
+    for (const row of get().rows) revokeAssetUrls(row.assets)
+    set({ sheetPlan: { context, overrides: {} }, rows: [], selected: [], publishPhase: 'idle', publishProgress: 0, step: 'plan' })
+  },
+  setPlanOverrides: (overrides) => set((state) => (state.sheetPlan ? { sheetPlan: { ...state.sheetPlan, overrides } } : state)),
+  setPlanRows: (rows) => set({ rows, selected: [], step: 2 }),
+  exitSheetPlan: () => {
+    for (const row of get().rows) revokeAssetUrls(row.assets)
+    set({ sheetPlan: null, rows: [], selected: [], step: 1 })
+  },
   setStep: (step) => set({ step }),
   setDefaults: (defaults) => set((state) => ({ defaults: { ...state.defaults, ...defaults } })),
   addAssets: (assets) => set((state) => ({ rows: mergeRows(state.rows, groupAssets(assets, state.defaults)), step: 2 })),

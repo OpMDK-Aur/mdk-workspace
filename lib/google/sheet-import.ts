@@ -1,4 +1,4 @@
-import type { SheetImportFile, SheetImportResult, SheetImportRow } from '@/lib/bulk/types'
+import type { DriveLinkResult, SheetGrid, SheetGridRow, SheetImportFile } from '@/lib/bulk/types'
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets'
 const DRIVE_API = 'https://www.googleapis.com/drive/v3/files'
@@ -11,16 +11,6 @@ export class GoogleApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message)
   }
-}
-
-type Column = 'name' | 'primaryText' | 'headline' | 'cta' | 'adset'
-
-const HEADER_ALIASES: Record<Column, string[]> = {
-  name: ['anuncio', 'nombre', 'nombre del anuncio', 'pieza', 'creativo', 'ad', 'ad name'],
-  primaryText: ['texto principal', 'copy', 'texto', 'cuerpo', 'primary text', 'descripcion del anuncio'],
-  headline: ['titulo', 'title', 'headline', 'titular'],
-  cta: ['cta', 'boton', 'llamado a la accion', 'call to action'],
-  adset: ['conjunto', 'conjunto de anuncios', 'adset', 'ad set'],
 }
 
 const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[:*]/g, '').trim()
@@ -55,19 +45,6 @@ const cellLinks = (cell?: CellData) => {
   return links.filter((link): link is string => Boolean(link))
 }
 
-function detectHeader(rows: CellData[][]) {
-  for (let index = 0; index < Math.min(rows.length, 10); index++) {
-    const columns: Partial<Record<Column, number>> = {}
-    rows[index].forEach((cell, column) => {
-      const text = normalize(cellText(cell))
-      const match = (Object.keys(HEADER_ALIASES) as Column[]).find((key) => columns[key] === undefined && HEADER_ALIASES[key].includes(text))
-      if (match) columns[match] = column
-    })
-    if (columns.primaryText !== undefined || columns.headline !== undefined) return { index, columns }
-  }
-  return null
-}
-
 type DriveFile = { id: string; name: string; mimeType: string; size?: string; imageMediaMetadata?: { width?: number; height?: number }; videoMediaMetadata?: { width?: number; height?: number } }
 const FILE_FIELDS = 'id,name,mimeType,size,imageMediaMetadata(width,height),videoMediaMetadata(width,height)'
 
@@ -79,7 +56,7 @@ const toImportFile = (file: DriveFile): SheetImportFile => ({
   height: file.imageMediaMetadata?.height ?? file.videoMediaMetadata?.height ?? 0,
 })
 
-type ResolvedLink = { isFolder: boolean; files: SheetImportFile[]; skipped: number; error?: string }
+type ResolvedLink = DriveLinkResult & { isFolder: boolean }
 
 async function resolveDriveLink(token: string, id: string): Promise<ResolvedLink> {
   try {
@@ -97,17 +74,18 @@ async function resolveDriveLink(token: string, id: string): Promise<ResolvedLink
   }
 }
 
-const stem = (name: string) => normalize(name.replace(/\.[^.]+$/, '')).replace(/[_\-\s]+/g, '')
+const columnLetter = (index: number) => String.fromCharCode(65 + index)
 
-// Una carpeta compartida por varias filas se reparte por nombre: cada fila toma los archivos cuyo nombre contiene el de la pieza.
-function filesForRow(name: string, link: ResolvedLink, sharedFolder: boolean) {
-  if (!link.isFolder || !sharedFolder || !name) return link.files
-  const key = stem(name)
-  const matches = link.files.filter((file) => stem(file.name).includes(key))
-  return matches.length ? matches : []
+// El encabezado es la primera fila con al menos dos celdas de texto y sin links: cada cliente arma su sheet distinto.
+function detectHeaderIndex(rows: CellData[][]) {
+  for (let index = 0; index < Math.min(rows.length, 10); index++) {
+    const filled = rows[index].filter((cell) => cellText(cell))
+    if (filled.length >= 2 && !rows[index].some((cell) => cellLinks(cell).length)) return index
+  }
+  return -1
 }
 
-export async function readSheetImport(token: string, url: string): Promise<SheetImportResult> {
+export async function readSheetGrid(token: string, url: string): Promise<SheetGrid> {
   const parsed = parseSpreadsheetUrl(url)
   if (!parsed) throw new GoogleApiError('El link no es de un Google Sheet', 400)
 
@@ -120,49 +98,34 @@ export async function readSheetImport(token: string, url: string): Promise<Sheet
   const data = await google<SpreadsheetData>(token, `${SHEETS_API}/${parsed.id}?ranges=${range}&fields=${fields}`)
   const grid = (data.sheets[0]?.data?.[0]?.rowData ?? []).map((row) => row.values ?? [])
 
-  const header = detectHeader(grid)
-  if (!header) throw new GoogleApiError('No encontré columnas de "Texto principal" o "Título" en las primeras filas', 422)
+  const headerIndex = detectHeaderIndex(grid)
+  if (headerIndex < 0) throw new GoogleApiError('No encontré una fila de encabezados en las primeras 10 filas', 422)
 
-  const { columns } = header
-  const pick = (row: CellData[], column?: number) => (column === undefined ? '' : cellText(row[column]))
-
-  // Links sueltos sobre el encabezado (ej. "Carpeta: https://drive…") aplican a las filas que no tienen uno propio.
-  let inheritedLink: string | null = grid.slice(0, header.index).flatMap((row) => row.flatMap(cellLinks)).map(driveIdFromUrl).find(Boolean) ?? null
-
-  const draft: Array<Omit<SheetImportRow, 'files' | 'skipped' | 'error'> & { driveIds: string[] }> = []
-  for (const [offset, row] of grid.slice(header.index + 1).entries()) {
-    const primaryText = pick(row, columns.primaryText)
-    const headline = pick(row, columns.headline)
-    const name = pick(row, columns.name)
-    const ownIds = [...new Set(row.flatMap(cellLinks).map(driveIdFromUrl).filter((id): id is string => Boolean(id)))]
-    if (!primaryText && !headline && !name) {
-      if (ownIds.length) inheritedLink = ownIds[0]
-      continue
-    }
-    draft.push({
-      rowNumber: header.index + offset + 2,
-      name,
-      primaryText,
-      headline,
-      cta: pick(row, columns.cta),
-      adsetName: pick(row, columns.adset),
-      driveIds: ownIds.length ? ownIds : inheritedLink ? [inheritedLink] : [],
-    })
-    if (draft.length >= MAX_ROWS) break
-  }
-
-  const uniqueIds = [...new Set(draft.flatMap((row) => row.driveIds))]
-  const resolved = new Map(await Promise.all(uniqueIds.map(async (id) => [id, await resolveDriveLink(token, id)] as const)))
-  const usage = new Map<string, number>()
-  for (const row of draft) for (const id of row.driveIds) usage.set(id, (usage.get(id) ?? 0) + 1)
-
-  const rows: SheetImportRow[] = draft.map(({ driveIds, ...row }) => {
-    const links = driveIds.map((id) => ({ id, link: resolved.get(id)! }))
-    const files = links.flatMap(({ id, link }) => filesForRow(row.name, link, (usage.get(id) ?? 0) > 1))
-    const unique = [...new Map(files.map((file) => [file.id, file])).values()]
-    const error = links.find(({ link }) => link.error)?.link.error ?? (!driveIds.length ? 'Sin link de Drive' : !unique.length ? 'No hay imágenes o videos compatibles' : undefined)
-    return { ...row, files: unique, skipped: links.reduce((sum, { link }) => sum + link.skipped, 0), ...(error && { error }) }
+  const width = Math.max(...grid.slice(headerIndex).map((row) => row.length))
+  const headerSeen = new Map<string, number>()
+  const headers = Array.from({ length: width }, (_, column) => {
+    const text = cellText(grid[headerIndex][column]) || `Columna ${columnLetter(column)}`
+    const count = (headerSeen.get(normalize(text)) ?? 0) + 1
+    headerSeen.set(normalize(text), count)
+    return count > 1 ? `${text} (${count})` : text
   })
 
-  return { title: meta.properties.title, sheetTitle: sheet.properties.title, rows }
+  const rows: SheetGridRow[] = []
+  for (const [offset, row] of grid.slice(headerIndex + 1).entries()) {
+    const cells = headers.map((_, column) => cellText(row[column]))
+    if (!cells.some(Boolean)) continue
+    const driveIds = headers.map((_, column) => [...new Set(cellLinks(row[column]).map(driveIdFromUrl).filter((id): id is string => Boolean(id)))])
+    rows.push({ rowNumber: headerIndex + offset + 2, cells, driveIds })
+    if (rows.length >= MAX_ROWS) break
+  }
+
+  return { title: meta.properties.title, sheetTitle: sheet.properties.title, headers, rows }
+}
+
+export async function resolveDriveLinks(token: string, ids: string[]): Promise<Record<string, DriveLinkResult>> {
+  const entries = await Promise.all(ids.map(async (id) => {
+    const { isFolder: _isFolder, ...link } = await resolveDriveLink(token, id)
+    return [id, link] as const
+  }))
+  return Object.fromEntries(entries)
 }

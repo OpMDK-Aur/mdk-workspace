@@ -19,8 +19,9 @@ export type BulkAsset = {
 export type LibraryAd = { id: string; name: string; status: string; campaignName: string; accountId: string; createdTime: string; kind: 'image' | 'video'; thumbnail: string | null; primaryText: string; headline: string }
 
 export type SheetImportFile = { id: string; name: string; mimeType: string; width: number; height: number }
-export type SheetImportRow = { rowNumber: number; name: string; primaryText: string; headline: string; cta: string; adsetName: string; files: SheetImportFile[]; skipped: number; error?: string }
-export type SheetImportResult = { title: string; sheetTitle: string; rows: SheetImportRow[] }
+export type SheetGridRow = { rowNumber: number; cells: string[]; driveIds: string[][] }
+export type SheetGrid = { title: string; sheetTitle: string; headers: string[]; rows: SheetGridRow[] }
+export type DriveLinkResult = { files: SheetImportFile[]; skipped: number; error?: string }
 export type SheetImportEntry = { name: string; assets: BulkAsset[]; primaryText: string; headline: string; cta?: CTA; adsetId?: string }
 
 export type BulkRowStatus = 'idle' | 'uploading' | 'creating' | 'done' | 'error'
@@ -35,6 +36,8 @@ export type BulkRow = {
   headline: string
   aiGenerated?: boolean
   fromSuggestion?: string
+  planAdId?: string
+  planDestination?: { campaignName: string; adsetName: string }
   status?: BulkRowStatus
   error?: string
   metaAdId?: string

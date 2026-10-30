@@ -10,25 +10,36 @@ import type { CreativeCard } from '@/lib/meta/to-creative-card'
 import { StepConfigure } from './step-configure'
 import { StepPublish } from './step-publish'
 import { StepUpload } from './step-upload'
+import { StepPlan } from './step-plan'
+import { StepSheetApprove } from './step-sheet-approve'
 
-const STEPS: Array<{ step: BulkStep; label: string }> = [
+const MANUAL_STEPS: Array<{ step: BulkStep; label: string }> = [
   { step: 1, label: 'Subir archivos' },
   { step: 2, label: 'Configurar anuncios' },
   { step: 3, label: 'Revisar y publicar' },
+]
+const SHEET_STEPS: Array<{ step: BulkStep; label: string }> = [
+  { step: 1, label: 'Importar sheet' },
+  { step: 'plan', label: 'Plan de carga' },
+  { step: 2, label: 'Configurar anuncios' },
+  { step: 3, label: 'Aprobar y crear' },
 ]
 
 function Stepper() {
   const current = useBulkStore((state) => state.step)
   const hasRows = useBulkStore((state) => state.rows.length > 0)
+  const fromSheet = useBulkStore((state) => state.sheetPlan !== null)
   const setStep = useBulkStore((state) => state.setStep)
+  const STEPS = fromSheet ? SHEET_STEPS : MANUAL_STEPS
+  const position = (step: BulkStep) => STEPS.findIndex((item) => item.step === step)
 
   return (
     <nav aria-label="Pasos de la carga masiva" className="mb-5">
       <ol className="flex items-center gap-3">
         {STEPS.map(({ step, label }, index) => {
-          const done = step < current
+          const done = index < position(current)
           const active = step === current
-          const reachable = step <= current || hasRows
+          const reachable = fromSheet ? step !== 1 && (index <= position(current) || hasRows) : index <= position(current) || hasRows
           return (
             <li key={step} className="flex flex-1 items-center gap-3 last:flex-none">
               <button type="button" disabled={!reachable} onClick={() => setStep(step)} aria-current={active ? 'step' : undefined} className="flex items-center gap-2 disabled:cursor-not-allowed">
@@ -48,6 +59,7 @@ function Stepper() {
 
 export function BulkUploadView({ clientId, clientName, adsets: existingAdsets, accounts, creatives, destinationUrl, pageIds }: { pageIds?: string[]; clientId: string; clientName: string; adsets: BulkAdset[]; accounts: MetaAccountOption[]; creatives: CreativeCard[]; destinationUrl?: string | null }) {
   const step = useBulkStore((state) => state.step)
+  const fromSheet = useBulkStore((state) => state.sheetPlan !== null)
   const destinations = useBulkStore((state) => state.destinations)
   const adsets = useMemo(() => [...destinations.map(destinationToAdset), ...existingAdsets], [destinations, existingAdsets])
   const setClient = useBulkStore((state) => state.setClient)
@@ -61,7 +73,8 @@ export function BulkUploadView({ clientId, clientName, adsets: existingAdsets, a
       <Stepper />
       {step === 1 && <StepUpload clientId={clientId} clientName={clientName} adsets={adsets} creatives={creatives} destinationUrl={destinationUrl} />}
       {step === 2 && <StepConfigure clientId={clientId} clientName={clientName} adsets={adsets} accounts={accounts} />}
-      {step === 3 && <StepPublish clientId={clientId} clientName={clientName} adsets={adsets} destinationUrl={destinationUrl} pageIds={pageIds} />}
+      {step === 'plan' && <StepPlan />}
+      {step === 3 && (fromSheet ? <StepSheetApprove /> : <StepPublish clientId={clientId} clientName={clientName} adsets={adsets} destinationUrl={destinationUrl} pageIds={pageIds} />)}
     </div>
   )
 }

@@ -145,14 +145,22 @@ function Row({ row, index, adsets, clientName, selected, applyLabel, onApply }: 
         <p className={cn('text-[11px]', draft ? 'text-[#5B5FE8]' : 'text-[#999]')}>{draft ? 'Sugerido por Conexa' : `${row.assets.length} ${row.assets.length === 1 ? 'archivo' : 'archivos'}`}</p>
       </td>
       <td className="px-3 py-3">
-        <CampaignAdsetPicker
-          row={row}
-          adsets={adsets}
-          currentAdset={currentAdset}
-          applyLabel={applyLabel}
-          onChange={(adsetId) => updateRow(row.id, { adsetId })}
-          onApply={() => onApply('adsetId', row.adsetId ?? '')}
-        />
+        {row.planAdId ? (
+          <div className="w-[200px]">
+            <p className="text-[11.5px] font-semibold text-[#141414]">{row.planDestination?.campaignName}</p>
+            <p className="text-[11px] text-[#777]">{row.planDestination?.adsetName}</p>
+            <p className="mt-1 text-[10px] text-[#999]">Destino según el plan de carga</p>
+          </div>
+        ) : (
+          <CampaignAdsetPicker
+            row={row}
+            adsets={adsets}
+            currentAdset={currentAdset}
+            applyLabel={applyLabel}
+            onChange={(adsetId) => updateRow(row.id, { adsetId })}
+            onApply={() => onApply('adsetId', row.adsetId ?? '')}
+          />
+        )}
       </td>
       <td className="px-3 py-3">
         <Textarea
@@ -203,6 +211,7 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
   const updateRow = useBulkStore((state) => state.updateRow)
   const removeRows = useBulkStore((state) => state.removeRows)
   const setStep = useBulkStore((state) => state.setStep)
+  const fromSheet = useBulkStore((state) => state.sheetPlan !== null)
   const [writing, setWriting] = useState(false)
 
   const summary = useMemo(() => {
@@ -287,7 +296,7 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
       </div>
 
       <div className="flex items-center justify-between">
-        <Button size="sm" variant="outline" onClick={() => setStep(1)} className="h-9 rounded-full border-[#dcdcd8] bg-white px-4 text-[11.5px] text-[#333] hover:bg-[#f5f5f3] hover:text-[#141414]">{'← Sumar más archivos'}</Button>
+        <Button size="sm" variant="outline" onClick={() => setStep(fromSheet ? 'plan' : 1)} className="h-9 rounded-full border-[#dcdcd8] bg-white px-4 text-[11.5px] text-[#333] hover:bg-[#f5f5f3] hover:text-[#141414]">{fromSheet ? '← Volver al plan de carga' : '← Sumar más archivos'}</Button>
         <Button size="sm" onClick={() => setStep(3)} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">{'Revisar y publicar →'}</Button>
       </div>
     </div>
