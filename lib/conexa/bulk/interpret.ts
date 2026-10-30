@@ -4,7 +4,7 @@ import type { SheetGrid } from '@/lib/bulk/types'
 import { askJson } from './ai'
 import { findInterpretations, saveInterpretation } from './persistence'
 import { headersHash, normalizeText } from './text'
-import { ROLES, sheetInterpretationSchema, type Inventory, type SheetInterpretation } from './types'
+import { CANONICAL_ACTIONS, ROLES, sheetInterpretationSchema, type Inventory, type SheetInterpretation } from './types'
 
 const SYSTEM = `Sos un analista de pauta en Meta Ads. Interpretás sheets de pedidos de campañas que cada cliente arma distinto.
 Asigná a cada columna un rol semántico: ${ROLES.join(', ')}.
@@ -43,7 +43,7 @@ function normalizeInterpretation(grid: SheetGrid, interpretation: SheetInterpret
   }
 }
 
-async function interpretWithAi(grid: SheetGrid, headers: string[], clientContext: string, inventory: Inventory, known?: SheetInterpretation) {
+export async function interpretWithAi(grid: SheetGrid, headers: string[], clientContext: string, inventory: Inventory, known?: SheetInterpretation) {
   const actionLike = grid.headers.filter((header) => /accion|pedido|estado|status|tipo/.test(normalizeText(header)))
   const prompt = JSON.stringify({
     interpretar: headers,
@@ -54,7 +54,27 @@ async function interpretWithAi(grid: SheetGrid, headers: string[], clientContext
     contextoDelCliente: clientContext,
     cuentasPublicitarias: inventorySummary(inventory),
   })
-  return askJson(sheetInterpretationSchema, SYSTEM, prompt, 'la interpretación del sheet')
+  const raw = await askJson(aiInterpretationSchema, SYSTEM, prompt, 'la interpretación del sheet')
+  return fromAiInterpretation(raw)
+}
+
+// El modo estricto de structured outputs no admite campos opcionales ni records: la IA responde esta forma y se convierte.
+const aiInterpretationSchema = z.object({
+  columns: z.array(z.object({ header: z.string(), role: z.enum(ROLES), confidence: z.number(), note: z.string().nullable() })),
+  actionVocabulary: z.array(z.object({ value: z.string(), action: z.enum(CANONICAL_ACTIONS) })),
+  statusVocabulary: z.object({ pending: z.array(z.string()), done: z.string().nullable(), error: z.string().nullable() }),
+  suggestedRowFilter: z.object({ column: z.string(), values: z.array(z.string()) }).nullable(),
+  warnings: z.array(z.string()),
+})
+
+function fromAiInterpretation(raw: z.infer<typeof aiInterpretationSchema>): SheetInterpretation {
+  return sheetInterpretationSchema.parse({
+    columns: raw.columns.map(({ note, confidence, ...column }) => ({ ...column, confidence: Math.min(1, Math.max(0, confidence)), ...(note ? { note } : {}) })),
+    actionVocabulary: Object.fromEntries(raw.actionVocabulary.filter((entry) => entry.value.trim()).map((entry) => [entry.value.trim(), entry.action])),
+    statusVocabulary: { pending: raw.statusVocabulary.pending, ...(raw.statusVocabulary.done ? { done: raw.statusVocabulary.done } : {}), ...(raw.statusVocabulary.error ? { error: raw.statusVocabulary.error } : {}) },
+    ...(raw.suggestedRowFilter ? { suggestedRowFilter: raw.suggestedRowFilter } : {}),
+    warnings: raw.warnings,
+  })
 }
 
 export async function interpretSheet({ clientId, grid, clientContext, inventory, userId }: { clientId: string; grid: SheetGrid; clientContext: string; inventory: Inventory; userId: string }) {
@@ -94,12 +114,12 @@ export async function confirmInterpretation(clientId: string, grid: SheetGrid, i
 export const instructionOverridesSchema = z.object({
   items: z.array(z.object({
     key: z.string(),
-    adNameMode: z.enum(['today', 'literal']).optional(),
-    adName: z.string().optional(),
-    primaryText: z.string().optional(),
-    headline: z.string().optional(),
-    cta: z.string().optional(),
-    url: z.string().optional(),
-    notes: z.string().optional(),
+    adNameMode: z.enum(['today', 'literal']).nullable(),
+    adName: z.string().nullable(),
+    primaryText: z.string().nullable(),
+    headline: z.string().nullable(),
+    cta: z.string().nullable(),
+    url: z.string().nullable(),
+    notes: z.string().nullable(),
   })),
 })

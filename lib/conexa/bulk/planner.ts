@@ -24,7 +24,7 @@ async function loadDrive(token: string, grid: SheetGrid, interpretation: SheetIn
 }
 
 const semanticSchema = z.object({ matches: z.array(z.object({ key: z.string(), campaignIds: z.array(z.string()) })) })
-const copySchema = z.object({ items: z.array(z.object({ key: z.string(), primaryText: z.string().max(500), headline: z.string().max(60) })) })
+const copySchema = z.object({ items: z.array(z.object({ key: z.string(), primaryText: z.string(), headline: z.string() })) })
 
 async function semanticMatches(context: PlanContext) {
   const plan = resolvePlan(context)
@@ -54,7 +54,7 @@ async function interpretInstructions(context: PlanContext) {
 - notes: cualquier otra indicación que no puedas mapear, resumida.`,
     JSON.stringify(items), 'las observaciones del sheet')
   const keys = new Set(items.map((item) => item.key))
-  return Object.fromEntries(result.items.filter((item) => keys.has(item.key)).map(({ key, ...rest }) => [key, rest]))
+  return Object.fromEntries(result.items.filter((item) => keys.has(item.key)).map(({ key, ...rest }) => [key, Object.fromEntries(Object.entries(rest).filter(([, value]) => value != null && value !== ''))]))
 }
 
 async function generateCopy(context: PlanContext, clientContext: string) {
@@ -68,7 +68,7 @@ async function generateCopy(context: PlanContext, clientContext: string) {
 Contexto del cliente: ${clientContext}`,
     JSON.stringify(items), 'el copy de los anuncios nuevos')
   const keys = new Set(items.map((item) => item.key))
-  return Object.fromEntries(result.items.filter((item) => keys.has(item.key)).map(({ key, primaryText, headline }) => [key, { primaryText, headline }]))
+  return Object.fromEntries(result.items.filter((item) => keys.has(item.key)).map(({ key, primaryText, headline }) => [key, { primaryText: primaryText.slice(0, 500), headline: headline.slice(0, 60) }]))
 }
 
 export async function buildPlanContext(input: {
