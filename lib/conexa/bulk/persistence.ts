@@ -127,12 +127,16 @@ export async function saveItemResult(planId: string, itemKey: string, rowNumber:
     memory.items.set(idempotencyKey, { ...result, idempotencyKey, planId })
     return
   }
-  await db().from('bulk_plan_items').upsert({
-    plan_id: planId, item_key: itemKey, row_number: rowNumber, idempotency_key: idempotencyKey, payload, result,
-    state: result.ok ? 'done' : 'error', error: result.ok ? null : result.error, updated_at: new Date().toISOString(),
-    ...(result.ok ? { meta_campaign_id: result.campaignId, meta_adset_id: result.adsetId, meta_ad_id: result.adId, meta_creative_id: result.creativeId } : {}),
-  }, { onConflict: 'idempotency_key' })
-}
+  const record = {
+  plan_id: planId, item_key: itemKey, row_number: rowNumber, idempotency_key: idempotencyKey, payload, result,
+  state: result.ok ? 'done' : 'error', error: result.ok ? null : result.error, updated_at: new Date().toISOString(),
+  ...(result.ok ? { meta_campaign_id: result.campaignId, meta_adset_id: result.adsetId, meta_ad_id: result.adId, meta_creative_id: result.creativeId } : {}),
+  }
+  const answers = (payload as { answers?: unknown } | null)?.answers ?? {}
+  const { error } = await db().from('bulk_plan_items').upsert({ ...record, answers }, { onConflict: 'idempotency_key' })
+  // Si la columna answers todavía no existe, se guarda igual: las respuestas también viajan dentro de payload.
+  if (error) await db().from('bulk_plan_items').upsert(record, { onConflict: 'idempotency_key' })
+  }
 
 export async function listItemResults(planId: string): Promise<ExecuteAdResult[]> {
   if (!persistenceEnabled()) return [...memory.items.values()].filter((item) => item.planId === planId)

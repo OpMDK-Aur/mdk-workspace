@@ -1,14 +1,15 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, HelpCircle, Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBulkStore } from '@/lib/bulk/store'
 import { savePlanOverridesRequest } from '@/lib/conexa/bulk/client'
 import { planToRows, actingAds } from '@/lib/conexa/bulk/plan-rows'
-import { resolvePlan } from '@/lib/conexa/bulk/resolve'
-import { ACTION_LABELS, CANONICAL_ACTIONS, type CanonicalAction, type ItemState, type PlanBadge, type PlanIssue, type PlanOverrides } from '@/lib/conexa/bulk/types'
+import { pendingQuestions, resolvePlan } from '@/lib/conexa/bulk/resolve'
+import { ACTION_LABELS, CANONICAL_ACTIONS, type CanonicalAction, type ItemState, type PlanAnswer, type PlanBadge, type PlanIssue, type PlanOverrides } from '@/lib/conexa/bulk/types'
 import { Button } from '@/components/ui/button'
+import { PlanQuestions } from './plan-questions'
 
 const selectClass = 'rounded-md border border-[#e5e5e0] bg-white px-2 py-1 text-[11.5px] text-[#141414] outline-none focus:border-[#5B5FE8]'
 
@@ -24,6 +25,7 @@ const BADGE_CLASS: Record<PlanBadge, string> = {
 
 function StateIcon({ state }: { state: ItemState }) {
   if (state === 'ready') return <CheckCircle2 className="size-3.5 shrink-0 text-[#1e9e6b]" aria-label="Listo" />
+  if (state === 'needs_answer') return <HelpCircle className="size-3.5 shrink-0 text-[#c98a16]" aria-label="Esperando tu respuesta" />
   return <AlertTriangle className={cn('size-3.5 shrink-0', state === 'blocked' ? 'text-[#c0432c]' : 'text-[#c98a16]')} aria-label={state === 'blocked' ? 'Bloqueado' : 'Requiere confirmación'} />
 }
 
@@ -106,9 +108,17 @@ export function StepPlan() {
     if (alias && accountId) setAliases((current) => [...current.filter((item) => item.alias !== alias), { alias, accountId }])
   }
   const setField = (key: string, patch: NonNullable<PlanOverrides['fields']>[string]) => update({ fields: { ...overrides.fields, [key]: { ...overrides.fields?.[key], ...patch } } })
+  const setAnswer = (id: string, answer: PlanAnswer | undefined) => {
+    const next = { ...overrides.answers }
+    if (answer) next[id] = answer
+    else delete next[id]
+    update({ answers: next })
+  }
 
   const visibleRows = plan.rows.filter((row) => !row.filteredOut)
   const activeRows = new Set(visibleRows.filter((row) => !row.excluded).map((row) => row.rowNumber))
+  const visibleQuestions = plan.questions.filter((question) => question.rowNumbers.some((rowNumber) => activeRows.has(rowNumber)))
+  const unanswered = pendingQuestions(plan)
   const campaigns = plan.campaigns.filter((campaign) => campaign.rows.some((row) => activeRows.has(row)))
   const adsets = plan.adsets.filter((adset) => adset.rows.some((row) => activeRows.has(row)))
   const ads = plan.ads.filter((ad) => activeRows.has(ad.rowNumber))
@@ -149,9 +159,13 @@ export function StepPlan() {
     if (!plan || !clientId) return
     setSaving(true)
     setSaveWarning(null)
+    // Las respuestas reutilizables (alias de cuenta y significado de una acción) se guardan para la próxima carga.
+    const answeredAliases = plan.questions.flatMap((question) => (question.answered && question.reuse?.kind === 'alias' && question.answer?.value?.startsWith('act_') ? [{ alias: question.reuse.alias, accountId: question.answer.value }] : []))
+    const allAliases = [...new Map([...aliases, ...answeredAliases].map((item) => [item.alias, item])).values()]
+    const vocabulary = plan.questions.flatMap((question) => (question.answered && question.reuse?.kind === 'action' && question.answer?.value ? [{ value: question.reuse.value, action: question.answer.value }] : []))
     try {
-      if (aliases.length) for (const alias of aliases) await savePlanOverridesRequest(context.planId, { clientId, overrides, alias })
-      else await savePlanOverridesRequest(context.planId, { clientId, overrides })
+      if (allAliases.length) for (const [index, alias] of allAliases.entries()) await savePlanOverridesRequest(context.planId, { clientId, overrides, alias, vocabulary: index === 0 ? vocabulary : undefined })
+      else await savePlanOverridesRequest(context.planId, { clientId, overrides, vocabulary })
     } catch (cause) {
       setSaveWarning(cause instanceof Error ? `No se guardaron las decisiones: ${cause.message}` : 'No se guardaron las decisiones.')
     } finally {
@@ -197,6 +211,8 @@ export function StepPlan() {
           {context.warnings.map((warning) => <li key={warning}>{warning}</li>)}
         </ul>
       )}
+
+      <PlanQuestions questions={visibleQuestions} onAnswer={setAnswer} />
 
       <Legend />
 
@@ -336,7 +352,7 @@ export function StepPlan() {
       <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#ececea] bg-white px-4 py-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1" role="status">
           <p className={cn('text-[11.5px]', blockers.length ? 'text-[#c0432c]' : 'text-[#777]')}>
-            {saveWarning ?? (blockers.length ? `${blockers.length} puntos por resolver antes de seguir:` : `${acting.length} anuncios listos. Nada se crea en Meta hasta que apruebes en el último paso.`)}
+            {saveWarning ?? (unanswered.length ? `Respondé ${unanswered.length} pregunta${unanswered.length > 1 ? 's' : ''} arriba para seguir.` : blockers.length ? `${blockers.length} puntos por resolver antes de seguir:` : `${acting.length} anuncios listos. Nada se crea en Meta hasta que apruebes en el último paso.`)}
           </p>
           {!saveWarning && blockerSummary.length > 0 && (
             <ul className="flex flex-col text-[11px] text-[#777]">
@@ -349,7 +365,7 @@ export function StepPlan() {
             </button>
           )}
         </div>
-        <Button size="sm" disabled={Boolean(blockers.length) || !acting.length || saving} onClick={continueToConfigure} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
+        <Button size="sm" disabled={Boolean(blockers.length) || Boolean(unanswered.length) || !acting.length || saving} onClick={continueToConfigure} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
           {saving && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
           {'Configurar anuncios →'}
         </Button>

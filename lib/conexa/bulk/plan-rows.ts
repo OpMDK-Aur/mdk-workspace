@@ -1,6 +1,6 @@
 import { newId } from '@/lib/bulk/group-assets'
 import { CTAS, type BulkAsset, type BulkRow, type CTA } from '@/lib/bulk/types'
-import { ratioLabel } from './resolve'
+import { answersForAd, ratioLabel } from './resolve'
 import type { DriveFileRef, ExecuteAdRequest, PlanAd, PlanContext, ResolvedPlan } from './types'
 
 export const driveFileUrl = (id: string) => `/api/conexa/meta/bulk/drive-file?id=${encodeURIComponent(id)}`
@@ -49,7 +49,7 @@ export function buildExecuteRequest({ context, plan, ad, row, assetUrl }: { cont
   else if (adset.reference) adsetSpec = { mode: 'create', key: adset.key, name: adset.name, referenceId: adset.reference.id, dailyBudget: adset.dailyBudget }
   else return 'Falta el conjunto de referencia.'
   return {
-    id: ad.id, rowNumber: ad.rowNumber, idempotencyKey: ad.idempotencyKey, accountId: ad.accountId, campaign: campaignSpec, adset: adsetSpec,
+    id: ad.id, rowNumber: ad.rowNumber, idempotencyKey: ad.idempotencyKey, accountId: ad.accountId, answers: answersForAd(plan, ad), campaign: campaignSpec, adset: adsetSpec,
     ad: {
       name: row.adName || ad.name, primaryText: row.primaryText, headline: row.headline, cta: row.cta, link: ad.url, pageId,
       asset: { url: assetUrl, kind: isVideo(file) ? 'video' : 'image', name: file.name },

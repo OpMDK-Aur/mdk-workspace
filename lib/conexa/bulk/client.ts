@@ -21,7 +21,7 @@ export const interpretSheetRequest = (body: { clientId: string; url: string; cli
 export const buildPlanRequest = (body: { clientId: string; url: string; interpretation: SheetInterpretation; rowFilter?: { column: string; values: string[] }; batchDefaults: { cta: string; url: string }; clientContext?: string }) =>
   request<{ context: PlanContext }>('/api/conexa/bulk/plan', { method: 'POST', body: JSON.stringify(body) })
 
-export const savePlanOverridesRequest = (planId: string, body: { clientId: string; overrides: PlanOverrides; alias?: { alias: string; accountId: string } }) =>
+export const savePlanOverridesRequest = (planId: string, body: { clientId: string; overrides: PlanOverrides; alias?: { alias: string; accountId: string }; vocabulary?: Array<{ value: string; action: string }> }) =>
   request<{ ok: true }>(`/api/conexa/bulk/plans/${encodeURIComponent(planId)}`, { method: 'PATCH', body: JSON.stringify(body) })
 
 export async function executePlanAdRequest(planId: string, body: ExecuteAdRequest): Promise<ExecuteAdResult> {

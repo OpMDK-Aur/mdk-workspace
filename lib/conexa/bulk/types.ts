@@ -79,9 +79,36 @@ export type PlanOverrides = {
   pieceMatch?: Record<string, 'confirm' | 'reject'>
   actionByRow?: Record<number, CanonicalAction>
   fields?: Record<string, { dailyBudget?: number; referenceCampaignId?: string; referenceAdsetId?: string; pageId?: string }>
+  answers?: Record<string, PlanAnswer>
 }
 
-export type ItemState = 'ready' | 'needs_confirmation' | 'blocked'
+export type PlanAnswer = { value?: string; values?: string[]; text?: string }
+
+export const ANSWER_EXCLUDE = '__exclude'
+export const ANSWER_CREATE = '__create'
+
+export type PlanQuestion = {
+  id: string
+  kind: 'choice' | 'multi' | 'text'
+  field: string
+  prompt: string
+  why: string
+  options: Array<{ value: string; label: string; hint?: string }>
+  searchable: boolean
+  allowFree: boolean
+  freePlaceholder: string
+  suggestion?: string
+  target: 'row' | 'campaign' | 'adset' | 'ad'
+  targetKey: string
+  rowNumbers: number[]
+  answered: boolean
+  answer?: PlanAnswer
+  answerLabel?: string
+  note?: string
+  reuse?: { kind: 'alias'; alias: string } | { kind: 'action'; value: string }
+}
+
+export type ItemState = 'ready' | 'needs_confirmation' | 'needs_answer' | 'blocked'
 export type PieceComparison = 'new' | 'changed' | 'missing_formats' | 'unchanged'
 
 export type PlanBadge = 'Crear campaña' | 'Usar existente' | 'Crear conjunto' | 'Crear anuncio' | 'Nuevo (reemplaza creativos)' | 'Nuevo (formatos faltantes)' | 'Sin cambios'
@@ -171,7 +198,8 @@ export type ResolvedPlan = {
   campaigns: PlanCampaign[]
   adsets: PlanAdset[]
   ads: PlanAd[]
-  summary: { read: number; processed: number; filtered: number; excluded: number; newCampaigns: number; newAdsets: number; newAds: number; replace: number; addFormats: number; unchanged: number }
+  questions: PlanQuestion[]
+  summary: { read: number; processed: number; pendingQuestions: number; filtered: number; excluded: number; newCampaigns: number; newAdsets: number; newAds: number; replace: number; addFormats: number; unchanged: number }
 }
 
 export type ExecuteAdRequest = {
@@ -183,6 +211,7 @@ export type ExecuteAdRequest = {
     rowNumber: number
     idempotencyKey: string
     accountId: string
+    answers?: Record<string, PlanAnswer>
     campaign: { mode: 'existing'; id: string } | { mode: 'create'; key: string; name: string; referenceId: string; dailyBudget?: number }
     adset: { mode: 'existing'; id: string } | { mode: 'create'; key: string; name: string; referenceId: string; dailyBudget?: number }
     ad: { name: string; primaryText: string; headline: string; cta: string; link: string; pageId: string; asset: { url: string; kind: 'image' | 'video'; name: string }; driveFileIds: Array<{ id: string; modifiedTime?: string; format: string }> }

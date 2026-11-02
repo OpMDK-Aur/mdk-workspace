@@ -7,7 +7,7 @@ import { useBulkStore } from '@/lib/bulk/store'
 import { uploadBulkAsset } from '@/lib/bulk/api'
 import { executePlanAdRequest, writeSheetStatusRequest } from '@/lib/conexa/bulk/client'
 import { buildExecuteRequest, driveFileUrl, primaryFile } from '@/lib/conexa/bulk/plan-rows'
-import { resolvePlan } from '@/lib/conexa/bulk/resolve'
+import { pendingQuestions, resolvePlan } from '@/lib/conexa/bulk/resolve'
 import { Button } from '@/components/ui/button'
 
 type ItemResult = { ok: boolean; message: string }
@@ -43,6 +43,7 @@ export function StepSheetApprove() {
   const doneCount = Object.values(results).filter((result) => result.ok).length
   const failedCount = Object.values(results).filter((result) => !result.ok).length
   const missingCopy = items.filter(({ row }) => !row.primaryText.trim() || !row.headline.trim())
+  const unanswered = pendingQuestions(plan)
 
   async function run() {
     if (!plan || !clientId) return
@@ -122,7 +123,7 @@ export function StepSheetApprove() {
               <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} disabled={running} className="accent-[#5B5FE8]" />
               Revisé el plan y quiero crearlo en Meta
             </label>
-            <Button size="sm" disabled={!confirmed || running || !pending.length || missingCopy.length > 0} onClick={run} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
+            <Button size="sm" disabled={!confirmed || running || !pending.length || missingCopy.length > 0 || unanswered.length > 0} onClick={run} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
               {running && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
               {failedCount ? `Reintentar ${pending.length}` : `Crear ${pending.length} anuncios`}
             </Button>

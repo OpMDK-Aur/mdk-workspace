@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
-import { listItemResults, loadPlan, saveAlias, savePlanOverrides } from '@/lib/conexa/bulk/persistence'
+import { listItemResults, loadPlan, saveAlias, saveInterpretation, savePlanOverrides } from '@/lib/conexa/bulk/persistence'
 import { clampText, requireBulkAccess } from '@/lib/conexa/bulk/route-helpers'
-import type { PlanOverrides } from '@/lib/conexa/bulk/types'
+import { headersHash } from '@/lib/conexa/bulk/text'
+import { CANONICAL_ACTIONS, type PlanOverrides } from '@/lib/conexa/bulk/types'
 
 export const runtime = 'nodejs'
 
@@ -34,6 +35,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (alias && aliasAccount) {
     if (!found.access.accountIds.has(aliasAccount)) return NextResponse.json({ error: 'La cuenta no pertenece a este cliente.' }, { status: 403 })
     await saveAlias(found.access.clientId, alias, aliasAccount, found.access.userId)
+  }
+
+  // Lo que se responde sobre un valor de acción queda en el vocabulario del sheet para la próxima importación.
+  const vocabulary = Array.isArray(body?.vocabulary) ? body.vocabulary.slice(0, 50) : []
+  const entries = vocabulary
+    .map((entry: { value?: unknown; action?: unknown }) => [clampText(entry?.value, 120), entry?.action] as const)
+    .filter(([value, action]: readonly [string, unknown]) => value && typeof action === 'string' && (CANONICAL_ACTIONS as readonly string[]).includes(action) && action !== 'unknown')
+  if (entries.length) {
+    const { grid, interpretation } = found.plan.context
+    await saveInterpretation(found.access.clientId, headersHash(grid.headers), grid.headers, {
+      ...interpretation, actionVocabulary: { ...interpretation.actionVocabulary, ...Object.fromEntries(entries) },
+    }, found.access.userId)
   }
   return NextResponse.json({ ok: true })
 }
