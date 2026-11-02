@@ -257,8 +257,8 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     return plan
   }
 
-  function ensureAdsets(row: Cells, campaign: PlanCampaign, hint?: string, forcedName?: string): PlanAdset[] {
-    const adsetName = forcedName ?? cell(row, 'adset_name')
+  function ensureAdsets(row: Cells, campaign: PlanCampaign, hint?: string): PlanAdset[] {
+    const adsetName = cell(row, 'adset_name')
     const existingAdsets = campaign.existingId ? adsetsOf(campaign.existingId) : []
     const options = existingAdsets.map(({ id, name, status }) => ({ id, name, status }))
     const adsetOptions = existingAdsets.map((adset) => ({ value: adset.id, label: adset.name, hint: adset.status === 'ACTIVE' ? 'activo' : 'pausado' }))
@@ -277,7 +277,7 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
       pageId: adset.pageId, destination: adset.destination, rows: [row.rowNumber], reason, state: 'ready', issues: [],
     })
 
-    if (campaign.mode === 'existing' && !forcedName) {
+    if (campaign.mode === 'existing') {
       if (adsetName) {
         const match = existingAdsets.find((adset) => sameText(adset.name, adsetName))
         if (match) return [register(existingPlan(match, 'Conjunto encontrado por nombre exacto'))]
@@ -342,17 +342,16 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     const dailyBudget = field?.dailyBudget ?? reference?.dailyBudget
     if (!campaign.isCbo && !dailyBudget) issues.push({ field: 'Presupuesto del conjunto', message: 'Falta el presupuesto diario', where: 'Completá el presupuesto en este ítem' })
     if (reference?.destination === 'WEBSITE' && reference.optimizationGoal === 'OFFSITE_CONVERSIONS' && !reference.hasPixel) issues.push({ field: 'Píxel', message: 'La referencia optimiza conversiones sin píxel', where: 'Elegí otra referencia' })
-    const where = forcedName ? `Se crea en pausa dentro de "${campaign.name}"; la campaña no se modifica` : ''
     return [register({
       key, campaignKey: campaign.key, accountId: campaign.accountId, name, mode: 'create', existingIds: [], options, rows: [row.rowNumber],
       reference: reference ? { id: reference.id, name: reference.name } : undefined, dailyBudget, pageId: field?.pageId ?? reference?.pageId, destination: reference?.destination,
-      reason: [where, reference ? `Copia la configuración de "${reference.name}"` : 'Se crea un conjunto nuevo'].filter(Boolean).join(' · '),
+      reason: reference ? `Copia la configuración de "${reference.name}"` : 'Se crea un conjunto nuevo',
       issues, state: issues.length ? 'blocked' : state,
     })]
   }
 
-  // 2.2.b: la fila no trae campaña. Se ubica por el conjunto; si no aparece, se pregunta dónde crearlo.
-  function placeWithoutCampaign(row: Cells, accountId: string, hint?: string): { campaign: PlanCampaign; targets: PlanAdset[] } | undefined {
+  // 2.2.b: la fila no trae campaña. Se ubica por el conjunto existente; si no aparece, la fila queda bloqueada.
+  function placeWithoutCampaign(row: Cells, accountId: string): { campaign: PlanCampaign; targets: PlanAdset[] } | { issue: PlanIssue } | undefined {
     const adsetName = cell(row, 'adset_name')
     const matches = adsetName ? inventory.adsets.filter((adset) => adset.accountId === accountId && sameText(adset.name, adsetName)) : []
     const campaignOf = (adset: InventoryAdset) => inventory.campaigns.find((campaign) => campaign.id === adset.campaignId)
@@ -387,28 +386,13 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
       return chosen ? useExisting(chosen, `Respondiste: conjunto de "${campaignOf(chosen)?.name ?? ''}"`) : undefined
     }
 
-    const accountCampaigns = campaignsIn(accountId)
-    const where = ask({
-      id: `placement:${row.rowNumber}`, kind: 'choice', field: 'Campaña',
-      prompt: adsetName ? `No hay campaña en la fila y no se encontró el conjunto "${adsetName}". ¿Dónde lo creo?` : 'No hay campaña ni conjunto en la fila. ¿En qué campaña creo el conjunto?',
-      why: 'Sin campaña no puedo ubicar el conjunto. Se crea uno nuevo en pausa dentro de la campaña que elijas, sin modificarla',
-      options: [...accountCampaigns.map((campaign) => ({ value: campaign.id, label: campaign.name, hint: campaign.status === 'ACTIVE' ? 'activa' : 'pausada' })), excludeOption()],
-      searchable: true, target: 'row', targetKey: String(row.rowNumber), freePlaceholder: 'Buscar campaña por nombre…',
-    }, row.rowNumber)
-    let name = adsetName
-    if (!name) {
-      const owner = accountCampaigns.find((campaign) => campaign.id === where?.value)
-      name = ask({
-        id: `adset-name:row:${row.rowNumber}`, kind: 'text', field: 'Nombre del conjunto',
-        prompt: '¿Qué nombre uso para el conjunto nuevo?', why: 'La fila tampoco trae nombre de conjunto',
-        options: [], suggestion: suggestName(batchAdsetNames.length ? batchAdsetNames : owner ? adsetsOf(owner.id).map((adset) => adset.name) : [], cellsOf(row, 'attribute'), `Conjunto ${context.today}`),
-        target: 'row', targetKey: String(row.rowNumber), freePlaceholder: 'Nombre del conjunto',
-      }, row.rowNumber)?.text ?? ''
+    return {
+      issue: {
+        field: 'Campaña',
+        message: adsetName ? `La fila no trae campaña y no existe el conjunto "${adsetName}" en la cuenta` : 'La fila no trae campaña ni conjunto',
+        where: `Completá la campaña en la fila ${row.rowNumber} del sheet o excluí la fila`,
+      },
     }
-    const chosen = accountCampaigns.find((campaign) => campaign.id === where?.value)
-    if (!chosen || !name) return undefined
-    const campaign = existingCampaign(row, chosen, `Respondiste: el conjunto se crea dentro de "${chosen.name}"`)
-    return { campaign, targets: ensureAdsets(row, campaign, hint, name) }
   }
 
   function piecesOf(row: Cells) {
@@ -502,8 +486,13 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
       }
       targets = campaign.state === 'needs_answer' ? [] : ensureAdsets(row, campaign, hint)
     } else {
-      const placed = placeWithoutCampaign(row, planRow.accountId, hint)
+      const placed = placeWithoutCampaign(row, planRow.accountId)
       if (!placed) continue
+      if ('issue' in placed) {
+        planRow.issues.push(placed.issue)
+        planRow.state = 'blocked'
+        continue
+      }
       campaign = placed.campaign
       targets = placed.targets
     }
